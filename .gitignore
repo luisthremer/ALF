@@ -13,4 +13,3 @@ Analysis/cov_tau_ph.F90
 HDF5/
 environment
 __pycache__/
-testsuite/tests/
