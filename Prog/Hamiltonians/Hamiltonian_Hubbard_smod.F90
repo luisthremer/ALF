@@ -578,10 +578,14 @@
           enddo
           ! Local quantities 
           If (abs(ham_h0) >= 1.D-10 ) then
-            Allocate ( Obs_local(1) )
+            Allocate ( Obs_local(2) )
+            Nt = 1
             Filename = "SpinZ"
             Channel = "--"
-            Call Obser_Latt_Local_make(Obs_local(1), 1, Filename, Latt, Latt_unit, Channel, dtau)
+            Call Obser_Latt_Local_make(Obs_local(1), Nt, Filename, Latt, Latt_unit, Channel, dtau)
+            Nt = Ltrot - 2*Thtrot
+            Channel = 'P'
+            Call Obser_Latt_Local_make(Obs_local(2), Nt, Filename, Latt, Latt_unit, Channel, dtau)
           endif
           ! Equal time correlators
           If ( N_FL == 2 ) Then
@@ -774,14 +778,18 @@
 
           If (abs(ham_h0) >= 1.D-10 ) then
             ! Compute local observables.
-            Do I = 1,Size(Obs_local,1)
-               Obs_local(I)%N         =  Obs_local(I)%N + 1
-               Obs_local(I)%Ave_sign  =  Obs_local(I)%Ave_sign + Real(ZS,kind(0.d0))
-            Enddo
+            Obs_local(1)%N         =  Obs_local(1)%N + 1
+            Obs_local(1)%Ave_sign  =  Obs_local(I)%Ave_sign + Real(ZS,kind(0.d0))
+            If (Ntau == Ltrot/2) then
+               Obs_local(2)%N = Obs_local(2)%N + 1
+               Obs_local(2)%Ave_sign = Obs_local(2)%Ave_sign + Real(ZS,kind(0.d0))
+            Endif
             Do I = 1,Latt%N
                do no_I = 1,Latt_unit%Norb
                   I1 = Invlist(I,no_I)
                   Obs_Local(1)%Obs_Latt(I,1,no_I) = Obs_Local(1)%Obs_Latt(I,1,no_I)  + & 
+                  &       (Grc(i1,i1,1)  -  Grc(i1,i1, dec))*ZP*ZS 
+                  Obs_Local(2)%Obs_Latt(I,Ntau - Thtrot,no_I) = Obs_Local(2)%Obs_Latt(I,Ntau - Thtrot,no_I)  + & 
                   &       (Grc(i1,i1,1)  -  Grc(i1,i1, dec))*ZP*ZS 
                enddo
             Enddo
