@@ -169,6 +169,7 @@
       real(Kind=Kind(0.d0)) :: ham_T     = 1.d0  ! Hopping parameter
       real(Kind=Kind(0.d0)) :: Ham_chem  = 0.d0  ! Chemical potential
       real(Kind=Kind(0.d0)) :: ham_V     = 4.d0  ! Hubbard interaction
+      real(Kind=Kind(0.d0)) :: ham_h0    = 1.d0  ! Pinning field strength
       real(Kind=Kind(0.d0)) :: ham_T2    = 1.d0  ! For bilayer systems
       real(Kind=Kind(0.d0)) :: ham_V2    = 4.d0  ! For bilayer systems
       real(Kind=Kind(0.d0)) :: ham_Tperp = 1.d0  ! For bilayer systems
@@ -278,6 +279,7 @@
              Write(unit_info,*) 't             : ', Ham_T
              Write(unit_info,*) 'Ham_V         : ', Ham_V
              Write(unit_info,*) 'Ham_chem      : ', Ham_chem
+             if (abs(ham_h0) >= 1.D-10 ) Write(unit_info,*) 'Pinning field : ', ham_h0
              if (Projector) then
                Do nf = 1,N_FL
                   Write(unit_info,*) 'Degen of right trial wave function: ', WF_R(nf)%Degen
@@ -324,7 +326,7 @@
           Integer, allocatable ::   N_Phi_vec(:)
 
           ! Use predefined stuctures or set your own hopping
-          Integer :: n,nth
+          Integer :: n,nth, nf, I, Ix, Iy
 
           Allocate (Ham_T_vec(N_FL), Ham_T2_vec(N_FL), Ham_Tperp_vec(N_FL), Ham_Chem_vec(N_FL), Phi_X_vec(N_FL), Phi_Y_vec(N_FL),&
                &                                   N_Phi_vec(N_FL), Ham_Lambda_vec(N_FL) )
@@ -369,11 +371,42 @@
              Write(error_unit,*) 'Your lattice is not supported for the t-V model. '
              CALL Terminate_on_error(ERROR_HAMILTONIAN,__FILE__,__LINE__)
           end Select
-
-          Call  Predefined_Hoppings_set_OPT(Hopping_Matrix,List,Invlist,Latt,  Latt_unit,  Dtau, Checkerboard, Symm, OP_T )
-
-          Deallocate (Ham_T_vec, Ham_T2_vec, Ham_Tperp_vec, Ham_Chem_vec, Phi_X_vec, Phi_Y_vec, &
-               &                                   N_Phi_vec,  Ham_Lambda_vec )
+         
+          if (abs(ham_h0) >= 1.D-10 ) then
+            allocate(Op_T(2,N_FL))
+            do nf = 1,N_FL
+               Call Op_make(Op_T(1,nf),Ndim)
+               Call Op_make(Op_T(2,nf),Ndim)
+               Do I = 1,Latt%N
+                  Ix = Latt%nnlist(I,1,0)
+                  Op_T(1,nf)%O(I,  Ix) = cmplx(-Ham_T,    0.d0, kind(0.D0))
+                  Op_T(1,nf)%O(Ix, I ) = cmplx(-Ham_T,    0.d0, kind(0.D0))
+                  If ( L2 > 1 ) then
+                     Iy = Latt%nnlist(I,0,1)
+                     Op_T(1,nf)%O(I,  Iy) = cmplx(-Ham_T,    0.d0, kind(0.D0))
+                     Op_T(1,nf)%O(Iy, I ) = cmplx(-Ham_T,    0.d0, kind(0.D0))
+                  endif
+                  Op_T(1,nf)%O(I,  I ) = cmplx(-Ham_chem, 0.d0, kind(0.D0))
+                  if (I == Latt%N/2) then
+                     Op_T(2,nf)%O(I,  I ) = cmplx(-Ham_h0, 0.d0, kind(0.D0))
+                  endif
+                  Op_T(1,nf)%P(i) = i
+                  Op_T(2,nf)%P(i) = i
+               Enddo
+               Op_T(1,nf)%g      = -Dtau
+               Allocate (Op_T(2,nf)%g_t(Ltrot))
+               Op_T(2,nf)%g_t = 0.d0
+               Op_T(2,nf)%g_t(Ltrot/2) = -1.d0
+               Op_T(1,nf)%alpha  =  cmplx(0.d0,0.d0, kind(0.D0))
+               Op_T(2,nf)%alpha  =  cmplx(0.d0,0.d0, kind(0.D0))
+               Call Op_set(Op_T(1,nf))
+               Call Op_set(Op_T(2,nf))
+            enddo
+          else
+            Call  Predefined_Hoppings_set_OPT(Hopping_Matrix,List,Invlist,Latt,  Latt_unit,  Dtau, Checkerboard, Symm, OP_T )
+          endif 
+         Deallocate (Ham_T_vec, Ham_T2_vec, Ham_Tperp_vec, Ham_Chem_vec, Phi_X_vec, Phi_Y_vec, &
+         &            N_Phi_vec, Ham_Lambda_vec )
 
         end Subroutine Ham_Hop
 !--------------------------------------------------------------------
@@ -562,7 +595,17 @@
              end select
              Call Obser_Vec_make(Obs_scal(I),N,Filename)
           enddo
-
+          ! Local quantities 
+          If (abs(ham_h0) >= 1.D-10 ) then
+            Allocate ( Obs_local(2) )
+            Nt = 1
+            Filename = "Den"
+            Channel = "--"
+            Call Obser_Latt_Local_make(Obs_local(1), Nt, Filename, Latt, Latt_unit, Channel, dtau)
+            Nt = Ltrot - 2*Thtrot
+            Channel = 'P'
+            Call Obser_Latt_Local_make(Obs_local(2), Nt, Filename, Latt, Latt_unit, Channel, dtau)
+          endif
           ! Equal time correlators
           Allocate ( Obs_eq(3) )
           Do I = 1,Size(Obs_eq,1)
@@ -716,6 +759,40 @@
           Obs_scal(3)%Obs_vec(1)  =    Obs_scal(3)%Obs_vec(1) + Zrho * ZP*ZS
 
           Obs_scal(4)%Obs_vec(1)  =    Obs_scal(4)%Obs_vec(1) + (Zkin + Zpot)*ZP*ZS
+
+          ! Local observables
+          If (abs(ham_h0) >= 1.D-10 ) then
+            ! Compute local observables.
+
+            Obs_local(1)%N         =  Obs_local(1)%N + 1
+            Obs_local(1)%Ave_sign  =  Obs_local(1)%Ave_sign + Real(ZS,kind(0.d0))
+
+            Do I = 1,Latt%N
+               do no_I = 1,Latt_unit%Norb
+                  I1 = Invlist(I,no_I)
+                  Obs_Local(1)%Obs_Latt(I,1,no_I) = Obs_Local(1)%Obs_Latt(I,1,no_I)  + & 
+                  &       Grc(i1,i1,1)*ZP*ZS 
+               enddo
+            Enddo
+          endif
+
+          ! Tau-resolved local observables
+          If (abs(ham_h0) >= 1.D-10 ) then
+            ! Compute local observables.
+
+            If (Ntau == Ltrot/2) then
+               Obs_local(2)%N = Obs_local(2)%N + 1
+               Obs_local(2)%Ave_sign = Obs_local(2)%Ave_sign + Real(ZS,kind(0.d0))
+            Endif
+
+            Do I = 1,Latt%N
+               do no_I = 1,Latt_unit%Norb
+                  I1 = Invlist(I,no_I)
+                  Obs_Local(2)%Obs_Latt(I,Ntau - Thtrot,no_I) = Obs_Local(2)%Obs_Latt(I,Ntau - Thtrot,no_I)  + & 
+                  &       Grc(i1,i1,1)*ZP*ZS
+               enddo
+            Enddo
+          endif
 
           ! Standard two-point correlations
           Call Predefined_Obs_eq_Green_measure  ( Latt, Latt_unit, List,  GR, GRC, N_SUN, ZS, ZP, Obs_eq(1) )

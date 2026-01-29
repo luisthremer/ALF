@@ -779,7 +779,7 @@
           If (abs(ham_h0) >= 1.D-10 ) then
             ! Compute local observables.
             Obs_local(1)%N         =  Obs_local(1)%N + 1
-            Obs_local(1)%Ave_sign  =  Obs_local(I)%Ave_sign + Real(ZS,kind(0.d0))
+            Obs_local(1)%Ave_sign  =  Obs_local(1)%Ave_sign + Real(ZS,kind(0.d0))
             If (Ntau == Ltrot/2) then
                Obs_local(2)%N = Obs_local(2)%N + 1
                Obs_local(2)%Ave_sign = Obs_local(2)%Ave_sign + Real(ZS,kind(0.d0))
