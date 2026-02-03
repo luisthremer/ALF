@@ -318,15 +318,14 @@
         Subroutine Ham_Hop
 
           Implicit none
-
           Real (Kind=Kind(0.d0) ) ::  Ham_Lambda = 0.d0
 
           Real (Kind=Kind(0.d0) ), allocatable :: Ham_T_vec(:), Ham_Tperp_vec(:), Ham_Chem_vec(:), Phi_X_vec(:), Phi_Y_vec(:),&
                &                                  Ham_T2_vec(:),  Ham_Lambda_vec(:)
           Integer, allocatable ::   N_Phi_vec(:)
 
-          ! Use predefined stuctures or set your own hopping
-          Integer :: n,nth, nf, I, Ix, Iy
+          Integer :: n, nth, nf, I, J, I1, J1, n_1, n_2, Nb, no_i, no_j
+          Complex(Kind=Kind(0.d0))          :: Z
 
           Allocate (Ham_T_vec(N_FL), Ham_T2_vec(N_FL), Ham_Tperp_vec(N_FL), Ham_Chem_vec(N_FL), Phi_X_vec(N_FL), Phi_Y_vec(N_FL),&
                &                                   N_Phi_vec(N_FL), Ham_Lambda_vec(N_FL) )
@@ -373,35 +372,82 @@
           end Select
          
           if (abs(ham_h0) >= 1.D-10 ) then
-            allocate(Op_T(2,N_FL))
-            do nf = 1,N_FL
-               Call Op_make(Op_T(1,nf),Ndim)
-               Call Op_make(Op_T(2,nf),Ndim)
-               Do I = 1,Latt%N
-                  Ix = Latt%nnlist(I,1,0)
-                  Op_T(1,nf)%O(I,  Ix) = cmplx(-Ham_T,    0.d0, kind(0.D0))
-                  Op_T(1,nf)%O(Ix, I ) = cmplx(-Ham_T,    0.d0, kind(0.D0))
-                  If ( L2 > 1 ) then
-                     Iy = Latt%nnlist(I,0,1)
-                     Op_T(1,nf)%O(I,  Iy) = cmplx(-Ham_T,    0.d0, kind(0.D0))
-                     Op_T(1,nf)%O(Iy, I ) = cmplx(-Ham_T,    0.d0, kind(0.D0))
-                  endif
-                  Op_T(1,nf)%O(I,  I ) = cmplx(-Ham_chem, 0.d0, kind(0.D0))
-                  if (I == Latt%N/2) then
-                     Op_T(2,nf)%O(I,  I ) = cmplx(-Ham_h0, 0.d0, kind(0.D0))
-                  endif
-                  Op_T(1,nf)%P(i) = i
-                  Op_T(2,nf)%P(i) = i
-               Enddo
-               Op_T(1,nf)%g      = -Dtau
-               Allocate (Op_T(2,nf)%g_t(Ltrot))
-               Op_T(2,nf)%g_t = 0.d0
-               Op_T(2,nf)%g_t(Ltrot/2) = -1.d0
-               Op_T(1,nf)%alpha  =  cmplx(0.d0,0.d0, kind(0.D0))
-               Op_T(2,nf)%alpha  =  cmplx(0.d0,0.d0, kind(0.D0))
-               Call Op_set(Op_T(1,nf))
-               Call Op_set(Op_T(2,nf))
-            enddo
+            ! allocate(Op_T(2,N_FL))
+            ! do nf = 1,N_FL
+            !    Call Op_make(Op_T(1,nf),Ndim)
+            !    Call Op_make(Op_T(2,nf),Ndim)
+            !    Do I = 1,Latt%N
+            !       Ix = Latt%nnlist(I,1,0)
+            !       Op_T(1,nf)%O(I,  Ix) = cmplx(-Ham_T,    0.d0, kind(0.D0))
+            !       Op_T(1,nf)%O(Ix, I ) = cmplx(-Ham_T,    0.d0, kind(0.D0))
+            !       If ( L2 > 1 ) then
+            !          Iy = Latt%nnlist(I,0,1)
+            !          Op_T(1,nf)%O(I,  Iy) = cmplx(-Ham_T,    0.d0, kind(0.D0))
+            !          Op_T(1,nf)%O(Iy, I ) = cmplx(-Ham_T,    0.d0, kind(0.D0))
+            !       endif
+            !       Op_T(1,nf)%O(I,  I ) = cmplx(-Ham_chem, 0.d0, kind(0.D0))
+            !       if (I == Latt%N/2) then
+            !          Op_T(2,nf)%O(I,  I ) = cmplx(-Ham_h0, 0.d0, kind(0.D0))
+            !       endif
+            !       Op_T(1,nf)%P(i) = i
+            !       Op_T(2,nf)%P(i) = i
+            !    Enddo
+            !    Op_T(1,nf)%g      = -Dtau
+            !    Allocate (Op_T(2,nf)%g_t(Ltrot))
+            !    Op_T(2,nf)%g_t = 0.d0
+            !    Op_T(2,nf)%g_t(Ltrot/2) = -1.d0
+            !    Op_T(1,nf)%alpha  =  cmplx(0.d0,0.d0, kind(0.D0))
+            !    Op_T(2,nf)%alpha  =  cmplx(0.d0,0.d0, kind(0.D0))
+            !    Call Op_set(Op_T(1,nf))
+            !    Call Op_set(Op_T(2,nf))
+            ! enddo
+              allocate(Op_T(2,N_FL))
+              do nf = 1,N_FL
+                 ! Op_T(1,nf) contains the bare hopping matrix, Op_T(2,nf) is the pinning Hamiltonian
+                 Call Op_make(Op_T(1,nf),Ndim)   
+                 Call Op_make(Op_T(2,nf),Ndim)
+                 N_Phi     = Hopping_Matrix(nf)%N_Phi
+                 Phi_X     = Hopping_Matrix(nf)%Phi_X
+                 Phi_Y     = Hopping_Matrix(nf)%Phi_Y
+                 Bulk      = Hopping_Matrix(nf)%Bulk
+                 DO I = 1, Latt%N
+                    do Nb = 1, Hopping_Matrix(nf)%N_bonds
+                       no_I = Hopping_Matrix(nf)%list(Nb,1)
+                       no_J = Hopping_Matrix(nf)%list(Nb,2)
+                       n_1  = Hopping_Matrix(nf)%list(Nb,3)
+                       n_2  = Hopping_Matrix(nf)%list(Nb,4)
+                       J    = Latt%nnlist(I,n_1,n_2)
+                       Z    = Generic_hopping(I,no_I, n_1, n_2, no_J, N_Phi, Phi_x,Phi_y, Bulk, Latt, Latt_Unit)
+                       I1   = Invlist(I,no_I)
+                       J1   = Invlist(J,no_J)
+                       Op_T(1,nf)%O(I1,J1) = Hopping_Matrix(nf)%T(Nb)*Z
+                       Op_T(1,nf)%O(J1,I1) = Conjg(Hopping_Matrix(nf)%T(Nb)*Z)
+                    enddo
+                    Do no_I = 1, Latt_Unit%Norb
+                        I1   = Invlist(I,no_I)
+                        Z = Hopping_Matrix(nf)%T_Loc(no_I) 
+                        Op_T(1,nf)%O(I1,I1) = Z
+                    Enddo
+                    if (I == Latt%N/2) then
+                        do no_I = 1, Latt_Unit%Norb
+                           I1 = Invlist(I, no_I)
+                          Op_T(2,nf)%O(I1, I1) = cmplx(-Ham_h0, 0.d0)
+                        enddo
+                    endif
+                 enddo
+                 Do I = 1,Ndim
+                    Op_T(1,nf)%P(i) = i
+                    Op_T(2,nf)%P(i) = i
+                 Enddo
+                 Op_T(1,nf)%g = -Dtau
+                 Allocate (Op_T(2,nf)%g_t(Ltrot))
+                 Op_T(2,nf)%g_t = 0.d0
+                 Op_T(2,nf)%g_t(Ltrot/2) = -1.d0
+                 Op_T(1,nf)%alpha  =  cmplx(0.d0,0.d0, kind(0.D0))
+                 Op_T(2,nf)%alpha  =  cmplx(0.d0,0.d0, kind(0.D0))
+                 Call Op_set(Op_T(1,nf))
+                 Call Op_set(Op_T(2,nf))
+              Enddo
           else
             Call  Predefined_Hoppings_set_OPT(Hopping_Matrix,List,Invlist,Latt,  Latt_unit,  Dtau, Checkerboard, Symm, OP_T )
           endif 
