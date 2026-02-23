@@ -147,6 +147,4 @@ jobs:
           EOF
           cat parameters
           cp ../Scripts_and_Parameters_files/Start/seeds .
-          valgrind --leak-check=full --log-file=vglog.txt ../Prog/ALF.out
-          cat vglog.txt
-          grep lost vglog.txt | cut -d":" -f 2 | cut -d " " -f 2 | f=$(cat); echo $(( ${f//$'\n'/+} ))
+          valgrind --leak-check=full --errors-for-leak-kinds=definite,indirect,possible --error-exitcode=1 ../Prog/ALF.out
