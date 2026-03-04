@@ -472,7 +472,7 @@ Another  example is  the  quantum Fisher  information \cite{Hauke16} (QFI).  In 
              \int_{0}^{\infty}   d \omega  \underbrace{ \frac{4}{\pi} \tanh^2\left( \frac{\beta \omega}{2} \right) }_{\equiv F(\omega) } \, A(\omega).
 \end{equation}
 The  last  step follows  for  Eq.~\ref{eqn:A_ph_def}.    
-In the default implementation  the  QFI is computed for  the particle-hole channel, and  the results are written in the file \texttt{QFI.dat}.  The first column of this file corresponds to the temperature, the second column to the QFI, and the third column to the error bar.  The function $F$ is specified in the module \texttt{maxent\_wrapper\_mod.F90} in the  \texttt{Analysis}   directory.
+In the default implementation  the  QFI is computed for  the particle-hole channel, and  the results are written in the file \texttt{QFI.dat}.  The first column of this file corresponds to the inverse temperature, $1/\alpha$, the second column to the QFI, and the third column to the error bar.  The function $F$ is specified in the module \texttt{maxent\_wrapper\_mod.F90} in the  \texttt{Analysis}   directory.
 This function is  passed to the stochastic MaxEnt routine in the called from the wrapper \texttt{Max\_SAC.F90}.  The user can modify the function $F$ to compute other quantities and specify the output of the file name. 
 
 For the particle channel the  default corresponds  to the calculation of  $\left. \frac{\partial I}{\partial V}\right|_{V=0}$, given by  the 
@@ -485,7 +485,7 @@ Fermi function is approximated by:
 \begin{equation}
   f(x) - \frac{1}{2} = - \sum_{\alpha =1 }^{N/2} \left( \frac{R_\alpha}{x - i/ b_\alpha} + \frac{R_\alpha}{x + i /b_\alpha} \right).
 \end{equation} 
-For this parametrization, it turns out  that truncating the sum to five terms provides an extremely good approximation  for $|x|<20$.  
+For this parametrization, it turns out  that truncating the sum to ten terms provides a perfect approximation  for $|x|<40$.  
 In  the MaxEnt wrapper \texttt{Max\_SAC.F90}  the call to the routine \texttt{Set\_Ra\_ba(N)} sets the parameters $R_\alpha$ and $b_\alpha$ for the approximation of the Fermi function (see Ref.~\cite{Karrasch10}).  The default value of $N$ is set to ten  resulting in the aforementioned truncation, but the user can change it to improve the approximation for larger values of $|x|$.   With the above,  one  can estimate:
 \begin{equation}
    \left. \frac{\partial I}{\partial V}\right|_{V=0}  = \int d \omega A(\omega) \left[ -\frac{2}{\beta} 

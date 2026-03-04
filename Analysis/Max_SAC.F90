@@ -99,7 +99,7 @@ Program MaxEnt_Wrapper
        endif
        close(30)
        
-       N = 10
+       N = 20
        Call Set_Ra_ba(N)
        
        INQUIRE(FILE="Default", EXIST=Default_model_exists)
