@@ -735,6 +735,15 @@ Module Global_mod
         !Z =  Z * cmplx( T0_Proposal_ratio, 0.d0,kind(0.d0))
         Ratio(2) = sum(Ratio_2_array)
         log_delta = ham%Get_Delta_S0_global(Nsigma_old)
+        if (log_T0_Proposal_ratio == LOG_T0_REJECTED) then
+           ! This if-statement catches 'old' global moves with T0_Proposal_ratio <= 0 like due to double overflow.
+           ! In practice, this should never happen once the new Global_move_log_T0 subroutine is overwriten
+           ! within the model specific Hamiltonian module by the use, following earlier warnings.
+           Ratio(1) = 0.d0
+           Ratio(2) = 0.d0
+           Compute_Ratio_Global = cmplx(0.d0,0.d0,kind(0.d0))
+           return
+        end if
         Ratio(2) = Ratio(2) + log_delta + log_T0_Proposal_ratio
 
         Compute_Ratio_Global = Ratio(1)*exp(Ratio(2))
