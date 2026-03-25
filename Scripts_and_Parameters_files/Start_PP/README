@@ -1,0 +1,130 @@
+Explanation on how to use the "prepare_sims.py".
+
+Here I present an easy way to prepare raster simulations for the PP mode in ALF.
+To use this, make sure to compile ALF with PP.
+
+Definition raster simulation: A simulation containing at least one varying simulation parameter. 
+
+1. Copy the files from $ALF_DIR/Scripts_and_Parameters_files/Start_PP into your simulation directory.
+2. Adjust the "parameters" file according to:
+a) For each varying simulation parameter list all values your parameter can have. 
+Example: 
+...
+Beta         = {2, 4, 6, 8}  
+...
+ham_U      = {0.5d0, 1.5d0, 3.0d0, 5.0d0, 5.5d0, 6.0d0, 7.5d0} 
+...
+
+b) There is no need to adjust "mpi_per_parameter_set" in the parameters file, as this will be automatically overwritten by the python script
+c) You then can launch the simulation via "mpiexec -n <n_cores> $ALF_DIR/Prog/ALF.out", where <n_cores> = <mpi_per_parameter_set> \times <number_of_mpi_runs_per_parameter_set>. 
+Note that I) The number of cores has to be available on your system, II) you really have to use the <mpi_per_parameter_set> times an integer. If <n_cores> mod <mpi_per_parameter_set> \neq 0, ALF will fail.
+
+Some remarks: 
+If you use different Beta on a HPC system, make sure to use the CPU_MAX option with some large number of bins. In this example, Beta=2 will be approximately four times faster than Beta=8.
+It is therefore in general not advisable to use different \beta in one single production run raster simulation (unless you know what you are doing).
+The same is true for different system sizes and different \delta \tau.
+The automatic creation works for ALL parameters in "parameters". I.e. also for parameters with value ".T.; .F." and so on. 
+
+Raster over different lattice sizes:
+1D Systems:
+Set either L1 or L2 = 0. The remaining variable then is set to a set over different lattice sizes {8, 16, 32, 64}.
+
+2D Systems with L1=L2:
+Set either L1 = ## or L2 = ##, notice, it does not matter if there is a space. All that matters is, that after "=" there are "##" before a "!" in the same line.
+The remaining variable is then set to a set of different lattice sizes, e.g. {8, 12, 16}.
+
+2D Systems with L1\neqL2:
+Set each L1 and L2 to some set of different lattice sizes, e.g.:
+L1 = {8, 12, 16}
+L2 = {2, 4, 6}
+
+
+Running the script:
+Run the script with "python prepare_sims.py".
+Upon running the script you will find several folders named "Temp_". These are the folders, that will contain a unique combination of parameters.
+Notice also, that links are generated, in order to ensure better distinguishability between the different simulations.
+
+Running the simulation:
+Launch the simulation via "mpiexec -n <ncores> $ALF_DIR/Prog/ALF.out"
+
+
+Special settings:
+1. It is also possible, that someone wants to use this setup to not wanting to Launch raster simulations, but rather the following:
+a) e.g. Say you want to have a raster simulation:
+L1=##
+L2={8,12,16}
+...
+ham_U={0.5d0, 1.5d0, 3.0d0, 5.0d0, 6.0d0, 7.5d0}
+...
+
+And you want to have a different \beta for each different Lattice size, i.e. you don't want to have a raster for beta, but a 1:1 mapping for a specific L value.
+Then you can fix beta in such a way: 
+beta=[4, 6, 8; L2]
+This works only, if beta has the same length as (in this case) L2.
+
+b) You can always fix several parameters at once! E.g.:
+
+&VAR_lattice               !! Parameters defining the specific lattice and base model
+L1           = ##            ! Length in direction a_1
+L2           = {8, 12, 16}            ! Length in direction a_2
+...
+N_Phi        = [32, 72, 128; L2]            ! Total number of flux quanta traversing the lattice
+...
+Beta         = [8, 12, 16; L2]         ! Inverse temperature
+...
+Mz         = {.F., .T.}
+....
+ham_U      = [0.5d0, 1.5d0, 3.0d0, 5.0d0, 5.5d0, 6.0d0, 7.5d0]           ! Hubbard interaction
+
+...
+/
+
+What would this simulation do?
+L1           = ##
+L2           = {8, 12, 16}
+Investigate three lattice sizes:  L1 = L2 = {8, 12, 16}. We want a pi flux per Plaquette, as well as \beta = L.
+Thus we need to set:
+N_Phi        = [32, 72, 128; L2]
+Beta         = [8, 12, 16; L2]
+Therefore:
+    - L2 = 8  ==> N_Phi = 32,  Beta = 8
+    - L2 = 12 ==> N_Phi = 72,  Beta = 12
+    - L2 = 16 ==> N_Phi = 128, Beta = 16
+
+We would like to investigate
+ 
+
+
+Some are excluded, as it does not make sense, because it would give double simulations:
+&VAR_Max_Stoch
+...
+/
+
+&VAR_errors
+...
+/
+
+
+NOTICE, THAT THE RASTER IS always created for:
+&VAR_lattice
+&VAR_Model_Generic
+(&VAR_QMC, which can be used for debugging/some monte carlo specific test, but here one should be careful..)
+And the corresponding:
+&VAR_ham_name
+ham_name = "Hubbard"
+/
+
+We also allow to have e.g. {"Hubbard", "tV"}, which then will create a separate raster for each Model type!
+
+
+
+
+
+
+TODO:
+1. Need to adjust, that MPI_per_parameter_set automatically is adjusted!
+2. Need to ensure some naming: Ich will, dass die links immer folgende namen haben: 1. Lx, Ly, beta, dtau, then list of all parameters (if beta was in parameters, or l in parameters, or something else, that already was there, then don't include again...)
+3. Need to adjust, that if only Lx or Ly has nonzero number, then this is done always the same for Lx = Ly. I.e. if there is somelist, then yes...
+4. If both have some list, then create all combinations (there needs to be some flag, that says: rotation symmetry). If that is true, then only all unique combinations!
+5. Ensure, that there is some mechanism, that ensures, that it works with all parameters.
+6. Need to ensure that this works also with the Raster over different lattice sizes.

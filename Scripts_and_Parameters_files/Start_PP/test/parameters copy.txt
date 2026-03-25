@@ -1,0 +1,44 @@
+!=======================================================================================
+!  Input variables for a general ALF run
+!---------------------------------------------------------------------------------------
+&VAR_ham_name
+ham_name = {"Hubbard","tV"}
+/
+
+&VAR_lattice               !! Parameters defining the specific lattice and base model
+L1           = {4, 6, 8}            ! Length in direction a_1
+L2           = [4, 6, 8; VAR_lattice, L1]            ! Length in direction a_2
+...
+/
+
+&VAR_Model_Generic         !! Common model parameters
+Checkerboard = {.T.,.F.}          ! Whether checkerboard decomposition is used
+Symm         = {.T.,.F.}          ! Whether symmetrization takes place
+...
+N_Phi        = [8, 18, 32; VAR_lattice, L1]  
+...
+Beta         = [4, 6, 8; VAR_lattice, L1]         ! Inverse temperature
+...
+/
+
+&VAR_QMC                   !! Variables for the QMC run
+Nwrap                = {10, 11, 12}   ! Stabilization. Green functions will be computed from 
+ ...
+/
+
+
+
+
+&VAR_Hubbard               !! Variables for the specific model
+...
+ham_U      = {0.5d0, 1.5d0, 3.0d0, 5.0d0, 5.5d0, 6.0d0, 7.5d0}           ! Hubbard interaction
+...
+/
+
+&VAR_tV                    !! Variables for the t-V class
+...
+ham_V     = {0.5d0, 3.d0} ! Hubbard interaction
+...
+/
+
+...
