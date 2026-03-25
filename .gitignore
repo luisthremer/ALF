@@ -15,3 +15,6 @@ HDF5/
 environment
 __pycache__/
 testsuite/tests/
+.deps.mk
+Prog/.echo_compile_mods
+Prog/.parse_parameters
