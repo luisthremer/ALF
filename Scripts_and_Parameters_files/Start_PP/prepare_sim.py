@@ -4,6 +4,7 @@ import os
 import subprocess
 from collections import defaultdict
 import json
+import re
 
 #TODO: Caps sensitivity in keys has to be removed!
 #TODO: Check whether second key exists...
@@ -158,6 +159,21 @@ def safely_deduplicate(final_results):
             unique_results.append(d)
     return unique_results
 
+def _sanitize_for_name(value):
+    text = str(value).strip()
+    text = re.sub(r"\s+", "-", text)
+    text = re.sub(r"[^A-Za-z0-9_.-]", "-", text)
+    text = text.strip("-_.")
+    return text or "na"
+
+def build_link_name(patch):
+    parts = []
+    for outer_key in sorted(patch.keys()):
+        inner_dict = patch[outer_key]
+        for parameter, value in sorted(inner_dict.items()):
+            parts.append(f"{_sanitize_for_name(parameter)}_{_sanitize_for_name(value)}")
+    return "_".join(parts) if parts else "sim"
+
 def main(original_param_path, rules):
     original_nml = f90nml.read(original_param_path)
     extracted_information = cleanup_dirty_list(original_nml)
@@ -177,7 +193,7 @@ def main(original_param_path, rules):
         
         apply_patch(original_param_path, el, param_path)
 
-        link_name = f"sim_{i}"
+        link_name = build_link_name(el)
         if os.path.lexists(link_name):
             os.unlink(link_name)
         subprocess.run(["ln", "-s", sim_path, link_name], check=True)
