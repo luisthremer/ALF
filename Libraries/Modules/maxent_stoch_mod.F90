@@ -447,6 +447,8 @@ Module MaxEnt_stoch_mod
            DeAllocate( G_Mean )
            DeAllocate( xqmc1 )
            Deallocate( Xker_table )
+            If (Allocated(Phim1_func)) Deallocate(Phim1_func)
+           If (Allocated(Phi_func)) Deallocate(Phi_func)
 2001       format(F14.7,2x,F14.7,2x,F14.7)
 !2004       format(F14.7,2x,F14.7,2x,F14.7,2x,F14.7)
 2005       format(F14.7,2x,F14.7,2x,F14.7,2x,F14.7,2x,F14.7)
@@ -493,6 +495,8 @@ Module MaxEnt_stoch_mod
             Default_table  =   Default_table * Xmom1/X1
 
             ! Setup  Phimi_func
+            If (Allocated(Phim1_func)) Deallocate(Phim1_func)
+            If (Allocated(Phi_func)) Deallocate(Phi_func)   
             Allocate(Phim1_func(Size(Default_table,1)), Phi_func(Size(Default_table,1)))
             x = 0.D0 
             Do nx = 1,Size(Default_table,1)

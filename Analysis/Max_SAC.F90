@@ -61,6 +61,22 @@ Program MaxEnt_Wrapper
        Logical                                             :: Test =.false.
        
 
+       !----
+       Integer                :: iboot, N_boot = 1 ! Set default to 1 in order to be compatible with original parameter files
+       Real (Kind=Kind(0.d0)), Allocatable :: U_cov(:,:), Sigma_cov(:), Z_noise(:)
+       Real (Kind=Kind(0.d0)), Allocatable :: A_mean(:), A_M2(:), A_err(:)
+       Real (Kind=Kind(0.d0))              :: U1, U2, welford_delta, welford_delta2
+       logical                             :: initial_checkpoint, N_boot_checkpoint = .false.
+      !  Todos: check welford online + check output + bootstraü all files + test whether it works!
+       !TODO: MPI
+       !TODO: more robust implementation is not to generate the aom files until at last.
+       !TODO: maybe it is better to put the bootstrap in the maxent stoch mod, honestly...
+       !The important change is: do not write Aom_ps_*, Best_fit, energies, moments, dump_*, Max_stoch_log during every bootstrap sample. That avoids MPI file collisions and removes a lot of unnecessary I/O.
+       !TODO: Write error to file.
+       !TODO: old max stoch mod + bootstrap -> new mod -> fallback to old if no bootstrap. -> new does not write the files, but explicitly calculates the cumulative means .> and only in final run writes the files.
+       !TODO: test if everything works -> save all files temporarily ! and then calculate the mean +. error 
+       !----
+
        Integer                :: Ngamma, Ndis,  NBins, NSweeps, Nwarm, N_alpha, N_cov
        Integer                :: N_skip, N_rebin, N_Back, N_auto, Norb
        Real (Kind=Kind(0.d0)) :: OM_st, OM_en,  alpha_st, R, Tolerance
@@ -78,7 +94,7 @@ Program MaxEnt_Wrapper
        Integer ::  N_BZ_Zones     =  1 
        Logical ::  Extended_Zone = .false.
 
-       NAMELIST /VAR_Max_Stoch/ Ngamma, Ndis,  NBins, NSweeps, Nwarm, N_alpha, &
+       NAMELIST /VAR_Max_Stoch/ Ngamma, Ndis,  NBins, NSweeps, Nwarm, N_alpha, N_boot, N_boot_checkpoint, &
             &                   OM_st, OM_en,  alpha_st, R,  Checkpoint, Tolerance, &
             &                   Stochastic
 
@@ -228,6 +244,64 @@ Program MaxEnt_Wrapper
        write(50,13) "First Moment",  Xmom1
        write(50,13) "Beta", Beta
 
+       !------Injection--------
+       !Bootstrap
+       Allocate (xom(Ndis), A(Ndis))
+       Allocate(U_cov(Ntau,Ntau), Sigma_cov(Ntau), Z_noise(Ntau)) !Allocate arrays for Gaussian resampling
+       Allocate(A_mean(Ndis), A_M2(Ndis), A_err(Ndis)) !Allocate arrays for Welford online algorithm
+       A_mean = 0.d0; A_M2 = 0.d0; A_err = 0.d0
+
+       Call Diag(XCOV_st, U_cov, Sigma_cov)        !Considering the usual sizes of Ntau this will mostlikely not be a bottlneck
+
+       ! ---------------------------------------------------------
+       ! SANITY CHECK: Ensure covariance is positive semi-definite
+       ! We tolerate tiny negative values from numerical round-off,
+       ! but crash if the matrix is fundamentally broken.
+       ! ---------------------------------------------------------
+       Do nt1 = 1, Ntau
+           If (Sigma_cov(nt1) < -1.d-10) then
+               write(error_unit,*) 'FATAL ERROR: Resampled Covariance matrix has a significantly negative eigenvalue!'
+               write(error_unit,*) 'Eigenvalue index: ', nt1, ' Value: ', Sigma_cov(nt1)
+               write(error_unit,*) 'Your QMC data may be corrupted, or you have too few bins.'
+               CALL Terminate_on_error(ERROR_MAXENT,__FILE__,__LINE__)
+           Endif
+       End Do
+
+       initial_checkpoint = Checkpoint
+
+      ! 1. Box-Mueller Covariance Resampling
+       Do iboot = 1, N_boot
+            Do nt = 1, Ntau !For each tau point we get a different noise
+               Do
+                   U1 = ranf_wrap()
+                   If (U1 > tiny(0.d0)) Exit !Box mueller will calculate log of R1, thus we need to bound it. Alternative: R1 > 0.d0
+               End Do
+               U2 = ranf_wrap() 
+               Z_noise(nt) = sqrt(-2.d0 * log(U1)) * cos(2.d0 * pi * U2)  !Box mueller of the two uniformly sampled U1, U2 to a Gaussian N(\mu =0, \sigma=1)
+            End Do
+            !Apply noise to data
+
+            XQMC = XQMC_st
+            Do nt = 1, Ntau
+               Do nt1 = 1, Ntau
+                  XQMC(nt) = XQMC(nt) + U_cov(nt, nt1) * sqrt(max(Sigma_cov(nt1), 0.d0)) * Z_noise(nt1)   !Safe-guard for rounding error eigenvalues.
+               End Do
+            End Do
+            XCOV = XCOV_st ! Reset for solver normalization <- AI comment
+         
+            !2. Warmup & File Caching Logic
+            If (Stochastic) then
+               If (iboot == 1 .and. .not. Initial_Checkpoint) then
+                  Call EXECUTE_COMMAND_LINE("rm -f dump*")
+               Else If (N_boot_checkpoint) then
+                  Checkpoint = .true.
+               Else
+                  Checkpoint = .false.
+                  Call EXECUTE_COMMAND_LINE("rm -f dump*")
+               End If
+            End If
+       !------Injection_END----
+
        Select Case (str_to_upper(Channel))
        Case ("PH")
           If  (Stochastic)  then
@@ -296,7 +370,26 @@ Program MaxEnt_Wrapper
           CALL Terminate_on_error(ERROR_MAXENT,__FILE__,__LINE__)
        end Select
 
-       Allocate (xom(Ndis), A(Ndis))
+       !Injection Part 2: Welford Online Algorithm
+       !Right now only the last Aom_ps files are bootstrap averaged. This has to be extended
+       If (Stochastic) then
+         write(file2, '(A,"_",I0)') "Aom_ps", N_alpha - 10 
+         Open(Unit=66, File=file2, status="old")
+
+         Do nw = 1, Ndis
+            read(66, *) xom(nw), A(nw), x, x1, x2
+
+            welford_delta = A(nw) - A_mean(nw)
+            A_mean(nw) = A_mean(nw) + welford_delta/dble(iboot)
+            welford_delta2 = A(nw) - A_mean(nw)
+            A_M2(nw) = A_M2(nw) + welford_delta * welford_delta2
+         End Do
+         close(66)
+      End If
+
+   End Do
+
+
        If  ( Stochastic )   then
           If ( .not.  Checkpoint  ) then
             Command = "rm dump*"
@@ -304,6 +397,23 @@ Program MaxEnt_Wrapper
             Command = "ls"
             Call EXECUTE_COMMAND_LINE(Command)
           endif
+
+         !Calculate error from variance.
+          Do nw = 1, Ndis
+              A(nw)     = A_mean(nw)
+              A_err(nw) = sqrt(A_M2(nw) / dble(max(1, N_boot - 1)))
+          End Do
+
+         Open (Unit=12, File="A_boot_err.dat", Status="unknown", action="write")
+          ! Optional: Write a header line so you know what the columns are
+          Write(12,"(A14,2x,A16,2x,A16)") "# omega", "A_mean", "A_error"
+          Do nw = 1, Ndis
+             ! Writing the frequency, the mean, and the standard error
+             Write(12,"(F14.7,2x,F16.8,2x,F16.8)") xom(nw), A(nw), A_err(nw)
+          End Do
+          Close(12)
+
+          
           Open (Unit=10,File="energies",status="unknown")
 
           Do n = 1,N_alpha
@@ -446,10 +556,10 @@ Program MaxEnt_Wrapper
             x  = x  + Aimag(Z)
             x1 = x1 + om*Aimag(Z)
             x2 = x2 + om*om*Aimag(Z)
-            write(43,"('X',2x,F14.7,2x,F16.8,2x,F16.8,2x,F14.7,2x,F14.7,2x,F14.7)")  & 
+            write(43,"('X',2x,F14.7,2x,F16.8,2x,F16.8,2x,F14.7,2x,F14.7,2x,F14.7)")  &
                & xom(nw), dble(Z), Aimag(Z),  X*dom, x1*dom, x2*dom
           else
-            write(43,"('X',2x,F14.7,2x,F16.8,2x,F16.8)")  & 
+            write(43,"('X',2x,F14.7,2x,F16.8,2x,F16.8)")  &
                & xom(nw), dble(Z), Aimag(Z)
           endif   
        enddo
