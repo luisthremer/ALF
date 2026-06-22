@@ -71,9 +71,9 @@ Program MaxEnt_Wrapper
        logical                             :: initial_checkpoint, N_boot_checkpoint = .false.
        integer                             :: ia
        Real (Kind=Kind(0.d0))              :: A_err
+      !  Character (len=64)     :: temp, temp2
 
        !TODO: 22.06.2026
-       !3. implement something, that writes out the files per bootstrap, in order to calculate wether everything works!
        !4. share git with Fakher
        !5. Ask for MPI, numerical stability -> of interpolation table
        !6. Analyze data on helma
@@ -411,28 +411,33 @@ Program MaxEnt_Wrapper
             End Do
          close(66)
          End Do
+
+         ! write(temp, '("mkdir ",A,"_",I0)') "Boot", iboot
+         ! write(temp2, '("mv Aom_ps* ",A,"_",I0)') "Boot", iboot
+         ! Call EXECUTE_COMMAND_LINE(trim(temp))
+         ! Call EXECUTE_COMMAND_LINE(trim(temp2))
+
          !INJECTION_PART_2_END
       End If
    End Do
 
-        Do iboot = 1, N_boot
 
-       If  ( Stochastic )   then
-         
          !INJECTION 3
          !Calculate Bootstrap error from variance.
          Do ia = 1, N_alpha_1
             write(file_boot, '(A,"_",I0)') "Aom_ps_boot", ia
             open (Unit=12, File=file_boot, Status="unknown", action="write") 
-            Write(12,"(A14,2x,A16,2x,A16)") "# omega", "A_mean", "A_error"
+            ! Write(12,"(A14,2x,A16,2x,A16)") "# omega", "A_mean", "A_error"
             Do nw = 1, Ndis
-               A_err = sqrt(A_M2(nw, ia) / (dble(max(1, N_boot - 1))) * N_boot)
+               A_err = sqrt(A_M2(nw, ia) / dble(max(1, N_boot - 1)))
                Write(12,"(F14.7,2x,F16.8,2x,F16.8)") xom(nw), A_mean(nw,ia), A_err
             End Do
             Close(12)
          End Do
+
          !INJECTION 3 END
-         
+      
+         If  ( Stochastic )   then
          If ( .not.  Checkpoint  ) then
            Command = "rm dump*"
            Call EXECUTE_COMMAND_LINE(Command)
