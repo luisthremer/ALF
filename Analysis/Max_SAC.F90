@@ -65,16 +65,14 @@ Program MaxEnt_Wrapper
 
        !----
        Integer                :: iboot, N_boot = 1 ! Set default to 1 in order to be compatible with original parameter files
-       Real (Kind=Kind(0.d0)), Allocatable :: U_cov(:,:), Sigma_cov(:), Z_noise(:)
+       Real (Kind=Kind(0.d0)), Allocatable :: U_cov(:,:), Sigma_cov(:), Z_sample(:)
        Real (Kind=Kind(0.d0)), Allocatable :: A_mean(:,:), A_M2(:,:)
-       Real (Kind=Kind(0.d0))              :: U1, U2, welford_delta, welford_delta2
+       Real (Kind=Kind(0.d0))              :: u, v, welford_delta, welford_delta2
        logical                             :: initial_checkpoint, N_boot_checkpoint = .false.
        integer                             :: ia
        Real (Kind=Kind(0.d0))              :: A_err
 
        !TODO: 22.06.2026
-       !1. Implementiere bootsrap for all 4 Aom_ps files.
-       !2. Write out math : a) Define gauss distribution N(\mu,\sigma) -b) show that this is equivalenet to mu + N(0,1)*sigma (also plot in wolfram) c) Show that N(0,1) can be obtained from two uniform distributions by using a box mueller transofmration (start from uniform distribution); d) Show Weolfords online algorithm, show how to calculate the variance and the mean and show, that it recovers the original equations. ==> Check, whether all equations are implemented correctly (a-d)
        !3. implement something, that writes out the files per bootstrap, in order to calculate wether everything works!
        !4. share git with Fakher
        !5. Ask for MPI, numerical stability -> of interpolation table
@@ -269,7 +267,7 @@ Program MaxEnt_Wrapper
        !Bootstrap
        N_alpha_1 = N_alpha - 10
        Allocate (xom(Ndis), A(Ndis))
-       Allocate(U_cov(Ntau,Ntau), Sigma_cov(Ntau), Z_noise(Ntau)) !Allocate arrays for Gaussian resampling
+       Allocate(U_cov(Ntau,Ntau), Sigma_cov(Ntau), Z_sample(Ntau)) !Allocate arrays for Gaussian resampling
        Allocate(A_mean(Ndis, N_alpha_1), A_M2(Ndis, N_alpha_1)) !Allocate arrays for Welford online algorithm
        A_mean = 0.d0; A_M2 = 0.d0; A_err = 0.d0
 
@@ -281,7 +279,8 @@ Program MaxEnt_Wrapper
        ! but crash if the matrix is fundamentally broken.
        ! ---------------------------------------------------------
        Do nt1 = 1, Ntau
-           If (Sigma_cov(nt1) < -1.d-10) then
+           !If (Sigma_cov(nt1) < -1.d-10) then
+           If (Sigma_cov(nt1) < 0.d0) then
                write(error_unit,*) 'FATAL ERROR: Resampled Covariance matrix has a significantly negative eigenvalue!'
                write(error_unit,*) 'Eigenvalue index: ', nt1, ' Value: ', Sigma_cov(nt1)
                write(error_unit,*) 'Your QMC data may be corrupted, or you have too few bins.'
@@ -294,22 +293,26 @@ Program MaxEnt_Wrapper
       ! 1. Box-Mueller Covariance Resampling
        Do iboot = 1, N_boot
             Do nt = 1, Ntau !For each tau point we get a different noise
-               Do
-                   U1 = ranf_wrap()
-                   If (U1 > tiny(0.d0)) Exit !Box mueller will calculate log of R1, thus we need to bound it. Alternative: R1 > 0.d0
+               Do! U \in (0,1]
+                   u = ranf_wrap()
+                   If (u > tiny(0.d0)) Exit !Tiny, in order to not slow down the code, if a number smaller than 10^(-308) was sampled
                End Do
-               U2 = ranf_wrap() 
-               Z_noise(nt) = sqrt(-2.d0 * log(U1)) * cos(2.d0 * pi * U2)  !Box mueller of the two uniformly sampled U1, U2 to a Gaussian N(\mu =0, \sigma=1)
-            End Do
-            !Apply noise to data
 
+               Do ! v \in [0,1)
+                  v = ranf_wrap()
+                  If (v< 1.d0) Exit
+               End Do 
+               Z_sample(nt) = sqrt(-2.d0 * log(u)) * cos(2.d0 * pi * v)  !Box mueller of the two uniformly sampled u, v to a Gaussian N(\mu =0, \sigma=1)
+            End Do
+
+            !Apply noise to data
             XQMC = XQMC_st
             Do nt = 1, Ntau
                Do nt1 = 1, Ntau
-                  XQMC(nt) = XQMC(nt) + U_cov(nt, nt1) * sqrt(max(Sigma_cov(nt1), 0.d0)) * Z_noise(nt1)   !Safe-guard for rounding error eigenvalues.
+                  XQMC(nt) = XQMC(nt) + U_cov(nt, nt1) * sqrt(Sigma_cov(nt1)) * Z_sample(nt1) !sqrt(max(Sigma_cov(nt1), 0.d0)) * Z_sample(nt1)   !Safe-guard for rounding error eigenvalues.
                End Do
             End Do
-            XCOV = XCOV_st ! Reset for solver normalization <- AI comment
+            XCOV = XCOV_st 
          
             !2. Warmup & File Caching Logic
             If (Stochastic) then
@@ -401,10 +404,10 @@ Program MaxEnt_Wrapper
             Open(Unit=66, File=file2, status="old")
             Do nw = 1, Ndis
                read(66, *) xom(nw), A(nw), x, x1, x2
-               welford_delta = A(nw) - A_mean(nw, ia)
-               A_mean(nw, ia) = A_mean(nw,ia) + welford_delta/dble(iboot)
-               welford_delta2 = A(nw) - A_mean(nw, ia)
-               A_M2(nw, ia) = A_M2(nw, ia) + welford_delta * welford_delta2
+               welford_delta = A(nw) - A_mean(nw, ia)  
+               A_mean(nw, ia) = A_mean(nw,ia) + welford_delta/dble(iboot) ! \bar{x}_\text{iboot} = \bar_{x}_{iboot-1} + \frac{(x_{iboot} - \bar{x}_{iboot-1})}{iboot})
+               welford_delta2 = A(nw) - A_mean(nw, ia)  !   (x_{iboot} - \bar{x}_{iboot})
+               A_M2(nw, ia) = A_M2(nw, ia) + welford_delta * welford_delta2  ! M_{2,iboot}= M_{2, iboot-1} + (x_{iboot} - \bar{x}_{iboot - 1}) (x_{iboot} - \bar{x}_{iboot})
             End Do
          close(66)
          End Do
@@ -412,6 +415,7 @@ Program MaxEnt_Wrapper
       End If
    End Do
 
+        Do iboot = 1, N_boot
 
        If  ( Stochastic )   then
          
@@ -422,7 +426,7 @@ Program MaxEnt_Wrapper
             open (Unit=12, File=file_boot, Status="unknown", action="write") 
             Write(12,"(A14,2x,A16,2x,A16)") "# omega", "A_mean", "A_error"
             Do nw = 1, Ndis
-               A_err = sqrt(A_M2(nw, ia) / dble(max(1, N_boot - 1)))
+               A_err = sqrt(A_M2(nw, ia) / (dble(max(1, N_boot - 1))) * N_boot)
                Write(12,"(F14.7,2x,F16.8,2x,F16.8)") xom(nw), A_mean(nw,ia), A_err
             End Do
             Close(12)
