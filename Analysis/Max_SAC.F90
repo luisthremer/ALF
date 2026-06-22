@@ -56,7 +56,7 @@ Program MaxEnt_Wrapper
             &                                                 Alpha_tot, om_bf, alp_bf, xom, A
        Real (Kind=Kind(0.d0)), Dimension(:,:), allocatable :: XCOV, XCOV_st
        Real (Kind=Kind(0.d0))                              :: X_moments(2), Xerr_moments(2), ChiSq
-       Character (Len=64)                                  :: command, File1, File2
+       Character (Len=64)                                  :: command, File1, File2, file_boot
        Complex (Kind=Kind(0.d0))                           :: Z
        Logical                                             :: Test =.false.
        
@@ -64,17 +64,37 @@ Program MaxEnt_Wrapper
        !----
        Integer                :: iboot, N_boot = 1 ! Set default to 1 in order to be compatible with original parameter files
        Real (Kind=Kind(0.d0)), Allocatable :: U_cov(:,:), Sigma_cov(:), Z_noise(:)
-       Real (Kind=Kind(0.d0)), Allocatable :: A_mean(:), A_M2(:), A_err(:)
+       Real (Kind=Kind(0.d0)), Allocatable :: A_mean(:,:), A_M2(:,:)
        Real (Kind=Kind(0.d0))              :: U1, U2, welford_delta, welford_delta2
        logical                             :: initial_checkpoint, N_boot_checkpoint = .false.
+       integer                             :: ia
+       Real (Kind=Kind(0.d0))              :: A_err
+
+       !TODO: 22.06.2026
+       !1. Implementiere bootsrap for all 4 Aom_ps files.
+       !2. Write out math : a) Define gauss distribution N(\mu,\sigma) -b) show that this is equivalenet to mu + N(0,1)*sigma (also plot in wolfram) c) Show that N(0,1) can be obtained from two uniform distributions by using a box mueller transofmration (start from uniform distribution); d) Show Weolfords online algorithm, show how to calculate the variance and the mean and show, that it recovers the original equations. ==> Check, whether all equations are implemented correctly (a-d)
+       !3. implement something, that writes out the files per bootstrap, in order to calculate wether everything works!
+       !4. share git with Fakher
+       !5. Ask for MPI, numerical stability -> of interpolation table
+       !6. Analyze data on helma
+       !7. (Write port_sac.py properly.)
+
+
+
       !  Todos: check welford online + check output + bootstraü all files + test whether it works!
-       !TODO: MPI
+       !TODO: MPI -> seeds for random number generators
        !TODO: more robust implementation is not to generate the aom files until at last.
        !TODO: maybe it is better to put the bootstrap in the maxent stoch mod, honestly...
        !The important change is: do not write Aom_ps_*, Best_fit, energies, moments, dump_*, Max_stoch_log during every bootstrap sample. That avoids MPI file collisions and removes a lot of unnecessary I/O.
        !TODO: Write error to file.
        !TODO: old max stoch mod + bootstrap -> new mod -> fallback to old if no bootstrap. -> new does not write the files, but explicitly calculates the cumulative means .> and only in final run writes the files.
        !TODO: test if everything works -> save all files temporarily ! and then calculate the mean +. error 
+       !TODO: Push to github
+       !Todo Numerical accuracy will go down with to many ntau -> dynamically check numerical accuracy -> dynamical increase Ndis_table size
+       !Todo: better interpolation for kernel table -> sinh (in maxent_stoch_mod)
+       !TODO: fallback if kernel goes out of table -> use to see, whether interpolation is actually good
+       !TODO: How to use default model + Bootstrapping? Default model for smooth curves. => Best practice would be to start with T1 -> make one bootstrap sample -> T2 -> next bootstrap sample so on and on ..., but this will be slow AF, because parameters have to be read etc.
+
        !----
 
        Integer                :: Ngamma, Ndis,  NBins, NSweeps, Nwarm, N_alpha, N_cov
@@ -246,9 +266,10 @@ Program MaxEnt_Wrapper
 
        !------Injection--------
        !Bootstrap
+       N_alpha_1 = N_alpha - 10
        Allocate (xom(Ndis), A(Ndis))
        Allocate(U_cov(Ntau,Ntau), Sigma_cov(Ntau), Z_noise(Ntau)) !Allocate arrays for Gaussian resampling
-       Allocate(A_mean(Ndis), A_M2(Ndis), A_err(Ndis)) !Allocate arrays for Welford online algorithm
+       Allocate(A_mean(Ndis, N_alpha_1), A_M2(Ndis, N_alpha_1)) !Allocate arrays for Welford online algorithm
        A_mean = 0.d0; A_M2 = 0.d0; A_err = 0.d0
 
        Call Diag(XCOV_st, U_cov, Sigma_cov)        !Considering the usual sizes of Ntau this will mostlikely not be a bottlneck
@@ -370,49 +391,49 @@ Program MaxEnt_Wrapper
           CALL Terminate_on_error(ERROR_MAXENT,__FILE__,__LINE__)
        end Select
 
-       !Injection Part 2: Welford Online Algorithm
-       !Right now only the last Aom_ps files are bootstrap averaged. This has to be extended
+       !Injection Part 2: Welford Online Algorithm (No data is written yet!)
+       !TODO: Implement welford in MaxEnt_stpcj directly. -> Write files only after last N_boot
+       !TODO: Also bootstrap A_om
        If (Stochastic) then
-         write(file2, '(A,"_",I0)') "Aom_ps", N_alpha - 10 
-         Open(Unit=66, File=file2, status="old")
-
-         Do nw = 1, Ndis
-            read(66, *) xom(nw), A(nw), x, x1, x2
-
-            welford_delta = A(nw) - A_mean(nw)
-            A_mean(nw) = A_mean(nw) + welford_delta/dble(iboot)
-            welford_delta2 = A(nw) - A_mean(nw)
-            A_M2(nw) = A_M2(nw) + welford_delta * welford_delta2
-         End Do
+         Do ia=1, N_alpha_1
+            write(file2, '(A,"_",I0)') "Aom_ps", ia
+            Open(Unit=66, File=file2, status="old")
+            Do nw = 1, Ndis
+               read(66, *) xom(nw), A(nw), x, x1, x2
+               welford_delta = A(nw) - A_mean(nw, ia)
+               A_mean(nw, ia) = A_mean(nw,ia) + welford_delta/dble(iboot)
+               welford_delta2 = A(nw) - A_mean(nw, ia)
+               A_M2(nw, ia) = A_M2(nw, ia) + welford_delta * welford_delta2
+            End Do
          close(66)
+         End Do
+         !INJECTION_PART_2_END
       End If
-
    End Do
 
 
        If  ( Stochastic )   then
-          If ( .not.  Checkpoint  ) then
-            Command = "rm dump*"
-            Call EXECUTE_COMMAND_LINE(Command)
-            Command = "ls"
-            Call EXECUTE_COMMAND_LINE(Command)
-          endif
-
-         !Calculate error from variance.
-          Do nw = 1, Ndis
-              A(nw)     = A_mean(nw)
-              A_err(nw) = sqrt(A_M2(nw) / dble(max(1, N_boot - 1)))
-          End Do
-
-         Open (Unit=12, File="A_boot_err.dat", Status="unknown", action="write")
-          ! Optional: Write a header line so you know what the columns are
-          Write(12,"(A14,2x,A16,2x,A16)") "# omega", "A_mean", "A_error"
-          Do nw = 1, Ndis
-             ! Writing the frequency, the mean, and the standard error
-             Write(12,"(F14.7,2x,F16.8,2x,F16.8)") xom(nw), A(nw), A_err(nw)
-          End Do
-          Close(12)
-
+         
+         !INJECTION 3
+         !Calculate Bootstrap error from variance.
+         Do ia = 1, N_alpha_1
+            write(file_boot, '(A,"_",I0)') "Aom_ps_boot", ia
+            open (Unit=12, File=file_boot, Status="unknown", action="write") 
+            Write(12,"(A14,2x,A16,2x,A16)") "# omega", "A_mean", "A_error"
+            Do nw = 1, Ndis
+               A_err = sqrt(A_M2(nw, ia) / dble(max(1, N_boot - 1)))
+               Write(12,"(F14.7,2x,F16.8,2x,F16.8)") xom(nw), A_mean(nw,ia), A_err
+            End Do
+            Close(12)
+         End Do
+         !INJECTION 3 END
+         
+         If ( .not.  Checkpoint  ) then
+           Command = "rm dump*"
+           Call EXECUTE_COMMAND_LINE(Command)
+           Command = "ls"
+           Call EXECUTE_COMMAND_LINE(Command)
+         endif
           
           Open (Unit=10,File="energies",status="unknown")
 
