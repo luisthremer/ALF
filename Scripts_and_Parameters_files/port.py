@@ -249,7 +249,7 @@ if __name__=="__main__":
     PARAM_PATH=os.path.join(base_dir,"parameter_an_cont_ED_corr0.txt")
     COV_PATH=os.path.join(base_dir,"K1_0_K2_0_S1_0_S2_0_L1_0_L2_0_covariance_real.txt")
     DATA_PATH=os.path.join(base_dir,"K1_0_K2_0_S1_0_S2_0_L1_0_L2_0.txt")
-    SAVE_PATH=os.path.join(base_dir,"logs_ana_cont")
+    SAVE_PATH=os.path.join(base_dir,"logs_an_cont")
     
     dtau, header=generate_header_string(PARAM_PATH)
     data=load_data(dtau, DATA_PATH)
