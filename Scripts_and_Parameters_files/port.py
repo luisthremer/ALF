@@ -117,7 +117,7 @@ Amplitude           = 1.d0  ! For update of  type=3,4  fields
 &VAR_errors                !! Variables for analysis programs
 n_skip  = 1                 ! Number of bins that to be skipped.
 N_rebin = 1                 ! Rebinning  
-N_Cov   = 0                 ! If set to 1 covariance computed for non-equal-time
+N_Cov   = 1                 ! If set to 1 covariance computed for non-equal-time
                             ! correlation functions
 Extended_Zone = .F.         ! If true  carries out the Fourier transform in the extened zone scheme.
 N_BZ_Zones =1               ! Number of Brillouin zones that will be covered 
