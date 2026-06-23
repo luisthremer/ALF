@@ -242,9 +242,6 @@ Ham_omega0 =  0.25         ! Phonon   frequency
 
 
 if __name__=="__main__":
-    ALF_DIR="/Users/luis/Documents/_WORK/Coding/ALF_CLEAN/ALF"
-    
-    
     base_dir=str(sys.argv[1])
     print(base_dir)
     base_dir=os.path.join(base_dir, "ANALYSIS/ED_corr0/K1_0_K2_0_S1_0_S2_0_L1_0_L2_0")
