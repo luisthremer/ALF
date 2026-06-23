@@ -137,12 +137,12 @@ Tempering_calc_det    = .T. ! Specifies whether the fermion weight has to be tak
 
 &VAR_Max_Stoch             !! Variables for Stochastic Maximum entropy
 N_boot     = 20              ! Number of bootstrap samples
-Ngamma     = 400            ! Number of Dirac delta-functions for parametrization
-Om_st      = -10.d0         ! Frequency range lower bound
-Om_en      = 10.d0          ! Frequency range upper bound
+Ngamma     = 800            ! Number of Dirac delta-functions for parametrization
+Om_st      = 0.d0         ! Frequency range lower bound
+Om_en      = 20.d0          ! Frequency range upper bound
 NDis       = 2000           ! Number of boxes for histogram
 Nbins      = 250            ! Number of bins for Monte Carlo
-Nsweeps    = 70             ! Number of sweeps per bin
+Nsweeps    = 100             ! Number of sweeps per bin
 NWarm      = 20             ! The Nwarm first bins will be ommitted
 N_alpha    = 14             ! Number of temperatures
 alpha_st   = 1.d0           ! Smallest inverse temperature increment for inverse
