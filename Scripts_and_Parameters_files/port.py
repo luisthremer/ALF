@@ -125,7 +125,7 @@ N_BZ_Zones =1               ! Number of Brillouin zones that will be covered
 /  
 
 &VAR_TEMP                  !! Variables for parallel tempering
-N_exchange_steps      = 6   ! Number of exchange moves #[see Eq.~\eqref{eq:exchangestep}]#
+N_exchange_steps      = 6   ! Number of exchange moves 
 N_Tempering_frequency = 10  ! The frequency in units of sweeps at which the
                             ! exchange moves are carried out
 mpi_per_parameter_set = 2   ! Number of mpi-processes per parameter set
