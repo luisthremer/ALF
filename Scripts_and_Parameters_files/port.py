@@ -1,11 +1,11 @@
+"""
+Usage: Run as 'python port.py <base_dir>', where <base_dir>/Analysis/Ed_corr0/...
+Will prepare g_dat as well as simulation files in  '<base_dir>/Analysis/Ed_corr0/.../logs_ana_cont/'.
+"""
+
 import os
 import numpy as np
 import sys
-
-
-    
-
-
 
 #In analysis script:
 # 1. Implement symmetrization before calculating the covariance matrix, make sure to symmetrize correctly, ignoring the 0 value and so on..
@@ -259,4 +259,3 @@ if __name__=="__main__":
     cov=load_cov(COV_PATH)
     generate_g_dat_file(SAVE_PATH, header, data, cov)
     gen_parameter_file(SAVE_PATH)
-    
