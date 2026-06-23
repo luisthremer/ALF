@@ -53,8 +53,7 @@ def generate_g_dat_file(save_path: str, header: str, data: np.array, cov: np.arr
         
 
 def gen_parameter_file(save_path):
-    parameter_namelist="""
-    !=======================================================================================
+    parameter_namelist="""!=======================================================================================
 !  Input variables for a general ALF run
 !---------------------------------------------------------------------------------------
 &VAR_ham_name
@@ -62,8 +61,8 @@ ham_name = "Hubbard"
 /
 
 &VAR_lattice               !! Parameters defining the specific lattice and base model
-L1           = {4, 6, 8}            ! Length in direction a_1
-L2           = [4, 6, 8; VAR_lattice, L1]            ! Length in direction a_2
+L1           = 6            ! Length in direction a_1
+L2           = 6            ! Length in direction a_2
 Lattice_type = "Square"     ! Sets a_1 = (1,0), a_2=(0,1), Norb=1, N_coord=2
 Model        = "Hubbard"    ! Sets the Hubbard model, to be specified in &VAR_Hubbard
 /
@@ -76,9 +75,9 @@ N_FL         = 1            ! Number of flavors
 Phi_X        = 0.d0         ! Twist along the L_1 direction, in units of the flux quanta
 Phi_Y        = 0.d0         ! Twist along the L_2 direction, in units of the flux quanta
 Bulk         = .T.          ! Twist as a vector potential (.T.), or at the boundary (.F.)
-N_Phi        = [8, 18, 32; VAR_lattice, L1]            ! Total number of flux quanta traversing the lattice
+N_Phi        = 0            ! Total number of flux quanta traversing the lattice
 Dtau         = 0.1d0        ! Thereby Ltrot=Beta/dtau
-Beta         = [4, 6, 8; VAR_lattice, L1]         ! Inverse temperature
+Beta         = 5.d0         ! Inverse temperature
 Projector    = .F.          ! Whether the projective algorithm is used
 Theta        = 10.d0        ! Projection parameter
 /
@@ -87,7 +86,7 @@ Theta        = 10.d0        ! Projection parameter
 Nwrap                = 10   ! Stabilization. Green functions will be computed from 
                             ! scratch after each time interval Nwrap*Dtau
 NSweep               = 20   ! Number of sweeps
-NBin                 = 1000    ! Number of bins
+NBin                 = 5    ! Number of bins
 Ltau                 = 1    ! 1 to calculate time-displaced Green functions; 0 otherwise
 LOBS_ST              = 0    ! Start measurements at time slice LOBS_ST
 LOBS_EN              = 0    ! End measurements at time slice LOBS_EN
@@ -99,13 +98,13 @@ N_Global             = 1    ! Number of global moves per sweep
 Global_tau_moves     = .F.  ! Allows for global moves on a single time slice.  
 N_Global_tau         = 1    ! Number of global moves that will be carried out on a 
                             ! single time slice
-Sequential           = .T.  ! Sequential moves
+Sequential           = .T.  ! Sequantial moves
 Nt_sequential_start  = 0    ! One can combine sequential and global moves on a time slice
 Nt_sequential_end    = -1   ! The program then carries out sequential local moves in the
                             ! range [Nt_sequential_start, Nt_sequential_end] followed by
                             ! N_Global_tau global moves
 Langevin            = .F.   ! Langevin update
-Delta_t_Langevin_HMC= 0.1    ! Default time step for Langevin and HMC updates
+Delta_t_Langevin_HMC=0.1    ! Default time step for Langevin and HMC updates
 Max_Force           = 5.0   ! Max Force for  Langevin
 
 HMC                 = .F.   ! HMC update
@@ -116,9 +115,9 @@ Amplitude           = 1.d0  ! For update of  type=3,4  fields
 /
 
 &VAR_errors                !! Variables for analysis programs
-n_skip  = 50                 ! Number of bins that to be skipped.
-N_rebin = 5                 ! Rebinning  
-N_Cov   = 1                 ! If set to 1 covariance computed for non-equal-time
+n_skip  = 1                 ! Number of bins that to be skipped.
+N_rebin = 1                 ! Rebinning  
+N_Cov   = 0                 ! If set to 1 covariance computed for non-equal-time
                             ! correlation functions
 Extended_Zone = .F.         ! If true  carries out the Fourier transform in the extened zone scheme.
 N_BZ_Zones =1               ! Number of Brillouin zones that will be covered 
@@ -126,10 +125,10 @@ N_BZ_Zones =1               ! Number of Brillouin zones that will be covered
 /  
 
 &VAR_TEMP                  !! Variables for parallel tempering
-N_exchange_steps      = 6   ! Number of exchange moves 
+N_exchange_steps      = 6   ! Number of exchange moves #[see Eq.~\eqref{eq:exchangestep}]#
 N_Tempering_frequency = 10  ! The frequency in units of sweeps at which the
                             ! exchange moves are carried out
-mpi_per_parameter_set = 1   ! Number of mpi-processes per parameter set
+mpi_per_parameter_set = 2   ! Number of mpi-processes per parameter set
 Tempering_calc_det    = .T. ! Specifies whether the fermion weight has to be taken
                             ! into account while tempering. The default is .true.,
                             ! and it can be set to .F. if the parameters that
@@ -137,6 +136,7 @@ Tempering_calc_det    = .T. ! Specifies whether the fermion weight has to be tak
 /
 
 &VAR_Max_Stoch             !! Variables for Stochastic Maximum entropy
+N_boot     = 20              ! Number of bootstrap samples
 Ngamma     = 400            ! Number of Dirac delta-functions for parametrization
 Om_st      = -10.d0         ! Frequency range lower bound
 Om_en      = 10.d0          ! Frequency range upper bound
@@ -156,13 +156,14 @@ Stochastic =.true.          ! If  true,  then  stochastic MaxEnt is used
 /
 
 &VAR_Hubbard               !! Variables for the specific model
-Mz         = .F.            ! When true, sets the M_z-Hubbard model: Nf=2, demands that
+Mz         = .T.            ! When true, sets the M_z-Hubbard model: Nf=2, demands that
                             ! N_sun is even, HS field couples to the z-component of
                             ! magnetization; otherwise, HS field couples to the density
 Continuous = .F.            ! Uses (T: continuous; F: discrete) HS transformation
 ham_T      = 1.d0           ! Hopping parameter
 ham_chem   = 0.d0           ! Chemical potential
-ham_U      = {0.5d0, 1.5d0, 3.0d0, 5.0d0, 5.5d0, 6.0d0, 7.5d0}           ! Hubbard interaction
+ham_U      = 4.d0           ! Hubbard interaction
+ham_h0     = 0.d0           ! Pinning field
 ham_T2     = 1.d0           ! For bilayer systems
 ham_U2     = 4.d0           ! For bilayer systems
 ham_Tperp  = 1.d0           ! For bilayer systems
@@ -183,7 +184,7 @@ Adiabatic = .F.             ! Adiabatic  switching on  of the interaction
 &VAR_tV                    !! Variables for the t-V class
 ham_T     = 1.d0            ! Hopping parameter
 ham_chem  = 0.d0            ! Chemical potential
-ham_V     = {0.5d0, 1.5d0, 3.0d0, 5.0d0, 5.5d0, 6.0d0, 7.5d0} ! Hubbard interaction
+ham_V     = 4.d0            ! Hubbard interaction
 ham_T2    = 1.d0            ! For bilayer systems
 ham_V2    = 4.d0            ! For bilayer systems
 ham_Tperp = 1.d0            ! For bilayer systems
