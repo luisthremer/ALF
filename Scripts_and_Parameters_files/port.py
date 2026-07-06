@@ -33,7 +33,6 @@ def generate_header_string(param_path: str, nbins: int = 100000) -> str:
 
 def load_data(dtau, data_path: str):
     data = np.loadtxt(data_path)
-    data[0,2] = 1e10
     data[:,0]=data[:,0]*dtau
     return data
 
