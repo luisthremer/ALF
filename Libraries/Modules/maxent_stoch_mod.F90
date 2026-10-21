@@ -46,12 +46,11 @@ Module MaxEnt_stoch_mod
        Use runtime_error_mod
        Use MyMats
        Use Random_Wrap
-       Use Files_mod
        use iso_fortran_env, only: output_unit, error_unit
 
        Integer, private :: NTAU, nt, Ngamma, ng, Ndis, nd,  L_seed
        Integer, private, allocatable:: Iseed_vec(:)
-       Real (Kind=Kind(0.d0)), private :: Delta, Delta2, OM_st_1, Om_en_1, DeltaXMAX, Beta, Pi, Dom_table, Dom_spectral, &
+       Real (Kind=Kind(0.d0)), private :: Delta, Delta2, OM_st_1, Om_en_1, DeltaXMAX, Beta, Dom_table, Dom_spectral, &
                                       &   Dx_spectral, Dx_table
        Real (Kind=Kind(0.d0)), allocatable, private :: XQMC1(:)
        Integer, allocatable,  private ::  Phim1_func(:), Phi_func(:)
@@ -60,13 +59,14 @@ Module MaxEnt_stoch_mod
 
 !--------------------------------------------------------------------
          Subroutine MaxEnt_stoch(XQMC, Xtau, COV,Xmom1, XKER, Back_Trans_Aom, Beta_1, Alpha_tot,&
-              & Ngamma_1, OM_ST, OM_EN, Ndis_1, Nsweeps, NBins, NWarm, F, Default_provided)
+              & Ngamma_1, OM_ST, OM_EN, Ndis_1, Nsweeps, NBins, NWarm, F, Filename_F, Default_provided)
 
            Implicit None
 
            Real (Kind=Kind(0.d0)), Dimension(:) :: XQMC, Xtau, Alpha_tot
            Real (Kind=Kind(0.d0)), Dimension(:,:) :: COV
            Real (Kind=Kind(0.d0)), Dimension(:),  Intent(In), allocatable,   optional :: Default_provided
+           Character (Len=*), Intent(In), optional  :: Filename_F
            Real (Kind=Kind(0.d0)), External :: XKER, Back_trans_Aom, F
            Real (Kind=Kind(0.d0)) :: OM_ST, OM_EN, Beta_1, Xmom1, Err
            Integer :: Nsweeps, NBins, Ngamma_1, Ndis_1, nw, nt1
@@ -88,10 +88,9 @@ Module MaxEnt_stoch_mod
            Real (Kind=Kind(0.d0)), allocatable ::  F_A_m(:), F_A_e(:)
            
 
-           Pi        = acos(-1.d0)
            NDis      = Ndis_1
-           DeltaXMAX = 0.01
-           delta     = 0.001
+           DeltaXMAX = 1.d-2
+           delta     = 1.d-3
            delta2    = delta*delta
            Ngamma    = Ngamma_1
            Beta      = Beta_1 ! Physical temperature for calculation of the kernel.
@@ -231,7 +230,7 @@ Module MaxEnt_stoch_mod
                  enddo
                  En_tot(ns) = En ! this is the energy of the configuration Xn_tot for simulation ns
                  Open (Unit=44,File='Max_stoch_log', Status="unknown", position="append")
-                 Write(44,2003) 1.d0/Alpha, En_m, Acc_1, Acc_2
+                Write(44,"('Alpha, En_m, Acc ', E25.17E3, 2x, E25.17E3, 2x, E25.17E3, 2x, E25.17E3, 2x, E25.17E3)") 1.d0/Alpha, En_m, Acc_1, Acc_2
                  close(44)
                  if (nb.gt.nwarm) then
                     if (ns.eq.1) nc = nc + 1
@@ -331,7 +330,6 @@ Module MaxEnt_stoch_mod
            close(42)
            ! Stop dump
            Open(Unit=66,File="energies",status="unknown")
-           Open(Unit=67,File="(F,A).dat",status="unknown")
            do ns = 1,Nsims
               En_m_tot(ns) = En_m_tot(ns) / dble(nc)
               En_e_tot(ns) = En_e_tot(ns) / dble(nc)
@@ -342,19 +340,24 @@ Module MaxEnt_stoch_mod
                  En_e_tot(ns) = 0.d0
               endif
               write(66,*) Alpha_tot(ns), En_m_tot(ns), En_e_tot(ns)
-
-              F_A_m(ns) = F_A_m(ns) / dble(nc)
-              F_A_e(ns) = F_A_e(ns) / dble(nc)
-              F_A_e(ns) = ( F_A_e(ns) -F_A_m(ns)**2)/dble(nc)
-              if ( F_A_e(ns) .gt. 0.d0) then
-                 F_A_e(ns) = sqrt(F_A_e(ns))
-              else
-                 F_A_e(ns) = 0.d0
-              endif
-              write(67,*) Alpha_tot(ns), F_A_m(ns), F_A_e(ns)
            enddo
            close(66)
-           close(67)
+
+           If (Present(Filename_F)) then
+              Open(Unit=67,File=Filename_F,status="unknown")
+              do ns = 1,Nsims
+               F_A_m(ns) = F_A_m(ns) / dble(nc)
+               F_A_e(ns) = F_A_e(ns) / dble(nc)
+               F_A_e(ns) = ( F_A_e(ns) -F_A_m(ns)**2)/dble(nc)
+               if ( F_A_e(ns) .gt. 0.d0) then
+                  F_A_e(ns) = sqrt(F_A_e(ns))
+               else
+                  F_A_e(ns) = 0.d0
+               endif
+               write(67,*) Alpha_tot(ns), F_A_m(ns), F_A_e(ns)
+              enddo
+              close(67)
+           endif
            Open(Unit=66,File="moments",status="unknown")
            do ns = 1,Nsims
               do n = 1,Size(Mom_m_tot,1)
@@ -367,15 +370,14 @@ Module MaxEnt_stoch_mod
                     Mom_e_tot(n,ns) = 0.d0
                  endif
               enddo
-              write(66,"(F12.6,2x,F12.6,2x,F12.6,2x,F12.6,2x,F12.6,2x,F12.6,2x,F12.6,2x,F12.6,2x,F12.6)") &
-                   & Alpha_tot(ns), Mom_m_tot(1,ns), Mom_e_tot(1,ns), &
+              write(66,'(9(1X,E25.17E3))') Alpha_tot(ns), Mom_m_tot(1,ns), Mom_e_tot(1,ns), &
                    & Mom_m_tot(2,ns), Mom_e_tot(2,ns),Mom_m_tot(3,ns), Mom_e_tot(3,ns),  &
-                   & Mom_m_tot(4,ns), Mom_e_tot(4,ns) 
+                   & Mom_m_tot(4,ns), Mom_e_tot(4,ns)
            enddo
            close(66)
            File_root = "Aom"
            do ns = 1,Nsims
-              File1 = File_i(File_root,ns)
+              write(File1,'(A,"_",I0)') trim(File_root), ns
               Open(Unit=66,File=File1,status="unknown")
               do nd = 1,Ndis
                  Xn_m_tot(nd,ns) = Xn_m_tot(nd,ns) / dble(nc) ! * delta /(dble(nc)*pi)
@@ -389,7 +391,7 @@ Module MaxEnt_stoch_mod
                  om =  Om_st_1 + dble(nd-1)*Dom_spectral ! PhiM1(dble(nd)/dble(NDis)) HERE
                  Aom = Xn_m_tot(nd,ns) ! * Xmom1
                  Err = Xn_e_tot(nd,ns) ! * Xmom1
-                 write(66,2001) om, Back_Trans_Aom(Aom,om,Beta), Back_Trans_Aom(Err,om,Beta)
+                 write(66,'(3(1X,E25.17E3))') om, Back_Trans_Aom(Aom,om,Beta), Back_Trans_Aom(Err,om,Beta)
                  ! PhiM1(dble(nd)/dble(NDis)), Xn_m_tot(nd,ns)
               enddo
               Close(66)
@@ -409,7 +411,7 @@ Module MaxEnt_stoch_mod
                  Xn_m(nd) = Xn_m(nd) / (En_m_tot(p_star) - En_m_tot(NSims))
                  Xn_e(nd) = Xn_e(nd) / (En_m_tot(p_star) - En_m_tot(NSims))
               enddo
-              File1 = File_i(File_root,p_star)
+              write(File1,'(A,"_",I0)') trim(File_root), p_star
               Open(Unit=66,File=File1,status="unknown")
               XMAX = 0.d0
               Do nd = 1,Ndis
@@ -422,7 +424,7 @@ Module MaxEnt_stoch_mod
               enddo
               do nd = 1,Ndis
                  om =  Om_st_1 +  dble(nd-1)*Dom_spectral  !  PhiM1(dble(nd)/dble(NDis)) HERE
-                 write(66,2005) om, Xn_m(nd), Xn_e(nd), Xn_m(nd)/XMAX, Xn_e(nd)/XMAX
+                 write(66,'(5(1X,E25.17E3))') om, Xn_m(nd), Xn_e(nd), Xn_m(nd)/XMAX, Xn_e(nd)/XMAX
                  ! PhiM1(dble(nd)/dble(NDis)), Xn_m(nd)
               enddo
               close(66)
@@ -442,10 +444,6 @@ Module MaxEnt_stoch_mod
            DeAllocate( G_Mean )
            DeAllocate( xqmc1 )
            Deallocate( Xker_table )
-2001       format(F14.7,2x,F14.7,2x,F14.7)
-!2004       format(F14.7,2x,F14.7,2x,F14.7,2x,F14.7)
-2005       format(F14.7,2x,F14.7,2x,F14.7,2x,F14.7,2x,F14.7)
-2003       format('Alpha, En_m, Acc ', F14.7,2x,F24.12,2x,F14.7,2x,F14.7,2x,F14.7)
            
          end Subroutine MaxEnt_stoch
 !------------------------------------------------------------------------------------------------
@@ -460,7 +458,7 @@ Module MaxEnt_stoch_mod
 
             Integer :: nw, nw1, nw_d, nx
             Real (Kind= Kind(0.d0)) :: om,  dom, a, b, x, x1, f1,f2
-            Logical ::  Test=.false.
+            Logical, parameter :: Test=.false.
          
 
             dom = (Om_en_1 -  Om_st_1)/dble(Ndis)
@@ -507,7 +505,7 @@ Module MaxEnt_stoch_mod
                nx = Int(x1/Dx_table) + 1
                Phi_func(nw) = nx
             enddo
-            If (Test)   then 
+            If (Test)   then
                ! Check the Phim1   function
                do nx = 1,Size(Default_table,1)
                   x = dble(nx)*dx_table
@@ -562,7 +560,7 @@ Module MaxEnt_stoch_mod
             Implicit None
             ! Flat Default with sum xmom1. 
             ! D(om) = xmom1/(Om_en_1 - Om_st_1)
-            Real (Kind=Kind(0.d0)) :: x,  test
+            Real (Kind=Kind(0.d0)) :: x
             Integer ::  nx
 
             nx = int(x/Dx_table) + 1
@@ -605,7 +603,6 @@ Module MaxEnt_stoch_mod
            Implicit none
            Real (Kind=Kind(0.d0)), Dimension(:,:) :: Xn
            Real (Kind=Kind(0.d0)), Dimension(:) :: Xn_m
-           Real (Kind=Kind(0.d0)) :: om  
            Integer :: nd, ng
 
            do ng = 1,Ngamma

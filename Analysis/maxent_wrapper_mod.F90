@@ -1,4 +1,4 @@
-!  Copyright (C) 2016-2025 The ALF project
+!  Copyright (C) 2016-2026 The ALF project
 !
 !     The ALF project is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -31,59 +31,76 @@
 
 
 module MaxEnt_Wrapper_mod
+   Use MyMats
+   Use Natural_Constants, only: pi, Eps_small
    implicit none
+   Real (Kind=Kind(0.d0)), allocatable, private :: Ra(:), ba(:)
    
 contains
      Real (Kind=Kind(0.d0)) function XKER_ph(tau,om, beta)
 
        Implicit None
-       real (Kind=Kind(0.d0)) :: tau, om, pi, beta
+       real (Kind=Kind(0.d0)) :: tau, om, beta
 
-       pi = 3.1415927
-
-       XKER_ph = (exp(-tau*om) + exp(-( beta - tau )*om ) )/( pi*(1.d0 + exp( - beta * om ) ) )
+       if ( beta*om > 600 ) then
+         XKER_ph = (exp(-tau*om) + exp(-( beta - tau )*om )) / pi
+       elseif ( beta*om < -600 ) then
+         XKER_ph = (exp((beta-tau)*om) + exp(tau*om)) / pi
+       else
+         XKER_ph = (exp(-tau*om) + exp(-( beta - tau )*om ) )/( pi*(1.d0 + exp( - beta * om ) ) )
+       endif
 
      end function XKER_ph
      
      Real (Kind=Kind(0.d0)) function XKER_ph_c(tau,om, beta)
         ! Kernal for A_c(om), same as XKER_ph
        Implicit None
-       real (Kind=Kind(0.d0)) :: tau, om, pi, beta
+       real (Kind=Kind(0.d0)) :: tau, om, beta
 
-       pi = 3.1415927
-
-       XKER_ph_c = (exp(-tau*om) + exp(-( beta - tau )*om ) )/( pi*(1.d0 + exp( - beta * om ) ) )
+       if ( beta*om > 600 ) then
+         XKER_ph_c = (exp(-tau*om) + exp(-( beta - tau )*om )) / pi
+       elseif ( beta*om < -600 ) then
+         XKER_ph_c = (exp((beta-tau)*om) + exp(tau*om)) / pi
+       else
+         XKER_ph_c = (exp(-tau*om) + exp(-( beta - tau )*om ) )/( pi*(1.d0 + exp( - beta * om ) ) )
+       endif
 
      end function XKER_ph_c
 
      Real (Kind=Kind(0.d0)) function XKER_pp(tau,om, beta)
 
        Implicit None
-       real (Kind=Kind(0.d0)) :: tau, om, pi, beta
+       real (Kind=Kind(0.d0)) :: tau, om, beta
 
-       pi = 3.1415927
-
-       XKER_pp = exp(-tau*om) / ( pi*(1.d0 + exp( - beta * om ) ) )
+       if ( beta*om > 600 ) then
+         XKER_pp = exp(-tau*om) / pi
+       elseif ( beta*om < -600 ) then
+         XKER_pp = exp((beta-tau)*om) / pi
+       else
+         XKER_pp = exp(-tau*om) / ( pi*(1.d0 + exp( - beta * om ) ) )
+       endif
 
      end function XKER_pp
 
      Real (Kind=Kind(0.d0)) function XKER_p(tau,om, beta)
 
        Implicit None
-       real (Kind=Kind(0.d0)) :: tau, om, pi, beta
+       real (Kind=Kind(0.d0)) :: tau, om, beta
 
-       pi = 3.1415927
-
-       XKER_p  = exp(-tau*om) / ( pi*(1.d0 + exp( - beta * om ) ) )
+       if ( beta*om > 600 ) then
+         XKER_p  = exp(-tau*om) / pi
+       elseif ( beta*om < -600 ) then
+         XKER_p  = exp( (beta-tau)*om) / pi
+       else
+         XKER_p  = exp(-tau*om) / ( pi*(1.d0 + exp( - beta * om ) ) )
+       endif
 
      end function XKER_p
 
      Real (Kind=Kind(0.d0)) function XKER_T0(tau,om, beta)
 
        Implicit None
-       real (Kind=Kind(0.d0)) :: tau, om, pi, beta
-
-       pi = 3.1415927
+       real (Kind=Kind(0.d0)) :: tau, om, beta
 
        XKER_T0  = exp(-tau*om) / pi
 
@@ -98,9 +115,11 @@ contains
      Real (Kind=Kind(0.d0)) function F_QFI_ph(om, beta)
       Implicit None
       real (Kind=Kind(0.d0)) ::  om, beta
-      real (Kind=Kind(0.d0)) :: pi
-      pi = 3.1415927
-      F_QFI_ph = (4.d0/pi) * ( (exp(beta*om) - 1.d0)/( exp(beta*om) + 1.d0 ) )**2
+      if ( abs(beta*om) > 600 ) then
+        F_QFI_ph = 4.d0/pi
+      else
+        F_QFI_ph = (4.d0/pi) * ( (exp(beta*om) - 1.d0)/( exp(beta*om) + 1.d0 ) )**2
+      endif
 
      end function F_QFI_ph
      
@@ -108,18 +127,169 @@ contains
       ! will improve
       Implicit None
       real (Kind=Kind(0.d0)) ::  om, beta
-      real (Kind=Kind(0.d0)) :: pi
-      pi = 3.1415927
-      F_QFI_ph_c = (4.d0/pi) * ( (exp(beta*om) - 1.d0)/( exp(beta*om) + 1.d0 ) )**2
+      if ( abs(beta*om) > 600 ) then
+        F_QFI_ph_c = 4.d0/pi
+      else
+        F_QFI_ph_c = (4.d0/pi) * ( (exp(beta*om) - 1.d0)/( exp(beta*om) + 1.d0 ) )**2
+      endif
 
      end function F_QFI_ph_c
+
+      Real (Kind=Kind(0.d0)) function F_QFI_pp(om, beta)
+      Implicit None
+      real (Kind=Kind(0.d0)) ::  om, beta
+      if ( abs(beta*om) > 600 ) then
+        F_QFI_pp = 4.d0/pi
+      else
+        F_QFI_pp = (4.d0/pi) * ( (exp(beta*om) - 1.d0)/( exp(beta*om) + 1.d0 ) )**2
+      endif
+
+     end function F_QFI_pp
+
+!--------------------------------------------------------------------------------------------------------
+! This function sets Ra, ba as defined in Karrasch's paper  Phys. Rev. B 82 (2010), 125114. 
+!--------------------------------------------------------------------------------------------------------
+     Subroutine Set_Ra_ba(N)
+      Implicit None
+      Integer, Intent(In) :: N
+
+      Real (Kind=Kind(0.d0)), allocatable :: Mat(:,:), U(:,:), W(:)
+      Real (Kind=Kind(0.d0)) :: X, y
+      Integer ::   I, J , m ,  nc
+      Logical, parameter :: Test=.false.
+
+      allocate(Mat(N,N), U(N,N), W(N))
+      allocate(Ra(N/2),ba(N/2))
+
+      if (Test) Write(6,*) "Setting Ra and ba using Karrasch, Phys. Rev. B 82 (2010), 125114"
+
+      Mat = 0.d0 
+      do  i = 1,N-1 
+         Mat(i,i+1) = 1.d0/( 2.d0 * sqrt((2.d0*dble(i) - 1.d0) * (2.d0*dble(i) + 1.d0) ))
+         Mat(i+1,i) = Mat(i,i+1)
+      enddo
+      Call Diag(Mat, U, W)
+      nc = 0 
+      do i = 1, N
+         if (W(i) > 0.d0) then
+            nc = nc + 1 
+            Ba(nc) = W(i)
+            Ra(nc) = U(1,i)**2/(4.d0*Ba(nc)*Ba(nc))
+         endif
+      enddo 
+
+      do i = 1, N
+         do m = 1, N
+            X = 0.d0 
+            do j =1, N
+               X = X +  Mat(m,j)*U(j,i) 
+            enddo
+            X = X -W(i)*U(m,i) 
+            if (Abs(X) >= Eps_small) then 
+               Write(6,*) ABS(X)
+               write(error_unit,*) "Issue with eigenvalue in subroutine Set_Ra_ba of mod maxent_wrapper_mod"
+               CALL Terminate_on_error(ERROR_MAXENT,__FILE__,__LINE__)  
+            endif
+         enddo
+      enddo
+
+      if (Test) then
+         Open(Unit=10,File="Ra_ba.dat", status="Unknown")
+         Do i = 1,size(ba,1)
+            write(10,*) Ra(i),ba(i)
+         enddo
+         Close(10)
+         Open(Unit=10,File="Fermi.dat", status="Unknown")
+         x = -20.d0
+         do i = 1,400
+            y = 1.d0/(exp(x) + 1.d0 ) 
+            Write(10,"(4F16.8)") x, y, fermi_para(x), y - fermi_para(x)
+            x = x + 0.1
+         enddo
+         Close(10)
+      endif
+
+      deallocate(Mat, U, W)
+
+   end Subroutine Set_Ra_ba   
+!--------------------------------------------------------------------------------------------------------
+! Deallocate Ra and ba.
+!--------------------------------------------------------------------------------------------------------
+   Subroutine clean_Set_Ra_ba   
+      Implicit None
+      if (allocated(Ra)) deallocate(Ra)
+      if (allocated(ba)) deallocate(ba)
+   end Subroutine clean_Set_Ra_ba
+!--------------------------------------------------------------------------------------------------------
+! Computes Fermi function using the parameters Ra and ba. It is based on the work of Karrasch:  Phys. Rev. B 82 (2010), 125114.
+!--------------------------------------------------------------------------------------------------------
+   function fermi_para(x) result (f) 
+      Implicit none 
+      Real (Kind=Kind(0.d0)), Intent(IN) :: x
+      Real (Kind=Kind(0.d0)) :: f
+      !Local 
+      Integer :: i
+      complex (Kind=Kind(0.d0)) :: Z
+      Z  = cmplx(0.d0,0.d0,Kind=kind(0.d0))
+      !Write(6,*) Size(Ra,1)
+      do i  = 1,  size(Ra,1)
+         Z  = Z - Ra(i)/cmplx(x,-1.d0/Ba(i),Kind=Kind(0.d0)) - Ra(i)/cmplx(x,1.d0/Ba(i),Kind=Kind(0.d0))  
+      enddo   
+      f = real(Z,kind(0.d0)) + 0.5d0
+   end function fermi_para
+!--------------------------------------------------------------------------------------------------------
+! This function computes  DI/DV  from the single particle spectral function.  It is based on the work of 
+! Karrasch:  Phys. Rev. B 82 (2010), 125114.
+     function F_DIDV(om, beta) result(F)
+   
+      Implicit None
+      real (Kind=Kind(0.d0)), Intent(In) ::  om, beta
+      real (Kind=Kind(0.d0)) :: F
+
+      complex (Kind=Kind(0.d0)) :: Z
+      Real (Kind=Kind(0.d0)), allocatable ::  om_m(:)
+      Integer :: n 
+
+      allocate (om_m(size(Ra,1)))
+      Do n = 1,size(Ra,1)
+         om_m(n) = 1.d0/(beta*ba(n))
+      enddo
+      Z =  cmplx(0.d0,0.d0,kind(0.d0))
+      Do n = 1,size(Ra,1)
+         Z =  Z - Ra(n)/(cmplx(-om,om_m(n),kind=kind(0.d0))**2)
+      enddo
+      F = 2.d0*real(Z,kind(0.d0))/beta 
+
+      deallocate (om_m)
+
+     end function F_DIDV
+!--------------------------------------------------------------------------------------------------------
+
+!--------------------------------------------------------------------------------------------------------
+! This function computes  DI/DV  from the single particle spectral function.  It is based on the work of 
+! Karrasch:  Phys. Rev. B 82 (2010), 125114.
+     function F_DIDV_PH(om, beta) result(F)
+   
+      Implicit None
+      real (Kind=Kind(0.d0)), Intent(In) ::  om, beta
+      real (Kind=Kind(0.d0)) :: F
+
+      F = 2.d0 * F_DIDV(om, beta) 
+     end function F_DIDV_PH
+!--------------------------------------------------------------------------------------------------------
 
      Real (Kind=Kind(0.d0)) function Back_trans_ph(Aom, om, beta )
 
        Implicit None
        real (Kind=Kind(0.d0)), intent(in) ::  Aom, beta, om
 
-       Back_trans_ph = Aom/(1.d0 + exp(-beta*om) )
+       if ( beta*om > 600 ) then
+         Back_trans_ph = Aom
+       elseif ( beta*om < -600 ) then
+         Back_trans_ph = Aom * exp(beta*om)
+       else
+         Back_trans_ph = Aom/(1.d0 + exp(-beta*om) )
+       endif
        ! This gives S(q,om) = chi(q,om)/(1 - e^(-beta om))
 
      end function BACK_TRANS_PH
@@ -130,9 +300,13 @@ contains
        real (Kind=Kind(0.d0)) :: Zero
        ! same as Back_trans_pp, since Back_trans_pp gives = chi(q,om)/omega
        !                                                  = A(q,om)*tanh(beta om/2)/om
-       Zero = 1.D-8
+       Zero = Eps_small
        if ( abs(om) < zero ) then
           Back_trans_ph_c = beta * Aom/2.d0
+       elseif ( beta*om > 600 ) then
+          Back_trans_ph_c = Aom / om
+       elseif ( beta*om < -600 ) then
+          Back_trans_ph_c = -Aom / om
        else
           Back_trans_ph_c = Aom * (1.d0 - exp(-beta*om) ) / (om *( 1.d0 + exp(-beta*om) ) )
           ! This gives sigma'(q,om) = A_c(q,om)*(1 - e^(-beta om))/(1 + e^(-beta om))/om
@@ -150,9 +324,13 @@ contains
        real (Kind=Kind(0.d0)), intent(in) ::  Aom, beta, om
        real (Kind=Kind(0.d0)) :: Zero
 
-       Zero = 1.D-8
+       Zero = Eps_small
        if ( abs(om) < Zero ) then
           Back_trans_pp = beta * Aom/2.d0
+       elseif ( beta*om > 600 ) then
+          Back_trans_pp = Aom / om
+       elseif ( beta*om < -600 ) then
+          Back_trans_pp = -Aom / om
        else
           Back_trans_pp = Aom * (1.d0 - exp(-beta*om) ) / (om *( 1.d0 + exp(-beta*om) ) )
        endif
@@ -167,10 +345,16 @@ contains
      Real (Kind=Kind(0.d0)) function XKER_p_ph(tau,om, beta)
 
        Implicit None
-       real (Kind=Kind(0.d0)) :: tau, om, pi, beta
+       real (Kind=Kind(0.d0)) :: tau, om, beta
 
-       pi = 3.1415927
-       XKER_p_ph  =  (exp(-tau*om)  + exp(-(beta-tau)*om)) / (pi*(1.d0 + exp( -beta * om )) )
+
+       if ( beta*om > 600 ) then
+         XKER_p_ph = (exp(-tau*om) + exp(-(beta-tau)*om)) / pi
+       elseif ( beta*om < -600 ) then
+         XKER_p_ph = (exp((beta-tau)*om) + exp(tau*om)) / pi
+       else
+         XKER_p_ph = (exp(-tau*om) + exp(-(beta-tau)*om)) / (pi*(1.d0 + exp( -beta * om )) )
+       endif
 
      end function XKER_p_ph
 
@@ -288,7 +472,8 @@ contains
        Character (Len=*), INTENT(IN)      :: Channel
        Logical,  INTENT(IN)               :: Default_model_exists, Stochastic
        Integer :: Ndis, Nw
-       Real (Kind = Kind(0.d0)) ::   Dom, X, Om,  Zero = 1.D-8
+       Real (Kind = Kind(0.d0)) ::   Dom, X, Om
+       Real (Kind = Kind(0.d0)), parameter :: Zero = Eps_small
 
        Ndis = size(Default,1)
        Dom = (OM_en - Om_st)/dble(Ndis)
@@ -299,10 +484,16 @@ contains
        case("PH")
          If (.not. Default_model_exists ) Default = 1.d0/(Om_en - Om_st) ! Flat  default   
          !Compute   sum rule  for  A(om)
+         ! Note: PH channel uses symmetric spectrum with Om_st = 0 (enforced in Max_SAC.F90),
+         ! so om > 0 always holds here and the beta*om < -600 branch is never reached.
          X  = 0.d0
          Do  nw = 1, Ndis
              Om = Om_st + dble(nw)*dom
-             Default(nw)  = (1.d0 + exp(-beta*om)) * Default(nw)
+             if ( beta*om > 600 ) then
+               Default(nw) = Default(nw)
+             else
+               Default(nw) = (1.d0 + exp(-beta*om)) * Default(nw)
+             endif
              X = X + Default(nw) 
          enddo
          X = X*dom
@@ -322,8 +513,12 @@ contains
             ! See Back_trans_ph_c/Back_trans_pp
             ! Default(om) = (1 - exp(-beta*om))/(1 + exp(-beta*om))*A(om)/om 
                Om = Om_st + dble(nw)*dom
-               if ( abs(om) < zero ) then
+               if ( abs(om) < Zero ) then
                   Default(nw) = Default(nw)*2.d0/ beta 
+               elseif ( beta*om > 600 ) then
+                  Default(nw) = Default(nw) * om
+               elseif ( beta*om < -600 ) then
+                  Default(nw) = Default(nw) * (-om)
                else
                   Default(nw) = Default(nw) * (om *( 1.d0 + exp(-beta*om) ) )/ (1.d0 - exp(-beta*om) ) 
                endif
@@ -347,8 +542,12 @@ contains
             X  = 0.d0
             Do nw = 1, Ndis
                Om = Om_st + dble(nw)*dom
-               if ( abs(om) < zero ) then
+               if ( abs(om) < Zero ) then
                   Default(nw) = Default(nw)*2.d0/ beta 
+               elseif ( beta*om > 600 ) then
+                  Default(nw) = Default(nw) * om
+               elseif ( beta*om < -600 ) then
+                  Default(nw) = Default(nw) * (-om)
                else
                   Default(nw) = Default(nw) * (om *( 1.d0 + exp(-beta*om) ) )/ (1.d0 - exp(-beta*om) ) 
                endif

@@ -169,7 +169,6 @@
       real(Kind=Kind(0.d0)) :: ham_T     = 1.d0  ! Hopping parameter
       real(Kind=Kind(0.d0)) :: Ham_chem  = 0.d0  ! Chemical potential
       real(Kind=Kind(0.d0)) :: ham_V     = 4.d0  ! Hubbard interaction
-      real(Kind=Kind(0.d0)) :: ham_h0    = 1.d0  ! Pinning field strength
       real(Kind=Kind(0.d0)) :: ham_T2    = 1.d0  ! For bilayer systems
       real(Kind=Kind(0.d0)) :: ham_V2    = 4.d0  ! For bilayer systems
       real(Kind=Kind(0.d0)) :: ham_Tperp = 1.d0  ! For bilayer systems
@@ -205,7 +204,7 @@
 #endif
           Implicit none
 
-          integer                :: ierr, nf, unit_info
+          integer                :: nf, unit_info
           Character (len=64)     :: file_info
 
           ! L1, L2, Lattice_type, List(:,:), Invlist(:,:) -->  Lattice information
@@ -214,8 +213,7 @@
           ! Simulation type                          -->  Finite  T or Projection  Symmetrize Trotter.
 
 #ifdef MPI
-          Integer        :: Isize, Irank, irank_g, isize_g, igroup
-          Integer        :: STATUS(MPI_STATUS_SIZE)
+          Integer        :: ierr, Isize, Irank, irank_g, isize_g, igroup
           CALL MPI_COMM_SIZE(MPI_COMM_WORLD,ISIZE,IERR)
           CALL MPI_COMM_RANK(MPI_COMM_WORLD,IRANK,IERR)
           call MPI_Comm_rank(Group_Comm, irank_g, ierr)
@@ -279,7 +277,6 @@
              Write(unit_info,*) 't             : ', Ham_T
              Write(unit_info,*) 'Ham_V         : ', Ham_V
              Write(unit_info,*) 'Ham_chem      : ', Ham_chem
-             if (abs(ham_h0) >= 1.D-10 ) Write(unit_info,*) 'Pinning field : ', ham_h0
              if (Projector) then
                Do nf = 1,N_FL
                   Write(unit_info,*) 'Degen of right trial wave function: ', WF_R(nf)%Degen
@@ -318,14 +315,14 @@
         Subroutine Ham_Hop
 
           Implicit none
+
           Real (Kind=Kind(0.d0) ) ::  Ham_Lambda = 0.d0
 
           Real (Kind=Kind(0.d0) ), allocatable :: Ham_T_vec(:), Ham_Tperp_vec(:), Ham_Chem_vec(:), Phi_X_vec(:), Phi_Y_vec(:),&
                &                                  Ham_T2_vec(:),  Ham_Lambda_vec(:)
           Integer, allocatable ::   N_Phi_vec(:)
 
-          Integer :: n, nth, nf, I, J, I1, J1, n_1, n_2, Nb, no_i, no_j
-          Complex(Kind=Kind(0.d0))          :: Z
+          ! Use predefined stuctures or set your own hopping
 
           Allocate (Ham_T_vec(N_FL), Ham_T2_vec(N_FL), Ham_Tperp_vec(N_FL), Ham_Chem_vec(N_FL), Phi_X_vec(N_FL), Phi_Y_vec(N_FL),&
                &                                   N_Phi_vec(N_FL), Ham_Lambda_vec(N_FL) )
@@ -370,61 +367,11 @@
              Write(error_unit,*) 'Your lattice is not supported for the t-V model. '
              CALL Terminate_on_error(ERROR_HAMILTONIAN,__FILE__,__LINE__)
           end Select
-         
-          if (abs(ham_h0) >= 1.D-10 ) then
-              allocate(Op_T(2,N_FL))
-              do nf = 1,N_FL
-                 ! Op_T(1,nf) contains the bare hopping matrix, Op_T(2,nf) is the pinning Hamiltonian
-                 Call Op_make(Op_T(1,nf),Ndim)   
-                 Call Op_make(Op_T(2,nf),Ndim)
-                 N_Phi     = Hopping_Matrix(nf)%N_Phi
-                 Phi_X     = Hopping_Matrix(nf)%Phi_X
-                 Phi_Y     = Hopping_Matrix(nf)%Phi_Y
-                 Bulk      = Hopping_Matrix(nf)%Bulk
-                 DO I = 1, Latt%N
-                    do Nb = 1, Hopping_Matrix(nf)%N_bonds
-                       no_I = Hopping_Matrix(nf)%list(Nb,1)
-                       no_J = Hopping_Matrix(nf)%list(Nb,2)
-                       n_1  = Hopping_Matrix(nf)%list(Nb,3)
-                       n_2  = Hopping_Matrix(nf)%list(Nb,4)
-                       J    = Latt%nnlist(I,n_1,n_2)
-                       Z    = Generic_hopping(I,no_I, n_1, n_2, no_J, N_Phi, Phi_x,Phi_y, Bulk, Latt, Latt_Unit)
-                       I1   = Invlist(I,no_I)
-                       J1   = Invlist(J,no_J)
-                       Op_T(1,nf)%O(I1,J1) = Hopping_Matrix(nf)%T(Nb)*Z
-                       Op_T(1,nf)%O(J1,I1) = Conjg(Hopping_Matrix(nf)%T(Nb)*Z)
-                    enddo
-                    Do no_I = 1, Latt_Unit%Norb
-                        I1   = Invlist(I,no_I)
-                        Z = Hopping_Matrix(nf)%T_Loc(no_I) 
-                        Op_T(1,nf)%O(I1,I1) = Z
-                    Enddo
-                    if (I == Latt%N/2) then
-                        do no_I = 1, Latt_Unit%Norb
-                           I1 = Invlist(I, no_I)
-                          Op_T(2,nf)%O(I1, I1) = cmplx(-Ham_h0, 0.d0)
-                        enddo
-                    endif
-                 enddo
-                 Do I = 1,Ndim
-                    Op_T(1,nf)%P(i) = i
-                    Op_T(2,nf)%P(i) = i
-                 Enddo
-                 Op_T(1,nf)%g = -Dtau
-                 Allocate (Op_T(2,nf)%g_t(Ltrot))
-                 Op_T(2,nf)%g_t = 0.d0
-                 Op_T(2,nf)%g_t(Ltrot/2) = -0.5d0
-                 Op_T(2,nf)%g_t(Ltrot/2+1) = -0.5d0
-                 Op_T(1,nf)%alpha  =  cmplx(0.d0,0.d0, kind(0.D0))
-                 Op_T(2,nf)%alpha  =  cmplx(0.d0,0.d0, kind(0.D0))
-                 Call Op_set(Op_T(1,nf))
-                 Call Op_set(Op_T(2,nf))
-              Enddo
-          else
-            Call  Predefined_Hoppings_set_OPT(Hopping_Matrix,List,Invlist,Latt,  Latt_unit,  Dtau, Checkerboard, Symm, OP_T )
-          endif 
-         Deallocate (Ham_T_vec, Ham_T2_vec, Ham_Tperp_vec, Ham_Chem_vec, Phi_X_vec, Phi_Y_vec, &
-         &            N_Phi_vec, Ham_Lambda_vec )
+
+          Call  Predefined_Hoppings_set_OPT(Hopping_Matrix,List,Invlist,Latt,  Latt_unit,  Dtau, Checkerboard, Symm, OP_T )
+
+          Deallocate (Ham_T_vec, Ham_T2_vec, Ham_Tperp_vec, Ham_Chem_vec, Phi_X_vec, Phi_Y_vec, &
+               &                                   N_Phi_vec,  Ham_Lambda_vec )
 
         end Subroutine Ham_Hop
 !--------------------------------------------------------------------
@@ -440,7 +387,7 @@
 
           Implicit none
 
-          Integer :: N_part, nf
+          Integer :: N_part
           ! Use predefined stuctures or set your own Trial  wave function
           N_part = Ndim/2
           Call Predefined_TrialWaveFunction(Lattice_type ,Ndim,  List,Invlist,Latt, Latt_unit, &
@@ -466,9 +413,8 @@
           Type (Hopping_Matrix_type), Allocatable :: Bond_Matrix(:)
 
           Integer                           :: I, J, I1, J1, no_I, no_J, nf
-          Integer                           :: n_1, n_2, Nb, n_f,l_f, n_l, N, nc
+          Integer                           :: n_1, n_2, Nb, n_f,l_f, N, nc
           Complex(Kind=Kind(0.d0))          :: Z
-          real(Kind=Kind(0.d0))             :: Zero =  1.0E-6
 
           Allocate (Ham_V_vec(N_FL), Ham_V2_vec(N_FL), Ham_Vperp_vec(N_FL), Ham_Chem_vec(N_FL), Phi_X_vec(N_FL), Phi_Y_vec(N_FL),&
                &                                   N_Phi_vec(N_FL), Ham_Lambda_vec(N_FL) )
@@ -613,17 +559,7 @@
              end select
              Call Obser_Vec_make(Obs_scal(I),N,Filename)
           enddo
-          ! Local quantities 
-          If (abs(ham_h0) >= 1.D-10 ) then
-            Allocate ( Obs_local(2) )
-            Nt = 1
-            Filename = "Den"
-            Channel = "--"
-            Call Obser_Latt_Local_make(Obs_local(1), Nt, Filename, Latt, Latt_unit, Channel, dtau)
-            Nt = Ltrot - 2*Thtrot
-            Channel = 'P'
-            Call Obser_Latt_Local_make(Obs_local(2), Nt, Filename, Latt, Latt_unit, Channel, dtau)
-          endif
+
           ! Equal time correlators
           Allocate ( Obs_eq(3) )
           Do I = 1,Size(Obs_eq,1)
@@ -696,10 +632,9 @@
           Real    (Kind=Kind(0.d0)), INTENT(IN) :: Mc_step_weight
 
           !Local
-          Complex (Kind=Kind(0.d0)) :: GRC(Ndim,Ndim,N_FL), ZK, Zn, weight, delta
-          Complex (Kind=Kind(0.d0)) :: Zrho, Zkin, ZPot, Z, ZP,ZS, ZZ, ZXY, tmp
-          Integer :: I,J, imj, nf, dec, I1, J1, no_I, no_J,n, nf2, k, k1, l, l1
-          Real    (Kind=Kind(0.d0)) :: X
+          Complex (Kind=Kind(0.d0)) :: GRC(Ndim,Ndim,N_FL), Zn, weight, delta
+          Complex (Kind=Kind(0.d0)) :: Zrho, Zkin, ZPot, ZP,ZS, tmp
+          Integer :: I,J, nf, I1, J1,n, nf2, k, k1, l, l1
 
           ZP = PHASE/Real(Phase, kind(0.D0))
           ZS = Real(Phase, kind(0.D0))/Abs(Real(Phase, kind(0.D0)))
@@ -778,40 +713,6 @@
 
           Obs_scal(4)%Obs_vec(1)  =    Obs_scal(4)%Obs_vec(1) + (Zkin + Zpot)*ZP*ZS
 
-          ! Local observables
-          If (abs(ham_h0) >= 1.D-10 ) then
-            ! Compute local observables.
-
-            Obs_local(1)%N         =  Obs_local(1)%N + 1
-            Obs_local(1)%Ave_sign  =  Obs_local(1)%Ave_sign + Real(ZS,kind(0.d0))
-
-            Do I = 1,Latt%N
-               do no_I = 1,Latt_unit%Norb
-                  I1 = Invlist(I,no_I)
-                  Obs_Local(1)%Obs_Latt(I,1,no_I) = Obs_Local(1)%Obs_Latt(I,1,no_I)  + & 
-                  &       Grc(i1,i1,1)*ZP*ZS 
-               enddo
-            Enddo
-          endif
-
-          ! Tau-resolved local observables
-          If (abs(ham_h0) >= 1.D-10 ) then
-            ! Compute local observables.
-
-            If (Ntau == Ltrot/2) then
-               Obs_local(2)%N = Obs_local(2)%N + 1
-               Obs_local(2)%Ave_sign = Obs_local(2)%Ave_sign + Real(ZS,kind(0.d0))
-            Endif
-
-            Do I = 1,Latt%N
-               do no_I = 1,Latt_unit%Norb
-                  I1 = Invlist(I,no_I)
-                  Obs_Local(2)%Obs_Latt(I,Ntau - Thtrot,no_I) = Obs_Local(2)%Obs_Latt(I,Ntau - Thtrot,no_I)  + & 
-                  &       Grc(i1,i1,1)*ZP*ZS
-               enddo
-            Enddo
-          endif
-
           ! Standard two-point correlations
           Call Predefined_Obs_eq_Green_measure  ( Latt, Latt_unit, List,  GR, GRC, N_SUN, ZS, ZP, Obs_eq(1) )
           Call Predefined_Obs_eq_SpinSUN_measure( Latt, Latt_unit, List,  GR, GRC, N_SUN, ZS, ZP, Obs_eq(2) )
@@ -855,9 +756,7 @@
           Real    (Kind=Kind(0.d0)), INTENT(IN) :: Mc_step_weight
 
           !Locals
-          Complex (Kind=Kind(0.d0)) :: Z, ZP, ZS, ZZ, ZXY
-          Real    (Kind=Kind(0.d0)) :: X
-          Integer :: IMJ, I, J, I1, J1, no_I, no_J
+          Complex (Kind=Kind(0.d0)) :: ZP, ZS
 
           ZP = PHASE/Real(Phase, kind(0.D0))
           ZS = Real(Phase, kind(0.D0))/Abs(Real(Phase, kind(0.D0)))

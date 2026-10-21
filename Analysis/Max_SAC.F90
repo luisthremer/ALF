@@ -1,4 +1,4 @@
-!  Copyright (C) 2016-2024 The ALF project
+!  Copyright (C) 2016-2026 The ALF project
 !
 !     The ALF project is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -42,10 +42,12 @@ Program MaxEnt_Wrapper
 !
 !--------------------------------------------------------------------
        Use runtime_error_mod
+       Use Natural_Constants, only: pi, Eps_small
        Use MaxEnt_stoch_mod
        Use MaxEnt_mod
        use MaxEnt_Wrapper_mod
        use iso_fortran_env, only: output_unit, error_unit
+       use Files_mod, only: str_to_upper
 #ifdef _OPENMP
        use check_omp_num_threads_mod
 #endif
@@ -55,10 +57,10 @@ Program MaxEnt_Wrapper
        Real (Kind=Kind(0.d0)), Dimension(:)  , allocatable :: XQMC, XQMC_st, XTAU, Xtau_st, &
             &                                                 Alpha_tot, om_bf, alp_bf, xom, A
        Real (Kind=Kind(0.d0)), Dimension(:,:), allocatable :: XCOV, XCOV_st
-       Real (Kind=Kind(0.d0))                              :: X_moments(2), Xerr_moments(2), ChiSq
+       Real (Kind=Kind(0.d0))                              :: ChiSq
        Character (Len=64)                                  :: command, File1, File2
        Complex (Kind=Kind(0.d0))                           :: Z
-       Logical                                             :: Test =.false.
+       Logical, parameter                                  :: Test =.false.
        
 
        Integer                :: Ngamma, Ndis,  NBins, NSweeps, Nwarm, N_alpha, N_cov
@@ -67,14 +69,15 @@ Program MaxEnt_Wrapper
        Logical                :: Checkpoint,  Stochastic, Default_model_exists, Particle_channel_PH
        Character (Len=:), allocatable :: Channel
        Character (Len=1)      :: Char, Char1
-       Character (len=64)     :: str_temp
+       Character (len=64)     :: str_temp, FA_Name
        ! Space  for classic MaxEnt
        Real (Kind=Kind(0.d0)), allocatable ::  Xker_classic(:,:),  A_classic(:),  Default(:)
 
        Integer                :: nt, nt1, io_error, n,nw, nwp, ntau, N_alpha_1, i,  nbin_qmc
-       Integer                :: ntau_st, ntau_en, ntau_new, Ntau_old
-       Real (Kind=Kind(0.d0)) :: dtau, pi, xmom1, x,x1,x2, tau, omp, om, Beta,err, delta, Dom
-       Real (Kind=Kind(0.d0)) :: Zero, Alpha_classic_st=100000.d0
+       Integer                :: ntau_st, ntau_en, Ntau_old
+       Real (Kind=Kind(0.d0)) :: dtau, xmom1, x,x1,x2, tau, omp, om, Beta,err, delta, Dom
+       Real (Kind=Kind(0.d0)), parameter :: Zero = Eps_small
+       Real (Kind=Kind(0.d0)) :: Alpha_classic_st=100000.d0
        Integer ::  N_BZ_Zones     =  1 
        Logical ::  Extended_Zone = .false.
 
@@ -99,6 +102,9 @@ Program MaxEnt_Wrapper
        endif
        close(30)
        
+       N = 20
+       Call Set_Ra_ba(N)
+       
        INQUIRE(FILE="Default", EXIST=Default_model_exists)
 
        open (unit=10,File="g_dat", status="unknown")
@@ -122,9 +128,9 @@ Program MaxEnt_Wrapper
        dtau = Xtau(2) - Xtau(1)
        11 format(A20, ': ', A)
        12 format(A20, ': ', I10)
-       13 format(A20, ': ', *(F14.7))
+       13 format(A20, ': ', *(E25.17E3))
        14 format(A20, ': ', (L1))
-       15 format((E26.17E3))
+       15 format((E25.17E3))
 
        If (Stochastic) then 
           Open(unit=50,File='Info_MaxEnt',Status="unknown")
@@ -155,8 +161,6 @@ Program MaxEnt_Wrapper
          Write(50,13) "Alpha_st",alpha_st
          Write(50,13) "R", R
        endif
-       Zero= 1.D-10
-       pi = acos(-1.d0)
        Ntau_st = 1
        Ntau_en = Ntau
        Select Case (str_to_upper(Channel))
@@ -228,8 +232,10 @@ Program MaxEnt_Wrapper
        Select Case (str_to_upper(Channel))
        Case ("PH")
           If  (Stochastic)  then
+             FA_Name = "QFI_ph.dat"
              Call MaxEnt_stoch(XQMC, Xtau, Xcov, Xmom1, XKER_ph, Back_Trans_ph, Beta, &
-                  &            Alpha_tot, Ngamma, OM_ST, OM_EN, Ndis, Nsweeps, NBins, NWarm, F_QFI_ph, Default)
+                  &            Alpha_tot, Ngamma, OM_ST, OM_EN, Ndis, Nsweeps, NBins, NWarm, F_QFI_ph, &
+                  &            Filename_F=FA_Name, Default_provided=Default)
              ! Beware: Xqmc and cov are modified in the MaxEnt_stoch call.
           else
              Call Set_Ker_classic(Xker_ph,Xker_classic,Om_st,Om_en,beta,xtau_st)
@@ -238,7 +244,7 @@ Program MaxEnt_Wrapper
        Case ("PH_C")
           If  (Stochastic)  then
              Call MaxEnt_stoch(XQMC, Xtau, Xcov, Xmom1, XKER_ph, Back_trans_pp, Beta, &
-                  &            Alpha_tot, Ngamma, OM_ST, OM_EN, Ndis, Nsweeps, NBins, NWarm, F, Default)
+                  &            Alpha_tot, Ngamma, OM_ST, OM_EN, Ndis, Nsweeps, NBins, NWarm, F, Default_provided=Default)
              ! Call MaxEnt_stoch(XQMC, Xtau, Xcov, Xmom1, XKER_ph_c, Back_Trans_ph_c, Beta, &
                   ! &            Alpha_tot, Ngamma, OM_ST, OM_EN, Ndis, Nsweeps, NBins, NWarm, F_QFI_ph_c, Default)
              ! Beware: Xqmc and cov are modified in the MaxEnt_stoch call.
@@ -250,7 +256,7 @@ Program MaxEnt_Wrapper
        Case ("PP")
           If  (Stochastic) then
              Call MaxEnt_stoch(XQMC, Xtau, Xcov, Xmom1, XKER_pp, Back_Trans_pp, Beta, &
-                  &            Alpha_tot, Ngamma, OM_ST, OM_EN, Ndis, Nsweeps, NBins, NWarm, F , Default)
+                  &            Alpha_tot, Ngamma, OM_ST, OM_EN, Ndis, Nsweeps, NBins, NWarm, F , Default_provided=Default)
              ! Beware: Xqmc and cov are modified in the MaxEnt_stoch call.
           else
              Call Set_Ker_classic(Xker_pp,Xker_classic,Om_st,Om_en,beta,xtau_st)
@@ -258,8 +264,10 @@ Program MaxEnt_Wrapper
           endif
        Case ("P")
           If  (Stochastic)  then
+             FA_Name = "DIDV.dat"
              Call MaxEnt_stoch(XQMC, Xtau, Xcov, Xmom1, XKER_p, Back_Trans_p, Beta, &
-                  &            Alpha_tot, Ngamma, OM_ST, OM_EN, Ndis, Nsweeps, NBins, NWarm , F, Default)
+                  &            Alpha_tot, Ngamma, OM_ST, OM_EN, Ndis, Nsweeps, NBins, NWarm , F_DIDV, & 
+                  &            Filename_F=FA_Name, Default_provided=Default)
              ! Beware: Xqmc and cov are modified in the MaxEnt_stoch call.
           else  ! Classic
              Call Set_Ker_classic(Xker_p,Xker_classic,Om_st,Om_en,beta,xtau_st)
@@ -267,8 +275,10 @@ Program MaxEnt_Wrapper
           endif  
        Case ("P_PH")
           If  (Stochastic)  then
+             FA_Name = "DIDV.dat"
              Call MaxEnt_stoch(XQMC, Xtau, Xcov, Xmom1, XKER_p_ph, Back_Trans_p, Beta, &
-                  &            Alpha_tot, Ngamma, OM_ST, OM_EN, Ndis, Nsweeps, NBins, NWarm ,F, Default)
+                  &            Alpha_tot, Ngamma, OM_ST, OM_EN, Ndis, Nsweeps, NBins, NWarm ,F_DIDV_PH, & 
+                  &            Filename_F=FA_Name, Default_provided=Default)
           else  ! Classic
              Call Set_Ker_classic(Xker_p_ph,Xker_classic,Om_st,Om_en,beta,xtau_st)
              Call  MaxEnt( XQMC, XCOV, A_classic, XKER_classic, Alpha_classic_st, CHISQ ,DEFAULT)
@@ -276,7 +286,7 @@ Program MaxEnt_Wrapper
        Case ("T0")
           If (Stochastic)  then
              Call MaxEnt_stoch(XQMC, Xtau, Xcov, Xmom1, XKER_T0, Back_Trans_T0, Beta, &
-                  &            Alpha_tot, Ngamma, OM_ST, OM_EN, Ndis, Nsweeps, NBins, NWarm,F,Default)
+                  &            Alpha_tot, Ngamma, OM_ST, OM_EN, Ndis, Nsweeps, NBins, NWarm,F,Default_provided=Default)
              ! Beware: Xqmc and cov are modified in the MaxEnt_stoch call.
           else
              Call Set_Ker_classic(Xker_T0,Xker_classic,Om_st,Om_en,beta,xtau_st)
@@ -344,12 +354,12 @@ Program MaxEnt_Wrapper
                    Write(error_unit,*) "Channel '" // Channel // "' not yet implemented"
                    CALL Terminate_on_error(ERROR_MAXENT,__FILE__,__LINE__)
              end Select
-             Write(11,"(F14.7,2x,F14.7,2x,F14.7,2x,F14.7)")  xtau_st(nt), xqmc_st(nt),  sqrt(xcov_st(nt,nt)), xmom1*X
+             Write(11,"(E25.17E3,2x,E25.17E3,2x,E25.17E3,2x,E25.17E3)")  xtau_st(nt), xqmc_st(nt),  sqrt(xcov_st(nt,nt)), xmom1*X
           enddo
           close(11)
           N_alpha_1 = N_alpha - 10
           File1 ="Aom_ps"
-          file2 =File_i(File1,N_alpha_1)
+          write(file2, '(A,"_",I0)') trim(File1), N_alpha_1
           Open(Unit=66,File=file2,status="unknown")
           do nw = 1,Ndis
              read(66,*) xom(nw), A(nw), x, x1, x2
@@ -369,7 +379,7 @@ Program MaxEnt_Wrapper
              Do nw = 1,Ndis
                 X = X  +  A_classic(nw)*Xker_classic(nt,nw)
              enddo
-             Write(11,"(F14.7,2x,F14.7,2x,F14.7,2x,F14.7)")  xtau_st(nt), xqmc_st(nt),  sqrt(xcov_st(nt,nt)), X
+             Write(11,"(E25.17E3,2x,E25.17E3,2x,E25.17E3,2x,E25.17E3)")  xtau_st(nt), xqmc_st(nt),  sqrt(xcov_st(nt,nt)), X
           enddo
           close(11)
           Write(50,13) "Final value of  alpha ", 1.d0/Alpha_classic_st
@@ -410,7 +420,6 @@ Program MaxEnt_Wrapper
 
        ! Compute the real frequency Green function.
        delta = Dom
-       pi = acos(-1.d0)
        x  = 0.d0
        x1 = 0.d0
        x2 = 0.d0
@@ -437,13 +446,14 @@ Program MaxEnt_Wrapper
             x  = x  + Aimag(Z)
             x1 = x1 + om*Aimag(Z)
             x2 = x2 + om*om*Aimag(Z)
-            write(43,"('X',2x,F14.7,2x,F16.8,2x,F16.8,2x,F14.7,2x,F14.7,2x,F14.7)")  & 
+            write(43,"('X',2x,E25.17E3,2x,E25.17E3,2x,E25.17E3,2x,E25.17E3,2x,E25.17E3,2x,E25.17E3)")  & 
                & xom(nw), dble(Z), Aimag(Z),  X*dom, x1*dom, x2*dom
           else
-            write(43,"('X',2x,F14.7,2x,F16.8,2x,F16.8)")  & 
+            write(43,"('X',2x,E25.17E3,2x,E25.17E3,2x,E25.17E3)")  & 
                & xom(nw), dble(Z), Aimag(Z)
           endif   
        enddo
        close(43)
 
+       call clean_Set_Ra_ba()
      end Program MaxEnt_Wrapper
