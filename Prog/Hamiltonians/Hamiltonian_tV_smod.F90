@@ -372,35 +372,6 @@
           end Select
          
           if (abs(ham_h0) >= 1.D-10 ) then
-            ! allocate(Op_T(2,N_FL))
-            ! do nf = 1,N_FL
-            !    Call Op_make(Op_T(1,nf),Ndim)
-            !    Call Op_make(Op_T(2,nf),Ndim)
-            !    Do I = 1,Latt%N
-            !       Ix = Latt%nnlist(I,1,0)
-            !       Op_T(1,nf)%O(I,  Ix) = cmplx(-Ham_T,    0.d0, kind(0.D0))
-            !       Op_T(1,nf)%O(Ix, I ) = cmplx(-Ham_T,    0.d0, kind(0.D0))
-            !       If ( L2 > 1 ) then
-            !          Iy = Latt%nnlist(I,0,1)
-            !          Op_T(1,nf)%O(I,  Iy) = cmplx(-Ham_T,    0.d0, kind(0.D0))
-            !          Op_T(1,nf)%O(Iy, I ) = cmplx(-Ham_T,    0.d0, kind(0.D0))
-            !       endif
-            !       Op_T(1,nf)%O(I,  I ) = cmplx(-Ham_chem, 0.d0, kind(0.D0))
-            !       if (I == Latt%N/2) then
-            !          Op_T(2,nf)%O(I,  I ) = cmplx(-Ham_h0, 0.d0, kind(0.D0))
-            !       endif
-            !       Op_T(1,nf)%P(i) = i
-            !       Op_T(2,nf)%P(i) = i
-            !    Enddo
-            !    Op_T(1,nf)%g      = -Dtau
-            !    Allocate (Op_T(2,nf)%g_t(Ltrot))
-            !    Op_T(2,nf)%g_t = 0.d0
-            !    Op_T(2,nf)%g_t(Ltrot/2) = -1.d0
-            !    Op_T(1,nf)%alpha  =  cmplx(0.d0,0.d0, kind(0.D0))
-            !    Op_T(2,nf)%alpha  =  cmplx(0.d0,0.d0, kind(0.D0))
-            !    Call Op_set(Op_T(1,nf))
-            !    Call Op_set(Op_T(2,nf))
-            ! enddo
               allocate(Op_T(2,N_FL))
               do nf = 1,N_FL
                  ! Op_T(1,nf) contains the bare hopping matrix, Op_T(2,nf) is the pinning Hamiltonian
@@ -442,7 +413,8 @@
                  Op_T(1,nf)%g = -Dtau
                  Allocate (Op_T(2,nf)%g_t(Ltrot))
                  Op_T(2,nf)%g_t = 0.d0
-                 Op_T(2,nf)%g_t(Ltrot/2) = -1.d0
+                 Op_T(2,nf)%g_t(Ltrot/2) = -0.5d0
+                 Op_T(2,nf)%g_t(Ltrot/2+1) = -0.5d0
                  Op_T(1,nf)%alpha  =  cmplx(0.d0,0.d0, kind(0.D0))
                  Op_T(2,nf)%alpha  =  cmplx(0.d0,0.d0, kind(0.D0))
                  Call Op_set(Op_T(1,nf))
