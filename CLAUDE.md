@@ -35,16 +35,27 @@ Later phases (only with the owner's go-ahead): delayed and submatrix updates (Su
 Research leads (not ground truth; verify before relying on them, log mismatches in
 `docs/gpu/DISCREPANCIES.md`): `/Users/luis/Documents/_WORK/Coding/CLAUDE/ALF_GPU_research/R{1,2,3}_report.md`.
 
-## Build and test (CPU) [verify on nividia in Phase 0]
+## Build and test (CPU) – verified on nividia 2026-10-26
+
+On `nividia`, environments live in `~/alf-gpu/env/{gnu,intel}.sh` (GNU 13.3 + OpenBLAS + Intel MPI's
+gfortran wrapper; ifx 2025.3 + MKL + Intel MPI) plus the venv `~/alf-gpu/venv` (pyALF, PyYAML).
+Helper scripts there: `build_ctest.sh`, `build_prod.sh`, `run_ed.sh` (see `docs/gpu/BASELINE.md`).
 
 ```sh
-source configure.sh GNU noMPI          # or Intel / IntelLLVM; STAB arg e.g. LOG
-make                                    # Libraries -> Analysis -> Prog
-cd testsuite && mkdir -p tests && cd tests && cmake .. && cmake --build . && ctest
+. ./configure.sh GNU devel noMPI NO-INTERACTIVE      # unit-test build, as in CI
+make -j8 all                                          # 'all', not 'program': Analysis.tests need Analysis/
+cd testsuite && mkdir -p tests && cd tests && cmake .. && cmake --build . -j8 && ctest -j8
+. ./configure.sh GNU MPI [LOG] HDF5 NO-INTERACTIVE    # production; IntelLLVM for ifx
 ```
-`testsuite` links against prebuilt `Prog/*.o`, so `make program` must run first.
-`test_vs_ed` needs pyALF. Branch comparison: run `test_branch_parameters.json` on reference and
-test branch, compare with `compare_dirs.py`.
+- Use **HDF5** for anything pyALF analyses: pyALF 2.6 cannot parse gfortran's plain-text complex
+  output (`(a, b)` with a space). configure.sh self-builds HDF5 1.14.6 into `HDF5/<compiler>`.
+- `test_vs_ed`: upstream `prep_test.py` + `analysis.py`, simulation via `run_ed.sh` (2 MPI ranks per Δτ).
+- CPU references for the port: `testsuite/gpu_reference/` (`configs.py`, `prep.py`, `run.sh`,
+  `summarize.py`, `compare.py` – provisional, see BASELINE.md); results summary in
+  `docs/gpu/BASELINE.md`, full data on nividia `~/alf-gpu/runs/ref_*`. Copies of the nividia
+  helper scripts: `docs/gpu/scripts/nividia/`.
+- Branch comparison: run `test_branch_parameters.json` on reference and test branch, compare with
+  `compare_dirs.py`.
 
 ## Correctness rules (non-negotiable)
 
