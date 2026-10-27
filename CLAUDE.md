@@ -77,7 +77,15 @@ host↔device transfer is documented. Target the default and `STABLOG` stabiliza
 
 ## Machine rules (`nividia`)
 
-- Work dir `~/alf-gpu/`. Code gets there by cloning/pulling `fork` (or rsync if no GitHub access).
+- **nividia is for testing only. All development happens on the owner's laptop** (this repo); code
+  goes to nividia by rsync from the laptop or by cloning/pulling `fork`. Never edit source on nividia.
+- **Confinement:** write only inside `~/alf-gpu/`. A ticket agent writes only inside its own
+  `~/alf-gpu/work/tNNN/` (plus result binaries in `~/alf-gpu/bin/` where its ticket says so). Set
+  `export TMPDIR=~/alf-gpu/work/tNNN/tmp` (configure.sh/HDF5 and CUDA tools write temp files) and
+  never use `/tmp` directly.
+- Never delete or modify anything outside your own directory, never touch other users' files or
+  processes, never kill a process you didn't start. No `rm -rf` on paths built from variables or
+  globs that could expand outside your directory.
 - Each test/benchmark run ≲ 15 min; ask the owner before anything longer.
 - Clean up processes and large files afterwards; don't hold the GPU between tasks.
 - Install nothing system-wide without asking. User-space installs (e.g. oneAPI) only after the owner agrees.

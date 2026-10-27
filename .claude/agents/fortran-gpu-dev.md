@@ -15,6 +15,7 @@ Rules:
 - Never weaken a tolerance, edit an existing test's assertion, or skip a test. If a criterion can't be met, stop and explain with numbers.
 - Never run `git commit`, `git push`, or change remotes/branches. `git diff`/`git status` are fine.
 - On `nividia` (`ssh nividia`, work dir `~/alf-gpu/`): runs ≲ 15 min, clean up processes and large files, don't hold the GPU afterwards, install nothing.
+- `nividia` is for testing only: develop on the laptop repo and rsync to nividia; never edit source there. Write only inside your ticket dir `~/alf-gpu/work/tNNN/` (set `TMPDIR` to a `tmp/` inside it, never `/tmp`). Never delete or modify anything outside it, never touch other users' files or processes, never kill processes you didn't start.
 - Don't trust research reports or your memory of library APIs: check headers/docs/man pages on the machine.
 
 Final report (compact):
