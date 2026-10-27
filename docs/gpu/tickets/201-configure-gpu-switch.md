@@ -3,7 +3,7 @@
 - **Phase:** 2
 - **Owner agent:** fortran-gpu-dev
 - **Depends on:** 105 (nvfortran via the PGI profile), ADR-001/002 (accepted)
-- **Status:** open
+- **Status:** done (2026-10-27; reviewed, fixed and re-run by the manager)
 
 ## Goal
 `source configure.sh MACHINE MODE [STAB] [HDF5] [Devel] [GPU=none|nvidia|intel]` selects the GPU target at
@@ -78,3 +78,17 @@ Ticket 202 runs concurrently (different work dir).
 ## Out of scope
 Any Fortran source change; `alf_la` (202); AOT/PVC flags and `SUPERMUC-NG-PVC` profile (301); CMake testsuite
 changes; MPI + GPU.
+
+## Resolution (manager, 2026-10-27)
+- Review fix: the agent's flag rewrite used loop variables `v`/`val` and ended with `unset val v`, which ran for every
+  target including `GPU=none` and would clear same-named variables in the user's shell (configure.sh is sourced); it
+  also relied on GNU-only `sed \|`. Rewritten with plain POSIX `sed` per variable and a prefixed temporary.
+- Re-run by the manager on a clean `git archive` tree (the agent's tree had included 202's work in progress):
+  - `GPU=none` identity: 48/48 combos (GNU/IntelLLVM/PGI × noMPI/MPI × default/LOG × HDF5 × Devel) identical, 7
+    `ALF_*` variables each, vs the unmodified script.
+  - `PGI noMPI HDF5 GPU=nvidia` on nividia: build OK, ctest 39/39; smoke: target region on the A30, `cublasZgemm`
+    exact vs `matmul`; `hub6x6_cb` (20 sweeps × 10 bins, same seeds) vs `GPU=none`: all 38 `data.h5` datasets
+    bit-identical, Precision Green 2.229e-11, tau 5.06e-12, phase 0 in both.
+  - `IntelLLVM noMPI GPU=intel` on intel: build OK, no `-static`, ctest 39/39; smoke target region on the B580
+    (`OMP_TARGET_OFFLOAD=MANDATORY`, `level_zero:0`), result exact.
+- Not covered: `PGI MPI GPU=nvidia` (configures, not built); AOT/PVC (301).

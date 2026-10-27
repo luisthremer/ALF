@@ -2,7 +2,7 @@
 # shellcheck disable=SC2059
 # This script sets necessary environment variables for compiling ALF.
 # You need to source it prior to executing make.
-USAGE="usage 'source configure.sh MACHINE MODE STAB'
+USAGE="usage 'source configure.sh MACHINE MODE STAB [HDF5] [Devel] [GPU=none|nvidia|intel]'
 
 Please choose one of the following MACHINEs:
  * GNU
@@ -27,6 +27,10 @@ Possible STABs are:
 Further optional arguments: 
   Devel: Compile with additional flags for development and debugging
   HDF5: Compile with HDF5
+  GPU=none|nvidia|intel: GPU target (default none = unchanged CPU build)
+               GPU=nvidia: MACHINE PGI only (nvfortran, OpenMP offload, cuBLAS/cuSOLVER);
+                           target compute capability from env ALF_GPU_CC (default cc80, e.g. cc80,cc90)
+               GPU=intel:  MACHINE IntelLLVM/IntelX only (ifx, OpenMP offload to spir64 (JIT), oneMKL)
   NO-INTERACTIVE: Do not ask for user confirmation during excution of this script
   NO-FALLBACK: Do not use a fallback option in case of an unknown/no machine,
                but instead return with value 1
@@ -229,6 +233,7 @@ stabv=0
 HDF5_ENABLED=""
 NO_INTERACTIVE=""
 NO_FALLBACK=""
+GPU_TARGET="none"
 
 while [ "$#" -gt "0" ]; do
   ARG="$(echo "$1" | tr '[:lower:]' '[:upper:]')"
@@ -257,6 +262,14 @@ while [ "$#" -gt "0" ]; do
       INTELOPTFLAGS="$INTELOPTFLAGS $INTELDEVFLAGS"
       INTELLLVMOPTFLAGS="$INTELLLVMOPTFLAGS $INTELLLVMDEVFLAGS"
       PGIOPTFLAGS="$PGIOPTFLAGS $PGIDEVFLAGS"
+    ;;
+    GPU=NONE|GPU=NVIDIA|GPU=INTEL)
+      GPU_TARGET="$(echo "${ARG#GPU=}" | tr '[:upper:]' '[:lower:]')"
+    ;;
+    GPU=*)
+      printf "${RED}Error: unknown GPU target '%s'. Allowed: GPU=none, GPU=nvidia, GPU=intel.${NC}\n" "${ARG#GPU=}" 1>&2
+      rm -r "$tmpdir"
+      return 1
     ;;
     NO-INTERACTIVE)
       NO_INTERACTIVE="1"
@@ -510,6 +523,24 @@ case $MACHINE in
   ;;
 esac
 
+# GPU target: allowed MACHINE check (no fallback)
+case "$GPU_TARGET" in
+  nvidia)
+    if [ "$MACHINE" != "PGI" ]; then
+      printf "${RED}Error: GPU=nvidia requires MACHINE PGI (nvfortran); got '%s'.${NC}\n" "$MACHINE" 1>&2
+      rm -r "$tmpdir"
+      return 1
+    fi
+  ;;
+  intel)
+    if [ "$MACHINE" != "INTELLLVM" ] && [ "$MACHINE" != "INTELX" ]; then
+      printf "${RED}Error: GPU=intel requires MACHINE IntelLLVM or IntelX (ifx); got '%s'.${NC}\n" "$MACHINE" 1>&2
+      rm -r "$tmpdir"
+      return 1
+    fi
+  ;;
+esac
+
 check_libs "$ALF_FC" "${LIB_BLAS_LAPACK}" || return 1
 
 check_python || return 1
@@ -547,6 +578,35 @@ if [ "${HDF5_ENABLED}" = "1" ]; then
   ALF_FLAGS_ANA="${ALF_FLAGS_ANA} ${INC_HDF5} -DHDF5 -DHDF5_ZLIB"
   ALF_FLAGS_PROG="${ALF_FLAGS_PROG} -DHDF5 -DHDF5_ZLIB"
 fi
+
+# GPU target flags (GPU=none: nothing is changed)
+case "$GPU_TARGET" in
+  nvidia)
+    _alf_gpu_cc="-gpu=${ALF_GPU_CC:-cc80}"
+    # replace the CPU '-mp' token by '-mp=gpu -gpu=ccXX' (modules, prog, ana; not the C-like QRREF)
+    ALF_FLAGS_MODULES="$(echo "${ALF_FLAGS_MODULES} " | sed -e 's/ -mp / /g' -e 's/ $//') -mp=gpu ${_alf_gpu_cc} -DALF_GPU -DALF_LA_CUDA"
+    ALF_FLAGS_ANA="$(echo "${ALF_FLAGS_ANA} " | sed -e 's/ -mp / /g' -e 's/ $//') -mp=gpu ${_alf_gpu_cc} -DALF_GPU -DALF_LA_CUDA"
+    ALF_FLAGS_PROG="$(echo "${ALF_FLAGS_PROG} " | sed -e 's/ -mp / /g' -e 's/ $//') -mp=gpu ${_alf_gpu_cc} -DALF_GPU -DALF_LA_CUDA"
+    ALF_LIB="${ALF_LIB} -mp=gpu ${_alf_gpu_cc} -cudalib=cublas,cusolver"
+    unset _alf_gpu_cc
+    export ALF_GPU="nvidia"
+    printf "\nGPU target: ${GREEN}nvidia${NC} (nvfortran, OpenMP offload %s, cuBLAS/cuSOLVER)\n" "${ALF_GPU_CC:-cc80}"
+  ;;
+  intel)
+    # offload needs dynamic libraries: drop -static
+    ALF_FLAGS_MODULES="$(echo "${ALF_FLAGS_MODULES} " | sed -e 's/ -static / /g' -e 's/ $//') -fiopenmp -fopenmp-targets=spir64 -DALF_GPU -DALF_LA_ONEMKL"
+    ALF_FLAGS_ANA="$(echo "${ALF_FLAGS_ANA} " | sed -e 's/ -static / /g' -e 's/ $//') -fiopenmp -fopenmp-targets=spir64 -DALF_GPU -DALF_LA_ONEMKL"
+    ALF_FLAGS_PROG="$(echo "${ALF_FLAGS_PROG} " | sed -e 's/ -static / /g' -e 's/ $//') -fiopenmp -fopenmp-targets=spir64 -DALF_GPU -DALF_LA_ONEMKL"
+    ALF_LIB="${ALF_LIB} -fiopenmp -fopenmp-targets=spir64 -qmkl"
+    export ALF_GPU="intel"
+    printf "\nGPU target: ${GREEN}intel${NC} (ifx, OpenMP offload spir64 JIT, oneMKL)\n"
+  ;;
+  *)
+    unset ALF_GPU
+    printf "\nGPU target: none (CPU build)\n"
+  ;;
+esac
+export ALF_LIB
 export ALF_FLAGS_QRREF
 export ALF_FLAGS_MODULES
 export ALF_FLAGS_ANA
