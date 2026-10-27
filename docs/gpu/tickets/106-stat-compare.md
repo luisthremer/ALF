@@ -3,7 +3,7 @@
 - **Phase:** 1
 - **Owner agent:** fortran-gpu-dev (Python work)
 - **Depends on:** –
-- **Status:** open
+- **Status:** done (2026-10-27; all acceptance comparisons re-run by the manager; verdict rule tightened, see Resolution)
 
 ## Goal
 Write a CPU-vs-GPU (or compiler-vs-compiler) statistical comparison that passes for independent,
@@ -84,3 +84,13 @@ up `confout*`. Install nothing (numpy, scipy, h5py, pandas and pyALF are already
 
 ## Out of scope
 GPU runs, changes to ALF Fortran, changing pyALF.
+
+## Resolution (manager, 2026-10-27)
+- Re-ran all comparisons with the laptop `compare2.py`: must-pass P1a/P1b/P2/P3 PASS, must-fail F1 (E t=−27.8) and
+  F2 FAIL.
+- **Verdict rule tightened** (stricter than delivered): PASS now requires that no observable is UNDER-RESOLVED. Under
+  the delivered rule the old 12×12 GNU vs ifx case returned PASS with all 11 observables under-resolved. It now
+  returns INCONCLUSIVE (exit 2). Same-seed runs with identical trajectories (means equal to 1e-9 relative;
+  measured ≤ 1.2e-12) PASS without an error estimate.
+- Consequence: the Phase 0 12×12/20×20 references (≤ 30 bins) cannot certify a PASS. The observable-level gate for
+  the GPU uses the `configs_stat.py` set (250 bins); the old references remain for timing and same-seed checks.

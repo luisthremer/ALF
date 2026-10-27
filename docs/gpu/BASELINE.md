@@ -84,6 +84,10 @@ split at Δτ=0.1. **GPU results must always be compared with the same hopping v
   quantities (E, Kin, Pot, n, S_zz and S_den at a few k, G(k, β/2), χ_zz(π,π)) with autocorrelation-aware
   errors, and use parameters with short autocorrelation (e.g. β=2 or U=2) or long runs. Full-array
   χ² is reported for information only. `compare.py` is marked provisional until this is done.
+  **Done in ticket 106:** `testsuite/gpu_reference/compare2.py` (curated 13 observables, rebinning plateau,
+  Welch t, Šidák α=0.01) and the 250-bin `configs_stat.py` set (8×8, β=2). It passes GNU vs ifx and different
+  seeds, and fails cb vs dense and U=2 vs 2.1. The 12×12/20×20 references above (≤ 30 bins) are **not certifiable**:
+  the tool returns INCONCLUSIVE for them. Use them for timing and same-seed checks only.
 - 20×20 references have only 8 usable bins: their error bars are indicative only.
 
 ## Known issues found

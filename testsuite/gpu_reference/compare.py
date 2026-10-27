@@ -9,6 +9,9 @@ Exit 1 if any observable has max|z| > zmax beyond what multiple testing explains
 (expected count of |z|>zmax is n*p, p=0.0027 for 3 sigma; fails if count > n*p + 3*sqrt(n*p) + 1)
 or chi2/n > 1 + 4*sqrt(2/n).
 
+SUPERSEDED by compare2.py (ticket 106: curated observables, autocorrelation-aware errors, Student-t,
+family-wise alpha). Keep this script only for the old full-array chi2/n numbers.
+
 PROVISIONAL (Phase 0, see docs/gpu/BASELINE.md): the thresholds assume independent entries with
 correct error bars. Correlation functions violate both (all R/k/tau entries share the slow AF mode,
 and short runs underestimate errors), so a FAIL on lattice observables is not yet evidence of a bug.

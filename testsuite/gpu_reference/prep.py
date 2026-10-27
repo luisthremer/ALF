@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Create run directories (parameters + seeds) for reference configs.
 
-usage: prep.py OUTDIR CONFIG [CONFIG ...]   (CONFIG names from configs.py, or 'all')
+usage: prep.py OUTDIR CONFIG [CONFIG ...] [--seed-offset N]   (names from configs.py / configs_stat.py, or 'all')
 Writes OUTDIR/<config>/{parameters,seeds}. The binary is supplied by run.sh.
 """
 import argparse
@@ -12,6 +12,9 @@ from py_alf import ALF_source, Simulation
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from configs import CONFIGS  # noqa: E402
+from configs_stat import CONFIGS as CONFIGS_STAT  # noqa: E402
+
+CONFIGS = {**CONFIGS, **CONFIGS_STAT}  # configs_stat.py: validation set for compare2.py
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__)
@@ -20,6 +23,8 @@ if __name__ == "__main__":
     p.add_argument("--alf-dir", default=os.environ.get("ALF_DIR", "../.."))
     p.add_argument("--nsweep", type=int, help="override NSweep (calibration runs)")
     p.add_argument("--nbin", type=int, help="override NBin (calibration runs)")
+    p.add_argument("--seed-offset", type=int, default=0,
+                   help="rotate the seeds file by this many lines (independent MC streams)")
     args = p.parse_args()
 
     names = list(CONFIGS) if args.configs == ["all"] else args.configs
@@ -34,4 +39,11 @@ if __name__ == "__main__":
                          sim_root=os.path.abspath(args.outdir), sim_dir=name,
                          machine="GNU", mpi=True)
         sim.run(only_prep=True)
+        if args.seed_offset:
+            sf = os.path.join(os.path.abspath(args.outdir), name, "seeds")
+            with open(sf, encoding="utf-8") as f:
+                lines = f.readlines()
+            k = args.seed_offset % len(lines)
+            with open(sf, "w", encoding="utf-8") as f:
+                f.writelines(lines[k:] + lines[:k])
         print(os.path.join(args.outdir, name))
