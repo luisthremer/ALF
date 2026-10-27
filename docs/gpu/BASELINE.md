@@ -31,6 +31,7 @@ Needs `make all` (not `make program`): `Analysis.tests/1-maxent-kernel-overflow`
 |---|---|---|---|---|---|---|---|
 | hubbard_finT_chain | GNU MPI HDF5 | −1.47289 ± 0.00042 | −1.47261997 | −2.7e-4 | 0.64 | 1e-3, 3σ | **PASS** (679 s) |
 | hubbard_finT_chain | ifx MPI HDF5 | −1.47326 ± 0.00044 | −1.47261997 | −6.4e-4 | 1.48 | 1e-3, 3σ | **PASS** (1167 s, rerun 2026-10-27 with owner's OK) |
+| hubbard_finT_chain | nvfortran 26.9 (PGI profile) MPI HDF5 | −1.47327 ± 0.00043 | −1.47261997 | −6.5e-4 | 1.52 | 1e-3, 3σ | **PASS** (1315 s; HPC-X Open MPI needs `PRTE_MCA_hwloc_default_binding_policy=none`) |
 | hubbard_T0_chain | – | | | | | | not run (projector out of scope) |
 
 The ifx run needs ~20 min on this machine (ifx is ~1.3× slower than GNU on this AMD host); the first

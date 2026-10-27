@@ -8,6 +8,8 @@ src=~/alf-gpu/src/ALF-$t; out=~/alf-gpu/runs/ed_$tag; rm -rf $out; mkdir -p ~/al
 cd ~/alf-gpu/runs && python $src/testsuite/test_vs_ed/prep_test.py --specs_file $src/testsuite/test_vs_ed/test_specs.yaml --output_dir $out >/dev/null
 d=$out/${test}_Bookworm; cd $d
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+# HPC-X Open MPI 5 binds each mpirun -n 2 to cores 0,1 by default: five concurrent runs would share 2 cores
+export PRTE_MCA_hwloc_default_binding_policy=none OMPI_MCA_hwloc_base_binding_policy=none
 start=$(date +%s)
 for i in */; do i=${i%/}
   ( cd $i && python - <<P && mpirun -n 2 ~/alf-gpu/bin/ALF-$tag.out > run.log 2>&1 ) &
