@@ -1,6 +1,6 @@
 # ADR-001 – Programming model for the ALF GPU port
 
-- **Status:** proposed (2026-10-27), for the Phase 1 gate (owner review).
+- **Status:** accepted (2026-10-27, owner at the Phase 1 gate).
 - **Inputs:** HARD.md, PLAN.md §1, tickets 101 (A30 kernel benchmark), 103 (ifx/oneMKL), 104 (pre-pivoted QR),
   105 (nvfortran CPU build), 106 (statistical gate), 102 (OpenACC launch overhead), 108 (STABLOG pivoting).
 
@@ -32,7 +32,8 @@
    CGR (N×N) and CGR2_2 (2N×2N) factorizations run as **host ZGEQP3** with the matrix copied D→H and the factors back,
    i.e. upstream numerics. Cost per call on one core: 14 ms (N=400), 186 ms (N=1024), plus 2.6 / 16.8 MB each way;
    the transfers go into the PLAN.md transfer table. STABLOG's own decompose already pre-pivots and stays on the device.
-   `GPU=none` keeps ZGEQP3 everywhere; the GPU default path's pre-pivot still needs the owner's OK (PLAN §5.3).
+   `GPU=none` keeps ZGEQP3 everywhere; the GPU default path's pre-pivot is approved by the owner (Phase 1 gate), and
+   no further STABLOG pivot study is planned (revisit only if profiling shows the host QR dominates).
 5. **Per-site update, MVP (Phase 2):** ratio and rank-1 update on the device, decision on the host, so that the GPU
    build reproduces the CPU trajectory flip by flip for the same compiler and seeds (validation level 2).
    The update code is organised as `propose → ratio → decide → apply/defer → flush` so that a device-side decision

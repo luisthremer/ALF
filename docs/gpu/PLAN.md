@@ -1,9 +1,9 @@
 # ALF GPU port – plan
 
-Status 2026-10-27, end of Phase 0. Why each piece is here: [HARD.md](HARD.md) (items referred to
+Status 2026-10-27, end of Phase 1 (gate passed, ADR-001/002 accepted). Why each piece is here: [HARD.md](HARD.md) (items referred to
 as H1–H10). Measurements: [PROFILE.md](PROFILE.md), [BASELINE.md](BASELINE.md).
 
-## 1. Architecture (hypothesis; Phase 1 ADR confirms or overturns it)
+## 1. Architecture (decided: [ADR-001](ADR-001-programming-model.md), [ADR-002](ADR-002-alf-la-and-data-model.md))
 
 ```
 host (unchanged ALF control flow, RNG, accept/reject, I/O, MPI, classes)
@@ -37,8 +37,8 @@ gpu_state module (plain contiguous device arrays, allocated once)
 - **Device residency:** G and the B tables stay on the device for a whole run. Every transfer is
   listed in the table below and in the code, next to the transfer.
 - **Stabilization on the device:** pre-pivoting by column norm followed by unpivoted
-  `geqrf`/`ormqr`/`ungqr`, everywhere QRCP is used today (decompose, CGR, CGR2_2). This is subject
-  to the Phase 1 CPU accuracy study (H2).
+  `geqrf`/`ormqr`/`ungqr` in decompose, CGR and CGR2_2 (104; approved by the owner). Exception:
+  under STABLOG, CGR and CGR2_2 use host ZGEQP3 (108, ADR-001 §4).
 - **Updates:** Phase 2 does rank-1 updates on the device with the decision on the host (H1, H7).
   The code is structured as `propose → ratio → decide → apply/defer → flush`, so delayed and
   submatrix updates slot in later.
@@ -60,21 +60,22 @@ Ticket IDs: Phase p uses `p01…`. Each ticket gets a file `docs/gpu/tickets/NNN
 `000-template.md`) when it is opened. Owner agent in brackets. "dev" means `fortran-gpu-dev`,
 "test" means `test-runner`, "rev" means `numerics-reviewer`.
 
-### Phase 0 – baseline and understanding ✅ (this gate)
+### Phase 0 – baseline and understanding ✅
 Fork, agents, CLAUDE.md, nividia probe, CPU baseline (GNU + ifx unit tests, test_vs_ed both
 PASS, Hubbard references), CPU profile, HARD.md, this plan.
 
-### Phase 1 – architecture decision by prototype (gate)
+### Phase 1 – architecture decision by prototype ✅ (gate passed 2026-10-27)
 
 | ID | Ticket | Owner | Depends |
 |---|---|---|---|
 | 101 | **Kernel benchmark harness** `gpu_bench/` outside `Prog/`, with HOST and CUDA backends and device-resident complex N×N (N = 64…1024, F = 2): (a) B_T propagation, checkerboard family kernel and dense GEMM (real exp(T): DGEMM on the interleaved view vs ZGEMM); (b) Op_V diagonal wrap; (c) stabilization: column-norm pre-pivot + `geqrf` + `ungqr`/`ormqr` vs host ZGEQP3; (d) rank-1 vs rank-k update (k = 1…128) incl. per-update host round-trip latency; (e) flavour batching. Correctness vs HOST at 1e-10 (or the documented bound for QR) | dev | – |
-| 102 | OpenACC variant of 101 (a, d) on nvfortran, only if OpenMP is ≥1.5× slower than OpenACC on a kernel that matters | dev | 101 |
+| 102 | OpenACC variant of 101 (a, d) on nvfortran, only if OpenMP is ≥1.5× slower than OpenACC on a kernel that matters. Done as a narrow launch study; OpenACC not adopted | dev | 101 |
 | 103 | **ifx build of 101** (`spir64` JIT), run in host fallback on nividia; oneMKL dispatch + SYCL shim prototype for `geqrf`/`ungqr`/`ormqr` (compile and host-fallback correctness only, no PVC here) | dev | 101 |
 | 104 | **CPU accuracy study: pre-pivoted unpivoted QR in CGR and CGR2_2** (CPU only, behind a test-only macro). Compare `Precision Green`/`tau` and observables vs upstream QRCP for β = 4…20+, U = 4…8, default and LOG, cb and dense. Decides H2 | dev + rev | – |
 | 105 | **NVHPC profile** in `configure.sh` (nvfortran, `GPU=none`): unit tests, test_vs_ed, 12×12 references. Gives the same-compiler CPU baseline for H7 | dev, test | – |
 | 106 | **Statistical comparison redesign** (`testsuite/gpu_reference/`): curated observables, autocorrelation-aware errors (binning analysis / τ_int), plus a short-autocorrelation reference set (e.g. U=2 or β=2, many bins). Rerun GNU vs ifx, which must pass | dev | – |
-| 107 | **ADR-001** programming model + **ADR-002** `alf_la` interface and data model, written from 101–104 | manager | 101–104 |
+| 107 | **ADR-001** programming model + **ADR-002** `alf_la` interface and data model, written from 101–104 (+ 102, 108). Accepted | manager | 101–104 |
+| 108 | STABLOG pivot study (variants of pre-pivoting in CGR/CGR2_2 under STABLOG). Result: host ZGEQP3 under STABLOG | dev + rev | 104 |
 
 Gate deliverables: benchmark numbers (BENCHMARKS.md, per kernel, crossover estimates), ADRs, the
 104 verdict, the revised Phase 2 ticket list.
@@ -92,16 +93,16 @@ Unsupported inputs are refused at setup (H4).
 
 | ID | Ticket | Depends |
 |---|---|---|
-| 201 | `configure.sh` `GPU=` switch, `-DALF_GPU`, NVHPC GPU flags; `GPU=none` byte-identical behaviour gate | 105, ADR |
-| 202 | `alf_la` module: HOST backend (exact upstream calls) + CUDA backend; unit tests per op | ADR |
+| 201 | `configure.sh` `GPU=` switch, `-DALF_GPU`, NVHPC GPU flags (nvfortran via the existing PGI profile, 105); `GPU=none` byte-identical behaviour gate | 105, ADR |
+| 202 | `alf_la` module: HOST backend (exact upstream calls) + CUDA backend, incl. `la_qrpp` and `la_geqp3_host`; unit tests per op | ADR |
 | 203 | `gpu_state` device mirror + setup flattening + unsupported-feature checks | 201 |
 | 204 | Device B_T (checkerboard families, dense) and Op_V wraps; kernel tests with fixed fields vs CPU ≤ 1e-10 | 202, 203 |
 | 205 | WRAPGR up/down on the device: ratio, host decision, rank-1 apply; `flush` interface | 204 |
-| 206 | Stabilization on the device: WRAPUR/UL + decompose, CGR (both NVAR), pre-pivoted QR per 104; precision checks as reductions | 202, 204, 104 |
-| 207 | τ pass on the device: PROPR/PROPRM1, CGR2_2, `Control_Precision_tau` | 206 |
+| 206 | Stabilization on the device: WRAPUR/UL + decompose, CGR (both NVAR), pre-pivoted QR per 104; under STABLOG CGR via `la_geqp3_host` (108); precision checks as reductions | 202, 204 |
+| 207 | τ pass on the device: PROPR/PROPRM1, CGR2_2 (STABLOG: `la_geqp3_host`), `Control_Precision_tau` | 206 |
 | 208 | Measurements: MVP host copy of G; then predefined Hubbard observables (eq + τ) on the device | 205, 207 |
 | 209 | Validation suite: kernel tests, same-compiler trajectory test (NVHPC CPU vs GPU, first-divergence sweep), test_vs_ed on GPU, statistical compare vs references (106), precision numbers | 205–208 |
-| 210 | BENCHMARKS.md: s/sweep CPU (16 cores, nividia) vs GPU for N = 64…1024, ±Ltau, per-kernel breakdown (incl. rank-1 share), crossover | 209 |
+| 210 | BENCHMARKS.md: s/sweep CPU (16 cores, nividia) vs GPU for N = 64…1024, ±Ltau, per-kernel breakdown (incl. rank-1 share), crossover. Development numbers; the official CPU baseline is decided in Phase 3 | 209 |
 | 211 | CPU regression gate: unit tests, `test_branch_parameters.json` / `compare_dirs.py`, GNU + ifx s/sweep within noise | 201–208 |
 
 Every ticket gets review (rev) and acceptance re-run by the manager.
@@ -151,10 +152,19 @@ Every ticket gets review (rev) and acceptance re-run by the manager.
 | R8 | Disk (25 GB free) and node size on nividia | medium / low | Clean up after each run; keep references compact |
 | R9 | Max 1550 is EOL; SuperMUC versions differ from docs | – / medium | `alf_la` limits lock-in; owner checks `module avail` |
 
-## 5. Open decisions for the owner
-1. Install `ocloc` system-wide on nividia (enables AOT `spir64_gen` PVC builds)?
-2. oneAPI/ifx, MKL, MPI and HDF5 module versions on SuperMUC-NG Phase 2 (`module avail intel-toolkit`)?
-3. Is a numerically different (pre-pivoted) QR in CGR/CGR2_2 acceptable for GPU builds if 104 shows
-   equal precision? (`GPU=none` keeps upstream QRCP either way.)
-4. Is nividia's 16-core VM the official CPU comparison for BENCHMARKS.md, or should the owner run a
-   full-node CPU number (e.g. SuperMUC Phase 2's 112 cores) later?
+## 5. Owner decisions
+
+Decided at the Phase 1 gate (2026-10-27):
+1. `ocloc` on nividia: not installed. AOT `spir64_gen` compile checks run on the `intel` test machine, which has it.
+2. Pre-pivoted QR in decompose/CGR/CGR2_2 for GPU builds (default stabilization): **approved**. `GPU=none` keeps
+   upstream QRCP.
+3. STABLOG: host ZGEQP3 for CGR/CGR2_2; no further pivot study unless profiling shows the host QR dominates.
+4. Per-site update: host decision in the MVP; OpenACC not adopted; device decision and delayed/submatrix updates
+   later (401–404, need the owner's go-ahead).
+5. ADR-001 and ADR-002 accepted as written.
+
+Still open:
+1. oneAPI/ifx, MKL, MPI and HDF5 module versions on SuperMUC-NG Phase 2: needed in Phase 3 (301); until then pin
+   ifx 2025.3.
+2. Official CPU baseline for BENCHMARKS.md (nividia 16-core VM vs a SuperMUC full-node CPU run): decided in
+   Phase 3. Phase 2 reports nividia numbers as development numbers.

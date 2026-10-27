@@ -1,6 +1,6 @@
 # ADR-002 – `alf_la` backend interface and device data model
 
-- **Status:** proposed (2026-10-27), for the Phase 1 gate (owner review).
+- **Status:** accepted (2026-10-27, owner at the Phase 1 gate).
 - **Depends on:** ADR-001. Prototype: `gpu_bench/src/bench_la.F90` (101, 103).
 
 ## Context
