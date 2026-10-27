@@ -3,7 +3,7 @@
 - **Phase:** 1
 - **Owner agent:** fortran-gpu-dev
 - **Depends on:** –
-- **Status:** open
+- **Status:** done (2026-10-27, PGI profile works unchanged with NVHPC 26.9; ctest 39/39; test_vs_ed pending, manager)
 
 ## Goal
 Upstream ALF builds and passes its tests with nvfortran 26.9 on the CPU (`GPU=none` equivalent). It
