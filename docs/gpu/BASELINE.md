@@ -30,10 +30,11 @@ Needs `make all` (not `make program`): `Analysis.tests/1-maxent-kernel-overflow`
 | Test | Build | Extrapolated E | ED | Δ | Δ/σ | Limits | Result |
 |---|---|---|---|---|---|---|---|
 | hubbard_finT_chain | GNU MPI HDF5 | −1.47289 ± 0.00042 | −1.47261997 | −2.7e-4 | 0.64 | 1e-3, 3σ | **PASS** (679 s) |
-| hubbard_finT_chain | ifx MPI HDF5 | – | | | | | **not completed**: killed by my 1000 s timeout (Δτ=0.05, 0.1 still running at ~17 min) |
+| hubbard_finT_chain | ifx MPI HDF5 | −1.47326 ± 0.00044 | −1.47261997 | −6.4e-4 | 1.48 | 1e-3, 3σ | **PASS** (1167 s, rerun 2026-10-27 with owner's OK) |
 | hubbard_T0_chain | – | | | | | | not run (projector out of scope) |
 
-The ifx run needs ~18–20 min on this machine (above the 15-min rule); waiting for the owner's OK.
+The ifx run needs ~20 min on this machine (ifx is ~1.3× slower than GNU on this AMD host); the first
+attempt was killed by a 1000 s timeout, the rerun used 1500 s.
 
 ## Hubbard reference runs (GNU, default stabilization, 16 MPI ranks × 1 thread)
 
@@ -89,7 +90,8 @@ split at Δτ=0.1. **GPU results must always be compared with the same hopping v
 - pyALF 2.6 (PyPI) cannot parse ALF's plain-text complex output written by gfortran 13
   (`(a, b)` with a space after the comma; `ana.read_scal` turns it into an unparsable token).
   pyALF builds with HDF5 by default, which is why CI does not see it. We use HDF5 throughout.
-- Unprivileged `perf` is blocked (`perf_event_paranoid=4`); profiling will use gprof/`-pg` or nsys.
+- Unprivileged `perf` (`perf_event_paranoid=4`) and VTune (`ptrace_scope=1`) are blocked; profiling uses
+  gdb stack sampling and gprof, see [PROFILE.md](PROFILE.md).
 
 ## How to reproduce (on nividia)
 ```sh

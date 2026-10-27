@@ -25,6 +25,8 @@ SIZES = {
     (6, True): (50, 100), (6, False): (50, 100),
     (12, True): (20, 30), (12, False): (20, 30),
     (20, True): (6, 10), (20, False): (4, 10),
+    # profiling only (docs/gpu/scripts/nividia/profile.sh overrides NSweep/NBin), no reference run
+    (32, True): (2, 1), (32, False): (2, 1),
 }
 
 CONFIGS = {}
