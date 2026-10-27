@@ -3,7 +3,7 @@
 - **Phase:** 2
 - **Owner agent:** fortran-gpu-dev (review: numerics-reviewer)
 - **Depends on:** ADR-002 (accepted). Runs in parallel with 201 (see "Build flags").
-- **Status:** open
+- **Status:** done (2026-10-28; two review rounds, re-run by the manager)
 
 ## Goal
 `Libraries/Modules/alf_la_mod.F90` provides the plain-array linear-algebra layer of ADR-002 §1 with two backends:
@@ -79,3 +79,27 @@ Test only; develop on the laptop and rsync to `~/alf-gpu/work/t202/` (`TMPDIR=~/
 ## Out of scope
 Calling `alf_la` from ALF routines (203–206); the ONEMKL backend and SYCL shim (302); device kernels for
 permutations/scaling; MPI; `configure.sh` (201).
+
+## Resolution (manager, 2026-10-28)
+- Delivered: `Libraries/Modules/alf_la_mod.F90` (HOST + CUDA; ONEMKL is an `#error` until 302), 13 ctest programs in
+  `testsuite/alf_la.tests/`, helper scripts `docs/gpu/scripts/nividia/t202_*.sh`. Routine → ALF call-site table in
+  the module header. Not in `alf_la` (kernels for 203–206): ZLAPMR/ZLAPMT, ZSCAL scalings, D separation, det/phase.
+  Not provided: `la_gemm_rc`, `la_getri` (no hot-path call site).
+- numerics-reviewer, round 1: NaN-blind checks under fast-math, `t_order` did not test WAR/WAW, NULL-stream choice
+  unjustified, `la_qrpp` not compared with variant 1's real path (ZGEQP3 with fixed columns), plus test gaps. Round 2:
+  `maxval`/`max` drop NaN, and `t_order` had no negative control. All fixed.
+- **Stream finding** (ADR-002 §1 amended, DISCREPANCIES): nvfortran 26.9 runs synchronous target regions on the
+  per-thread default stream (`acc_get_cuda_stream(acc_async_sync)`), `nowait` regions on a separate non-blocking
+  stream; `!$omp interop` is unimplemented. `alf_la` uses the `acc_async_sync` stream. No `nowait` around `alf_la`
+  without `la_sync`; single host thread, one GPU per process.
+- Manager re-run on a clean `git archive` tree + the 202 files (nividia):
+  - ctest 52/52 with GNU devel, IntelLLVM devel, PGI devel (HOST) and `PGI noMPI GPU=nvidia` (CUDA, A30);
+  - `t_order` alone: PASS (8 checks, max 0); with `-DALF_LA_TEST_BADSTREAM`: FAIL 6/8 (RAW 0.41/0.86, WAR 1.37/1.08,
+    WAW 0.070/0.070), so the canary works;
+  - largest CUDA deviations: gemm 1.4e-15, trsm 3.0e-15, LU 8.2e-16, QR invariants 2.8e-14 (HOST 2.7e-14, rounding);
+    HOST bit-identical to direct LAPACK, `la_qrpp` HOST bit-identical to ZGEQP3(jpvt=1) on the pre-permuted matrix;
+    `la_geqp3_host` bit-identical on both backends;
+  - `GPU=none` GNU MPI `ALF.out`: no `alf_la` symbols (module only in `modules_90.a`).
+- Timing (CUDA, agent): close to 101 at N=1024; `la_qrpp`+ungqr at N=400 3.9 ms vs 2.8 ms (host sort of the norms,
+  fixed ≈1 ms); `la_geqp3_host` 15 ms (N=400) / 199 ms (N=1024) incl. transfers. Revisit after a sweep profile (210).
+- Open: ONEMKL backend and its ordering test (302); multi-GPU binding (405).

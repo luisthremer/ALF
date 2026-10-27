@@ -27,8 +27,19 @@
   (a documented transfer).
 - Error handling: every routine returns or checks a device `info`; failures stop with `Terminate_on_error`.
 - cuBLAS scalars: alpha/beta passed via 16-byte-aligned `c_double_complex` module variables (101 crash finding).
-- Streams/queues: one in-order stream (CUDA) / the OpenMP interop `sycl::queue` (ONEMKL) per rank, created in
-  `la_init`; kernels and library calls are ordered on it. `la_sync` is the only blocking call.
+- Streams/queues: library calls must run on the queue the OpenMP runtime uses for the caller's kernels, so that
+  kernels and library calls are ordered without host waits. `la_sync` is the only blocking call.
+  - **CUDA (amended 2026-10-27, ticket 202, measured with nvfortran 26.9 on the A30):** a stream created in
+    `la_init` (as first decided here) is *not* ordered against nvfortran's OpenMP target regions, and the legacy NULL
+    stream only appeared to work. Synchronous target regions run on the per-thread default stream, which nvfortran
+    returns as `acc_get_cuda_stream(acc_async_sync)`; `nowait` regions run on a separate non-blocking stream.
+    `!$omp interop` is not implemented in nvfortran 26.9. So `la_init` sets the cuBLAS/cuSOLVER handles to the
+    `acc_async_sync` stream (runtime query only, no OpenACC directives).
+  - Consequences: (1) `nowait`/`depend` regions are **not** ordered against `alf_la` calls. Any such use needs a
+    `la_sync`, or a later ticket that moves library calls onto the `nowait` stream. (2) `alf_la` is single-threaded.
+    (3) The test `t_order` (RAW/WAR/WAW without host waits) is the canary; re-run it whenever the compiler or driver
+    changes. (4) `-DALF_LA_SYNC_ALWAYS` brackets every call with `la_sync`, as a safe fallback.
+  - ONEMKL: the OpenMP interop `sycl::queue` (ifx implements `interop`), to be verified in 302 with the same test.
 
 ### 2. `gpu_state`: the flat device mirror
 `Prog/gpu_state_mod.F90` (new, compiled only with `-DALF_GPU`). Allocated and mapped once at setup
