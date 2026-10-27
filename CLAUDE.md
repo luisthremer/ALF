@@ -6,7 +6,8 @@ Goal: port the **finite-temperature DQMC** to GPUs with one source tree, two equ
 - **NVIDIA**: dev/test machine `ssh nividia` (hardware/toolchain: see `docs/gpu/MACHINES.md` once probed).
 - **Intel**: SuperMUC-NG Phase 2 (2× Xeon 8480+, 4× Data Center GPU Max 1550 per node, oneAPI:
   ifx + oneMKL + Intel MPI). Not reachable by agents. We prepare build profiles, job scripts and
-  a validation recipe; the owner runs them.
+  a validation recipe; the owner runs them. Intel test machine for agents: `ssh intel` (Arc B580
+  workstation, not PVC; see `docs/gpu/MACHINES.md`).
 
 A build with `GPU=none` must behave **exactly** like upstream and must not get slower (GNU and Intel).
 Later phases (only with the owner's go-ahead): delayed and submatrix updates (Sun & Xu), CPU first.
@@ -75,20 +76,26 @@ One source tree; GPU selected at configure time; no polymorphism or derived-type
 device (plain contiguous arrays only); data stays device-resident across the sweep; every
 host↔device transfer is documented. Target the default and `STABLOG` stabilization paths.
 
-## Machine rules (`nividia`)
+## Machine rules (`nividia`, `intel`) – both are test sandboxes
 
-- **nividia is for testing only. All development happens on the owner's laptop** (this repo); code
-  goes to nividia by rsync from the laptop or by cloning/pulling `fork`. Never edit source on nividia.
+- **Both machines are for testing only. All development happens on the owner's laptop** (this repo);
+  code goes there by rsync from the laptop or by cloning/pulling `fork`. Never edit source there.
 - **Confinement:** write only inside `~/alf-gpu/`. A ticket agent writes only inside its own
   `~/alf-gpu/work/tNNN/` (plus result binaries in `~/alf-gpu/bin/` where its ticket says so). Set
-  `export TMPDIR=~/alf-gpu/work/tNNN/tmp` (configure.sh/HDF5 and CUDA tools write temp files) and
-  never use `/tmp` directly.
+  `export TMPDIR=~/alf-gpu/work/tNNN/tmp` (configure.sh/HDF5, CUDA and SYCL tools write temp files)
+  and never use `/tmp` directly.
 - Never delete or modify anything outside your own directory, never touch other users' files or
   processes, never kill a process you didn't start. No `rm -rf` on paths built from variables or
   globs that could expand outside your directory.
+- **Never use `sudo`** or anything that needs root, even where the account could (`luis` on `intel` is
+  in the sudo group). No changes to system settings, groups, drivers or packages: ask the owner.
 - Each test/benchmark run ≲ 15 min; ask the owner before anything longer.
 - Clean up processes and large files afterwards; don't hold the GPU between tasks.
 - Install nothing system-wide without asking. User-space installs (e.g. oneAPI) only after the owner agrees.
+- `intel` is a shared workstation (other users, a desktop session): before a run check `uptime` and
+  `ps -eo user,pcpu,comm --sort=-pcpu | head`; use ≤ 8 cores; if another user is busy, wait or ask.
+  Its Arc B580 is a consumer Xe2 GPU: results show that ifx/oneMKL code runs on a real Intel GPU,
+  but they are **not** PVC performance numbers (FP64 rate, memory, launch latency differ).
 
 ## Tickets and delegation
 

@@ -51,6 +51,33 @@ export PATH=/opt/intel/oneapi/compiler/2025.3/bin:$PATH
 - The CPU reference is 16 Zen 3 cores, not a full HPC node; BENCHMARKS.md must say so.
 - Disk is tight: keep builds and run outputs small, delete after use.
 
+## `intel` (host `IntelGPU`) – probed 2026-10-27, read-only
+
+Reached via `ssh intel` (jump host). **Test sandbox on a shared workstation** (other users and a desktop session).
+Rules: CLAUDE.md "Machine rules". Our dir `~/alf-gpu/` (mode 700).
+
+| Item | Value |
+|---|---|
+| OS | Ubuntu 25.04 |
+| CPU | Intel Core i5-14400 (6P + 4E cores, 16 threads), 1 socket, 61 GB RAM |
+| GPU | **Intel Arc B580** (Battlemage G21, Xe2, discrete, `/dev/dri/renderD128`); iGPU UHD 730 (`renderD129`) |
+| GPU driver | `intel-opencl-icd` 24.52, `libze-intel-gpu1` 24.52, Level Zero loader 1.20.3, `libigc2` 2.5 |
+| oneAPI | 2025.1 … 2026.1 in `/opt/intel/oneapi`. **ifx only up to 2025.3** (2025.3.3). MKL per release, Intel MPI 2021.15–2021.18 |
+| `ocloc` | system-wide → AOT `spir64_gen` builds possible here (not on nividia) |
+| Other | gfortran, cmake, python3, clinfo; ample disk |
+
+Environment: `. ~/alf-gpu/env/intel.sh` (= `/opt/intel/oneapi/2025.3/oneapi-vars.sh --force`; ifx 2025.3.3,
+`MKLROOT=/opt/intel/oneapi/2025.3`, `mpiifx`).
+
+**Blocker (2026-10-27): no GPU access for our account.** The render nodes are `root:render 0660` and the account is
+not in `render`, so `sycl-ls` and `clinfo` show only the OpenCL CPU device. Fix by the owner (root): add the account
+to `render`, then log in again. Agents never do this themselves.
+
+To verify once access works: `sycl-ls` lists `level_zero:gpu` for the B580; **FP64 support and rate** (`clinfo`
+"Double-precision Floating-point support", and a measured DGEMM/ZGEMM rate). ALF needs complex(8) throughout, so a
+weak FP64 rate limits what the B580 can say about performance; correctness and the ifx offload/oneMKL/SYCL paths are
+what this machine is for.
+
 ## SuperMUC-NG Phase 2 (LRZ) – not reachable by agents
 2× Xeon Platinum 8480+, 4× Intel Data Center GPU Max 1550 (2 stacks each) per node, 240 nodes.
 oneAPI module versions, Slurm partitions and limits: [verify, owner].
