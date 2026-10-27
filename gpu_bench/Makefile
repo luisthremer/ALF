@@ -67,6 +67,30 @@ $(BUILD)/bench_util.o: $(BUILD)/bench_la.o
 $(BUILD)/bench_ref.o:  $(BUILD)/bench_la.o
 $(BUILD)/bench_sec.o:  $(BUILD)/bench_la.o $(BUILD)/bench_kern.o $(BUILD)/bench_util.o $(BUILD)/bench_ref.o
 $(BUILD)/bench_main.o: $(BUILD)/bench_sec.o
+# ticket 102: launch overhead, OpenMP target vs OpenACC (nvfortran; make launch MODEL=omp|acc)
+#   run: OMP_TARGET_OFFLOAD=MANDATORY ./build/launch_omp/bench_launch [N-list]   or   ./build/launch_acc/bench_launch
+MODEL  ?= omp
+LBUILD  = build/launch_$(MODEL)
+LFLAGS  = -O2 -g -traceback -gpu=cc80 -cudalib=cublas,cusolver -DBENCH_LA_CUDA
+ifeq ($(MODEL),omp)
+  LMODEL = -mp=gpu -DMODEL_OMP
+else ifeq ($(MODEL),acc)
+  LMODEL = -acc=gpu -DMODEL_ACC
+else
+  $(error MODEL must be omp or acc)
+endif
+LSUP   = $(LBUILD)/bench_la.o $(LBUILD)/bench_util.o $(LBUILD)/bench_ref.o
+launch: $(LBUILD)/bench_launch
+$(LBUILD):
+	mkdir -p $(LBUILD)
+# support modules always with the cuda-backend flags of the main benchmark (-mp=gpu), whatever MODEL is
+$(LBUILD)/bench_la.o $(LBUILD)/bench_util.o $(LBUILD)/bench_ref.o: $(LBUILD)/%.o: src/%.F90 | $(LBUILD)
+	$(FC) $(LFLAGS) -mp=gpu -module $(LBUILD) -c $< -o $@
+$(LBUILD)/bench_util.o $(LBUILD)/bench_ref.o: $(LBUILD)/bench_la.o
+$(LBUILD)/bench_launch.o: src/bench_launch.F90 $(LSUP) | $(LBUILD)
+	$(FC) $(LFLAGS) $(LMODEL) -module $(LBUILD) -c $< -o $@
+$(LBUILD)/bench_launch: $(LBUILD)/bench_launch.o $(LSUP)
+	$(FC) $(LFLAGS) -mp=gpu $(if $(filter acc,$(MODEL)),-acc=gpu) $^ -o $@ $(BLAS)
 clean:
 	rm -rf build
-.PHONY: all clean shimtest
+.PHONY: all clean shimtest launch

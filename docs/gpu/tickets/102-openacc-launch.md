@@ -3,7 +3,7 @@
 - **Phase:** 1
 - **Owner agent:** fortran-gpu-dev
 - **Depends on:** 101 (done)
-- **Status:** open (approved by the owner 2026-10-27, narrow scope)
+- **Status:** done (2026-10-27; reviewed and re-run by the manager)
 
 ## Goal
 Measure on nividia (A30, nvfortran 26.9) whether OpenACC launches small kernels markedly faster than OpenMP target
@@ -62,3 +62,19 @@ nothing, no leftovers outside the work dir. Ticket 108 runs CPU-only jobs concur
 
 ## Out of scope
 ALF source (`Prog/`, `Libraries/`), CUDA Fortran or CUDA Graphs, ifx/OpenACC (no OpenACC on ifx), multi-chain batching.
+
+## Resolution (manager, 2026-10-27)
+- Reviewed `gpu_bench/src/bench_launch.F90` and the Makefile target. Re-ran both models on nividia (N = 144, 400, 1024):
+  33/33 checks PASS each, all timings within noise of the agent's results file
+  (`gpu_bench/results/nividia_A30_launch_2026-10-27.txt`).
+- Result: the difference between the models is the **asynchronous launch**: OpenMP `nowait` ≈ 10 µs per target region
+  (task creation; with or without `depend`), OpenACC `async` ≈ 2.6 µs. Synchronous launches, cuBLAS and the host
+  decision are model-independent (host decision ≈ 15–18 µs per site for N ≤ 400).
+- Device-side decision (2 async kernels per site): OpenACC 6.5–8.8 µs per site (≈ 2.2× better than the host decision),
+  OpenMP 17 µs (no gain). Even the OpenACC variant projects to 0.075 s/sweep for the update part alone at N = 144,
+  i.e. ≈ 2× slower than the 16-core node's whole sweep (0.038 s per chain-sweep). At N = 1024 the update is
+  bandwidth-bound and the model does not matter (±20 %).
+- Caveat for any later use: the benchmark's rank-1 vectors are fixed; in ALF they are a row and a column of G, so a
+  real device decision also has to copy them before the update (one more short kernel, or inside the decision kernel).
+- PLAN.md's 1.5× criterion is met for async launches and the device decision at N ≤ 400. The decision for ADR-001 is
+  taken there.

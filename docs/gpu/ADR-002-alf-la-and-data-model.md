@@ -43,7 +43,7 @@
 | `U/D/V` work, `udvst_d` | per NSTM, N_FL_eff | `udvst` | stabilization stack, scales/logs for STABLOG |
 | `GT0, G0T, GTT` | (Ndim, Ndim, N_FL) | τ pass | only if Ltau = 1 |
 | scratch | preallocated, size from setup | – | QR work, tau, ipiv, rank-1 vectors |
-| `rnd_d`, counter | (max draws per slice) | host `ranf_wrap` | device-side decision only (ADR-001 §5 note) *[102]* |
+| `rnd_d`, counter | (max draws per slice) | host `ranf_wrap` | device-side decision only (ADR-001 §5 note); not in the MVP (102) |
 
 - Host objects stay the source of truth for setup and for everything outside the GPU path; `gpu_state` copies
   from them once. A setup check (`gpu_supported(Op_V, Op_T, ham)`) decides whether the run uses the GPU path; if not,
@@ -53,8 +53,8 @@
 
 ### 3. Transfers
 Only the transfers in PLAN.md §1 "Planned host↔device transfers" are allowed; each has a one-line comment in the code
-naming its reason. Changes to the table need an ADR update. With the device-side decision the per-site round trip
-becomes one per time slice (counter + accepted-flip phase), *[102]*.
+naming its reason. Changes to the table need an ADR update. With a later device-side decision (403/404) the per-site
+round trip becomes one per time slice (counter + accepted-flip phase).
 
 ## Alternatives considered
 | Option | Why not |

@@ -32,11 +32,15 @@
 5. **Per-site update, MVP (Phase 2):** ratio and rank-1 update on the device, decision on the host, so that the GPU
    build reproduces the CPU trajectory flip by flip for the same compiler and seeds (validation level 2).
    The update code is organised as `propose → ratio → decide → apply/defer → flush` so that a device-side decision
-   and delayed/submatrix updates replace pieces, not the structure. *[102]*: whether the device-side decision
-   (below) enters the MVP or Phase 4.
-6. **OpenACC:** *[102]* – expected outcome: not adopted. Even a faster launch does not remove the host round trip, and
-   a second directive model would split the source for one vendor. Revisit only if 102 shows OpenMP ≥ 1.5× slower on
-   a kernel that stays per-site after the device-side decision.
+   and delayed/submatrix updates replace pieces, not the structure. The device-side decision (below) is
+   not in the MVP: with OpenMP it gains nothing (102); it becomes useful together with delayed updates (403/404).
+6. **OpenACC: not adopted (102).** On the A30 the only model difference is the asynchronous launch (OpenMP `nowait`
+   ≈ 10 µs, OpenACC `async` ≈ 2.6 µs). It matters only for a device-side per-site decision, where OpenACC gives
+   6.5–8.8 µs per site vs 15–18 µs for the host decision (N ≤ 400); OpenMP gains nothing there. Even then the single-site
+   update alone stays ≈ 2× slower than the 16-core node at N = 144, while rank-k updates cost 0.2–0.4 µs per update
+   (101). The lever is therefore algorithmic (delayed/submatrix updates, 401–403), which amortizes launches in either
+   model; a second directive model for one vendor is not worth it. Revisit in 404 only as a small NVIDIA-only module
+   for the per-site kernels if profiling after 403 still shows launch-bound per-site work.
 
 ### Device-side decision without changing the Markov chain (design note for 5)
 Per site, ALF draws random numbers in a fixed order: the proposal (`nsigma%flip`: none for type 1, `nranf(3)` for
@@ -57,7 +61,7 @@ The Hubbard models used for validation satisfy these.
 ## Alternatives considered
 | Option | Why not (now) |
 |---|---|
-| OpenACC (nvfortran) | NVIDIA only; would need a second directive set or an OpenMP/OpenACC split. *[102 numbers]* |
+| OpenACC (nvfortran) | NVIDIA only; would need a second directive set. 102: 4× cheaper async launch, but no gain on synchronous launches, cuBLAS or the host decision. |
 | CUDA Fortran | NVIDIA only; same objection, more invasive. |
 | `do concurrent` offload (`-stdpar`) | Relies on unified memory, no explicit residency or transfer control, library interop unclear; ifx support for offloaded `do concurrent` is newer than our pinned versions. |
 | SYCL/C++ or Kokkos rewrite of the hot path | Large rewrite of Fortran with class-based Hamiltonians; violates "one source tree" in spirit; the C++ is limited to the oneMKL shim. |

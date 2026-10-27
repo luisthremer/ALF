@@ -1,0 +1,288 @@
+# gpu_bench launch (ticket 102) 2026-10-27 on gpuNV-test
+nvfortran 26.9-0 64-bit target on x86-64 Linux -tp znver3 
+NVIDIA A30, 615.71.10
+# host load: 1.37 0.36 0.12
+# built: make launch MODEL=omp|acc  (flags -O2 -g -traceback -gpu=cc80 -cudalib=cublas,cusolver; -mp=gpu | -acc=gpu)
+
+################ MODEL=omp (OpenMP target, OMP_TARGET_OFFLOAD=MANDATORY, taskset -c 0,1) ################
+model: OpenMP target (-mp=gpu), devices: 1
+
+--- N = 64
+INFO               accepted sites of 256 (reference decision) N=   64  value= 1.240E+02
+PASS                    rank-1 x256 kernel sync vs host zgeru N=   64  value= 1.199E-15  tol= 1.00E-12
+PASS                   rank-1 x256 kernel async vs host zgeru N=   64  value= 1.199E-15  tol= 1.00E-12
+PASS                   rank-1 x256 cublas zgeru vs host zgeru N=   64  value= 7.965E-17  tol= 1.00E-12
+PASS                           host decision + rank-1 vs host N=   64  value= 8.365E-16  tol= 1.00E-12
+PASS                  host decision accept pattern mismatches N=   64  value= 0.000E+00  tol= 5.00E-01
+PASS                        device decision 2 kernels vs host N=   64  value= 8.365E-16  tol= 1.00E-12
+PASS     device decision 2 kernels: accept pattern mismatches N=   64  value= 0.000E+00  tol= 5.00E-01
+PASS                           device decision 1 gang vs host N=   64  value= 8.365E-16  tol= 1.00E-12
+PASS        device decision 1 gang: accept pattern mismatches N=   64  value= 0.000E+00  tol= 5.00E-01
+PASS                      Op_V per-site launches sync vs host N=   64  value= 8.392E-17  tol= 1.00E-12
+PASS                     Op_V per-site launches async vs host N=   64  value= 8.392E-17  tol= 1.00E-12
+
+--- N = 144
+INFO               accepted sites of 256 (reference decision) N=  144  value= 1.260E+02
+PASS                    rank-1 x256 kernel sync vs host zgeru N=  144  value= 1.195E-15  tol= 1.00E-12
+PASS                   rank-1 x256 kernel async vs host zgeru N=  144  value= 1.195E-15  tol= 1.00E-12
+PASS                   rank-1 x256 cublas zgeru vs host zgeru N=  144  value= 8.980E-17  tol= 1.00E-12
+PASS                           host decision + rank-1 vs host N=  144  value= 8.336E-16  tol= 1.00E-12
+PASS                  host decision accept pattern mismatches N=  144  value= 0.000E+00  tol= 5.00E-01
+PASS                        device decision 2 kernels vs host N=  144  value= 8.336E-16  tol= 1.00E-12
+PASS     device decision 2 kernels: accept pattern mismatches N=  144  value= 0.000E+00  tol= 5.00E-01
+PASS                           device decision 1 gang vs host N=  144  value= 8.336E-16  tol= 1.00E-12
+PASS        device decision 1 gang: accept pattern mismatches N=  144  value= 0.000E+00  tol= 5.00E-01
+PASS                      Op_V per-site launches sync vs host N=  144  value= 8.624E-17  tol= 1.00E-12
+PASS                     Op_V per-site launches async vs host N=  144  value= 8.624E-17  tol= 1.00E-12
+
+--- N = 256
+INFO               accepted sites of 256 (reference decision) N=  256  value= 1.110E+02
+PASS                    rank-1 x256 kernel sync vs host zgeru N=  256  value= 1.196E-15  tol= 1.00E-12
+PASS                   rank-1 x256 kernel async vs host zgeru N=  256  value= 1.196E-15  tol= 1.00E-12
+PASS                   rank-1 x256 cublas zgeru vs host zgeru N=  256  value= 8.672E-17  tol= 1.00E-12
+PASS                           host decision + rank-1 vs host N=  256  value= 7.769E-16  tol= 1.00E-12
+PASS                  host decision accept pattern mismatches N=  256  value= 0.000E+00  tol= 5.00E-01
+PASS                        device decision 2 kernels vs host N=  256  value= 7.769E-16  tol= 1.00E-12
+PASS     device decision 2 kernels: accept pattern mismatches N=  256  value= 0.000E+00  tol= 5.00E-01
+PASS                           device decision 1 gang vs host N=  256  value= 7.769E-16  tol= 1.00E-12
+PASS        device decision 1 gang: accept pattern mismatches N=  256  value= 0.000E+00  tol= 5.00E-01
+PASS                      Op_V per-site launches sync vs host N=  256  value= 8.178E-17  tol= 1.00E-12
+PASS                     Op_V per-site launches async vs host N=  256  value= 8.178E-17  tol= 1.00E-12
+
+--- N = 400
+INFO               accepted sites of 256 (reference decision) N=  400  value= 1.210E+02
+PASS                    rank-1 x256 kernel sync vs host zgeru N=  400  value= 1.190E-15  tol= 1.00E-12
+PASS                   rank-1 x256 kernel async vs host zgeru N=  400  value= 1.190E-15  tol= 1.00E-12
+PASS                   rank-1 x256 cublas zgeru vs host zgeru N=  400  value= 8.620E-17  tol= 1.00E-12
+PASS                           host decision + rank-1 vs host N=  400  value= 8.128E-16  tol= 1.00E-12
+PASS                  host decision accept pattern mismatches N=  400  value= 0.000E+00  tol= 5.00E-01
+PASS                        device decision 2 kernels vs host N=  400  value= 8.128E-16  tol= 1.00E-12
+PASS     device decision 2 kernels: accept pattern mismatches N=  400  value= 0.000E+00  tol= 5.00E-01
+PASS                           device decision 1 gang vs host N=  400  value= 8.128E-16  tol= 1.00E-12
+PASS        device decision 1 gang: accept pattern mismatches N=  400  value= 0.000E+00  tol= 5.00E-01
+PASS                      Op_V per-site launches sync vs host N=  400  value= 8.223E-17  tol= 1.00E-12
+PASS                     Op_V per-site launches async vs host N=  400  value= 8.223E-17  tol= 1.00E-12
+
+--- N = 1024
+INFO               accepted sites of 256 (reference decision) N= 1024  value= 1.470E+02
+PASS                    rank-1 x256 kernel sync vs host zgeru N= 1024  value= 1.191E-15  tol= 1.00E-12
+PASS                   rank-1 x256 kernel async vs host zgeru N= 1024  value= 1.191E-15  tol= 1.00E-12
+PASS                   rank-1 x256 cublas zgeru vs host zgeru N= 1024  value= 8.593E-17  tol= 1.00E-12
+PASS                           host decision + rank-1 vs host N= 1024  value= 8.967E-16  tol= 1.00E-12
+PASS                  host decision accept pattern mismatches N= 1024  value= 0.000E+00  tol= 5.00E-01
+PASS                        device decision 2 kernels vs host N= 1024  value= 8.967E-16  tol= 1.00E-12
+PASS     device decision 2 kernels: accept pattern mismatches N= 1024  value= 0.000E+00  tol= 5.00E-01
+PASS                           device decision 1 gang vs host N= 1024  value= 8.967E-16  tol= 1.00E-12
+PASS        device decision 1 gang: accept pattern mismatches N= 1024  value= 0.000E+00  tol= 5.00E-01
+PASS                      Op_V per-site launches sync vs host N= 1024  value= 8.410E-17  tol= 1.00E-12
+PASS                     Op_V per-site launches async vs host N= 1024  value= 8.410E-17  tol= 1.00E-12
+
+checks: 55 run, 0 FAILED
+
+== launch latency [us/launch] : median time [us]
+     N         empty sync        empty async  empty async nodep
+    64              15.39              11.15              11.69
+   144              12.26               9.93              11.69
+   256              12.32              10.05              11.69
+   400              12.29               9.93              11.78
+  1024              12.58              10.98              13.26
+
+== rank-1 update [us/update] : median time [us]
+     N        kernel sync       kernel async       cublas zgeru
+    64               9.50               6.22               3.72
+   144              10.21               6.23               3.96
+   256              11.36               6.45               4.71
+   400              13.52               8.57               6.71
+  1024              39.56              34.48              31.94
+
+== single-site path [us/site] : median time [us]
+     N      host decision dev decision 2 ker dev decision 1 gan
+    64              14.73              16.93              20.48
+   144              14.96              17.27              41.62
+   256              15.31              17.35             100.21
+   400              17.16              17.74             208.59
+  1024              39.08              40.55            1701.69
+
+== Op_V per-site launches [us/site] : median time [us]
+     N               sync              async
+    64               9.44               4.33
+   144              10.33               4.53
+   256              10.03               4.63
+   400              10.10               4.69
+  1024              10.91               4.95
+
+== projected s/sweep for a single-site sweep (2*L*N sites, L = 40)
+     N                  variant        s/sweep
+    64             kernel async         0.0319
+    64            host decision         0.0754
+    64      dev decision 2 kern         0.0867
+    64      dev decision 1 gang         0.1049
+   144             kernel async         0.0718
+   144            host decision         0.1723
+   144      dev decision 2 kern         0.1989
+   144      dev decision 1 gang         0.4794
+   256             kernel async         0.1321
+   256            host decision         0.3135
+   256      dev decision 2 kern         0.3553
+   256      dev decision 1 gang         2.0524
+   400             kernel async         0.2744
+   400            host decision         0.5490
+   400      dev decision 2 kern         0.5678
+   400      dev decision 1 gang         6.6750
+  1024             kernel async         2.8246
+  1024            host decision         3.2013
+  1024      dev decision 2 kern         3.3216
+  1024      dev decision 1 gang       139.4022
+
+################ MODEL=acc (OpenACC, taskset -c 0,1) ################
+model: OpenACC (-acc=gpu), devices: 1 (nvidia)
+
+--- N = 64
+INFO               accepted sites of 256 (reference decision) N=   64  value= 1.240E+02
+PASS                    rank-1 x256 kernel sync vs host zgeru N=   64  value= 1.199E-15  tol= 1.00E-12
+PASS                   rank-1 x256 kernel async vs host zgeru N=   64  value= 1.199E-15  tol= 1.00E-12
+PASS                   rank-1 x256 cublas zgeru vs host zgeru N=   64  value= 7.965E-17  tol= 1.00E-12
+PASS                           host decision + rank-1 vs host N=   64  value= 8.365E-16  tol= 1.00E-12
+PASS                  host decision accept pattern mismatches N=   64  value= 0.000E+00  tol= 5.00E-01
+PASS                        device decision 2 kernels vs host N=   64  value= 8.365E-16  tol= 1.00E-12
+PASS     device decision 2 kernels: accept pattern mismatches N=   64  value= 0.000E+00  tol= 5.00E-01
+PASS                           device decision 1 gang vs host N=   64  value= 8.365E-16  tol= 1.00E-12
+PASS        device decision 1 gang: accept pattern mismatches N=   64  value= 0.000E+00  tol= 5.00E-01
+PASS                      Op_V per-site launches sync vs host N=   64  value= 8.392E-17  tol= 1.00E-12
+PASS                     Op_V per-site launches async vs host N=   64  value= 8.392E-17  tol= 1.00E-12
+
+--- N = 144
+INFO               accepted sites of 256 (reference decision) N=  144  value= 1.260E+02
+PASS                    rank-1 x256 kernel sync vs host zgeru N=  144  value= 1.195E-15  tol= 1.00E-12
+PASS                   rank-1 x256 kernel async vs host zgeru N=  144  value= 1.195E-15  tol= 1.00E-12
+PASS                   rank-1 x256 cublas zgeru vs host zgeru N=  144  value= 8.980E-17  tol= 1.00E-12
+PASS                           host decision + rank-1 vs host N=  144  value= 8.336E-16  tol= 1.00E-12
+PASS                  host decision accept pattern mismatches N=  144  value= 0.000E+00  tol= 5.00E-01
+PASS                        device decision 2 kernels vs host N=  144  value= 8.336E-16  tol= 1.00E-12
+PASS     device decision 2 kernels: accept pattern mismatches N=  144  value= 0.000E+00  tol= 5.00E-01
+PASS                           device decision 1 gang vs host N=  144  value= 8.336E-16  tol= 1.00E-12
+PASS        device decision 1 gang: accept pattern mismatches N=  144  value= 0.000E+00  tol= 5.00E-01
+PASS                      Op_V per-site launches sync vs host N=  144  value= 8.624E-17  tol= 1.00E-12
+PASS                     Op_V per-site launches async vs host N=  144  value= 8.624E-17  tol= 1.00E-12
+
+--- N = 256
+INFO               accepted sites of 256 (reference decision) N=  256  value= 1.110E+02
+PASS                    rank-1 x256 kernel sync vs host zgeru N=  256  value= 1.196E-15  tol= 1.00E-12
+PASS                   rank-1 x256 kernel async vs host zgeru N=  256  value= 1.196E-15  tol= 1.00E-12
+PASS                   rank-1 x256 cublas zgeru vs host zgeru N=  256  value= 8.672E-17  tol= 1.00E-12
+PASS                           host decision + rank-1 vs host N=  256  value= 7.769E-16  tol= 1.00E-12
+PASS                  host decision accept pattern mismatches N=  256  value= 0.000E+00  tol= 5.00E-01
+PASS                        device decision 2 kernels vs host N=  256  value= 7.769E-16  tol= 1.00E-12
+PASS     device decision 2 kernels: accept pattern mismatches N=  256  value= 0.000E+00  tol= 5.00E-01
+PASS                           device decision 1 gang vs host N=  256  value= 7.769E-16  tol= 1.00E-12
+PASS        device decision 1 gang: accept pattern mismatches N=  256  value= 0.000E+00  tol= 5.00E-01
+PASS                      Op_V per-site launches sync vs host N=  256  value= 8.178E-17  tol= 1.00E-12
+PASS                     Op_V per-site launches async vs host N=  256  value= 8.178E-17  tol= 1.00E-12
+
+--- N = 400
+INFO               accepted sites of 256 (reference decision) N=  400  value= 1.210E+02
+PASS                    rank-1 x256 kernel sync vs host zgeru N=  400  value= 1.190E-15  tol= 1.00E-12
+PASS                   rank-1 x256 kernel async vs host zgeru N=  400  value= 1.190E-15  tol= 1.00E-12
+PASS                   rank-1 x256 cublas zgeru vs host zgeru N=  400  value= 8.620E-17  tol= 1.00E-12
+PASS                           host decision + rank-1 vs host N=  400  value= 8.128E-16  tol= 1.00E-12
+PASS                  host decision accept pattern mismatches N=  400  value= 0.000E+00  tol= 5.00E-01
+PASS                        device decision 2 kernels vs host N=  400  value= 8.128E-16  tol= 1.00E-12
+PASS     device decision 2 kernels: accept pattern mismatches N=  400  value= 0.000E+00  tol= 5.00E-01
+PASS                           device decision 1 gang vs host N=  400  value= 8.128E-16  tol= 1.00E-12
+PASS        device decision 1 gang: accept pattern mismatches N=  400  value= 0.000E+00  tol= 5.00E-01
+PASS                      Op_V per-site launches sync vs host N=  400  value= 8.223E-17  tol= 1.00E-12
+PASS                     Op_V per-site launches async vs host N=  400  value= 8.223E-17  tol= 1.00E-12
+
+--- N = 1024
+INFO               accepted sites of 256 (reference decision) N= 1024  value= 1.470E+02
+PASS                    rank-1 x256 kernel sync vs host zgeru N= 1024  value= 1.191E-15  tol= 1.00E-12
+PASS                   rank-1 x256 kernel async vs host zgeru N= 1024  value= 1.191E-15  tol= 1.00E-12
+PASS                   rank-1 x256 cublas zgeru vs host zgeru N= 1024  value= 8.593E-17  tol= 1.00E-12
+PASS                           host decision + rank-1 vs host N= 1024  value= 8.967E-16  tol= 1.00E-12
+PASS                  host decision accept pattern mismatches N= 1024  value= 0.000E+00  tol= 5.00E-01
+PASS                        device decision 2 kernels vs host N= 1024  value= 8.967E-16  tol= 1.00E-12
+PASS     device decision 2 kernels: accept pattern mismatches N= 1024  value= 0.000E+00  tol= 5.00E-01
+PASS                           device decision 1 gang vs host N= 1024  value= 8.967E-16  tol= 1.00E-12
+PASS        device decision 1 gang: accept pattern mismatches N= 1024  value= 0.000E+00  tol= 5.00E-01
+PASS                      Op_V per-site launches sync vs host N= 1024  value= 8.410E-17  tol= 1.00E-12
+PASS                     Op_V per-site launches async vs host N= 1024  value= 8.410E-17  tol= 1.00E-12
+
+checks: 55 run, 0 FAILED
+
+== launch latency [us/launch] : median time [us]
+     N         empty sync        empty async
+    64               8.38               2.64
+   144               8.62               2.64
+   256               8.92               2.75
+   400               8.43               2.51
+  1024               8.59               2.78
+
+== rank-1 update [us/update] : median time [us]
+     N        kernel sync       kernel async       cublas zgeru
+    64               9.61               3.09               3.65
+   144              10.12               3.56               3.85
+   256              11.70               4.64               4.65
+   400              13.54               6.82               6.47
+  1024              38.95              31.88              31.63
+
+== single-site path [us/site] : median time [us]
+     N      host decision dev decision 2 ker dev decision 1 gan
+    64              15.39               7.04               5.57
+   144              15.28               7.00              15.20
+   256              15.39               6.85              37.27
+   400              16.99               8.53              90.93
+  1024              37.34              29.37             945.03
+
+== Op_V per-site launches [us/site] : median time [us]
+     N               sync              async
+    64               9.76               3.42
+   144               9.88               3.63
+   256              10.02               3.78
+   400              10.03               3.76
+  1024              11.29               4.04
+
+== projected s/sweep for a single-site sweep (2*L*N sites, L = 40)
+     N                  variant        s/sweep
+    64             kernel async         0.0158
+    64            host decision         0.0788
+    64      dev decision 2 kern         0.0360
+    64      dev decision 1 gang         0.0285
+   144             kernel async         0.0410
+   144            host decision         0.1760
+   144      dev decision 2 kern         0.0806
+   144      dev decision 1 gang         0.1751
+   256             kernel async         0.0950
+   256            host decision         0.3153
+   256      dev decision 2 kern         0.1402
+   256      dev decision 1 gang         0.7632
+   400             kernel async         0.2181
+   400            host decision         0.5436
+   400      dev decision 2 kern         0.2731
+   400      dev decision 1 gang         2.9097
+  1024             kernel async         2.6112
+  1024            host decision         3.0585
+  1024      dev decision 2 kern         2.4064
+  1024      dev decision 1 gang        77.4167
+
+################ OpenMP / OpenACC ratio of the medians above (>1: OpenACC faster) ################
+section                            variant                    64      144      256      400     1024
+Op_V per-site launches [us/site]   async                    1.27     1.25     1.22     1.25     1.23
+Op_V per-site launches [us/site]   sync                     0.97     1.05     1.00     1.01     0.97
+launch latency [us/launch]         empty async              4.22     3.76     3.65     3.96     3.95
+launch latency [us/launch]         empty sync               1.84     1.42     1.38     1.46     1.46
+rank-1 update [us/update]          cublas zgeru             1.02     1.03     1.01     1.04     1.01
+rank-1 update [us/update]          kernel async             2.01     1.75     1.39     1.26     1.08
+rank-1 update [us/update]          kernel sync              0.99     1.01     0.97     1.00     1.02
+single-site path [us/site]         dev decision 1 gan       3.68     2.74     2.69     2.29     1.80
+single-site path [us/site]         dev decision 2 ker       2.40     2.47     2.53     2.08     1.38
+single-site path [us/site]         host decision            0.96     0.98     0.99     1.01     1.05
+
+################ notes (added by hand from the tables above) ################
+# OpenMP/OpenACC ratio table: medians of the two runs divided (script not kept in the repo).
+# Reference, 16-core node (docs/gpu/BENCHMARKS.md, whole sweep incl. wraps/stabilisation, cb hopping):
+#   per chain-sweep = s/sweep per rank / 16:  N=144 0.038 s, N=400 0.57 s, N=1024 12.1 s.
+# The projections above are the single-site UPDATE part only (2*L*N sites, L=40, ~50% accepted), no wraps/stabilisation.
+# Best projected single-site update cost, OpenMP / OpenACC [s/sweep]:
+#   N=144 : 0.172 (host dec.)  / 0.081 (dev dec. 2 kern.)
+#   N=400 : 0.549 (host dec.)  / 0.273 (dev dec. 2 kern.)
+#   N=1024: 3.20  (host dec.)  / 2.41  (dev dec. 2 kern.)

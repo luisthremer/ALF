@@ -57,3 +57,23 @@ What this means:
 - Strided-batched ZGEMM over 2 flavours helps only at N ≤ 256.
 - cuBLAS needs 16-byte-aligned host alpha/beta (cuDoubleComplex); Fortran complex(8) constants are 8-byte
   aligned, which caused crashes (see `gpu_bench/README.md`).
+
+## Phase 1: launch overhead, OpenMP target vs OpenACC (ticket 102, nividia A30, nvfortran 26.9)
+
+Medians in µs; full tables in `gpu_bench/results/nividia_A30_launch_2026-10-27.txt` (re-run by the manager, within noise).
+Per site = per proposed flip, ≈ 50 % accepted; async rows and device decision: one wait per 256 sites.
+
+| Variant | N=144 OpenMP / OpenACC | N=400 | N=1024 |
+|---|---|---|---|
+| Empty kernel, sync | 12.4 / 8.4 | 12.2 / 8.5 | 12.1 / 8.4 |
+| Empty kernel, async (`nowait` / `async`) | 11.0 / 2.7 | 9.9 / 2.6 | 9.9 / 2.6 |
+| Rank-1 kernel, async | 6.1 / 3.6 | 8.6 / 6.9 | 34 / 31 |
+| cuBLAS zgeru | 3.9 / 3.9 | 6.5 / 6.7 | 31 / 31 |
+| Host decision, per site (G(i,i) D→H + conditional launch) | 15.2 / 15.4 | 18.0 / 17.9 | 34 / 33 |
+| Device decision, 2 async kernels, per site | 16.9 / 6.5 | 17.8 / 8.8 | 38 / 28 |
+
+- The model difference is the asynchronous launch: OpenMP `nowait` costs ≈ 10 µs (task creation), OpenACC `async` 2.6 µs.
+- Projected single-site update part only (2·L·N sites, L = 40) at N = 144: host decision 0.17 s/sweep, OpenACC device
+  decision 0.075 s/sweep; the 16-core node does the **whole** sweep in 0.038 s per chain. At N = 1024 everything is
+  bandwidth-bound (≈ 2.3–3.1 s/sweep vs 12 s per chain-sweep for the node).
+- Decision (ADR-001): OpenMP only; the per-site lever is delayed/submatrix updates.

@@ -152,3 +152,26 @@ column norm (the quantity Householder QR actually controls). See `results/` and 
 - A device->host->device `!$omp target update` loop whose result is never used on the host is optimised away by
   nvfortran (measured 0.15 us per round trip instead of ~9 us). The `+roundtrip` variants consume the value.
 - OpenMP target launches cost ~12-15 us each (synchronous); cuBLAS ZGERU ~5.5 us; see `upd` table.
+
+## Launch overhead: OpenMP target vs OpenACC (ticket 102)
+
+`src/bench_launch.F90` (standalone; reuses `bench_util`/`bench_ref`/`bench_la` unchanged). One source, model chosen by macro:
+
+```sh
+. ~/alf-gpu/env/nvhpc.sh; cd ~/alf-gpu/work/t102/gpu_bench
+make launch MODEL=omp   # nvfortran -mp=gpu  -DMODEL_OMP   -> build/launch_omp/bench_launch
+make launch MODEL=acc   # nvfortran -acc=gpu -DMODEL_ACC   -> build/launch_acc/bench_launch
+OMP_TARGET_OFFLOAD=MANDATORY ./build/launch_omp/bench_launch [N-list]   # default 64,144,256,400,1024
+./build/launch_acc/bench_launch
+```
+Flags (checked with `nvfortran -help -acc`/`-gpu`): `-O2 -g -traceback -gpu=cc80 -cudalib=cublas,cusolver`; the support
+modules are always built with `-mp=gpu`, the final link adds `-acc=gpu` for MODEL=acc. Data are mapped once with the model's
+own `enter data`; the cuBLAS reference gets device pointers from `host_data use_device` / `use_device_addr`.
+Variants: empty kernel (sync; async = 1000 launches, one wait: `nowait depend(inout)`+`taskwait` / `async(1)`+`wait(1)`), rank-1
+(sync, async, cuBLAS zgeru; 256 updates, one wait), single-site path (host decision = D2H of G(i,i) + launch if accepted;
+device decision with 2 async kernels: 1-thread decide + conditional update; device decision with ONE gang/team: decide,
+barrier, conditional update), Op_V per-site launches (sync, async). Decision: r = |1+G(i,i)|, accept iff u < r/(1+r), u
+pre-generated (accept rate ~ 50%). All checks: G vs host `zgeru` sequence <= 1e-12 and the accept pattern of host- and
+device-decision variants identical to the host reference (0 mismatches). Results: `results/nividia_A30_launch_<date>.txt`.
+Race note: a one-kernel multi-gang decision+update is not possible (the updating gangs overwrite G(i,i) that the others
+read), hence the 2-kernel and single-gang forms.
