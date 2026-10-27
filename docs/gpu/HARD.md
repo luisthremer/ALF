@@ -94,6 +94,9 @@ each depending on the previous update.
   (e.g. 4.4e-6 → 6.2e-5 at L=8, β=20, U=4) and more "Unstable matrix" aborts at U=8. So for STABLOG the GPU needs a
   re-ranking pivot strategy, or the pivoted QR of that step on the host. Follow-up ticket 108 studies this
   ([report](reports/104-prepivot-qr.md)).
+- **Ticket 108 result:** neither a two-pass sort (2× geqrf; closest, outliers up to 4.6× in max precision) nor blocked
+  re-ranking (stale norms within a block) meets the STABLOG criteria unconditionally. STABLOG keeps host ZGEQP3 for
+  CGR/CGR2_2 on the GPU path ([report](reports/108-stablog-pivot.md), ADR-001 §4).
 
 ## 3. Small matrices: the GPU is under-filled and launch-bound
 

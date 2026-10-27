@@ -1,6 +1,6 @@
 # ADR-002 – `alf_la` backend interface and device data model
 
-- **Status:** draft (2026-10-27). Items marked *[102]* or *[108]* wait for those tickets.
+- **Status:** proposed (2026-10-27), for the Phase 1 gate (owner review).
 - **Depends on:** ADR-001. Prototype: `gpu_bench/src/bench_la.F90` (101, 103).
 
 ## Context
@@ -22,8 +22,9 @@
 - Routines (initial set, from 101 and the profile): `la_init/finalize/sync`; `la_gemm`, `la_gemm_cr`/`la_gemm_rc`
   (complex × real via DGEMM on the interleaved view; dense B_T), `la_gemm_batched` (strided, flavours), `la_geru`,
   `la_geqrf`, `la_ungqr`, `la_ormqr` (with `_lwork` queries), `la_getrf`, `la_getri` (CGR determinant/inverse paths),
-  `la_qrpp` = column-norm pre-pivot + `geqrf` returning a ZGEQP3-compatible `IPVT` (104 semantics); *[108]* the STABLOG
-  variant or a documented host-QRCP route.
+  `la_qrpp` = column-norm pre-pivot + `geqrf` returning a ZGEQP3-compatible `IPVT` (104 semantics); `la_geqp3_host` for
+  STABLOG's CGR/CGR2_2 (108): copies the matrix to the host, calls ZGEQP3, returns factors and `IPVT` to the device
+  (a documented transfer).
 - Error handling: every routine returns or checks a device `info`; failures stop with `Terminate_on_error`.
 - cuBLAS scalars: alpha/beta passed via 16-byte-aligned `c_double_complex` module variables (101 crash finding).
 - Streams/queues: one in-order stream (CUDA) / the OpenMP interop `sycl::queue` (ONEMKL) per rank, created in
@@ -62,7 +63,7 @@ round trip becomes one per time slice (counter + accepted-flip phase).
 | Map ALF's derived types with `declare mapper` / deep copy | ifx support only since 2025.2 and buggy (R3 §2); pointer components into MPI windows; polymorphism. |
 | Unified/shared memory (managed) | Hides transfers, unpredictable page migration, contradicts the "every transfer documented" rule; PVC performance unclear. |
 | Call cuBLAS / oneMKL directly from ALF routines | Spreads vendor code across `Prog/`; the HOST oracle and `GPU=none` identity would get harder to guarantee. |
-| hipfort/MAGMA-style portability library | Extra dependency on SuperMUC; MAGMA remains an option only for an NVIDIA device QRCP *[108]*. |
+| hipfort/MAGMA-style portability library | Extra dependency on SuperMUC; MAGMA remains an option only for an NVIDIA device QRCP (404). |
 
 ## Consequences
 - The HOST backend makes every `alf_la` call testable on the CPU against the current code, bit for bit.

@@ -1,6 +1,6 @@
 # ADR-001 – Programming model for the ALF GPU port
 
-- **Status:** draft (2026-10-27). Items marked *[102]* or *[108]* wait for those tickets.
+- **Status:** proposed (2026-10-27), for the Phase 1 gate (owner review).
 - **Inputs:** HARD.md, PLAN.md §1, tickets 101 (A30 kernel benchmark), 103 (ifx/oneMKL), 104 (pre-pivoted QR),
   105 (nvfortran CPU build), 106 (statistical gate), 102 (OpenACC launch overhead), 108 (STABLOG pivoting).
 
@@ -26,9 +26,13 @@
    BLAS/LAPACK calls (HOST, the `GPU=none` path and test oracle). No other module knows the backend.
 3. **Configure-time selection** `GPU=none|nvidia|intel` (PLAN §1); `none` adds no flag and no object code.
 4. **Stabilization QR on the device: column-norm pre-pivot + unpivoted `geqrf`/`ungqr`/`ormqr`** for the default
-   stabilization in decompose, CGR and CGR2_2 (104: precision same order as ZGEQP3). STABLOG: *[108]* – either a
-   GPU-compatible pivot variant from 108 or host ZGEQP3 for the CGR/CGR2_2 step, with its transfer cost documented.
-   `GPU=none` keeps ZGEQP3 everywhere (owner decision PLAN §5.3 still open).
+   stabilization in decompose, CGR and CGR2_2 (104: precision same order as ZGEQP3). **STABLOG (108):** no
+   GPU-friendly pivoting meets the precision criteria unconditionally (static sort and blocked re-ranking fail; a
+   two-pass sort comes close but has outliers up to 4.6× in max precision and ≈ 1.4× higher means). So under STABLOG the
+   CGR (N×N) and CGR2_2 (2N×2N) factorizations run as **host ZGEQP3** with the matrix copied D→H and the factors back,
+   i.e. upstream numerics. Cost per call on one core: 14 ms (N=400), 186 ms (N=1024), plus 2.6 / 16.8 MB each way;
+   the transfers go into the PLAN.md transfer table. STABLOG's own decompose already pre-pivots and stays on the device.
+   `GPU=none` keeps ZGEQP3 everywhere; the GPU default path's pre-pivot still needs the owner's OK (PLAN §5.3).
 5. **Per-site update, MVP (Phase 2):** ratio and rank-1 update on the device, decision on the host, so that the GPU
    build reproduces the CPU trajectory flip by flip for the same compiler and seeds (validation level 2).
    The update code is organised as `propose → ratio → decide → apply/defer → flush` so that a device-side decision
@@ -65,7 +69,7 @@ The Hubbard models used for validation satisfy these.
 | CUDA Fortran | NVIDIA only; same objection, more invasive. |
 | `do concurrent` offload (`-stdpar`) | Relies on unified memory, no explicit residency or transfer control, library interop unclear; ifx support for offloaded `do concurrent` is newer than our pinned versions. |
 | SYCL/C++ or Kokkos rewrite of the hot path | Large rewrite of Fortran with class-based Hamiltonians; violates "one source tree" in spirit; the C++ is limited to the oneMKL shim. |
-| MAGMA for pivoted QR on NVIDIA | Only NVIDIA; becomes the fallback if STABLOG needs a device QRCP *[108]*. |
+| MAGMA for pivoted QR on NVIDIA | Only NVIDIA; option for 404 if the STABLOG host QRCP turns out to dominate on NVIDIA. |
 
 ## Consequences
 - Device code stays small and conservative; vendor-specific code is confined to `alf_la` (+ the SYCL shim).

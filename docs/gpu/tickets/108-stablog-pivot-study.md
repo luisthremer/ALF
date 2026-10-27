@@ -3,7 +3,7 @@
 - **Phase:** 1
 - **Owner agent:** fortran-gpu-dev (review: numerics-reviewer)
 - **Depends on:** 104 (done)
-- **Status:** open (approved by the owner 2026-10-27)
+- **Status:** done (2026-10-27; reviewed, key case reproduced; verdict: no variant passes unconditionally, STABLOG keeps host QRCP)
 
 ## Goal
 Find a pivoting strategy for the QR in CGR and CGR2_2 that keeps STABLOG precision at upstream level (Green and
@@ -44,3 +44,10 @@ Testing only (develop on the laptop and rsync). Write only inside `~/alf-gpu/wor
 
 ## Out of scope
 GPU code, the default-stabilization path (already settled by 104), STAB1/2/3.
+
+## Resolution (manager, 2026-10-27)
+- numerics-reviewer approved the diff; the manager reproduced L8 b10 U4 w10 (s3, up and v2) bit for bit.
+- Variant 1 and 3 fail; variant 2 (two-pass, 2× geqrf) meets the criteria in all class-A cases and 8/9 class-B cases, with
+  one tau-max outlier (4.6×) and systematically higher means (up to 1.41×). Not an unconditional pass.
+- Decision: STABLOG on the GPU uses host ZGEQP3 for CGR/CGR2_2 in the MVP (ADR-001 §4). Details and nits:
+  `docs/gpu/reports/108-stablog-pivot.md`, "Manager review".

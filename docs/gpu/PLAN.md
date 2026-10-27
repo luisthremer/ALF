@@ -51,6 +51,7 @@ gpu_state module (plain contiguous device arrays, allocated once)
 | per site and slice (2·L·N per sweep) | D→H, H→D | a few complex scalars | ratio to host, decision (and new field) back; keeps the RNG order identical to the CPU |
 | per measurement (3L per sweep), MVP only | D→H | G (and GT0/G0T/GTT for τ), F·16N² B each | host observables; removed once Hubbard observables run on the device |
 | per stabilization | D→H | a few scalars | precision, NaN checks, phase (H8) |
+| per CGR / CGR2_2 call, **STABLOG only** | D→H, H→D | N² (CGR) / 4N² (CGR2_2) complex, each way | host ZGEQP3: no GPU pivoting meets the precision criteria (108, ADR-001 §4) |
 | end of bin / run | D→H | nsigma (confout), and G only if needed | output |
 
 ## 2. Phases, gates and tickets
@@ -140,7 +141,7 @@ Every ticket gets review (rev) and acceptance re-run by the manager.
 
 | # | Risk | Likelihood / impact | Mitigation |
 |---|---|---|---|
-| R1 | Pre-pivoted QR not accurate enough in CGR/CGR2_2 at large β | medium / high | 104 decides before any GPU stabilization code; fallbacks MAGMA (NVIDIA), host QRCP |
+| R1 | Pre-pivoted QR not accurate enough in CGR/CGR2_2 at large β | default: resolved (104); STABLOG: occurred (108) | STABLOG uses host ZGEQP3 for CGR/CGR2_2; MAGMA (NVIDIA) as later option |
 | R2 | GPU slower than the 16-core node below large N (rank-1 latency, small GEMMs) | high / medium | Report the crossover honestly; delayed/submatrix updates (403) and chains per GPU (404) are the levers |
 | R3 | nvfortran OpenMP offload markedly slower than OpenACC | medium / medium | 102 measures; keep directives few and localized |
 | R4 | ifx offload bugs (ICE, wrong answers), no local PVC, no `ocloc` | high / medium | Conservative subset, ifx JIT builds + host fallback on every change, version pinning, owner recipe |

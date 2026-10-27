@@ -310,6 +310,157 @@ module cgr1_mod
             Deallocate(TPUP_temp)
         ENDIF
 #if defined(QR_PREPIVOT)
+#if QR_PREPIVOT == 2
+        ! Test-only (ticket 108), variant 2 (two-pass): pass 1 = static norm sort + unpivoted QR of a copy;
+        ! the columns are then re-sorted by |R_jj| (residual norm in the pass-1 order), and the final unpivoted
+        ! QR of the re-sorted original matrix is done by QDRP_decompose with all columns fixed (cost 2 x geqrf).
+        ! IPVT has ZGEQP3 semantics (column j of A*P is column IPVT(j) of A).
+        block
+          Real(Kind=Kind(0.d0)), allocatable :: pp_nrm(:)
+          Real(Kind=Kind(0.d0)) :: DZNRM2
+          Complex(Kind=Kind(0.d0)), allocatable :: pp_tmp(:,:), pp_work(:), pp_tau(:)
+          Complex(Kind=Kind(0.d0)) :: pp_z
+          Integer, allocatable :: pp_perm(:), pp_perm2(:), pp_ord(:)
+          Integer :: pp_i, pp_j, pp_k, pp_lw, pp_info
+          Allocate(pp_nrm(udvl%N_part), pp_tmp(N_size,udvl%N_part), pp_perm(size(IPVT)), pp_perm2(size(IPVT)), pp_ord(udvl%N_part), pp_tau(udvl%N_part))
+          do pp_j = 1, udvl%N_part
+             pp_nrm(pp_j) = DZNRM2(N_size, TPUP(1,pp_j), 1)
+             pp_perm(pp_j) = pp_j
+          enddo
+          do pp_j = udvl%N_part+1, size(IPVT)
+             pp_perm(pp_j) = pp_j
+          enddo
+          do pp_i = 2, udvl%N_part
+             pp_k = pp_perm(pp_i)
+             pp_j = pp_i - 1
+             do while (pp_j >= 1)
+                if (pp_nrm(pp_perm(pp_j)) >= pp_nrm(pp_k)) exit
+                pp_perm(pp_j+1) = pp_perm(pp_j)
+                pp_j = pp_j - 1
+             enddo
+             pp_perm(pp_j+1) = pp_k
+          enddo
+          do pp_j = 1, udvl%N_part
+             pp_tmp(:,pp_j) = TPUP(1:N_size,pp_perm(pp_j))
+          enddo
+          ! pass 1: unpivoted QR of the sorted copy (only |R_jj| is used)
+          call ZGEQRF(N_size, udvl%N_part, pp_tmp(1,1), N_size, pp_tau(1), pp_z, -1, pp_info)
+          pp_lw = INT(DBLE(pp_z))
+          Allocate(pp_work(pp_lw))
+          call ZGEQRF(N_size, udvl%N_part, pp_tmp(1,1), N_size, pp_tau(1), pp_work(1), pp_lw, pp_info)
+          do pp_j = 1, udvl%N_part
+             pp_nrm(pp_j) = ABS(pp_tmp(pp_j,pp_j))
+          enddo
+          ! pass 2 order: stable descending sort of the pass-1 positions by |R_jj|
+          do pp_j = 1, udvl%N_part
+             pp_ord(pp_j) = pp_j
+          enddo
+          do pp_i = 2, udvl%N_part
+             pp_k = pp_ord(pp_i)
+             pp_j = pp_i - 1
+             do while (pp_j >= 1)
+                if (pp_nrm(pp_ord(pp_j)) >= pp_nrm(pp_k)) exit
+                pp_ord(pp_j+1) = pp_ord(pp_j)
+                pp_j = pp_j - 1
+             enddo
+             pp_ord(pp_j+1) = pp_k
+          enddo
+          pp_perm2 = pp_perm
+          do pp_j = 1, udvl%N_part
+             pp_perm2(pp_j) = pp_perm(pp_ord(pp_j))
+             pp_tmp(:,pp_j) = TPUP(1:N_size,pp_perm2(pp_j))
+          enddo
+          TPUP(1:N_size,1:udvl%N_part) = pp_tmp
+          IPVT = 1   ! all columns fixed: LAPACK pivoting off
+          call QDRP_decompose(N_size, udvl%N_part, TPUP, DUP, IPVT, TAU, WORK, LWORK)
+          IPVT = pp_perm2
+          Deallocate(pp_nrm, pp_tmp, pp_perm, pp_perm2, pp_ord, pp_tau, pp_work)
+        end block
+#elif QR_PREPIVOT == 3
+        ! Test-only (ticket 108), variant 3 (blocked re-ranking): per block of QR_PPNB columns the remaining
+        ! columns are re-sorted by their current residual 2-norm, the block is factored by ZGEQRF, Q^H is applied
+        ! to the trailing columns by ZUNMQR, and the trailing residual norms are recomputed exactly (DZNRM2,
+        ! no downdating). Total flops = one geqrf plus O(M*N^2/QR_PPNB) for the norms. QRCP with block-level
+        ! pivoting; QR_PPNB=1 would be ZGEQP3 with exact norms. D is separated as in QDRP_decompose.
+        ! IPVT has ZGEQP3 semantics (column j of A*P is column IPVT(j) of A).
+#if !defined(QR_PPNB)
+#define QR_PPNB 32
+#endif
+        block
+          Real(Kind=Kind(0.d0)), allocatable :: pp_nrm(:), pp_nrm2(:), pp_rwr(:)
+          Real(Kind=Kind(0.d0)) :: DZNRM2, pp_x
+          Complex(Kind=Kind(0.d0)), allocatable :: pp_tmp(:,:), pp_work(:)
+          Complex(Kind=Kind(0.d0)) :: pp_z
+          Integer, allocatable :: pp_perm(:), pp_perm2(:), pp_ord(:)
+          Integer :: pp_i, pp_j, pp_j0, pp_k, pp_b, pp_r, pp_info, pp_lw, pp_nb
+          pp_nb = QR_PPNB
+          Allocate(pp_nrm(udvl%N_part), pp_nrm2(udvl%N_part), pp_tmp(N_size,udvl%N_part), pp_perm(size(IPVT)), pp_perm2(size(IPVT)), pp_ord(udvl%N_part))
+          do pp_j = 1, udvl%N_part
+             pp_nrm(pp_j) = DZNRM2(N_size, TPUP(1,pp_j), 1)
+          enddo
+          do pp_j = 1, size(IPVT)
+             pp_perm(pp_j) = pp_j
+          enddo
+          pp_b = min(pp_nb, udvl%N_part)
+          call ZGEQRF(N_size, pp_b, TPUP(1,1), N_size, TAU(1), pp_z, -1, pp_info)
+          pp_lw = INT(DBLE(pp_z))
+          call ZUNMQR('L', 'C', N_size, udvl%N_part, pp_b, TPUP(1,1), N_size, TAU(1), TPUP(1,1), N_size, pp_z, -1, pp_info)
+          pp_lw = max(pp_lw, INT(DBLE(pp_z)))
+          Allocate(pp_work(pp_lw))
+          pp_k = 1
+          do while (pp_k <= udvl%N_part)
+             pp_r = udvl%N_part - pp_k + 1
+             pp_b = min(pp_nb, pp_r)
+             ! re-rank the remaining columns by current residual norm (stable, descending)
+             do pp_i = 1, pp_r
+                pp_ord(pp_i) = pp_k + pp_i - 1
+             enddo
+             do pp_i = 2, pp_r
+                pp_j0 = pp_ord(pp_i)
+                pp_j = pp_i - 1
+                do while (pp_j >= 1)
+                   if (pp_nrm(pp_ord(pp_j)) >= pp_nrm(pp_j0)) exit
+                   pp_ord(pp_j+1) = pp_ord(pp_j)
+                   pp_j = pp_j - 1
+                enddo
+                pp_ord(pp_j+1) = pp_j0
+             enddo
+             do pp_i = 1, pp_r
+                pp_tmp(1:N_size,pp_i) = TPUP(1:N_size,pp_ord(pp_i))
+                pp_nrm2(pp_i) = pp_nrm(pp_ord(pp_i))
+                pp_perm2(pp_i) = pp_perm(pp_ord(pp_i))
+             enddo
+             TPUP(1:N_size,pp_k:udvl%N_part) = pp_tmp(1:N_size,1:pp_r)
+             pp_nrm(pp_k:udvl%N_part) = pp_nrm2(1:pp_r)
+             pp_perm(pp_k:udvl%N_part) = pp_perm2(1:pp_r)
+             ! factor the panel, apply Q^H to the trailing columns, recompute their residual norms exactly
+             call ZGEQRF(N_size-pp_k+1, pp_b, TPUP(pp_k,pp_k), N_size, TAU(pp_k), pp_work(1), pp_lw, pp_info)
+             if (pp_k + pp_b <= udvl%N_part) then
+                call ZUNMQR('L', 'C', N_size-pp_k+1, udvl%N_part-pp_k-pp_b+1, pp_b, TPUP(pp_k,pp_k), N_size, TAU(pp_k), &
+                     &      TPUP(pp_k,pp_k+pp_b), N_size, pp_work(1), pp_lw, pp_info)
+                do pp_j = pp_k + pp_b, udvl%N_part
+                   pp_nrm(pp_j) = DZNRM2(N_size-pp_k-pp_b+1, TPUP(pp_k+pp_b,pp_j), 1)
+                enddo
+             endif
+             pp_k = pp_k + pp_b
+          enddo
+          ! same LWORK/WORK contract as QDRP_decompose (WORK is used afterwards by ZUNMQR)
+          Allocate(pp_rwr(2*N_size))
+          call ZGEQP3(N_size, udvl%N_part, TPUP(1,1), N_size, IPVT, TAU(1), pp_z, -1, pp_rwr(1), pp_info)
+          LWORK = INT(DBLE(pp_z))
+          Allocate(WORK(LWORK))
+          ! separate off D (as QDRP_decompose)
+          do pp_i = 1, udvl%N_part
+             pp_x = ABS(TPUP(pp_i, pp_i))
+             DUP(pp_i) = pp_x
+             do pp_j = pp_i, udvl%N_part
+                TPUP(pp_i, pp_j) = TPUP(pp_i, pp_j) / pp_x
+             enddo
+          enddo
+          IPVT = pp_perm
+          Deallocate(pp_nrm, pp_nrm2, pp_rwr, pp_tmp, pp_work, pp_perm, pp_perm2, pp_ord)
+        end block
+#else
         ! Test-only (ticket 104): sort columns by 2-norm (stable, descending), then unpivoted QR.
         ! IPVT is set to the permutation with ZGEQP3 semantics (column j of A*P is column IPVT(j) of A).
         block
@@ -345,6 +496,7 @@ module cgr1_mod
           IPVT = pp_perm
           Deallocate(pp_nrm, pp_tmp, pp_perm)
         end block
+#endif
 #else
         call QDRP_decompose(N_size, udvl%N_part, TPUP, DUP, IPVT, TAU, WORK, LWORK)
 #endif
