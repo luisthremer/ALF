@@ -32,6 +32,17 @@ LAPACK routines that oneMKL's Fortran `!$omp dispatch` would run on the host.
   host. The SYCL shim then needs a host/CPU SYCL device (`ONEAPI_DEVICE_SELECTOR=opencl:cpu` or
   similar). Record which selector works.
 
+## Additional task from the 101 review: representative QR test matrices
+101's criterion (ii) was ill-posed for its row-mixed graded matrices (see 101 "Resolution"). Add to the `qr`
+section, for all backends:
+- **mat5:** column-graded A = M·diag(d), M a random well-conditioned complex matrix (cond ≲ 10), d log-spaced
+  1e+12…1e-12 in random column order. This is the structure of ALF's `decompose` (B·U·D).
+- **mat6:** two-sided graded A = diag(d₁)·M·diag(d₂) (the structure of CGR's U_R†U_L + D_R(V_R V_L)D_L).
+- Checks: (i) and (ii-b) as in 101. (ii) relative |R_ii| device vs host path B ≤ 1e-10 on mat5. On mat6, report
+  the value and the same quantity for host path A (ZGEQP3) vs host path B, but do not gate on it: that is the
+  pre-pivot question, which ticket 104 answers at the ALF level.
+Also apply this to `BACKEND=cuda` and `BACKEND=host` (rerun on nividia, GPU allowed for this re-run only, ≤ 5 min).
+
 ## Files allowed
 - `gpu_bench/**` (add `-DBENCH_LA_ONEMKL` backend, `bench_sycl_shim.cpp`, Makefile target
   `BACKEND=onemkl`, README section)

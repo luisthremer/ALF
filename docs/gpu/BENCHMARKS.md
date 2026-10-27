@@ -27,3 +27,33 @@ per rank); the 32×32 values in brackets assume 16 × the single-rank rate.
 
 **What a GPU must beat:** one GPU chain needs about 16 × (single-rank s/sweep) less time per sweep to
 match this node, unless the GPU runs several chains at once (HARD.md, "The bar a GPU has to clear").
+
+## Phase 1: kernel benchmark (ticket 101, nividia A30, 2026-10-27)
+
+Standalone `gpu_bench/` (nvfortran 26.9, OpenMP target + cuBLAS/cuSOLVER) vs one host core (NVHPC BLAS/LAPACK).
+Medians in µs; full tables in `gpu_bench/results/nividia_A30_2026-10-27.txt` (reproduced by the manager, within
+noise). Host load ≈10 during the runs (other tickets), so host numbers are slightly pessimistic.
+
+| Kernel (per call) | N=144 device / host | N=400 device / host | N=1024 device / host |
+|---|---|---|---|
+| Checkerboard B_T (G ← B G B⁻¹, 8 family kernels) | 96 / 191 | 139 / 1485 | 392 / 9983 |
+| Dense B_T, 2 ZGEMM | 53 / 1095 | 172 / 22941 | 2757 / 388561 |
+| Dense B_T, DGEMM on real view + transposes | 59 / – | 168 / – | 1890 / – |
+| Op_V wrap, one launch per site × N | 1621 / 199 | 4211 / 1087 | 10924 / 10002 |
+| Op_V wrap, all sites fused | 13 / 36 | 17 / 276 | 40 / 1855 |
+| Stabilization QR (pre-pivot + geqrf + ungqr) vs host ZGEQP3 + ZUNGQR | 1058 / 1834 | 2822 / 25721 | 9956 / 373241 |
+| Rank-1 update (cuBLAS zgeru) | 4.7 / 6.8 | 6.6 / 71 | 31.6 / 353 |
+| Rank-1 + host round trip of one scalar | 28 / – | 29 / – | 53 / – |
+| Rank-k, per update, k=128 | 0.21 / – | 0.37 / – | 1.25 / 189 |
+
+What this means:
+- **Stabilization, dense B_T and fused element-wise kernels are fast on the device** (5–40× one core at N ≥ 400).
+- **Per-site work is launch- and latency-bound:** one OpenMP target region ≈ 12–15 µs (7–9 µs with `nowait`),
+  cuBLAS call ≈ 5 µs, scalar D→H→D round trip 16–23 µs. A rank-1 sweep with host decisions costs
+  ≈ 2·L·N × 28 µs: 0.32 s/sweep at N=144 (L=40), versus 0.038 s per chain-sweep for the 16-core node,
+  i.e. ~8× slower. At N=1024, ≈ 4.4 s vs ≈ 12 s per chain-sweep for the node.
+- **Rank-k (k=128) is 25–40× cheaper per update than rank-1 on the device:** this quantifies the value of
+  delayed or submatrix updates.
+- Strided-batched ZGEMM over 2 flavours helps only at N ≤ 256.
+- cuBLAS needs 16-byte-aligned host alpha/beta (cuDoubleComplex); Fortran complex(8) constants are 8-byte
+  aligned, which caused crashes (see `gpu_bench/README.md`).

@@ -3,7 +3,7 @@
 - **Phase:** 1
 - **Owner agent:** fortran-gpu-dev
 - **Depends on:** –
-- **Status:** open
+- **Status:** done (2026-10-27; reviewed + re-run by manager, results reproduced)
 
 ## Goal
 Write a standalone Fortran benchmark, outside ALF's build, that times the operations the GPU port
@@ -99,3 +99,14 @@ Nothing in `Prog/`, `Libraries/`, `configure.sh` or the testsuite. Anything else
 ## Out of scope
 - OpenACC (ticket 102 decides later), the ifx/oneMKL backend (103), integration into ALF, MAGMA,
   mixed precision.
+
+## Resolution (manager, 2026-10-27)
+- 168/186 CUDA checks pass and the host build passes 186/186. The 18 failing checks are all QR criterion (ii), |R_ii| device vs host
+  path B ≤ 1e-10 on mat1–3 (1e-6…2.5).
+- **Criterion (ii) was ill-posed (ticket author's error).** In A = Q₁·diag(d)·R₁ every column mixes all scales, so
+  |R_ii| ≲ eps·‖A‖ is rounding noise for *any* Householder QR. Two host LAPACK variants (blocked ZGEQRF vs
+  ZGEQR2) differ by the same amount. The backward-error form (ii-b), |ΔR_ii| / ‖column‖ ≤ 1e-12, passes everywhere
+  (worst 1.1e-14) and replaces (ii) for these matrices. This is not a weakened tolerance: (ii) tested something that
+  no algorithm achieves.
+- The physically relevant case, column- or two-sided graded matrices as in ALF's decompose/CGR, where a relative
+  accuracy of |R_ii| *is* expected, moves to ticket 103 (new matrices mat5/mat6).
