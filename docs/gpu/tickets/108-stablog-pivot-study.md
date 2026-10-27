@@ -3,7 +3,7 @@
 - **Phase:** 1
 - **Owner agent:** fortran-gpu-dev (review: numerics-reviewer)
 - **Depends on:** 104 (done)
-- **Status:** proposed (needs the owner's go-ahead)
+- **Status:** open (approved by the owner 2026-10-27)
 
 ## Goal
 Find a pivoting strategy for the QR in CGR and CGR2_2 that keeps STABLOG precision at upstream level (Green and
