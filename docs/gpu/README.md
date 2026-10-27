@@ -2,8 +2,8 @@
 
 | File | Purpose | Status |
 |---|---|---|
-| [HARD.md](HARD.md) | What makes this port hard, ranked by impact, evidence + strategy | Phase 0 |
-| [PLAN.md](PLAN.md) | Architecture, phases, ticket list, risks | Phase 0 |
+| [HARD.md](HARD.md) | What makes this port hard, ranked by impact, evidence + strategy | Phase 0 ✅ |
+| [PLAN.md](PLAN.md) | Architecture, phases, ticket list, risks, open decisions | Phase 0 ✅ |
 | [MACHINES.md](MACHINES.md) | Probed hardware/toolchains (`nividia`, SuperMUC-NG Ph2) | Phase 0 |
 | [BASELINE.md](BASELINE.md) | CPU builds, unit tests, test_vs_ed, Hubbard reference runs, validation lessons | Phase 0 |
 | [PROFILE.md](PROFILE.md) | Measured CPU time per kernel (vs R1 §2), call counts, profiling method | Phase 0 |
