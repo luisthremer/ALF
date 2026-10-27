@@ -89,6 +89,11 @@ each depending on the previous update.
      QR (this is pre-pivoting again);
   3. host QRCP.
 - `GPU=none` keeps the upstream QRCP unchanged.
+- **Ticket 104 result (CPU, same seeds):** a static pre-sort by column norm in CGR/CGR2_2 keeps the default
+  stabilization's precision (mean within ±5 %, trajectories identical), but degrades **STABLOG**: Green max up to 14×
+  (e.g. 4.4e-6 → 6.2e-5 at L=8, β=20, U=4) and more "Unstable matrix" aborts at U=8. So for STABLOG the GPU needs a
+  re-ranking pivot strategy, or the pivoted QR of that step on the host. Follow-up ticket 108 studies this
+  ([report](reports/104-prepivot-qr.md)).
 
 ## 3. Small matrices: the GPU is under-filled and launch-bound
 

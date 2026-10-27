@@ -402,7 +402,45 @@ module cgr2_2_mod
            ENDDO
            ! HLPB1 = CT(HLPB2)
            HLPB1 = conjg(transpose(HLPB2))
+#if defined(QR_PREPIVOT)
+        ! Test-only (ticket 104): sort columns by 2-norm (stable, descending), then unpivoted QR.
+        ! IPVT is set to the permutation with ZGEQP3 semantics (column j of A*P is column IPVT(j) of A).
+        block
+          Real(Kind=Kind(0.d0)), allocatable :: pp_nrm(:)
+          Real(Kind=Kind(0.d0)) :: DZNRM2
+          Complex(Kind=Kind(0.d0)), allocatable :: pp_tmp(:,:)
+          Integer, allocatable :: pp_perm(:)
+          Integer :: pp_i, pp_j, pp_k
+          Allocate(pp_nrm(LQ2), pp_tmp(LQ2,LQ2), pp_perm(size(IPVT)))
+          do pp_j = 1, LQ2
+             pp_nrm(pp_j) = DZNRM2(LQ2, HLPB1(1,pp_j), 1)
+             pp_perm(pp_j) = pp_j
+          enddo
+          do pp_j = LQ2+1, size(IPVT)
+             pp_perm(pp_j) = pp_j
+          enddo
+          do pp_i = 2, LQ2
+             pp_k = pp_perm(pp_i)
+             pp_j = pp_i - 1
+             do while (pp_j >= 1)
+                if (pp_nrm(pp_perm(pp_j)) >= pp_nrm(pp_k)) exit
+                pp_perm(pp_j+1) = pp_perm(pp_j)
+                pp_j = pp_j - 1
+             enddo
+             pp_perm(pp_j+1) = pp_k
+          enddo
+          do pp_j = 1, LQ2
+             pp_tmp(:,pp_j) = HLPB1(1:LQ2,pp_perm(pp_j))
+          enddo
+          HLPB1(1:LQ2,1:LQ2) = pp_tmp
+          IPVT = 1   ! all columns fixed: LAPACK pivoting off
+          call QDRP_decompose(LQ2, LQ2, HLPB1, D3, IPVT, TAU, WORK, LWORK)
+          IPVT = pp_perm
+          Deallocate(pp_nrm, pp_tmp, pp_perm)
+        end block
+#else
            call QDRP_decompose(LQ2, LQ2, HLPB1, D3, IPVT, TAU, WORK, LWORK)
+#endif
            call solve_extended_System(HLPB2, V1INV, MYU2, HLPB1, D3, TAU, IPVT, LQ, WORK, LWORK)
            call get_blocks(GR00, GR0T, GRT0, GRTT, HLPB2, LQ)
         Else
@@ -417,7 +455,45 @@ module cgr2_2_mod
            ENDDO
            ! HLPB1 = CT(HLPB2)
            HLPB1 = conjg(transpose(HLPB2))
+#if defined(QR_PREPIVOT)
+        ! Test-only (ticket 104): sort columns by 2-norm (stable, descending), then unpivoted QR.
+        ! IPVT is set to the permutation with ZGEQP3 semantics (column j of A*P is column IPVT(j) of A).
+        block
+          Real(Kind=Kind(0.d0)), allocatable :: pp_nrm(:)
+          Real(Kind=Kind(0.d0)) :: DZNRM2
+          Complex(Kind=Kind(0.d0)), allocatable :: pp_tmp(:,:)
+          Integer, allocatable :: pp_perm(:)
+          Integer :: pp_i, pp_j, pp_k
+          Allocate(pp_nrm(LQ2), pp_tmp(LQ2,LQ2), pp_perm(size(IPVT)))
+          do pp_j = 1, LQ2
+             pp_nrm(pp_j) = DZNRM2(LQ2, HLPB1(1,pp_j), 1)
+             pp_perm(pp_j) = pp_j
+          enddo
+          do pp_j = LQ2+1, size(IPVT)
+             pp_perm(pp_j) = pp_j
+          enddo
+          do pp_i = 2, LQ2
+             pp_k = pp_perm(pp_i)
+             pp_j = pp_i - 1
+             do while (pp_j >= 1)
+                if (pp_nrm(pp_perm(pp_j)) >= pp_nrm(pp_k)) exit
+                pp_perm(pp_j+1) = pp_perm(pp_j)
+                pp_j = pp_j - 1
+             enddo
+             pp_perm(pp_j+1) = pp_k
+          enddo
+          do pp_j = 1, LQ2
+             pp_tmp(:,pp_j) = HLPB1(1:LQ2,pp_perm(pp_j))
+          enddo
+          HLPB1(1:LQ2,1:LQ2) = pp_tmp
+          IPVT = 1   ! all columns fixed: LAPACK pivoting off
+          call QDRP_decompose(LQ2, LQ2, HLPB1, D3, IPVT, TAU, WORK, LWORK)
+          IPVT = pp_perm
+          Deallocate(pp_nrm, pp_tmp, pp_perm)
+        end block
+#else
            call QDRP_decompose(LQ2, LQ2, HLPB1, D3, IPVT, TAU, WORK, LWORK)
+#endif
            call solve_extended_System(HLPB2, MYU2, V1INV, HLPB1, D3, TAU, IPVT, LQ, WORK, LWORK)
            call get_blocks(GRTT, GRT0, GR0T, GR00, HLPB2, LQ)
         Endif

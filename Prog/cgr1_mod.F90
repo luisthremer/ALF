@@ -309,7 +309,45 @@ module cgr1_mod
             TPUP = TPUP_temp
             Deallocate(TPUP_temp)
         ENDIF
+#if defined(QR_PREPIVOT)
+        ! Test-only (ticket 104): sort columns by 2-norm (stable, descending), then unpivoted QR.
+        ! IPVT is set to the permutation with ZGEQP3 semantics (column j of A*P is column IPVT(j) of A).
+        block
+          Real(Kind=Kind(0.d0)), allocatable :: pp_nrm(:)
+          Real(Kind=Kind(0.d0)) :: DZNRM2
+          Complex(Kind=Kind(0.d0)), allocatable :: pp_tmp(:,:)
+          Integer, allocatable :: pp_perm(:)
+          Integer :: pp_i, pp_j, pp_k
+          Allocate(pp_nrm(udvl%N_part), pp_tmp(N_size,udvl%N_part), pp_perm(size(IPVT)))
+          do pp_j = 1, udvl%N_part
+             pp_nrm(pp_j) = DZNRM2(N_size, TPUP(1,pp_j), 1)
+             pp_perm(pp_j) = pp_j
+          enddo
+          do pp_j = udvl%N_part+1, size(IPVT)
+             pp_perm(pp_j) = pp_j
+          enddo
+          do pp_i = 2, udvl%N_part
+             pp_k = pp_perm(pp_i)
+             pp_j = pp_i - 1
+             do while (pp_j >= 1)
+                if (pp_nrm(pp_perm(pp_j)) >= pp_nrm(pp_k)) exit
+                pp_perm(pp_j+1) = pp_perm(pp_j)
+                pp_j = pp_j - 1
+             enddo
+             pp_perm(pp_j+1) = pp_k
+          enddo
+          do pp_j = 1, udvl%N_part
+             pp_tmp(:,pp_j) = TPUP(1:N_size,pp_perm(pp_j))
+          enddo
+          TPUP(1:N_size,1:udvl%N_part) = pp_tmp
+          IPVT = 1   ! all columns fixed: LAPACK pivoting off
+          call QDRP_decompose(N_size, udvl%N_part, TPUP, DUP, IPVT, TAU, WORK, LWORK)
+          IPVT = pp_perm
+          Deallocate(pp_nrm, pp_tmp, pp_perm)
+        end block
+#else
         call QDRP_decompose(N_size, udvl%N_part, TPUP, DUP, IPVT, TAU, WORK, LWORK)
+#endif
         ALLOCATE(VISITED(N_size))
         ! Calculate the sign of the permutation from the pivoting. Somehow the format used by the QR decomposition of lapack
         ! is different from that of the LU decomposition of lapack

@@ -3,7 +3,7 @@
 - **Phase:** 1
 - **Owner agent:** fortran-gpu-dev (review: numerics-reviewer)
 - **Depends on:** –
-- **Status:** open
+- **Status:** done (2026-10-27; reviewed + key case reproduced; verdict: default OK, STABLOG worse with a static pre-sort; follow-up proposed)
 
 ## Goal
 Find out on the CPU whether replacing true QR with column pivoting (`ZGEQP3`) by
