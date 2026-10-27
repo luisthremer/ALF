@@ -69,14 +69,20 @@ Rules: CLAUDE.md "Machine rules". Our dir `~/alf-gpu/` (mode 700).
 Environment: `. ~/alf-gpu/env/intel.sh` (= `/opt/intel/oneapi/2025.3/oneapi-vars.sh --force`; ifx 2025.3.3,
 `MKLROOT=/opt/intel/oneapi/2025.3`, `mpiifx`).
 
-**Blocker (2026-10-27): no GPU access for our account.** The render nodes are `root:render 0660` and the account is
-not in `render`, so `sycl-ls` and `clinfo` show only the OpenCL CPU device. Fix by the owner (root): add the account
-to `render`, then log in again. Agents never do this themselves.
+**GPU access (fixed 2026-10-27 by the owner: account added to `render`).** Checked the same day:
+- Level Zero sees `level_zero:0` = Arc B580 (`[0xe20b]`, driver 1.6.32224) and `level_zero:1` = UHD 730. Select
+  the B580 with `ONEAPI_DEVICE_SELECTOR=level_zero:0`.
+- B580 aspects include `fp64` and `atomic64`. An ifx 2025.3 OpenMP target region (complex(8) multiply, `exp`,
+  real(8) `sqrt`) runs on the device under `OMP_TARGET_OFFLOAD=MANDATORY`, max rel. diff vs host 4.4e-16, both JIT
+  (`-fopenmp-targets=spir64`) and AOT (`spir64_gen -Xopenmp-target-backend "-device bmg-g21"`, i.e. ocloc works).
+- **FP64 rate not measured yet** (a ZGEMM/DGEMM benchmark; will come with the first oneMKL work).
+- **Don't run plain `sycl-ls`:** it lists the devices and then aborts in the driver (`drm_neo.cpp:410`), and Ubuntu's
+  apport writes a ≈ 110 MB report to `/var/crash/_opt_intel_oneapi_compiler_2025.3_bin_sycl-ls.<uid>.crash` (one
+  file, overwritten on repeat). One exists from this probe; it is outside `~/alf-gpu/`, so agents leave it to the
+  owner. `sycl-ls --verbose` with the selector did not abort.
 
-To verify once access works: `sycl-ls` lists `level_zero:gpu` for the B580; **FP64 support and rate** (`clinfo`
-"Double-precision Floating-point support", and a measured DGEMM/ZGEMM rate). ALF needs complex(8) throughout, so a
-weak FP64 rate limits what the B580 can say about performance; correctness and the ifx offload/oneMKL/SYCL paths are
-what this machine is for.
+**Machine split (owner, 2026-10-27):** Intel targets (`GPU=intel`, ifx offload, oneMKL/SYCL) are tested on
+`intel`; NVIDIA targets on `nividia`. CPU-only checks (unit tests, `GPU=none` identity, references) stay on nividia.
 
 ## SuperMUC-NG Phase 2 (LRZ) – not reachable by agents
 2× Xeon Platinum 8480+, 4× Intel Data Center GPU Max 1550 (2 stacks each) per node, 240 nodes.

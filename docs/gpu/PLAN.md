@@ -113,7 +113,7 @@ Every ticket gets review (rev) and acceptance re-run by the manager.
 |---|---|
 | 301 | `SUPERMUC-NG-PVC` profile: ifx, `-fiopenmp -fopenmp-targets=spir64_gen -Xs "-device pvc"`, oneMKL, `mpiifx`, HDF5. Flags checked against current LRZ/Intel docs and the owner's `module avail` |
 | 302 | ONEMKL backend of `alf_la`: `!$omp dispatch` BLAS + SYCL USM shim for the LAPACK pieces that dispatch would run on the host; documented per routine |
-| 303 | ifx build of the full GPU path on nividia (`spir64` JIT), host-fallback run of the 209 suite |
+| 303 | ifx build of the full GPU path on the `intel` test machine (Arc B580, `spir64` JIT and AOT), 209 suite on the B580 (correctness; not PVC performance) |
 | 304 | Slurm scripts (`test` partition, 8 ranks/node = 1 per stack, FLAT mode, `I_MPI_OFFLOAD_CELL=tile`, `OMP_TARGET_OFFLOAD=MANDATORY`) + validation recipe with expected values and tolerances |
 | 305 | Evaluate the owner's results; BENCHMARKS.md PVC column; fixes |
 

@@ -78,6 +78,9 @@ host↔device transfer is documented. Target the default and `STABLOG` stabiliza
 
 ## Machine rules (`nividia`, `intel`) – both are test sandboxes
 
+- **Which machine:** Intel targets (`GPU=intel`, ifx offload, oneMKL/SYCL) are tested on `intel`, NVIDIA targets
+  on `nividia`; CPU-only checks stay on `nividia`. On `intel` select the B580 with `ONEAPI_DEVICE_SELECTOR=level_zero:0`
+  and don't run plain `sycl-ls` (driver abort, 110 MB crash report in `/var/crash`).
 - **Both machines are for testing only. All development happens on the owner's laptop** (this repo);
   code goes there by rsync from the laptop or by cloning/pulling `fork`. Never edit source there.
 - **Confinement:** write only inside `~/alf-gpu/`. A ticket agent writes only inside its own

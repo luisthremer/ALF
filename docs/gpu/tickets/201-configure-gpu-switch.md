@@ -60,9 +60,12 @@ On nividia, work dir `~/alf-gpu/work/t201/` (rsync the tree there; `TMPDIR=~/alf
 3. **Offload smoke:** a 20-line standalone program (in the work dir, not committed) compiled with the exported
    `ALF_FC`/`ALF_FLAGS_PROG`/`ALF_LIB` that runs one `!$omp target teams distribute parallel do` and checks
    `omp_is_initial_device()` is false inside it, plus one `cublasZgemm` call: works for `GPU=nvidia`.
-4. **`GPU=intel`:** `IntelLLVM noMPI GPU=intel`: `make -j8 all` succeeds with ifx 2025.3 (`. ~/alf-gpu/env/intel.sh`);
-   the smoke program's target region runs in host fallback on nividia (report what `OMP_TARGET_OFFLOAD=MANDATORY`
-   does). `ctest` passes.
+4. **`GPU=intel` – on the `intel` machine** (Arc B580; owner's rule: Intel targets are tested on `intel`, NVIDIA
+   targets on `nividia`). Work dir `~/alf-gpu/work/t201/` there, `TMPDIR` inside it, ≤ 8 cores, check `uptime` and
+   `ps` first. `IntelLLVM noMPI GPU=intel`: `make -j8 all` succeeds with ifx 2025.3 (`. ~/alf-gpu/env/intel.sh`);
+   the smoke program's target region runs **on the B580** with `OMP_TARGET_OFFLOAD=MANDATORY` and
+   `ONEAPI_DEVICE_SELECTOR=level_zero:0` (the B580; `level_zero:1` is the iGPU); `ctest` passes. Don't run plain
+   `sycl-ls` there (it aborts in the driver and leaves a 110 MB crash report in `/var/crash`).
 5. Error cases: `GNU GPU=nvidia`, `PGI GPU=intel`, `GPU=foo` all return 1 with a clear message.
 - Report: diff summary, the identity table, build times, `ldd` excerpts, the 6×6 comparison.
 
