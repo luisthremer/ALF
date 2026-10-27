@@ -8,7 +8,7 @@ module bench_sec
   use bench_ref
   use bench_util
   implicit none
-  external :: zgemm, zgeru
+  ! zgemm, zgeru (host BLAS, plain external) come from bench_ref by use association (ifx rejects redeclaring them)
   integer :: kcur = 1
   real(8) :: opaque_one = 1d0, sink = 0d0   ! defeat dead-code elimination of the host round trip
   complex(8), parameter :: cone = (1d0, 0d0), czero = (0d0, 0d0)
@@ -161,7 +161,7 @@ contains
     lw = max(lw1, lw2, lw3, 1)
     deallocate(work); allocate(work(lw)); work = 0
     !$omp target enter data map(to: work)
-    do ig = 1, 4
+    do ig = 1, 6
       select case (ig)
       case (1)
         call ref_graded(N, 0d0, -12d0, A0)
@@ -169,6 +169,10 @@ contains
         call ref_graded(N, 12d0, -12d0, A0)
       case (4)     ! mildly graded (cond ~1e3): there the ticket's criterion (ii) is attainable
         call ref_graded(N, 0d0, -3d0, A0)
+      case (5)     ! column-graded A = M diag(d), cond(M) <= 3 (structure of ALF's decompose); ticket 103
+        call ref_colgraded(N, A0)
+      case (6)     ! two-sided graded A = diag(d1) M diag(d2) (structure of CGR); ticket 103
+        call ref_twograded(N, A0)
       case (3)     ! columns of the graded matrix scaled by random 10^(-12 u): real pivoting needed
         call ref_graded(N, 0d0, -12d0, A0)
         call random_number(d3)
@@ -245,7 +249,19 @@ contains
         ra = abs(Af(i,i)); rb = abs(FB(i,i))
         rd = max(rd, abs(ra - rb) / rb)
       end do
-      call check('QR '//tag//' (ii) |R_ii| device vs host B', N, rd, 1d-10)
+      ! (ii) is only attainable where |R_ii| is well conditioned w.r.t. the input: mat4 (mild) and mat5
+      ! (column-graded).  mat1-3 mix all scales in every column (see ticket 101 "Resolution"): (ii-b) below
+      ! is the gate there and (ii) is reported.  mat6: reported, answered at the ALF level by ticket 104.
+      if (ig == 4 .or. ig == 5) then
+        call check('QR '//tag//' (ii) |R_ii| device vs host B', N, rd, 1d-10)
+      else
+        call report('QR '//tag//' (ii) |R_ii| device vs host B (not gated)', N, rd)
+      end if
+      rtmp = 0d0
+      do i = 1, N
+        rtmp = max(rtmp, abs(abs(FA(i,i)) - abs(FB(i,i))) / abs(FB(i,i)))
+      end do
+      call report('QR '//tag//' (ii) |R_ii| host A(qp3) vs host B', N, rtmp)
       rmin = huge(1d0); rmax = 0d0
       do i = 1, N
         e = abs(FA(i,i)) / abs(FB(i,i))

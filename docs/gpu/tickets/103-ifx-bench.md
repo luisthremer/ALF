@@ -3,7 +3,7 @@
 - **Phase:** 1
 - **Owner agent:** fortran-gpu-dev
 - **Depends on:** 101 (done, reviewed)
-- **Status:** open (starts after 101)
+- **Status:** done (2026-10-27; host-fallback only, manager re-ran dispatch, shim and shim_test: 0 failures)
 
 ## Goal
 Make the 101 benchmark compile with ifx for the Intel GPU target (`spir64` JIT) with a oneMKL

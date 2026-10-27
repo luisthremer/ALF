@@ -2,7 +2,7 @@
 ! They define "correct" for the device results.  Same in both backends.
 module bench_ref
   implicit none
-  external :: zgemm, zgeru, zgeqp3, zgeqrf, zungqr, dsyev
+  external :: zgemm, zgeru, zgeqp3, zgeqrf, zungqr, dsyev   ! host LAPACK/BLAS, plain external
 contains
 
   subroutine ref_cb(G, N, nb, bi, bj, c, s)
@@ -207,6 +207,71 @@ contains
       M(i,:) = M(i,:) * 10d0**(e1 + (e2 - e1) * dble(i-1) / dble(N-1))
     end do
     call zgemm('N', 'N', N, N, N, one, Q1, N, M, N, zero, A, N)
+  end subroutine
+
+  ! random unitary matrix (Q factor of a random complex matrix)
+  subroutine ref_unitary(N, Q1)
+    integer, intent(in) :: N
+    complex(8), intent(out) :: Q1(N,N)
+    complex(8), allocatable :: tau(:), work(:)
+    real(8), allocatable :: x(:,:), y(:,:)
+    integer :: info, lw
+    allocate(tau(N), work(64*N), x(N,N), y(N,N))
+    lw = 64*N
+    call random_number(x); call random_number(y)
+    Q1 = cmplx(x - 0.5d0, y - 0.5d0, kind=8)
+    call zgeqrf(N, N, Q1, N, tau, work, lw, info)
+    call zungqr(N, N, N, Q1, N, tau, work, lw, info)
+  end subroutine
+
+  ! d(j) = 10^(e1 + (e2-e1) r(j)/(N-1)) with r a random permutation of 0..N-1 (log-spaced, random order)
+  subroutine ref_randgrade(N, e1, e2, d)
+    integer, intent(in) :: N
+    real(8), intent(in) :: e1, e2
+    real(8), intent(out) :: d(N)
+    real(8) :: key(N)
+    integer :: j, k, r
+    call random_number(key)
+    do j = 1, N
+      r = 0
+      do k = 1, N
+        if (key(k) < key(j) .or. (key(k) == key(j) .and. k < j)) r = r + 1
+      end do
+      d(j) = 10d0**(e1 + (e2 - e1) * dble(r) / dble(N-1))
+    end do
+  end subroutine
+
+  ! mat5: column-graded A = M diag(d), M = unitary * diag(s), s in [1,3] (cond(M) <= 3), d log-spaced
+  ! 1e12 .. 1e-12 in random column order.  This is the structure of ALF's decompose (B U D).
+  subroutine ref_colgraded(N, A)
+    integer, intent(in) :: N
+    complex(8), intent(out) :: A(N,N)
+    real(8) :: d(N), s(N)
+    integer :: j
+    call ref_unitary(N, A)
+    call random_number(s); s = 1d0 + 2d0*s
+    call ref_randgrade(N, 12d0, -12d0, d)
+    do j = 1, N
+      A(:,j) = A(:,j) * (s(j) * d(j))
+    end do
+  end subroutine
+
+  ! mat6: two-sided graded A = diag(d1) M diag(d2), d1, d2 log-spaced 1e6 .. 1e-6 in random order
+  ! (entries span 1e12 .. 1e-12); structure of CGR's U_R^H U_L + D_R (V_R V_L) D_L.
+  subroutine ref_twograded(N, A)
+    integer, intent(in) :: N
+    complex(8), intent(out) :: A(N,N)
+    real(8) :: d1(N), d2(N), s(N)
+    integer :: i, j
+    call ref_unitary(N, A)
+    call random_number(s); s = 1d0 + 2d0*s
+    call ref_randgrade(N, 6d0, -6d0, d1)
+    call ref_randgrade(N, 6d0, -6d0, d2)
+    do j = 1, N
+      do i = 1, N
+        A(i,j) = d1(i) * A(i,j) * (s(j) * d2(j))
+      end do
+    end do
   end subroutine
 
 end module bench_ref

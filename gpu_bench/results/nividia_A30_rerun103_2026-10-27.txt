@@ -1,0 +1,1269 @@
+# ticket 103 re-run of the 101 backends with mat5/mat6 added (nvfortran 26.9, A30 for cuda; host = single thread)
+
+################ cuda ################
+backend: cuda
+sections: cb,dense,opv,qr,upd,batch
+
+--- N = 64
+PASS                                 checkerboard B_T vs host N=   64  value= 1.761E-16  tol= 1.00E-12
+PASS                         dense E G E^-1, ZGEMM x2 vs host N=   64  value= 0.000E+00  tol= 1.00E-12
+PASS                  dense E G E^-1, DGEMM+transpose vs host N=   64  value= 4.546E-16  tol= 1.00E-12
+PASS                      Op_V wrap per-site launches vs host N=   64  value= 8.162E-17  tol= 1.00E-12
+PASS                           Op_V wrap fused kernel vs host N=   64  value= 9.037E-17  tol= 1.00E-12
+PASS                       QR mat1     (i) |AP-QR|/|A| device N=   64  value= 2.590E-16  tol= 1.00E-12
+INFO                         QR mat1     |Q^H Q - I|_F device N=   64  value= 1.068E-14
+PASS                            QR mat1     ormqr Q^H(AP) = R N=   64  value= 2.982E-16  tol= 1.00E-12
+PASS                QR mat1     perm device vs host B (#diff) N=   64  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat1     (ii) |R_ii| device vs host B (not gated) N=   64  value= 1.420E-06
+INFO            QR mat1     (ii) |R_ii| host A(qp3) vs host B N=   64  value= 2.283E+01
+PASS              QR mat1     (ii-b) |dR_ii|/|col_i| dev vs B N=   64  value= 3.052E-15  tol= 1.00E-12
+INFO             QR mat1     (ii) host B blocked vs unblocked N=   64  value= 0.000E+00
+INFO               QR mat1     (iii) min |Rii|qp3/|Rii|prepiv N=   64  value= 3.097E-02
+INFO               QR mat1     (iii) max |Rii|qp3/|Rii|prepiv N=   64  value= 2.383E+01
+INFO            QR mat1     #columns moved by ZGEQP3 vs input N=   64  value= 8.000E+00
+INFO                  QR mat1     #columns moved by pre-pivot N=   64  value= 5.600E+01
+PASS                       QR mat2     (i) |AP-QR|/|A| device N=   64  value= 2.218E-16  tol= 1.00E-12
+INFO                         QR mat2     |Q^H Q - I|_F device N=   64  value= 1.099E-14
+PASS                            QR mat2     ormqr Q^H(AP) = R N=   64  value= 5.751E-16  tol= 1.00E-12
+PASS                QR mat2     perm device vs host B (#diff) N=   64  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat2     (ii) |R_ii| device vs host B (not gated) N=   64  value= 2.506E+00
+INFO            QR mat2     (ii) |R_ii| host A(qp3) vs host B N=   64  value= 7.010E+01
+PASS              QR mat2     (ii-b) |dR_ii|/|col_i| dev vs B N=   64  value= 2.743E-15  tol= 1.00E-12
+INFO             QR mat2     (ii) host B blocked vs unblocked N=   64  value= 0.000E+00
+INFO               QR mat2     (iii) min |Rii|qp3/|Rii|prepiv N=   64  value= 3.734E-02
+INFO               QR mat2     (iii) max |Rii|qp3/|Rii|prepiv N=   64  value= 7.110E+01
+INFO            QR mat2     #columns moved by ZGEQP3 vs input N=   64  value= 1.900E+01
+INFO                  QR mat2     #columns moved by pre-pivot N=   64  value= 5.900E+01
+PASS                       QR mat3     (i) |AP-QR|/|A| device N=   64  value= 4.313E-16  tol= 1.00E-12
+INFO                         QR mat3     |Q^H Q - I|_F device N=   64  value= 1.048E-14
+PASS                            QR mat3     ormqr Q^H(AP) = R N=   64  value= 3.030E-16  tol= 1.00E-12
+PASS                QR mat3     perm device vs host B (#diff) N=   64  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat3     (ii) |R_ii| device vs host B (not gated) N=   64  value= 1.853E-06
+INFO            QR mat3     (ii) |R_ii| host A(qp3) vs host B N=   64  value= 8.578E+00
+PASS              QR mat3     (ii-b) |dR_ii|/|col_i| dev vs B N=   64  value= 7.156E-15  tol= 1.00E-12
+INFO             QR mat3     (ii) host B blocked vs unblocked N=   64  value= 0.000E+00
+INFO               QR mat3     (iii) min |Rii|qp3/|Rii|prepiv N=   64  value= 8.306E-02
+INFO               QR mat3     (iii) max |Rii|qp3/|Rii|prepiv N=   64  value= 9.578E+00
+INFO            QR mat3     #columns moved by ZGEQP3 vs input N=   64  value= 6.200E+01
+INFO                  QR mat3     #columns moved by pre-pivot N=   64  value= 6.400E+01
+PASS                       QR mat4     (i) |AP-QR|/|A| device N=   64  value= 3.623E-16  tol= 1.00E-12
+INFO                         QR mat4     |Q^H Q - I|_F device N=   64  value= 1.031E-14
+PASS                            QR mat4     ormqr Q^H(AP) = R N=   64  value= 4.474E-16  tol= 1.00E-12
+PASS                QR mat4     perm device vs host B (#diff) N=   64  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat4     (ii) |R_ii| device vs host B N=   64  value= 3.966E-15  tol= 1.00E-10
+INFO            QR mat4     (ii) |R_ii| host A(qp3) vs host B N=   64  value= 7.727E+00
+PASS              QR mat4     (ii-b) |dR_ii|/|col_i| dev vs B N=   64  value= 8.756E-16  tol= 1.00E-12
+INFO             QR mat4     (ii) host B blocked vs unblocked N=   64  value= 0.000E+00
+INFO               QR mat4     (iii) min |Rii|qp3/|Rii|prepiv N=   64  value= 1.319E-01
+INFO               QR mat4     (iii) max |Rii|qp3/|Rii|prepiv N=   64  value= 8.727E+00
+INFO            QR mat4     #columns moved by ZGEQP3 vs input N=   64  value= 4.500E+01
+INFO                  QR mat4     #columns moved by pre-pivot N=   64  value= 5.800E+01
+PASS                       QR mat5     (i) |AP-QR|/|A| device N=   64  value= 1.585E-16  tol= 1.00E-12
+INFO                         QR mat5     |Q^H Q - I|_F device N=   64  value= 1.068E-14
+PASS                            QR mat5     ormqr Q^H(AP) = R N=   64  value= 2.909E-16  tol= 1.00E-12
+PASS                QR mat5     perm device vs host B (#diff) N=   64  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat5     (ii) |R_ii| device vs host B N=   64  value= 5.046E-16  tol= 1.00E-10
+INFO            QR mat5     (ii) |R_ii| host A(qp3) vs host B N=   64  value= 0.000E+00
+PASS              QR mat5     (ii-b) |dR_ii|/|col_i| dev vs B N=   64  value= 5.046E-16  tol= 1.00E-12
+INFO             QR mat5     (ii) host B blocked vs unblocked N=   64  value= 0.000E+00
+INFO               QR mat5     (iii) min |Rii|qp3/|Rii|prepiv N=   64  value= 1.000E+00
+INFO               QR mat5     (iii) max |Rii|qp3/|Rii|prepiv N=   64  value= 1.000E+00
+INFO            QR mat5     #columns moved by ZGEQP3 vs input N=   64  value= 6.200E+01
+INFO                  QR mat5     #columns moved by pre-pivot N=   64  value= 6.200E+01
+PASS                       QR mat6     (i) |AP-QR|/|A| device N=   64  value= 1.857E-16  tol= 1.00E-12
+INFO                         QR mat6     |Q^H Q - I|_F device N=   64  value= 1.184E-14
+PASS                            QR mat6     ormqr Q^H(AP) = R N=   64  value= 4.317E-16  tol= 1.00E-12
+PASS                QR mat6     perm device vs host B (#diff) N=   64  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat6     (ii) |R_ii| device vs host B (not gated) N=   64  value= 2.096E-05
+INFO            QR mat6     (ii) |R_ii| host A(qp3) vs host B N=   64  value= 1.924E+00
+PASS              QR mat6     (ii-b) |dR_ii|/|col_i| dev vs B N=   64  value= 9.393E-16  tol= 1.00E-12
+INFO             QR mat6     (ii) host B blocked vs unblocked N=   64  value= 0.000E+00
+INFO               QR mat6     (iii) min |Rii|qp3/|Rii|prepiv N=   64  value= 4.242E-01
+INFO               QR mat6     (iii) max |Rii|qp3/|Rii|prepiv N=   64  value= 2.924E+00
+INFO            QR mat6     #columns moved by ZGEQP3 vs input N=   64  value= 6.400E+01
+INFO                  QR mat6     #columns moved by pre-pivot N=   64  value= 6.300E+01
+PASS                         rank-1 x256 kernel vs host zgeru N=   64  value= 1.166E-15  tol= 1.00E-12
+PASS                  rank-1 x256 kernel nowait vs host zgeru N=   64  value= 1.166E-15  tol= 1.00E-12
+PASS                        rank-1 x256 la_geru vs host zgeru N=   64  value= 8.376E-17  tol= 1.00E-12
+PASS                         rank-128 one ZGEMM vs host zgemm N=   64  value= 3.648E-17  tol= 1.00E-12
+PASS                                         2x zgemm vs host N=   64  value= 2.611E-16  tol= 1.00E-12
+PASS                       batched zgemm (2 flavours) vs host N=   64  value= 2.611E-16  tol= 1.00E-12
+
+--- N = 144
+PASS                                 checkerboard B_T vs host N=  144  value= 1.743E-16  tol= 1.00E-12
+PASS                         dense E G E^-1, ZGEMM x2 vs host N=  144  value= 0.000E+00  tol= 1.00E-12
+PASS                  dense E G E^-1, DGEMM+transpose vs host N=  144  value= 8.100E-16  tol= 1.00E-12
+PASS                      Op_V wrap per-site launches vs host N=  144  value= 8.296E-17  tol= 1.00E-12
+PASS                           Op_V wrap fused kernel vs host N=  144  value= 9.503E-17  tol= 1.00E-12
+PASS                       QR mat1     (i) |AP-QR|/|A| device N=  144  value= 3.459E-16  tol= 1.00E-12
+INFO                         QR mat1     |Q^H Q - I|_F device N=  144  value= 2.463E-14
+PASS                            QR mat1     ormqr Q^H(AP) = R N=  144  value= 2.129E-15  tol= 1.00E-12
+PASS                QR mat1     perm device vs host B (#diff) N=  144  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat1     (ii) |R_ii| device vs host B (not gated) N=  144  value= 1.878E-06
+INFO            QR mat1     (ii) |R_ii| host A(qp3) vs host B N=  144  value= 2.047E+01
+PASS              QR mat1     (ii-b) |dR_ii|/|col_i| dev vs B N=  144  value= 2.912E-15  tol= 1.00E-12
+INFO             QR mat1     (ii) host B blocked vs unblocked N=  144  value= 1.546E-06
+INFO               QR mat1     (iii) min |Rii|qp3/|Rii|prepiv N=  144  value= 4.187E-02
+INFO               QR mat1     (iii) max |Rii|qp3/|Rii|prepiv N=  144  value= 2.147E+01
+INFO            QR mat1     #columns moved by ZGEQP3 vs input N=  144  value= 8.100E+01
+INFO                  QR mat1     #columns moved by pre-pivot N=  144  value= 1.390E+02
+PASS                       QR mat2     (i) |AP-QR|/|A| device N=  144  value= 2.504E-16  tol= 1.00E-12
+INFO                         QR mat2     |Q^H Q - I|_F device N=  144  value= 2.466E-14
+PASS                            QR mat2     ormqr Q^H(AP) = R N=  144  value= 2.302E-15  tol= 1.00E-12
+PASS                QR mat2     perm device vs host B (#diff) N=  144  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat2     (ii) |R_ii| device vs host B (not gated) N=  144  value= 8.896E-01
+INFO            QR mat2     (ii) |R_ii| host A(qp3) vs host B N=  144  value= 3.538E+01
+PASS              QR mat2     (ii-b) |dR_ii|/|col_i| dev vs B N=  144  value= 3.649E-15  tol= 1.00E-12
+INFO             QR mat2     (ii) host B blocked vs unblocked N=  144  value= 8.918E-01
+INFO               QR mat2     (iii) min |Rii|qp3/|Rii|prepiv N=  144  value= 4.262E-02
+INFO               QR mat2     (iii) max |Rii|qp3/|Rii|prepiv N=  144  value= 3.638E+01
+INFO            QR mat2     #columns moved by ZGEQP3 vs input N=  144  value= 6.100E+01
+INFO                  QR mat2     #columns moved by pre-pivot N=  144  value= 1.380E+02
+PASS                       QR mat3     (i) |AP-QR|/|A| device N=  144  value= 2.724E-16  tol= 1.00E-12
+INFO                         QR mat3     |Q^H Q - I|_F device N=  144  value= 2.420E-14
+PASS                            QR mat3     ormqr Q^H(AP) = R N=  144  value= 2.120E-15  tol= 1.00E-12
+PASS                QR mat3     perm device vs host B (#diff) N=  144  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat3     (ii) |R_ii| device vs host B (not gated) N=  144  value= 1.864E-06
+INFO            QR mat3     (ii) |R_ii| host A(qp3) vs host B N=  144  value= 2.266E+01
+PASS              QR mat3     (ii-b) |dR_ii|/|col_i| dev vs B N=  144  value= 5.651E-15  tol= 1.00E-12
+INFO             QR mat3     (ii) host B blocked vs unblocked N=  144  value= 1.739E-06
+INFO               QR mat3     (iii) min |Rii|qp3/|Rii|prepiv N=  144  value= 4.275E-02
+INFO               QR mat3     (iii) max |Rii|qp3/|Rii|prepiv N=  144  value= 2.366E+01
+INFO            QR mat3     #columns moved by ZGEQP3 vs input N=  144  value= 1.420E+02
+INFO                  QR mat3     #columns moved by pre-pivot N=  144  value= 1.430E+02
+PASS                       QR mat4     (i) |AP-QR|/|A| device N=  144  value= 5.208E-16  tol= 1.00E-12
+INFO                         QR mat4     |Q^H Q - I|_F device N=  144  value= 2.463E-14
+PASS                            QR mat4     ormqr Q^H(AP) = R N=  144  value= 2.067E-15  tol= 1.00E-12
+PASS                QR mat4     perm device vs host B (#diff) N=  144  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat4     (ii) |R_ii| device vs host B N=  144  value= 3.338E-15  tol= 1.00E-10
+INFO            QR mat4     (ii) |R_ii| host A(qp3) vs host B N=  144  value= 1.027E+01
+PASS              QR mat4     (ii-b) |dR_ii|/|col_i| dev vs B N=  144  value= 7.992E-16  tol= 1.00E-12
+INFO             QR mat4     (ii) host B blocked vs unblocked N=  144  value= 2.372E-15
+INFO               QR mat4     (iii) min |Rii|qp3/|Rii|prepiv N=  144  value= 1.201E-01
+INFO               QR mat4     (iii) max |Rii|qp3/|Rii|prepiv N=  144  value= 1.127E+01
+INFO            QR mat4     #columns moved by ZGEQP3 vs input N=  144  value= 1.280E+02
+INFO                  QR mat4     #columns moved by pre-pivot N=  144  value= 1.410E+02
+PASS                       QR mat5     (i) |AP-QR|/|A| device N=  144  value= 2.992E-16  tol= 1.00E-12
+INFO                         QR mat5     |Q^H Q - I|_F device N=  144  value= 2.431E-14
+PASS                            QR mat5     ormqr Q^H(AP) = R N=  144  value= 2.063E-15  tol= 1.00E-12
+PASS                QR mat5     perm device vs host B (#diff) N=  144  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat5     (ii) |R_ii| device vs host B N=  144  value= 5.106E-16  tol= 1.00E-10
+INFO            QR mat5     (ii) |R_ii| host A(qp3) vs host B N=  144  value= 5.106E-16
+PASS              QR mat5     (ii-b) |dR_ii|/|col_i| dev vs B N=  144  value= 5.106E-16  tol= 1.00E-12
+INFO             QR mat5     (ii) host B blocked vs unblocked N=  144  value= 4.401E-16
+INFO               QR mat5     (iii) min |Rii|qp3/|Rii|prepiv N=  144  value= 1.000E+00
+INFO               QR mat5     (iii) max |Rii|qp3/|Rii|prepiv N=  144  value= 1.000E+00
+INFO            QR mat5     #columns moved by ZGEQP3 vs input N=  144  value= 1.440E+02
+INFO                  QR mat5     #columns moved by pre-pivot N=  144  value= 1.440E+02
+PASS                       QR mat6     (i) |AP-QR|/|A| device N=  144  value= 4.831E-16  tol= 1.00E-12
+INFO                         QR mat6     |Q^H Q - I|_F device N=  144  value= 2.499E-14
+PASS                            QR mat6     ormqr Q^H(AP) = R N=  144  value= 1.655E-15  tol= 1.00E-12
+PASS                QR mat6     perm device vs host B (#diff) N=  144  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat6     (ii) |R_ii| device vs host B (not gated) N=  144  value= 3.979E-06
+INFO            QR mat6     (ii) |R_ii| host A(qp3) vs host B N=  144  value= 1.446E+00
+PASS              QR mat6     (ii-b) |dR_ii|/|col_i| dev vs B N=  144  value= 5.433E-16  tol= 1.00E-12
+INFO             QR mat6     (ii) host B blocked vs unblocked N=  144  value= 7.307E-06
+INFO               QR mat6     (iii) min |Rii|qp3/|Rii|prepiv N=  144  value= 3.758E-01
+INFO               QR mat6     (iii) max |Rii|qp3/|Rii|prepiv N=  144  value= 2.446E+00
+INFO            QR mat6     #columns moved by ZGEQP3 vs input N=  144  value= 1.440E+02
+INFO                  QR mat6     #columns moved by pre-pivot N=  144  value= 1.420E+02
+PASS                         rank-1 x256 kernel vs host zgeru N=  144  value= 1.192E-15  tol= 1.00E-12
+PASS                  rank-1 x256 kernel nowait vs host zgeru N=  144  value= 1.192E-15  tol= 1.00E-12
+PASS                        rank-1 x256 la_geru vs host zgeru N=  144  value= 8.766E-17  tol= 1.00E-12
+PASS                         rank-128 one ZGEMM vs host zgemm N=  144  value= 3.697E-17  tol= 1.00E-12
+PASS                                         2x zgemm vs host N=  144  value= 3.045E-16  tol= 1.00E-12
+PASS                       batched zgemm (2 flavours) vs host N=  144  value= 3.045E-16  tol= 1.00E-12
+
+--- N = 256
+PASS                                 checkerboard B_T vs host N=  256  value= 1.726E-16  tol= 1.00E-12
+PASS                         dense E G E^-1, ZGEMM x2 vs host N=  256  value= 5.364E-16  tol= 1.00E-12
+PASS                  dense E G E^-1, DGEMM+transpose vs host N=  256  value= 9.058E-16  tol= 1.00E-12
+PASS                      Op_V wrap per-site launches vs host N=  256  value= 8.487E-17  tol= 1.00E-12
+PASS                           Op_V wrap fused kernel vs host N=  256  value= 9.373E-17  tol= 1.00E-12
+PASS                       QR mat1     (i) |AP-QR|/|A| device N=  256  value= 3.935E-16  tol= 1.00E-12
+INFO                         QR mat1     |Q^H Q - I|_F device N=  256  value= 3.664E-14
+PASS                            QR mat1     ormqr Q^H(AP) = R N=  256  value= 2.297E-15  tol= 1.00E-12
+PASS                QR mat1     perm device vs host B (#diff) N=  256  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat1     (ii) |R_ii| device vs host B (not gated) N=  256  value= 9.030E-07
+INFO            QR mat1     (ii) |R_ii| host A(qp3) vs host B N=  256  value= 2.929E+01
+PASS              QR mat1     (ii-b) |dR_ii|/|col_i| dev vs B N=  256  value= 2.034E-15  tol= 1.00E-12
+INFO             QR mat1     (ii) host B blocked vs unblocked N=  256  value= 1.084E-06
+INFO               QR mat1     (iii) min |Rii|qp3/|Rii|prepiv N=  256  value= 3.026E-02
+INFO               QR mat1     (iii) max |Rii|qp3/|Rii|prepiv N=  256  value= 3.029E+01
+INFO            QR mat1     #columns moved by ZGEQP3 vs input N=  256  value= 2.060E+02
+INFO                  QR mat1     #columns moved by pre-pivot N=  256  value= 2.460E+02
+PASS                       QR mat2     (i) |AP-QR|/|A| device N=  256  value= 4.300E-16  tol= 1.00E-12
+INFO                         QR mat2     |Q^H Q - I|_F device N=  256  value= 3.637E-14
+PASS                            QR mat2     ormqr Q^H(AP) = R N=  256  value= 2.126E-15  tol= 1.00E-12
+PASS                QR mat2     perm device vs host B (#diff) N=  256  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat2     (ii) |R_ii| device vs host B (not gated) N=  256  value= 5.780E-01
+INFO            QR mat2     (ii) |R_ii| host A(qp3) vs host B N=  256  value= 4.243E+01
+PASS              QR mat2     (ii-b) |dR_ii|/|col_i| dev vs B N=  256  value= 5.107E-15  tol= 1.00E-12
+INFO             QR mat2     (ii) host B blocked vs unblocked N=  256  value= 6.716E-01
+INFO               QR mat2     (iii) min |Rii|qp3/|Rii|prepiv N=  256  value= 4.910E-02
+INFO               QR mat2     (iii) max |Rii|qp3/|Rii|prepiv N=  256  value= 4.343E+01
+INFO            QR mat2     #columns moved by ZGEQP3 vs input N=  256  value= 1.680E+02
+INFO                  QR mat2     #columns moved by pre-pivot N=  256  value= 2.460E+02
+PASS                       QR mat3     (i) |AP-QR|/|A| device N=  256  value= 4.444E-16  tol= 1.00E-12
+INFO                         QR mat3     |Q^H Q - I|_F device N=  256  value= 3.674E-14
+PASS                            QR mat3     ormqr Q^H(AP) = R N=  256  value= 2.119E-15  tol= 1.00E-12
+PASS                QR mat3     perm device vs host B (#diff) N=  256  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat3     (ii) |R_ii| device vs host B (not gated) N=  256  value= 1.398E-06
+INFO            QR mat3     (ii) |R_ii| host A(qp3) vs host B N=  256  value= 1.386E+01
+PASS              QR mat3     (ii-b) |dR_ii|/|col_i| dev vs B N=  256  value= 2.023E-15  tol= 1.00E-12
+INFO             QR mat3     (ii) host B blocked vs unblocked N=  256  value= 1.242E-06
+INFO               QR mat3     (iii) min |Rii|qp3/|Rii|prepiv N=  256  value= 1.389E-01
+INFO               QR mat3     (iii) max |Rii|qp3/|Rii|prepiv N=  256  value= 1.486E+01
+INFO            QR mat3     #columns moved by ZGEQP3 vs input N=  256  value= 2.550E+02
+INFO                  QR mat3     #columns moved by pre-pivot N=  256  value= 2.550E+02
+PASS                       QR mat4     (i) |AP-QR|/|A| device N=  256  value= 6.408E-16  tol= 1.00E-12
+INFO                         QR mat4     |Q^H Q - I|_F device N=  256  value= 3.639E-14
+PASS                            QR mat4     ormqr Q^H(AP) = R N=  256  value= 2.127E-15  tol= 1.00E-12
+PASS                QR mat4     perm device vs host B (#diff) N=  256  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat4     (ii) |R_ii| device vs host B N=  256  value= 3.176E-15  tol= 1.00E-10
+INFO            QR mat4     (ii) |R_ii| host A(qp3) vs host B N=  256  value= 1.189E+01
+PASS              QR mat4     (ii-b) |dR_ii|/|col_i| dev vs B N=  256  value= 5.254E-16  tol= 1.00E-12
+INFO             QR mat4     (ii) host B blocked vs unblocked N=  256  value= 4.197E-15
+INFO               QR mat4     (iii) min |Rii|qp3/|Rii|prepiv N=  256  value= 9.463E-02
+INFO               QR mat4     (iii) max |Rii|qp3/|Rii|prepiv N=  256  value= 1.289E+01
+INFO            QR mat4     #columns moved by ZGEQP3 vs input N=  256  value= 2.490E+02
+INFO                  QR mat4     #columns moved by pre-pivot N=  256  value= 2.490E+02
+PASS                       QR mat5     (i) |AP-QR|/|A| device N=  256  value= 2.753E-16  tol= 1.00E-12
+INFO                         QR mat5     |Q^H Q - I|_F device N=  256  value= 3.682E-14
+PASS                            QR mat5     ormqr Q^H(AP) = R N=  256  value= 2.428E-15  tol= 1.00E-12
+PASS                QR mat5     perm device vs host B (#diff) N=  256  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat5     (ii) |R_ii| device vs host B N=  256  value= 4.135E-16  tol= 1.00E-10
+INFO            QR mat5     (ii) |R_ii| host A(qp3) vs host B N=  256  value= 4.681E-16
+PASS              QR mat5     (ii-b) |dR_ii|/|col_i| dev vs B N=  256  value= 4.135E-16  tol= 1.00E-12
+INFO             QR mat5     (ii) host B blocked vs unblocked N=  256  value= 5.269E-16
+INFO               QR mat5     (iii) min |Rii|qp3/|Rii|prepiv N=  256  value= 1.000E+00
+INFO               QR mat5     (iii) max |Rii|qp3/|Rii|prepiv N=  256  value= 1.000E+00
+INFO            QR mat5     #columns moved by ZGEQP3 vs input N=  256  value= 2.560E+02
+INFO                  QR mat5     #columns moved by pre-pivot N=  256  value= 2.560E+02
+PASS                       QR mat6     (i) |AP-QR|/|A| device N=  256  value= 4.259E-16  tol= 1.00E-12
+INFO                         QR mat6     |Q^H Q - I|_F device N=  256  value= 3.602E-14
+PASS                            QR mat6     ormqr Q^H(AP) = R N=  256  value= 2.267E-15  tol= 1.00E-12
+PASS                QR mat6     perm device vs host B (#diff) N=  256  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat6     (ii) |R_ii| device vs host B (not gated) N=  256  value= 4.228E-06
+INFO            QR mat6     (ii) |R_ii| host A(qp3) vs host B N=  256  value= 1.456E+00
+PASS              QR mat6     (ii-b) |dR_ii|/|col_i| dev vs B N=  256  value= 6.299E-16  tol= 1.00E-12
+INFO             QR mat6     (ii) host B blocked vs unblocked N=  256  value= 5.394E-06
+INFO               QR mat6     (iii) min |Rii|qp3/|Rii|prepiv N=  256  value= 4.800E-01
+INFO               QR mat6     (iii) max |Rii|qp3/|Rii|prepiv N=  256  value= 2.456E+00
+INFO            QR mat6     #columns moved by ZGEQP3 vs input N=  256  value= 2.550E+02
+INFO                  QR mat6     #columns moved by pre-pivot N=  256  value= 2.560E+02
+PASS                         rank-1 x256 kernel vs host zgeru N=  256  value= 1.189E-15  tol= 1.00E-12
+PASS                  rank-1 x256 kernel nowait vs host zgeru N=  256  value= 1.189E-15  tol= 1.00E-12
+PASS                        rank-1 x256 la_geru vs host zgeru N=  256  value= 8.407E-17  tol= 1.00E-12
+PASS                         rank-128 one ZGEMM vs host zgemm N=  256  value= 3.584E-17  tol= 1.00E-12
+PASS                                         2x zgemm vs host N=  256  value= 7.506E-16  tol= 1.00E-12
+PASS                       batched zgemm (2 flavours) vs host N=  256  value= 7.506E-16  tol= 1.00E-12
+
+--- N = 400
+PASS                                 checkerboard B_T vs host N=  400  value= 1.723E-16  tol= 1.00E-12
+PASS                         dense E G E^-1, ZGEMM x2 vs host N=  400  value= 7.356E-16  tol= 1.00E-12
+PASS                  dense E G E^-1, DGEMM+transpose vs host N=  400  value= 1.062E-15  tol= 1.00E-12
+PASS                      Op_V wrap per-site launches vs host N=  400  value= 8.562E-17  tol= 1.00E-12
+PASS                           Op_V wrap fused kernel vs host N=  400  value= 9.389E-17  tol= 1.00E-12
+PASS                       QR mat1     (i) |AP-QR|/|A| device N=  400  value= 5.371E-16  tol= 1.00E-12
+INFO                         QR mat1     |Q^H Q - I|_F device N=  400  value= 4.339E-14
+PASS                            QR mat1     ormqr Q^H(AP) = R N=  400  value= 1.973E-15  tol= 1.00E-12
+PASS                QR mat1     perm device vs host B (#diff) N=  400  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat1     (ii) |R_ii| device vs host B (not gated) N=  400  value= 1.786E-06
+INFO            QR mat1     (ii) |R_ii| host A(qp3) vs host B N=  400  value= 2.876E+01
+PASS              QR mat1     (ii-b) |dR_ii|/|col_i| dev vs B N=  400  value= 3.167E-15  tol= 1.00E-12
+INFO             QR mat1     (ii) host B blocked vs unblocked N=  400  value= 1.104E-06
+INFO               QR mat1     (iii) min |Rii|qp3/|Rii|prepiv N=  400  value= 2.694E-02
+INFO               QR mat1     (iii) max |Rii|qp3/|Rii|prepiv N=  400  value= 2.976E+01
+INFO            QR mat1     #columns moved by ZGEQP3 vs input N=  400  value= 3.510E+02
+INFO                  QR mat1     #columns moved by pre-pivot N=  400  value= 3.930E+02
+PASS                       QR mat2     (i) |AP-QR|/|A| device N=  400  value= 5.267E-16  tol= 1.00E-12
+INFO                         QR mat2     |Q^H Q - I|_F device N=  400  value= 4.340E-14
+PASS                            QR mat2     ormqr Q^H(AP) = R N=  400  value= 2.003E-15  tol= 1.00E-12
+PASS                QR mat2     perm device vs host B (#diff) N=  400  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat2     (ii) |R_ii| device vs host B (not gated) N=  400  value= 6.158E-01
+INFO            QR mat2     (ii) |R_ii| host A(qp3) vs host B N=  400  value= 3.391E+01
+PASS              QR mat2     (ii-b) |dR_ii|/|col_i| dev vs B N=  400  value= 7.081E-15  tol= 1.00E-12
+INFO             QR mat2     (ii) host B blocked vs unblocked N=  400  value= 5.076E-01
+INFO               QR mat2     (iii) min |Rii|qp3/|Rii|prepiv N=  400  value= 4.967E-02
+INFO               QR mat2     (iii) max |Rii|qp3/|Rii|prepiv N=  400  value= 3.491E+01
+INFO            QR mat2     #columns moved by ZGEQP3 vs input N=  400  value= 3.410E+02
+INFO                  QR mat2     #columns moved by pre-pivot N=  400  value= 3.960E+02
+PASS                       QR mat3     (i) |AP-QR|/|A| device N=  400  value= 1.820E-16  tol= 1.00E-12
+INFO                         QR mat3     |Q^H Q - I|_F device N=  400  value= 4.337E-14
+PASS                            QR mat3     ormqr Q^H(AP) = R N=  400  value= 2.995E-15  tol= 1.00E-12
+PASS                QR mat3     perm device vs host B (#diff) N=  400  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat3     (ii) |R_ii| device vs host B (not gated) N=  400  value= 3.206E-06
+INFO            QR mat3     (ii) |R_ii| host A(qp3) vs host B N=  400  value= 1.439E+01
+PASS              QR mat3     (ii-b) |dR_ii|/|col_i| dev vs B N=  400  value= 3.598E-15  tol= 1.00E-12
+INFO             QR mat3     (ii) host B blocked vs unblocked N=  400  value= 1.033E-06
+INFO               QR mat3     (iii) min |Rii|qp3/|Rii|prepiv N=  400  value= 1.234E-01
+INFO               QR mat3     (iii) max |Rii|qp3/|Rii|prepiv N=  400  value= 1.539E+01
+INFO            QR mat3     #columns moved by ZGEQP3 vs input N=  400  value= 3.980E+02
+INFO                  QR mat3     #columns moved by pre-pivot N=  400  value= 3.990E+02
+PASS                       QR mat4     (i) |AP-QR|/|A| device N=  400  value= 7.156E-16  tol= 1.00E-12
+INFO                         QR mat4     |Q^H Q - I|_F device N=  400  value= 4.307E-14
+PASS                            QR mat4     ormqr Q^H(AP) = R N=  400  value= 1.882E-15  tol= 1.00E-12
+PASS                QR mat4     perm device vs host B (#diff) N=  400  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat4     (ii) |R_ii| device vs host B N=  400  value= 8.044E-15  tol= 1.00E-10
+INFO            QR mat4     (ii) |R_ii| host A(qp3) vs host B N=  400  value= 8.490E+00
+PASS              QR mat4     (ii-b) |dR_ii|/|col_i| dev vs B N=  400  value= 5.838E-16  tol= 1.00E-12
+INFO             QR mat4     (ii) host B blocked vs unblocked N=  400  value= 3.548E-15
+INFO               QR mat4     (iii) min |Rii|qp3/|Rii|prepiv N=  400  value= 1.003E-01
+INFO               QR mat4     (iii) max |Rii|qp3/|Rii|prepiv N=  400  value= 9.490E+00
+INFO            QR mat4     #columns moved by ZGEQP3 vs input N=  400  value= 3.920E+02
+INFO                  QR mat4     #columns moved by pre-pivot N=  400  value= 3.980E+02
+PASS                       QR mat5     (i) |AP-QR|/|A| device N=  400  value= 2.721E-16  tol= 1.00E-12
+INFO                         QR mat5     |Q^H Q - I|_F device N=  400  value= 4.330E-14
+PASS                            QR mat5     ormqr Q^H(AP) = R N=  400  value= 1.963E-15  tol= 1.00E-12
+PASS                QR mat5     perm device vs host B (#diff) N=  400  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat5     (ii) |R_ii| device vs host B N=  400  value= 6.487E-16  tol= 1.00E-10
+INFO            QR mat5     (ii) |R_ii| host A(qp3) vs host B N=  400  value= 4.918E-16
+PASS              QR mat5     (ii-b) |dR_ii|/|col_i| dev vs B N=  400  value= 6.487E-16  tol= 1.00E-12
+INFO             QR mat5     (ii) host B blocked vs unblocked N=  400  value= 4.225E-16
+INFO               QR mat5     (iii) min |Rii|qp3/|Rii|prepiv N=  400  value= 1.000E+00
+INFO               QR mat5     (iii) max |Rii|qp3/|Rii|prepiv N=  400  value= 1.000E+00
+INFO            QR mat5     #columns moved by ZGEQP3 vs input N=  400  value= 3.980E+02
+INFO                  QR mat5     #columns moved by pre-pivot N=  400  value= 3.980E+02
+PASS                       QR mat6     (i) |AP-QR|/|A| device N=  400  value= 4.299E-16  tol= 1.00E-12
+INFO                         QR mat6     |Q^H Q - I|_F device N=  400  value= 4.417E-14
+PASS                            QR mat6     ormqr Q^H(AP) = R N=  400  value= 2.099E-15  tol= 1.00E-12
+PASS                QR mat6     perm device vs host B (#diff) N=  400  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat6     (ii) |R_ii| device vs host B (not gated) N=  400  value= 6.249E-06
+INFO            QR mat6     (ii) |R_ii| host A(qp3) vs host B N=  400  value= 7.115E-01
+PASS              QR mat6     (ii-b) |dR_ii|/|col_i| dev vs B N=  400  value= 7.712E-16  tol= 1.00E-12
+INFO             QR mat6     (ii) host B blocked vs unblocked N=  400  value= 8.373E-06
+INFO               QR mat6     (iii) min |Rii|qp3/|Rii|prepiv N=  400  value= 4.362E-01
+INFO               QR mat6     (iii) max |Rii|qp3/|Rii|prepiv N=  400  value= 1.712E+00
+INFO            QR mat6     #columns moved by ZGEQP3 vs input N=  400  value= 4.000E+02
+INFO                  QR mat6     #columns moved by pre-pivot N=  400  value= 3.980E+02
+PASS                         rank-1 x256 kernel vs host zgeru N=  400  value= 1.189E-15  tol= 1.00E-12
+PASS                  rank-1 x256 kernel nowait vs host zgeru N=  400  value= 1.189E-15  tol= 1.00E-12
+PASS                        rank-1 x256 la_geru vs host zgeru N=  400  value= 8.741E-17  tol= 1.00E-12
+PASS                         rank-128 one ZGEMM vs host zgemm N=  400  value= 3.618E-17  tol= 1.00E-12
+PASS                                         2x zgemm vs host N=  400  value= 9.194E-16  tol= 1.00E-12
+PASS                       batched zgemm (2 flavours) vs host N=  400  value= 9.194E-16  tol= 1.00E-12
+
+--- N = 576
+PASS                                 checkerboard B_T vs host N=  576  value= 1.726E-16  tol= 1.00E-12
+PASS                         dense E G E^-1, ZGEMM x2 vs host N=  576  value= 8.901E-16  tol= 1.00E-12
+PASS                  dense E G E^-1, DGEMM+transpose vs host N=  576  value= 1.231E-15  tol= 1.00E-12
+PASS                      Op_V wrap per-site launches vs host N=  576  value= 8.376E-17  tol= 1.00E-12
+PASS                           Op_V wrap fused kernel vs host N=  576  value= 9.403E-17  tol= 1.00E-12
+PASS                       QR mat1     (i) |AP-QR|/|A| device N=  576  value= 6.025E-16  tol= 1.00E-12
+INFO                         QR mat1     |Q^H Q - I|_F device N=  576  value= 5.728E-14
+PASS                            QR mat1     ormqr Q^H(AP) = R N=  576  value= 1.522E-15  tol= 1.00E-12
+PASS                QR mat1     perm device vs host B (#diff) N=  576  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat1     (ii) |R_ii| device vs host B (not gated) N=  576  value= 2.991E-06
+INFO            QR mat1     (ii) |R_ii| host A(qp3) vs host B N=  576  value= 2.618E+01
+PASS              QR mat1     (ii-b) |dR_ii|/|col_i| dev vs B N=  576  value= 4.209E-15  tol= 1.00E-12
+INFO             QR mat1     (ii) host B blocked vs unblocked N=  576  value= 9.798E-07
+INFO               QR mat1     (iii) min |Rii|qp3/|Rii|prepiv N=  576  value= 3.955E-02
+INFO               QR mat1     (iii) max |Rii|qp3/|Rii|prepiv N=  576  value= 2.718E+01
+INFO            QR mat1     #columns moved by ZGEQP3 vs input N=  576  value= 5.310E+02
+INFO                  QR mat1     #columns moved by pre-pivot N=  576  value= 5.710E+02
+PASS                       QR mat2     (i) |AP-QR|/|A| device N=  576  value= 5.396E-16  tol= 1.00E-12
+INFO                         QR mat2     |Q^H Q - I|_F device N=  576  value= 5.699E-14
+PASS                            QR mat2     ormqr Q^H(AP) = R N=  576  value= 1.512E-15  tol= 1.00E-12
+PASS                QR mat2     perm device vs host B (#diff) N=  576  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat2     (ii) |R_ii| device vs host B (not gated) N=  576  value= 9.344E-01
+INFO            QR mat2     (ii) |R_ii| host A(qp3) vs host B N=  576  value= 4.147E+01
+PASS              QR mat2     (ii-b) |dR_ii|/|col_i| dev vs B N=  576  value= 9.166E-15  tol= 1.00E-12
+INFO             QR mat2     (ii) host B blocked vs unblocked N=  576  value= 4.217E-01
+INFO               QR mat2     (iii) min |Rii|qp3/|Rii|prepiv N=  576  value= 4.916E-02
+INFO               QR mat2     (iii) max |Rii|qp3/|Rii|prepiv N=  576  value= 4.247E+01
+INFO            QR mat2     #columns moved by ZGEQP3 vs input N=  576  value= 5.010E+02
+INFO                  QR mat2     #columns moved by pre-pivot N=  576  value= 5.670E+02
+PASS                       QR mat3     (i) |AP-QR|/|A| device N=  576  value= 3.433E-16  tol= 1.00E-12
+INFO                         QR mat3     |Q^H Q - I|_F device N=  576  value= 5.731E-14
+PASS                            QR mat3     ormqr Q^H(AP) = R N=  576  value= 1.716E-15  tol= 1.00E-12
+PASS                QR mat3     perm device vs host B (#diff) N=  576  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat3     (ii) |R_ii| device vs host B (not gated) N=  576  value= 2.115E-06
+INFO            QR mat3     (ii) |R_ii| host A(qp3) vs host B N=  576  value= 1.106E+01
+PASS              QR mat3     (ii-b) |dR_ii|/|col_i| dev vs B N=  576  value= 4.847E-15  tol= 1.00E-12
+INFO             QR mat3     (ii) host B blocked vs unblocked N=  576  value= 1.312E-06
+INFO               QR mat3     (iii) min |Rii|qp3/|Rii|prepiv N=  576  value= 1.153E-01
+INFO               QR mat3     (iii) max |Rii|qp3/|Rii|prepiv N=  576  value= 1.206E+01
+INFO            QR mat3     #columns moved by ZGEQP3 vs input N=  576  value= 5.750E+02
+INFO                  QR mat3     #columns moved by pre-pivot N=  576  value= 5.750E+02
+PASS                       QR mat4     (i) |AP-QR|/|A| device N=  576  value= 9.031E-16  tol= 1.00E-12
+INFO                         QR mat4     |Q^H Q - I|_F device N=  576  value= 5.735E-14
+PASS                            QR mat4     ormqr Q^H(AP) = R N=  576  value= 1.588E-15  tol= 1.00E-12
+PASS                QR mat4     perm device vs host B (#diff) N=  576  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat4     (ii) |R_ii| device vs host B N=  576  value= 5.390E-15  tol= 1.00E-10
+INFO            QR mat4     (ii) |R_ii| host A(qp3) vs host B N=  576  value= 1.013E+01
+PASS              QR mat4     (ii-b) |dR_ii|/|col_i| dev vs B N=  576  value= 7.813E-16  tol= 1.00E-12
+INFO             QR mat4     (ii) host B blocked vs unblocked N=  576  value= 3.997E-15
+INFO               QR mat4     (iii) min |Rii|qp3/|Rii|prepiv N=  576  value= 1.429E-01
+INFO               QR mat4     (iii) max |Rii|qp3/|Rii|prepiv N=  576  value= 1.113E+01
+INFO            QR mat4     #columns moved by ZGEQP3 vs input N=  576  value= 5.690E+02
+INFO                  QR mat4     #columns moved by pre-pivot N=  576  value= 5.700E+02
+PASS                       QR mat5     (i) |AP-QR|/|A| device N=  576  value= 3.100E-16  tol= 1.00E-12
+INFO                         QR mat5     |Q^H Q - I|_F device N=  576  value= 5.743E-14
+PASS                            QR mat5     ormqr Q^H(AP) = R N=  576  value= 1.501E-15  tol= 1.00E-12
+PASS                QR mat5     perm device vs host B (#diff) N=  576  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat5     (ii) |R_ii| device vs host B N=  576  value= 6.185E-16  tol= 1.00E-10
+INFO            QR mat5     (ii) |R_ii| host A(qp3) vs host B N=  576  value= 4.580E-16
+PASS              QR mat5     (ii-b) |dR_ii|/|col_i| dev vs B N=  576  value= 6.185E-16  tol= 1.00E-12
+INFO             QR mat5     (ii) host B blocked vs unblocked N=  576  value= 4.542E-16
+INFO               QR mat5     (iii) min |Rii|qp3/|Rii|prepiv N=  576  value= 1.000E+00
+INFO               QR mat5     (iii) max |Rii|qp3/|Rii|prepiv N=  576  value= 1.000E+00
+INFO            QR mat5     #columns moved by ZGEQP3 vs input N=  576  value= 5.750E+02
+INFO                  QR mat5     #columns moved by pre-pivot N=  576  value= 5.750E+02
+PASS                       QR mat6     (i) |AP-QR|/|A| device N=  576  value= 4.735E-16  tol= 1.00E-12
+INFO                         QR mat6     |Q^H Q - I|_F device N=  576  value= 5.880E-14
+PASS                            QR mat6     ormqr Q^H(AP) = R N=  576  value= 1.532E-15  tol= 1.00E-12
+PASS                QR mat6     perm device vs host B (#diff) N=  576  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat6     (ii) |R_ii| device vs host B (not gated) N=  576  value= 5.391E-06
+INFO            QR mat6     (ii) |R_ii| host A(qp3) vs host B N=  576  value= 7.309E-01
+PASS              QR mat6     (ii-b) |dR_ii|/|col_i| dev vs B N=  576  value= 1.068E-15  tol= 1.00E-12
+INFO             QR mat6     (ii) host B blocked vs unblocked N=  576  value= 3.565E-06
+INFO               QR mat6     (iii) min |Rii|qp3/|Rii|prepiv N=  576  value= 5.996E-01
+INFO               QR mat6     (iii) max |Rii|qp3/|Rii|prepiv N=  576  value= 1.731E+00
+INFO            QR mat6     #columns moved by ZGEQP3 vs input N=  576  value= 5.740E+02
+INFO                  QR mat6     #columns moved by pre-pivot N=  576  value= 5.750E+02
+PASS                         rank-1 x256 kernel vs host zgeru N=  576  value= 1.189E-15  tol= 1.00E-12
+PASS                  rank-1 x256 kernel nowait vs host zgeru N=  576  value= 1.189E-15  tol= 1.00E-12
+PASS                        rank-1 x256 la_geru vs host zgeru N=  576  value= 8.561E-17  tol= 1.00E-12
+PASS                         rank-128 one ZGEMM vs host zgemm N=  576  value= 3.635E-17  tol= 1.00E-12
+PASS                                         2x zgemm vs host N=  576  value= 1.177E-15  tol= 1.00E-12
+PASS                       batched zgemm (2 flavours) vs host N=  576  value= 1.177E-15  tol= 1.00E-12
+
+--- N = 1024
+PASS                                 checkerboard B_T vs host N= 1024  value= 1.724E-16  tol= 1.00E-12
+PASS                         dense E G E^-1, ZGEMM x2 vs host N= 1024  value= 1.301E-15  tol= 1.00E-12
+PASS                  dense E G E^-1, DGEMM+transpose vs host N= 1024  value= 1.163E-15  tol= 1.00E-12
+PASS                      Op_V wrap per-site launches vs host N= 1024  value= 8.326E-17  tol= 1.00E-12
+PASS                           Op_V wrap fused kernel vs host N= 1024  value= 9.397E-17  tol= 1.00E-12
+PASS                       QR mat1     (i) |AP-QR|/|A| device N= 1024  value= 7.237E-16  tol= 1.00E-12
+INFO                         QR mat1     |Q^H Q - I|_F device N= 1024  value= 7.519E-14
+PASS                            QR mat1     ormqr Q^H(AP) = R N= 1024  value= 1.330E-15  tol= 1.00E-12
+PASS                QR mat1     perm device vs host B (#diff) N= 1024  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat1     (ii) |R_ii| device vs host B (not gated) N= 1024  value= 4.329E-06
+INFO            QR mat1     (ii) |R_ii| host A(qp3) vs host B N= 1024  value= 2.551E+01
+PASS              QR mat1     (ii-b) |dR_ii|/|col_i| dev vs B N= 1024  value= 3.575E-15  tol= 1.00E-12
+INFO             QR mat1     (ii) host B blocked vs unblocked N= 1024  value= 9.977E-07
+INFO               QR mat1     (iii) min |Rii|qp3/|Rii|prepiv N= 1024  value= 3.477E-02
+INFO               QR mat1     (iii) max |Rii|qp3/|Rii|prepiv N= 1024  value= 2.651E+01
+INFO            QR mat1     #columns moved by ZGEQP3 vs input N= 1024  value= 9.760E+02
+INFO                  QR mat1     #columns moved by pre-pivot N= 1024  value= 1.013E+03
+PASS                       QR mat2     (i) |AP-QR|/|A| device N= 1024  value= 6.351E-16  tol= 1.00E-12
+INFO                         QR mat2     |Q^H Q - I|_F device N= 1024  value= 7.496E-14
+PASS                            QR mat2     ormqr Q^H(AP) = R N= 1024  value= 1.265E-15  tol= 1.00E-12
+PASS                QR mat2     perm device vs host B (#diff) N= 1024  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat2     (ii) |R_ii| device vs host B (not gated) N= 1024  value= 1.592E+00
+INFO            QR mat2     (ii) |R_ii| host A(qp3) vs host B N= 1024  value= 3.066E+01
+PASS              QR mat2     (ii-b) |dR_ii|/|col_i| dev vs B N= 1024  value= 1.024E-14  tol= 1.00E-12
+INFO             QR mat2     (ii) host B blocked vs unblocked N= 1024  value= 8.441E-01
+INFO               QR mat2     (iii) min |Rii|qp3/|Rii|prepiv N= 1024  value= 4.527E-02
+INFO               QR mat2     (iii) max |Rii|qp3/|Rii|prepiv N= 1024  value= 3.166E+01
+INFO            QR mat2     #columns moved by ZGEQP3 vs input N= 1024  value= 9.560E+02
+INFO                  QR mat2     #columns moved by pre-pivot N= 1024  value= 1.018E+03
+PASS                       QR mat3     (i) |AP-QR|/|A| device N= 1024  value= 3.236E-16  tol= 1.00E-12
+INFO                         QR mat3     |Q^H Q - I|_F device N= 1024  value= 7.489E-14
+PASS                            QR mat3     ormqr Q^H(AP) = R N= 1024  value= 1.153E-15  tol= 1.00E-12
+PASS                QR mat3     perm device vs host B (#diff) N= 1024  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat3     (ii) |R_ii| device vs host B (not gated) N= 1024  value= 3.519E-06
+INFO            QR mat3     (ii) |R_ii| host A(qp3) vs host B N= 1024  value= 1.442E+01
+PASS              QR mat3     (ii-b) |dR_ii|/|col_i| dev vs B N= 1024  value= 3.720E-15  tol= 1.00E-12
+INFO             QR mat3     (ii) host B blocked vs unblocked N= 1024  value= 1.492E-06
+INFO               QR mat3     (iii) min |Rii|qp3/|Rii|prepiv N= 1024  value= 8.188E-02
+INFO               QR mat3     (iii) max |Rii|qp3/|Rii|prepiv N= 1024  value= 1.542E+01
+INFO            QR mat3     #columns moved by ZGEQP3 vs input N= 1024  value= 1.022E+03
+INFO                  QR mat3     #columns moved by pre-pivot N= 1024  value= 1.023E+03
+PASS                       QR mat4     (i) |AP-QR|/|A| device N= 1024  value= 1.033E-15  tol= 1.00E-12
+INFO                         QR mat4     |Q^H Q - I|_F device N= 1024  value= 7.489E-14
+PASS                            QR mat4     ormqr Q^H(AP) = R N= 1024  value= 1.370E-15  tol= 1.00E-12
+PASS                QR mat4     perm device vs host B (#diff) N= 1024  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat4     (ii) |R_ii| device vs host B N= 1024  value= 7.890E-15  tol= 1.00E-10
+INFO            QR mat4     (ii) |R_ii| host A(qp3) vs host B N= 1024  value= 9.442E+00
+PASS              QR mat4     (ii-b) |dR_ii|/|col_i| dev vs B N= 1024  value= 6.228E-16  tol= 1.00E-12
+INFO             QR mat4     (ii) host B blocked vs unblocked N= 1024  value= 4.427E-15
+INFO               QR mat4     (iii) min |Rii|qp3/|Rii|prepiv N= 1024  value= 1.099E-01
+INFO               QR mat4     (iii) max |Rii|qp3/|Rii|prepiv N= 1024  value= 1.044E+01
+INFO            QR mat4     #columns moved by ZGEQP3 vs input N= 1024  value= 1.012E+03
+INFO                  QR mat4     #columns moved by pre-pivot N= 1024  value= 1.018E+03
+PASS                       QR mat5     (i) |AP-QR|/|A| device N= 1024  value= 3.148E-16  tol= 1.00E-12
+INFO                         QR mat5     |Q^H Q - I|_F device N= 1024  value= 7.505E-14
+PASS                            QR mat5     ormqr Q^H(AP) = R N= 1024  value= 1.270E-15  tol= 1.00E-12
+PASS                QR mat5     perm device vs host B (#diff) N= 1024  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat5     (ii) |R_ii| device vs host B N= 1024  value= 7.984E-16  tol= 1.00E-10
+INFO            QR mat5     (ii) |R_ii| host A(qp3) vs host B N= 1024  value= 6.953E-16
+PASS              QR mat5     (ii-b) |dR_ii|/|col_i| dev vs B N= 1024  value= 7.984E-16  tol= 1.00E-12
+INFO             QR mat5     (ii) host B blocked vs unblocked N= 1024  value= 8.367E-16
+INFO               QR mat5     (iii) min |Rii|qp3/|Rii|prepiv N= 1024  value= 1.000E+00
+INFO               QR mat5     (iii) max |Rii|qp3/|Rii|prepiv N= 1024  value= 1.000E+00
+INFO            QR mat5     #columns moved by ZGEQP3 vs input N= 1024  value= 1.023E+03
+INFO                  QR mat5     #columns moved by pre-pivot N= 1024  value= 1.023E+03
+PASS                       QR mat6     (i) |AP-QR|/|A| device N= 1024  value= 6.014E-16  tol= 1.00E-12
+INFO                         QR mat6     |Q^H Q - I|_F device N= 1024  value= 7.652E-14
+PASS                            QR mat6     ormqr Q^H(AP) = R N= 1024  value= 1.647E-15  tol= 1.00E-12
+PASS                QR mat6     perm device vs host B (#diff) N= 1024  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat6     (ii) |R_ii| device vs host B (not gated) N= 1024  value= 7.350E-06
+INFO            QR mat6     (ii) |R_ii| host A(qp3) vs host B N= 1024  value= 6.343E-01
+PASS              QR mat6     (ii-b) |dR_ii|/|col_i| dev vs B N= 1024  value= 6.786E-16  tol= 1.00E-12
+INFO             QR mat6     (ii) host B blocked vs unblocked N= 1024  value= 4.932E-06
+INFO               QR mat6     (iii) min |Rii|qp3/|Rii|prepiv N= 1024  value= 6.854E-01
+INFO               QR mat6     (iii) max |Rii|qp3/|Rii|prepiv N= 1024  value= 1.634E+00
+INFO            QR mat6     #columns moved by ZGEQP3 vs input N= 1024  value= 1.022E+03
+INFO                  QR mat6     #columns moved by pre-pivot N= 1024  value= 1.024E+03
+PASS                         rank-1 x256 kernel vs host zgeru N= 1024  value= 1.189E-15  tol= 1.00E-12
+PASS                  rank-1 x256 kernel nowait vs host zgeru N= 1024  value= 1.189E-15  tol= 1.00E-12
+PASS                        rank-1 x256 la_geru vs host zgeru N= 1024  value= 8.573E-17  tol= 1.00E-12
+PASS                         rank-128 one ZGEMM vs host zgemm N= 1024  value= 3.618E-17  tol= 1.00E-12
+PASS                                         2x zgemm vs host N= 1024  value= 1.578E-15  tol= 1.00E-12
+PASS                       batched zgemm (2 flavours) vs host N= 1024  value= 1.578E-15  tol= 1.00E-12
+
+total wall time of run:       36.5 s
+checks: 222 run, 0 FAILED
+
+== checkerboard B_T G->B G B^-1 : median time [us]
+     N          8 kernels
+    64              97.99
+   144              92.98
+   256             101.09
+   400             135.90
+   576             181.91
+  1024             389.10
+
+== checkerboard B_T G->B G B^-1 : GB/s (effective)
+     N          8 kernels
+    64              10.70
+   144              57.09
+   256             165.96
+   400             301.40
+   576             466.90
+  1024             689.89
+
+== dense B_T G->E G E^-1 : median time [us]
+     N           zgemm x2    dgemm+transp x2           zgemm x1         dgemm-R x1       transpose x1
+    64              31.23              59.13              20.98              21.93              14.07
+   144              51.02              56.98              30.99              20.03              15.97
+   256              71.05              85.12              41.01              27.18              21.93
+   400             166.89             163.08              87.98              55.07              33.86
+   576             345.95             329.97             177.15             113.01              55.07
+  1024            1789.09            1345.16             957.97             510.22             168.09
+
+== dense B_T G->E G E^-1 : GFLOP/s (effective)
+     N           zgemm x2    dgemm+transp x2           zgemm x1         dgemm-R x1       transpose x1
+    64             134.29              70.94              99.96              95.61               9.32
+   144             936.38             838.44             770.72            1192.77              41.54
+   256            3778.19            3153.78            3272.96            4938.16              95.61
+   400            6135.67            6279.19            5819.74            9296.47             151.23
+   576            8838.53            9266.40            8630.35           13528.17             192.77
+  1024            9602.56           12771.64            8966.85           16835.89             199.63
+
+== Op_V wrap, N sites : median time [us]
+     N       per-site x N              fused
+    64             784.87              14.07
+   144            1573.09              12.87
+   256            2682.92              13.11
+   400            4094.84              15.02
+   576            5889.89              19.07
+  1024           10550.02              40.05
+
+== Op_V wrap, N sites : GB/s (effective)
+     N       per-site x N              fused
+    64               0.17               9.32
+   144               0.42              51.54
+   256               0.78             159.93
+   400               1.25             340.87
+   576               1.80             556.63
+  1024               3.18             837.72
+
+== stabilization QR (graded matrix) : median time [us]
+     N dev norm+sort+perm          dev geqrf          dev ungqr          dev ormqr   dev total (QR+Q)   host A qp3+ungqr host B pre+geqrf+u
+    64              44.11             489.95             123.02             858.07             651.84             239.85             241.04
+   144              46.97             744.10             208.14             176.91            1006.84            1852.04            1878.02
+   256              51.98            1235.96             271.08             240.09            1581.91            8792.88            8035.90
+   400              68.19            2203.94             526.91             431.06            2820.01           27031.90           23421.05
+   576              91.08            3499.03             823.02             786.07            4431.01           71771.86           58865.07
+  1024             227.21            7829.19            1972.91            2173.19            9950.16            355432.            308206.
+
+== rank-1 update [us/update] : median time [us]
+     N             kernel      kernel nowait       cublas zgeru   kernel+roundtrip    zgeru+roundtrip
+    64              12.01               7.47               4.26              27.99              29.22
+   144              11.34               6.77               4.51              27.83              28.20
+   256              11.72               6.78               4.60              28.44              28.22
+   400              18.06              12.33              10.10              30.64              28.34
+   576              23.46              17.74              10.34              33.65              27.15
+  1024              47.22              34.11              31.56              55.31              53.69
+
+== rank-1 update [us/update] : GB/s (effective)
+     N             kernel      kernel nowait       cublas zgeru   kernel+roundtrip    zgeru+roundtrip
+    64              10.91              17.54              30.76               4.68               4.49
+   144              58.52              98.08             147.06              23.84              23.53
+   256             179.01             309.27             455.74              73.74              74.32
+   400             283.53             415.16             506.87             167.12             180.69
+   576             452.62             598.41            1026.82             315.49             391.07
+  1024             710.67             983.61            1063.24             606.64             625.00
+
+== rank-k update [us/update] : median time [us]
+     N                k=1                k=2                k=4                k=8               k=16               k=32               k=64              k=128
+    64              13.83               7.99               3.99               1.88               1.00               0.53               0.28               0.23
+   144              13.11               7.99               3.99               2.00               1.00               0.53               0.28               0.21
+   256              14.07               8.46               4.23               2.12               1.06               0.60               0.34               0.22
+   400              15.97              10.49               5.25               2.65               1.37               0.77               0.53               0.38
+   576              18.84              12.99               6.50               3.25               1.74               1.09               0.72               0.55
+  1024              40.05              27.89              14.01               7.00               3.62               2.28               1.59               1.24
+
+== rank-k update [us/update] : GFLOP/s (effective)
+     N                k=1                k=2                k=4                k=8               k=16               k=32               k=64              k=128
+    64               2.37               4.10               8.21              17.45              32.82              61.94             115.74             144.20
+   144              12.65              20.77              41.54              83.08             166.16             313.59             585.92             781.23
+   256              37.27              61.94             123.89             247.78             495.55             879.61            1529.76            2385.38
+   400              80.13             122.02             244.03             482.58             933.69            1651.91            2419.70            3401.95
+   576             140.92             204.27             408.53             817.07            1522.40            2440.01            3691.62            4863.37
+  1024             209.43             300.72             598.88            1197.77            2316.67            3679.41            5261.21            6762.16
+
+== flavour batching, 2 N x N ZGEMM : median time [us]
+     N            1 zgemm      2 zgemm calls    strided batched
+    64              17.88              25.99              17.88
+   144              28.13              46.97              29.09
+   256              39.10              69.14              54.12
+   400              87.98             166.89             169.04
+   576             177.15             345.95             396.01
+  1024             899.08            1846.08            2021.07
+
+== flavour batching, 2 N x N ZGEMM : GFLOP/s (effective)
+     N            1 zgemm      2 zgemm calls    strided batched
+    64             117.28             161.40             234.56
+   144             849.09            1017.19            1642.51
+   256            3432.62            3882.41            4959.91
+   400            5819.74            6135.67            6057.78
+   576            8630.35            8838.53            7721.07
+  1024            9554.18            9306.16            8500.36
+
+################ host ################
+backend: host
+sections: cb,dense,opv,qr,upd,batch
+
+--- N = 64
+PASS                                 checkerboard B_T vs host N=   64  value= 0.000E+00  tol= 1.00E-12
+PASS                         dense E G E^-1, ZGEMM x2 vs host N=   64  value= 0.000E+00  tol= 1.00E-12
+PASS                  dense E G E^-1, DGEMM+transpose vs host N=   64  value= 5.555E-16  tol= 1.00E-12
+PASS                      Op_V wrap per-site launches vs host N=   64  value= 5.790E-18  tol= 1.00E-12
+PASS                           Op_V wrap fused kernel vs host N=   64  value= 9.037E-17  tol= 1.00E-12
+PASS                       QR mat1     (i) |AP-QR|/|A| device N=   64  value= 2.330E-16  tol= 1.00E-12
+INFO                         QR mat1     |Q^H Q - I|_F device N=   64  value= 6.831E-15
+PASS                            QR mat1     ormqr Q^H(AP) = R N=   64  value= 9.196E-16  tol= 1.00E-12
+PASS                QR mat1     perm device vs host B (#diff) N=   64  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat1     (ii) |R_ii| device vs host B (not gated) N=   64  value= 0.000E+00
+INFO            QR mat1     (ii) |R_ii| host A(qp3) vs host B N=   64  value= 2.283E+01
+PASS              QR mat1     (ii-b) |dR_ii|/|col_i| dev vs B N=   64  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat1     (ii) host B blocked vs unblocked N=   64  value= 0.000E+00
+INFO               QR mat1     (iii) min |Rii|qp3/|Rii|prepiv N=   64  value= 3.097E-02
+INFO               QR mat1     (iii) max |Rii|qp3/|Rii|prepiv N=   64  value= 2.383E+01
+INFO            QR mat1     #columns moved by ZGEQP3 vs input N=   64  value= 8.000E+00
+INFO                  QR mat1     #columns moved by pre-pivot N=   64  value= 5.600E+01
+PASS                       QR mat2     (i) |AP-QR|/|A| device N=   64  value= 1.815E-16  tol= 1.00E-12
+INFO                         QR mat2     |Q^H Q - I|_F device N=   64  value= 6.299E-15
+PASS                            QR mat2     ormqr Q^H(AP) = R N=   64  value= 8.454E-16  tol= 1.00E-12
+PASS                QR mat2     perm device vs host B (#diff) N=   64  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat2     (ii) |R_ii| device vs host B (not gated) N=   64  value= 0.000E+00
+INFO            QR mat2     (ii) |R_ii| host A(qp3) vs host B N=   64  value= 7.010E+01
+PASS              QR mat2     (ii-b) |dR_ii|/|col_i| dev vs B N=   64  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat2     (ii) host B blocked vs unblocked N=   64  value= 0.000E+00
+INFO               QR mat2     (iii) min |Rii|qp3/|Rii|prepiv N=   64  value= 3.734E-02
+INFO               QR mat2     (iii) max |Rii|qp3/|Rii|prepiv N=   64  value= 7.110E+01
+INFO            QR mat2     #columns moved by ZGEQP3 vs input N=   64  value= 1.900E+01
+INFO                  QR mat2     #columns moved by pre-pivot N=   64  value= 5.900E+01
+PASS                       QR mat3     (i) |AP-QR|/|A| device N=   64  value= 2.216E-16  tol= 1.00E-12
+INFO                         QR mat3     |Q^H Q - I|_F device N=   64  value= 6.832E-15
+PASS                            QR mat3     ormqr Q^H(AP) = R N=   64  value= 6.385E-16  tol= 1.00E-12
+PASS                QR mat3     perm device vs host B (#diff) N=   64  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat3     (ii) |R_ii| device vs host B (not gated) N=   64  value= 0.000E+00
+INFO            QR mat3     (ii) |R_ii| host A(qp3) vs host B N=   64  value= 8.578E+00
+PASS              QR mat3     (ii-b) |dR_ii|/|col_i| dev vs B N=   64  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat3     (ii) host B blocked vs unblocked N=   64  value= 0.000E+00
+INFO               QR mat3     (iii) min |Rii|qp3/|Rii|prepiv N=   64  value= 8.306E-02
+INFO               QR mat3     (iii) max |Rii|qp3/|Rii|prepiv N=   64  value= 9.578E+00
+INFO            QR mat3     #columns moved by ZGEQP3 vs input N=   64  value= 6.200E+01
+INFO                  QR mat3     #columns moved by pre-pivot N=   64  value= 6.400E+01
+PASS                       QR mat4     (i) |AP-QR|/|A| device N=   64  value= 3.023E-16  tol= 1.00E-12
+INFO                         QR mat4     |Q^H Q - I|_F device N=   64  value= 6.840E-15
+PASS                            QR mat4     ormqr Q^H(AP) = R N=   64  value= 6.792E-16  tol= 1.00E-12
+PASS                QR mat4     perm device vs host B (#diff) N=   64  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat4     (ii) |R_ii| device vs host B N=   64  value= 0.000E+00  tol= 1.00E-10
+INFO            QR mat4     (ii) |R_ii| host A(qp3) vs host B N=   64  value= 7.727E+00
+PASS              QR mat4     (ii-b) |dR_ii|/|col_i| dev vs B N=   64  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat4     (ii) host B blocked vs unblocked N=   64  value= 0.000E+00
+INFO               QR mat4     (iii) min |Rii|qp3/|Rii|prepiv N=   64  value= 1.319E-01
+INFO               QR mat4     (iii) max |Rii|qp3/|Rii|prepiv N=   64  value= 8.727E+00
+INFO            QR mat4     #columns moved by ZGEQP3 vs input N=   64  value= 4.500E+01
+INFO                  QR mat4     #columns moved by pre-pivot N=   64  value= 5.800E+01
+PASS                       QR mat5     (i) |AP-QR|/|A| device N=   64  value= 1.486E-16  tol= 1.00E-12
+INFO                         QR mat5     |Q^H Q - I|_F device N=   64  value= 7.042E-15
+PASS                            QR mat5     ormqr Q^H(AP) = R N=   64  value= 8.346E-16  tol= 1.00E-12
+PASS                QR mat5     perm device vs host B (#diff) N=   64  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat5     (ii) |R_ii| device vs host B N=   64  value= 0.000E+00  tol= 1.00E-10
+INFO            QR mat5     (ii) |R_ii| host A(qp3) vs host B N=   64  value= 0.000E+00
+PASS              QR mat5     (ii-b) |dR_ii|/|col_i| dev vs B N=   64  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat5     (ii) host B blocked vs unblocked N=   64  value= 0.000E+00
+INFO               QR mat5     (iii) min |Rii|qp3/|Rii|prepiv N=   64  value= 1.000E+00
+INFO               QR mat5     (iii) max |Rii|qp3/|Rii|prepiv N=   64  value= 1.000E+00
+INFO            QR mat5     #columns moved by ZGEQP3 vs input N=   64  value= 6.200E+01
+INFO                  QR mat5     #columns moved by pre-pivot N=   64  value= 6.200E+01
+PASS                       QR mat6     (i) |AP-QR|/|A| device N=   64  value= 2.778E-16  tol= 1.00E-12
+INFO                         QR mat6     |Q^H Q - I|_F device N=   64  value= 6.123E-15
+PASS                            QR mat6     ormqr Q^H(AP) = R N=   64  value= 8.663E-16  tol= 1.00E-12
+PASS                QR mat6     perm device vs host B (#diff) N=   64  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat6     (ii) |R_ii| device vs host B (not gated) N=   64  value= 0.000E+00
+INFO            QR mat6     (ii) |R_ii| host A(qp3) vs host B N=   64  value= 1.924E+00
+PASS              QR mat6     (ii-b) |dR_ii|/|col_i| dev vs B N=   64  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat6     (ii) host B blocked vs unblocked N=   64  value= 0.000E+00
+INFO               QR mat6     (iii) min |Rii|qp3/|Rii|prepiv N=   64  value= 4.242E-01
+INFO               QR mat6     (iii) max |Rii|qp3/|Rii|prepiv N=   64  value= 2.924E+00
+INFO            QR mat6     #columns moved by ZGEQP3 vs input N=   64  value= 6.400E+01
+INFO                  QR mat6     #columns moved by pre-pivot N=   64  value= 6.300E+01
+PASS                         rank-1 x256 kernel vs host zgeru N=   64  value= 1.166E-15  tol= 1.00E-12
+PASS                  rank-1 x256 kernel nowait vs host zgeru N=   64  value= 1.166E-15  tol= 1.00E-12
+PASS                        rank-1 x256 la_geru vs host zgeru N=   64  value= 0.000E+00  tol= 1.00E-12
+PASS                         rank-128 one ZGEMM vs host zgemm N=   64  value= 0.000E+00  tol= 1.00E-12
+PASS                                         2x zgemm vs host N=   64  value= 0.000E+00  tol= 1.00E-12
+PASS                       batched zgemm (2 flavours) vs host N=   64  value= 0.000E+00  tol= 1.00E-12
+
+--- N = 144
+PASS                                 checkerboard B_T vs host N=  144  value= 0.000E+00  tol= 1.00E-12
+PASS                         dense E G E^-1, ZGEMM x2 vs host N=  144  value= 0.000E+00  tol= 1.00E-12
+PASS                  dense E G E^-1, DGEMM+transpose vs host N=  144  value= 8.100E-16  tol= 1.00E-12
+PASS                      Op_V wrap per-site launches vs host N=  144  value= 3.383E-18  tol= 1.00E-12
+PASS                           Op_V wrap fused kernel vs host N=  144  value= 9.503E-17  tol= 1.00E-12
+PASS                       QR mat1     (i) |AP-QR|/|A| device N=  144  value= 2.971E-16  tol= 1.00E-12
+INFO                         QR mat1     |Q^H Q - I|_F device N=  144  value= 1.350E-14
+PASS                            QR mat1     ormqr Q^H(AP) = R N=  144  value= 6.038E-16  tol= 1.00E-12
+PASS                QR mat1     perm device vs host B (#diff) N=  144  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat1     (ii) |R_ii| device vs host B (not gated) N=  144  value= 0.000E+00
+INFO            QR mat1     (ii) |R_ii| host A(qp3) vs host B N=  144  value= 2.047E+01
+PASS              QR mat1     (ii-b) |dR_ii|/|col_i| dev vs B N=  144  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat1     (ii) host B blocked vs unblocked N=  144  value= 1.546E-06
+INFO               QR mat1     (iii) min |Rii|qp3/|Rii|prepiv N=  144  value= 4.187E-02
+INFO               QR mat1     (iii) max |Rii|qp3/|Rii|prepiv N=  144  value= 2.147E+01
+INFO            QR mat1     #columns moved by ZGEQP3 vs input N=  144  value= 8.100E+01
+INFO                  QR mat1     #columns moved by pre-pivot N=  144  value= 1.390E+02
+PASS                       QR mat2     (i) |AP-QR|/|A| device N=  144  value= 2.808E-16  tol= 1.00E-12
+INFO                         QR mat2     |Q^H Q - I|_F device N=  144  value= 1.375E-14
+PASS                            QR mat2     ormqr Q^H(AP) = R N=  144  value= 6.102E-16  tol= 1.00E-12
+PASS                QR mat2     perm device vs host B (#diff) N=  144  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat2     (ii) |R_ii| device vs host B (not gated) N=  144  value= 0.000E+00
+INFO            QR mat2     (ii) |R_ii| host A(qp3) vs host B N=  144  value= 3.538E+01
+PASS              QR mat2     (ii-b) |dR_ii|/|col_i| dev vs B N=  144  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat2     (ii) host B blocked vs unblocked N=  144  value= 8.918E-01
+INFO               QR mat2     (iii) min |Rii|qp3/|Rii|prepiv N=  144  value= 4.262E-02
+INFO               QR mat2     (iii) max |Rii|qp3/|Rii|prepiv N=  144  value= 3.638E+01
+INFO            QR mat2     #columns moved by ZGEQP3 vs input N=  144  value= 6.100E+01
+INFO                  QR mat2     #columns moved by pre-pivot N=  144  value= 1.380E+02
+PASS                       QR mat3     (i) |AP-QR|/|A| device N=  144  value= 3.303E-16  tol= 1.00E-12
+INFO                         QR mat3     |Q^H Q - I|_F device N=  144  value= 1.347E-14
+PASS                            QR mat3     ormqr Q^H(AP) = R N=  144  value= 6.607E-16  tol= 1.00E-12
+PASS                QR mat3     perm device vs host B (#diff) N=  144  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat3     (ii) |R_ii| device vs host B (not gated) N=  144  value= 0.000E+00
+INFO            QR mat3     (ii) |R_ii| host A(qp3) vs host B N=  144  value= 2.266E+01
+PASS              QR mat3     (ii-b) |dR_ii|/|col_i| dev vs B N=  144  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat3     (ii) host B blocked vs unblocked N=  144  value= 1.739E-06
+INFO               QR mat3     (iii) min |Rii|qp3/|Rii|prepiv N=  144  value= 4.275E-02
+INFO               QR mat3     (iii) max |Rii|qp3/|Rii|prepiv N=  144  value= 2.366E+01
+INFO            QR mat3     #columns moved by ZGEQP3 vs input N=  144  value= 1.420E+02
+INFO                  QR mat3     #columns moved by pre-pivot N=  144  value= 1.430E+02
+PASS                       QR mat4     (i) |AP-QR|/|A| device N=  144  value= 4.149E-16  tol= 1.00E-12
+INFO                         QR mat4     |Q^H Q - I|_F device N=  144  value= 1.353E-14
+PASS                            QR mat4     ormqr Q^H(AP) = R N=  144  value= 7.971E-16  tol= 1.00E-12
+PASS                QR mat4     perm device vs host B (#diff) N=  144  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat4     (ii) |R_ii| device vs host B N=  144  value= 0.000E+00  tol= 1.00E-10
+INFO            QR mat4     (ii) |R_ii| host A(qp3) vs host B N=  144  value= 1.027E+01
+PASS              QR mat4     (ii-b) |dR_ii|/|col_i| dev vs B N=  144  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat4     (ii) host B blocked vs unblocked N=  144  value= 2.372E-15
+INFO               QR mat4     (iii) min |Rii|qp3/|Rii|prepiv N=  144  value= 1.201E-01
+INFO               QR mat4     (iii) max |Rii|qp3/|Rii|prepiv N=  144  value= 1.127E+01
+INFO            QR mat4     #columns moved by ZGEQP3 vs input N=  144  value= 1.280E+02
+INFO                  QR mat4     #columns moved by pre-pivot N=  144  value= 1.410E+02
+PASS                       QR mat5     (i) |AP-QR|/|A| device N=  144  value= 1.648E-16  tol= 1.00E-12
+INFO                         QR mat5     |Q^H Q - I|_F device N=  144  value= 1.371E-14
+PASS                            QR mat5     ormqr Q^H(AP) = R N=  144  value= 6.594E-16  tol= 1.00E-12
+PASS                QR mat5     perm device vs host B (#diff) N=  144  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat5     (ii) |R_ii| device vs host B N=  144  value= 0.000E+00  tol= 1.00E-10
+INFO            QR mat5     (ii) |R_ii| host A(qp3) vs host B N=  144  value= 5.106E-16
+PASS              QR mat5     (ii-b) |dR_ii|/|col_i| dev vs B N=  144  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat5     (ii) host B blocked vs unblocked N=  144  value= 4.401E-16
+INFO               QR mat5     (iii) min |Rii|qp3/|Rii|prepiv N=  144  value= 1.000E+00
+INFO               QR mat5     (iii) max |Rii|qp3/|Rii|prepiv N=  144  value= 1.000E+00
+INFO            QR mat5     #columns moved by ZGEQP3 vs input N=  144  value= 1.440E+02
+INFO                  QR mat5     #columns moved by pre-pivot N=  144  value= 1.440E+02
+PASS                       QR mat6     (i) |AP-QR|/|A| device N=  144  value= 2.217E-16  tol= 1.00E-12
+INFO                         QR mat6     |Q^H Q - I|_F device N=  144  value= 1.338E-14
+PASS                            QR mat6     ormqr Q^H(AP) = R N=  144  value= 6.115E-16  tol= 1.00E-12
+PASS                QR mat6     perm device vs host B (#diff) N=  144  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat6     (ii) |R_ii| device vs host B (not gated) N=  144  value= 0.000E+00
+INFO            QR mat6     (ii) |R_ii| host A(qp3) vs host B N=  144  value= 1.446E+00
+PASS              QR mat6     (ii-b) |dR_ii|/|col_i| dev vs B N=  144  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat6     (ii) host B blocked vs unblocked N=  144  value= 7.307E-06
+INFO               QR mat6     (iii) min |Rii|qp3/|Rii|prepiv N=  144  value= 3.758E-01
+INFO               QR mat6     (iii) max |Rii|qp3/|Rii|prepiv N=  144  value= 2.446E+00
+INFO            QR mat6     #columns moved by ZGEQP3 vs input N=  144  value= 1.440E+02
+INFO                  QR mat6     #columns moved by pre-pivot N=  144  value= 1.420E+02
+PASS                         rank-1 x256 kernel vs host zgeru N=  144  value= 1.192E-15  tol= 1.00E-12
+PASS                  rank-1 x256 kernel nowait vs host zgeru N=  144  value= 1.192E-15  tol= 1.00E-12
+PASS                        rank-1 x256 la_geru vs host zgeru N=  144  value= 0.000E+00  tol= 1.00E-12
+PASS                         rank-128 one ZGEMM vs host zgemm N=  144  value= 0.000E+00  tol= 1.00E-12
+PASS                                         2x zgemm vs host N=  144  value= 0.000E+00  tol= 1.00E-12
+PASS                       batched zgemm (2 flavours) vs host N=  144  value= 0.000E+00  tol= 1.00E-12
+
+--- N = 256
+PASS                                 checkerboard B_T vs host N=  256  value= 0.000E+00  tol= 1.00E-12
+PASS                         dense E G E^-1, ZGEMM x2 vs host N=  256  value= 0.000E+00  tol= 1.00E-12
+PASS                  dense E G E^-1, DGEMM+transpose vs host N=  256  value= 9.058E-16  tol= 1.00E-12
+PASS                      Op_V wrap per-site launches vs host N=  256  value= 2.438E-18  tol= 1.00E-12
+PASS                           Op_V wrap fused kernel vs host N=  256  value= 9.373E-17  tol= 1.00E-12
+PASS                       QR mat1     (i) |AP-QR|/|A| device N=  256  value= 3.435E-16  tol= 1.00E-12
+INFO                         QR mat1     |Q^H Q - I|_F device N=  256  value= 2.074E-14
+PASS                            QR mat1     ormqr Q^H(AP) = R N=  256  value= 8.223E-16  tol= 1.00E-12
+PASS                QR mat1     perm device vs host B (#diff) N=  256  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat1     (ii) |R_ii| device vs host B (not gated) N=  256  value= 0.000E+00
+INFO            QR mat1     (ii) |R_ii| host A(qp3) vs host B N=  256  value= 2.929E+01
+PASS              QR mat1     (ii-b) |dR_ii|/|col_i| dev vs B N=  256  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat1     (ii) host B blocked vs unblocked N=  256  value= 1.084E-06
+INFO               QR mat1     (iii) min |Rii|qp3/|Rii|prepiv N=  256  value= 3.026E-02
+INFO               QR mat1     (iii) max |Rii|qp3/|Rii|prepiv N=  256  value= 3.029E+01
+INFO            QR mat1     #columns moved by ZGEQP3 vs input N=  256  value= 2.060E+02
+INFO                  QR mat1     #columns moved by pre-pivot N=  256  value= 2.460E+02
+PASS                       QR mat2     (i) |AP-QR|/|A| device N=  256  value= 3.629E-16  tol= 1.00E-12
+INFO                         QR mat2     |Q^H Q - I|_F device N=  256  value= 2.110E-14
+PASS                            QR mat2     ormqr Q^H(AP) = R N=  256  value= 6.565E-16  tol= 1.00E-12
+PASS                QR mat2     perm device vs host B (#diff) N=  256  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat2     (ii) |R_ii| device vs host B (not gated) N=  256  value= 0.000E+00
+INFO            QR mat2     (ii) |R_ii| host A(qp3) vs host B N=  256  value= 4.243E+01
+PASS              QR mat2     (ii-b) |dR_ii|/|col_i| dev vs B N=  256  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat2     (ii) host B blocked vs unblocked N=  256  value= 6.716E-01
+INFO               QR mat2     (iii) min |Rii|qp3/|Rii|prepiv N=  256  value= 4.910E-02
+INFO               QR mat2     (iii) max |Rii|qp3/|Rii|prepiv N=  256  value= 4.343E+01
+INFO            QR mat2     #columns moved by ZGEQP3 vs input N=  256  value= 1.680E+02
+INFO                  QR mat2     #columns moved by pre-pivot N=  256  value= 2.460E+02
+PASS                       QR mat3     (i) |AP-QR|/|A| device N=  256  value= 4.697E-16  tol= 1.00E-12
+INFO                         QR mat3     |Q^H Q - I|_F device N=  256  value= 2.096E-14
+PASS                            QR mat3     ormqr Q^H(AP) = R N=  256  value= 6.170E-16  tol= 1.00E-12
+PASS                QR mat3     perm device vs host B (#diff) N=  256  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat3     (ii) |R_ii| device vs host B (not gated) N=  256  value= 0.000E+00
+INFO            QR mat3     (ii) |R_ii| host A(qp3) vs host B N=  256  value= 1.386E+01
+PASS              QR mat3     (ii-b) |dR_ii|/|col_i| dev vs B N=  256  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat3     (ii) host B blocked vs unblocked N=  256  value= 1.242E-06
+INFO               QR mat3     (iii) min |Rii|qp3/|Rii|prepiv N=  256  value= 1.389E-01
+INFO               QR mat3     (iii) max |Rii|qp3/|Rii|prepiv N=  256  value= 1.486E+01
+INFO            QR mat3     #columns moved by ZGEQP3 vs input N=  256  value= 2.550E+02
+INFO                  QR mat3     #columns moved by pre-pivot N=  256  value= 2.550E+02
+PASS                       QR mat4     (i) |AP-QR|/|A| device N=  256  value= 4.699E-16  tol= 1.00E-12
+INFO                         QR mat4     |Q^H Q - I|_F device N=  256  value= 2.088E-14
+PASS                            QR mat4     ormqr Q^H(AP) = R N=  256  value= 6.142E-16  tol= 1.00E-12
+PASS                QR mat4     perm device vs host B (#diff) N=  256  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat4     (ii) |R_ii| device vs host B N=  256  value= 0.000E+00  tol= 1.00E-10
+INFO            QR mat4     (ii) |R_ii| host A(qp3) vs host B N=  256  value= 1.189E+01
+PASS              QR mat4     (ii-b) |dR_ii|/|col_i| dev vs B N=  256  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat4     (ii) host B blocked vs unblocked N=  256  value= 4.197E-15
+INFO               QR mat4     (iii) min |Rii|qp3/|Rii|prepiv N=  256  value= 9.463E-02
+INFO               QR mat4     (iii) max |Rii|qp3/|Rii|prepiv N=  256  value= 1.289E+01
+INFO            QR mat4     #columns moved by ZGEQP3 vs input N=  256  value= 2.490E+02
+INFO                  QR mat4     #columns moved by pre-pivot N=  256  value= 2.490E+02
+PASS                       QR mat5     (i) |AP-QR|/|A| device N=  256  value= 2.063E-16  tol= 1.00E-12
+INFO                         QR mat5     |Q^H Q - I|_F device N=  256  value= 2.106E-14
+PASS                            QR mat5     ormqr Q^H(AP) = R N=  256  value= 4.434E-16  tol= 1.00E-12
+PASS                QR mat5     perm device vs host B (#diff) N=  256  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat5     (ii) |R_ii| device vs host B N=  256  value= 0.000E+00  tol= 1.00E-10
+INFO            QR mat5     (ii) |R_ii| host A(qp3) vs host B N=  256  value= 4.681E-16
+PASS              QR mat5     (ii-b) |dR_ii|/|col_i| dev vs B N=  256  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat5     (ii) host B blocked vs unblocked N=  256  value= 5.269E-16
+INFO               QR mat5     (iii) min |Rii|qp3/|Rii|prepiv N=  256  value= 1.000E+00
+INFO               QR mat5     (iii) max |Rii|qp3/|Rii|prepiv N=  256  value= 1.000E+00
+INFO            QR mat5     #columns moved by ZGEQP3 vs input N=  256  value= 2.560E+02
+INFO                  QR mat5     #columns moved by pre-pivot N=  256  value= 2.560E+02
+PASS                       QR mat6     (i) |AP-QR|/|A| device N=  256  value= 3.190E-16  tol= 1.00E-12
+INFO                         QR mat6     |Q^H Q - I|_F device N=  256  value= 2.124E-14
+PASS                            QR mat6     ormqr Q^H(AP) = R N=  256  value= 7.554E-16  tol= 1.00E-12
+PASS                QR mat6     perm device vs host B (#diff) N=  256  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat6     (ii) |R_ii| device vs host B (not gated) N=  256  value= 0.000E+00
+INFO            QR mat6     (ii) |R_ii| host A(qp3) vs host B N=  256  value= 1.456E+00
+PASS              QR mat6     (ii-b) |dR_ii|/|col_i| dev vs B N=  256  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat6     (ii) host B blocked vs unblocked N=  256  value= 5.394E-06
+INFO               QR mat6     (iii) min |Rii|qp3/|Rii|prepiv N=  256  value= 4.800E-01
+INFO               QR mat6     (iii) max |Rii|qp3/|Rii|prepiv N=  256  value= 2.456E+00
+INFO            QR mat6     #columns moved by ZGEQP3 vs input N=  256  value= 2.550E+02
+INFO                  QR mat6     #columns moved by pre-pivot N=  256  value= 2.560E+02
+PASS                         rank-1 x256 kernel vs host zgeru N=  256  value= 1.189E-15  tol= 1.00E-12
+PASS                  rank-1 x256 kernel nowait vs host zgeru N=  256  value= 1.189E-15  tol= 1.00E-12
+PASS                        rank-1 x256 la_geru vs host zgeru N=  256  value= 0.000E+00  tol= 1.00E-12
+PASS                         rank-128 one ZGEMM vs host zgemm N=  256  value= 0.000E+00  tol= 1.00E-12
+PASS                                         2x zgemm vs host N=  256  value= 0.000E+00  tol= 1.00E-12
+PASS                       batched zgemm (2 flavours) vs host N=  256  value= 0.000E+00  tol= 1.00E-12
+
+--- N = 400
+PASS                                 checkerboard B_T vs host N=  400  value= 0.000E+00  tol= 1.00E-12
+PASS                         dense E G E^-1, ZGEMM x2 vs host N=  400  value= 0.000E+00  tol= 1.00E-12
+PASS                  dense E G E^-1, DGEMM+transpose vs host N=  400  value= 8.540E-16  tol= 1.00E-12
+PASS                      Op_V wrap per-site launches vs host N=  400  value= 2.323E-18  tol= 1.00E-12
+PASS                           Op_V wrap fused kernel vs host N=  400  value= 9.389E-17  tol= 1.00E-12
+PASS                       QR mat1     (i) |AP-QR|/|A| device N=  400  value= 4.202E-16  tol= 1.00E-12
+INFO                         QR mat1     |Q^H Q - I|_F device N=  400  value= 2.809E-14
+PASS                            QR mat1     ormqr Q^H(AP) = R N=  400  value= 8.353E-16  tol= 1.00E-12
+PASS                QR mat1     perm device vs host B (#diff) N=  400  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat1     (ii) |R_ii| device vs host B (not gated) N=  400  value= 0.000E+00
+INFO            QR mat1     (ii) |R_ii| host A(qp3) vs host B N=  400  value= 2.876E+01
+PASS              QR mat1     (ii-b) |dR_ii|/|col_i| dev vs B N=  400  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat1     (ii) host B blocked vs unblocked N=  400  value= 1.104E-06
+INFO               QR mat1     (iii) min |Rii|qp3/|Rii|prepiv N=  400  value= 2.694E-02
+INFO               QR mat1     (iii) max |Rii|qp3/|Rii|prepiv N=  400  value= 2.976E+01
+INFO            QR mat1     #columns moved by ZGEQP3 vs input N=  400  value= 3.510E+02
+INFO                  QR mat1     #columns moved by pre-pivot N=  400  value= 3.930E+02
+PASS                       QR mat2     (i) |AP-QR|/|A| device N=  400  value= 3.938E-16  tol= 1.00E-12
+INFO                         QR mat2     |Q^H Q - I|_F device N=  400  value= 2.771E-14
+PASS                            QR mat2     ormqr Q^H(AP) = R N=  400  value= 5.858E-16  tol= 1.00E-12
+PASS                QR mat2     perm device vs host B (#diff) N=  400  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat2     (ii) |R_ii| device vs host B (not gated) N=  400  value= 0.000E+00
+INFO            QR mat2     (ii) |R_ii| host A(qp3) vs host B N=  400  value= 3.391E+01
+PASS              QR mat2     (ii-b) |dR_ii|/|col_i| dev vs B N=  400  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat2     (ii) host B blocked vs unblocked N=  400  value= 5.076E-01
+INFO               QR mat2     (iii) min |Rii|qp3/|Rii|prepiv N=  400  value= 4.967E-02
+INFO               QR mat2     (iii) max |Rii|qp3/|Rii|prepiv N=  400  value= 3.491E+01
+INFO            QR mat2     #columns moved by ZGEQP3 vs input N=  400  value= 3.410E+02
+INFO                  QR mat2     #columns moved by pre-pivot N=  400  value= 3.960E+02
+PASS                       QR mat3     (i) |AP-QR|/|A| device N=  400  value= 1.535E-16  tol= 1.00E-12
+INFO                         QR mat3     |Q^H Q - I|_F device N=  400  value= 2.777E-14
+PASS                            QR mat3     ormqr Q^H(AP) = R N=  400  value= 8.452E-16  tol= 1.00E-12
+PASS                QR mat3     perm device vs host B (#diff) N=  400  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat3     (ii) |R_ii| device vs host B (not gated) N=  400  value= 0.000E+00
+INFO            QR mat3     (ii) |R_ii| host A(qp3) vs host B N=  400  value= 1.439E+01
+PASS              QR mat3     (ii-b) |dR_ii|/|col_i| dev vs B N=  400  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat3     (ii) host B blocked vs unblocked N=  400  value= 1.033E-06
+INFO               QR mat3     (iii) min |Rii|qp3/|Rii|prepiv N=  400  value= 1.234E-01
+INFO               QR mat3     (iii) max |Rii|qp3/|Rii|prepiv N=  400  value= 1.539E+01
+INFO            QR mat3     #columns moved by ZGEQP3 vs input N=  400  value= 3.980E+02
+INFO                  QR mat3     #columns moved by pre-pivot N=  400  value= 3.990E+02
+PASS                       QR mat4     (i) |AP-QR|/|A| device N=  400  value= 5.466E-16  tol= 1.00E-12
+INFO                         QR mat4     |Q^H Q - I|_F device N=  400  value= 2.780E-14
+PASS                            QR mat4     ormqr Q^H(AP) = R N=  400  value= 7.384E-16  tol= 1.00E-12
+PASS                QR mat4     perm device vs host B (#diff) N=  400  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat4     (ii) |R_ii| device vs host B N=  400  value= 0.000E+00  tol= 1.00E-10
+INFO            QR mat4     (ii) |R_ii| host A(qp3) vs host B N=  400  value= 8.490E+00
+PASS              QR mat4     (ii-b) |dR_ii|/|col_i| dev vs B N=  400  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat4     (ii) host B blocked vs unblocked N=  400  value= 3.548E-15
+INFO               QR mat4     (iii) min |Rii|qp3/|Rii|prepiv N=  400  value= 1.003E-01
+INFO               QR mat4     (iii) max |Rii|qp3/|Rii|prepiv N=  400  value= 9.490E+00
+INFO            QR mat4     #columns moved by ZGEQP3 vs input N=  400  value= 3.920E+02
+INFO                  QR mat4     #columns moved by pre-pivot N=  400  value= 3.980E+02
+PASS                       QR mat5     (i) |AP-QR|/|A| device N=  400  value= 2.351E-16  tol= 1.00E-12
+INFO                         QR mat5     |Q^H Q - I|_F device N=  400  value= 2.790E-14
+PASS                            QR mat5     ormqr Q^H(AP) = R N=  400  value= 6.043E-16  tol= 1.00E-12
+PASS                QR mat5     perm device vs host B (#diff) N=  400  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat5     (ii) |R_ii| device vs host B N=  400  value= 0.000E+00  tol= 1.00E-10
+INFO            QR mat5     (ii) |R_ii| host A(qp3) vs host B N=  400  value= 4.918E-16
+PASS              QR mat5     (ii-b) |dR_ii|/|col_i| dev vs B N=  400  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat5     (ii) host B blocked vs unblocked N=  400  value= 4.225E-16
+INFO               QR mat5     (iii) min |Rii|qp3/|Rii|prepiv N=  400  value= 1.000E+00
+INFO               QR mat5     (iii) max |Rii|qp3/|Rii|prepiv N=  400  value= 1.000E+00
+INFO            QR mat5     #columns moved by ZGEQP3 vs input N=  400  value= 3.980E+02
+INFO                  QR mat5     #columns moved by pre-pivot N=  400  value= 3.980E+02
+PASS                       QR mat6     (i) |AP-QR|/|A| device N=  400  value= 5.119E-16  tol= 1.00E-12
+INFO                         QR mat6     |Q^H Q - I|_F device N=  400  value= 2.870E-14
+PASS                            QR mat6     ormqr Q^H(AP) = R N=  400  value= 9.449E-16  tol= 1.00E-12
+PASS                QR mat6     perm device vs host B (#diff) N=  400  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat6     (ii) |R_ii| device vs host B (not gated) N=  400  value= 0.000E+00
+INFO            QR mat6     (ii) |R_ii| host A(qp3) vs host B N=  400  value= 7.115E-01
+PASS              QR mat6     (ii-b) |dR_ii|/|col_i| dev vs B N=  400  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat6     (ii) host B blocked vs unblocked N=  400  value= 8.373E-06
+INFO               QR mat6     (iii) min |Rii|qp3/|Rii|prepiv N=  400  value= 4.362E-01
+INFO               QR mat6     (iii) max |Rii|qp3/|Rii|prepiv N=  400  value= 1.712E+00
+INFO            QR mat6     #columns moved by ZGEQP3 vs input N=  400  value= 4.000E+02
+INFO                  QR mat6     #columns moved by pre-pivot N=  400  value= 3.980E+02
+PASS                         rank-1 x256 kernel vs host zgeru N=  400  value= 1.189E-15  tol= 1.00E-12
+PASS                  rank-1 x256 kernel nowait vs host zgeru N=  400  value= 1.189E-15  tol= 1.00E-12
+PASS                        rank-1 x256 la_geru vs host zgeru N=  400  value= 0.000E+00  tol= 1.00E-12
+PASS                         rank-128 one ZGEMM vs host zgemm N=  400  value= 0.000E+00  tol= 1.00E-12
+PASS                                         2x zgemm vs host N=  400  value= 0.000E+00  tol= 1.00E-12
+PASS                       batched zgemm (2 flavours) vs host N=  400  value= 0.000E+00  tol= 1.00E-12
+
+--- N = 576
+PASS                                 checkerboard B_T vs host N=  576  value= 0.000E+00  tol= 1.00E-12
+PASS                         dense E G E^-1, ZGEMM x2 vs host N=  576  value= 0.000E+00  tol= 1.00E-12
+PASS                  dense E G E^-1, DGEMM+transpose vs host N=  576  value= 9.015E-16  tol= 1.00E-12
+PASS                      Op_V wrap per-site launches vs host N=  576  value= 1.860E-18  tol= 1.00E-12
+PASS                           Op_V wrap fused kernel vs host N=  576  value= 9.403E-17  tol= 1.00E-12
+PASS                       QR mat1     (i) |AP-QR|/|A| device N=  576  value= 4.330E-16  tol= 1.00E-12
+INFO                         QR mat1     |Q^H Q - I|_F device N=  576  value= 3.656E-14
+PASS                            QR mat1     ormqr Q^H(AP) = R N=  576  value= 7.377E-16  tol= 1.00E-12
+PASS                QR mat1     perm device vs host B (#diff) N=  576  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat1     (ii) |R_ii| device vs host B (not gated) N=  576  value= 0.000E+00
+INFO            QR mat1     (ii) |R_ii| host A(qp3) vs host B N=  576  value= 2.618E+01
+PASS              QR mat1     (ii-b) |dR_ii|/|col_i| dev vs B N=  576  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat1     (ii) host B blocked vs unblocked N=  576  value= 9.798E-07
+INFO               QR mat1     (iii) min |Rii|qp3/|Rii|prepiv N=  576  value= 3.955E-02
+INFO               QR mat1     (iii) max |Rii|qp3/|Rii|prepiv N=  576  value= 2.718E+01
+INFO            QR mat1     #columns moved by ZGEQP3 vs input N=  576  value= 5.310E+02
+INFO                  QR mat1     #columns moved by pre-pivot N=  576  value= 5.710E+02
+PASS                       QR mat2     (i) |AP-QR|/|A| device N=  576  value= 3.638E-16  tol= 1.00E-12
+INFO                         QR mat2     |Q^H Q - I|_F device N=  576  value= 3.591E-14
+PASS                            QR mat2     ormqr Q^H(AP) = R N=  576  value= 4.578E-16  tol= 1.00E-12
+PASS                QR mat2     perm device vs host B (#diff) N=  576  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat2     (ii) |R_ii| device vs host B (not gated) N=  576  value= 0.000E+00
+INFO            QR mat2     (ii) |R_ii| host A(qp3) vs host B N=  576  value= 4.147E+01
+PASS              QR mat2     (ii-b) |dR_ii|/|col_i| dev vs B N=  576  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat2     (ii) host B blocked vs unblocked N=  576  value= 4.217E-01
+INFO               QR mat2     (iii) min |Rii|qp3/|Rii|prepiv N=  576  value= 4.916E-02
+INFO               QR mat2     (iii) max |Rii|qp3/|Rii|prepiv N=  576  value= 4.247E+01
+INFO            QR mat2     #columns moved by ZGEQP3 vs input N=  576  value= 5.010E+02
+INFO                  QR mat2     #columns moved by pre-pivot N=  576  value= 5.670E+02
+PASS                       QR mat3     (i) |AP-QR|/|A| device N=  576  value= 2.976E-16  tol= 1.00E-12
+INFO                         QR mat3     |Q^H Q - I|_F device N=  576  value= 3.621E-14
+PASS                            QR mat3     ormqr Q^H(AP) = R N=  576  value= 7.636E-16  tol= 1.00E-12
+PASS                QR mat3     perm device vs host B (#diff) N=  576  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat3     (ii) |R_ii| device vs host B (not gated) N=  576  value= 0.000E+00
+INFO            QR mat3     (ii) |R_ii| host A(qp3) vs host B N=  576  value= 1.106E+01
+PASS              QR mat3     (ii-b) |dR_ii|/|col_i| dev vs B N=  576  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat3     (ii) host B blocked vs unblocked N=  576  value= 1.312E-06
+INFO               QR mat3     (iii) min |Rii|qp3/|Rii|prepiv N=  576  value= 1.153E-01
+INFO               QR mat3     (iii) max |Rii|qp3/|Rii|prepiv N=  576  value= 1.206E+01
+INFO            QR mat3     #columns moved by ZGEQP3 vs input N=  576  value= 5.750E+02
+INFO                  QR mat3     #columns moved by pre-pivot N=  576  value= 5.750E+02
+PASS                       QR mat4     (i) |AP-QR|/|A| device N=  576  value= 5.689E-16  tol= 1.00E-12
+INFO                         QR mat4     |Q^H Q - I|_F device N=  576  value= 3.601E-14
+PASS                            QR mat4     ormqr Q^H(AP) = R N=  576  value= 6.279E-16  tol= 1.00E-12
+PASS                QR mat4     perm device vs host B (#diff) N=  576  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat4     (ii) |R_ii| device vs host B N=  576  value= 0.000E+00  tol= 1.00E-10
+INFO            QR mat4     (ii) |R_ii| host A(qp3) vs host B N=  576  value= 1.013E+01
+PASS              QR mat4     (ii-b) |dR_ii|/|col_i| dev vs B N=  576  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat4     (ii) host B blocked vs unblocked N=  576  value= 3.997E-15
+INFO               QR mat4     (iii) min |Rii|qp3/|Rii|prepiv N=  576  value= 1.429E-01
+INFO               QR mat4     (iii) max |Rii|qp3/|Rii|prepiv N=  576  value= 1.113E+01
+INFO            QR mat4     #columns moved by ZGEQP3 vs input N=  576  value= 5.690E+02
+INFO                  QR mat4     #columns moved by pre-pivot N=  576  value= 5.700E+02
+PASS                       QR mat5     (i) |AP-QR|/|A| device N=  576  value= 2.545E-16  tol= 1.00E-12
+INFO                         QR mat5     |Q^H Q - I|_F device N=  576  value= 3.595E-14
+PASS                            QR mat5     ormqr Q^H(AP) = R N=  576  value= 6.873E-16  tol= 1.00E-12
+PASS                QR mat5     perm device vs host B (#diff) N=  576  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat5     (ii) |R_ii| device vs host B N=  576  value= 0.000E+00  tol= 1.00E-10
+INFO            QR mat5     (ii) |R_ii| host A(qp3) vs host B N=  576  value= 4.580E-16
+PASS              QR mat5     (ii-b) |dR_ii|/|col_i| dev vs B N=  576  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat5     (ii) host B blocked vs unblocked N=  576  value= 4.542E-16
+INFO               QR mat5     (iii) min |Rii|qp3/|Rii|prepiv N=  576  value= 1.000E+00
+INFO               QR mat5     (iii) max |Rii|qp3/|Rii|prepiv N=  576  value= 1.000E+00
+INFO            QR mat5     #columns moved by ZGEQP3 vs input N=  576  value= 5.750E+02
+INFO                  QR mat5     #columns moved by pre-pivot N=  576  value= 5.750E+02
+PASS                       QR mat6     (i) |AP-QR|/|A| device N=  576  value= 5.287E-16  tol= 1.00E-12
+INFO                         QR mat6     |Q^H Q - I|_F device N=  576  value= 3.662E-14
+PASS                            QR mat6     ormqr Q^H(AP) = R N=  576  value= 9.191E-16  tol= 1.00E-12
+PASS                QR mat6     perm device vs host B (#diff) N=  576  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat6     (ii) |R_ii| device vs host B (not gated) N=  576  value= 0.000E+00
+INFO            QR mat6     (ii) |R_ii| host A(qp3) vs host B N=  576  value= 7.309E-01
+PASS              QR mat6     (ii-b) |dR_ii|/|col_i| dev vs B N=  576  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat6     (ii) host B blocked vs unblocked N=  576  value= 3.565E-06
+INFO               QR mat6     (iii) min |Rii|qp3/|Rii|prepiv N=  576  value= 5.996E-01
+INFO               QR mat6     (iii) max |Rii|qp3/|Rii|prepiv N=  576  value= 1.731E+00
+INFO            QR mat6     #columns moved by ZGEQP3 vs input N=  576  value= 5.740E+02
+INFO                  QR mat6     #columns moved by pre-pivot N=  576  value= 5.750E+02
+PASS                         rank-1 x256 kernel vs host zgeru N=  576  value= 1.189E-15  tol= 1.00E-12
+PASS                  rank-1 x256 kernel nowait vs host zgeru N=  576  value= 1.189E-15  tol= 1.00E-12
+PASS                        rank-1 x256 la_geru vs host zgeru N=  576  value= 0.000E+00  tol= 1.00E-12
+PASS                         rank-128 one ZGEMM vs host zgemm N=  576  value= 0.000E+00  tol= 1.00E-12
+PASS                                         2x zgemm vs host N=  576  value= 0.000E+00  tol= 1.00E-12
+PASS                       batched zgemm (2 flavours) vs host N=  576  value= 0.000E+00  tol= 1.00E-12
+
+--- N = 1024
+PASS                                 checkerboard B_T vs host N= 1024  value= 0.000E+00  tol= 1.00E-12
+PASS                         dense E G E^-1, ZGEMM x2 vs host N= 1024  value= 0.000E+00  tol= 1.00E-12
+PASS                  dense E G E^-1, DGEMM+transpose vs host N= 1024  value= 9.337E-16  tol= 1.00E-12
+PASS                      Op_V wrap per-site launches vs host N= 1024  value= 1.361E-18  tol= 1.00E-12
+PASS                           Op_V wrap fused kernel vs host N= 1024  value= 9.397E-17  tol= 1.00E-12
+PASS                       QR mat1     (i) |AP-QR|/|A| device N= 1024  value= 4.744E-16  tol= 1.00E-12
+INFO                         QR mat1     |Q^H Q - I|_F device N= 1024  value= 5.058E-14
+PASS                            QR mat1     ormqr Q^H(AP) = R N= 1024  value= 5.754E-16  tol= 1.00E-12
+PASS                QR mat1     perm device vs host B (#diff) N= 1024  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat1     (ii) |R_ii| device vs host B (not gated) N= 1024  value= 0.000E+00
+INFO            QR mat1     (ii) |R_ii| host A(qp3) vs host B N= 1024  value= 2.551E+01
+PASS              QR mat1     (ii-b) |dR_ii|/|col_i| dev vs B N= 1024  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat1     (ii) host B blocked vs unblocked N= 1024  value= 9.977E-07
+INFO               QR mat1     (iii) min |Rii|qp3/|Rii|prepiv N= 1024  value= 3.477E-02
+INFO               QR mat1     (iii) max |Rii|qp3/|Rii|prepiv N= 1024  value= 2.651E+01
+INFO            QR mat1     #columns moved by ZGEQP3 vs input N= 1024  value= 9.760E+02
+INFO                  QR mat1     #columns moved by pre-pivot N= 1024  value= 1.013E+03
+PASS                       QR mat2     (i) |AP-QR|/|A| device N= 1024  value= 4.172E-16  tol= 1.00E-12
+INFO                         QR mat2     |Q^H Q - I|_F device N= 1024  value= 5.008E-14
+PASS                            QR mat2     ormqr Q^H(AP) = R N= 1024  value= 5.523E-16  tol= 1.00E-12
+PASS                QR mat2     perm device vs host B (#diff) N= 1024  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat2     (ii) |R_ii| device vs host B (not gated) N= 1024  value= 0.000E+00
+INFO            QR mat2     (ii) |R_ii| host A(qp3) vs host B N= 1024  value= 3.066E+01
+PASS              QR mat2     (ii-b) |dR_ii|/|col_i| dev vs B N= 1024  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat2     (ii) host B blocked vs unblocked N= 1024  value= 8.441E-01
+INFO               QR mat2     (iii) min |Rii|qp3/|Rii|prepiv N= 1024  value= 4.527E-02
+INFO               QR mat2     (iii) max |Rii|qp3/|Rii|prepiv N= 1024  value= 3.166E+01
+INFO            QR mat2     #columns moved by ZGEQP3 vs input N= 1024  value= 9.560E+02
+INFO                  QR mat2     #columns moved by pre-pivot N= 1024  value= 1.018E+03
+PASS                       QR mat3     (i) |AP-QR|/|A| device N= 1024  value= 3.045E-16  tol= 1.00E-12
+INFO                         QR mat3     |Q^H Q - I|_F device N= 1024  value= 5.023E-14
+PASS                            QR mat3     ormqr Q^H(AP) = R N= 1024  value= 5.606E-16  tol= 1.00E-12
+PASS                QR mat3     perm device vs host B (#diff) N= 1024  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat3     (ii) |R_ii| device vs host B (not gated) N= 1024  value= 0.000E+00
+INFO            QR mat3     (ii) |R_ii| host A(qp3) vs host B N= 1024  value= 1.442E+01
+PASS              QR mat3     (ii-b) |dR_ii|/|col_i| dev vs B N= 1024  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat3     (ii) host B blocked vs unblocked N= 1024  value= 1.492E-06
+INFO               QR mat3     (iii) min |Rii|qp3/|Rii|prepiv N= 1024  value= 8.188E-02
+INFO               QR mat3     (iii) max |Rii|qp3/|Rii|prepiv N= 1024  value= 1.542E+01
+INFO            QR mat3     #columns moved by ZGEQP3 vs input N= 1024  value= 1.022E+03
+INFO                  QR mat3     #columns moved by pre-pivot N= 1024  value= 1.023E+03
+PASS                       QR mat4     (i) |AP-QR|/|A| device N= 1024  value= 5.998E-16  tol= 1.00E-12
+INFO                         QR mat4     |Q^H Q - I|_F device N= 1024  value= 5.053E-14
+PASS                            QR mat4     ormqr Q^H(AP) = R N= 1024  value= 5.958E-16  tol= 1.00E-12
+PASS                QR mat4     perm device vs host B (#diff) N= 1024  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat4     (ii) |R_ii| device vs host B N= 1024  value= 0.000E+00  tol= 1.00E-10
+INFO            QR mat4     (ii) |R_ii| host A(qp3) vs host B N= 1024  value= 9.442E+00
+PASS              QR mat4     (ii-b) |dR_ii|/|col_i| dev vs B N= 1024  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat4     (ii) host B blocked vs unblocked N= 1024  value= 4.427E-15
+INFO               QR mat4     (iii) min |Rii|qp3/|Rii|prepiv N= 1024  value= 1.099E-01
+INFO               QR mat4     (iii) max |Rii|qp3/|Rii|prepiv N= 1024  value= 1.044E+01
+INFO            QR mat4     #columns moved by ZGEQP3 vs input N= 1024  value= 1.012E+03
+INFO                  QR mat4     #columns moved by pre-pivot N= 1024  value= 1.018E+03
+PASS                       QR mat5     (i) |AP-QR|/|A| device N= 1024  value= 3.077E-16  tol= 1.00E-12
+INFO                         QR mat5     |Q^H Q - I|_F device N= 1024  value= 5.043E-14
+PASS                            QR mat5     ormqr Q^H(AP) = R N= 1024  value= 5.162E-16  tol= 1.00E-12
+PASS                QR mat5     perm device vs host B (#diff) N= 1024  value= 0.000E+00  tol= 5.00E-01
+PASS                 QR mat5     (ii) |R_ii| device vs host B N= 1024  value= 0.000E+00  tol= 1.00E-10
+INFO            QR mat5     (ii) |R_ii| host A(qp3) vs host B N= 1024  value= 6.953E-16
+PASS              QR mat5     (ii-b) |dR_ii|/|col_i| dev vs B N= 1024  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat5     (ii) host B blocked vs unblocked N= 1024  value= 8.367E-16
+INFO               QR mat5     (iii) min |Rii|qp3/|Rii|prepiv N= 1024  value= 1.000E+00
+INFO               QR mat5     (iii) max |Rii|qp3/|Rii|prepiv N= 1024  value= 1.000E+00
+INFO            QR mat5     #columns moved by ZGEQP3 vs input N= 1024  value= 1.023E+03
+INFO                  QR mat5     #columns moved by pre-pivot N= 1024  value= 1.023E+03
+PASS                       QR mat6     (i) |AP-QR|/|A| device N= 1024  value= 6.830E-16  tol= 1.00E-12
+INFO                         QR mat6     |Q^H Q - I|_F device N= 1024  value= 5.117E-14
+PASS                            QR mat6     ormqr Q^H(AP) = R N= 1024  value= 9.680E-16  tol= 1.00E-12
+PASS                QR mat6     perm device vs host B (#diff) N= 1024  value= 0.000E+00  tol= 5.00E-01
+INFO     QR mat6     (ii) |R_ii| device vs host B (not gated) N= 1024  value= 0.000E+00
+INFO            QR mat6     (ii) |R_ii| host A(qp3) vs host B N= 1024  value= 6.343E-01
+PASS              QR mat6     (ii-b) |dR_ii|/|col_i| dev vs B N= 1024  value= 0.000E+00  tol= 1.00E-12
+INFO             QR mat6     (ii) host B blocked vs unblocked N= 1024  value= 4.932E-06
+INFO               QR mat6     (iii) min |Rii|qp3/|Rii|prepiv N= 1024  value= 6.854E-01
+INFO               QR mat6     (iii) max |Rii|qp3/|Rii|prepiv N= 1024  value= 1.634E+00
+INFO            QR mat6     #columns moved by ZGEQP3 vs input N= 1024  value= 1.022E+03
+INFO                  QR mat6     #columns moved by pre-pivot N= 1024  value= 1.024E+03
+PASS                         rank-1 x256 kernel vs host zgeru N= 1024  value= 1.189E-15  tol= 1.00E-12
+PASS                  rank-1 x256 kernel nowait vs host zgeru N= 1024  value= 1.189E-15  tol= 1.00E-12
+PASS                        rank-1 x256 la_geru vs host zgeru N= 1024  value= 0.000E+00  tol= 1.00E-12
+PASS                         rank-128 one ZGEMM vs host zgemm N= 1024  value= 0.000E+00  tol= 1.00E-12
+PASS                                         2x zgemm vs host N= 1024  value= 0.000E+00  tol= 1.00E-12
+PASS                       batched zgemm (2 flavours) vs host N= 1024  value= 0.000E+00  tol= 1.00E-12
+
+total wall time of run:      113.0 s
+checks: 222 run, 0 FAILED
+
+== checkerboard B_T G->B G B^-1 : median time [us]
+     N          8 kernels
+    64              41.96
+   144             165.94
+   256             588.18
+   400            1297.95
+   576            3034.11
+  1024            8646.97
+
+== checkerboard B_T G->B G B^-1 : GB/s (effective)
+     N          8 kernels
+    64              24.99
+   144              31.99
+   256              28.52
+   400              31.56
+   576              27.99
+  1024              31.04
+
+== dense B_T G->E G E^-1 : median time [us]
+     N           zgemm x2    dgemm+transp x2           zgemm x1         dgemm-R x1       transpose x1
+    64             102.04              82.02              51.02              30.99               9.06
+   144             972.03             630.14             499.01             298.98              45.06
+   256            6097.08            3775.84            2688.88            1684.90             453.95
+   400           20399.09           11533.98           10172.13            5518.91             298.98
+   576           60413.12           34307.00           31330.82           15990.02             684.02
+  1024            347991.            204787.            173142.           93507.05            8344.17
+
+== dense B_T G->E G E^-1 : GFLOP/s (effective)
+     N           zgemm x2    dgemm+transp x2           zgemm x1         dgemm-R x1       transpose x1
+    64              41.10              51.14              41.10              67.66              14.47
+   144              49.15              75.82              47.87              79.90              14.73
+   256              44.03              71.09              49.92              79.66               4.62
+   400              50.20              88.78              50.33              92.77              17.13
+   576              50.61              89.13              48.80              95.61              15.52
+  1024              49.37              83.89              49.61              91.86               4.02
+
+== Op_V wrap, N sites : median time [us]
+     N       per-site x N              fused
+    64              62.94               7.87
+   144             200.03              36.00
+   256             467.06              98.94
+   400            1082.90             274.18
+   576            1825.09             510.22
+  1024            7136.82            1635.07
+
+== Op_V wrap, N sites : GB/s (effective)
+     N       per-site x N              fused
+    64               2.08              16.66
+   144               3.32              18.43
+   256               4.49              21.20
+   400               4.73              18.67
+   576               5.82              20.81
+  1024               4.70              20.52
+
+== stabilization QR (graded matrix) : median time [us]
+     N dev norm+sort+perm          dev geqrf          dev ungqr          dev ormqr   dev total (QR+Q)   host A qp3+ungqr host B pre+geqrf+u
+    64              27.89             113.96             106.10             124.22             247.96             238.18             236.99
+   144              90.12             686.17             684.02             767.95            1472.00            1652.00            1668.93
+   256             252.01            3048.90            3004.07            3985.88            6337.17            8147.00            7076.98
+   400             607.01            9177.92            9140.97           13609.89           19392.97           24896.14           21893.02
+   576            1419.07           25381.09           25196.08           36112.07           51963.09           66868.07           56663.99
+  1024            4291.06            140039.            139485.            206384.            283125.            355877.            306836.
+
+== rank-1 update [us/update] : median time [us]
+     N             kernel      kernel nowait       cublas zgeru   kernel+roundtrip    zgeru+roundtrip
+    64               8.97               8.88               1.89               7.90               1.71
+   144              37.82              37.88               6.23              38.55               7.03
+   256             120.18             119.50              24.58             119.83              24.95
+   400             291.07             312.93              61.47             303.51              61.23
+   576             609.32             610.95             123.63             616.27             128.07
+  1024            1940.27            1915.07             422.82            1939.02             420.18
+
+== rank-1 update [us/update] : GB/s (effective)
+     N             kernel      kernel nowait       cublas zgeru   kernel+roundtrip    zgeru+roundtrip
+    64              14.61              14.76              69.47              16.59              76.45
+   144              17.54              17.52             106.56              17.21              94.37
+   256              17.45              17.55              85.33              17.50              84.04
+   400              17.59              16.36              83.29              16.87              83.62
+   576              17.42              17.38              85.87              17.23              82.90
+  1024              17.29              17.52              79.36              17.30              79.86
+
+== rank-k update [us/update] : median time [us]
+     N                k=1                k=2                k=4                k=8               k=16               k=32               k=64              k=128
+    64               1.91               1.43               1.01               0.75               0.75               0.66               0.67               0.66
+   144              10.01               7.03               5.25               4.26               3.93               3.75               3.69               3.75
+   256              42.20              25.51              18.78              15.65              13.44              12.32              10.65              10.33
+   400              89.88              50.43              36.48              31.35              27.55              25.56              24.81              24.64
+   576             163.08             100.02              75.22              62.50              55.88              57.62              50.97              53.00
+  1024             693.08             395.42             282.76             237.61             199.38             186.38             169.38             165.82
+
+== rank-k update [us/update] : GFLOP/s (effective)
+     N                k=1                k=2                k=4                k=8               k=16               k=32               k=64              k=128
+    64              17.18              22.91              32.34              43.98              43.98              49.42              48.87              49.84
+   144              16.57              23.59              31.63              38.93              42.17              44.26              44.98              44.24
+   256              12.42              20.55              27.92              33.51              39.01              42.57              49.21              50.76
+   400              14.24              25.38              35.09              40.83              46.46              50.09              51.58              51.95
+   576              16.28              26.54              35.29              42.47              47.50              46.06              52.07              50.08
+  1024              12.10              21.21              29.67              35.30              42.07              45.01              49.53              50.59
+
+== flavour batching, 2 N x N ZGEMM : median time [us]
+     N            1 zgemm      2 zgemm calls    strided batched
+    64              45.06              89.88              89.88
+   144             555.04             967.03            1093.15
+   256            3054.86            5756.14            5549.19
+   400           11063.10           21077.16           20408.87
+   576           29710.05           60743.09           60238.12
+  1024            175754.            349687.            353051.
+
+== flavour batching, 2 N x N ZGEMM : GFLOP/s (effective)
+     N            1 zgemm      2 zgemm calls    strided batched
+    64              46.54              46.66              46.66
+   144              43.04              49.40              43.70
+   256              43.94              46.63              48.37
+   400              46.28              48.58              50.17
+   576              51.46              50.34              50.76
+  1024              48.87              49.13              48.66

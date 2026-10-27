@@ -1,7 +1,7 @@
 # gpu_bench: kernel benchmark harness (ticket 101)
 
 Standalone Fortran micro-benchmarks for the operations the ALF GPU port depends on.
-Outside ALF's build; nvfortran 26.9 only (ticket 103 adds an ifx/oneMKL backend to the same layer).
+Outside ALF's build; nvfortran 26.9 (`cuda`, `host` backends) and ifx 2025.3 + oneMKL (`onemkl` backend, ticket 103).
 All data are complex(8) N x N, sizes N = 64, 144, 256, 400, 576, 1024 (L = 8..32).
 
 ## Build and run (nividia)
@@ -19,11 +19,98 @@ BENCH_SECTIONS=qr,upd ./build/cuda/bench 256                    # subset: cb,den
 Exit status 1 if any check FAILs (all checks are printed as `PASS/FAIL name N value tol`).
 Host timings are single-threaded (the CPU bar in HARD.md is 16 independent single-core chains).
 
+## ifx / oneMKL backend (ticket 103)
+
+```sh
+ssh nividia; . ~/alf-gpu/env/intel.sh; cd ~/alf-gpu/work/t103/gpu_bench       # rsync gpu_bench/ here first
+make BACKEND=onemkl                 # BLAS + QR family through "!$omp dispatch"      -> build/onemkl_dispatch/bench
+make BACKEND=onemkl LAPACK=shim     # BLAS via dispatch, geqrf/ungqr/unmqr via the C++ SYCL shim -> build/onemkl_shim/bench
+make BACKEND=onemkl shimtest        # shim alone vs host LAPACK incl. getrf/getri   -> build/shim_test
+./run_onemkl.sh build/onemkl_dispatch/bench [N-list]    # host fallback (no Intel GPU): sets the runtime environment
+./run_onemkl.sh build/shim_test
+```
+
+Exact flags (all verified to build and run on nividia):
+
+| Step | Command |
+|---|---|
+| Fortran compile | `ifx -O2 -g -traceback -fiopenmp -fopenmp-targets=spir64 -qmkl -I$MKLROOT/include -DBENCH_LA_ONEMKL [-DBENCH_LA_SHIM] -module <dir> -c src/X.F90` (JIT `spir64`; no `ocloc` on nividia, so no `spir64_gen` AOT) |
+| shim compile | `icpx -fsycl -O2 -g -std=c++17 -I$MKLROOT/include -c src/bench_sycl_shim.cpp` (no device kernels, so the object is a plain host object and ifx can link it) |
+| link, dispatch build | `ifx <same flags> *.o -o bench` (`-qmkl` together with `-fopenmp-targets` adds `-lmkl_sycl_*`, `libsycl`, `libomptarget` by itself, checked with `ldd`; no `-lOpenCL`/`-lstdc++` needed) |
+| link, shim build | `ifx <same flags> *.o bench_sycl_shim.o -o bench -lmkl_sycl_lapack -lsycl -lstdc++` |
+
+`include "mkl_blas_omp_offload.f90"` / `"mkl_lapack_omp_offload.f90"` at file scope in `bench_la.F90`; the interface modules
+`onemkl_blas_omp_offload_lp64` / `onemkl_lapack_omp_offload_lp64` are `use`d inside each `la_*` routine
+(`only:` the one routine), because ifx rejects a module that re-exports `bind(C)` names which another module declares `external`.
+
+Source changes needed for ifx (also built with nvfortran, unchanged behaviour): `bench_sec.F90` no longer re-declares
+`external :: zgemm, zgeru` (they arrive from `bench_ref` by use association; ifx error #6406); `rand_c` uses allocatable
+instead of automatic arrays (2 N^2 reals overflow ifx's 8 MB stack: SIGSEGV at N = 576).
+
+### Runtime environment on nividia (`run_onemkl.sh`)
+
+* **ifx 2025.3 code must run on the 2025.3 OpenMP runtime.** The env file puts `compiler/2026.2/lib` first
+  (oneAPI `latest`: MKL 2026.2, icpx 2026.2). With it, `!$omp interop` fails at run time with
+  `undefined symbol: __tgt_create_interop` (the 2026.2 `libomptarget` exports `__tgt_interop_init` instead).
+  `run_onemkl.sh` prepends `compiler/2025.3/lib`; `libsycl.so.9` (needed by `libmkl_sycl_*`) exists only in 2026.2 and is
+  still found. On SuperMUC with one consistent oneAPI release this is not needed. The dispatch build without
+  interop runs with either runtime.
+* **Do not set `ONEAPI_DEVICE_SELECTOR=opencl:cpu` for the whole process.** The OpenMP runtime honours it, treats the
+  OpenCL CPU device as an offload device and aborts (`getExtensionsInfoForDevice failed (Extension DeviceAttributeQuery
+  is required ...)`). The shim therefore selects the SYCL CPU device itself (`sycl::cpu_selector_v`, OpenCL CPU runtime of
+  oneAPI works on nividia); `ALFSH_FALLBACK=default` switches to the default selector.
+* nividia has no Intel GPU: `omp_get_num_devices() = 0`, so every `!$omp target` region and every `!$omp dispatch` runs
+  on the host (the variant is not selected, the base MKL routine is called). `OMP_TARGET_OFFLOAD=DISABLED` behaves the
+  same; `MANDATORY` aborts (as it should). **Timings in host fallback carry no meaning for PVC**; they only show that the
+  code path runs (the device-resident arrays are the host arrays).
+
+### Where each routine runs on PVC (what the backend calls, and evidence)
+
+| Routine (bench use) | OpenMP dispatch variant exists? | Class on PVC | Evidence / caveat |
+|---|---|---|---|
+| ZGEMM, DGEMM, ZGEMM_BATCH_STRIDED, ZGERU (`la_gemm`, `la_gemm_cr`, `la_gemm_batched`, `la_geru`) | yes | **dispatch-device** | `$MKLROOT/include/mkl_blas_omp_offload_lp64.f90`: `!$omp declare variant(... mkl_blas_<x>_omp_offload_lp64) match(construct={dispatch}, device={arch(gen)}) ... adjust_args(need_device_addr:a,b,c)`; the symbols are referenced by the built binary (`nm -D`). That they are fully on the device is the documented BLAS behaviour (R3), not testable here. |
+| ZGEQRF (`la_geqrf`) | yes (`mkl_lapack_zgeqrf_omp_offload_lp64` in `libmkl_sycl_lapack.so`) | **dispatch-hybrid** (R3) | Header + exported symbol confirm the variant exists. **No installed header or doc says which part runs on the host**; "hybrid, synchronous" is R3's claim and stays unverified until a PVC run. |
+| ZUNMQR (`la_ormqr`) | yes | **dispatch-hybrid** (R3) | same |
+| ZGETRF (not in the bench sections; shim_test only) | yes | **dispatch-hybrid** (R3) | same |
+| ZUNGQR (`la_ungqr`) | yes (interface present) | **host** (R3: "interface only, computed on the CPU") | Variant symbol exists, so device pointers are accepted, but R3 says the work is done on the CPU (with transfers). Unverified. |
+| ZGETRI | yes | unknown (R3 does not list it) | `mkl_lapack_zgetri_omp_offload_lp64` exists; behaviour unknown |
+| ZGEQP3 | **no** (no `declare variant`, no exported symbol, no `geqp3` in `oneapi/mkl/lapack/lapack.hpp`) | **host** only | and no SYCL API either: no pivoted QR on the device on either path, hence the pre-pivot design (HARD.md item 2) |
+| geqrf/ungqr/unmqr/getrf/getri via **shim** (`oneapi::mkl::lapack::*` USM API, `bench_sycl_shim.cpp`) | n/a | **shim** (device; USM API, R3/HARD.md: "USM device versions", not hybrid-labelled) | headers `oneapi/mkl/lapack/lapack.hpp` have the USM overloads and `*_scratchpad_size`; verified on the SYCL **CPU** device only (`shim_test`: all five routines, N = 64, 144, 400). On PVC unverified. |
+
+### How the SYCL queue is obtained
+
+`la_init` (shim build): `!$omp interop init(prefer_type("sycl"), targetsync: iop)`; if `iop /= omp_interop_none`, check
+`omp_get_interop_int(iop, omp_ipr_fr_id) == omp_ifr_sycl (4)`, then `qh = omp_get_interop_ptr(iop, omp_ipr_targetsync)`, which
+the shim casts to `sycl::queue*` (`omp_ipr_targetsync = -9`, `omp_ipr_fr_id = -1`, values from `compiler/2026.2/.../omp.h`).
+ifx 2025.3's `omp_lib` has the interop kinds and `omp_ifr_*` constants but **not** `omp_get_interop_ptr/int`, so they are
+declared locally with `bind(C)`. Device pointers for the shim come from `!$omp target data use_device_addr(...)`.
+What was verified on nividia: the directive compiles with ifx 2025.3, links (`__tgt_create_interop`, `omp_get_interop_ptr`),
+and with no offload device returns `omp_interop_none`; the shim then uses its private CPU-device fallback queue (host
+pointers). **What could not be verified without a GPU:** that the interop object on PVC really carries a `sycl::queue*`
+(and not a Level Zero handle) for `prefer_type("sycl")`, that it is the in-order queue (`omp_ipr_is_inorder = 11` can be queried), and that
+USM pointers from `use_device_addr` are valid in that queue's context. Fallback if it fails: `prefer_type("level_zero")` +
+`sycl::make_queue<backend::ext_oneapi_level_zero>` from the returned L0 handles (not tried).
+
+### Things only SuperMUC (PVC) can verify
+
+1. Real device execution: `OMP_TARGET_OFFLOAD=MANDATORY` run of the dispatch and shim builds; `ZE_AFFINITY_MASK`/stack choice.
+2. The interop-to-`sycl::queue*` path above (`alfsh_describe` prints `queue from OpenMP interop, device ... (gpu)`).
+3. Which of zgeqrf/zunmqr/zungqr/zgetrf really run on the host under dispatch (time `dev geqrf/ungqr/ormqr` for both builds and watch
+   PCIe traffic or `unitrace`), and the shim's speed relative to them.
+4. Whether `lwork = -1` queries (done on the host here) give a workspace sufficient for the dispatch variant on the device.
+5. Accuracy checks with real device arithmetic (all correctness tolerances unchanged; host fallback only proves the plumbing).
+6. All performance numbers (launch latency of `!$omp target` / `dispatch` / shim on PVC, rank-1 round trip, GEMM rates).
+7. AOT (`-fopenmp-targets=spir64_gen -Xopenmp-target-backend "-device pvc"`) build and JIT compile time; `-qmkl=sequential` vs parallel
+   choice; link flags with the SuperMUC module set.
+
 ## Layout
 
 | File | Role |
 |---|---|
-| `src/bench_la.F90` | **Backend layer** (preview of `alf_la`): `la_gemm`, `la_gemm_cr` (complex x real via DGEMM on the interleaved real view), `la_gemm_batched`, `la_geru`, `la_geqrf/ungqr/ormqr` (+ `_lwork`), `la_sync`. `-DBENCH_LA_CUDA`: cuBLAS/cuSOLVER through `bind(C)` interfaces with device pointers from `!$omp target data use_device_addr`. `-DBENCH_LA_HOST`: host BLAS/LAPACK. Takes device-resident arrays. Nothing else knows the backend. |
+| `src/bench_la.F90` | **Backend layer** (preview of `alf_la`): `la_gemm`, `la_gemm_cr` (complex x real via DGEMM on the interleaved real view), `la_gemm_batched`, `la_geru`, `la_geqrf/ungqr/ormqr` (+ `_lwork`), `la_sync`. `-DBENCH_LA_CUDA`: cuBLAS/cuSOLVER through `bind(C)` interfaces with device pointers from `!$omp target data use_device_addr`. `-DBENCH_LA_HOST`: host BLAS/LAPACK. `-DBENCH_LA_ONEMKL` (ticket 103): oneMKL `!$omp dispatch` interfaces, with `-DBENCH_LA_SHIM` the QR family goes through `bench_sycl_shim.cpp`. Takes device-resident arrays. Nothing else knows the backend. |
+| `src/bench_sycl_shim.cpp` | C++ SYCL/oneMKL shim (`extern "C"`, queue as `void*`, USM device pointers, scratchpad owned by the caller, errors returned as status): `alfsh_z{geqrf,ungqr,unmqr,getrf,getri}` + `_ws` scratchpad-size queries. |
+| `src/shim_test.F90` | Standalone check of the shim against host LAPACK. |
+| `run_onemkl.sh` | Runtime environment for the ifx binaries on nividia (see above). |
 | `src/bench_kern.F90` | Device kernels, `!$omp target teams distribute parallel do` on plain explicit-shape arrays (checkerboard family, Op_V wrap, rank-1, transpose, column norms, rank-count sort, column permutation). No library calls. |
 | `src/bench_ref.F90` | HOST reference (plain Fortran + host LAPACK, never offloaded): checkerboard, Op_V, `dsyev` hopping exponential, ZGEQP3 / pre-pivot+ZGEQRF paths, graded test matrix. |
 | `src/bench_sec.F90` | The benchmark sections (setup, device-vs-host check, timing). |

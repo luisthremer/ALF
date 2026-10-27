@@ -106,7 +106,8 @@ contains
     integer, intent(in) :: n
     complex(8), intent(out) :: A(n)
     real(8), intent(in) :: scale
-    real(8) :: x(n), y(n)
+    real(8), allocatable :: x(:), y(:)     ! heap, not automatic: 2*N*N reals overflow ifx's 8 MB stack at N=576
+    allocate(x(n), y(n))
     call random_number(x); call random_number(y)
     A = scale * cmplx(x - 0.5d0, y - 0.5d0, kind=8)
   end subroutine
