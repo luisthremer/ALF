@@ -216,6 +216,9 @@ Contains
 #if defined(TEMPERING)
     reason = 'tempering is not supported on the GPU path'; return
 #endif
+#if defined(STAB1) || defined(STAB2) || defined(STAB3)
+    reason = 'STAB1/STAB2/STAB3 stabilization is not supported on the GPU path (default and LOG only, ticket 206)'; return
+#endif
     if (Projector) then
        reason = 'projector code is not supported on the GPU path'; return
     endif
@@ -350,7 +353,8 @@ Contains
     ! ALF_GPU_SELFTEST=1 (any value except empty/0): self-test, then the run continues.  Negative controls, which must
     ! fail with a nonzero exit: =fault (hop_Rval(1) *= 1+1e-9), =fault_c (hop_Cval(1) += 1e-9), =fault_v (V_exp(1) *=
     ! 1+1e-9), =nan (hop_Rval(1) = NaN), =nan_v (V_exp(1) = NaN); all applied to the host copy after the upload.
-    if (st == 0 .and. len_trim(env) > 0 .and. trim(env) /= '0') then
+    ! ALF_GPU_SELFTEST=3 (ticket 206, stabilization self-test in gpu_stab_mod) does not run this mirror self-test: O(N^3) host loops
+    if (st == 0 .and. len_trim(env) > 0 .and. trim(env) /= '0' .and. trim(env) /= '3') then
        select case (trim(env))
        case ('fault');   hop_Rval(1) = hop_Rval(1)*(1.d0 + 1.d-9)
        case ('fault_c'); hop_Cval(1) = hop_Cval(1) + cmplx(1.d-9, 0.d0, kind(0.d0))

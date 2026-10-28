@@ -1,6 +1,6 @@
 # ALF GPU port – plan
 
-Status 2026-10-28: Phase 2 in progress – 201–204 done, 205/206 drafted (see tickets/). Phase 1 gate passed 2026-10-27 (ADR-001/002 accepted). Why each piece is here: [HARD.md](HARD.md) (items referred to
+Status 2026-10-28: Phase 2 in progress – 201–206 done, 207 (τ pass) next (see tickets/). Phase 1 gate passed 2026-10-27 (ADR-001/002 accepted). Why each piece is here: [HARD.md](HARD.md) (items referred to
 as H1–H10). Measurements: [PROFILE.md](PROFILE.md), [BASELINE.md](BASELINE.md).
 
 ## 1. Architecture (decided: [ADR-001](ADR-001-programming-model.md), [ADR-002](ADR-002-alf-la-and-data-model.md))
@@ -55,6 +55,12 @@ gpu_state module (plain contiguous device arrays, allocated once)
 | per measurement (3L per sweep), MVP only | D→H | G (and GT0/G0T/GTT for τ), F·16N² B each | host observables; removed once Hubbard observables run on the device |
 | per stabilization | D→H | a few scalars | precision, NaN checks, phase (H8) |
 | per CGR / CGR2_2 call, **STABLOG only** | D→H, H→D | N² (CGR) / 4N² (CGR2_2) complex, each way | host ZGEQP3: no GPU pivoting meets the precision criteria (108, ADR-001 §4) |
+| 206: per QR of the default decompose and CGR (`la_qrpp`) | D→H, H→D | 8N B (column norms), 4N B (permutation) | the pre-pivot sort runs on the host |
+| 206: per STABLOG decompose | D→H, H→D | 8N B (log norms), 4N B (permutation) | the CPU's selection sort on the host |
+| 206: per default decompose / per CGR | D→H | 24 B (scale test) / 16 B (phase) | NaN and range test of the scales; Phase of the determinant |
+| 206 **INTERIM** (removed by 207/208): per CGR | D→H, H→D | 16N² B each way (new G, wrapped G) + 32 B | GR is host-authoritative until 208; the precision check reduces on the device (`Control_PrecisionG_vals`) |
+| 206 **INTERIM** (host-update path only, `ALF_GPU_NOUPDATE=1`; skipped with device updates, 205): per WRAPUR/WRAPUL block | H→D | N_op·Nwrap·16 B | HS fields changed by the host updates (`nsigma_d`) |
+| 206 **INTERIM** (removed by 207): per backward stabilization, Ltau = 1 | D→H | 32N² + 16N B per flavour | `TAU_M` (host) reads `udvst` |
 | end of bin / run | D→H | nsigma (confout), and G only if needed | output |
 
 ## 2. Phases, gates and tickets

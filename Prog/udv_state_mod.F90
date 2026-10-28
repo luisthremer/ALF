@@ -475,9 +475,45 @@ CONTAINS
              UDVR%U(:, i) = UDVR%U(:, i)*UDVR%D(i)
           ENDDO
        endif
+#if defined(QR_PREPIVOT)
+       ! Test-only, variant 1 only (the QR_PREPIVOT == 2/3 variants act in CGR only) (ticket 206; the CPU oracle of the device decomposition, see cgr1_mod for the same block in CGR): sort the
+       ! columns by 2-norm (stable, descending) and factor them unpivoted. IPVT gets ZGEQP3 semantics (column j of
+       ! A*P is column IPVT(j) of A), so Pivot_Phase, ZLAPMR/T below are unchanged.
+       block
+         Real(Kind=Kind(0.d0)), allocatable :: pp_nrm(:)
+         Real(Kind=Kind(0.d0)) :: DZNRM2
+         Complex(Kind=Kind(0.d0)), allocatable :: pp_tmp(:,:)
+         Integer, allocatable :: pp_perm(:)
+         Integer :: pp_i, pp_j, pp_k
+         Allocate(pp_nrm(N_part), pp_tmp(Ndim,N_part), pp_perm(N_part))
+         do pp_j = 1, N_part
+            pp_nrm(pp_j) = DZNRM2(Ndim, UDVR%U(1,pp_j), 1)
+            pp_perm(pp_j) = pp_j
+         enddo
+         do pp_i = 2, N_part
+            pp_k = pp_perm(pp_i)
+            pp_j = pp_i - 1
+            do while (pp_j >= 1)
+               if (pp_nrm(pp_perm(pp_j)) >= pp_nrm(pp_k)) exit
+               pp_perm(pp_j+1) = pp_perm(pp_j)
+               pp_j = pp_j - 1
+            enddo
+            pp_perm(pp_j+1) = pp_k
+         enddo
+         do pp_j = 1, N_part
+            pp_tmp(:,pp_j) = UDVR%U(1:Ndim,pp_perm(pp_j))
+         enddo
+         UDVR%U(1:Ndim,1:N_part) = pp_tmp
+         IPVT = 1   ! all columns fixed: LAPACK pivoting off
+         call QDRP_decompose(Ndim, N_part, UDVR%U, UDVR%D, IPVT, TAU, WORK, LWORK)
+         IPVT = pp_perm
+         Deallocate(pp_nrm, pp_tmp, pp_perm)
+       end block
+#else
        !use lapack internal pivoting
        IPVT = 0
        call QDRP_decompose(Ndim, N_part, UDVR%U, UDVR%D, IPVT, TAU, WORK, LWORK)
+#endif
        Phase=cmplx(1.d0,0.d0,kind(0.d0))
        do i=1,N_part
           Phase=Phase*UDVR%U(i,i)

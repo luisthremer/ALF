@@ -9,11 +9,9 @@ SRCS = Hamiltonians/LRC_mod.F90 control_mod.F90 Fields_mod.F90 Operator_mod.F90 
 	Global_mod.F90 Langevin_HMC_mod.F90 Wrapgr_mod.F90 tau_m_mod.F90 tau_p_mod.F90 QMC_runtime_var_mod.F90 \
 	main.F90
 
-# GPU mirror (ticket 203) and device wraps (ticket 204): compiled only for GPU builds (configure.sh exports ALF_GPU=nvidia|intel)
+# GPU mirror (ticket 203), device wraps (204), updates (205) and stabilization (206): compiled only for GPU builds (configure.sh exports ALF_GPU=nvidia|intel)
 ifneq ($(strip $(ALF_GPU)),)
-SRCS := $(filter-out main.F90,$(SRCS)) gpu_state_mod.F90 gpu_wrap_mod.F90 main.F90
-# ticket 205: device WRAPGRUP/WRAPGRDO (own line, so that parallel tickets can add theirs)
-SRCS := $(filter-out main.F90,$(SRCS)) gpu_update_mod.F90 main.F90
+SRCS := $(filter-out main.F90,$(SRCS)) gpu_state_mod.F90 gpu_wrap_mod.F90 gpu_update_mod.F90 gpu_stab_mod.F90 main.F90
 endif
 
 # Stamp file holding the value of ALF_GPU: changes (nvidia <-> none) regenerate $(DEPSFILE) and rebuild all Prog objects

@@ -143,6 +143,9 @@ Program Main
 #ifdef ALF_GPU
         use gpu_state_mod, only: gpu_state_setup, gpu_state_finalize, gpu_active
         use gpu_wrap_mod,  only: gpu_wrap_hook
+        use gpu_stab_mod,  only: gpu_stab_on, gpu_stab_setup, gpu_stab_finalize, gpu_stab_hook, gpu_stab_wrapur, &
+             &                   gpu_stab_wrapul, gpu_stab_exchange, gpu_stab_store_l, gpu_stab_cgr, gpu_stab_reset_l, &
+             &                   gpu_stab_reset_r, gpu_stab_reset_st
 #endif
          
 #ifdef HDF5
@@ -617,19 +620,42 @@ Program Main
 #endif
         ! ticket 204 self-test / timing hook (acts only if ALF_GPU_SELFTEST=2 or ALF_GPU_TIMING=1 is set)
         if (gpu_active) call gpu_wrap_hook()
+        ! ticket 206: device stabilization (WRAPUR/WRAPUL + decompose, CGR, precision check); the host UDV objects below are
+        ! then used only for the interim copies (udvst when Ltau = 1).  Hook: ALF_GPU_SELFTEST=3 / ALF_GPU_STABTIME=1.
+        call gpu_stab_setup(Stab_nt, NSTM)
+        if (gpu_stab_on) call gpu_stab_hook()
 #endif
 
         DO NST = NSTM-1,1,-1
            NT1 = Stab_nt(NST+1)
            NT  = Stab_nt(NST  )
            !Write(6,*)'Hi', NT1,NT, NST
+#ifdef ALF_GPU
+           if (gpu_stab_on) then
+              CALL gpu_stab_wrapul(NT1, NT)
+              Do nf_eff = 1,N_FL_eff
+                 call gpu_stab_store_l(NST, nf_eff)
+              ENDDO
+           else
+#endif
            CALL WRAPUL(NT1, NT, UDVL)
            Do nf_eff = 1,N_FL_eff
               UDVST(NST, nf_eff) = UDVL(nf_eff)
            ENDDO
+#ifdef ALF_GPU
+           endif
+#endif
         ENDDO
         NT1 = stab_nt(1)
+#ifdef ALF_GPU
+        if (gpu_stab_on) then
+           CALL gpu_stab_wrapul(NT1, 0)
+        else
+#endif
         CALL WRAPUL(NT1, 0, UDVL)
+#ifdef ALF_GPU
+        endif
+#endif
 
 
 
@@ -637,7 +663,15 @@ Program Main
         Phase_array = cmplx(1.d0, 0.d0, kind(0.D0))
         do nf_eff = 1,N_Fl_eff
            nf=Calc_Fl_map(nf_eff)
+#ifdef ALF_GPU
+           if (gpu_stab_on) then
+              call gpu_stab_cgr(nf_eff, nf, NVAR, GR, Z, .false.)
+           else
+#endif
            CALL CGR(Z, NVAR, GR(:,:,nf), UDVR(nf_eff), UDVL(nf_eff))
+#ifdef ALF_GPU
+           endif
+#endif
            call Op_phase(Z,OP_V,Nsigma,nf)
            Phase_array(nf)=Z
         Enddo
@@ -736,6 +770,9 @@ Program Main
                     else
                        CALL udvr(nf_eff)%reset('r')
                     endif
+#ifdef ALF_GPU
+                    if (gpu_stab_on) call gpu_stab_reset_r(nf_eff)
+#endif
                  Enddo
                  
                  NST = 1
@@ -745,10 +782,27 @@ Program Main
                     
                     If (NTAU1 == Stab_nt(NST) ) then
                        NT1 = Stab_nt(NST-1)
+#ifdef ALF_GPU
+                       if (gpu_stab_on) then
+                          CALL gpu_stab_wrapur(NT1, NTAU1)
+                       else
+#endif
                        CALL WRAPUR(NT1, NTAU1, udvr)
+#ifdef ALF_GPU
+                       endif
+#endif
                        Phase_array = cmplx(1.d0, 0.d0, kind(0.D0))
                        Do nf_eff = 1, N_FL_eff
                           nf=Calc_Fl_map(nf_eff)
+#ifdef ALF_GPU
+                          if (gpu_stab_on) then
+                             NVAR = 1
+                             IF (NTAU1 .GT. LTROT/2) NVAR = 2
+                             ! device: udvl = udvst(NST), udvst(NST) = udvr, CGR and the precision check against the wrapped GR
+                             call gpu_stab_exchange(NST, nf_eff, .true., udvst(NST, nf_eff))
+                             call gpu_stab_cgr(nf_eff, nf, NVAR, GR, Z1, .true.)
+                          else
+#endif
                           ! Read from storage left propagation from LTROT to  NTAU1
                           udvl(nf_eff) = udvst(NST, nf_eff)
                           ! Write in storage right prop from 1 to NTAU1
@@ -758,6 +812,9 @@ Program Main
                           TEST(:,:) = GR(:,:,nf)
                           CALL CGR(Z1, NVAR, GR(:,:,nf), UDVR(nf_eff), UDVL(nf_eff))
                           Call Control_PrecisionG(GR(:,:,nf),Test,Ndim)
+#ifdef ALF_GPU
+                          endif
+#endif
                           call Op_phase(Z1,OP_V,Nsigma,nf)
                           Phase_array(nf)=Z1
                        ENDDO
@@ -795,6 +852,9 @@ Program Main
                     else
                        CALL udvl(nf_eff)%reset('l')
                     endif
+#ifdef ALF_GPU
+                    if (gpu_stab_on) call gpu_stab_reset_l(nf_eff)
+#endif
                  ENDDO
                  
                  NST = NSTM-1
@@ -819,11 +879,29 @@ Program Main
                     IF ( Stab_nt(NST) == NTAU1 .AND. NTAU1.NE.0 ) THEN
                        NT1 = Stab_nt(NST+1)
                        !Write(6,*) 'Wrapul : ', NT1, NTAU1
+#ifdef ALF_GPU
+                       if (gpu_stab_on) then
+                          CALL gpu_stab_wrapul(NT1, NTAU1)
+                       else
+#endif
                        CALL WRAPUL(NT1, NTAU1, udvl)
+#ifdef ALF_GPU
+                       endif
+#endif
                        !Write(6,*)  'Write UL, read UR ', NTAU1, NST
                        Phase_array = cmplx(1.d0, 0.d0, kind(0.D0))
                        do nf_eff = 1,N_FL_eff
                           nf=Calc_Fl_map(nf_eff)
+#ifdef ALF_GPU
+                          if (gpu_stab_on) then
+                             NVAR = 1
+                             IF (NTAU1 .GT. LTROT/2) NVAR = 2
+                             ! device: udvr = udvst(NST), udvst(NST) = udvl (copied to the host object if Ltau = 1: interim),
+                             ! CGR and the precision check against the wrapped GR
+                             call gpu_stab_exchange(NST, nf_eff, .false., udvst(NST, nf_eff))
+                             call gpu_stab_cgr(nf_eff, nf, NVAR, GR, Z1, .true.)
+                          else
+#endif
                           ! Read from store the right prop. from 1 to LTROT/NWRAP-1
                           udvr(nf_eff) = udvst(NST, nf_eff)
                           ! WRITE in store the left prop. from LTROT/NWRAP-1 to 1
@@ -833,6 +911,9 @@ Program Main
                           TEST(:,:) = GR(:,:,nf)
                           CALL CGR(Z1, NVAR, GR(:,:,nf), UDVR(nf_eff), UDVL(nf_eff))
                           Call Control_PrecisionG(GR(:,:,nf),Test,Ndim)
+#ifdef ALF_GPU
+                          endif
+#endif
                           call Op_phase(Z1,OP_V,Nsigma,nf)
                           Phase_array(nf)=Z1
                        ENDDO
@@ -851,7 +932,15 @@ Program Main
                  !Calculate and compare green functions on time slice 0.
                  NT1 = Stab_nt(0)
                  NT  = Stab_nt(1)
+#ifdef ALF_GPU
+                 if (gpu_stab_on) then
+                    CALL gpu_stab_wrapul(NT, NT1)
+                 else
+#endif
                  CALL WRAPUL(NT, NT1, udvl)
+#ifdef ALF_GPU
+                 endif
+#endif
                  
                  do nf_eff = 1,N_FL_eff
                     nf=Calc_Fl_map(nf_eff)
@@ -860,14 +949,26 @@ Program Main
                     else
                        CALL udvr(nf_eff)%reset('r')
                     endif
+#ifdef ALF_GPU
+                    if (gpu_stab_on) call gpu_stab_reset_r(nf_eff)
+#endif
                  ENDDO
                  Phase_array = cmplx(1.d0, 0.d0, kind(0.D0))
                  do nf_eff = 1,N_FL_eff
                     nf=Calc_Fl_map(nf_eff)
+#ifdef ALF_GPU
+                    if (gpu_stab_on) then
+                       NVAR = 1
+                       call gpu_stab_cgr(nf_eff, nf, NVAR, GR, Z1, .true.)
+                    else
+#endif
                     TEST(:,:) = GR(:,:,nf)
                     NVAR = 1
                     CALL CGR(Z1, NVAR, GR(:,:,nf), UDVR(nf_eff), UDVL(nf_eff))
                     Call Control_PrecisionG(GR(:,:,nf),Test,Ndim)
+#ifdef ALF_GPU
+                    endif
+#endif
                     call Op_phase(Z1,OP_V,Nsigma,nf)
                     Phase_array(nf)=Z1
                  ENDDO
@@ -884,6 +985,9 @@ Program Main
                     else
                        CALL udvst(NST, nf_eff)%reset('l')
                     endif
+#ifdef ALF_GPU
+                    if (gpu_stab_on) call gpu_stab_reset_st(NST, nf_eff)
+#endif
                  enddo
                  
                  IF ( get_Ltau() == 1 .and. .not. Projector ) then
@@ -936,6 +1040,7 @@ Program Main
         endif
         DEALLOCATE(udvl, udvr, udvst)
 #ifdef ALF_GPU
+        call gpu_stab_finalize()
         call gpu_state_finalize()
 #endif
         DEALLOCATE(GR, TEST, Stab_nt,GR_Tilde)

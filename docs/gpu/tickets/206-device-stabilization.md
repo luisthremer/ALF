@@ -3,7 +3,7 @@
 - **Phase:** 2
 - **Owner agent:** fortran-gpu-dev (review: numerics-reviewer)
 - **Depends on:** 202, 203, 204 (104 and 108 decide the QR variants)
-- **Status:** open (2026-10-28; runs in parallel with the other one, separate worktrees)
+- **Status:** done (2026-10-28)
 
 ## Goal
 With `GPU=nvidia` and the GPU path active, the stabilization steps of the sweep run on the device:
@@ -76,3 +76,57 @@ concurrently and edits `Wrapgr_mod`, `upgrade_mod`; don't touch them. Coordinate
 ## Out of scope
 WRAPGR/updates (205), τ pass and CGR2_2 (207), measurements (208), removing interim copies, STAB1/STAB2 paths (the
 GPU path refuses them in `gpu_supported` – add that check if missing), MPI.
+
+## Resolution (manager, 2026-10-28)
+- Delivered: `Prog/gpu_stab_mod.F90` (device WRAPUR/WRAPUL blocks via the 204 composites, decompose default and
+  STABLOG, `testscale`, CGR NVAR 1/2, precision reduction; udvl/udvr/udvst device slots; self-test
+  `ALF_GPU_SELFTEST=3`, timing `ALF_GPU_STABTIME=1`, faults `ALF_GPU_FAULT_STAB=perm|phase|nan`, debug aids
+  `ALF_GPU_STABCHECK`/`STABMIX`), guarded branches at the stabilization sites of `Prog/main.F90` (pure additions; the
+  `#else` text is HEAD's), `Control_PrecisionG_vals` in `Prog/control_mod.F90`, a `QR_PREPIVOT` (variant 1, test-only)
+  block in `Prog/udv_state_mod.F90`; `gpu_supported` refuses STAB1/2/3. `wrapur_mod`, `wrapul_mod`, `cgr1_mod` are
+  untouched (TAU_M keeps the host routines, so the device branches live in main). Interim transfers in PLAN.md.
+- Numerics finding: cuSOLVER's Q is ≈ 5× less orthogonal than LAPACK's; the device decompose forms Q with
+  `la_ormqr` on I and applies one Newton–Schulz step (`ALF_GPU_NS=0` switches it off; DISCREPANCIES.md). Cost at
+  N = 400: WRAPUR+decompose 13.3 ms with, 12.8 ms without.
+- numerics-reviewer: 2 must-fixes (NVAR/TEST lines reordered outside the guards in main; device slots left dirty after
+  the self-test/timing hook) and should-fixes (NS switch, STABLOG faults inert, `sync_fields` redundant with 205,
+  debug scaffolding) – all applied by the agent.
+- Merge with 205: one Makefile line; `sync_fields` now only on the host-update path.
+- Manager re-run (nividia, merged 205+206 tree, fresh builds):
+  - self-test PASSED: `hub6x6_cb`, `hub6x6_dense`, `hub12x12_cb`, `hub12x12_cb` β=10, `hub12x12_dense` β=10,
+    `hub6x6_cb_flux`, default (`-DQR_PREPIVOT` oracle) and LOG; faults `perm`, `phase`, `nan` exit 1 on both paths;
+    a run continuing after the self-test gives `data.h5` identical to a run without it;
+  - same seeds, updates **and** stabilization on the device vs the CPU oracle (`QR_PREPIVOT` build, resp. CPU LOG):
+    hub6x6 200 sweeps max deviation 1.5e-10 / 2.5e-10 (default / LOG), hub12x12 300 sweeps 5.0e-10 / 1.2e-9 (LOG
+    above 1e-9 from sweep 184), no divergent decision; host-update path with device stabilization 1.5e-10;
+  - precision (`info`, one seed set), GPU max vs the larger CPU max (criterion ≤ 1.5×):
+
+    | case | GPU Green mean / max | GPU=none | QR_PREPIVOT CPU | ratio |
+    |---|---|---|---|---|
+    | 12×12 β=4 default | 5.5e-11 / 2.27e-6 | 3.4e-11 / 1.23e-6 | 4.1e-11 / 1.57e-6 | 1.45 |
+    | same, `ALF_GPU_NS=0` | 1.0e-10 / 3.80e-6 | | | 2.42 (fails) |
+    | 12×12 β=10 default | 5.4e-10 / 4.48e-5 | 1.3e-10 / 3.26e-6 | 9.7e-10 / 1.40e-4 | 0.32 |
+    | 12×12 β=4 LOG | 6.0e-11 / 2.11e-6 | CPU LOG 4.9e-11 / 1.42e-6 | | 1.48 |
+    | 12×12 β=10 LOG | 9.3e-10 / 1.35e-4 | CPU LOG 8.8e-10 / 1.18e-4 | | 1.15 |
+
+    Phase max 0 everywhere; tau precision at CPU level.
+  - 205 update self-test and 204 wrap self-test still PASS on the merged build; `GPU=none` (GNU noMPI HDF5) `data.h5`
+    identical to the 205 commit on 3 configs; ctest 52/52 (GNU devel). GNU MPI `ALF.out`: section sizes equal, but
+    `.rodata`/`.data` offsets and ~10k `lea` displacements differ because the added blank lines shift the line numbers
+    gfortran embeds in runtime-error strings. The preprocessed `GPU=none` sources of `main.F90`, `control_mod.F90`,
+    `udv_state_mod.F90` are token-identical to the 205 commit apart from blank lines (method for main-loop tickets:
+    compare `gfortran -E -P` output with `diff -B`, not the disassembly);
+  - `GPU=intel` builds on `intel` (25 s); a 6×6 run completes with the 205 update path ACTIVE on the B580 and the
+    stabilization INACTIVE (ticket 302), Precision Green 2.7e-11 / 8.0e-8.
+- Agent results not re-run: compare2 PASS (`s8_U4_b2_cb`, 250 × 40 sweeps, device stabilization with host updates);
+  timings (N = 1024 default: WRAPUR+decompose 52 ms vs 1.67 s CPU, CGR 58 ms vs 2.30 s; STABLOG CGR 412 ms, host
+  ZGEQP3).
+- **Open:**
+  - the β = 4 maxima pass 1.5× only narrowly (1.45, 1.48; one seed set; the max is an extreme-value statistic, over 8
+    seeds at 6×6 the mean of the maxima agrees to 2 %). Watch in 208 / Phase 3 validation with several seeds;
+  - self-test outside the required set: `hub20x20_cb` β=10 default G NVAR 1 differs by 3.5–5.3e-9 (> 1e-10). The same
+    test measures G's sensitivity to a 1-ulp change of U_R at 6e-10 (host) / 4.3e-9 (device): conditioning, not a bug;
+    LOG agrees to 5e-12. Tolerance not changed; open question for the owner whether large-β kernel tests should be judged against the measured 1-ulp sensitivity;
+  - two GPU processes on one A30 run 13× slower (time-slicing): GPU runs one at a time; MPS for production;
+  - no combined compare2 (updates + stabilization on the device): one GPU run would exceed 15 min at the current
+    speed; due with 208.

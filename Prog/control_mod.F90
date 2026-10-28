@@ -297,6 +297,78 @@ module Control
         XMEANG = XMEANG + XMEAN
       End Subroutine Control_PrecisionG
 
+#ifdef ALF_GPU
+!--------------------------------------------------------------------
+!> GPU path (ticket 206): the second half of Control_PrecisionG for values already reduced on the device
+!> (gpu_stab_mod): XMAX = max |A-B|, XSUM = sum |A-B| over the Ndim x Ndim entries, number of NaN entries of A (new G) and
+!> of B (wrapped G).  Same messages, thresholds and bookkeeping as Control_PrecisionG.
+!--------------------------------------------------------------------
+      Subroutine Control_PrecisionG_vals(XMAX, XSUM, NNanA, NNanB, Ndim)
+#ifdef MPI
+        Use mpi
+#endif
+        use runtime_error_mod
+        Implicit none
+
+        Real    (Kind=Kind(0.d0)), intent(in) :: XMAX, XSUM
+        Integer, intent(in) :: NNanA, NNanB, Ndim
+        Real    (Kind=Kind(0.d0)) :: XMEAN
+        Character (len=64) :: file1
+
+#if defined(TEMPERING)
+        write(File1,'(A,I0,A)') "Temp_",igroup,"/info"
+#else
+        File1 = "info"
+#endif
+        if (NNanA > 0 .or. NNanB > 0) then
+          Open (Unit=50,file=file1, status="unknown", position="append")
+          write(50,*)
+#ifdef MPI
+          write(50,*) "Task", Irank_g, "of group", igroup, "reports:"
+#endif
+          if (NNanA > 0) write(50,*) "Green function A contains NaN, calculation is being aborted!"
+          if (NNanA == 0) write(50,*) "Green function B contains NaN, calculation is being aborted!"
+          write(50,*)
+          close(50)
+          write(error_unit,*)
+#ifdef MPI
+          write(error_unit,*) "Task", Irank_g, "of group", igroup, "reports:"
+#endif
+          if (NNanA > 0) write(error_unit,*) "Green function A contains NaN, calculation is being aborted!"
+          if (NNanA == 0) write(error_unit,*) "Green function B contains NaN, calculation is being aborted!"
+          write(error_unit,*)
+          CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+        endif
+
+        NCG = NCG + 1
+        XMEAN = XSUM/DBLE(Ndim*Ndim)
+        IF (XMAX  >  10.d0) then
+          Open (Unit=50,file=file1, status="unknown", position="append")
+          write(50,*)
+#ifdef MPI
+          write(50,*) "Task", Irank_g, "of group", igroup, "reports:"
+#endif
+          write(50,*) XMAX, " is exceeding the threshold of 10 for G difference!"
+          write(50,*) (XmeanG+Xmean)/ncg, " is the average deviation!"
+          write(50,*) "This calculation is unstable and therefore aborted!!!"
+          write(50,*)
+          close(50)
+          write(error_unit,*)
+#ifdef MPI
+          write(error_unit,*) "Task", Irank_g, "of group", igroup, "reports:"
+#endif
+          write(error_unit,*) XMAX, " is exceeding the threshold of 10 for G difference!"
+          write(error_unit,*) (XmeanG+Xmean)/ncg, " is the average deviation!"
+          write(error_unit,*) "This calculation is unstable and therefore aborted!!!"
+          write(error_unit,*) 'Try with smaller Nwrap or dtau.'
+          write(error_unit,*)
+          CALL Terminate_on_error(ERROR_UNSTABLE_MATRIX,__FILE__,__LINE__)
+        endif
+        IF (XMAX  >  XMAXG) XMAXG = XMAX
+        XMEANG = XMEANG + XMEAN
+      End Subroutine Control_PrecisionG_vals
+#endif
+
       Subroutine Control_Precision_tau(A,B,Ndim)
         Implicit none
 
