@@ -1,6 +1,6 @@
 # ALF GPU port – plan
 
-Status 2026-10-28: Phase 2 in progress – 201–206 done, 207 (τ pass) next (see tickets/). Phase 1 gate passed 2026-10-27 (ADR-001/002 accepted). Why each piece is here: [HARD.md](HARD.md) (items referred to
+Status 2026-10-28: Phase 2 in progress – 201–206 done, 207 (τ pass) open (see tickets/). Phase 1 gate passed 2026-10-27 (ADR-001/002 accepted). Why each piece is here: [HARD.md](HARD.md) (items referred to
 as H1–H10). Measurements: [PROFILE.md](PROFILE.md), [BASELINE.md](BASELINE.md).
 
 ## 1. Architecture (decided: [ADR-001](ADR-001-programming-model.md), [ADR-002](ADR-002-alf-la-and-data-model.md))
