@@ -3,7 +3,7 @@
 - **Phase:** 2
 - **Owner agent:** fortran-gpu-dev (review: numerics-reviewer)
 - **Depends on:** 202 (`alf_la`, done), 203 (`gpu_state` flat mirror)
-- **Status:** open
+- **Status:** done (2026-10-28; reviewed, re-run by the manager)
 
 ## Goal
 Device routines that apply the hopping exponentials and the Op_V operators of one time slice to device-resident
@@ -87,3 +87,31 @@ nividia, ≤ 8 on intel after checking load; GPU only while running; runs ≤ 15
 ## Out of scope
 Updates and the per-site decision (205), stabilization (206), τ pass (207), measurements (208); `Symm` hopping for
 observables; time-dependent hopping or couplings; any change of the CPU path or of results.
+
+## Resolution (manager, 2026-10-28)
+- Delivered: `Prog/gpu_wrap_mod.F90` (under `#ifdef ALF_GPU`): five hopping routines, per-operator Op_V
+  (`Op_mmultR/L`, `Op_Wrapup/do`), fused Op_V slice kernels, composites for `wrapur`/`wrapul`/`WRAPGRUP`/`WRAPGRDO`,
+  self-test (`ALF_GPU_SELFTEST=2`), timing (`ALF_GPU_TIMING=1`), fault injection (`ALF_GPU_FAULT`). `gpu_state`:
+  checkerboard groups (maximal runs of disjoint elements; 4 groups per flavour for square cb, 7 with Symm), dense
+  auxiliaries, per-site operator lists. Dense left: complex copy + ZGEMM for N ≤ 400, transposes + DGEMM above.
+- Agent results (A30): self-test PASSED for 8 configs (cb, dense, complex flux cb and dense, Mz off, Symm, 12×12,
+  20×20), default and LOG; max rel. diff ≤ 1.7e-16 per routine, wrap sequences over Nwrap = 10 ≤ 5.4e-16; the left
+  hopping routines are bit-identical, right ones differ by FMA (1.1e-16). Timing per slice at N = 1024 cb: hopping
+  280/174 µs (CPU 32.4/2.0 ms), fused Op_V 52 µs (CPU 11.8 ms), WRAPGR wraps 538 µs (CPU 47 ms); cb kernels
+  1.2–1.5× 101's numbers, dense better than 101. B580: 6×6 cb self-test PASSED (`alf_la` parts skipped by the ONEMKL
+  guard).
+- numerics-reviewer: approve, no must-fix.
+- Manager re-run (nividia): self-test PASSED for `hub6x6_cb`, `hub6x6_dense`, `hub12x12_cb`, `hub6x6_cb_mzoff`,
+  `hub6x6_cb_symm` (default) and `hub6x6_dense`, `hub12x12_cb` (LOG); faults `hop`, `vexp`, `nan`, `order` exit 1;
+  `GPU=nvidia` vs `GPU=none`, same seeds, 20 sweeps: `data.h5` identical, precision lines equal (3 configs); ctest
+  52/52 (GNU devel).
+- **Follow-ups (for 205 or a cleanup ticket):**
+  - remove the experimental single-launch checkerboard kernel (`gpu_cb_fused`): slower on the A30 and 0.2 wrong on
+    the B580 (cause not established; reviewer: legal OpenMP, suspect ifx). It is unreachable in production (default
+    off, ifx disabled);
+  - `ensure_la()` initialises `alf_la` lazily inside the first dense call: move `la_init` to `gpu_state_setup`;
+  - fault magnitudes: `hop` 1e-9 is only just above the tolerance at N = 36; use 1e-6 as for `vexp`. The `nan` fault
+    tests the up-front finite check, not the comparison;
+  - the up/down round trip from a random G differs by ≈ 1.5e-10 device vs CPU, the same as a 1e-16 perturbation on
+    the CPU (conditioning of B⁻¹(B G B⁻¹)B): reported, not a criterion;
+  - dense elements with non-identity `P` (gather/scatter path) are untested (no config has one).

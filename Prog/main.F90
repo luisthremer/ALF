@@ -141,7 +141,8 @@ Program Main
         use set_random
         use iso8601_datetime_mod
 #ifdef ALF_GPU
-        use gpu_state_mod, only: gpu_state_setup, gpu_state_finalize
+        use gpu_state_mod, only: gpu_state_setup, gpu_state_finalize, gpu_active
+        use gpu_wrap_mod,  only: gpu_wrap_hook
 #endif
          
 #ifdef HDF5
@@ -614,6 +615,8 @@ Program Main
 #else
         call gpu_state_setup(nsigma, NSTM, file_info, .true.)
 #endif
+        ! ticket 204 self-test / timing hook (acts only if ALF_GPU_SELFTEST=2 or ALF_GPU_TIMING=1 is set)
+        if (gpu_active) call gpu_wrap_hook()
 #endif
 
         DO NST = NSTM-1,1,-1

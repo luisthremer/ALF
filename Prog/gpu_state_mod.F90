@@ -72,6 +72,25 @@
 !>  alpha is not in the mirror; nsigma_d is a copy made at setup and goes stale as soon as updates run (205 must keep
 !>  it in sync); N and P of an operator may differ between flavours (V_meta is per (n,nf)).  gpu_supported refuses
 !>  runs with Propose_S0 or reconstruction_needed (ham%weight_reconstruction).
+!>
+!>  Ticket 204 additions (kernels live in gpu_wrap_mod):
+!>    hop_gstart(nf), hop_gptr(g)   checkerboard groups: maximal runs of consecutive active elements of one flavour
+!>                        whose site lists P are pairwise disjoint and nd <= 8 (an element with nd > 8 forms a group of
+!>                        its own).  Group g = elements hop_gptr(g) : hop_gptr(g+1)-1; flavour nf = groups
+!>                        hop_gstart(nf) : hop_gstart(nf+1)-1.  Elements of one group touch disjoint rows (left) /
+!>                        columns (right), so they can run in one kernel and give the sequential result; the same
+!>                        partition serves both application directions (a group is order independent inside).
+!>                        hop_big(nf) = flavour has an element with nd > 8.
+!>    hop_aux(1:2,e)      (xoff, pident): pident = 1 iff P = (1,2,...,nd); xoff = offset (0-based) into hop_At/hop_Ac for
+!>                        real elements with nd > 8, else -1.
+!>    hop_At(xoff + (k-1)*nd*nd + j + (i-1)*nd) = A_k(i,j) (transposed copy, real), hop_Ac(xoff + (k-1)*nd*nd + i +
+!>                        (j-1)*nd) = A_k(i,j) as complex; k = 1 (mat), 2 (invmat) only.  Used by the dense left
+!>                        multiplication variants of gpu_wrap_mod.
+!>    complex elements with nd > 8: the imaginary part of the diagonal is zeroed (ZHEMM, which ALF calls there, ignores
+!>                        it; the nd <= 8 loops use it, but a Hermitian matrix has none).
+!>    vr_ptr(r,nf), vr_ent(1:2,p)  per matrix index r (site) and flavour: the entries p = vr_ptr(r,nf) : vr_ptr(r+1,nf)-1
+!>                        list (n, i) = (operator, position in P) with V_P(poff(n,nf)+i) = r, in ALF's operator order
+!>                        (n ascending).  vr_ptr has Ndim+1 rows.
 !>  Offsets are default (int32) integers: arrays must stay below 2**31-1 entries (dense hopping needs 4*N*N*N_FL
 !>  reals, i.e. fine up to N ~ 20000).
 !--------------------------------------------------------------------
@@ -94,6 +113,8 @@ Module gpu_state_mod
   Private
   Public :: gpu_state_setup, gpu_state_finalize, gpu_supported, gpu_active, gpu_reason, gpu_scratch_lwork
   Public :: hop_start, hop_meta, hop_P, hop_Rval, hop_Cval
+  Public :: hop_gstart, hop_gptr, hop_big, hop_aux, hop_At, hop_Ac, vr_ptr, vr_ent, g_ngroups
+  Public :: rnd, rand_mat, rel_diff, is_finite, finite_c, selftest_fail, info_line, same_bits_c
   Public :: V_meta, V_type, V_P, V_exp, nsigma_d, nsigma_t
   Public :: G_d, udv_U, udv_V, udv_D, udv_L, udw_U, udw_V, udw_D, udw_L
   Public :: GT0_d, G0T_d, GTT_d, scr_c, scr_vec, scr_r, scr_work, scr_ipiv
@@ -102,7 +123,7 @@ Module gpu_state_mod
   Character (len=256), Save :: gpu_reason = 'gpu_state_setup not called'
 
   Integer, Save :: g_NFL = 0, g_Ndim = 0, g_Nop = 0, g_Ltrot = 0, g_NSTM = 0, g_NFLeff = 0
-  Integer, Save :: g_nel = 0
+  Integer, Save :: g_nel = 0, g_ngroups = 0
 
   ! ---- constant data, built once from the host objects ----
   Integer,                 Allocatable, Save :: hop_start(:), hop_meta(:,:), hop_P(:)
@@ -112,6 +133,11 @@ Module gpu_state_mod
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: V_exp(:)
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: nsigma_d(:,:)
   Integer,                 Allocatable, Save :: nsigma_t(:)
+  ! ticket 204: groups, dense auxiliaries, per-site operator lists (see header)
+  Integer,                 Allocatable, Save :: hop_gstart(:), hop_gptr(:), hop_aux(:,:), vr_ptr(:,:), vr_ent(:,:)
+  Logical,                 Allocatable, Save :: hop_big(:)
+  Real    (Kind=Kind(0.d0)), Allocatable, Save :: hop_At(:)
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: hop_Ac(:)
 
   ! ---- buffers allocated on the device only (not filled in ticket 203) ----
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: G_d(:,:,:)                    ! (Ndim,Ndim,N_FL)
@@ -273,7 +299,9 @@ Contains
     have_tau = ( get_Ltau() == 1 )
 
     call build_hopping()
+    call build_groups()
     call build_V()
+    call build_vrows()
     allocate( nsigma_d(g_Nop, g_Ltrot), nsigma_t(g_Nop) )
     nsigma_d = nsigma_in%f
     nsigma_t = nsigma_in%t
@@ -287,6 +315,9 @@ Contains
     call info_line(line)
     write(line,'(A,I0,A,I0,A,I0)') 'GPU mirror: hopping elements ', g_nel, ', Op_V operators ', g_Nop*g_NFL, &
          & ', omp devices ', omp_get_num_devices()
+    call info_line(line)
+    write(line,'(A,I0,A,I0,A,L1)') 'GPU mirror: checkerboard groups ', g_ngroups, ' (flavour 1: ', hop_gstart(2)-hop_gstart(1), &
+         & ' groups), dense element(s) in flavour 1: ', hop_big(1)
     call info_line(line)
     call report_layout()
     ! timing of setup includes the host->device copies, not the self-test
@@ -357,6 +388,14 @@ Contains
                 enddo
              enddo
           enddo
+          if (ek == 2 .and. nh > 8) then
+             ! ZHEMM (ALF, nd > 8) ignores Im(diagonal); ticket 204 applies these elements with ZGEMM on the full matrix
+             do k = 1, 4
+                do i = 1, nh
+                   cm(i,i,k) = cmplx(real(cm(i,i,k)), 0.d0, kind(0.d0))
+                enddo
+             enddo
+          endif
           e = e + 1
           hop_meta(1,e) = ek
           hop_meta(2,e) = nh
@@ -380,6 +419,146 @@ Contains
     enddo
     hop_start(N_FL+1) = e + 1
   end subroutine build_hopping
+
+!--------------------------------------------------------------------
+!> Checkerboard groups and dense auxiliaries (ticket 204), from the flat element list.
+!--------------------------------------------------------------------
+  Subroutine build_groups()
+    Implicit none
+    Integer :: nf, e, e1, e2, ng, pass, nd, po, l, nx, xo, k, i, j, mo
+    Integer, allocatable :: mark(:), gp(:)
+    Logical :: ok
+
+    allocate(hop_gstart(g_NFL+1), hop_big(g_NFL), hop_aux(2,max(g_nel,1)), mark(max(g_Ndim,1)))
+    hop_big = .false.
+    ! pass 1 counts the groups, pass 2 stores them
+    ng = 0
+    do pass = 1, 2
+       if (pass == 2) then
+          allocate(gp(ng+1)); gp = 0
+          g_ngroups = ng
+          ng = 0
+       endif
+       mark = 0
+       do nf = 1, g_NFL
+          e1 = hop_start(nf); e2 = hop_start(nf+1) - 1
+          if (pass == 2) hop_gstart(nf) = ng + 1
+          e = e1
+          do while (e <= e2)
+             ng = ng + 1
+             if (pass == 2) gp(ng) = e
+             nd = hop_meta(2,e)
+             if (nd > 8) then
+                hop_big(nf) = .true.
+                e = e + 1
+                cycle
+             endif
+             ! small group: extend while the next element is small and disjoint from all sites of this group
+             do
+                po = hop_meta(3,e)
+                do l = 1, nd
+                   mark(hop_P(po+l)) = ng
+                enddo
+                e = e + 1
+                if (e > e2) exit
+                if (hop_meta(2,e) > 8) exit
+                ok = .true.
+                po = hop_meta(3,e)
+                do l = 1, hop_meta(2,e)
+                   if (mark(hop_P(po+l)) == ng) ok = .false.
+                enddo
+                if (.not. ok) exit
+                nd = hop_meta(2,e)
+             enddo
+          enddo
+       enddo
+       if (pass == 2) then
+          hop_gstart(g_NFL+1) = ng + 1
+          gp(ng+1) = g_nel + 1
+       endif
+    enddo
+    allocate(hop_gptr(ng+1)); hop_gptr = gp; deallocate(gp)
+
+    ! dense auxiliaries
+    nx = 0
+    do e = 1, g_nel
+       if (hop_meta(1,e) == 1 .and. hop_meta(2,e) > 8) nx = nx + 2*hop_meta(2,e)**2
+    enddo
+    allocate(hop_At(max(nx,1)), hop_Ac(max(nx,1)))
+    hop_At = 0.d0; hop_Ac = cmplx(0.d0,0.d0,kind(0.d0))
+    xo = 0
+    do e = 1, g_nel
+       nd = hop_meta(2,e); po = hop_meta(3,e)
+       hop_aux(1,e) = -1
+       hop_aux(2,e) = 1
+       do l = 1, nd
+          if (hop_P(po+l) /= l) hop_aux(2,e) = 0
+       enddo
+       if (hop_meta(1,e) == 1 .and. nd > 8) then
+          hop_aux(1,e) = xo
+          do k = 1, 2
+             mo = hop_meta(4,e) + (k-1)*nd*nd
+             do j = 1, nd
+                do i = 1, nd
+                   hop_At(xo + (k-1)*nd*nd + j + (i-1)*nd) = hop_Rval(mo + i + (j-1)*nd)
+                   hop_Ac(xo + (k-1)*nd*nd + i + (j-1)*nd) = cmplx(hop_Rval(mo + i + (j-1)*nd), 0.d0, kind(0.d0))
+                enddo
+             enddo
+          enddo
+          xo = xo + 2*nd*nd
+       endif
+    enddo
+    deallocate(mark)
+  end subroutine build_groups
+
+!--------------------------------------------------------------------
+!> Per matrix index and flavour: the (operator, position) entries in operator order (ticket 204).
+!--------------------------------------------------------------------
+  Subroutine build_vrows()
+    Implicit none
+    Integer :: n, nf, i, r, np, p, N1, po
+    Integer, allocatable :: cnt(:)
+
+    allocate(vr_ptr(g_Ndim+1, g_NFL))
+    allocate(cnt(g_Ndim))
+    np = 0
+    do nf = 1, g_NFL
+       do n = 1, g_Nop
+          np = np + V_meta(1,n,nf)
+       enddo
+    enddo
+    allocate(vr_ent(2, max(np,1))); vr_ent = 0
+    p = 1
+    do nf = 1, g_NFL
+       cnt = 0
+       do n = 1, g_Nop
+          N1 = V_meta(1,n,nf); po = V_meta(2,n,nf)
+          do i = 1, N1
+             r = V_P(po+i)
+             cnt(r) = cnt(r) + 1
+          enddo
+       enddo
+       do r = 1, g_Ndim
+          vr_ptr(r,nf) = p
+          p = p + cnt(r)
+       enddo
+       vr_ptr(g_Ndim+1,nf) = p
+       ! fill in operator order (n ascending), running position per index
+       do r = 1, g_Ndim
+          cnt(r) = vr_ptr(r,nf)
+       enddo
+       do n = 1, g_Nop
+          N1 = V_meta(1,n,nf); po = V_meta(2,n,nf)
+          do i = 1, N1
+             r = V_P(po+i)
+             vr_ent(1,cnt(r)) = n
+             vr_ent(2,cnt(r)) = i
+             cnt(r) = cnt(r) + 1
+          enddo
+       enddo
+    enddo
+    deallocate(cnt)
+  end subroutine build_vrows
 
 !--------------------------------------------------------------------
   Subroutine build_V()
@@ -454,6 +633,8 @@ Contains
     !$omp target enter data map(to: hop_start, hop_meta, hop_P, hop_Rval, hop_Cval)
     !$omp target enter data map(to: V_meta, V_type, V_P, V_exp)
     !$omp target enter data map(to: nsigma_d, nsigma_t)
+    ! ticket 204: group table, dense auxiliaries and per-site operator lists (constant data, uploaded once)
+    !$omp target enter data map(to: hop_gptr, hop_aux, hop_At, hop_Ac, vr_ptr, vr_ent)
     ! Buffers that later tickets fill: device allocation only, no transfer.
     !$omp target enter data map(alloc: G_d, udv_U, udv_V, udw_U, udw_V)
     !$omp target enter data map(alloc: udv_D, udv_L, udw_D, udw_L)
@@ -474,12 +655,14 @@ Contains
     !$omp target exit data map(delete: scr_c, scr_vec, scr_r, scr_ipiv, scr_work)
     !$omp target exit data map(delete: udv_D, udv_L, udw_D, udw_L)
     !$omp target exit data map(delete: G_d, udv_U, udv_V, udw_U, udw_V)
+    !$omp target exit data map(delete: hop_gptr, hop_aux, hop_At, hop_Ac, vr_ptr, vr_ent)
     !$omp target exit data map(delete: nsigma_d, nsigma_t)
     !$omp target exit data map(delete: V_meta, V_type, V_P, V_exp)
     !$omp target exit data map(delete: hop_start, hop_meta, hop_P, hop_Rval, hop_Cval)
     deallocate(scr_c, scr_vec, scr_r, scr_ipiv, scr_work, udv_D, udv_L, udw_D, udw_L)
     deallocate(G_d, udv_U, udv_V, udw_U, udw_V, nsigma_d, nsigma_t)
     deallocate(V_meta, V_type, V_P, V_exp, hop_start, hop_meta, hop_P, hop_Rval, hop_Cval)
+    deallocate(hop_gstart, hop_gptr, hop_big, hop_aux, hop_At, hop_Ac, vr_ptr, vr_ent)
     gpu_active = .false.
   end subroutine gpu_state_finalize
 
@@ -499,6 +682,12 @@ Contains
     call lay('V_exp', 'complex', shape(V_exp), 16_int64*size(V_exp), tot)
     call lay('nsigma_d', 'complex', shape(nsigma_d), 16_int64*size(nsigma_d), tot)
     call lay('nsigma_t', 'int', shape(nsigma_t), 4_int64*size(nsigma_t), tot)
+    call lay('hop_gptr', 'int', shape(hop_gptr), 4_int64*size(hop_gptr), tot)
+    call lay('hop_aux', 'int', shape(hop_aux), 4_int64*size(hop_aux), tot)
+    call lay('hop_At', 'real', shape(hop_At), 8_int64*size(hop_At), tot)
+    call lay('hop_Ac', 'complex', shape(hop_Ac), 16_int64*size(hop_Ac), tot)
+    call lay('vr_ptr', 'int', shape(vr_ptr), 4_int64*size(vr_ptr), tot)
+    call lay('vr_ent', 'int', shape(vr_ent), 4_int64*size(vr_ent), tot)
     call lay('G_d', 'complex', shape(G_d), 16_int64*size(G_d), tot)
     call lay('udv_U', 'complex', shape(udv_U), 16_int64*size(udv_U), tot)
     call lay('udv_V', 'complex', shape(udv_V), 16_int64*size(udv_V), tot)
