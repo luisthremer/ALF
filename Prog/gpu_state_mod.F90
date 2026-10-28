@@ -123,7 +123,7 @@ Module gpu_state_mod
   Public :: rnd, rand_mat, rel_diff, is_finite, finite_c, selftest_fail, info_line, same_bits_c
   Public :: V_meta, V_type, V_P, V_exp, nsigma_d, nsigma_t
   Public :: G_d, udv_U, udv_V, udv_D, udv_L, udw_U, udw_V, udw_D, udw_L
-  Public :: GT0_d, G0T_d, GTT_d, scr_c, scr_vec, scr_r, scr_work, scr_ipiv
+  Public :: GT0_d, G0T_d, GTT_d, G00_d, scr_c, scr_vec, scr_r, scr_work, scr_ipiv
   Public :: upd_cnt
 
   Logical, Save :: gpu_active = .false.
@@ -154,7 +154,7 @@ Module gpu_state_mod
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: udw_U(:,:,:,:), udw_V(:,:,:,:)   ! (Ndim,Ndim,2,N_FL_eff) udvl, udvr
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: udw_D(:,:,:)                  ! (Ndim,2,N_FL_eff)
   Real    (Kind=Kind(0.d0)), Allocatable, Save :: udw_L(:,:,:)                  ! (Ndim,2,N_FL_eff)
-  Complex (Kind=Kind(0.d0)), Allocatable, Save :: GT0_d(:,:,:), G0T_d(:,:,:), GTT_d(:,:,:)   ! only if Ltau = 1
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: GT0_d(:,:,:), G0T_d(:,:,:), GTT_d(:,:,:), G00_d(:,:,:)   ! only if Ltau = 1 (G00_d: ticket 207)
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: scr_c(:,:,:), scr_vec(:,:), scr_work(:)
   Real    (Kind=Kind(0.d0)), Allocatable, Save :: scr_r(:,:)
   Integer,                 Allocatable, Save :: scr_ipiv(:)
@@ -353,8 +353,9 @@ Contains
     ! ALF_GPU_SELFTEST=1 (any value except empty/0): self-test, then the run continues.  Negative controls, which must
     ! fail with a nonzero exit: =fault (hop_Rval(1) *= 1+1e-9), =fault_c (hop_Cval(1) += 1e-9), =fault_v (V_exp(1) *=
     ! 1+1e-9), =nan (hop_Rval(1) = NaN), =nan_v (V_exp(1) = NaN); all applied to the host copy after the upload.
-    ! ALF_GPU_SELFTEST=3 (ticket 206, stabilization self-test in gpu_stab_mod) does not run this mirror self-test: O(N^3) host loops
-    if (st == 0 .and. len_trim(env) > 0 .and. trim(env) /= '0' .and. trim(env) /= '3') then
+    ! ALF_GPU_SELFTEST=3 (ticket 206, stabilization self-test in gpu_stab_mod) and =4 (ticket 207, tau pass, gpu_tau_mod) do not run
+    ! this mirror self-test: O(N^3) host loops
+    if (st == 0 .and. len_trim(env) > 0 .and. trim(env) /= '0' .and. trim(env) /= '3' .and. trim(env) /= '4') then
        select case (trim(env))
        case ('fault');   hop_Rval(1) = hop_Rval(1)*(1.d0 + 1.d-9)
        case ('fault_c'); hop_Cval(1) = hop_Cval(1) + cmplx(1.d-9, 0.d0, kind(0.d0))
@@ -645,7 +646,7 @@ Contains
     allocate( udv_D(g_Ndim,g_NSTM,g_NFLeff), udw_D(g_Ndim,2,g_NFLeff) )
     allocate( udv_L(1,1,1), udw_L(1,1,1) )
 #endif
-    if (have_tau) allocate( GT0_d(g_Ndim,g_Ndim,g_NFL), G0T_d(g_Ndim,g_Ndim,g_NFL), GTT_d(g_Ndim,g_Ndim,g_NFL) )
+    if (have_tau) allocate( GT0_d(g_Ndim,g_Ndim,g_NFL), G0T_d(g_Ndim,g_Ndim,g_NFL), GTT_d(g_Ndim,g_Ndim,g_NFL), G00_d(g_Ndim,g_Ndim,g_NFL) )
     lw = gpu_scratch_lwork(g_Ndim)
     allocate( scr_c(g_Ndim,g_Ndim,2), scr_vec(g_Ndim,4), scr_r(g_Ndim,2), scr_ipiv(g_Ndim), scr_work(lw) )
   end subroutine alloc_buffers
@@ -664,7 +665,7 @@ Contains
     !$omp target enter data map(alloc: udv_D, udv_L, udw_D, udw_L)
     !$omp target enter data map(alloc: scr_c, scr_vec, scr_r, scr_ipiv, scr_work)
     if (have_tau) then
-       !$omp target enter data map(alloc: GT0_d, G0T_d, GTT_d)
+       !$omp target enter data map(alloc: GT0_d, G0T_d, GTT_d, G00_d)
     endif
   end subroutine map_to_device
 
@@ -677,8 +678,8 @@ Contains
     call la_finalize()
 #endif
     if (have_tau) then
-       !$omp target exit data map(delete: GT0_d, G0T_d, GTT_d)
-       deallocate(GT0_d, G0T_d, GTT_d)
+       !$omp target exit data map(delete: GT0_d, G0T_d, GTT_d, G00_d)
+       deallocate(GT0_d, G0T_d, GTT_d, G00_d)
     endif
     !$omp target exit data map(delete: scr_c, scr_vec, scr_r, scr_ipiv, scr_work)
     !$omp target exit data map(delete: udv_D, udv_L, udw_D, udw_L)
@@ -746,6 +747,7 @@ Contains
        call lay('GT0_d', 'complex', shape(GT0_d), 16_int64*size(GT0_d), tot)
        call lay('G0T_d', 'complex', shape(G0T_d), 16_int64*size(G0T_d), tot)
        call lay('GTT_d', 'complex', shape(GTT_d), 16_int64*size(GTT_d), tot)
+       call lay('G00_d', 'complex', shape(G00_d), 16_int64*size(G00_d), tot)
     endif
     call lay('scr_c', 'complex', shape(scr_c), 16_int64*size(scr_c), tot)
     call lay('scr_vec', 'complex', shape(scr_vec), 16_int64*size(scr_vec), tot)
@@ -1160,6 +1162,7 @@ Contains
        call rt_c('GT0_d', size(GT0_d), GT0_d, .true., nbad)
        call rt_c('G0T_d', size(G0T_d), G0T_d, .true., nbad)
        call rt_c('GTT_d', size(GTT_d), GTT_d, .true., nbad)
+       call rt_c('G00_d', size(G00_d), G00_d, .true., nbad)
     endif
     call rt_c('scr_c', size(scr_c), scr_c, .true., nbad)
     call rt_c('scr_vec', size(scr_vec), scr_vec, .true., nbad)
