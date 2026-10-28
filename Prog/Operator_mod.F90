@@ -1127,4 +1127,24 @@ Contains
     operator_get_g_t_alloc = this%g_t_alloc
     
   end function operator_get_g_t_alloc
+#ifdef ALF_GPU
+!--------------------------------------------------------------------
+!> GPU mirror (ticket 203): returns a copy of the private table E_exp(N,-type:type) built by Op_set
+!> (the table Op_mmultL/R apply for type 1,2 and diagonal operators). Column 0 is never set by Op_set.
+!--------------------------------------------------------------------
+  subroutine Op_get_E_exp(Op, E)
+    Implicit None
+    Type (Operator), INTENT(IN) :: Op
+    Complex (Kind=Kind(0.d0)), allocatable, INTENT(OUT) :: E(:,:)
+
+    if ( Op%type == 1 .or. Op%type == 2 ) then
+       allocate( E(Op%N, -Op%type:Op%type) )
+       E = cmplx(1.d0, 0.d0, kind(0.D0))     ! column 0 is undefined in Op_set: not copied
+       E(:,-Op%type:-1) = Op%E_exp(:,-Op%type:-1)
+       E(:, 1: Op%type) = Op%E_exp(:, 1: Op%type)
+    else
+       allocate( E(0,0) )
+    endif
+  end subroutine Op_get_E_exp
+#endif
 end Module Operator_mod

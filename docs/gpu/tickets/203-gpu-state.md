@@ -3,7 +3,7 @@
 - **Phase:** 2
 - **Owner agent:** fortran-gpu-dev (review: numerics-reviewer)
 - **Depends on:** 201 (done), ADR-002 §2 (accepted). 202 (done; `alf_la` not needed here).
-- **Status:** open
+- **Status:** done (2026-10-28; two review rounds, re-run by the manager)
 
 ## Goal
 With `GPU=nvidia`, ALF builds at setup a flat, device-resident copy of everything the sweep needs that does not
@@ -91,3 +91,25 @@ plain `sycl-ls`. Disk on nividia is tight (≈ 19 GB free): keep the work dir �
 ## Out of scope
 Device kernels for wraps (204), updates (205), stabilization (206); using `alf_la`; any change of results;
 MPI/tempering on the GPU.
+
+## Resolution (manager, 2026-10-28)
+- Delivered: `Prog/gpu_state_mod.F90` (whole body under `#ifdef ALF_GPU`; flat hopping in application order, Op_V
+  tables with a tiny-g skip flag, fields, device buffers for G/udvst/τ/scratch, `gpu_supported`, self-test with
+  fault/NaN injection), guarded accessors in `Hop_mod`/`Operator_mod`, two guarded calls in `main.F90`, conditional
+  source + `ALF_GPU` stamp in `Prog/Makefile`, configs `hub6x6_cb_mzoff`/`hub6x6_cb_symm`, scripts `t203_*`.
+- Review round 1: unsymmetrised lower triangle, NaN-blind self-test, missing rejections (`Propose_S0`,
+  `reconstruction_needed`, flavour type mismatch), tiny-g semantics differ between `Op_mmultL/R` and wraps.
+  Round 2: approve after ignoring the stamp file in git/`tidy`. One review claim was wrong (real nd > 8 uses `ZLARCM`
+  on the full matrix, not `ZSYMM` 'U'): measured by the agent, confirmed in the source, logged in DISCREPANCIES.
+- Manager fix found here: `GPU=intel` did not build (201 sets `-DALF_LA_ONEMKL`, 202 made it an `#error`). Now
+  `alf_la` compiles under ONEMKL and every HOST code path stops the run (`LA_GUARD`) until 302; ctest has a guard
+  test (`GPU=intel` on intel: 40/40).
+- Manager re-run (nividia, A30): self-test PASSED for `hub6x6_cb`, `hub6x6_dense`, `hub12x12_cb`, `hub6x6_cb_mzoff`
+  (default) and `hub6x6_dense` (LOG); all five fault/NaN injections exit 1; `GPU=nvidia` vs `GPU=none`, same seeds,
+  20 sweeps: `data.h5` identical and precision lines equal for 4 configs; ctest 52/52 (GNU devel; PGI `GPU=nvidia`).
+  Agent: also LOG for all configs, unsupported models (tV non-diagonal, Hubbard type 3, `ALF_GPU_DISABLE`) inactive
+  with results identical, B580 self-test passed.
+- `GPU=none` `ALF.out` differs from HEAD only in `__LINE__` strings of `main.F90` messages (code sections identical);
+  accepted.
+- Cost: setup ≈ 0.2 s (A30). Device memory at N = 1024, L = 200: ≈ 1.6 GB (udvst dominates). Host shadow arrays are
+  virtual unless the self-test touches them.

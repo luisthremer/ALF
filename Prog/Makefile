@@ -9,6 +9,16 @@ SRCS = Hamiltonians/LRC_mod.F90 control_mod.F90 Fields_mod.F90 Operator_mod.F90 
 	Global_mod.F90 Langevin_HMC_mod.F90 Wrapgr_mod.F90 tau_m_mod.F90 tau_p_mod.F90 QMC_runtime_var_mod.F90 \
 	main.F90
 
+# GPU mirror (ticket 203): compiled only for GPU builds (configure.sh exports ALF_GPU=nvidia|intel)
+ifneq ($(strip $(ALF_GPU)),)
+SRCS := $(filter-out main.F90,$(SRCS)) gpu_state_mod.F90 main.F90
+endif
+
+# Stamp file holding the value of ALF_GPU: changes (nvidia <-> none) regenerate $(DEPSFILE) and rebuild all Prog objects
+# (the preprocessor macro ALF_GPU alters most of them), so a tree can be switched without 'make clean'.
+ALF_GPU_STAMP := .alf_gpu_stamp
+ALF_GPU_STAMP_UPD := $(shell echo '$(strip $(ALF_GPU))' | cmp -s - $(ALF_GPU_STAMP) 2>/dev/null || echo '$(strip $(ALF_GPU))' > $(ALF_GPU_STAMP))
+
 # Dependency helper variables
 DEPSFILE := .deps.mk
 DEPSGEN := ./gen_deps.py
@@ -54,16 +64,16 @@ Hamiltonians_case.h: Hamiltonians.list $(HAM_LIST_D)
 # before any .o file under parallel make (-j N), so the banner appears first.
 # Because it is order-only, Make never timestamps .echo_compile_mods against
 # the .o files, so it never triggers recompilation.
-%.o: %.F90 | .echo_compile_mods
+%.o: %.F90 $(ALF_GPU_STAMP) | .echo_compile_mods
 	$(ALF_FC) -c $(ALF_FLAGS_PROG) -o $@ $<
 
 # Generate dependency file that maps object files to the object(s) providing
 # the Fortran modules they USE. This enables correct parallel builds.
-$(DEPSFILE): $(SRCS) $(DEPSGEN) Hamiltonians.list $(HAM_LIST_D) $(shell ./parse_ham.py --print_src_list)
+$(DEPSFILE): $(ALF_GPU_STAMP) $(SRCS) $(DEPSGEN) Hamiltonians.list $(HAM_LIST_D) $(shell ./parse_ham.py --print_src_list)
 	python3 $(DEPSGEN) $(SRCS) $(shell ./parse_ham.py --print_src_list) > $(DEPSFILE)
 
 tidy: $(DEPSFILE)
-	rm -f $(OBJS) $(OHAM) $(MODS) hamiltonian*.mod hamiltonian*.smod $(DEPSFILE) .echo_compile_mods
+	rm -f $(OBJS) $(OHAM) $(MODS) hamiltonian*.mod hamiltonian*.smod $(DEPSFILE) .echo_compile_mods .alf_gpu_stamp
 	rm -f git.h .parse_parameters Hamiltonians_interface.h Hamiltonians_case.h Hamiltonians/Hamiltonian_*_read_write_parameters.F90
 
 clean: tidy

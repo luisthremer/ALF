@@ -34,3 +34,10 @@ for (L, cb), (nsweep, nbin) in SIZES.items():
     name = f"hub{L}x{L}_{'cb' if cb else 'dense'}"
     CONFIGS[name] = {**COMMON, "L1": L, "L2": L, "Checkerboard": cb,
                      "NSweep": nsweep, "NBin": nbin}
+
+# Ticket 203 additions (gpu_state self-test / identity runs): Mz = False (SU(2) Hubbard, no spin-resolved HS) and
+# Symm = True (symmetric Trotter, exercises Hop_mod_Symm / the half-step matrices).
+CONFIGS["hub6x6_cb_mzoff"] = {**COMMON, "L1": 6, "L2": 6, "Checkerboard": True, "Mz": False,
+                              "NSweep": 50, "NBin": 100}
+CONFIGS["hub6x6_cb_symm"] = {**COMMON, "L1": 6, "L2": 6, "Checkerboard": True, "Symm": True,
+                             "NSweep": 50, "NBin": 100}

@@ -17,5 +17,6 @@ environment
 __pycache__/
 testsuite/tests/
 .deps.mk
+.alf_gpu_stamp
 Prog/.echo_compile_mods
 Prog/.parse_parameters

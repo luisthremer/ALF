@@ -140,6 +140,9 @@ Program Main
         use cgr1_mod
         use set_random
         use iso8601_datetime_mod
+#ifdef ALF_GPU
+        use gpu_state_mod, only: gpu_state_setup, gpu_state_finalize
+#endif
          
 #ifdef HDF5
         use hdf5
@@ -604,6 +607,15 @@ Program Main
            endif
         enddo
 
+#ifdef ALF_GPU
+        ! GPU mirror (ticket 203): flat device copy of the constant data + device buffers; decides GPU path active/inactive
+#if defined(MPI)
+        call gpu_state_setup(nsigma, NSTM, file_info, Irank_g == 0)
+#else
+        call gpu_state_setup(nsigma, NSTM, file_info, .true.)
+#endif
+#endif
+
         DO NST = NSTM-1,1,-1
            NT1 = Stab_nt(NST+1)
            NT  = Stab_nt(NST  )
@@ -920,6 +932,9 @@ Program Main
            ENDDO
         endif
         DEALLOCATE(udvl, udvr, udvst)
+#ifdef ALF_GPU
+        call gpu_state_finalize()
+#endif
         DEALLOCATE(GR, TEST, Stab_nt,GR_Tilde)
         if (Projector) DEALLOCATE(WF_R, WF_L)
         If (get_N_Global_tau() > 0) then

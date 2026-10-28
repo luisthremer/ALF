@@ -30,7 +30,8 @@
 !>   ALF_LA_CUDA          : cuBLAS / cuSOLVER through bind(C) interfaces on DEVICE-RESIDENT arrays.
 !>                          Needs -mp=gpu (nvfortran); the caller maps the arrays (!$omp target enter data) and
 !>                          alf_la gets the device addresses itself (!$omp target data use_device_addr).
-!>   ALF_LA_ONEMKL        : not implemented here (ticket 302); fails at compile time.
+!>   ALF_LA_ONEMKL        : not implemented yet (ticket 302). Compiles (GPU=intel builds), but la_init and every
+!>                          HOST code path stop the run (LA_GUARD), so host code never touches device data.
 !>
 !> Interface rules
 !>   * explicit-shape/assumed-size arrays + leading dimensions in LAPACK order, complex(8) throughout
@@ -98,14 +99,23 @@
 !>   Not provided: la_gemm_rc (real x complex): no DGEMM view exists for it without transposes (ticket 101 used
 !>   transpose kernels); no ALF call site. la_getri: its only call sites are the cold INV routines (mymats_mod.F90:575,623,677).
 
-#if defined(ALF_LA_ONEMKL)
-#error "ALF_LA_ONEMKL is not implemented in alf_la_mod (ticket 302)"
+#if defined(ALF_LA_ONEMKL) && defined(ALF_LA_CUDA)
+#error "alf_la_mod: define at most one of ALF_LA_ONEMKL, ALF_LA_CUDA"
 #endif
+! ALF_LA_ONEMKL (GPU=intel): backend not implemented yet (ticket 302). The module compiles with the HOST code paths so
+! that GPU=intel builds; la_init stops the run, so no device data is ever processed by host code.
 #if defined(ALF_LA_CUDA) && defined(ALF_LA_HOST)
 #error "alf_la_mod: define at most one of ALF_LA_HOST, ALF_LA_CUDA"
 #endif
 
 #define LA_FAIL(msg) call la_fail(msg, __LINE__)
+! LA_GUARD heads every HOST code path of a public routine: under ALF_LA_ONEMKL (GPU=intel, backend not yet
+! implemented) it stops the run, so host BLAS/LAPACK can never touch device-resident data; otherwise it is empty.
+#if defined(ALF_LA_ONEMKL)
+#define LA_GUARD LA_FAIL('ONEMKL backend not implemented yet (ticket 302)')
+#else
+#define LA_GUARD
+#endif
 
 module alf_la_mod
   use iso_c_binding
@@ -332,6 +342,11 @@ contains
     call chk(cusolverDnSetStream(hsolv, hstream), 'cusolverDnSetStream')
     islot = 0
     lib_pending = .false.
+#endif
+#if defined(ALF_LA_ONEMKL)
+    ! GPU=intel compiles (ALF_LA_ONEMKL selects the HOST code paths) but must never run alf_la on device data until
+    ! the ONEMKL backend exists (ticket 302): stop instead of silently computing on stale host copies.
+    LA_FAIL('ONEMKL backend not implemented yet (ticket 302)')
 #endif
     inited = .true.
   end subroutine la_init
@@ -612,6 +627,7 @@ contains
     !$omp end target data
     call post_lib()
 #else
+    LA_GUARD
     call zgemm(opc(opa), opc(opb), m, n, k, alpha, A, lda, B, ldb, beta, C, ldc)
 #endif
   end subroutine la_gemm
@@ -635,6 +651,7 @@ contains
     !$omp end target data
     call post_lib()
 #else
+    LA_GUARD
     ! real views of the complex arrays (contiguous pointers: no copy-in/out when passed on)
     call c_f_pointer(c_loc(A(1,1)), Ar, [2*lda, k])
     call c_f_pointer(c_loc(C(1,1)), Cr, [2*ldc, n])
@@ -661,6 +678,7 @@ contains
     !$omp end target data
     call post_lib()
 #else
+    LA_GUARD
     do ib = 0, nb - 1
       call zgemm(opc(opa), opc(opb), m, n, k, alpha, A(1+ib*sA), lda, B(1+ib*sB), ldb, beta, C(1+ib*sC), ldc)
     end do
@@ -682,6 +700,7 @@ contains
     !$omp end target data
     call post_lib()
 #else
+    LA_GUARD
     call zgeru(m, n, alpha, x, incx, y, incy, A, lda)
 #endif
   end subroutine la_geru
@@ -708,6 +727,7 @@ contains
     !$omp end target data
     call post_lib()
 #else
+    LA_GUARD
     call ztrsm(side, uplo, opc(opa), diag, m, n, alpha, A, lda, B, ldb)
 #endif
   end subroutine la_trsm
@@ -730,6 +750,7 @@ contains
 #else
     complex(8) :: w(1), t1(1)
     integer :: info
+    LA_GUARD
     call zgeqrf(m, n, A, lda, t1, w, -1, info)
     if (info /= 0) LA_FAIL('zgeqrf work query failed')
     lw = int(dble(w(1)))
@@ -757,6 +778,7 @@ contains
     !$omp end target data
     call post_lib()
 #else
+    LA_GUARD
     call ensure_hws(lw)
     call zgeqrf(m, n, A, lda, tau, hws, lw, info)
     if (info /= 0) LA_FAIL('zgeqrf failed')
@@ -778,6 +800,7 @@ contains
 #else
     complex(8) :: w(1)
     integer :: info
+    LA_GUARD
     call zungqr(m, n, k, A, lda, tau, w, -1, info)
     if (info /= 0) LA_FAIL('zungqr work query failed')
     lw = int(dble(w(1)))
@@ -806,6 +829,7 @@ contains
     !$omp end target data
     call post_lib()
 #else
+    LA_GUARD
     call ensure_hws(lw)
     call zungqr(m, n, k, A, lda, tau, hws, lw, info)
     if (info /= 0) LA_FAIL('zungqr failed')
@@ -830,6 +854,7 @@ contains
 #else
     complex(8) :: w(1)
     integer :: info
+    LA_GUARD
     call zunmqr(side, opc(trans), m, n, k, A, lda, tau, C, ldc, w, -1, info)
     if (info /= 0) LA_FAIL('zunmqr work query failed')
     lw = int(dble(w(1)))
@@ -860,6 +885,7 @@ contains
     !$omp end target data
     call post_lib()
 #else
+    LA_GUARD
     call ensure_hws(lw)
     call zunmqr(side, opc(trans), m, n, k, A, lda, tau, C, ldc, hws, lw, info)
     if (info /= 0) LA_FAIL('zunmqr failed')
@@ -881,6 +907,7 @@ contains
     !$omp end target data
     lw = l
 #else
+    LA_GUARD
     lw = 0     ! LAPACK ZGETRF needs no work array (nothing to query)
 #endif
   end function la_getrf_lwork
@@ -907,6 +934,7 @@ contains
     !$omp end target data
     call post_lib()
 #else
+    LA_GUARD
     call zgetrf(m, n, A, lda, ipiv, info)
     if (info < 0) LA_FAIL('zgetrf: illegal argument')
 #endif
@@ -932,6 +960,7 @@ contains
     !$omp end target data
     call post_lib()
 #else
+    LA_GUARD
     call zgetrs(opc(trans), n, nrhs, A, lda, ipiv, B, ldb, info)
     if (info /= 0) LA_FAIL('zgetrs failed')
 #endif
@@ -1004,6 +1033,7 @@ contains
     call upd_to_i(ipvt, n)
     call k_permute_cols(m, n, A, lda, ipvt, dscr)
 #else
+    LA_GUARD
     ! direct finite scan of A (as the CUDA kernel does), not relying on DZNRM2 to propagate NaN/Inf
     do j = 1, n
       do i = 1, m
@@ -1072,6 +1102,8 @@ contains
     call sync_pend()
     ! D->H: ZGEQP3 has no device implementation (STABLOG pivoting, ticket 108)
     call upd_from_z(A, nel)
+#else
+    LA_GUARD
 #endif
     call ensure_hrws(2*n)
     ipvt(1:n) = 0
