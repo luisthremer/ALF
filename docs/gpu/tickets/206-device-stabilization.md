@@ -3,7 +3,7 @@
 - **Phase:** 2
 - **Owner agent:** fortran-gpu-dev (review: numerics-reviewer)
 - **Depends on:** 202, 203, 204 (104 and 108 decide the QR variants)
-- **Status:** drafted 2026-10-28, not started (run 205 and 206 in parallel, separate worktrees)
+- **Status:** open (2026-10-28; runs in parallel with the other one, separate worktrees)
 
 ## Goal
 With `GPU=nvidia` and the GPU path active, the stabilization steps of the sweep run on the device:
