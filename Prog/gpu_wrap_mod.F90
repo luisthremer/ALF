@@ -45,12 +45,10 @@
 !>   * the field of operator n at slice t is read on the device from nsigma_d(n,t) (the caller keeps it in sync).
 !>
 !> Hopping kernels (see gpu_state_mod header for groups)
-!>   checkerboard (all elements nd <= 8), default (gpu_cb_fused = .false.): one kernel launch per group (launches per B_T
-!>     = number of groups, 4 for the square-lattice checkerboard), threads over (element, tile of gpu_tl columns / rows);
-!>     the element data (site list, matrix) are read once per tile.  gpu_cb_fused = .true.: ONE launch per B_T, teams over
-!>     tiles of columns (rows), the groups in the order of the CPU routine inside the team with a team barrier between
-!>     them (columns/rows of M are independent, so this is the sequential result).  Measured slower on the A30; kept for
-!>     comparison.
+!>   checkerboard (all elements nd <= 8): one kernel launch per group (launches per B_T = number of groups, 4 for the
+!>     square-lattice checkerboard), threads over (element, tile of gpu_tl columns / rows); the element data (site list,
+!>     matrix) are read once per tile.  (A single-launch variant with a team barrier between the groups was removed in
+!>     ticket 205: slower on the A30 and wrong on the Arc B580.)
 !>   element arithmetic: nd <= 8 hand-written sums in the order of ZDSLSYMM/ZSLHEMM (l = 1..nd); real elements use real
 !>     arithmetic (what the promoted product is); nd = 1 scales by the real value.
 !>   dense (element nd > 8): gather (if P is not the identity) + GEMM into scratch + scatter.  Complex: ZGEMM
@@ -88,26 +86,19 @@ Module gpu_wrap_mod
   Public :: gpu_Vop_R, gpu_Vop_L, gpu_Vop_wrap, gpu_Vslice_R, gpu_Vslice_L, gpu_Vwrap_all
   Public :: gpu_wrapur_slices, gpu_wrapul_slices, gpu_wrapgr_up, gpu_wrapgr_do
   Public :: gpu_wrap_hook, gpu_wrap_selftest, gpu_wrap_timing
-  Public :: gpu_cb_fused, gpu_dense_left_mode, gpu_ct, gpu_rbt, gpu_tl, gpu_tr, gpu_vb, gpu_n_launch, gpu_n_lib
+  Public :: gpu_dense_left_mode, gpu_tl, gpu_tr, gpu_vb, gpu_n_launch, gpu_n_lib
 
-  Logical, Save :: gpu_cb_fused = .false.     ! .true.: one launch per B_T (slower, see k_cb_left); default: one launch per group
   Integer, Save :: gpu_dense_left_mode = 0     ! 0 auto (v1 for nd <= 400, else v2), 1 complex copy + ZGEMM, 2 transposes + DGEMM (measured, ticket 204)
   Integer(int64), Save :: gpu_n_launch = 0, gpu_n_lib = 0    ! counters: target-region launches / alf_la calls issued here
-  Logical, Save :: la_up = .false.
   Logical, Save :: fault_order = .false.
   Integer, Save :: gpu_tl = 1, gpu_tr = 2   ! columns (left) / rows (right) per thread of the per-group kernels (tuned on the A30)
   Integer, Save :: gpu_vb = 8                 ! columns/rows per thread of the fused Op_V slice kernels
-  Integer, Save :: gpu_ct = 4, gpu_rbt = 8   ! columns (left) / rows (right) per team of the fused kernels (tuned, see gpu_wrap_timing)
   Complex (Kind=Kind(0.d0)), Parameter :: z1 = (1.d0, 0.d0), z0 = (0.d0, 0.d0)
 
 #if defined(ALF_LA_ONEMKL)
   Logical, Parameter :: la_available = .false.
-  ! measured on the Arc B580 (ifx 2025.3, spir64 JIT): the single-launch kernel (team barrier between groups inside one
-  ! launch) gives wrong results (rel diff 0.2); the per-group kernels are exact.  Fused mode is therefore NVIDIA-only.
-  Logical, Parameter :: fused_ok = .false.
 #else
   Logical, Parameter :: la_available = .true.
-  Logical, Parameter :: fused_ok = .true.
 #endif
 
 Contains
@@ -115,13 +106,7 @@ Contains
 !====================================================================
 !  Hopping
 !====================================================================
-  Subroutine ensure_la()
-    Implicit none
-    if (.not. la_up) then
-       call la_init()
-       la_up = .true.
-    endif
-  end subroutine ensure_la
+!  alf_la is initialised once in gpu_state_setup and finalised in gpu_state_finalize (ticket 205; before: lazily here).
 
 !--------------------------------------------------------------------
   ! 1 mmthr: left, mat, elements descending;  2 mmthr_m1: left, invmat, ascending;  3 mmthl: right, mat, ascending;
@@ -180,15 +165,10 @@ Contains
        first = ga; last = gb; step = 1
     endif
     if (.not. hop_big(nf)) then
-       if (gpu_cb_fused .and. fused_ok) then
-          call k_cb_left(M, ld, ncol, first, last, step, k, gpu_ct)
+       do g = first, last, step
+          call k_cb_left_g(M, ld, ncol, g, k, gpu_tl)
           gpu_n_launch = gpu_n_launch + 1
-       else
-          do g = first, last, step
-             call k_cb_left_g(M, ld, ncol, g, k, gpu_tl)
-             gpu_n_launch = gpu_n_launch + 1
-          enddo
-       endif
+       enddo
     else
        do g = first, last, step
           e = hop_gptr(g)
@@ -220,15 +200,10 @@ Contains
        first = ga; last = gb; step = 1
     endif
     if (.not. hop_big(nf)) then
-       if (gpu_cb_fused .and. fused_ok) then
-          call k_cb_right(M, ld, nrow, first, last, step, k, gpu_rbt)
+       do g = first, last, step
+          call k_cb_right_g(M, ld, nrow, g, k, gpu_tr)
           gpu_n_launch = gpu_n_launch + 1
-       else
-          do g = first, last, step
-             call k_cb_right_g(M, ld, nrow, g, k, gpu_tr)
-             gpu_n_launch = gpu_n_launch + 1
-          enddo
-       endif
+       enddo
     else
        do g = first, last, step
           e = hop_gptr(g)
@@ -403,57 +378,7 @@ Contains
   end subroutine el_right_d
 
 !--------------------------------------------------------------------
-!> FUSED, left (gpu_cb_fused = .true.): groups ga..gb (step gstep) for all columns in ONE launch; teams over tiles of CT
-!> columns, inside a team the groups run in sequence (the parallel loop of a group ends in a team barrier).  Measured
-!> slower than one launch per group on the A30 (see BENCHMARKS / ticket 204), kept for comparison.
-  Subroutine k_cb_left(M, ld, ncol, ga, gb, gstep, k, ct)
-    Implicit none
-    Integer, intent(in) :: ld, ncol, ga, gb, gstep, k, ct
-    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
-    Integer :: it, ntile, j0, jj, j, g, e, e1, e2
-
-    ntile = (ncol + ct - 1) / ct
-    !$omp target teams distribute private(j0, g, e1, e2)
-    do it = 1, ntile
-       j0 = (it-1)*ct
-       do g = ga, gb, gstep
-          e1 = hop_gptr(g); e2 = hop_gptr(g+1) - 1
-          !$omp parallel do collapse(2) private(j)
-          do jj = 1, ct
-             do e = e1, e2
-                j = j0 + jj
-                if (j <= ncol) call el_left_d(M, ld, j, j, e, k, hop_meta, hop_P, hop_Rval, hop_Cval)
-             enddo
-          enddo
-       enddo
-    enddo
-  end subroutine k_cb_left
-
-!> FUSED, right: teams over tiles of RBT rows.
-  Subroutine k_cb_right(M, ld, nrow, ga, gb, gstep, k, rbt)
-    Implicit none
-    Integer, intent(in) :: ld, nrow, ga, gb, gstep, k, rbt
-    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
-    Integer :: it, ntile, i0, ii, i, g, e, e1, e2
-
-    ntile = (nrow + rbt - 1) / rbt
-    !$omp target teams distribute private(i0, g, e1, e2)
-    do it = 1, ntile
-       i0 = (it-1)*rbt
-       do g = ga, gb, gstep
-          e1 = hop_gptr(g); e2 = hop_gptr(g+1) - 1
-          !$omp parallel do collapse(2) private(i)
-          do e = e1, e2
-             do ii = 1, rbt
-                i = i0 + ii
-                if (i <= nrow) call el_right_d(M, ld, i, i, 1, e, k, hop_meta, hop_P, hop_Rval, hop_Cval)
-             enddo
-          enddo
-       enddo
-    enddo
-  end subroutine k_cb_right
-
-!> PER GROUP (one launch per group), flat: threads over (column tile, element) / (element, row tile); a thread handles
+!> One launch per group, flat: threads over (column tile, element) / (element, row tile); a thread handles
 !> tl columns (left: consecutive) or rows (right: strided by the tile count), the element data are read once per thread.
   Subroutine k_cb_left_g(M, ld, ncol, g, k, tl)
     Implicit none
@@ -503,7 +428,6 @@ Contains
        write(error_unit,*) 'gpu_wrap: dense hopping needs alf_la (ticket 302 for GPU=intel)'
        call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
     endif
-    call ensure_la()
     mode = gpu_dense_left_mode
     if (mode == 0) mode = merge(1, 2, nd <= 400)
     if (hop_meta(1,e) == 1 .and. mode == 2) then
@@ -550,7 +474,6 @@ Contains
        write(error_unit,*) 'gpu_wrap: dense hopping needs alf_la (ticket 302 for GPU=intel)'
        call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
     endif
-    call ensure_la()
     if (pid == 1) then
        call gemm_right(e, nd, nrow, mo, M, ld, scr_c(1,1,2))
     else
@@ -1084,8 +1007,6 @@ Contains
     Integer :: st
     Logical :: did
     did = .false.
-    call env_int('ALF_GPU_CT', gpu_ct)         ! tuning of the fused hopping kernels (timing study)
-    call env_int('ALF_GPU_RBT', gpu_rbt)
     call env_int('ALF_GPU_TL', gpu_tl)
     call env_int('ALF_GPU_TR', gpu_tr)
     call env_int('ALF_GPU_VB', gpu_vb)
@@ -1099,10 +1020,6 @@ Contains
     if (env_is('ALF_GPU_TIMING', '1')) then
        call gpu_wrap_timing()
        did = .true.
-    endif
-    if (la_up) then
-       call la_finalize()
-       la_up = .false.
     endif
     if (did .and. env_is('ALF_GPU_EXIT', '1')) then
        call gpu_state_finalize()
@@ -1119,10 +1036,10 @@ Contains
     nan = transfer(9221120237041090560_int64, 0.d0)
     select case (f)
     case ('hop')
-       hop_Rval(1) = hop_Rval(1)*(1.d0 + 1.d-9)
+       hop_Rval(1) = hop_Rval(1)*(1.d0 + 1.d-6)
        !$omp target update to(hop_Rval)
     case ('hopc')
-       hop_Cval(1) = hop_Cval(1) + cmplx(1.d-9, 0.d0, kind(0.d0))
+       hop_Cval(1) = hop_Cval(1) + cmplx(1.d-6, 0.d0, kind(0.d0))
        !$omp target update to(hop_Cval)
     case ('vexp')      ! 1e-6: a 1e-9 change of one table entry is below the 1e-10 Frobenius tolerance (one row of N)
        V_exp(1) = V_exp(1)*(1.d0 + 1.d-6)
@@ -1261,9 +1178,9 @@ Contains
              !$omp target enter data map(alloc: Dt)
              do ic = 1, 2
                 if (ic == 1) then
-                   gpu_cb_fused = fused_ok;  gpu_dense_left_mode = 1
+                   gpu_dense_left_mode = 1
                 else
-                   gpu_cb_fused = .false.; gpu_dense_left_mode = 0
+                   gpu_dense_left_mode = 0
                 endif
                 if (hop_big(nf) .and. .not. la_available) cycle
                 Dt = A0
@@ -1283,10 +1200,10 @@ Contains
           enddo
        enddo
     enddo
-    gpu_cb_fused = .false.; gpu_dense_left_mode = 0
+    gpu_dense_left_mode = 0
     do op = 1, 5
        write(line,'(A,A,A,ES10.3,A,ES10.3,A,ES8.1)') 'GPU wrap self-test hopping ', opname(op), &
-            & ': max rel Frobenius diff (cb fused / dense-left v1) ', dh(op,1), ', (cb per-group / dense-left v2) ', dh(op,2), &
+            & ': max rel Frobenius diff (dense-left mode 1) ', dh(op,1), ', (dense-left mode auto) ', dh(op,2), &
             & ' (tol ', tol
        call say(line)
        if (.not. (dh(op,1) <= tol .and. dh(op,2) <= tol)) call selftest_fail('hopping '//trim(opname(op)))
@@ -1385,13 +1302,9 @@ Contains
     if (.not. hop_big(1)) then
        allocate(Dt(Ndim,Ndim)); Dt = z1
        !$omp target enter data map(to: Dt)
-       l0 = gpu_n_launch; gpu_cb_fused = .true.;  call gpu_mmthr(Dt, Ndim, Ndim, 1)
-       write(line,'(A,I0,A)') 'GPU wrap structure: launches per B_T (mmthr), fused mode: ', gpu_n_launch - l0, ' (1 team per column, groups in sequence)'
+       l0 = gpu_n_launch; call gpu_mmthr(Dt, Ndim, Ndim, 1)
+       write(line,'(A,I0,A)') 'GPU wrap structure: launches per B_T (mmthr): ', gpu_n_launch - l0, ' (= number of groups)'
        call say(line)
-       l0 = gpu_n_launch; gpu_cb_fused = .false.; call gpu_mmthr(Dt, Ndim, Ndim, 1)
-       write(line,'(A,I0,A)') 'GPU wrap structure: launches per B_T (mmthr), per-group mode: ', gpu_n_launch - l0, ' (= number of groups)'
-       call say(line)
-       gpu_cb_fused = .false.
        !$omp target exit data map(delete: Dt)
        deallocate(Dt)
     endif
@@ -1904,9 +1817,9 @@ Contains
        if (hop_big(nf) .and. .not. la_available) cycle
        do ic = 1, 2
           if (ic == 1) then
-             gpu_cb_fused = fused_ok;  gpu_dense_left_mode = 1
+             gpu_dense_left_mode = 1
           else
-             gpu_cb_fused = .false.; gpu_dense_left_mode = 0
+             gpu_dense_left_mode = 0
           endif
           dur = 0.d0; dul = 0.d0; dgu = 0.d0; dgd = 0.d0; drt = 0.d0; dsens = 0.d0
           ! ---- wrapur: U (Ndim x ncolp), slices 1..Ltrot one at a time, compare after each
@@ -2016,7 +1929,7 @@ Contains
           enddo
        enddo
     enddo
-    gpu_cb_fused = .false.; gpu_dense_left_mode = 0
+    gpu_dense_left_mode = 0
     write(line,'(A,I0,A,ES10.3,A,ES10.3,A,ES10.3,A,ES10.3,A,ES8.1)') 'GPU wrap self-test sequences after Nwrap = ', nw, &
          & ' slices, max over slices, flavours, code-path combinations (device vs CPU): wrapur ', dmax(1), ', wrapul ', dmax(2), &
          & ', wrapgr_up ', dmax(3), ', wrapgr_do ', dmax(4), ' (tol ', tol
@@ -2127,20 +2040,17 @@ Contains
 
     call warm_up(Hs, D)
     ! B G B^-1 pair: mmthr + mmthl_m1 (cpu: same Hop_mod routines), restored by the inverse pair.
-    ! ic = 1: default (cb: one launch per group; dense: left variant 2); ic = 2: cb one launch per B_T (fused), dense left variant 1
-    do ic = 1, 2
-       gpu_cb_fused = (ic == 2)
+    ! cb: one launch per group; dense: left variant 2 (ic = 1), then variant 1 (ic = 2)
+    do ic = 1, merge(2, 1, dense)
        if (dense) gpu_dense_left_mode = 3 - ic       ! 2 transposes + DGEMM, then 1 complex copy + ZGEMM
        call time_pair(Hs, D, tg, tc)
        if (dense) then
           write(lab,'(A,I0,A)') 'B G B^-1 (dense, left variant ', 3 - ic, ')'
        else
-          if (ic == 1) lab = 'B G B^-1 (cb, one launch per group)'
-          if (ic == 2) lab = 'B G B^-1 (cb, fused single launch)'
+          lab = 'B G B^-1 (cb, one launch per group)'
        endif
        call report_time(trim(lab), tg, tc)
     enddo
-    gpu_cb_fused = .false.
     if (dense) gpu_dense_left_mode = 0
     ! single hopping applications (default modes)
     call time_hop(Hs, D, 1, 2, 'mmthr', 'mmthr_m1')
@@ -2150,10 +2060,6 @@ Contains
        gpu_dense_left_mode = 1; call time_hop(Hs, D, 1, 2, 'mmthr[v1]', 'mmthr_m1[v1]')
        gpu_dense_left_mode = 2; call time_hop(Hs, D, 1, 2, 'mmthr[v2]', 'mmthr_m1[v2]')
        gpu_dense_left_mode = 0
-    else
-       gpu_cb_fused = .true.; call time_hop(Hs, D, 1, 2, 'mmthr[fused]', 'mmthr_m1[fused]')
-       call time_hop(Hs, D, 3, 5, 'mmthl[fused]', 'mmthl_m1[fused]')
-       gpu_cb_fused = .false.
     endif
     call time_vslice(Hs, D)
     call time_wrapgr(Hs, D)
@@ -2257,7 +2163,7 @@ Contains
 
   Subroutine la_sync_if()
     Implicit none
-    if (la_up) call la_sync()
+    if (la_available) call la_sync()
   end subroutine la_sync_if
 
   ! B G B^-1 then B^-1 G B (cpu: Hop_mod routines; device: gpu_ routines): us per pair member

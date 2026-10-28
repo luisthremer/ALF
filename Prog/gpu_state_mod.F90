@@ -72,6 +72,9 @@
 !>  alpha is not in the mirror; nsigma_d is a copy made at setup and goes stale as soon as updates run (205 must keep
 !>  it in sync); N and P of an operator may differ between flavours (V_meta is per (n,nf)).  gpu_supported refuses
 !>  runs with Propose_S0 or reconstruction_needed (ham%weight_reconstruction).
+!>  Ticket 205 (done, gpu_update_mod): alpha is used on the host (Op_V%alpha); nsigma_d is updated per accepted flip (host
+!>  copy + one scalar H->D); per-flavour N/P are read from the host Op_V; gpu_supported also refuses N_non_zero > 1 (the
+!>  device update is rank 1).
 !>
 !>  Ticket 204 additions (kernels live in gpu_wrap_mod):
 !>    hop_gstart(nf), hop_gptr(g)   checkerboard groups: maximal runs of consecutive active elements of one flavour
@@ -107,6 +110,9 @@ Module gpu_state_mod
   Use QMC_runtime_var
   Use Hop_mod
   Use Mat_subroutines
+#if !defined(ALF_LA_ONEMKL)
+  Use alf_la_mod, only: la_init, la_finalize
+#endif
 
   Implicit none
 
@@ -118,6 +124,7 @@ Module gpu_state_mod
   Public :: V_meta, V_type, V_P, V_exp, nsigma_d, nsigma_t
   Public :: G_d, udv_U, udv_V, udv_D, udv_L, udw_U, udw_V, udw_D, udw_L
   Public :: GT0_d, G0T_d, GTT_d, scr_c, scr_vec, scr_r, scr_work, scr_ipiv
+  Public :: upd_cnt
 
   Logical, Save :: gpu_active = .false.
   Character (len=256), Save :: gpu_reason = 'gpu_state_setup not called'
@@ -152,6 +159,10 @@ Module gpu_state_mod
   Real    (Kind=Kind(0.d0)), Allocatable, Save :: scr_r(:,:)
   Integer,                 Allocatable, Save :: scr_ipiv(:)
   Logical, Save :: have_tau = .false.
+  ! ticket 205 counters (gpu_update_mod), reported by gpu_state_finalize: 1 site proposals reaching the ratio, 2 accepted,
+  ! 3 site-wrap launches, 4 update launches, 5 ratio-block D->H elements, 6 field H->D scalars, 7 interim G H->D copies,
+  ! 8 interim G D->H copies, 9 interim bytes (both directions), 10 WRAPGRUP/DO calls
+  Integer(int64), Save :: upd_cnt(10) = 0
 
   Character (len=256), Save :: info_file = 'info'
   Logical, Save :: info_root = .true.
@@ -240,6 +251,12 @@ Contains
                   & ': field type of Op_V(', n, ',', nf, ') differs from flavour 1'
              return
           endif
+          if (Op_V(n,nf)%N_non_zero > 1) then
+             ! ticket 205: the device update implements the rank-1 case (N_non_zero <= 1) only
+             write(reason,'(A,A,A,I0,A,I0,A,I0,A)') 'Hamiltonian ', trim(get_ham_name()), &
+                  & ': Op_V(', n, ',', nf, ') has N_non_zero = ', Op_V(n,nf)%N_non_zero, ' (device update supports <= 1)'
+             return
+          endif
           if (Op_V(n,nf)%get_g_t_alloc()) then
              write(reason,'(A,A,A,I0,A,I0,A)') 'Hamiltonian ', trim(get_ham_name()), &
                   & ': Op_V(', n, ',', nf, ') has a time-dependent coupling g_t'
@@ -307,10 +324,13 @@ Contains
     nsigma_t = nsigma_in%t
     call alloc_buffers()
     call map_to_device()
+#if !defined(ALF_LA_ONEMKL)
+    call la_init()      ! alf_la once, after the OpenMP runtime owns the device (ticket 205; was lazy in gpu_wrap_mod)
+#endif
     gpu_active = .true.
     call system_clock(c1)
     tsetup = real(c1-c0,kind(0.d0))/real(crate,kind(0.d0))
-    write(line,'(A,I0,A)') 'GPU path (gpu_state): ACTIVE (mirror built, not yet used by the sweep), OpenMP device ', &
+    write(line,'(A,I0,A)') 'GPU path (gpu_state): ACTIVE (mirror built, used by the sweep), OpenMP device ', &
          & omp_get_default_device()
     call info_line(line)
     write(line,'(A,I0,A,I0,A,I0)') 'GPU mirror: hopping elements ', g_nel, ', Op_V operators ', g_Nop*g_NFL, &
@@ -648,6 +668,10 @@ Contains
   Subroutine gpu_state_finalize()
     Implicit none
     if (.not. gpu_active) return
+    if (upd_cnt(10) > 0) call report_update_counts()
+#if !defined(ALF_LA_ONEMKL)
+    call la_finalize()
+#endif
     if (have_tau) then
        !$omp target exit data map(delete: GT0_d, G0T_d, GTT_d)
        deallocate(GT0_d, G0T_d, GTT_d)
@@ -665,6 +689,20 @@ Contains
     deallocate(hop_gstart, hop_gptr, hop_big, hop_aux, hop_At, hop_Ac, vr_ptr, vr_ent)
     gpu_active = .false.
   end subroutine gpu_state_finalize
+
+!--------------------------------------------------------------------
+!> Ticket 205: transfer and launch counts of the device updates (see upd_cnt), per run.
+  Subroutine report_update_counts()
+    Implicit none
+    Character (len=256) :: line
+    write(line,'(A,I0,A,I0,A,I0,A,I0,A,I0)') 'GPU update counts: WRAPGRUP/DO calls ', upd_cnt(10), ', site proposals tested ', &
+         & upd_cnt(1), ', accepted ', upd_cnt(2), ', site-wrap launches ', upd_cnt(3), ', update launches ', upd_cnt(4)
+    call info_line(line)
+    write(line,'(A,I0,A,I0,A,I0,A,I0,A,I0,A)') 'GPU update transfers: ratio-block D->H elements ', upd_cnt(5), &
+         & ', field H->D scalars ', upd_cnt(6), ', interim G copies H->D ', upd_cnt(7), ' and D->H ', upd_cnt(8), &
+         & ' (', upd_cnt(9), ' bytes, INTERIM 205)'
+    call info_line(line)
+  end subroutine report_update_counts
 
 !--------------------------------------------------------------------
   Subroutine report_layout()

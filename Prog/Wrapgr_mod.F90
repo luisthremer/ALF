@@ -52,6 +52,10 @@ Module Wrapgr_mod
   Use Hamiltonian_main
   Use Hop_mod
   use upgrade_mod
+#ifdef ALF_GPU
+  use gpu_state_mod,  only: gpu_active, gpu_state_finalize, info_line, rel_diff, selftest_fail
+  use gpu_update_mod
+#endif
 
   Implicit none
 
@@ -78,6 +82,9 @@ Contains
   end Subroutine Wrapgr_dealloc
 
 !--------------------------------------------------------------------
+#ifdef ALF_GPU
+  RECURSIVE &     ! the GPU self-test (Wrapgr_gpu_selftest) calls WRAPGRUP/WRAPGRDO from inside the first call
+#endif
   SUBROUTINE WRAPGRUP(GR,NTAU,PHASE,Propose_S0,Nt_sequential_start, Nt_sequential_end, N_Global_tau)
 !--------------------------------------------------------------------
 !> @author 
@@ -105,6 +112,17 @@ Contains
     Character (Len=64)        :: Mode
     Logical                   :: Acc, toggle1
     
+#ifdef ALF_GPU
+    ! GPU port, ticket 205: device-resident G (INTERIM copies per call), host decision, same RNG order
+    if (gpu_upd_enabled()) then
+       if (gpu_upd_selftest_due()) call Wrapgr_gpu_selftest(GR,NTAU,PHASE,Propose_S0,Nt_sequential_start, Nt_sequential_end, N_Global_tau)
+       if (gpu_trace_on()) call gpu_trace_begin(NTAU+1)
+       call gpu_wrapgrup(GR,NTAU,PHASE,Propose_S0,Nt_sequential_start, Nt_sequential_end, N_Global_tau)
+       if (gpu_trace_on()) call gpu_trace_end('U',NTAU+1,PHASE)
+       return
+    endif
+    if (gpu_trace_on()) call gpu_trace_begin(NTAU+1)     ! host path of a GPU build: same trace
+#endif
     ! Wrap up, upgrade ntau1.  with B^{1}(tau1) 
     NTAU1 = NTAU + 1
     Do nf_eff = 1,N_FL_eff
@@ -152,11 +170,17 @@ Contains
        Call Wrapgr_Random_update(GR,m,ntau1, PHASE, N_Global_tau )
        Call Wrapgr_PlaceGR(GR,m, Size(OP_V,1), ntau1)
     Endif
+#ifdef ALF_GPU
+    if (gpu_trace_on()) call gpu_trace_end('U',NTAU+1,PHASE)
+#endif
 
   END SUBROUTINE WRAPGRUP
 
 
 !--------------------------------------------------------------------    
+#ifdef ALF_GPU
+  RECURSIVE &
+#endif
   SUBROUTINE WRAPGRDO(GR,NTAU,PHASE,Propose_S0,Nt_sequential_start, Nt_sequential_end, N_Global_tau)
 !--------------------------------------------------------------------
 !> @author 
@@ -186,6 +210,16 @@ Contains
     Character (Len=64)        :: Mode
     Logical                   :: Acc, toggle1
 
+#ifdef ALF_GPU
+    ! GPU port, ticket 205: see WRAPGRUP
+    if (gpu_upd_enabled()) then
+       if (gpu_trace_on()) call gpu_trace_begin(NTAU)
+       call gpu_wrapgrdo(GR,NTAU,PHASE,Propose_S0,Nt_sequential_start, Nt_sequential_end, N_Global_tau)
+       if (gpu_trace_on()) call gpu_trace_end('D',NTAU,PHASE)
+       return
+    endif
+    if (gpu_trace_on()) call gpu_trace_begin(NTAU)
+#endif
 
     If ( N_Global_tau > 0 ) then 
        m         = Size(OP_V,1)
@@ -239,9 +273,134 @@ Contains
        Call Hop_mod_mmthl   (GR(:,:,nf), nf,ntau)
        Call Hop_mod_mmthr_m1(GR(:,:,nf), nf,ntau)
     enddo
+#ifdef ALF_GPU
+    if (gpu_trace_on()) call gpu_trace_end('D',NTAU,PHASE)
+#endif
     
   end SUBROUTINE WRAPGRDO
   
+
+#ifdef ALF_GPU
+!--------------------------------------------------------------------
+!> GPU port, ticket 205: one-slice kernel test (ALF_GPU_UPDTEST=1, at the first WRAPGRUP call, i.e. with the true initial
+!> G of the run).  From the same G, fields, Phase and RNG state: host WRAPGRUP(ntau) then WRAPGRDO(ntau+1) vs the device
+!> versions.  Three trials with different RNG states.  Required: identical fields (accept/reject pattern) after the up and
+!> after the down step, G relative difference (max-norm) <= 1e-10, |Phase difference| <= 1e-12, device fields in sync.  The
+!> state (G, fields, Phase, RNG) is restored afterwards; the Control acceptance counters are not (use ALF_GPU_EXIT=1).
+!--------------------------------------------------------------------
+  Subroutine Wrapgr_gpu_selftest(GR,NTAU,PHASE,Propose_S0,Nt_sequential_start, Nt_sequential_end, N_Global_tau)
+    Use iso_fortran_env, only: output_unit
+    Implicit none
+    COMPLEX (Kind=Kind(0.d0)), INTENT(INOUT), allocatable ::  GR(:,:,:)
+    COMPLEX (Kind=Kind(0.d0)), INTENT(INOUT) ::  PHASE
+    INTEGER, INTENT(IN) :: NTAU
+    LOGICAL, INTENT(IN) :: Propose_S0
+    INTEGER, INTENT(IN) :: Nt_sequential_start, Nt_sequential_end, N_Global_tau
+
+    Real (Kind=Kind(0.d0)), parameter :: tolG = 1.d-10, tolP = 1.d-12
+    Integer :: K, itr, i, ntau1, nf_eff, nf, nbadp, nbadf, nup, ndo, nup_g, ndo_g, nsync, nacc_up, nacc_do
+    Integer, allocatable :: seed0(:), seed1(:)
+    Complex (Kind=Kind(0.d0)), allocatable :: f0(:,:), cfu(:,:), cfd(:,:), gfu(:,:), gfd(:,:)
+    Complex (Kind=Kind(0.d0)), allocatable :: GR0(:,:,:), cGu(:,:,:), cGd(:,:,:)
+    Complex (Kind=Kind(0.d0)) :: PH0, cPu, cPd
+    Real (Kind=Kind(0.d0)) :: dGu, dGd, dPu, dPd, x, mGu, mGd, mPu, mPd
+    Character (len=16) :: env
+    Character (len=512) :: line
+    Integer :: st
+    Logical :: ok
+
+    env = ''
+    call get_environment_variable('ALF_GPU_FAULT', env, status=st)
+    if (st == 0) call gpu_upd_fault_set(trim(env))
+    ntau1 = NTAU + 1
+    call random_seed(size=K)
+    allocate(seed0(K), seed1(K))
+    call random_seed(get=seed0)
+    allocate(f0(size(nsigma%f,1),size(nsigma%f,2)), cfu(size(nsigma%f,1),size(nsigma%f,2)), cfd(size(nsigma%f,1),size(nsigma%f,2)))
+    allocate(gfu(size(nsigma%f,1),size(nsigma%f,2)), gfd(size(nsigma%f,1),size(nsigma%f,2)))
+    allocate(GR0(size(GR,1),size(GR,2),size(GR,3)), cGu(size(GR,1),size(GR,2),size(GR,3)), cGd(size(GR,1),size(GR,2),size(GR,3)))
+    f0 = nsigma%f; GR0 = GR; PH0 = PHASE
+    mGu = 0.d0; mGd = 0.d0; mPu = 0.d0; mPd = 0.d0
+    ok = .true.; nacc_up = 0; nacc_do = 0
+    write(line,'(A,I0,A,I0)') 'GPU update self-test (ticket 205): one slice, WRAPGRUP ntau = ', NTAU, ' then WRAPGRDO ntau = ', ntau1
+    call info_line(line); write(output_unit,'(1X,A)') trim(line)
+    do itr = 1, 3
+       call random_seed(put=seed0)
+       do i = 1, (itr-1)*(1000*itr+3)       ! different RNG states: 0, 2003, 6006 draws skipped
+          x = ranf_wrap()
+       enddo
+       call random_seed(get=seed1)
+       ! ---- host
+       call gpu_upd_override(.true., .false.)
+       nsigma%f = f0; GR = GR0; PHASE = PH0
+       CALL WRAPGRUP(GR,NTAU,PHASE,Propose_S0,Nt_sequential_start, Nt_sequential_end, N_Global_tau)
+       cfu = nsigma%f; cGu = GR; cPu = PHASE
+       CALL WRAPGRDO(GR,ntau1,PHASE,Propose_S0,Nt_sequential_start, Nt_sequential_end, N_Global_tau)
+       cfd = nsigma%f; cGd = GR; cPd = PHASE
+       ! ---- device
+       call random_seed(put=seed1)
+       nsigma%f = f0; GR = GR0; PHASE = PH0
+       call gpu_upd_resync_fields()
+       call gpu_upd_override(.true., .not. gpu_upd_host_only())
+       CALL WRAPGRUP(GR,NTAU,PHASE,Propose_S0,Nt_sequential_start, Nt_sequential_end, N_Global_tau)
+       gfu = nsigma%f
+       dGu = 0.d0
+       do nf_eff = 1, N_FL_eff
+          nf = Calc_Fl_map(nf_eff)
+          dGu = max(dGu, rel_diff(GR(:,:,nf), cGu(:,:,nf)))      ! rel_diff is huge for non-finite entries
+       enddo
+       dPu = abs(PHASE - cPu)
+       CALL WRAPGRDO(GR,ntau1,PHASE,Propose_S0,Nt_sequential_start, Nt_sequential_end, N_Global_tau)
+       gfd = nsigma%f
+       dGd = 0.d0
+       do nf_eff = 1, N_FL_eff
+          nf = Calc_Fl_map(nf_eff)
+          dGd = max(dGd, rel_diff(GR(:,:,nf), cGd(:,:,nf)))
+       enddo
+       dPd = abs(PHASE - cPd)
+       nsync = gpu_upd_check_fields()
+       nbadp = count(gfu /= cfu) + count(gfd /= cfd)
+       nup = count(cfu(:,ntau1) /= f0(:,ntau1)); ndo = count(cfd(:,ntau1) /= cfu(:,ntau1))
+       nup_g = count(gfu(:,ntau1) /= f0(:,ntau1)); ndo_g = count(gfd(:,ntau1) /= gfu(:,ntau1))
+       write(line,'(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,ES10.3,A,ES10.3,A,ES10.3,A,ES10.3)') 'GPU update self-test trial ', itr, &
+            & ': accepted host up/down ', nup, '/', ndo, ', device ', nup_g, '/', ndo_g, ', differing field entries ', nbadp, &
+            & ', stale device fields ', nsync, ', G rel diff up ', dGu, ' down ', dGd, ', Phase diff up ', dPu, ' down ', dPd
+       call info_line(line); write(output_unit,'(1X,A)') trim(line)
+       if (.not. (nbadp == 0 .and. nsync == 0 .and. dGu <= tolG .and. dGd <= tolG .and. dPu <= tolP .and. dPd <= tolP)) ok = .false.
+       if (nup /= nup_g .or. ndo /= ndo_g) ok = .false.
+       nacc_up = nacc_up + nup; nacc_do = nacc_do + ndo
+       if (.not. (dGu <= mGu)) mGu = dGu
+       if (.not. (dGd <= mGd)) mGd = dGd
+       if (.not. (dPu <= mPu)) mPu = dPu
+       if (.not. (dPd <= mPd)) mPd = dPd
+    enddo
+    ! the test is vacuous (and the fault controls blind) without accepted flips in both directions
+    if (nacc_up == 0 .or. nacc_do == 0) then
+       call info_line('GPU update self-test: no accepted flip in the up or the down step over all trials')
+       write(output_unit,'(A)') ' GPU update self-test: no accepted flip in the up or the down step over all trials'
+       ok = .false.
+    endif
+    ! restore the state
+    call gpu_upd_override(.false., .false.)
+    call gpu_upd_fault_clear()
+    call random_seed(put=seed0)
+    nsigma%f = f0; GR = GR0; PHASE = PH0
+    call gpu_upd_resync_fields()
+    write(line,'(A,ES10.3,A,ES10.3,A,ES8.1,A,ES10.3,A,ES10.3,A,ES8.1)') 'GPU update self-test max over trials: G rel diff up ', mGu, &
+         & ' down ', mGd, ' (tol ', tolG, '), Phase diff up ', mPu, ' down ', mPd, ' (tol ', tolP
+    call info_line(line); write(output_unit,'(1X,A)') trim(line)
+    if (.not. ok) call selftest_fail('one-slice update test (accept pattern, G, Phase or device fields differ)')
+    call info_line('GPU update self-test PASSED'); write(output_unit,'(A)') ' GPU update self-test PASSED'
+    env = ''
+    call get_environment_variable('ALF_GPU_EXIT', env, status=st)
+    if (st == 0 .and. trim(env) == '1') then
+       call gpu_state_finalize()
+       write(output_unit,'(A)') ' GPU update self-test: ALF_GPU_EXIT=1, stopping after the test'
+       stop
+    endif
+    deallocate(seed0, seed1, f0, cfu, cfd, gfu, gfd, GR0, cGu, cGd)
+  end Subroutine Wrapgr_gpu_selftest
+#endif
 
 !--------------------------------------------------------------------
   Subroutine  Wrapgr_PlaceGR(GR,m,m1,ntau)

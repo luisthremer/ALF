@@ -49,6 +49,9 @@ gpu_state module (plain contiguous device arrays, allocated once)
 |---|---|---|---|
 | setup | H→D | B tables, Op_V tables, nsigma, initial UDV | build the mirror |
 | per site and slice (2·L·N per sweep) | D→H, H→D | a few complex scalars | ratio to host, decision (and new field) back; keeps the RNG order identical to the CPU |
+| per site, per flavour (205, as built) | D→H | 1 complex element G(P(1),P(1),nf), 16 B | the only G entry the host ratio needs (N_non_zero ≤ 1); wrap: 1 launch per site and flavour for N = 1 operators, 2 otherwise |
+| per accepted flip (205, as built) | H→D | 1 complex scalar nsigma_d(n,t), 16 B | wrap kernels read the field on the device; per flavour 2 more launches (rank-1 update) |
+| per WRAPGRUP / WRAPGRDO call (205, **interim**, removed by 206/208) | H→D at entry, D→H at exit | F·16N² B each way | stabilization, τ pass and measurements still use the host GR; marked `INTERIM 205` in `gpu_update_mod` |
 | per measurement (3L per sweep), MVP only | D→H | G (and GT0/G0T/GTT for τ), F·16N² B each | host observables; removed once Hubbard observables run on the device |
 | per stabilization | D→H | a few scalars | precision, NaN checks, phase (H8) |
 | per CGR / CGR2_2 call, **STABLOG only** | D→H, H→D | N² (CGR) / 4N² (CGR2_2) complex, each way | host ZGEQP3: no GPU pivoting meets the precision criteria (108, ADR-001 §4) |
