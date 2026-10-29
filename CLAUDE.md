@@ -38,7 +38,8 @@ Later phases (only with the owner's go-ahead): delayed and submatrix updates (Su
 | `.claude/agents/` | `fortran-gpu-dev`, `test-runner`, `numerics-reviewer`, `acceptance-verifier` |
 
 Research leads (not ground truth; verify before relying on them, log mismatches in
-`docs/gpu/DISCREPANCIES.md`): `/Users/luis/Documents/_WORK/Coding/CLAUDE/ALF_GPU_research/R{1,2,3}_report.md`.
+`docs/gpu/DISCREPANCIES.md`): `R{1,2,3}_report.md` in the research folder next to this clone (outside the repo; the owner
+has the path).
 
 ## Build and test (CPU) – verified on nividia 2026-10-26
 
@@ -97,8 +98,7 @@ host↔device transfer is documented. Target the default and `STABLOG` stabiliza
 - Never delete or modify anything outside your own directory, never touch other users' files or
   processes, never kill a process you didn't start. No `rm -rf` on paths built from variables or
   globs that could expand outside your directory.
-- **Never use `sudo`** or anything that needs root, even where the account could (`luis` on `intel` is
-  in the sudo group). No changes to system settings, groups, drivers or packages: ask the owner.
+- **Never use `sudo`** or anything that needs root, even where the account could. No changes to system settings, groups, drivers or packages: ask the owner.
 - Each test/benchmark run ≲ 15 min; ask the owner before anything longer. A T2 acceptance sequence of such runs
   (~2 h unattended) needs the owner's standing approval of the per-ticket GPU budget.
 - **nividia GPU sharing:** one GPU process at a time (two time-sliced CUDA processes ran 13–15× slower each, 2026-10-28/29),
