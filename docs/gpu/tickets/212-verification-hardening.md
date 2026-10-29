@@ -111,7 +111,7 @@ Pre-registered in `testsuite/gpu_reference/acceptance/212.json` (gates, threshol
   (b) of the acceptance file (findings M1–M6, S1–S11). Second pre-registration `71bbcc93` was superseded before
   any implementation result existed, after its re-review (wrong base sha, the "set" rule vs `ALF_GPU_NS=0`, `__LINE__`
   in the HOST preprocessed output, an untested invalid-value rule, 204/205 numbers, compare2 timing margin). Current
-  pre-registration commit: `PREREG_SHA` (2026-10-29) on
+  pre-registration commit: `aed4da4d` (2026-10-29) on
   `gpu-port-212-hardening-b`; base `1a363070`. Deviation to put to the owner: the compare2 positive control uses a
   shift of 8 standard errors, not the 5 of VERIFICATION.md §5 (at m = 11, α = 0.01 Šidák a shift of 5 is caught only
   ~60 % of the time); it needs the owner's quoted approval before T2. Any change of
