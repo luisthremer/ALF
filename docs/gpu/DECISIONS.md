@@ -13,8 +13,20 @@ with date and channel. Tickets link here; a decision that exists only in a chat 
 | 2026-10-29 | same instruction | 207 is on hold ("on hold: awaiting owner decision and verification standard"). No raw output, run directory or binary of an unclosed ticket is deleted. The process change goes to its own branch and is not merged before the owner approves. No lane starts work and no ticket agent launches until a new go-ahead. | 207; process |
 | 2026-10-29 | same instruction | Approved within limits: an NVIDIA MPS trial as an ordinary user on `nividia` (own pipe/log directories, no root, no compute-mode change); confinement exceptions for `~/alf-gpu/backup/`, `~/alf-gpu/archive/`, `~/alf-gpu/refcache/`, `~/alf-gpu/work/mps_trial/`. | machines |
 
-## Pending at the gate of 2026-10-29
+## Gate of 2026-10-29: decisions
 
-See the gate report: the 207 acceptance-3 rule, the default paired FAIL, Intel acceptance 6 as BLOCKED, the process
-diff (incl. max → mean/quantile), the oneAPI fix, MIG, the old t104–t108 directories, `module avail` on SuperMUC,
-the agent setup, the GPU-time budget per ticket, the lanes' go-ahead.
+The owner answered the manager's recommendations with "ok" (2026-10-29, manager session), adopting all of them:
+
+| # | Topic | Decision |
+|---|---|---|
+| 1 | 207 acceptance-3 criterion | Decided after item 2(a). Until then the rewrite approved on 2026-10-29, **including the sd condition**, stays in force. A new criterion only if the cause is understood and the condition still fails: pre-registered, calibrated beforehand with a null run (CPU vs 1-ulp-perturbed CPU) and a known defect (`ALF_GPU_TAUSWAP=8`), then judged once on fresh seeds. |
+| 2 | Default paired FAIL (1.707 > 1.25) | (a) find the cause first (`k_colnorms` reduction / `la_qrpp` pivot order, ticket 212). If a fixed-order fix brings the ratio under 1.25 on fresh seeds, 207 passes without a criterion change. Until then (c): 207 stays open. |
+| 3 | Same-seed bound | 1e-9 stays. The LOG 12×12 excess (1.214e-9 from bin 184, equal-time only) is recorded as an open finding of the 206 code; any other bound only pre-registered and calibrated against the CPU-vs-CPU same-seed spread. |
+| 4 | 207 acceptance 6 (Intel) | Recorded as **BLOCKED** (never PASS); the nividia ifx compile/link is a stand-in only; re-run after the oneAPI fix. |
+| 5 | Process diff `gpu-port-process-lanes` | Approved **after a second independent review** of its final state. MPS rule (≤ 2 clients, started/stopped by the manager or the driver only) and CPU-alongside rule (≤ 3 single-threaded runs) approved. Max-error statistics: information only; acceptance on the mean. The quantile option only once calibrated. |
+| 6 | oneAPI on `intel` | Option (a): the admin installs `intel-oneapi-mkl-2025.3` and holds the ifx and MKL packages (`apt-mark hold`). Owner action. |
+| 7 | MIG | Not now. |
+| 8 | t104–t108 on nividia | Archive logs and summaries to `~/alf-gpu/archive/`, then delete raw runs and binaries **after the owner's OK on the listed contents**. |
+| 9 | `module avail` on SuperMUC | The owner runs it; it decides the toolchain pin for both Intel machines. |
+| 10 | Agent setup | Opus `acceptance-verifier`, Opus `numerics-reviewer`, Sonnet implementers (Opus per numerically delicate ticket on the manager's proposal), respawn and handoff rules as in VERIFICATION.md §10b. |
+| 11 | GPU budget and lanes | Standing budget per ticket: T1 ≈ 90 GPU-min, T2 ≈ 120 GPU-min unattended, every run ≤ 15 min. Lanes go ahead once the process diff is approved and merged. Order: NVIDIA lane 212 → 207 (controls, T2 on fresh seeds) → 208; Intel lane 302a once oneAPI is fixed. |
