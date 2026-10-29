@@ -208,6 +208,7 @@ def numbers_after(line, after):
     rest = line[m.end():].split("(tol")[0]
     rest = re.sub(r"\([^)]*\)", " ", rest)
     rest = re.sub(r"\b[A-Z][A-Z0-9]*\d\b", " ", rest)  # labels such as G00, GT0, G0T carry digits
+    rest = re.sub(r"\b[A-Za-z_]+=\d+\b", " ", rest)  # labels such as NVAR=2
     return [num(x) for x in re.findall(FLOAT, rest)]
 
 
@@ -789,6 +790,9 @@ def selfcheck():
                  " GPU tau self-test precision reduction vs COMPARE: max rel diff (max and mean)  0.000E+00 (tol  1.0E-12\n"
                  " GPU tau self-test PASSED\n")
     S = ["ALF_GPU_SELFTEST=4"]
+    nv = numbers_after("GPU stab self-test CGR at 8 stabilization points x flavours: max rel diff G NVAR=1  1.0E-12, NVAR=2  2.0E-12; phase NVAR=1  3.0E-13, NVAR=2  4.0E-13 (tol  1.0E-10",
+                       r"max rel diff G")
+    assert nv == [1e-12, 2e-12, 3e-13, 4e-13], nv
     st = {"type": "selftest", "id": "st", "require_lines": ["GPU tau self-test PASSED"],
           "number_checks": [{"name": "pass", "line": r"^\s+G00\s", "after": r"^", "max": 1e-10, "min_count": 4},
                             {"name": "prec", "line": "precision reduction vs COMPARE", "after": r"\(max and mean\)", "max": 1e-12}],
