@@ -44,8 +44,11 @@ tot=0; err=0; n=0; first=1
     for m in "-DMPI -DHDF5 -DHDF5_ZLIB" "-DHDF5 -DHDF5_ZLIB" "-DMPI -DHDF5 -DHDF5_ZLIB -DSTABLOG" "-DMPI -DHDF5 -DHDF5_ZLIB -DQR_PREPIVOT" "-DMPI -DTEMPERING" "-DMPI -DHDF5 -DHDF5_ZLIB -DSTAB3"; do
       for v in base_src src; do
         d=$W/pp_$v; rm -rf -- "$W/pp_$v"; mkdir -p $d/$(dirname $f)
-        cp $C/$v/$f $d/$f || { echo "COPY ERROR $v $f"; err=$((err+1)); }
-        if [ "$PLANT" = --plant ] && [ $v = src ] && [ $first = 1 ]; then echo "integer, parameter :: planted_control_token = 1" >> $d/$f; fi
+        cp $C/$v/$f $d/$f && chmod u+w $d/$f || { echo "COPY ERROR $v $f"; err=$((err+1)); }   # the shipped source is read-only
+        if [ "$PLANT" = --plant ] && [ $v = src ] && [ $first = 1 ]; then
+          echo "integer, parameter :: planted_control_token = 1" >> $d/$f && grep -q planted_control_token $d/$f \
+            || { echo "PLANT FAILED $f"; err=$((err+1)); }   # a plant that did not happen must not look like a pass
+        fi
         cp $W/tree_$v/Prog/*.h $d/$(dirname $f)/ || { echo "HEADER COPY ERROR $v"; err=$((err+1)); }
         ( cd $d/$(dirname $f) && gfortran -E -cpp -P $m $(basename $f) > $W/$v.i 2> $W/$v.err )
         [ -s $W/$v.err ] && { echo "PREPROCESSOR ERROR $v $f [$m]: $(head -2 $W/$v.err)"; err=$((err+1)); }

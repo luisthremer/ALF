@@ -491,11 +491,15 @@ def evaluate(acc, root):
         v, r, why = run_gate(g, root, acc)
         out["gates"].append({"id": g["id"], "type": g["type"], "verdict": v, "result": r, "reason": why})
         ok &= v == "PASS"
+    gate_verdict = {g["id"]: g["verdict"] for g in out["gates"]}
     for c in acc.get("controls", []):
         cg = resolve_control(c, acc)
         v, r, why = run_gate(cg, root, dict(acc, _allow_mutated=True))
         exp = c.get("expect", "FAIL")
         good = v == exp
+        if gate_verdict.get(c["like"]) != "PASS":  # a control proves something only against a gate that passes
+            good = False
+            why = f"uninformative: gate {c['like']} is {gate_verdict.get(c['like'])} on the clean runs" + (f"; {why}" if why else "")
         out["controls"].append({"id": c["id"], "gate": cg["type"], "like": c["like"], "expect": exp, "outcome": v,
                                 "as_expected": good, "reason": why})
         ok &= good
@@ -695,6 +699,10 @@ def selfcheck():
     v = evaluate(acc2, tmp)
     sem = [(c["id"], c["outcome"], c["as_expected"]) for c in v["controls"]]
     good = sem == [("c_missing", "INPUT_ERROR", False), ("c_real", "PASS", True)] and v["overall"] == "FAIL"
+    acc3 = dict(acc, gates=[dict(sse, pairs=[["A_small", "B_small", NB]])],  # the gate itself FAILs on clean runs
+                controls=[{"id": "c_uninf", "like": "ss", "replace": {"pairs": [["A_small", "B_small", NB]]}, "expect": "FAIL"}])
+    v3 = evaluate(acc3, tmp)
+    good &= [(c["outcome"], c["as_expected"]) for c in v3["controls"]] == [("FAIL", False)]
     bad += not good
     print(f"{'ok ' if good else 'BAD'} control semantics (missing runs are not a kill) {sem}")
     shutil.rmtree(tmp)

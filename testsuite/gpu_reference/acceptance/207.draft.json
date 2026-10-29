@@ -680,8 +680,7 @@
    "no_bin_above": 0.0001,
    "overall_max": 1e-09,
    "tau_max": 1e-09,
-   "per_entry_max": 1e-07,
-   "_reason": "VERIFICATION.md 7: 1e-9 overall and in the tau line, no bin above 1e-4. OPEN OWNER DECISION: the LOG 12x12 pair was measured at 1.214e-9 (bin 184, equal-time only, as in 206); with 1e-9 this gate FAILS on that pair unless the owner pre-registers another bound. per_entry_max 1e-7 (proposal, relative per entry with a 1e-6 floor) is not yet calibrated."
+   "_reason": "VERIFICATION.md 7: 1e-9 overall and in the tau line, no bin above 1e-4. OPEN OWNER DECISION: the LOG 12x12 pair was measured at 1.214e-9 (bin 184, equal-time only, as in 206); with 1e-9 this gate FAILS on that pair unless the owner pre-registers another bound. The per-entry metric is reported, not gated: on clean GPU-vs-CPU LOG 6x6 data it is already 1.4e-5 (harness test 2026-10-29), so it needs a calibration before it can gate."
   },
   {
    "id": "non_interference_log",
@@ -866,7 +865,8 @@
      ]
     ]
    },
-   "expect": "FAIL"
+   "expect": "FAIL",
+   "_reason": "a relative 1e-3 error on the smallest entry above 1e-5 of the dataset maximum (overall metric ~1e-8) must FAIL; detection limit of the gate: errors below ~1e-9 x max|dataset| are invisible (stated power)"
   },
   {
    "id": "ctl_ss_nan",
@@ -1036,7 +1036,7 @@
   {
    "src": "ss_log_6",
    "dst": "ss_log_6_m_small",
-   "kind": "scale:Green_tau/obser:1e-6"
+   "kind": "scale:Green_tau/obser:1e-3"
   },
   {
    "src": "ss_log_6",

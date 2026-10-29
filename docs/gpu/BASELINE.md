@@ -121,6 +121,7 @@ The standard is [VERIFICATION.md](VERIFICATION.md); the tools are in `testsuite/
 | τ precision mean (207) | cuSOLVER ZUNMQR without Newton–Schulz (`ALF_GPU_TAU_NS=0`) | +17 % on the mean: **not detected** by the 1.5× mean rule (known blind spot) |
 | paired test (207) | `ALF_GPU_TAUSWAP=8`, `ALF_GPU_TAU_NS=0` | never run yet |
 | compare2 (fail-closed version) | NaN in a bin; a missing τ group; identical seeds; identical means on "independent" seeds | exit 3 (INPUT ERROR) on real 207 run data, 2026-10-29 |
+| end-to-end harness test (2026-10-29, local test ticket 999 on nividia: ship → build → env -i runs → mutations → GPU=none → verdict) | self-test on a faulty run; faults on clean runs; 1e-12 replay change; NaN in a τ dataset; planted token in `main.F90` | all killed as designed (the planted-token control first was **not**: the read-only shipped source made the plant fail silently; fixed, then 12 differing lines). The per-entry same-seed metric was already 1.4e-5 on clean LOG 6×6 data, so it is reported, not gated, until calibrated |
 | `verdict.py --selfcheck` | 24 synthetic cases (scaled small entry, NaN, missing dataset, other seeds, inactive GPU path, debug variable, crash, 1e-12 replay difference, 2× precision mean, variance ×1.5, bias ×1.3, truncated run, crash as "fault", wrong sub-test) | all as expected, 2026-10-29 |
 
 **Statistical power of compare2 (207 run, 70 bins, m = 11, Šidák α = 0.01), minimum detectable effect at 80 %:**
