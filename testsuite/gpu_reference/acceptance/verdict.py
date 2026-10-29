@@ -138,7 +138,7 @@ def check_prov(rd, acc, expect_rc=0, gpu_exclusive=None):
         text = read(os.path.join(rd, "run.log"))
         if os.path.isfile(os.path.join(rd, "info")):
             text += read(os.path.join(rd, "info"))
-        missing = [l for l in acc.get("active_lines", []) if l not in text]
+        missing = [l for l in bdecl.get("active_lines", acc.get("active_lines", [])) if l not in text]
         if missing or re.search(r"\bINACTIVE\b", text):
             raise InputFail(f"{rid}: GPU path not active (missing {missing[:1]}, or an INACTIVE line)")
     if p.get("mutated") and not acc.get("_allow_mutated"):
@@ -907,6 +907,18 @@ def lint_errors(acc):
     for gid in gates:
         if gid not in fail_ctl:
             errs.append(f"gate {gid}: no positive control with expect FAIL")
+    null_ctl = set()
+    for c in acc.get("controls", []):
+        cg = gates.get(c.get("like"))
+        if cg and cg["type"] == "compare2" and c.get("expect") == "PASS" and c.get("null"):
+            r = c.get("replace", {})
+            ra, rb = r.get("a", cg.get("a")), r.get("b", cg.get("b"))
+            if ra in runs and rb in runs and not builds.get(runs[ra]["build"], {}).get("gpu", True) \
+                    and not builds.get(runs[rb]["build"], {}).get("gpu", True) and runs[ra].get("seeds") != runs[rb].get("seeds"):
+                null_ctl.add(c["like"])
+    for gid, g in gates.items():
+        if g["type"] == "compare2" and gid not in null_ctl:
+            errs.append(f"gate {gid}: compare2 needs a null control (\"null\": true, expect PASS, CPU vs CPU on two seed sets)")
     for m in acc.get("mutations", []):
         if m["src"] not in runs or m["dst"] not in runs:
             errs.append(f"mutation {m['dst']}: source or destination not declared")

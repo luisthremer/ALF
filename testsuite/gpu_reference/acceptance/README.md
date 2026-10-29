@@ -41,7 +41,8 @@ commit. Raw outputs stay until the owner's gate.
 - `ticket`, `candidate_sha` (`"self"`), `base_sha`, `created`, `_status`, `approvals` (owner quotes, dated), `machine`
   (`nividia` | `intel`), `gpu_exclusive`, `timeout_s`, `disk_min_free_GB`, `cpu_parallel`, `false_alarm_budget`,
   `active_lines` (lines every GPU run must print), `blocked` (owner-decided BLOCKED items), `allowed_test_changes`.
-- `builds`: name → `tool`, `configure`, `flags_ext`, `gpu`; names starting with `base_` build the base.
+- `builds`: name → `tool`, `configure`, `flags_ext`, `gpu`, optional `active_lines` (replaces the file-wide list,
+  e.g. for a base build without the new GPU path); names starting with `base_` build the base.
 - `configs`: name → `base` (from `configs.py`/`configs_stat.py`), `overrides`, `parameters_sha256` (required when frozen).
 - `runs`: id → `build`, `config`, `seeds` (`dev`, `accN`), `env`, `allow_debug`, `refcache`.
 - `ctests`: `{id, tool, configure, regex, repeat, env, control, gpu, base}` (acc_ctest.sh); `gpunone`: true.

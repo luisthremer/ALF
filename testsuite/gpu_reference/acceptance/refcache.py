@@ -61,9 +61,9 @@ def main(argv):
         if p["exit_code"] != 0 or p.get("timed_out") or p.get("debug_env_present") or p.get("mutated"):
             sys.exit("not cacheable: failed, timed out, mutated or debug variables present")
         cand = os.path.join(os.path.dirname(os.path.abspath(src)), ".alf_candidate")
-        sha = dict(l.split(None, 1) for l in open(cand).read().splitlines() if " " in l).get("sha") if os.path.isfile(cand) else None
-        if sha != p["build"]["candidate"].get("sha"):
-            sys.exit(f"SRC_DIR is not the source the run was built from ({sha} vs {p['build']['candidate'].get('sha')})")
+        csha = dict(l.split(None, 1) for l in open(cand).read().splitlines() if " " in l).get("sha") if os.path.isfile(cand) else None
+        if csha != p["build"]["candidate"].get("sha"):
+            sys.exit(f"SRC_DIR is not the source the run was built from ({csha} vs {p['build']['candidate'].get('sha')})")
         k, blob = key_of(p["build"], p["inputs"]["parameters_sha256"], p["inputs"]["seeds_sha256"], src)
         if cmd == "key":
             print(k)

@@ -122,7 +122,13 @@
   "base_nv_log": {
    "tool": "nvhpc",
    "configure": "PGI noMPI HDF5 LOG GPU=nvidia",
-   "gpu": true
+   "gpu": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE"
+   ],
+   "_reason": "the base has no 207 tau pass; its runs must show the 205/206 ACTIVE lines"
   },
   "gnu_cand": {
    "tool": "gnu",
@@ -613,6 +619,11 @@
    "build": "nv_def",
    "config": "s8_U4_b2_cb",
    "seeds": "acc1"
+  },
+  "c2_cpu_null": {
+   "build": "nv_none",
+   "config": "s8_U4_b2_cb",
+   "seeds": "acc3"
   }
  },
  "gates": [
@@ -1101,6 +1112,16 @@
      }
     ]
    }
+  },
+  {
+   "id": "ctl_compare2_null",
+   "like": "compare2",
+   "null": true,
+   "expect": "PASS",
+   "replace": {
+    "a": "c2_cpu_null"
+   },
+   "_reason": "null calibration: CPU vs CPU on two fresh seed sets must PASS; a FAIL means the gate is miscalibrated for this run length (the harness test of 2026-10-29 found exactly such a false alarm)"
   }
  ],
  "mutations": [

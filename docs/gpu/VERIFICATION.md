@@ -67,7 +67,10 @@ is not a gate.
 ## 6. Statistical gates with known power
 Calibrate each with a null run (CPU vs CPU, fresh seeds) and a known small bias. Errors are autocorrelation-corrected
 from ≥ 30 independent bins. The CPU reference has ≥ ~10× the statistics of the test or errors are combined in
-quadrature. Next to every PASS the report states the detectable effect size. **Approved 2026-10-29:** maximum-error
+quadrature. Next to every PASS the report states the detectable effect size. Every compare2 gate carries a **null
+control** (CPU vs CPU on two fresh seed sets, `"null": true`, expect PASS; enforced by the lint): in the harness test
+of 2026-10-29 a short run (40 bins × 5 sweeps, 6×6) gave a false FAIL on `E` (t = −3.5) that the identical CPU-vs-CPU
+comparison reproduced digit for digit, while GPU and CPU agreed to 1e-11 on the same seeds. **Approved 2026-10-29:** maximum-error
 statistics are information only; acceptance is on the mean (a fixed quantile over a fixed number of stabilizations
 only once calibrated), and maxima are compared only between runs of identical length.
 
