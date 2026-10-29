@@ -1,0 +1,268 @@
+{
+ "schema": "alf-acc/1",
+ "_status": "harness end-to-end test only (local branch, never pushed)",
+ "ticket": "999",
+ "candidate_sha": "self",
+ "base_sha": "64ecde7266ae",
+ "created": "2026-10-29",
+ "approvals": [],
+ "machine": "nividia",
+ "gpu_exclusive": true,
+ "timeout_s": 900,
+ "disk_min_free_GB": 5,
+ "cpu_parallel": 2,
+ "active_lines": [
+  "GPU path (gpu_state): ACTIVE",
+  "GPU update path (ticket 205): ACTIVE",
+  "GPU stabilization (206): ACTIVE"
+ ],
+ "builds": {
+  "nv_log": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5 LOG GPU=nvidia",
+   "gpu": true
+  },
+  "nv_none_log": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5 LOG",
+   "gpu": false
+  }
+ },
+ "configs": {
+  "hub6x6_cb": {
+   "base": "hub6x6_cb"
+  },
+  "hub6x6_cb_fd": {
+   "base": "hub6x6_cb",
+   "overrides": {
+    "NSweep": 1,
+    "NBin": 200
+   }
+  }
+ },
+ "runs": {
+  "st_log": {
+   "build": "nv_log",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1"
+   ],
+   "allow_debug": true
+  },
+  "fault_log_perm": {
+   "build": "nv_log",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_FAULT_STAB=perm"
+   ],
+   "allow_debug": true
+  },
+  "ss_log": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "ss_cpu": {
+   "build": "nv_none_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "rp_log": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "ss_log_m_small": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "ss_log_m_nan": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "rp_log_m": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_fd"
+  }
+ },
+ "mutations": [
+  {
+   "src": "ss_log",
+   "dst": "ss_log_m_small",
+   "kind": "scale:Green_tau/obser:1e-6"
+  },
+  {
+   "src": "ss_log",
+   "dst": "ss_log_m_nan",
+   "kind": "nan:Green_tau/obser"
+  },
+  {
+   "src": "rp_log",
+   "dst": "rp_log_m",
+   "kind": "scale:Den_eq/obser:1e-12"
+  }
+ ],
+ "gpunone": true,
+ "gates": [
+  {
+   "id": "selftest",
+   "type": "selftest",
+   "runs": [
+    "st_log"
+   ],
+   "require_lines": [
+    "self-test PASSED"
+   ]
+  },
+  {
+   "id": "faults",
+   "type": "faults",
+   "cases": {
+    "fault_log_perm": "FAILED"
+   }
+  },
+  {
+   "id": "same_seed",
+   "type": "same_seed",
+   "pairs": [
+    [
+     "ss_log",
+     "ss_cpu",
+     200
+    ]
+   ],
+   "n_datasets": 38,
+   "n_tau_datasets": 5,
+   "no_bin_above": 0.0001,
+   "overall_max": 1e-09,
+   "tau_max": 1e-09,
+   "per_entry_max": 1e-06
+  },
+  {
+   "id": "replay",
+   "type": "replay",
+   "pairs": [
+    [
+     "ss_log",
+     "rp_log"
+    ]
+   ],
+   "n_datasets": 38
+  },
+  {
+   "id": "gpu_none_static",
+   "type": "log_regex",
+   "checks": [
+    {
+     "file": "gpunone/ppcmp.txt",
+     "stamp_file": "gpunone/stamp",
+     "exit_file": "gpunone/ppcmp.exit",
+     "regex": "comparisons (\\d+) preprocessor_errors (\\d+) differing_lines (\\d+) added_or_deleted (\\d+) build_files (\\d+)$",
+     "equals": [
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "file": "gpunone/ctest.log",
+     "stamp_file": "gpunone/stamp",
+     "exit_file": "gpunone/ctest.exit",
+     "regex": "(\\d+)% tests passed, (\\d+) tests failed out of (\\d+)",
+     "equals": [
+      100,
+      0,
+      52
+     ]
+    }
+   ]
+  }
+ ],
+ "controls": [
+  {
+   "id": "ctl_selftest_fault",
+   "like": "selftest",
+   "replace": {
+    "runs": [
+     "fault_log_perm"
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "ctl_faults_clean",
+   "like": "faults",
+   "replace": {
+    "cases": {
+     "st_log": "FAILED"
+    }
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "ctl_ss_small",
+   "like": "same_seed",
+   "replace": {
+    "pairs": [
+     [
+      "ss_log_m_small",
+      "ss_cpu",
+      200
+     ]
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "ctl_ss_nan",
+   "like": "same_seed",
+   "replace": {
+    "pairs": [
+     [
+      "ss_log_m_nan",
+      "ss_cpu",
+      200
+     ]
+    ]
+   },
+   "expect": "INPUT_ERROR"
+  },
+  {
+   "id": "ctl_replay",
+   "like": "replay",
+   "replace": {
+    "pairs": [
+     [
+      "ss_log",
+      "rp_log_m"
+     ]
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "ctl_ppcmp_plant",
+   "like": "gpu_none_static",
+   "expect": "FAIL",
+   "replace": {
+    "checks": [
+     {
+      "file": "gpunone_plant/ppcmp.txt",
+      "stamp_file": "gpunone_plant/stamp",
+      "exit_file": "gpunone_plant/ppcmp.exit",
+      "regex": "comparisons (\\d+) preprocessor_errors (\\d+) differing_lines (\\d+) added_or_deleted (\\d+) build_files (\\d+)$",
+      "equals": [
+       6,
+       0,
+       0,
+       0,
+       0
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}
