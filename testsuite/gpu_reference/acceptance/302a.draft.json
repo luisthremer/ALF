@@ -1,27 +1,155 @@
 {
  "schema": "alf-acc/1",
- "_status": "DRAFT for ticket 302a; becomes 302a.json, committed with the ticket before implementation, after review (b). Runs on 'intel'; the harness scripts need the intel env file and no nvidia-smi checks (driver option to be added in 302a).",
- "ticket": "302a", "candidate_sha": "self", "base_sha": "TBD (gpu-port at the start of 302a)", "created": "2026-10-29",
- "approvals": [], "machine": "intel", "gpu_exclusive": true, "timeout_s": 900, "disk_min_free_GB": 5, "cpu_parallel": 2,
+ "_status": "DRAFT for ticket 302a; becomes 302a.json, pre-registered before implementation, after review (b). Runs on 'intel' (no nvidia-smi: the provenance records gpu_check_rc -1 and gpu_exclusive is enforced by the B580 load check in the run scripts of 302a).",
+ "ticket": "302a",
+ "candidate_sha": "self",
+ "base_sha": "TBD (gpu-port at the start of 302a)",
+ "created": "2026-10-29",
+ "approvals": [],
+ "machine": "intel",
+ "gpu_exclusive": true,
+ "timeout_s": 900,
+ "disk_min_free_GB": 5,
+ "cpu_parallel": 2,
  "false_alarm_budget": 0.0,
  "_reason_false_alarm": "all gates are deterministic (unit tests, ordering canary, identity): no statistical gate",
  "builds": {
-  "intel_gpu":  {"tool": "intel", "configure": "IntelLLVM devel noMPI GPU=intel", "gpu": true},
-  "intel_none": {"tool": "intel", "configure": "IntelLLVM devel noMPI", "gpu": false},
-  "base_intel_none": {"tool": "intel", "configure": "IntelLLVM devel noMPI", "gpu": false}
+  "intel_gpu": {
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI GPU=intel",
+   "gpu": true
+  },
+  "intel_none": {
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI",
+   "gpu": false
+  },
+  "base_intel_none": {
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI",
+   "gpu": false
+  }
  },
  "gates": [
-  {"id": "alf_la_tests_onemkl", "type": "log_regex", "_reason": "routine tests with unchanged tolerances",
-   "checks": [{"file": "../alf_la_onemkl/ctest.log", "regex": "(\\d+)% tests passed, (\\d+) tests failed out of (\\d+)", "equals": [100, 0, 11], "exit_file": "../alf_la_onemkl/ctest.exit", "_reason": "11 test programs in alf_la.tests today (t_checks t_gemm t_geru t_trsm t_lu t_qr t_qrpp t_geqp3 t_order t_fail t_info); fix the count when 302a.json is frozen"}]},
-  {"id": "t_order", "type": "log_regex", "_reason": "ordering canary, 100 repetitions",
-   "checks": [{"file": "../t_order/t_order.log", "regex": "t_order: (\\d+) of (\\d+) repetitions passed", "equals": [100, 100], "exit_file": "../t_order/t_order.exit"}]},
-  {"id": "gpu_none_static", "type": "log_regex",
-   "checks": [{"file": "../gpunone/ppcmp.txt", "regex": "preprocessor_errors (\\d+) differing_lines (\\d+)$", "equals": [0, 0], "exit_file": "../gpunone/ppcmp.exit"}]}
+  {
+   "id": "alf_la_tests_onemkl",
+   "type": "log_regex",
+   "_reason": "routine tests with unchanged tolerances; count = test programs in alf_la.tests at the start of 302a (11 today: t_checks t_gemm t_geru t_trsm t_lu t_qr t_qrpp t_geqp3 t_order t_fail t_info), fixed when frozen",
+   "checks": [
+    {
+     "file": "alf_la_onemkl/ctest.log",
+     "stamp_file": "alf_la_onemkl/stamp",
+     "exit_file": "alf_la_onemkl/ctest.exit",
+     "regex": "(\\d+)% tests passed, (\\d+) tests failed out of (\\d+)",
+     "equals": [
+      100,
+      0,
+      11
+     ]
+    }
+   ]
+  },
+  {
+   "id": "t_order",
+   "type": "log_regex",
+   "_reason": "ordering canary, 100 repetitions",
+   "checks": [
+    {
+     "file": "t_order/t_order.log",
+     "stamp_file": "t_order/stamp",
+     "exit_file": "t_order/t_order.exit",
+     "regex": "t_order: (\\d+) of (\\d+) repetitions passed",
+     "equals": [
+      100,
+      100
+     ]
+    }
+   ]
+  },
+  {
+   "id": "gpu_none_static",
+   "type": "log_regex",
+   "checks": [
+    {
+     "file": "gpunone/ppcmp.txt",
+     "stamp_file": "gpunone/stamp",
+     "exit_file": "gpunone/ppcmp.exit",
+     "regex": "comparisons (\\d+) preprocessor_errors (\\d+) differing_lines (\\d+) added_or_deleted (\\d+) build_files (\\d+)$",
+     "equals": [
+      6,
+      0,
+      0,
+      1,
+      2
+     ],
+     "_reason": "alf_la_mod.F90 x 6 macro sets; 1 added file (alf_la_sycl_shim.cpp is not Fortran: 0 if so - fix when frozen); build files configure.sh + Libraries/Modules/Makefile"
+    }
+   ]
+  }
  ],
  "controls": [
-  {"id": "ctl_t_order_broken", "type": "log_regex", "expect": "FAIL", "_reason": "ordering deliberately broken must be detected",
-   "checks": [{"file": "../t_order_broken/t_order.log", "regex": "t_order: (\\d+) of (\\d+) repetitions passed", "equals": [100, 100]}]},
-  {"id": "ctl_poison_info", "type": "log_regex", "expect": "FAIL",
-   "checks": [{"file": "../alf_la_poison/ctest.log", "regex": "(\\d+)% tests passed, (\\d+) tests failed out of (\\d+)", "equals": [100, 0, 13]}]}
+  {
+   "id": "ctl_t_order_broken",
+   "like": "t_order",
+   "expect": "FAIL",
+   "_reason": "ordering deliberately broken (separate queue, no sync) must be detected",
+   "replace": {
+    "checks": [
+     {
+      "file": "t_order_broken/t_order.log",
+      "stamp_file": "t_order_broken/stamp",
+      "exit_file": "t_order_broken/t_order.exit",
+      "regex": "t_order: (\\d+) of (\\d+) repetitions passed",
+      "equals": [
+       100,
+       100
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "ctl_poison_info",
+   "like": "alf_la_tests_onemkl",
+   "expect": "FAIL",
+   "_reason": "a poisoned device info must make the routine tests fail",
+   "replace": {
+    "checks": [
+     {
+      "file": "alf_la_poison/ctest.log",
+      "stamp_file": "alf_la_poison/stamp",
+      "exit_file": "alf_la_poison/ctest.exit",
+      "regex": "(\\d+)% tests passed, (\\d+) tests failed out of (\\d+)",
+      "equals": [
+       100,
+       0,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "ctl_ppcmp_planted_token",
+   "like": "gpu_none_static",
+   "expect": "FAIL",
+   "replace": {
+    "checks": [
+     {
+      "file": "gpunone_plant/ppcmp.txt",
+      "stamp_file": "gpunone_plant/stamp",
+      "exit_file": "gpunone_plant/ppcmp.exit",
+      "regex": "comparisons (\\d+) preprocessor_errors (\\d+) differing_lines (\\d+) added_or_deleted (\\d+) build_files (\\d+)$",
+      "equals": [
+       6,
+       0,
+       0,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  }
  ]
 }

@@ -28,6 +28,8 @@ KEEP = ("parameters", "seeds", "info", "data.h5", "run.log", "env.txt", "provena
 
 def src_hash(src):
     h = hashlib.sha256()
+    for f in ("configure.sh", "Makefile"):
+        h.update(f.encode() + b"\0" + open(os.path.join(src, f), "rb").read() + b"\0")
     for top in ("Prog", "Libraries", "Analysis"):
         for d, _, fs in sorted(os.walk(os.path.join(src, top))):
             for f in sorted(fs):
@@ -39,7 +41,9 @@ def src_hash(src):
 
 
 def key_of(build, params_sha, seeds_sha, src):
-    b = {k: build.get(k) for k in ("tool", "configure", "ALF_FLAGS_EXT")}
+    if build.get("source") == "base_src" or build.get("name", "").startswith("base_"):
+        sys.exit("refcache is not used for base builds")
+    b = {k: build.get(k) for k in ("tool", "configure", "ALF_FLAGS_EXT", "ALF_FC", "ALF_FLAGS_PROG", "ALF_LIB", "env_file_sha256")}
     b["toolchain"] = {k: build.get("toolchain", {}).get(k) for k in ("nvfortran", "gfortran", "ifx")}
     blob = json.dumps({"src": src_hash(src), "build": b, "params": params_sha, "seeds": seeds_sha}, sort_keys=True)
     return hashlib.sha256(blob.encode()).hexdigest(), blob
@@ -56,6 +60,10 @@ def main(argv):
         p = json.load(open(os.path.join(run, "provenance.json")))
         if p["exit_code"] != 0 or p.get("timed_out") or p.get("debug_env_present") or p.get("mutated"):
             sys.exit("not cacheable: failed, timed out, mutated or debug variables present")
+        cand = os.path.join(os.path.dirname(os.path.abspath(src)), ".alf_candidate")
+        sha = dict(l.split(None, 1) for l in open(cand).read().splitlines() if " " in l).get("sha") if os.path.isfile(cand) else None
+        if sha != p["build"]["candidate"].get("sha"):
+            sys.exit(f"SRC_DIR is not the source the run was built from ({sha} vs {p['build']['candidate'].get('sha')})")
         k, blob = key_of(p["build"], p["inputs"]["parameters_sha256"], p["inputs"]["seeds_sha256"], src)
         if cmd == "key":
             print(k)

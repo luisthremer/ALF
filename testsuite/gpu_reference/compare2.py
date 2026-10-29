@@ -325,15 +325,22 @@ def main(argv=None):
     ap.add_argument("--json", help="write full results here")
     ap.add_argument("--expect", default="", help="semicolon-separated observables that must be tested (missing: exit 3)")
     ap.add_argument("--expect-m", type=int, default=1, help="minimum number of tested observables (fewer: exit 3)")
+    ap.add_argument("--expect-m-exact", type=int, default=None, help="exact number of tested observables (else exit 3)")
     ap.add_argument("--same-seed", action="store_true", help="the two runs share seeds (allows identical means)")
     args = ap.parse_args(argv)
-    A, B = load_run(args.a), load_run(args.b)
     expect = [e for e in args.expect.split(";") if e]
+    A = B = {"dir": "?"}
     try:
+        try:
+            A, B = load_run(args.a), load_run(args.b)
+        except (SystemExit, KeyError, OSError, ValueError, IndexError) as e:  # unreadable input is an input error
+            raise InputError(f"cannot load the runs: {e}")
         names = check_inputs(A, B, expect, args.expect_m, args.same_seed)
         res = compare(A, B, args.alpha, args.min_bins, names, args.same_seed)
         if res["m"] < max(args.expect_m, 1):
             raise InputError(f"only {res['m']} observables tested, expected >= {max(args.expect_m, 1)}")
+        if args.expect_m_exact is not None and res["m"] != args.expect_m_exact:
+            raise InputError(f"{res['m']} observables tested, expected exactly {args.expect_m_exact}")
         if not all(math.isfinite(v) for r in res["rows"] for v in (r["t"], r["p"], r["a"]["err"], r["b"]["err"])):
             raise InputError("non-finite test statistic")
     except InputError as e:

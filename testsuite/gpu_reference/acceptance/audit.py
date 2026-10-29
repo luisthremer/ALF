@@ -18,6 +18,9 @@ def digits(s):
 
 def main(cf, vf):
     claims, v = json.load(open(cf)), json.load(open(vf))
+    if not claims:
+        print("no claims to audit: nothing was checked")
+        return 1
     gates = {g["id"]: g for g in v["gates"]}
     bad = 0
     for key, printed in claims.items():

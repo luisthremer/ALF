@@ -101,14 +101,22 @@ host↔device transfer is documented. Target the default and `STABLOG` stabiliza
   in the sudo group). No changes to system settings, groups, drivers or packages: ask the owner.
 - Each test/benchmark run ≲ 15 min; ask the owner before anything longer. A T2 acceptance sequence of such runs
   (~2 h unattended) needs the owner's standing approval of the per-ticket GPU budget.
-- **nividia GPU sharing:** <<MPS_RULE>>
-- **nividia cores and disk:** ≤ 4 cores per agent (<<CPU_ALONGSIDE_RULE>>); keep ≥ 5 GB free on `/`
+- **nividia GPU sharing:** one GPU process at a time (two time-sliced CUDA processes ran 15× slower each, 2026-10-29),
+  except under the project's MPS daemon (proposal, pending the owner's approval for agent use): started and stopped only
+  by the manager or the acceptance driver, as the ordinary user, `CUDA_VISIBLE_DEVICES=0`, pipe/log directories under
+  `~/alf-gpu/work/mps/`, at most 2 concurrent clients, never while another user's process is on the GPU; afterwards
+  `echo quit | nvidia-cuda-mps-control` and check that no MPS process is left; after a killed client, quit the daemon.
+  Measured 2026-10-29: two MPS clients each at solo speed, outputs bit-identical to a solo run.
+  GPU runs of the acceptance driver take the lock `~/alf-gpu/gpu.lock`.
+- **nividia cores and disk:** ≤ 4 cores per agent ; up to 3 single-threaded CPU runs may run alongside one GPU run: measured 2026-10-29, the GPU run took 66 s alone,
+  66 s with 2 and 67 s with 3 CPU runs alongside, output bit-identical; keep ≥ 5 GB free on `/`
   (the acceptance driver refuses to start below); per ticket ≤ 1.5 GB live evidence.
 - **Evidence retention:** never delete raw outputs (`info`, `data.h5`, `run.log`, `provenance.json`, verdicts) or
   binaries of an unclosed ticket; cleanup removes build trees only. At the owner's gate the manager archives them to
   `~/alf-gpu/archive/tNNN/` with a sha256 manifest.
 - **Confinement exceptions (manager only):** `~/alf-gpu/backup/`, `~/alf-gpu/archive/`, `~/alf-gpu/refcache/` (CPU
-  reference cache, written by the manager, read by everyone), `~/alf-gpu/work/mps_trial/`.
+  reference cache, written by the manager, read by everyone), `~/alf-gpu/work/mps_trial/`, `~/alf-gpu/work/mps/`,
+  `~/alf-gpu/gpu.lock`, `~/alf-gpu/hdf5/` (prebuilt HDF5 for the harness).
 - Clean up processes and large files afterwards; don't hold the GPU between tasks.
 - Install nothing system-wide without asking. User-space installs (e.g. oneAPI) only after the owner agrees.
 - `intel` is a shared workstation (other users, a desktop session): before a run check `uptime` and

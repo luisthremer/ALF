@@ -77,7 +77,8 @@ The originals stay in `~/alf-gpu/work/t207/` until the owner approves their remo
 
 ## 5. NVIDIA MPS (if a daemon was started)
 
-The MPS daemon runs as the ordinary user with its pipe and log directories under `~/alf-gpu/work/mps_trial/`.
+The MPS daemon runs as the ordinary user with its pipe and log directories under `~/alf-gpu/work/mps_trial/` (trial of
+2026-10-29) or `~/alf-gpu/work/mps/` (proposed standing use); substitute the directory.
 
 ```sh
 export CUDA_MPS_PIPE_DIRECTORY=~/alf-gpu/work/mps_trial/pipe

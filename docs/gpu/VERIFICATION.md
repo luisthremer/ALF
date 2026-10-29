@@ -6,7 +6,9 @@ Goal: no error reaches a commit. Correctness ranks above speed. Tooling: `testsu
 
 ## 1. Test the artifact we commit
 - Acceptance runs only on binaries built from `git archive <candidate-sha>` (`acc_ship.sh`, `acc_build.sh`): read-only
-  source, tarball sha256 checked on both ends, never a synced working tree. A working tree is not a candidate.
+  source, tarball sha256 checked on both ends and again before each build, never a synced working tree. A working tree
+  is not a candidate. The tools that judge a candidate (`acceptance/`, `compare2.py`, `configs*.py`) and its acceptance
+  file must be unchanged since the pre-registration commit; `acc_ship.sh` refuses otherwise.
 - The committed sha equals the accepted sha, except for `docs/**` (`acc_check_commit.sh`). Any other change after
   acceptance, including a comment in a `.F90`, needs a new acceptance run of the deterministic tier; the reviewer
   decides and records whether the statistical tier must be repeated.
@@ -18,7 +20,10 @@ hashes, GPU processes before and after, start/end time, exit code, timeout flag,
 every `data.h5` dataset. Runs use `env -i` plus the tool's env file plus an explicit whitelist. Debug and fault
 variables (`ALF_GPU_FAULT*`, `_TAUSWAP`, `_TAU_NS`, `_NS`, `_STABCHECK`, `_STABMIX`, `_TAUDIAG*`, `_NOUPDATE`,
 `_SELFTEST`, `_UPDTEST`, `_EXIT`, `_TAUTIME`, `_STABTIME`, `_DISABLE`) are refused unless the acceptance file declares
-the run as a self-test or control run. A log without a stamp that matches the candidate is not evidence.
+the run as a self-test or control run, or as a diagnostic gate run (the 207 paired test needs `ALF_GPU_TAUDIAG`; the
+  file says so in the gate's reason). GPU builds run with `OMP_TARGET_OFFLOAD=MANDATORY`, and every run of a GPU build
+  must show the ACTIVE lines of the GPU paths; an INACTIVE line is an input error. A log without a stamp that matches
+  the candidate is not evidence.
 
 ## 3. Pre-registration
 Each ticket has `testsuite/gpu_reference/acceptance/NNN.json`, committed **before** implementation results are seen,
@@ -39,16 +44,19 @@ are all FAIL. `verdict.py --selfcheck` (synthetic data, CPU only) must PASS when
 without `--same-seed`). The per-ticket `tNNN_*` scripts are development tools only.
 
 ## 5. Positive controls for every gate
-Each gate has at least one control, run on the same build profile, that must FAIL; the verdict lists killed / not
-killed. A gate whose control is not killed is not a gate.
+Each gate has at least one control, run on the same build profile and judged with the gate's own criterion
+(`"like": <gate>`), that must FAIL; `verdict.py --lint` refuses an acceptance file with an uncovered gate. A control
+is killed only by the criterion (outcome FAIL): a crash, a timeout or a missing directory is an INPUT_ERROR and never
+counts as a detection. Planted NaN or dropped datasets are expected as INPUT_ERROR. A gate whose control is not killed
+is not a gate.
 
 | Gate | Control (must FAIL) |
 |---|---|
 | kernel self-test | the `ALF_GPU_FAULT*` classes; a graded fault near 10× the tolerance (hardening ticket) |
-| same-seed vs CPU oracle | `mutate.py scale:<tau dataset>:1e-6` on a small entry; `nan:`; `drop:`; `ALF_GPU_FAULT_STAB=perm` in a production run |
+| same-seed vs CPU oracle | `mutate.py scale:<tau dataset>:1e-6` on an entry above the floor (FAIL); `nan:`, `drop:` (INPUT_ERROR) |
 | paired same-trajectory | `ALF_GPU_TAUSWAP=8` (LOG), `ALF_GPU_TAU_NS=0` (default); `mutate.py taudiag_inflate/taudiag_bias` |
 | precision mean | `ALF_GPU_NS=0` (once per toolchain); known blind spot: the 207 ZUNMQR defect (+17 % on the τ mean) |
-| compare2 | `mutate.py shift:<obs>:5`; `nan:`; `drop:SpinZ_tau` |
+| compare2 | `mutate.py shift:<obs>:5` (5 standard errors of the mean, FAIL); `nan:` (INPUT_ERROR) |
 | GPU=none identity | one-token change in an `#else` branch (ppcmp); rotated seeds (`data.h5` identity) |
 | replay / determinism | a 1-ulp-level difference (`mutate.py scale:…:1e-12`) |
 
@@ -61,9 +69,12 @@ stabilizations, and maxima are compared only between runs of identical length.
 
 ## 7. Determinism (from the measurement of 2026-10-29)
 - Where bit identity holds — same binary re-run, same commit rebuilt with the same toolchain — it is demanded.
-  Measured: the LOG path is bitwise reproducible; the default path is **not** (≤ 2.4e-11 relative in observables at
-  12×12 β = 10). Until the hardening ticket makes it reproducible, the default path's replay gate uses the
-  same-seed bound below instead of identity, and this is stated in every verdict.
+  Measured 2026-10-29 (stamped, `env -i`, 12×12 β = 10, same binary twice): the LOG path is bitwise reproducible
+  (all 38 datasets and the full-precision Precision lines); the default path is **not** (20 of 38 datasets differ, first
+  in `Den_eq/back` at ~1e-12 relative; Precision Green mean 6.188 vs 6.180e-10). Until the hardening ticket (212) makes
+  it reproducible, replay and non-interference gates run on the LOG path only, and this is stated in the file.
+- MPS and CPU jobs alongside do not change results: LOG runs under MPS (2 clients), next to a time-sliced second
+  process, or next to 2–3 CPU runs gave `data.h5` bit-identical to a solo run (2026-10-29).
 - Across source changes: the documented relative bounds (same-seed per-bin 1e-9 overall and in the τ line, no bin
   above 1e-4) and statistical comparisons.
 - Precision summary numbers are never compared to 4 digits.
@@ -72,7 +83,7 @@ stabilizations, and maxima are compared only between runs of identical length.
 | Tier | Who | Content | GPU time (207-sized ticket) |
 |---|---|---|---|
 | T0 fast | implementer, every iteration | self-tests and fault controls; 6×6 same-seed both paths | ~2.5 min |
-| T1 pre-candidate | implementer, once, on its own frozen candidate (`git archive`) | the full acceptance on dev seeds | ~90 min |
+| T1 pre-candidate | implementer, once, on its own frozen candidate (`git archive`; `acc_driver.py --who agent` maps every acceptance seed set to the dev seeds) | the full acceptance on dev seeds | ~90 min |
 | T2 acceptance | manager, frozen candidate, unattended (`acc_driver.py`) | all deterministic gates in full; every statistical gate once on fresh seeds; all positive controls | ~120 min |
 
 On top of T2 the manager audits the implementer's report against the raw outputs (`audit.py`) and lists every
