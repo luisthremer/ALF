@@ -26,8 +26,9 @@ git cat-file -e "$PRE:$ACCF" || { echo "$ACCF does not exist in the pre-registra
 [ "$PRE" != "$SHA" ] && git merge-base --is-ancestor "$PRE" "$SHA" || { echo "REFUSED: PREREG must be a strict ancestor of the candidate"; exit 3; }
 git merge-base --is-ancestor "$BASE" "$PRE" || { echo "REFUSED: BASE must be an ancestor of PREREG"; exit 3; }
 ABASE=$(git show "$PRE:$ACCF" | python3 -c "import json,sys; print(json.load(sys.stdin).get('base_sha', ''))")
-case "$ABASE" in ????????????*) ;; *) echo "REFUSED: the acceptance file's base_sha must have >= 12 hex digits (got '$ABASE')"; exit 3;; esac
-[ "${BASE#$ABASE}" != "$BASE" ] || { echo "REFUSED: BASE $BASE is not the acceptance file's base_sha $ABASE"; exit 3; }
+echo "$ABASE" | grep -q -E '^[0-9a-f]{12,40}$' || { echo "REFUSED: the acceptance file's base_sha must be 12-40 hex digits (got '$ABASE')"; exit 3; }
+[ "${BASE#"$ABASE"}" != "$BASE" ] || { echo "REFUSED: BASE $BASE is not the acceptance file's base_sha $ABASE"; exit 3; }
+DECH=$(git show "$PRE:docs/gpu/DECISIONS.md" | shasum -a 256 | cut -d' ' -f1)   # owner decisions as of the pre-registration
 git fetch -q fork gpu-port 2>/dev/null || true
 git merge-base --is-ancestor "$BASE" fork/gpu-port || { echo "REFUSED: BASE is not on fork/gpu-port (not an accepted state)"; exit 3; }
 other=$(git diff --name-status --no-renames "$BASE" "$PRE" -- $TOOLS | grep -v -E "^A[[:space:]]testsuite/gpu_reference/acceptance/$TICKET(\.[a-z0-9]+)*\.json$" || true)
@@ -41,7 +42,7 @@ if ! git diff --quiet "$PRE" "$SHA" -- $TOOLS; then
   exit 3
 fi
 ACCH=$(git show "$PRE:$ACCF" | shasum -a 256 | cut -d' ' -f1)
-PARTS=$(git ls-tree --name-only "$PRE" testsuite/gpu_reference/acceptance/ | grep -E "/$TICKET(\.[a-z0-9]+)?\.json$" || true)
+PARTS=$(git ls-tree --name-only "$PRE" testsuite/gpu_reference/acceptance/ | grep -E "/$TICKET(\.[a-z0-9]+)*\.json$" | grep -v "\.draft\.json$" || true)
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/accship.XXXXXX"); trap 'rm -rf -- "$TMP"' EXIT
 R=alf-gpu/work/t$TICKET/cand/$WHO/$S12
 ssh "$HOST" "mkdir -p ~/alf-gpu/work/t$TICKET/cand/$WHO && mkdir ~/$R" || { echo "refusing: $R exists on $HOST"; exit 3; }
@@ -59,7 +60,7 @@ ship "$BASE" base_src || { echo "shipping the base failed"; exit 4; }
 git diff --name-status --no-renames "$BASE" "$SHA" > "$TMP/changed_files.txt"
 { echo "sha $SHA"; echo "tree $TREE"; echo "tar_sha256 $(cat "$TMP/src.sha256")"; echo "ticket $TICKET"
   echo "base_sha $BASE"; echo "base_tar_sha256 $(cat "$TMP/base_src.sha256")"
-  echo "prereg_sha $PRE"; echo "acceptance_sha256 $ACCH"; echo "who $WHO"
+  echo "prereg_sha $PRE"; echo "acceptance_sha256 $ACCH"; echo "decisions_sha256 $DECH"; echo "who $WHO"
   for f in $PARTS; do echo "acceptance_part $(basename $f) $(git show "$PRE:$f" | shasum -a 256 | cut -d' ' -f1)"; done
   echo "shipped $(date -u +%FT%TZ)"; } > "$TMP/.alf_candidate"
 scp -q "$TMP/.alf_candidate" "$TMP/changed_files.txt" "$HOST:$R/"

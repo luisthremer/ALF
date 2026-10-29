@@ -8,7 +8,7 @@ Needs a candidate shipped by acc_ship.sh (~/alf-gpu/work/t<NNN>/cand/<who>/<sha1
 files in ~/alf-gpu/env/. The acceptance file and every tool come from the shipped, read-only candidate tree, which
 acc_ship.sh has checked against the pre-registration commit; the driver re-checks the file's sha256 against
 .alf_candidate; the file must pass verdict.py's lint. Layout: cand/<who>/<sha12>/{bin,tree_*,logs,configs,runs/<run_id>,
-verdict}; ~/alf-gpu/work/t<NNN>/attempts.log records every attempt (a second manager T2 needs --reason).
+verdict}; ~/alf-gpu/archive/attempts/t<NNN>.log records every attempt with its outcome (a second manager T2 needs --reason).
 Rules:
   * GPU runs one at a time, under flock ~/alf-gpu/gpu.lock (also against a second driver), after an idle check that
     must succeed and show no process of anybody; otherwise the driver stops;
@@ -148,6 +148,9 @@ def main():
     if os.path.abspath(HERE) != os.path.abspath(os.path.join(src, "testsuite", "gpu_reference", "acceptance")):
         raise SystemExit("run the driver from the shipped candidate tree (its tools were checked against the pre-registration)")
     acc = json.loads(raw)
+    dec = os.path.join(src, "docs", "gpu", "DECISIONS.md")
+    if hashlib.sha256(open(dec, "rb").read()).hexdigest() != cand.get("decisions_sha256"):
+        raise SystemExit("docs/gpu/DECISIONS.md differs from its state at the pre-registration (report_only approvals must predate it)")
     if not cand.get("base_sha", "").startswith(acc.get("base_sha", "-")) or len(acc.get("base_sha", "")) < 12:
         raise SystemExit(f"shipped base {cand.get('base_sha')} is not the acceptance file's base_sha {acc.get('base_sha')}")
     sys.path.insert(0, HERE)

@@ -513,6 +513,9 @@ def g_files_identical(g, root, acc):
             stamp = read(os.path.join(root, d, "stamp"))
             if acc["candidate_sha"] not in stamp:
                 raise InputFail(f"{d}: not stamped with the candidate")
+            bl = [l.split()[1] for l in stamp.splitlines() if l.startswith("base_sha ")]
+            if not bl or not acc.get("base_sha") or len(acc["base_sha"]) < 12 or not bl[0].startswith(acc["base_sha"]):
+                raise InputFail(f"{d}: base not the acceptance file's base {acc.get('base_sha')}")
             if os.path.exists(os.path.join(root, d, "MUTATED")) and not acc.get("_allow_mutated"):
                 raise InputFail(f"{d}: mutated copy outside a control")
             ev = read(os.path.join(root, d, g.get("exit_file", "ctest.exit"))).strip()
@@ -571,7 +574,12 @@ def resolve_control(c, acc):
         for new, old in zip(rp["checks"], base["checks"]):
             if set(new) - {"file", "stamp_file", "exit_file", "stamp_contains"}:
                 raise SystemExit(f"control {c['id']}: a check may replace only file/stamp_file/exit_file/stamp_contains")
-            merged.append(dict(old, **new))
+            m = dict(old, **new)  # stamp requirements can only be added (e.g. "plant --plant"), "offload MANDATORY" stays
+            m["stamp_contains"] = [x for x in old.get("stamp_contains", []) if x not in ("plant no",)] + \
+                [x for x in new.get("stamp_contains", []) if x not in old.get("stamp_contains", []) or x == "plant no"]
+            if "plant no" in old.get("stamp_contains", []) and not ({"plant no", "plant --plant"} & set(m["stamp_contains"])):
+                raise SystemExit(f"control {c['id']}: a 'plant' stamp requirement cannot be dropped (keep 'plant no' or state 'plant --plant')")
+            merged.append(m)
         rp = dict(rp, checks=merged)
     if "cases" in rp and isinstance(rp["cases"], dict):  # fault controls: only the runs change, not the expected sub-tests
         if not set(rp["cases"].values()) <= set(base["cases"].values()):
@@ -942,8 +950,10 @@ def lint_errors(acc):
             row = [l for l in decisions.splitlines() if ap and l.startswith(f"| {ap[0]['decision']} |")]
             if not ap:
                 errs.append(f"gate {gid}: report_only needs an owner approval covering it, with a decision id")
-            elif not row or f"ticket {acc.get('ticket')}" not in row[0].lower() and str(acc.get("ticket")) not in row[0]:
+            elif not row or str(acc.get("ticket")) not in row[0]:
                 errs.append(f"gate {gid}: decision {ap[0]['decision']} not found in docs/gpu/DECISIONS.md, or it does not name ticket {acc.get('ticket')}")
+            elif not ap[0].get("quote") or ap[0]["quote"] not in row[0] or gid not in row[0]:
+                errs.append(f"gate {gid}: decision {ap[0]['decision']} must quote the owner verbatim ({ap[0].get('quote')!r}) and name the gate id")
             continue
         if gid not in fail_ctl:
             errs.append(f"gate {gid}: no positive control with expect FAIL")
@@ -970,7 +980,8 @@ def lint_errors(acc):
         if x == y or mut.get(x) == y:
             return True
         rx, ry = runs.get(x), runs.get(y)
-        return bool(rx and ry and rx["config"] == ry["config"] and rx["build"] == ry["build"])
+        return bool(rx and ry and rx["config"] == ry["config"] and rx["build"] == ry["build"]
+                    and rx.get("seeds", "dev") == ry.get("seeds", "dev"))
 
     def same_dir(x, y):
         if x == y or mut.get(x) == y:
@@ -988,8 +999,15 @@ def lint_errors(acc):
                 o, n = g.get(k), r[k]
                 o, n = (o if isinstance(o, list) else [o]), (n if isinstance(n, list) else [n])
                 pairs_old += o; pairs_new += n
+        for k in ("pairs", "runs"):
+            if k in r and len(r[k]) > len(g.get(k, [])):
+                errs.append(f"control {c['id']}: more {k} than its gate")
+        if isinstance(r.get("cases"), (list, dict)) and len(r["cases"]) > len(g.get("cases", [])):
+            errs.append(f"control {c['id']}: more cases than its gate")
         if "pairs" in r:
-            for po, pn in zip(g["pairs"], r["pairs"]):
+            for po, pn in zip(g["pairs"], r["pairs"]):  # pairs are positional: each new pair matches the gate's pair
+                if not (same_run(pn[0], po[0]) and same_run(pn[1], po[1])) and not (c.get("null") and g["type"] == "compare2"):
+                    errs.append(f"control {c['id']}: pair {pn[:2]} does not correspond to the gate's pair {po[:2]}")
                 pairs_old += po[:2]; pairs_new += pn[:2]
         if "cases" in r and isinstance(r["cases"], dict):
             pairs_old += list(g["cases"].keys()); pairs_new += list(r["cases"].keys())
@@ -1006,6 +1024,9 @@ def lint_errors(acc):
             do, dn = chk_o["file"].split("/")[0], chk_n.get("file", chk_o["file"]).split("/")[0]
             if dn in ct and do in ct and not same_dir(dn, do):
                 errs.append(f"control {c['id']}: ctest {dn} differs from {do} in more than its environment")
+            lm = {m["dst"]: m["src"] for m in acc.get("log_mutations", [])}
+            if dn in lm and lm[dn] != do:
+                errs.append(f"control {c['id']}: {dn} is a log mutation of {lm[dn]}, not of the gate's {do}")
     for g in acc.get("gates", []):
         for d in dir_refs(g):
             if ct.get(d, {}).get("control") or ct.get(d, {}).get("env") and not ct.get(d, {}).get("control"):

@@ -40,10 +40,9 @@
    "build": "ifx_none",
    "config": "hub6x6_cb"
   },
-  "id_ifx_cand_rot": {
+  "id_ifx_cand_m": {
    "build": "ifx_none",
-   "config": "hub6x6_cb",
-   "seeds": "acc1"
+   "config": "hub6x6_cb"
   }
  },
  "ctests": [
@@ -187,14 +186,14 @@
    }
   },
   {
-   "id": "ctl_ifx_identity_seeds",
+   "id": "ctl_ifx_identity_1e-12",
    "like": "gpu_none_ifx_identity",
    "expect": "FAIL",
    "replace": {
     "pairs": [
      [
       "id_ifx_base",
-      "id_ifx_cand_rot"
+      "id_ifx_cand_m"
      ]
     ]
    }
@@ -211,6 +210,13 @@
      ]
     ]
    }
+  }
+ ],
+ "mutations": [
+  {
+   "src": "id_ifx_cand",
+   "dst": "id_ifx_cand_m",
+   "kind": "scale:Den_eq/obser:1e-12"
   }
  ]
 }

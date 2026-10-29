@@ -88,7 +88,7 @@ elif [ "$(cat $OUT/build_src.exit)" = 0 ]; then
   ( cd $W/tree_src/testsuite && mkdir -p tests && cd tests && cmake .. > "$OUT/ctest_cmake.log" 2>&1 \
     && cmake --build . -j4 >> "$OUT/ctest_cmake.log" 2>&1 && ctest -j4 --output-on-failure > "$OUT/ctest.log" 2>&1 )
   rc=$?   # normalised like acc_ctest.sh: 0 passed, 1 a test failed its check, 2 invalid (crash, timeout, build)
-  if grep -q -E '\*\*\*(Exception|Timeout|Not Run)|SEGFAULT|Child aborted' "$OUT/ctest.log"; then echo 2 > "$OUT/ctest.exit"
+  if grep -q -E '\*\*\*(Exception|Timeout|Not Run)|SEGFAULT|Child aborted|Subprocess aborted|Illegal|forrtl: severe|Fortran runtime error|Program received signal|Segmentation fault|omptarget|terminate called' "$OUT/ctest.log"; then echo 2 > "$OUT/ctest.exit"
   elif [ $rc = 0 ]; then echo 0 > "$OUT/ctest.exit"
   elif grep -q '\*\*\*Failed' "$OUT/ctest.log"; then echo 1 > "$OUT/ctest.exit"
   else echo 2 > "$OUT/ctest.exit"; fi

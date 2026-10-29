@@ -17,7 +17,10 @@ export LC_ALL=C
 TICKET=$1; WHO=$2; S12=$3; OUT=$4; TOOL=$5; shift 5
 RX=""; REP=1; ENVX=(); SRCT=src; KEY=tar_sha256
 while [ $# -gt 0 ] && [ "$1" != -- ]; do
-  case "$1" in --base) SRCT=base_src; KEY=base_tar_sha256; shift;; --regex) RX=$2; shift 2;; --repeat) REP=$2; shift 2;; --env) ENVX+=("$2"); shift 2;; *) echo "bad option $1"; exit 2;; esac
+  case "$1" in --base) SRCT=base_src; KEY=base_tar_sha256; shift;; --regex) RX=$2; shift 2;; --repeat) REP=$2; shift 2;;
+    --env) case "$2" in OMP_TARGET_OFFLOAD=*|ONEAPI_DEVICE_SELECTOR=*|CUDA_VISIBLE_DEVICES=*) echo "refusing to override $2"; exit 2;; esac
+           ENVX+=("$2"); shift 2;;
+    *) echo "bad option $1"; exit 2;; esac
 done
 [ "${1:-}" = -- ] && shift
 C=$HOME/alf-gpu/work/t$TICKET/cand/$WHO/$S12; [ -f $C/.alf_candidate ] || { echo "no shipped candidate $C"; exit 2; }
@@ -45,11 +48,14 @@ for i in $(seq 1 "$REP"); do
     "$W/testsuite/tests" "$ENVF" "$RX" "$JOBS" > "$OUT/rep_$i.log" 2>&1
   rc=$?
   # the temporary build path and backtrace addresses (ASLR, e.g. from the expected-failure tests) differ between runs
-  sed -i -E "s#$W#<BUILD>#g; s/0x[0-9a-f]{6,}/0xADDR/g" "$OUT/rep_$i.log"
+  sed -i -E "s#$W#<BUILD>#g; s/0x[0-9a-f]{6,}/0xADDR/g; s/^[0-9]+: //" "$OUT/rep_$i.log"   # also the ctest -V test-index prefix
   cat "$OUT/rep_$i.log" >> "$OUT/ctest.log"
-  if grep -q -E '\*\*\*(Exception|Timeout|Not Run)|SEGFAULT|Child aborted|Subprocess aborted|Illegal' "$OUT/rep_$i.log"; then crash=1
+  # a check failure = every failed test printed its own "FAILED <name>" line (la_test_util convention) and nothing
+  # looks like a crash; anything else that exits nonzero is a crash (never a detection)
+  nf=$(grep -c '\*\*\*Failed' "$OUT/rep_$i.log" || true); nc=$(grep -c -E '(^|: )FAILED [A-Za-z_]' "$OUT/rep_$i.log" || true)
+  if grep -q -E '\*\*\*(Exception|Timeout|Not Run)|SEGFAULT|Child aborted|Subprocess aborted|Illegal|forrtl: severe|Fortran runtime error|Program received signal|Segmentation fault|omptarget|terminate called' "$OUT/rep_$i.log"; then crash=1
   elif [ $rc = 0 ]; then pass=$((pass+1))
-  elif grep -q '\*\*\*Failed' "$OUT/rep_$i.log"; then fails=$((fails+1))
+  elif [ "$nf" -gt 0 ] && [ "$nc" -ge "$nf" ]; then fails=$((fails+1))
   else crash=1; fi
 done
 ntests=$(grep -c -E "^[0-9]+% tests passed, [0-9]+ tests failed out of" "$OUT/ctest.log" || true)

@@ -591,11 +591,6 @@
    "build": "gnu_cand",
    "config": "hub6x6_cb_symm"
   },
-  "id_cand_rot": {
-   "build": "gnu_cand",
-   "config": "hub6x6_cb",
-   "seeds": "acc1"
-  },
   "ss_log_6_m_small": {
    "build": "nv_log",
    "config": "hub6x6_cb_fd"
@@ -646,6 +641,10 @@
    "build": "nv_none",
    "config": "s8_U4_b2_cb",
    "seeds": "acc3"
+  },
+  "id_cand_hub6x6_cb_m": {
+   "build": "gnu_cand",
+   "config": "hub6x6_cb"
   }
  },
  "gates": [
@@ -734,13 +733,13 @@
    "type": "same_seed",
    "pairs": [
     [
-     "ss_def_6",
-     "ss_cpu_pp_6",
+     "ss_log_6",
+     "ss_cpu_log_6",
      200
     ],
     [
-     "ss_log_6",
-     "ss_cpu_log_6",
+     "ss_def_6",
+     "ss_cpu_pp_6",
      200
     ],
     [
@@ -1102,17 +1101,18 @@
    "expect": "INPUT_ERROR"
   },
   {
-   "id": "ctl_identity_seeds",
+   "id": "ctl_identity_1e-12",
    "like": "gpu_none_identity",
    "replace": {
     "pairs": [
      [
       "id_base_hub6x6_cb",
-      "id_cand_rot"
+      "id_cand_hub6x6_cb_m"
      ]
     ]
    },
-   "expect": "FAIL"
+   "expect": "FAIL",
+   "_reason": "a relative 1e-12 change in one dataset must break the identity gate"
   },
   {
    "id": "ctl_ppcmp_planted_token",
@@ -1199,6 +1199,11 @@
    "src": "c2_gpu",
    "dst": "c2_gpu_m_nan",
    "kind": "nan:SpinZ_eq/obser"
+  },
+  {
+   "src": "id_cand_hub6x6_cb",
+   "dst": "id_cand_hub6x6_cb_m",
+   "kind": "scale:Den_eq/obser:1e-12"
   }
  ],
  "gpunone": true,

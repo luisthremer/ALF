@@ -116,7 +116,8 @@ host↔device transfer is documented. Target the default and `STABLOG` stabiliza
   `~/alf-gpu/archive/tNNN/` with a sha256 manifest.
 - **Confinement exceptions (manager only):** `~/alf-gpu/backup/`, `~/alf-gpu/archive/`, `~/alf-gpu/refcache/` (CPU
   reference cache, written by the manager, read by everyone), `~/alf-gpu/work/mps_trial/`, `~/alf-gpu/work/mps/`,
-  `~/alf-gpu/gpu.lock`, `~/alf-gpu/hdf5/` (prebuilt HDF5 for the harness).
+  `~/alf-gpu/gpu.lock`, `~/alf-gpu/hdf5/` (prebuilt HDF5 for the harness), and the acceptance driver's attempts log
+  `~/alf-gpu/archive/attempts/` (written by the driver for every party, including an implementer's T1).
 - Clean up processes and large files afterwards; don't hold the GPU between tasks.
 - Install nothing system-wide without asking. User-space installs (e.g. oneAPI) only after the owner agrees.
 - `intel` is a shared workstation (other users, a desktop session): before a run check `uptime` and
