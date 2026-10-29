@@ -4,7 +4,7 @@
 - **Owner agent:** fortran-gpu-dev (Sonnet)
 - **Review:** numerics-reviewer (code, acceptance file, scripts) · **Verification:** acceptance-verifier
 - **Depends on:** the verification standard (merged 2026-10-29)
-- **Base:** `gpu-port` d53f9779 (206 state + harness; the 207 τ code is **not** in this base)
+- **Base:** `gpu-port` 1a363070 (206 state + harness; the 207 τ code is **not** in this base)
 - **Branch:** `gpu-port-212-hardening`
 - **Acceptance file:** `testsuite/gpu_reference/acceptance/212.json`, pre-registered in its own commit before any
   implementation (the commit sha is recorded below under Approvals; DECISIONS.md is pinned at that commit and is not
@@ -31,27 +31,32 @@ shows that the stabilization self-test resolves errors near its tolerance.
   _NOUPDATE, _NS, _SELFTEST, _STABCHECK, _STABMIX, _STABTIME, _TIMING, _TL, _TR, _TRACE, _UPDTEST, _VB`.
 
 ## Work (exact formats: the acceptance file depends on them)
-1. **One reader** of every `ALF_GPU_*` variable at setup (a small module or routine in `gpu_state_mod.F90`).
-   - A run is a **debug run** if `ALF_GPU_SELFTEST`, `ALF_GPU_UPDTEST` or `ALF_GPU_DEBUG=1` is set; otherwise it is a
-     **production run**.
-   - In a production run each of `ALF_GPU_FAULT, _FAULT_STAB, _NS, _STABMIX, _STABCHECK, _TL, _TR, _VB, _NOUPDATE,
-     _TRACE, _TIMING, _STABTIME, _EXIT` is **refused**: the program prints exactly
-     ` GPU debug env refused: <NAME> (production run; set ALF_GPU_DEBUG=1 for a debug run)` on stdout and in `info`,
-     and stops with exit code 1 before the first sweep. `ALF_GPU_DISABLE` stays allowed (it switches the GPU path off,
-     which the ACTIVE lines show).
+1. **One reader** of every `ALF_GPU_*` variable at setup (a small module or routine in `gpu_state_mod.F90`). The other
+   files keep only calls to it; `Prog/Wrapgr_mod.F90` changes only inside its existing `#ifdef ALF_GPU` blocks.
+   - "Set" means: defined and not empty and not `0`. A run is a **debug run** if `ALF_GPU_SELFTEST`,
+     `ALF_GPU_UPDTEST` or `ALF_GPU_DEBUG` is set; otherwise it is a **production run**.
+   - **Allow-list:** in a production run every set `ALF_GPU_*` variable other than `ALF_GPU_DISABLE` and `ALF_GPU_DEBUG`
+     is **refused** — the known debug/fault variables (`ALF_GPU_FAULT, _FAULT_STAB, _NS, _STABMIX, _STABCHECK, _TL,
+     _TR, _VB, _NOUPDATE, _TRACE, _TIMING, _STABTIME, _EXIT`) and any unknown name (a typo, or 207's `_TAUSWAP`). The
+     program prints exactly ` GPU debug env refused: <NAME> (production run; set ALF_GPU_DEBUG=1 for a debug run)` on
+     stdout and in `info` (first refused name in sorted order) and stops with exit code 1 before the first sweep.
+   - An unknown or unparsable **value** of a fault variable (e.g. `ALF_GPU_FAULT_STAB=xyz`) is an error in every run:
+     ` GPU fault value invalid: <NAME>=<value>`, exit code 1 (no longer a warning).
    - Every GPU run prints at setup, on stdout and in `info`, exactly one line ` GPU debug env: none` (no `ALF_GPU_*`
      variable set) or ` GPU debug env: <NAME>=<value>, <NAME>=<value>` (sorted by name, every `ALF_GPU_*` variable that
      is set).
-   - Every armed fault prints ` GPU fault armed: <NAME>=<value>` (stdout and `info`).
-2. **Build stamp line** at setup: ` GPU build: git <hash from git.h> backend <CUDA|ONEMKL|HOST>`.
+   - Every armed fault prints ` GPU fault armed: <NAME>=<value>` with the value exactly as given (stdout and `info`),
+     for `ALF_GPU_FAULT` (204/205) and `ALF_GPU_FAULT_STAB` (206) alike.
+2. **Build stamp line** at setup: ` GPU build: git <GIT_COMMIT_HASH, or none if git.h defines none> backend
+   <CUDA|ONEMKL|HOST>` (harness builds come from `git archive` without `.git`, so `none` is expected there).
 3. **Graded fault** for the stabilization self-test: `ALF_GPU_FAULT_STAB=eps:<x>` (debug runs only, as every fault)
-   multiplies one element of the device G after the device CGR of the `ALF_GPU_SELFTEST=3` comparison by `(1 + x)`.
-   It must make the self-test fail at `x = 1e-9` (line ` GPU self-test FAILED: stab: ...`, exit code 1) and pass at
-   `x = 1e-13`.
+   multiplies, in every compared CGR of the `ALF_GPU_SELFTEST=3` comparison, the element of largest |G| of the device G
+   by `(1 + x)`. It must make the self-test fail at `x = 1e-9` (line ` GPU self-test FAILED: stab: ...`, exit code 1)
+   and pass at `x = 1e-11` (0.1× the 1e-10 tolerance).
 4. **Deterministic reductions:**
-   - `k_colnorms`, `k_lognorm`, `k_prec`: a fixed combination order (e.g. one thread per column with a serial sum, or a
-     fixed-shape two-stage tree into scratch); no OpenMP `reduction` clause on floating-point sums or maxima that feed a
-     decision or a reported number;
+   - `k_colnorms`, `k_lognorm`, `k_prec`: a fixed combination order for floating-point **sums** (e.g. one thread per
+     column with a serial sum, or a fixed-shape two-stage tree into scratch); max reductions are order-independent and
+     may stay;
    - `la_init` (CUDA backend only): `cusolverDnSetDeterministicMode(…, CUSOLVER_DETERMINISTIC_RESULTS)` and
      `cublasSetAtomicsMode(…, CUBLAS_ATOMICS_NOT_ALLOWED)`; the HOST path of `alf_la_mod.F90` stays byte-identical in
      its preprocessed form.
@@ -71,24 +76,31 @@ shows that the stabilization self-test resolves errors near its tolerance.
 
 ## Acceptance
 Pre-registered in `testsuite/gpu_reference/acceptance/212.json` (gates, thresholds, counts, controls; read it). In short:
-- **Kernel self-tests** 204 (`SELFTEST=2`), 205 (`UPDTEST=1`), 206 (`SELFTEST=3`) PASS on the listed configs, default
-  and LOG; the 206 fault controls and the graded fault behave as specified.
+- **Kernel self-tests** 204 (`SELFTEST=2`) and 205 (`UPDTEST=1`) on the default build (their code does not depend on the
+  stabilization variant), 206 (`SELFTEST=3`) default and LOG, PASS with their numbers ≤ 1e-10; the 204/205/206 fault
+  controls and the graded fault behave as specified, and every armed fault shows its armed line.
 - **Refusal:** every listed variable alone in a production run is refused with the exact line and exit code 1; with
   `ALF_GPU_DEBUG=1` the same variable is accepted.
 - **Production line:** every production GPU run prints ` GPU debug env: none` and the build stamp line.
-- **Determinism:** the same binary twice gives bit-identical `data.h5` and full-precision Precision lines, default and
-  LOG, 6×6 (200 one-sweep bins) and 12×12 β = 10 (8 bins × 20 sweeps).
+- **Determinism:** the same binary twice gives bit-identical `data.h5` and full-precision Precision lines: 6×6 (200
+  one-sweep bins) default and LOG, 12×12 β = 10 (8 bins × 20 sweeps) default and LOG.
 - **Same seeds vs the CPU oracle:** 6×6 default and LOG, 12×12 default: no bin above 1e-4, overall and τ line ≤ 1e-9.
-  (12×12 LOG is ticket 213.)
+  (12×12 LOG is ticket 213, decision 3b; 213 re-measures it on top of 212.)
 - **Precision mean** (Green, τ) ≤ 1.5× the larger CPU mean, 12×12 β = 4, default and LOG.
-- **compare2** GPU vs GPU=none on fresh seeds, with a CPU-vs-CPU null control.
+- **compare2** GPU vs GPU=none on fresh seeds (`s8_U4_b2_cb` shortened to 120 bins × 18 sweeps: the base GPU build needs
+  0.31 s/sweep there, so the full 250 × 40 would take ~51 min), with a CPU-vs-CPU null control.
 - **`t_determinism`** passes under CUDA; its planted-ulp control fails.
-- **GPU=none:** preprocessed changed CPU-path Fortran identical (`alf_la_mod.F90`, 9 macro sets), ctest 53/53
-  (52 + `t_determinism`).
-- Report: cost of the deterministic reductions (s/sweep at N = 144 and 400, default and LOG), with stamped runs.
+- **GPU=none:** preprocessed changed CPU-path Fortran identical (`alf_la_mod.F90` and `Wrapgr_mod.F90`, 9 macro sets
+  each = 18 comparisons; one build file, the `alf_la.tests` CMakeLists), ctest 53/53 (52 + `t_determinism`).
+- Report: cost of the deterministic reductions — s/sweep at N = 144 and 400, default and LOG, from the declared timing
+  runs `tm_*` (candidate) and `tmb_*` (base build) of `212.json`.
 
 ## Approvals
-- Pre-registration commit: `6f106abf` (2026-10-29) on `gpu-port-212-hardening`; base `d53f9779`. Any change of
+- First pre-registration `21e23a6a` (base `d53f9779`) was superseded before any implementation existed, after review
+  (b) of the acceptance file (findings M1–M6, S1–S11). Current pre-registration commit: `PREREG_SHA` (2026-10-29) on
+  `gpu-port-212-hardening`; base `1a363070`. Deviation to put to the owner: the compare2 positive control uses a
+  shift of 8 standard errors, not the 5 of VERIFICATION.md §5 (at m = 11, α = 0.01 Šidák a shift of 5 is caught only
+  ~60 % of the time). Any change of
   `212.json` after this needs the owner's quoted approval and fresh seeds (VERIFICATION.md §3), unless it is made
   before any implementation result exists and is pre-registered again in a new commit recorded here.
 
