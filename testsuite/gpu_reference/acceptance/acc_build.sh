@@ -1,7 +1,8 @@
 #!/bin/bash
 # Acceptance harness, MACHINE side: build one variant of a shipped candidate.
-#   usage: acc_build.sh TICKET SHA12 NAME TOOL [configure args...]     (ALF_FLAGS_EXT from the caller is recorded)
-#   SRC  = ~/alf-gpu/work/t<TICKET>/cand/<SHA12>/src (or base_src if NAME starts with "base_")
+#   usage: acc_build.sh TICKET WHO SHA12 NAME TOOL [configure args...]     (ALF_FLAGS_EXT from the caller is recorded)
+#   The build tree is extracted from the hash-checked tarball cand/<WHO>/<SHA12>/{src,base_src}.tar (base_* names use
+#   the base); the tarball sha256 is recorded in the build record and checked by verdict.py.
 #   TOOL = gnu | nvhpc | intel (the env file in ~/alf-gpu/env/), sourced inside env -i (no caller environment)
 #   ALF_HDF5_DIR (default ~/alf-gpu/hdf5) must hold a prebuilt HDF5 for the compiler (never downloaded here).
 #   The tarball of the source is re-hashed against .alf_candidate before building.
@@ -9,9 +10,9 @@
 # Exit code: 0 only if every check, configure and make succeed.
 set -o pipefail
 export LC_ALL=C
-TICKET=$1; S12=$2; NAME=$3; TOOL=$4; shift 4
-case "$TICKET$S12$NAME" in *..*|*/*|"") echo "unsafe name"; exit 2;; esac
-C=$HOME/alf-gpu/work/t$TICKET/cand/$S12; [ -f $C/.alf_candidate ] || { echo "no shipped candidate $C"; exit 2; }
+TICKET=$1; WHO=$2; S12=$3; NAME=$4; TOOL=$5; shift 5
+case "$TICKET$WHO$S12$NAME" in *..*|*/*|"") echo "unsafe name"; exit 2;; esac
+C=$HOME/alf-gpu/work/t$TICKET/cand/$WHO/$S12; [ -f $C/.alf_candidate ] || { echo "no shipped candidate $C"; exit 2; }
 SRC=src; case "$NAME" in base_*) SRC=base_src;; esac
 [ -d "$C/$SRC" ] || { echo "no source $C/$SRC"; exit 2; }
 key=tar_sha256; [ $SRC = base_src ] && key=base_tar_sha256
@@ -23,7 +24,8 @@ H5=${ALF_HDF5_DIR:-$HOME/alf-gpu/hdf5}; [ -n "$(ls -A "$H5" 2>/dev/null)" ] || {
 export TMPDIR=$HOME/alf-gpu/work/t$TICKET/tmp; mkdir -p $TMPDIR $C/bin $C/logs
 B=$C/bin/$NAME.out; [ -e "$B" ] && { echo "refusing: $B exists (never overwrite a stamped binary)"; exit 2; }
 T=$C/tree_$NAME; mkdir "$T" || { echo "refusing: $T exists"; exit 2; }
-cp -a "$C/$SRC/." "$T/" && chmod -R u+w "$T" || exit 2
+tar -xf "$C/$SRC.tar" -C "$T" || exit 2      # from the tarball just re-hashed, not from the extracted tree
+TARH=$have
 env -i HOME="$HOME" USER="$USER" LANG=C LC_ALL=C PATH=/usr/bin:/bin TMPDIR="$TMPDIR" ALF_HDF5_DIR="$H5" \
     ALF_FLAGS_EXT="${ALF_FLAGS_EXT:-}" LOGC=$C/logs/conf_$NAME.log LOGE=$C/logs/env_$NAME.txt LOGM=$C/logs/make_$NAME.log \
     bash --noprofile --norc -c '
@@ -33,15 +35,16 @@ env -i HOME="$HOME" USER="$USER" LANG=C LC_ALL=C PATH=/usr/bin:/bin TMPDIR="$TMP
   env | grep "^ALF_" | sort > "$LOGE"
   make -j4 program > "$LOGM" 2>&1 || { echo "make failed: $LOGM"; exit 4; }' "$T" "$ENVF" "$@"
 rc=$?; [ $rc = 0 ] || exit $rc
+if grep -q -i -E "download|wget|curl" $C/logs/conf_$NAME.log; then echo "configure tried to download (HDF5 for this compiler missing in $H5)"; exit 3; fi
 cp "$T/Prog/ALF.out" "$B" && chmod a-w "$B" || exit 5
-python3 - "$C" "$NAME" "$B" "$TOOL" "$ENVF" "$SRC" "$*" <<'PY'
+python3 - "$C" "$NAME" "$B" "$TOOL" "$ENVF" "$SRC" "$TARH" "$*" <<'PY'
 import json, sys, os, hashlib, subprocess, datetime
-c, name, b, tool, envf, src, conf = sys.argv[1:8]
+c, name, b, tool, envf, src, tarh, conf = sys.argv[1:9]
 cand = dict(l.split(None, 1) for l in open(os.path.join(c, ".alf_candidate")).read().splitlines() if " " in l)
 h = lambda p: hashlib.sha256(open(p, "rb").read()).hexdigest()
 alf = dict(l.rstrip("\n").split("=", 1) for l in open(os.path.join(c, "logs", f"env_{name}.txt")) if "=" in l)
 sh = lambda cmd: subprocess.run(["bash", "-c", f". {envf} >/dev/null 2>&1; {cmd}"], capture_output=True, text=True).stdout.strip()
-d = {"schema": "alf-acc-build/1", "name": name, "binary": b, "binary_sha256": h(b), "source": src,
+d = {"schema": "alf-acc-build/1", "name": name, "binary": b, "binary_sha256": h(b), "source": src, "tar_sha256_built": tarh,
      "candidate": cand, "tool": tool, "configure": conf, "ALF_FLAGS_EXT": os.environ.get("ALF_FLAGS_EXT", ""),
      "ALF_FC": alf.get("ALF_FC", ""), "ALF_FLAGS_PROG": alf.get("ALF_FLAGS_PROG", ""), "ALF_LIB": alf.get("ALF_LIB", ""),
      "env_file_sha256": h(envf), "make_log_sha256": h(os.path.join(c, "logs", f"make_{name}.log")),

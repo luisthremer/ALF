@@ -1,6 +1,6 @@
 {
  "schema": "alf-acc/1",
- "_status": "DRAFT, not in force. Becomes 207.json, pre-registered in its own commit (recorded in ticket 207 and DECISIONS.md) after the owner's decisions at the 2026-10-29 gate: the acceptance-3 criterion, the default paired FAIL, Intel acceptance 6, the same-seed threshold (1e-9 per VERIFICATION.md \u00a77, or a pre-registered alternative), the GPU budget. Paired thresholds below are those of the rewrite approved on 2026-10-29; they are not in force until the owner decides.",
+ "_status": "DRAFT, not in force. Becomes 207.json, pre-registered in its own commit after ticket 212 has landed and the 207 candidate is rebased on it (then base_sha, the base builds, the GPU=none counts and the debug-variable gate of 212 are re-derived, and parameters_sha256 is filled in per config). Owner decisions of 2026-10-29 are quoted in approvals.",
  "ticket": "207",
  "candidate_sha": "self",
  "base_sha": "64ecde7266ae",
@@ -23,6 +23,56 @@
     "paired.sd_condition"
    ],
    "quote": "do not drop the sd condition, and do not commit 207."
+  },
+  {
+   "date": "2026-10-29",
+   "who": "owner",
+   "channel": "manager session ('ok' to the manager's recommendations, DECISIONS.md)",
+   "covers": [
+    "acceptance 3 (decision 1)"
+   ],
+   "quote": "ok",
+   "meaning": "The rewrite approved earlier, including the sd condition, stays in force; a new criterion only if the cause is understood and the condition still fails, pre-registered and calibrated (null run, TAUSWAP=8), judged once on fresh seeds."
+  },
+  {
+   "date": "2026-10-29",
+   "who": "owner",
+   "channel": "same",
+   "covers": [
+    "default paired FAIL (decision 2)"
+   ],
+   "quote": "ok",
+   "meaning": "(a) find the cause first in ticket 212; until then 207 stays open."
+  },
+  {
+   "date": "2026-10-29",
+   "who": "owner",
+   "channel": "same",
+   "covers": [
+    "same_seed bound (decision 3)"
+   ],
+   "quote": "ok",
+   "meaning": "1e-9 stays; the LOG 12x12 excess (1.214e-9, bin 184, equal-time) is an open finding of the 206 code."
+  },
+  {
+   "date": "2026-10-29",
+   "who": "owner",
+   "channel": "same",
+   "covers": [
+    "acceptance 6 (decision 4)"
+   ],
+   "quote": "ok",
+   "meaning": "Intel acceptance 6 is BLOCKED, never PASS."
+  },
+  {
+   "date": "2026-10-29",
+   "who": "owner",
+   "channel": "same",
+   "covers": [
+    "GPU budget (decision 11)"
+   ],
+   "quote": "ok",
+   "meaning": "T1 about 90 GPU-min, T2 about 120 GPU-min per ticket."
   }
  ],
  "machine": "nividia",
@@ -36,10 +86,6 @@
   "GPU stabilization (206): ACTIVE",
   "GPU tau pass (207): ACTIVE"
  ],
- "statistics": {
-  "false_alarm_budget": 0.07,
-  "_reason": "compare2 alpha 0.01 with Sidak inside (m = 11); paired: point tests per path, ~2.5 % false alarms each at the observed LOG ratio (R7 2.2), 2 paths; precision mean ~1 %. Lowering it needs more events, not wider limits."
- },
  "builds": {
   "nv_def": {
    "tool": "nvhpc",
@@ -633,22 +679,22 @@
      "min": 1
     }
    ],
-   "_reason": "ticket 207 acceptance 1: every slice <= 1e-10, CGR2_2 alone <= 1e-10, both branches hit, reduction <= 1e-12"
+   "_reason": "ticket 207 acceptance 1: every slice <= 1e-10, CGR2_2 alone <= 1e-10, both branches hit, reduction <= 1e-12; self-test and paired runs use nv_def_pp (default path) because their in-binary oracle is the QR_PREPIVOT host algorithm; production gates use nv_def. Both branches were hit naturally in every config in the 2026-10-29 logs."
   },
   {
    "id": "faults",
    "type": "faults",
    "cases": {
-    "fault_nv_def_pp_perm": "tau",
-    "fault_nv_def_pp_prop": "tau",
+    "fault_nv_def_pp_perm": "tau: pass",
+    "fault_nv_def_pp_prop": "tau: pass",
     "fault_nv_def_pp_prec": "precision reduction",
-    "fault_nv_def_pp_blocks": "tau",
-    "fault_nv_log_perm": "tau",
-    "fault_nv_log_prop": "tau",
+    "fault_nv_def_pp_blocks": "tau: pass",
+    "fault_nv_log_perm": "tau: pass",
+    "fault_nv_log_prop": "tau: pass",
     "fault_nv_log_prec": "precision reduction",
-    "fault_nv_log_blocks": "tau"
+    "fault_nv_log_blocks": "tau: pass"
    },
-   "_reason": "negative controls of the self-test, both paths; rc must be 1 and FAILED must name the sub-test"
+   "_reason": "negative controls of the self-test, both paths; rc must be 1 and FAILED must name the sub-test; expected sub-test names as printed by gpu_tau_mod ('tau: pass', 'precision reduction')"
   },
   {
    "id": "same_seed",
@@ -680,7 +726,7 @@
    "no_bin_above": 0.0001,
    "overall_max": 1e-09,
    "tau_max": 1e-09,
-   "_reason": "VERIFICATION.md 7: 1e-9 overall and in the tau line, no bin above 1e-4. OPEN OWNER DECISION: the LOG 12x12 pair was measured at 1.214e-9 (bin 184, equal-time only, as in 206); with 1e-9 this gate FAILS on that pair unless the owner pre-registers another bound. The per-entry metric is reported, not gated: on clean GPU-vs-CPU LOG 6x6 data it is already 1.4e-5 (harness test 2026-10-29), so it needs a calibration before it can gate."
+   "_reason": "VERIFICATION.md 7 and decision 3 (2026-10-29): 1e-9 overall and in the tau line, no bin above 1e-4. The LOG 12x12 pair was measured at 1.214e-9 (bin 184, equal-time only, 206 code): with unchanged code this gate FAILS on that pair; the owner decides whether 207 stays open on it or the 206 finding gets its own ticket. The per-entry metric is reported, not gated (1.4e-5 on clean LOG 6x6 data, harness test 2026-10-29)."
   },
   {
    "id": "non_interference_log",
@@ -725,7 +771,7 @@
    ],
    "count_k": 2.0,
    "count_min_events": 10,
-   "_reason": "rewrite approved 2026-10-29 (point test per path); the default path FAILS it (1.707, 2026-10-29); in force only after the owner's gate decision. beta = 10 is not covered: a TAUDIAG run there exceeds 15 min (OPEN: needs a later FROM or the owner's budget). Exception to VERIFICATION 2: these gate runs carry declared diagnostic variables."
+   "_reason": "In force (decision 1 of 2026-10-29): the rewrite approved on 2026-10-29 incl. the sd condition. Thresholds were written after the beta = 4 LOG paired data had been seen (ticket 207, caveat 3). The default path FAILED it (1.707) on 2026-10-29. beta = 10 not covered (a TAUDIAG run there exceeds 15 min): open. Gate runs carry declared diagnostic variables (VERIFICATION 2 exception)."
   },
   {
    "id": "precision",
@@ -797,27 +843,40 @@
    ]
   },
   {
-   "id": "gpu_none_static",
+   "id": "gpu_none_ppcmp",
    "type": "log_regex",
    "checks": [
     {
      "file": "gpunone/ppcmp.txt",
      "stamp_file": "gpunone/stamp",
      "exit_file": "gpunone/ppcmp.exit",
-     "regex": "comparisons (\\d+) preprocessor_errors (\\d+) differing_lines (\\d+) added_or_deleted (\\d+) build_files (\\d+)$",
-     "equals": [
-      18,
-      0,
-      0,
-      0,
-      1
+     "stamp_contains": [
+      "plant no"
      ],
-     "_reason": "3 changed CPU-path files (main.F90, tau_m_mod.F90, control_mod.F90) x 6 macro sets; 1 build file (Prog/Makefile: the conditional GPU source line, reviewed); no added/deleted CPU-path Fortran"
-    },
+     "regex": "comparisons (\\d+) preprocessor_errors (\\d+) differing_lines (\\d+) added_or_deleted (\\d+) build_files (\\d+) other_files (\\d+)$",
+     "equals": [
+      27,
+      0,
+      0,
+      0,
+      1,
+      0
+     ]
+    }
+   ],
+   "_reason": "3 changed CPU-path files (main.F90, tau_m_mod.F90, control_mod.F90) x 9 macro sets; 1 build file (Prog/Makefile: conditional GPU source line, reviewed); no other changed files. Re-derive after the rebase on 212."
+  },
+  {
+   "id": "gpu_none_ctest",
+   "type": "log_regex",
+   "checks": [
     {
      "file": "gpunone/ctest.log",
      "stamp_file": "gpunone/stamp",
      "exit_file": "gpunone/ctest.exit",
+     "stamp_contains": [
+      "plant no"
+     ],
      "regex": "(\\d+)% tests passed, (\\d+) tests failed out of (\\d+)",
      "equals": [
       100,
@@ -846,8 +905,8 @@
    "like": "faults",
    "replace": {
     "cases": {
-     "st_nv_def_pp_hub6x6_cb": "tau",
-     "st_nv_log_hub6x6_cb": "tau"
+     "st_nv_def_pp_hub6x6_cb": "tau: pass",
+     "st_nv_log_hub6x6_cb": "tau: pass"
     }
    },
    "expect": "FAIL",
@@ -1011,7 +1070,7 @@
   },
   {
    "id": "ctl_ppcmp_planted_token",
-   "like": "gpu_none_static",
+   "like": "gpu_none_ppcmp",
    "expect": "FAIL",
    "replace": {
     "checks": [
@@ -1019,13 +1078,25 @@
       "file": "gpunone_plant/ppcmp.txt",
       "stamp_file": "gpunone_plant/stamp",
       "exit_file": "gpunone_plant/ppcmp.exit",
-      "regex": "comparisons (\\d+) preprocessor_errors (\\d+) differing_lines (\\d+) added_or_deleted (\\d+) build_files (\\d+)$",
-      "equals": [
-       18,
-       0,
-       0,
-       0,
-       1
+      "stamp_contains": [
+       "plant --plant"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "ctl_ctest_one_failure",
+   "like": "gpu_none_ctest",
+   "expect": "FAIL",
+   "replace": {
+    "checks": [
+     {
+      "file": "gpunone_m_ctestfail/ctest.log",
+      "stamp_file": "gpunone_m_ctestfail/stamp",
+      "exit_file": "gpunone_m_ctestfail/ctest.exit",
+      "stamp_contains": [
+       "plant no"
       ]
      }
     ]
@@ -1074,5 +1145,22 @@
    "kind": "nan:SpinZ_eq/obser"
   }
  ],
- "gpunone": true
+ "gpunone": true,
+ "false_alarm_budget": 0.07,
+ "_false_alarm_reason": "compare2 alpha 0.01 with Sidak inside (m = 11); paired point tests per path ~2.5 % each at the observed LOG ratio, 2 paths; precision mean ~1 %.",
+ "blocked": [
+  {
+   "item": "acceptance 6 (GPU=intel build on intel + 6x6 run)",
+   "reason": "oneAPI version mix on intel (ifx 2025.3, MKL 2026.2); decision 4 of 2026-10-29"
+  }
+ ],
+ "log_mutations": [
+  {
+   "src": "gpunone",
+   "dst": "gpunone_m_ctestfail",
+   "file": "ctest.log",
+   "kind": "ctest_one_failure",
+   "exit_file": "ctest.exit"
+  }
+ ]
 }

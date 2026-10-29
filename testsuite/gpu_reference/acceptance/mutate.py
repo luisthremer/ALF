@@ -4,7 +4,8 @@
 usage: mutate.py RUN_IN RUN_OUT KIND
   KIND  scale:<dataset>:<rel>     multiply one entry of the middle bin of <dataset> by (1 + rel): the smallest entry
                                   whose magnitude is >= 1e-5 of the dataset maximum (above the per-entry floor)
-        shift:<dataset>:<k>       add k * (standard error of the mean over bins) to every bin of <dataset>
+        shift:<dataset>:<k>       add k * (error of the mean from 8-fold rebinned bins, i.e. robust against
+                                  autocorrelation) to every bin of <dataset>
         nan:<dataset>             put a NaN into one bin of <dataset>
         drop:<group>              delete an HDF5 group or dataset (e.g. SpinZ_tau)
         seeds                     rotate the seeds file by 37 lines (must break a same-seed or identity gate)
@@ -47,7 +48,11 @@ def main(a, b, kind):
                     flat[i] = flat[i] * (1 + float(arg[1]))
                     x[x.shape[0] // 2] = flat.reshape(x[x.shape[0] // 2].shape)
                 elif k == "shift":
-                    x = x + float(arg[1]) * x.std(axis=0, ddof=1) / np.sqrt(x.shape[0])
+                    nb = (x.shape[0] // 8) * 8
+                    if nb < 16:
+                        sys.exit("too few bins for an 8-fold rebinned error")
+                    xb = x[x.shape[0] - nb:].reshape((nb // 8, 8) + x.shape[1:]).mean(axis=1)
+                    x = x + float(arg[1]) * xb.std(axis=0, ddof=1) / np.sqrt(xb.shape[0])
                 else:
                     x.reshape(x.shape[0], -1)[x.shape[0] // 2, 0] = np.nan
                 d[...] = x
@@ -74,10 +79,17 @@ def main(a, b, kind):
         print("mutation did not change anything")
         return 1
     pp = os.path.join(b, "provenance.json")
-    if os.path.isfile(pp):
-        p = json.load(open(pp))
-        p["mutated"] = kind
-        json.dump(p, open(pp, "w"), indent=1)
+    if not os.path.isfile(pp):
+        print("no provenance.json in the source run")
+        return 1
+    p = json.load(open(pp))
+    p["mutated"] = kind
+    p["outputs_before_mutation"] = p.get("outputs", {})
+    p["outputs"] = {f: hashlib.sha256(open(os.path.join(b, f), "rb").read()).hexdigest() if os.path.isfile(os.path.join(b, f)) else None
+                    for f in ("info", "data.h5", "run.log")}
+    if k == "seeds":
+        p.setdefault("inputs", {})["seeds_sha256"] = hashlib.sha256(open(os.path.join(b, "seeds"), "rb").read()).hexdigest()
+    json.dump(p, open(pp, "w"), indent=1)
     print("mutated", b, kind)
     return 0
 

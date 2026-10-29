@@ -16,6 +16,7 @@ D=$1; BIN=$2; CFG=$3; shift 3
 ALLOW=0; [ "${1:-}" = --allow-debug ] && { ALLOW=1; shift; }
 BJ=${BIN%.out}.build.json; [ -x "$BIN" ] && [ -f "$BJ" ] || { echo "no stamped binary $BIN"; exit 2; }
 [ -f "$CFG/parameters" ] && [ -f "$CFG/seeds" ] || { echo "no prepared config in $CFG"; exit 2; }
+ls "$CFG" | grep -q -E '^(data\.h5|info|confout|confin)' && { echo "refusing: $CFG contains outputs of an earlier run"; exit 2; }
 ENVX=()
 for kv in "$@"; do
   case "$kv" in
@@ -35,6 +36,10 @@ GPUCK=-1
 if command -v nvidia-smi > /dev/null; then
   nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader > gpu_before.txt 2>&1; GPUCK=$?
 else : > gpu_before.txt; fi
+# user load: other users' processes above 10 % CPU (the idle check on machines without nvidia-smi, e.g. intel)
+OTHERS=$(ps -eo user=,pcpu= | awk -v me="$USER" '$1!=me && $1!="root" && $2>10 {print $1":"$2}' | tr '\n' ' ')
+LOADOK=1; [ -n "$OTHERS" ] && LOADOK=0
+echo "$OTHERS" > load_before.txt
 OFF=""; [ "$GPUB" = 1 ] && OFF="OMP_TARGET_OFFLOAD=MANDATORY"
 T=${ACC_TIMEOUT:-900}
 LOCK=(); [ "$GPUB" = 1 ] && [ -n "${ACC_GPU_LOCK:-}" ] && LOCK=(flock "$ACC_GPU_LOCK")
@@ -51,9 +56,9 @@ GPUCK2=-1
 if command -v nvidia-smi > /dev/null; then
   nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader > gpu_after.txt 2>&1; GPUCK2=$?
 else : > gpu_after.txt; fi
-python3 - "$D" "$BIN" "$BJ" "$rc" "$ALLOW" "$GPUCK" "$GPUCK2" "$ENVF" "${ENVX[@]}" <<'PY'
+python3 - "$D" "$BIN" "$BJ" "$rc" "$ALLOW" "$GPUCK" "$GPUCK2" "$ENVF" "$LOADOK" "${ENVX[@]}" <<'PY'
 import json, sys, os, hashlib
-d, b, bj, rc, allow, ck, ck2, envf = sys.argv[1:9]; extra = sys.argv[9:]
+d, b, bj, rc, allow, ck, ck2, envf, loadok = sys.argv[1:10]; extra = sys.argv[10:]
 h = lambda p: hashlib.sha256(open(p, "rb").read()).hexdigest() if os.path.isfile(p) else None
 env = dict(l.rstrip("\n").split("=", 1) for l in open(os.path.join(d, "env.txt")) if "=" in l) if os.path.isfile(os.path.join(d, "env.txt")) else {}
 ds = {}
@@ -70,7 +75,8 @@ p = {"schema": "alf-acc-prov/1", "run_dir": d, "binary": b, "binary_sha256": h(b
      "inputs": {"parameters_sha256": h(os.path.join(d, "parameters")), "seeds_sha256": h(os.path.join(d, "seeds"))},
      "extra_env": extra, "allow_debug": allow == "1", "env_file": envf, "env_file_sha256": h(envf),
      "env": env, "debug_env_present": sorted(k for k in env if k.startswith(("ALF_GPU_", "ALFSH_"))),
-     "gpu_check_rc": int(ck), "gpu_check_after_rc": int(ck2),
+     "gpu_check_rc": int(ck), "gpu_check_after_rc": int(ck2), "load_ok": loadok == "1",
+     "load_before": open(os.path.join(d, "load_before.txt")).read().split(),
      "gpu_before": open(os.path.join(d, "gpu_before.txt")).read().splitlines(),
      "gpu_after": open(os.path.join(d, "gpu_after.txt")).read().splitlines(),
      "start": open(os.path.join(d, "start.txt")).read().strip(), "end": open(os.path.join(d, "end.txt")).read().strip(),

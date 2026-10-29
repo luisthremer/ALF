@@ -38,7 +38,11 @@ routine tests and the ordering canary `t_order`, and is documented per routine a
 - `testsuite/gpu_reference/acceptance/302a.json`, `docs/gpu/scripts/intel/t302a_*`
 - Not allowed: the ONEMKL guards in `gpu_stab_mod`, `gpu_state_mod`, `gpu_wrap_mod` (that is 302b).
 
-## Acceptance (pre-registered in `302a.json` before implementation; see `302a.draft.json`)
+## Acceptance (pre-registered in `302a.json` + `302a.nvidia.json` before implementation; see the two drafts)
+Two parts, per the machine split: the B580 tests run on `intel` (`302a.json`), GPU=none identity (GNU and ifx) and the
+unchanged CUDA backend on `nividia` (`302a.nvidia.json`). Controls need three test-only switches that 302a adds to
+`testsuite/alf_la.tests`: `ALF_LA_TEST_BREAK_ORDER=1` (ordering deliberately broken), `ALF_LA_TEST_POISON_INFO=1`
+(poisoned device info), `ALF_LA_TEST_WRONG_LD=1` (wrong leading dimension); each must make its test fail.
 1. `alf_la.tests` under `GPU=intel` on the B580: every routine test passes with the same tolerances as HOST/CUDA
    (unchanged test assertions); positive control: the poisoned-info and wrong-ld fault tests fail as on CUDA.
 2. `t_order` (RAW/WAR/WAW without host waits) passes 100/100 repetitions; positive control: the test with the ordering

@@ -4,13 +4,14 @@
 - **Owner agent:** fortran-gpu-dev (Sonnet)
 - **Review:** numerics-reviewer (code, acceptance file, scripts) · **Verification:** acceptance-verifier
 - **Depends on:** the owner's approval of `gpu-port-process-lanes` (harness)
-- **Status:** draft (2026-10-29), not started
+- **Status:** draft (2026-10-29), not started; scope confirmed by the owner's decision 2(a) of 2026-10-29
 
 Must land before any further ticket closes (207 included).
 
 ## Goal
-Debug and fault switches can no longer reach a production run unnoticed; every run states what it is; the default GPU
-path becomes run-to-run reproducible if the owner decides so; two cheap gates guard determinism and non-interference.
+Debug and fault switches can no longer reach a production run unnoticed; every run states what it is; the cause of the
+default-path non-reproducibility and of the default paired-test spread (207: sd ratio 1.707 > 1.25) is found and, where
+it is the reduction order, fixed (decision 2a); two cheap gates guard determinism and non-interference.
 
 ## Context
 - Today these are read without a self-test gate and change production numerics (measured or read in the code,
@@ -37,7 +38,9 @@ path becomes run-to-run reproducible if the owner decides so; two cheap gates gu
 2. Info lines at setup: "GPU debug env: none" or the list of variables read with non-default values; "fault X armed"
    whenever a fault is active; a provenance header (git hash from `git.h`, compile flags, backend).
 3. `ALF_GPU_FAULT_TAU=eps:<x>` (graded fault: one element of GT0 at one slice × (1 + x)); `ALF_GPU_TAUDIAG_SEED`.
-4. **Only if the owner decides (gate of 2026-10-29):** fixed-order reductions in `k_colnorms`, `k_lognorm`, `k_prec`
+4. **Cause first (decision 2a):** measure whether the pivot order from `k_colnorms` (and `la_qrpp`'s sort) differs run to
+   run and whether it explains the default-path spread (paired statistic on dev seeds, with the fix vs without). Then
+   fixed-order reductions in `k_colnorms`, `k_lognorm`, `k_prec`
    (one thread per column, serial sum; or a fixed-shape two-stage tree into scratch); `cusolverDnSetDeterministicMode`
    and `cublasSetAtomicsMode(NOT_ALLOWED)` in `la_init`; `CUBLAS_WORKSPACE_CONFIG=:4096:8` in the run scripts.
 5. Gates: (a) run-twice-identical — the same binary twice, same seeds, all `data.h5` datasets and full-precision
@@ -48,10 +51,12 @@ path becomes run-to-run reproducible if the owner decides so; two cheap gates gu
 - Production refusal: each listed variable set alone in a production run → the run refuses (exit ≠ 0, message names
   it); positive control: the same variable with `ALF_GPU_SELFTEST` → accepted.
 - Graded fault: `eps:1e-9` FAILS the 207 self-test, `eps:1e-13` PASSES.
-- Determinism (if item 4 is decided): gate (a) bit-identical; micro-tests of the reductions (1000 calls, tie cases)
+- Determinism: gate (a) bit-identical on both paths; micro-tests of the reductions (1000 calls, tie cases)
   bit-identical; all 204–207 kernel self-tests and fault controls unchanged; same-seed vs CPU within the 207 bounds.
 - `GPU=none`: preprocessed sources of changed files identical (`acc_gpunone.sh`), ctest count unchanged.
 - Cost of item 4 reported (s/sweep, N = 144 and 400).
+- Report for 207: the default paired statistic (dev seeds) with and without the fix; whether the 1.707 is explained.
+  This is evidence for the owner, not a 207 acceptance.
 
 ## Out of scope
 New numerics; observables; anything in 207's open decisions.

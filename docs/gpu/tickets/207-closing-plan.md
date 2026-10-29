@@ -1,24 +1,28 @@
-# 207 – how it would close under the verification standard (draft, 2026-10-29)
+# 207 – how it closes under the verification standard (updated with the owner's decisions of 2026-10-29)
 
 207 is on hold (ticket 207 on branch `gpu-port-207-wip`). The existing `mgr207*` and agent results are
-**expectations only**, not acceptance. Order:
+**expectations only**, not acceptance. Decided at the gate of 2026-10-29 (DECISIONS.md):
+- acceptance 3: the rewrite approved on 2026-10-29 stays in force, **including the sd condition** (decision 1);
+- the default paired FAIL (1.707 > 1.25): find the cause first in ticket 212 (decision 2a); until then 207 stays open;
+- same-seed bound 1e-9; the LOG 12×12 excess (1.214e-9) is an open finding of the 206 code (decision 3);
+- acceptance 6 (Intel) is BLOCKED, never PASS (decision 4); the verdict then reads BLOCKED, not PASS;
+- budget: T1 ≈ 90, T2 ≈ 120 GPU-min (decision 11).
 
-1. **Owner decisions** (gate of 2026-10-29), each recorded in DECISIONS.md and the acceptance file:
-   - the acceptance-3 criterion: the original max rule, the rewritten rule (approved 2026-10-29), or a new
-     pre-registered criterion calibrated with null and known-bias runs, applied to fresh seeds;
-   - the default-path paired FAIL (sd ratio 1.707 > 1.25): (a) find the cause first (`k_colnorms` pivot order in
-     `la_qrpp`; a fixed-order fix in 212 may make it pass without a criterion change), (b) a new pre-registered
-     criterion, (c) keep 207 open;
-   - Intel acceptance 6 recorded as BLOCKED (oneAPI version mix) or not;
-   - the GPU-time budget for T2 (~2 h unattended).
-2. **Freeze the candidate:** a commit on `gpu-port-207-wip` (or its successor) that contains the code, the ticket and
-   `testsuite/gpu_reference/acceptance/207.json` (from `207.draft.json` and the decisions). Record the sha.
-3. **212 and the harness have landed** (212 changes code that 207 shares, so the 207 candidate is rebased on it).
-4. **Positive controls first:** `ALF_GPU_TAUSWAP=8` (LOG) and `ALF_GPU_TAU_NS=0` (default) through the paired
-   statistic on dev seeds; if they are not killed, the paired test cannot see the defect it was built for → owner.
-5. **Full T2** (`acc_driver.py --who mgr`): deterministic gates in full, statistical gates once on fresh seeds, all
-   controls; `acc_gpunone.sh`.
-6. **Second review** (numerics-reviewer on Opus): (a) the code `64ecde72..candidate` including the Opus diagnostic and
-   the review fixes, (b) `207.json`, (c) any script change. **acceptance-verifier** recomputes every verdict.
-7. **Commit** (`acc_check_commit.sh`: only `docs/**` may differ from the accepted sha), push to `fork`; archive the
-   evidence (`~/alf-gpu/archive/t207/`).
+Still open with the owner: whether 207 may close while acceptance 6 is BLOCKED, and whether it stays open on the LOG
+12×12 same-seed pair or that 206 finding gets its own ticket.
+
+Order:
+1. **212 lands** (hardening, cause of the default-path spread, deterministic reductions). 212 changes code 207 shares.
+2. **Rebase** the 207 code on the accepted 212 commit. Re-derive in `207.draft.json`: `base_sha`, the base builds,
+   the GPU=none counts, the debug-variable switch that 212 introduces (control runs need it), `parameters_sha256`.
+3. **Pre-register** `testsuite/gpu_reference/acceptance/207.json` in its own commit (recorded in the ticket and
+   DECISIONS.md); review part (b) of `numerics-reviewer` before any candidate result is seen.
+4. **Freeze the candidate** (a later commit on the 207 branch); the implementer runs T1 (`--who agent`, dev seeds).
+5. **Positive controls first** inside T2: `ALF_GPU_TAUSWAP=8` (LOG) and `ALF_GPU_TAU_NS=0` (default) through the
+   paired statistic; if they are not killed, the paired test cannot see the defect it was built for → owner.
+6. **Full T2** (`acc_ship.sh … mgr …`, `acc_driver.py --who mgr`): deterministic gates in full, statistical gates once
+   on fresh seeds, all controls, GPU=none.
+7. **Second review** (numerics-reviewer on Opus): (a) code `base..candidate` incl. the Opus diagnostic and the review
+   fixes, (c) any script change; **acceptance-verifier** recomputes every verdict.
+8. **Commit** (`acc_check_commit.sh`: only `docs/**` outside `docs/gpu/scripts/` may differ from the accepted sha),
+   push to `fork`; archive the evidence (`~/alf-gpu/archive/t207/`).

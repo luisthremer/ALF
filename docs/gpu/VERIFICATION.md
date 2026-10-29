@@ -5,8 +5,9 @@ Goal: no error reaches a commit. Correctness ranks above speed. Tooling: `testsu
 2026-10-29 (determinism, MPS, CPU-alongside) and the research notes R4–R9 (outside the repo).
 
 ## 1. Test the artifact we commit
-- Acceptance runs only on binaries built from `git archive <candidate-sha>` (`acc_ship.sh`, `acc_build.sh`): read-only
-  source, tarball sha256 checked on both ends and again before each build, never a synced working tree. A working tree
+- Acceptance runs only on binaries built from `git archive <candidate-sha>` (`acc_ship.sh`, `acc_build.sh`): the build
+  tree is extracted from the tarball after its sha256 is re-checked, and the build record carries that hash, which the
+  verdict checks; each party (implementer, manager) has its own candidate root, so T2 never reuses T1's binaries. A working tree
   is not a candidate. The tools that judge a candidate (`acceptance/`, `compare2.py`, `configs*.py`) and its acceptance
   file must be unchanged since the pre-registration commit; `acc_ship.sh` refuses otherwise.
 - The committed sha equals the accepted sha, except for `docs/**` (`acc_check_commit.sh`). Any other change after
@@ -39,7 +40,10 @@ or recommended option.
 `verdict.py` computes PASS/FAIL for every gate from raw outputs and writes `verdict.json`/`verdict.md`; report tables
 are generated from it, never assembled by hand. NaN or Inf, a missing file, line or dataset, an empty comparison set,
 a count differing from the acceptance file, a nonzero exit, a timeout, a GPU-inactive run and a provenance mismatch
-are all FAIL. `verdict.py --selfcheck` (synthetic data, CPU only) must PASS whenever the script changes.
+are never a PASS: they give INPUT_ERROR (the gate could not be evaluated), which is also never counted as a
+detection. FAIL means the gate's own criterion caught something. BLOCKED items (owner-decided, e.g. 207 acceptance 6)
+make the overall verdict BLOCKED, never PASS. `verdict.py --selfcheck` (synthetic data, CPU only) must PASS whenever
+the script changes; `verdict.py --lint` must pass for every acceptance file (the driver refuses otherwise).
 `compare2.py` is fail-closed since 2026-10-29 (exit 3: NaN, missing observables, m = 0, identical seeds or means
 without `--same-seed`). The per-ticket `tNNN_*` scripts are development tools only.
 
@@ -53,11 +57,11 @@ is not a gate.
 | Gate | Control (must FAIL) |
 |---|---|
 | kernel self-test | the `ALF_GPU_FAULT*` classes; a graded fault near 10× the tolerance (hardening ticket) |
-| same-seed vs CPU oracle | `mutate.py scale:<tau dataset>:1e-6` on an entry above the floor (FAIL); `nan:`, `drop:` (INPUT_ERROR) |
+| same-seed vs CPU oracle | `mutate.py scale:<tau dataset>:1e-3` on the smallest entry above 1e-5 of the maximum (FAIL; detection limit ~1e-9 × max\|dataset\|); `nan:`, `drop:` (INPUT_ERROR) |
 | paired same-trajectory | `ALF_GPU_TAUSWAP=8` (LOG), `ALF_GPU_TAU_NS=0` (default); `mutate.py taudiag_inflate/taudiag_bias` |
 | precision mean | `ALF_GPU_NS=0` (once per toolchain); known blind spot: the 207 ZUNMQR defect (+17 % on the τ mean) |
 | compare2 | `mutate.py shift:<obs>:5` (5 standard errors of the mean, FAIL); `nan:` (INPUT_ERROR) |
-| GPU=none identity | one-token change in an `#else` branch (ppcmp); rotated seeds (`data.h5` identity) |
+| GPU=none identity | a planted declaration appended to a compared file (`acc_gpunone.sh --plant`); a copy of the ctest log with one failed test; other seeds (`data.h5` identity) |
 | replay / determinism | a 1-ulp-level difference (`mutate.py scale:…:1e-12`) |
 
 ## 6. Statistical gates with known power
@@ -83,7 +87,7 @@ only once calibrated), and maxima are compared only between runs of identical le
 | Tier | Who | Content | GPU time (207-sized ticket) |
 |---|---|---|---|
 | T0 fast | implementer, every iteration | self-tests and fault controls; 6×6 same-seed both paths | ~2.5 min |
-| T1 pre-candidate | implementer, once, on its own frozen candidate (`git archive`; `acc_driver.py --who agent` maps every acceptance seed set to the dev seeds) | the full acceptance on dev seeds | ~90 min |
+| T1 pre-candidate | implementer, once, on its own frozen candidate (`git archive`; `acc_driver.py --who agent` maps every acceptance set accN to devN = dev seeds rotated by 37·N lines) | the full acceptance on dev seeds | ~90 min |
 | T2 acceptance | manager, frozen candidate, unattended (`acc_driver.py`) | all deterministic gates in full; every statistical gate once on fresh seeds; all positive controls | ~120 min |
 
 On top of T2 the manager audits the implementer's report against the raw outputs (`audit.py`) and lists every

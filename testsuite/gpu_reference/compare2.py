@@ -38,7 +38,7 @@ EXIT CODE  0: PASS, i.e. no observable differs and all errors are resolved (or a
  e.g. same-seed runs).  1: at least one resolved observable differs (FAIL).
  2: INCONCLUSIVE: no resolved observable differs, but at least one observable is UNDER-RESOLVED (its error
  cannot be trusted; run longer / more bins). Not green.
- 3: INPUT ERROR (fail-closed, 2026-10-29): a non-finite value in any bin of either run; no tested observable
+ 3: INPUT ERROR (fail-closed, 2026-10-29; also any unexpected exception, so exit 1 always means a real difference): a non-finite value in any bin of either run; no tested observable
  (m = 0); fewer tested observables than --expect-m; an observable named in --expect missing; identical `seeds`
  files without --same-seed (or a missing `seeds` file); identical means without --same-seed. Not green.
 """
@@ -360,5 +360,17 @@ def main(argv=None):
     return {"PASS": 0, "FAIL": 1, "INCONCLUSIVE": 2}[res["verdict"]]
 
 
+def main_failclosed(argv=None):
+    """Any unexpected exception (a bug here, in pyALF or scipy) is exit 3, never exit 1 ("differs")."""
+    try:
+        return main(argv)
+    except SystemExit as e:  # argparse usage errors and explicit exits
+        return e.code if isinstance(e.code, int) and e.code != 1 else 3
+    except Exception as e:  # noqa: BLE001
+        print(f"INPUT ERROR: unexpected {type(e).__name__}: {e}")
+        print("RESULT: INPUT_ERROR")
+        return 3
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main_failclosed())

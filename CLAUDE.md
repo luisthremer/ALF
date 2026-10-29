@@ -101,9 +101,9 @@ host↔device transfer is documented. Target the default and `STABLOG` stabiliza
   in the sudo group). No changes to system settings, groups, drivers or packages: ask the owner.
 - Each test/benchmark run ≲ 15 min; ask the owner before anything longer. A T2 acceptance sequence of such runs
   (~2 h unattended) needs the owner's standing approval of the per-ticket GPU budget.
-- **nividia GPU sharing:** one GPU process at a time (two time-sliced CUDA processes ran 15× slower each, 2026-10-29),
+- **nividia GPU sharing:** one GPU process at a time (two time-sliced CUDA processes ran 13–15× slower each, 2026-10-28/29),
   except under the project's MPS daemon (approved 2026-10-29, DECISIONS.md): started and stopped only
-  by the manager or the acceptance driver, as the ordinary user, `CUDA_VISIBLE_DEVICES=0`, pipe/log directories under
+  by the manager (the acceptance driver itself runs GPU jobs one at a time, without MPS), as the ordinary user, `CUDA_VISIBLE_DEVICES=0`, pipe/log directories under
   `~/alf-gpu/work/mps/`, at most 2 concurrent clients, never while another user's process is on the GPU; afterwards
   `echo quit | nvidia-cuda-mps-control` and check that no MPS process is left; after a killed client, quit the daemon.
   Measured 2026-10-29: two MPS clients each at solo speed, outputs bit-identical to a solo run.

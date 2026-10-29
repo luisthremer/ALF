@@ -12,7 +12,8 @@ missing run/file/line/dataset, provenance mismatch, crash, timeout, NaN/Inf, cou
 undeclared or leaked debug variable, GPU busy at start, mutated copy outside a control). A gate passes only with PASS.
 A control is "killed" only by its expected outcome: normally FAIL, i.e. the criterion itself caught the planted defect;
 an INPUT_ERROR never counts as a detection unless the control expects INPUT_ERROR (e.g. a NaN or a dropped dataset).
-Exit code: 0 only if every gate PASSes and every control gives its expected outcome; 1 otherwise; 2 on a usage error.
+Exit code: 0 only if every gate PASSes and every control gives its expected outcome and nothing is BLOCKED; 3 if
+all of that holds but the acceptance file lists BLOCKED items (never a pass); 1 otherwise; 2 on a usage error.
 """
 import argparse
 import hashlib
@@ -97,6 +98,14 @@ def check_prov(rd, acc, expect_rc=0, gpu_exclusive=None):
             raise InputFail(f"{rid}: built from {have}, acceptance names {want} (>= 12 hex digits needed)")
     if p.get("binary_sha256") != b.get("binary_sha256"):
         raise InputFail(f"{rid}: binary sha256 differs from its build record")
+    tkey = "base_tar_sha256" if b.get("source") == "base_src" else "tar_sha256"
+    if not b.get("tar_sha256_built") or b.get("tar_sha256_built") != b.get("candidate", {}).get(tkey):
+        raise InputFail(f"{rid}: binary not built from the verified tarball ({b.get('tar_sha256_built')} vs {b.get('candidate', {}).get(tkey)})")
+    for f, h in (p.get("outputs") or {}).items():
+        if h is not None and hashlib.sha256(open(need(os.path.join(rd, f)), "rb").read()).hexdigest() != h:
+            raise InputFail(f"{rid}: {f} changed after the run (sha256 differs from provenance)")
+    if not p.get("outputs") or p["outputs"].get("run.log") is None:
+        raise InputFail(f"{rid}: no output hashes in provenance")
     if sorted(p.get("extra_env", [])) != sorted(decl.get("env", [])):
         raise InputFail(f"{rid}: environment {p.get('extra_env')} differs from the declared {decl.get('env', [])}")
     declared = {kv.split("=", 1)[0] for kv in decl.get("env", [])}
@@ -112,11 +121,20 @@ def check_prov(rd, acc, expect_rc=0, gpu_exclusive=None):
             raise InputFail(f"{rid}: seeds differ from the driver's record for {key}")
     excl = acc.get("gpu_exclusive", True) if gpu_exclusive is None else gpu_exclusive
     if bdecl.get("gpu", True) and excl:
-        if p.get("gpu_check_rc", 0) != 0:
-            raise InputFail(f"{rid}: GPU idle check failed (rc {p.get('gpu_check_rc')})")
-        if [l for l in p.get("gpu_before", []) if l.strip()]:
-            raise InputFail(f"{rid}: GPU not idle at start: {p['gpu_before']}")
-    if bdecl.get("gpu", True) and decl.get("gpu_active", True) and not p.get("from_refcache"):
+        for k in ("gpu_check_rc", "gpu_before", "load_ok"):
+            if k not in p:
+                raise InputFail(f"{rid}: provenance lacks {k}")
+        if acc.get("machine") == "intel":  # no nvidia-smi: the user-load check stands in for the idle check
+            if p["gpu_check_rc"] != -1 or not p["load_ok"]:
+                raise InputFail(f"{rid}: intel load check failed or unexpected GPU tool (rc {p['gpu_check_rc']})")
+        else:
+            if p["gpu_check_rc"] != 0:
+                raise InputFail(f"{rid}: GPU idle check failed (rc {p['gpu_check_rc']})")
+            if [l for l in p["gpu_before"] if l.strip()]:
+                raise InputFail(f"{rid}: GPU not idle at start: {p['gpu_before']}")
+    if bdecl.get("gpu", True) and not p.get("from_refcache"):
+        if p.get("env", {}).get("OMP_TARGET_OFFLOAD") != "MANDATORY":
+            raise InputFail(f"{rid}: GPU run without OMP_TARGET_OFFLOAD=MANDATORY (host fallback possible)")
         text = read(os.path.join(rd, "run.log"))
         if os.path.isfile(os.path.join(rd, "info")):
             text += read(os.path.join(rd, "info"))
@@ -195,12 +213,14 @@ def g_selftest(g, root, acc):
         rd = os.path.join(root, r)
         p = check_prov(rd, acc, expect_rc=None)
         log = read(os.path.join(rd, "run.log"))
-        if p["exit_code"] == 1 and "FAILED" in log:
-            raise CriterionFail(f"{r}: self-test FAILED: {[l.strip() for l in log.splitlines() if 'FAILED' in l][:1]}")
+        fpat = g.get("fail_regex", r"GPU self-test FAILED: ")
+        fl = [l.strip() for l in log.splitlines() if re.search(fpat, l)]
+        if p["exit_code"] == 1 and fl:
+            raise CriterionFail(f"{r}: self-test FAILED: {fl[:1]}")
         if p["exit_code"] != 0:
-            raise InputFail(f"{r}: exit code {p['exit_code']}")
-        if "FAILED" in log:
-            raise CriterionFail(f"{r}: FAILED line with rc 0")
+            raise InputFail(f"{r}: exit code {p['exit_code']} without a self-test FAILED line (crash or setup error)")
+        if fl:
+            raise CriterionFail(f"{r}: self-test FAILED line with rc 0")
         for pat in g.get("require_lines", []):
             if not re.search(pat, log):
                 raise InputFail(f"{r}: required line missing: {pat}")
@@ -243,11 +263,11 @@ def g_faults(g, root, acc):
         for pat in g.get("armed_lines", []):
             if not re.search(pat, log):
                 raise InputFail(f"{r}: fault not shown as armed ({pat})")
-        fl = [l for l in log.splitlines() if "FAILED" in l]
+        fl = [l for l in log.splitlines() if re.search(g.get("fail_regex", r"GPU self-test FAILED: "), l)]
         if p["exit_code"] == 0:
             raise CriterionFail(f"{r}: fault not detected (rc 0)")
-        if p["exit_code"] != 1:
-            raise InputFail(f"{r}: exit code {p['exit_code']} (a crash or timeout is not a detection)")
+        if p["exit_code"] != 1 or not fl:
+            raise InputFail(f"{r}: exit code {p['exit_code']} without a self-test FAILED line (a crash or timeout is not a detection)")
         if not any(expect in l for l in fl):
             raise CriterionFail(f"{r}: FAILED line does not name '{expect}': {fl[:1]}")
         res.append({"run": r, "failed_line": fl[0].strip()[:120]})
@@ -275,8 +295,10 @@ def g_same_seed(g, root, acc):
     res = []
     for ra, rb, nbin in g["pairs"]:
         A, B = os.path.join(root, ra), os.path.join(root, rb)
-        check_prov(A, acc, 0)
-        check_prov(B, acc, 0, gpu_exclusive=False)
+        pa_ = check_prov(A, acc, 0)
+        pb_ = check_prov(B, acc, 0, gpu_exclusive=False)
+        if pa_["inputs"]["parameters_sha256"] != pb_["inputs"]["parameters_sha256"]:
+            raise InputFail(f"{ra}/{rb}: parameters differ")
         if read(os.path.join(A, "seeds")) != read(os.path.join(B, "seeds")):
             raise InputFail(f"{ra}/{rb}: seeds differ (same-seed gate)")
         da, db = h5_datasets(os.path.join(A, "data.h5")), h5_datasets(os.path.join(B, "data.h5"))
@@ -402,6 +424,8 @@ def g_precision(g, root, acc):
             if key not in gp or any(key not in c for c in cps):
                 raise InputFail(f"{case['gpu']}: Precision {key} missing")
             cm = max(c[key][0] for c in cps)
+            if gp[key][0] <= 0:
+                raise InputFail(f"{case['gpu']}: GPU mean {key} is not positive")
             if cm <= 0:
                 raise InputFail(f"{case['gpu']}: CPU mean {key} is zero")
             out[key] = {"gpu_mean": gp[key][0], "gpu_max": gp[key][1], "cpu_mean_max": cm, "mean_ratio": gp[key][0] / cm,
@@ -424,8 +448,15 @@ def g_compare2(g, root, acc):
            "--alpha", str(g["alpha"]), "--min-bins", str(g["min_bins"])]
     p = subprocess.run(cmd, capture_output=True, text=True)
     tail = p.stdout.strip().splitlines()[-1:] if p.stdout else []
-    if p.returncode == 1:
-        raise CriterionFail(f"compare2: an observable differs {tail}")
+    if p.returncode == 1:  # a real difference only if the JSON says so; a traceback also exits 1
+        try:
+            c = json.loads(read(js))
+            real = c.get("verdict") == "FAIL" and any(r.get("differs") and not r.get("under") for r in c.get("rows", []))
+        except (InputFail, ValueError):
+            real = False
+        if real:
+            raise CriterionFail(f"compare2: an observable differs {tail}")
+        raise InputFail(f"compare2 exit 1 without a FAIL verdict in its JSON (crash?): {p.stderr.strip()[-300:]}")
     if p.returncode != 0:
         raise InputFail(f"compare2 exit {p.returncode} (2 = inconclusive, 3 = input error): {tail} {p.stderr.strip()[-200:]}")
     c = json.loads(read(js))
@@ -441,20 +472,57 @@ def g_log_regex(g, root, acc):
         stamp = read(os.path.join(root, chk["stamp_file"]))
         if not acc.get("candidate_sha") or acc["candidate_sha"] not in stamp:
             raise InputFail(f"{chk['stamp_file']}: not stamped with candidate {acc.get('candidate_sha')}")
+        if os.path.exists(os.path.join(root, os.path.dirname(chk["file"]), "MUTATED")) and not acc.get("_allow_mutated"):
+            raise InputFail(f"{chk['file']}: mutated copy outside a control")
+        for need_s in chk.get("stamp_contains", []):
+            if need_s not in stamp:
+                raise InputFail(f"{chk['stamp_file']}: stamp lacks '{need_s}'")
         t = read(os.path.join(root, chk["file"]))
         m = re.search(chk["regex"], t, re.M)
         if not m:
             raise InputFail(f"{chk['file']}: no match for {chk['regex']}")
         groups = [int(x) for x in m.groups()]
         res.append({"file": chk["file"], "groups": groups})
-        if "exit_file" in chk and read(os.path.join(root, chk["exit_file"])).strip() != "0":
-            raise CriterionFail(f"{chk['exit_file']}: nonzero exit")
+        if "exit_file" in chk:
+            ev = read(os.path.join(root, chk["exit_file"])).strip()
+            if ev not in ("0", "1"):
+                raise InputFail(f"{chk['exit_file']}: exit value {ev} (crash, invalid run or failed plant)")
+            if ev == "1":
+                raise CriterionFail(f"{chk['exit_file']}: the check failed")
         if groups != chk["equals"]:
             raise CriterionFail(f"{chk['file']}: {groups} != {chk['equals']}")
     return res
 
 
-GATES = {"selftest": g_selftest, "faults": g_faults, "same_seed": g_same_seed, "replay": g_replay,
+def g_files_identical(g, root, acc):
+    """Two stamped harness outputs (e.g. acc_ctest.sh of base and candidate) have identical content in `file` after
+    dropping lines that match `ignore_regex` (timings). Both stamps must name the candidate; INVALID exits are input
+    errors; a MUTATED marker is allowed only in controls."""
+    res = []
+    for da, db in g["pairs"]:
+        texts = []
+        for d in (da, db):
+            stamp = read(os.path.join(root, d, "stamp"))
+            if acc["candidate_sha"] not in stamp:
+                raise InputFail(f"{d}: not stamped with the candidate")
+            if os.path.exists(os.path.join(root, d, "MUTATED")) and not acc.get("_allow_mutated"):
+                raise InputFail(f"{d}: mutated copy outside a control")
+            ev = read(os.path.join(root, d, g.get("exit_file", "ctest.exit"))).strip()
+            if ev != "0":
+                raise InputFail(f"{d}: exit value {ev} (the run itself did not pass)")
+            lines = [l for l in read(os.path.join(root, d, g["file"])).splitlines()
+                     if not (g.get("ignore_regex") and re.search(g["ignore_regex"], l))]
+            if len(lines) < g.get("min_lines", 1):
+                raise InputFail(f"{d}: only {len(lines)} lines to compare")
+            texts.append(lines)
+        diff = [i for i, (x, y) in enumerate(zip(*texts)) if x != y] + ([-1] if len(texts[0]) != len(texts[1]) else [])
+        res.append({"pair": [da, db], "lines": len(texts[0]), "differing": len(diff)})
+        if diff:
+            raise CriterionFail(f"{da} vs {db}: {len(diff)} lines differ (first index {diff[0]})")
+    return res
+
+
+GATES = {"files_identical": g_files_identical, "selftest": g_selftest, "faults": g_faults, "same_seed": g_same_seed, "replay": g_replay,
          "paired": g_paired, "precision": g_precision, "compare2": g_compare2, "log_regex": g_log_regex}
 
 
@@ -477,16 +545,30 @@ def resolve_control(c, acc):
     if base is None:
         raise SystemExit(f"control {c['id']}: unknown gate {c['like']}")
     allowed = {"runs", "pairs", "cases", "a", "b", "checks"}
-    extra = set(c.get("replace", {})) - allowed
+    rp = c.get("replace", {})
+    extra = set(rp) - allowed
     if extra:
         raise SystemExit(f"control {c['id']}: may replace only {sorted(allowed)}, not {sorted(extra)}")
-    return dict(base, **c.get("replace", {}), id=c["id"])
+    if "checks" in rp:  # only the files may change; regex, equals and the number of checks stay the gate's
+        if len(rp["checks"]) != len(base["checks"]):
+            raise SystemExit(f"control {c['id']}: must replace every check of {c['like']}")
+        merged = []
+        for new, old in zip(rp["checks"], base["checks"]):
+            if set(new) - {"file", "stamp_file", "exit_file", "stamp_contains"}:
+                raise SystemExit(f"control {c['id']}: a check may replace only file/stamp_file/exit_file/stamp_contains")
+            merged.append(dict(old, **new))
+        rp = dict(rp, checks=merged)
+    if "cases" in rp and isinstance(rp["cases"], dict):  # fault controls: only the runs change, not the expected sub-tests
+        if not set(rp["cases"].values()) <= set(base["cases"].values()):
+            raise SystemExit(f"control {c['id']}: expected sub-tests must be the gate's")
+    return dict(base, **rp, id=c["id"])
 
 
 def evaluate(acc, root):
     out = {"schema": "alf-acc-verdict/2", "ticket": acc.get("ticket"), "candidate_sha": acc.get("candidate_sha"),
-           "acceptance_sha256": acc.get("_sha256"), "gates": [], "controls": []}
-    ok = True
+           "acceptance_sha256": acc.get("_sha256"), "gates": [], "controls": [], "lint": lint_errors(acc),
+           "blocked": acc.get("blocked", []), "attempts": acc.get("_attempts", [])}
+    ok = not out["lint"]
     for g in acc["gates"]:
         v, r, why = run_gate(g, root, acc)
         out["gates"].append({"id": g["id"], "type": g["type"], "verdict": v, "result": r, "reason": why})
@@ -503,13 +585,17 @@ def evaluate(acc, root):
         out["controls"].append({"id": c["id"], "gate": cg["type"], "like": c["like"], "expect": exp, "outcome": v,
                                 "as_expected": good, "reason": why})
         ok &= good
-    out["overall"] = "PASS" if ok else "FAIL"
+    out["overall"] = ("BLOCKED" if out["blocked"] else "PASS") if ok else "FAIL"
     return out
 
 
 def write_md(v, path):
     L = [f"# Verdict ticket {v['ticket']} candidate {v['candidate_sha']}", "",
-         f"acceptance file sha256 `{v['acceptance_sha256']}`", "", f"**Overall: {v['overall']}**", "",
+         f"acceptance file sha256 `{v['acceptance_sha256']}`", "", f"**Overall: {v['overall']}**", ""]
+    L += [f"- LINT: {e}" for e in v.get("lint", [])]
+    L += [f"- BLOCKED: {b.get('item')} — {b.get('reason')}" for b in v.get("blocked", [])]
+    L += [f"- earlier attempt: {a}" for a in v.get("attempts", [])] + ([""] if v.get("lint") or v.get("blocked") or v.get("attempts") else [])
+    L += [
          "| gate | type | verdict | detail |", "|---|---|---|---|"]
     for g in v["gates"]:
         L.append(f"| {g['id']} | {g['type']} | {g['verdict']} | {(g['reason'] or json.dumps(g['result'], default=str))[:300]} |")
@@ -534,7 +620,8 @@ def selfcheck():
     ACT = "GPU tau pass (207): ACTIVE\n"
 
     def mkrun(name, data, info, log=ACT, build="gpu", env=(), allow=False, rc=0, seeds="1 2 3\n", debug=None,
-              cand=CAND, binsha="b" * 64, gpu_before=(), timed_out=False, mutated=None, decl=True):
+              cand=CAND, binsha="b" * 64, gpu_before=(), timed_out=False, mutated=None, decl=True,
+              tar_built="t" * 64, offload="MANDATORY", params="p"):
         d = os.path.join(tmp, name)
         os.makedirs(d)
         with h5py.File(os.path.join(d, "data.h5"), "w") as f:
@@ -544,11 +631,14 @@ def selfcheck():
         open(os.path.join(d, "run.log"), "w").write(log)
         open(os.path.join(d, "seeds"), "w").write(seeds)
         b = dict(name=build, configure=builds[build]["configure"], ALF_FLAGS_EXT="", binary_sha256="b" * 64,
-                 candidate={"sha": cand}, source="src")
+                 candidate={"sha": cand, "tar_sha256": "t" * 64}, source="src", tar_sha256_built=tar_built)
+        hh = lambda f: hashlib.sha256(open(os.path.join(d, f), "rb").read()).hexdigest()
+        envd = {"OMP_TARGET_OFFLOAD": offload} if (build == "gpu" and offload) else {}
         prov = {"schema": "alf-acc-prov/1", "binary_sha256": binsha, "build": b, "exit_code": rc, "timed_out": timed_out,
                 "debug_env_present": list(debug if debug is not None else [kv.split("=")[0] for kv in env]),
-                "extra_env": list(env), "gpu_before": list(gpu_before), "gpu_check_rc": 0,
-                "inputs": {"parameters_sha256": "p", "seeds_sha256": "s"}}
+                "extra_env": list(env), "gpu_before": list(gpu_before), "gpu_check_rc": 0, "load_ok": True, "env": envd,
+                "inputs": {"parameters_sha256": params, "seeds_sha256": "s"},
+                "outputs": {f: hh(f) for f in ("info", "data.h5", "run.log")}}
         if mutated:
             prov["mutated"] = mutated
         json.dump(prov, open(os.path.join(d, "provenance.json"), "w"))
@@ -588,6 +678,11 @@ def selfcheck():
     mkrun("A_mut", base, ok_info, mutated="scale")
     mkrun("A_undecl", base, ok_info, decl=False)
     mkrun("A_twin", base, ok_info)
+    mkrun("A_tar", base, ok_info, tar_built="x" * 64)
+    mkrun("A_nooffload", base, ok_info, offload=None)
+    mkrun("B_params", base, ok_info, build="cpu", log="", params="q")
+    mkrun("A_tamper", base, ok_info)
+    open(os.path.join(tmp, "A_tamper", "run.log"), "a").write("edited later\n")
     nan_info = info(float("nan"), 1e-6, 6e-12, 5e-7)
     assert "NAN" in nan_info.upper()
     mkrun("A_nanprec", base, nan_info)
@@ -616,6 +711,10 @@ def selfcheck():
              ("same_seed mutated in a gate", dict(ss, pairs=[["A_mut", "B", NB]]), "INPUT_ERROR"),
              ("same_seed undeclared run", dict(ss, pairs=[["A_undecl", "B", NB]]), "INPUT_ERROR"),
              ("same_seed missing run dir", dict(ss, pairs=[["A_nowhere", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed binary not from tarball", dict(ss, pairs=[["A_tar", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed no MANDATORY offload", dict(ss, pairs=[["A_nooffload", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed parameters differ", dict(ss, pairs=[["A", "B_params", NB]]), "INPUT_ERROR"),
+             ("same_seed output edited later", dict(ss, pairs=[["A_tamper", "B", NB]]), "INPUT_ERROR"),
              ("replay identical", dict(rp, pairs=[["A", "A_twin"]]), "PASS"),
              ("replay 1e-12", dict(rp, pairs=[["A", "B"]], gpu_exclusive=False), "FAIL"),
              ("precision clean", dict(pr, cases=[{"gpu": "A", "cpu": ["B"]}]), "PASS"),
@@ -671,23 +770,28 @@ def selfcheck():
               ("selftest above tol", dict(st, runs=[mkrun("S_big", base, ok_info, STL.replace("4.954E-12", "4.954E-09"), env=S, allow=True)]), "FAIL"),
               ("selftest one branch", dict(st, runs=[mkrun("S_br", base, ok_info, STL.replace("else: 4", "else: 0"), env=S, allow=True)]), "FAIL"),
               ("selftest missing line", dict(st, runs=[mkrun("S_noline", base, ok_info, STL.replace("precision reduction", "xx"), env=S, allow=True)]), "INPUT_ERROR"),
-              ("selftest FAILED rc 1", dict(st, runs=[mkrun("S_fail", base, ok_info, ACT + " GPU self-test FAILED: tau: pass\n", env=S, allow=True, rc=1)]), "FAIL")]
+              ("selftest FAILED rc 1", dict(st, runs=[mkrun("S_fail", base, ok_info, ACT + " GPU self-test FAILED: tau: pass\n", env=S, allow=True, rc=1)]), "FAIL"),
+              ("selftest setup error rc 1", dict(st, runs=[mkrun("S_setup", base, ok_info, ACT + " gpu_state: device allocation FAILED\n", env=S, allow=True, rc=1)]), "INPUT_ERROR")]
     F = ["ALF_GPU_SELFTEST=4", "ALF_GPU_FAULT_TAU=perm"]
     ft = {"type": "faults", "id": "ft"}
     cases += [("fault detected", dict(ft, cases={mkrun("F_ok", base, ok_info, ACT + " GPU self-test FAILED: tau: pass\n", rc=1, env=F, allow=True): "tau: pass"}), "PASS"),
               ("fault = crash", dict(ft, cases={mkrun("F_crash", base, ok_info, ACT + "Segmentation fault\n", rc=139, env=F, allow=True): "tau: pass"}), "INPUT_ERROR"),
               ("fault not detected", dict(ft, cases={mkrun("F_miss", base, ok_info, STL, rc=0, env=F, allow=True): "tau: pass"}), "FAIL"),
-              ("fault wrong test", dict(ft, cases={mkrun("F_other", base, ok_info, ACT + " GPU self-test FAILED: hopping\n", rc=1, env=F, allow=True): "tau: pass"}), "FAIL")]
+              ("fault wrong test", dict(ft, cases={mkrun("F_other", base, ok_info, ACT + " GPU self-test FAILED: hopping\n", rc=1, env=F, allow=True): "tau: pass"}), "FAIL"),
+              ("fault = setup error rc 1", dict(ft, cases={mkrun("F_setup", base, ok_info, ACT + " setup FAILED\n", rc=1, env=F, allow=True): "tau: pass"}), "INPUT_ERROR")]
     os.makedirs(os.path.join(tmp, "g"))
     open(os.path.join(tmp, "g", "stamp"), "w").write(CAND + "\n")
     open(os.path.join(tmp, "g", "stamp_old"), "w").write("deadbeef0000\n")
     open(os.path.join(tmp, "g", "ctest.log"), "w").write("100% tests passed, 0 tests failed out of 52\n")
     open(os.path.join(tmp, "g", "ctest.exit"), "w").write("0\n")
+    open(os.path.join(tmp, "g", "bad.exit"), "w").write("99\n")
     lg = {"type": "log_regex", "id": "lg"}
     ck = {"file": "g/ctest.log", "regex": r"(\d+)% tests passed, (\d+) tests failed out of (\d+)", "exit_file": "g/ctest.exit", "stamp_file": "g/stamp"}
     cases += [("log_regex clean", dict(lg, checks=[dict(ck, equals=[100, 0, 52])]), "PASS"),
               ("log_regex count", dict(lg, checks=[dict(ck, equals=[100, 0, 53])]), "FAIL"),
-              ("log_regex stale stamp", dict(lg, checks=[dict(ck, equals=[100, 0, 52], stamp_file="g/stamp_old")]), "INPUT_ERROR")]
+              ("log_regex stale stamp", dict(lg, checks=[dict(ck, equals=[100, 0, 52], stamp_file="g/stamp_old")]), "INPUT_ERROR"),
+              ("log_regex exit 99 (invalid run)", dict(lg, checks=[dict(ck, equals=[100, 0, 52], exit_file="g/bad.exit")]), "INPUT_ERROR"),
+              ("log_regex stamp lacks marker", dict(lg, checks=[dict(ck, equals=[100, 0, 52], stamp_contains=["plant no"])]), "INPUT_ERROR")]
     bad = 0
     for name, g, exp in cases:
         v, r, why = run_gate(g, tmp, acc)
@@ -701,8 +805,14 @@ def selfcheck():
     good = sem == [("c_missing", "INPUT_ERROR", False), ("c_real", "PASS", True)] and v["overall"] == "FAIL"
     acc3 = dict(acc, gates=[dict(sse, pairs=[["A_small", "B_small", NB]])],  # the gate itself FAILs on clean runs
                 controls=[{"id": "c_uninf", "like": "ss", "replace": {"pairs": [["A_small", "B_small", NB]]}, "expect": "FAIL"}])
-    v3 = evaluate(acc3, tmp)
-    good &= [(c["outcome"], c["as_expected"]) for c in v3["controls"]] == [("FAIL", False)]
+    acc3["runs"] = acc["runs"]
+    v3 = evaluate(dict(acc3, controls=acc3["controls"] + [{"id": "c_ok_dummy", "like": "ss", "replace": {"pairs": [["A", "B_small", NB]]}, "expect": "PASS"}]), tmp)
+    try:
+        resolve_control({"id": "c_bad", "like": "lg", "replace": {"checks": [dict(ck, equals=[-1])]}}, dict(acc, gates=[dict(lg, checks=[dict(ck, equals=[100, 0, 52])])]))
+        good = False
+    except SystemExit:
+        pass
+    good &= [(c["outcome"], c["as_expected"]) for c in v3["controls"]][:1] == [("FAIL", False)]
     bad += not good
     print(f"{'ok ' if good else 'BAD'} control semantics (missing runs are not a kill) {sem}")
     shutil.rmtree(tmp)
@@ -710,21 +820,49 @@ def selfcheck():
     return 0 if not bad else 1
 
 
-def lint(acc):
-    """Static checks of an acceptance file: every referenced run is declared; every gate has at least one control;
-    controls name an existing gate; mutation sources exist; builds and configs referenced exist."""
+GATE_DEBUG_OK = ("ALF_GPU_SELFTEST", "ALF_GPU_EXIT", "ALF_GPU_UPDTEST", "ALF_GPU_TAUDIAG", "ALF_GPU_TAUDIAG_FROM",
+                 "ALF_GPU_DEBUG")
+
+
+def lint_errors(acc):
+    """Static checks of an acceptance file (enforced by evaluate() and the driver)."""
     errs = []
     runs, builds, configs = acc.get("runs", {}), acc.get("builds", {}), acc.get("configs", {})
+    draft = "DRAFT" in acc.get("_status", "")
+    used_builds = set()
     for rid, r in runs.items():
         if r.get("build") not in builds:
             errs.append(f"run {rid}: unknown build {r.get('build')}")
+        used_builds.add(r.get("build"))
         if r.get("config") not in configs:
             errs.append(f"run {rid}: unknown config {r.get('config')}")
+        if "gpu_active" in r:
+            errs.append(f"run {rid}: 'gpu_active' is not allowed (every GPU run must show the ACTIVE lines)")
+    for b in builds:
+        if b not in used_builds:
+            errs.append(f"build {b}: declared but unused")
+    if not draft:
+        for c, v in configs.items():
+            if "parameters_sha256" not in v:
+                errs.append(f"config {c}: parameters_sha256 missing (required when frozen)")
+    mut_dst = {m["dst"] for m in acc.get("mutations", [])}
+
+    dirs = {t["id"] for t in acc.get("ctests", [])} | {m["dst"] for m in acc.get("log_mutations", [])}
+    if acc.get("gpunone"):
+        dirs |= {"gpunone", "gpunone_plant"}
+
+    def dir_refs(g):
+        out = [x for p in g.get("pairs", []) for x in p[:2]] if g["type"] == "files_identical" else []
+        out += [c[k].split("/")[0] for c in g.get("checks", []) for k in ("file", "stamp_file", "exit_file") if k in c]
+        return out
+
     def refs(g):
+        if g["type"] in ("log_regex", "files_identical"):
+            return []
         cs = g.get("cases", {})
         out = list(g.get("runs", [])) + [x for p in g.get("pairs", []) for x in p[:2]] + (list(cs.keys()) if isinstance(cs, dict) else [])
         out += [g[k] for k in ("a", "b") if k in g]
-        for c in g.get("cases", []) if isinstance(g.get("cases"), list) else []:
+        for c in cs if isinstance(cs, list) else []:
             out += [c["gpu"]] + c["cpu"]
         return [x for x in out if isinstance(x, str)]
     gates = {g["id"]: g for g in acc.get("gates", [])}
@@ -732,21 +870,51 @@ def lint(acc):
         for x in refs(g):
             if x not in runs:
                 errs.append(f"gate {g['id']}: undeclared run {x}")
-    covered = set()
+            elif x in mut_dst:
+                errs.append(f"gate {g['id']}: uses the mutated copy {x}")
+            else:
+                bad = [kv for kv in runs[x].get("env", []) if kv.split("=")[0].startswith(("ALF_GPU_", "ALFSH_"))
+                       and kv.split("=")[0] not in GATE_DEBUG_OK and g["type"] != "faults"]
+                if bad:
+                    errs.append(f"gate {g['id']}: run {x} carries fault/numerics variables {bad} (allowed only in controls)")
+        for p in g.get("pairs", []):
+            if p[0] == p[1]:
+                errs.append(f"gate {g['id']}: pair compares {p[0]} with itself")
+            if g["type"] == "same_seed" and p[0] in runs and p[1] in runs:
+                ga = builds.get(runs[p[0]]["build"], {}).get("gpu", True)
+                gb = builds.get(runs[p[1]]["build"], {}).get("gpu", True)
+                if not (ga and not gb):
+                    errs.append(f"gate {g['id']}: same-seed pair {p[:2]} is not GPU build vs CPU build")
+    for g in acc.get("gates", []):
+        for x in dir_refs(g):
+            if x not in dirs:
+                errs.append(f"gate {g['id']}: output directory {x} is produced by no ctest, log mutation or gpunone step")
+    fail_ctl = set()
     for c in acc.get("controls", []):
         if c.get("like") not in gates:
             errs.append(f"control {c['id']}: unknown gate {c.get('like')}")
             continue
-        covered.add(c["like"])
-        for x in refs(dict(gates[c["like"]], **c.get("replace", {}))):
+        if c.get("expect", "FAIL") == "FAIL":
+            fail_ctl.add(c["like"])
+        try:
+            cg = resolve_control(c, acc)
+        except SystemExit as e:
+            errs.append(str(e))
+            continue
+        for x in refs(cg):
             if x not in runs:
                 errs.append(f"control {c['id']}: undeclared run {x}")
     for gid in gates:
-        if gid not in covered:
-            errs.append(f"gate {gid}: no positive control")
+        if gid not in fail_ctl:
+            errs.append(f"gate {gid}: no positive control with expect FAIL")
     for m in acc.get("mutations", []):
         if m["src"] not in runs or m["dst"] not in runs:
             errs.append(f"mutation {m['dst']}: source or destination not declared")
+    return errs
+
+
+def lint(acc):
+    errs = lint_errors(acc)
     for e in errs:
         print("LINT:", e)
     print("lint:", "OK" if not errs else f"{len(errs)} problems")
@@ -760,6 +928,7 @@ def main():
     ap.add_argument("--out", default=None)
     ap.add_argument("--candidate", default=None, help="candidate sha (replaces \"self\" in the acceptance file)")
     ap.add_argument("--seeds-record", default=None, help="the driver's seeds record (sha256 per seed set/config)")
+    ap.add_argument("--attempts", default=None, help="the ticket's attempts log (earlier T2 runs are listed)")
     ap.add_argument("--selfcheck", action="store_true")
     ap.add_argument("--lint", action="store_true", help="static checks of the acceptance file only")
     a = ap.parse_args()
@@ -778,8 +947,14 @@ def main():
             print("the acceptance file says candidate \"self\": give --candidate SHA")
             return 2
         acc["candidate_sha"] = a.candidate
+    uses_acc = any(r.get("seeds", "dev").startswith("acc") for r in acc.get("runs", {}).values())
     if a.seeds_record:
         acc["_seeds_record"] = json.load(open(a.seeds_record))
+    elif uses_acc:
+        print("runs use acceptance seeds: --seeds-record is required")
+        return 2
+    if a.attempts and os.path.isfile(a.attempts):
+        acc["_attempts"] = [l.strip() for l in open(a.attempts) if l.strip()]
     out = a.out or a.runroot
     for f in ("verdict.json", "verdict.md"):
         if os.path.exists(os.path.join(out, f)):
@@ -789,7 +964,7 @@ def main():
     json.dump(v, open(os.path.join(out, "verdict.json"), "w"), indent=1, default=str)
     write_md(v, os.path.join(out, "verdict.md"))
     print(open(os.path.join(out, "verdict.md")).read())
-    return 0 if v["overall"] == "PASS" else 1
+    return 0 if v["overall"] == "PASS" else (3 if v["overall"] == "BLOCKED" else 1)
 
 
 if __name__ == "__main__":

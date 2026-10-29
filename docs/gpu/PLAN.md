@@ -116,7 +116,7 @@ Unsupported inputs are refused at setup (H4).
 | 209 | Validation suite: kernel tests, same-compiler trajectory test (NVHPC CPU vs GPU, first-divergence sweep), test_vs_ed on GPU, statistical compare vs references (106), precision numbers | 205–208 |
 | 210 | BENCHMARKS.md: s/sweep CPU (16 cores, nividia) vs GPU for N = 64…1024, ±Ltau, per-kernel breakdown (incl. rank-1 share), crossover. Development numbers; the official CPU baseline is decided in Phase 3 | 209 |
 | 211 | CPU regression gate: unit tests, `test_branch_parameters.json` / `compare_dirs.py`, GNU + ifx s/sweep within noise | 201–208 |
-| 212 | **Verification hardening** (code): gate all `ALF_GPU_*` debug/fault variables so production runs refuse them; provenance header in the binary's output; "GPU debug env" and "fault armed" info lines; graded fault `ALF_GPU_FAULT_TAU=eps:<x>`; `ALF_GPU_TAUDIAG_SEED`; deterministic default path (fixed-order `k_colnorms`/`k_lognorm`/`k_prec`, explicit cuSOLVER/cuBLAS modes) if the owner decides so; run-twice-identical and "τ pass leaves the sweep unchanged" gates. Must land before any further ticket closes | harness approved |
+| 212 | **Verification hardening** (code): gate all `ALF_GPU_*` debug/fault variables so production runs refuse them; provenance header in the binary's output; "GPU debug env" and "fault armed" info lines; graded fault `ALF_GPU_FAULT_TAU=eps:<x>`; `ALF_GPU_TAUDIAG_SEED`; the cause of the default-path non-reproducibility and of 207's default paired spread, then a deterministic default path (fixed-order `k_colnorms`/`k_lognorm`/`k_prec`, explicit cuSOLVER/cuBLAS modes; decision 2a of 2026-10-29); run-twice-identical and "τ pass leaves the sweep unchanged" gates. Must land before any further ticket closes | harness approved |
 
 Every ticket is accepted under [VERIFICATION.md](VERIFICATION.md): pre-registered acceptance file, T2 harness run by
 the manager on a frozen candidate, positive controls, independent verifier and reviewer. 207 closes as described in
@@ -155,7 +155,7 @@ MKL 2026.2 fails at link time, see MACHINES.md), the owner's approval of the pro
 | ID | Ticket | Depends |
 |---|---|---|
 | 301 | `SUPERMUC-NG-PVC` profile: ifx, `-fiopenmp -fopenmp-targets=spir64_gen -Xs "-device pvc"`, oneMKL, `mpiifx`, HDF5. Flags checked against current LRZ/Intel docs and the owner's `module avail` | owner's `module avail` |
-| 302a | ONEMKL backend of `alf_la` + `alf_la.tests` routine tests and `t_order` on the B580; per routine measured GPU / host / hybrid; STABLOG keeps host ZGEQP3; interop queue question (ADR-002 §1) ([draft](tickets/302a-onemkl-backend.md)) | 202 (interface), consistent oneAPI, harness |
+| 302a | ONEMKL backend of `alf_la` + `alf_la.tests` routine tests and `t_order` on the B580; per routine measured GPU / host / hybrid; STABLOG keeps host ZGEQP3; interop queue question (ADR-002 §1) ([draft](tickets/302a-onemkl-backend.md)); acceptance in two parts: B580 tests on `intel`, GPU=none and CUDA identity on `nividia` | 202 (interface), consistent oneAPI (owner, decision 6), harness |
 | 302b | 204–206 device paths on the B580 with the 206 gates (self-tests, same-seed vs CPU, precision); τ path still refused | 302a |
 | 302c | τ path (207) on the B580 | 302b, 207 committed |
 | 303 | ifx build of the full GPU path on `intel` (B580, `spir64` JIT and AOT), 209 suite on the B580 (correctness; not PVC performance) | 302c, 209 |
