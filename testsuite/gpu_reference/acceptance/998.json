@@ -1,0 +1,481 @@
+{
+ "schema": "alf-acc/1",
+ "_status": "DRAFT harness end-to-end test 2 (local branch, never pushed); thresholds are test values, not criteria",
+ "ticket": "998",
+ "candidate_sha": "self",
+ "base_sha": "b1a990c0e8f2",
+ "created": "2026-10-29",
+ "approvals": [],
+ "machine": "nividia",
+ "gpu_exclusive": true,
+ "timeout_s": 900,
+ "disk_min_free_GB": 5,
+ "cpu_parallel": 2,
+ "false_alarm_budget": 0.0,
+ "gpunone": true,
+ "active_lines": [
+  "GPU path (gpu_state): ACTIVE",
+  "GPU update path (ticket 205): ACTIVE",
+  "GPU stabilization (206): ACTIVE",
+  "GPU tau pass (207): ACTIVE"
+ ],
+ "builds": {
+  "nv_log": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5 LOG GPU=nvidia",
+   "gpu": true
+  },
+  "nv_none_log": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5 LOG",
+   "gpu": false
+  },
+  "base_nv_log": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5 LOG GPU=nvidia",
+   "gpu": true
+  }
+ },
+ "configs": {
+  "hub6x6_cb": {
+   "base": "hub6x6_cb"
+  },
+  "hub6x6_cb_fd": {
+   "base": "hub6x6_cb",
+   "overrides": {
+    "NSweep": 1,
+    "NBin": 200
+   }
+  },
+  "hub6x6_cb_c2": {
+   "base": "hub6x6_cb",
+   "overrides": {
+    "NSweep": 5,
+    "NBin": 40
+   }
+  }
+ },
+ "runs": {
+  "st_log": {
+   "build": "nv_log",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=4",
+    "ALF_GPU_EXIT=1"
+   ],
+   "allow_debug": true
+  },
+  "fault_log_prop": {
+   "build": "nv_log",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=4",
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_FAULT_TAU=prop"
+   ],
+   "allow_debug": true
+  },
+  "ss_log": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "ss_cpu": {
+   "build": "nv_none_log",
+   "config": "hub6x6_cb_fd",
+   "refcache": true
+  },
+  "ni_base": {
+   "build": "base_nv_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "rp_log": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "pd_log": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_fd",
+   "seeds": "acc1",
+   "env": [
+    "ALF_GPU_TAUDIAG=2",
+    "ALF_GPU_TAUDIAG_FROM=101"
+   ],
+   "allow_debug": true
+  },
+  "pc_cpu": {
+   "build": "nv_none_log",
+   "config": "hub6x6_cb_fd",
+   "seeds": "acc1"
+  },
+  "c2_gpu": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_c2",
+   "seeds": "acc1"
+  },
+  "c2_cpu": {
+   "build": "nv_none_log",
+   "config": "hub6x6_cb_c2",
+   "seeds": "acc2"
+  },
+  "ss_log_m": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "rp_log_m": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "pd_log_m": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_fd",
+   "seeds": "acc1",
+   "env": [
+    "ALF_GPU_TAUDIAG=2",
+    "ALF_GPU_TAUDIAG_FROM=101"
+   ],
+   "allow_debug": true
+  },
+  "c2_gpu_m": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_c2",
+   "seeds": "acc1"
+  },
+  "pd_ns0": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_fd",
+   "seeds": "acc1",
+   "env": [
+    "ALF_GPU_NS=0"
+   ],
+   "allow_debug": true
+  }
+ },
+ "mutations": [
+  {
+   "src": "ss_log",
+   "dst": "ss_log_m",
+   "kind": "scale:Green_tau/obser:1e-3"
+  },
+  {
+   "src": "rp_log",
+   "dst": "rp_log_m",
+   "kind": "scale:Den_eq/obser:1e-12"
+  },
+  {
+   "src": "pd_log",
+   "dst": "pd_log_m",
+   "kind": "taudiag_bias:1.5"
+  },
+  {
+   "src": "c2_gpu",
+   "dst": "c2_gpu_m",
+   "kind": "shift:Ener_scal/obser:8"
+  }
+ ],
+ "ctests": [
+  {
+   "id": "gnu_ctest",
+   "tool": "gnu",
+   "configure": "GNU devel noMPI",
+   "regex": "^t_"
+  }
+ ],
+ "log_mutations": [
+  {
+   "src": "gnu_ctest",
+   "dst": "gnu_ctest_m",
+   "file": "ctest.log",
+   "kind": "ctest_one_failure",
+   "exit_file": "ctest.exit"
+  }
+ ],
+ "gates": [
+  {
+   "id": "selftest",
+   "type": "selftest",
+   "runs": [
+    "st_log"
+   ],
+   "require_lines": [
+    "GPU tau self-test PASSED"
+   ],
+   "number_checks": [
+    {
+     "name": "pass",
+     "line": "^\\s+G00\\s+\\S+ \\(worst slice",
+     "after": "^",
+     "max": 1e-10,
+     "min_count": 4
+    }
+   ]
+  },
+  {
+   "id": "faults",
+   "type": "faults",
+   "cases": {
+    "fault_log_prop": "tau: pass"
+   }
+  },
+  {
+   "id": "same_seed",
+   "type": "same_seed",
+   "pairs": [
+    [
+     "ss_log",
+     "ss_cpu",
+     200
+    ]
+   ],
+   "n_datasets": 38,
+   "n_tau_datasets": 5,
+   "no_bin_above": 0.0001,
+   "overall_max": 1e-09,
+   "tau_max": 1e-09
+  },
+  {
+   "id": "non_interference",
+   "type": "replay",
+   "datasets": "equal_time",
+   "pairs": [
+    [
+     "ni_base",
+     "ss_log"
+    ]
+   ],
+   "n_datasets": 23
+  },
+  {
+   "id": "replay",
+   "type": "replay",
+   "pairs": [
+    [
+     "ss_log",
+     "rp_log"
+    ]
+   ],
+   "n_datasets": 38
+  },
+  {
+   "id": "paired",
+   "type": "paired",
+   "runs": [
+    "pd_log"
+   ],
+   "from_pass": 101,
+   "n_points": 1600,
+   "n_used": 800,
+   "abs_mean_max": 0.05,
+   "sd_ratio_max": 1.25,
+   "count_thresholds": [
+    1e-09
+   ],
+   "count_k": 2.0,
+   "count_min_events": 10
+  },
+  {
+   "id": "precision",
+   "type": "precision",
+   "mean_ratio_max": 1.5,
+   "cases": [
+    {
+     "gpu": "pd_log",
+     "cpu": [
+      "pc_cpu"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "compare2",
+   "type": "compare2",
+   "a": "c2_gpu",
+   "b": "c2_cpu",
+   "m": 10,
+   "alpha": 0.01,
+   "min_bins": 8
+  },
+  {
+   "id": "ctest",
+   "type": "log_regex",
+   "checks": [
+    {
+     "file": "gnu_ctest/ctest.log",
+     "stamp_file": "gnu_ctest/stamp",
+     "exit_file": "gnu_ctest/ctest.exit",
+     "regex": "(\\d+)% tests passed, (\\d+) tests failed out of (\\d+)",
+     "equals": [
+      100,
+      0,
+      13
+     ]
+    }
+   ]
+  },
+  {
+   "id": "gpu_none_ppcmp",
+   "type": "log_regex",
+   "checks": [
+    {
+     "file": "gpunone/ppcmp.txt",
+     "stamp_file": "gpunone/stamp",
+     "exit_file": "gpunone/ppcmp.exit",
+     "stamp_contains": [
+      "plant no"
+     ],
+     "regex": "comparisons (\\d+) preprocessor_errors (\\d+) differing_lines (\\d+) added_or_deleted (\\d+) build_files (\\d+) other_files (\\d+)$",
+     "equals": [
+      27,
+      0,
+      0,
+      0,
+      1,
+      0
+     ]
+    }
+   ]
+  }
+ ],
+ "controls": [
+  {
+   "id": "c_selftest",
+   "like": "selftest",
+   "replace": {
+    "runs": [
+     "fault_log_prop"
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_faults",
+   "like": "faults",
+   "replace": {
+    "cases": {
+     "st_log": "tau: pass"
+    }
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_same_seed",
+   "like": "same_seed",
+   "replace": {
+    "pairs": [
+     [
+      "ss_log_m",
+      "ss_cpu",
+      200
+     ]
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_noninterf",
+   "like": "non_interference",
+   "replace": {
+    "pairs": [
+     [
+      "ni_base",
+      "rp_log_m"
+     ]
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_replay",
+   "like": "replay",
+   "replace": {
+    "pairs": [
+     [
+      "ss_log",
+      "rp_log_m"
+     ]
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_paired",
+   "like": "paired",
+   "replace": {
+    "runs": [
+     "pd_log_m"
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_precision",
+   "like": "precision",
+   "replace": {
+    "cases": [
+     {
+      "gpu": "pd_log_m",
+      "cpu": [
+       "pc_cpu"
+      ]
+     }
+    ]
+   },
+   "expect": "PASS",
+   "_reason": "a TAUDIAG-only mutation must not change the precision gate (shows the gate reads info, not run.log)"
+  },
+  {
+   "id": "c_compare2",
+   "like": "compare2",
+   "replace": {
+    "a": "c2_gpu_m"
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_ctest",
+   "like": "ctest",
+   "replace": {
+    "checks": [
+     {
+      "file": "gnu_ctest_m/ctest.log",
+      "stamp_file": "gnu_ctest_m/stamp",
+      "exit_file": "gnu_ctest_m/ctest.exit"
+     }
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_ppcmp",
+   "like": "gpu_none_ppcmp",
+   "replace": {
+    "checks": [
+     {
+      "file": "gpunone_plant/ppcmp.txt",
+      "stamp_file": "gpunone_plant/stamp",
+      "exit_file": "gpunone_plant/ppcmp.exit",
+      "stamp_contains": [
+       "plant --plant"
+      ]
+     }
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_precision_ns0",
+   "like": "precision",
+   "replace": {
+    "cases": [
+     {
+      "gpu": "pd_ns0",
+      "cpu": [
+       "pc_cpu"
+      ]
+     }
+    ]
+   },
+   "expect": "FAIL",
+   "_reason": "206 known defect; at 6x6 its size is unknown: an unkilled control here is a power statement, not a harness bug"
+  }
+ ]
+}
