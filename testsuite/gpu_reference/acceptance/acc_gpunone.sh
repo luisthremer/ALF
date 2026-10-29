@@ -27,15 +27,18 @@ grep -E '^(sha|base_sha) ' $C/.alf_candidate > "$OUT/stamp"; echo "plant ${PLANT
 export TMPDIR=$HOME/alf-gpu/work/t$TICKET/tmp; mkdir -p $TMPDIR
 W=$(mktemp -d $TMPDIR/gpunone.XXXXXX) || exit 2
 # GNU devel builds of both sides: generated headers (and the candidate's ctest)
-for v in base_src src; do
-  mkdir $W/tree_$v && cp -a $C/$v/. $W/tree_$v/ && chmod -R u+w $W/tree_$v || exit 2
+for v in base_src src; do   # from the tarballs after a fresh hash check, not from the extracted trees
+  key=tar_sha256; [ $v = base_src ] && key=base_tar_sha256
+  want=$(awk -v k=$key '$1==k {print $2}' $C/.alf_candidate); have=$(sha256sum $C/$v.tar | cut -d' ' -f1)
+  [ -n "$want" ] && [ "$want" = "$have" ] || { echo "TAR HASH MISMATCH $v"; exit 2; }
+  mkdir $W/tree_$v $W/raw_$v && tar -xf $C/$v.tar -C $W/tree_$v && tar -xf $C/$v.tar -C $W/raw_$v || exit 2
   env -i HOME="$HOME" USER="$USER" LANG=C LC_ALL=C PATH=/usr/bin:/bin TMPDIR="$TMPDIR" bash --noprofile --norc -c '
     . "$HOME/alf-gpu/env/gnu.sh" > /dev/null 2>&1 || exit 2; cd "$0" || exit 2
     . ./configure.sh GNU devel noMPI NO-INTERACTIVE > "$1/configure_$2.log" 2>&1 && make -j4 all > "$1/make_$2.log" 2>&1' \
     $W/tree_$v "$OUT" $v
   echo $? > "$OUT/build_$v.exit"
 done
-mod=$(awk '$1=="M" {print $2}' $C/changed_files.txt | grep -E '\.(F90|f90|F|f)$' | grep -v -E '^(Prog/gpu_|gpu_bench/|testsuite/)')
+mod=$(awk '$1=="M" || $1=="T" {print $2}' $C/changed_files.txt | grep -E '\.(F90|f90|F|f)$' | grep -v -E '^(Prog/gpu_|gpu_bench/|testsuite/)')
 addel=$(awk '$1=="A" || $1=="D" {print $1" "$2}' $C/changed_files.txt | grep -E '\.(F90|f90|F|f)$' | grep -v -E ' (Prog/gpu_|gpu_bench/|testsuite/)' | wc -l)
 build=$(awk '{print $2}' $C/changed_files.txt | grep -E '(^|/)(Makefile[^/]*|configure\.sh|CMakeLists\.txt|[^/]*\.mk)$' | wc -l)
 otherl=$(awk '{print $2}' $C/changed_files.txt | grep -v -E '^(docs/|testsuite/|gpu_bench/|\.claude/|Prog/gpu_)' \
@@ -52,7 +55,7 @@ tot=0; err=0; n=0; first=1
     for m in "-UNONE" "-DMPI -DHDF5 -DHDF5_ZLIB" "-DHDF5 -DHDF5_ZLIB" "-DMPI -DHDF5 -DHDF5_ZLIB -DSTABLOG" "-DMPI -DHDF5 -DHDF5_ZLIB -DQR_PREPIVOT" "-DMPI -DTEMPERING" "-DMPI -DHDF5 -DHDF5_ZLIB -DSTAB3" "-DMPI -DPARALLEL_PARAMS" "-DMPI -DOBS_LEGACY"; do
       for v in base_src src; do
         d=$W/pp_$v; rm -rf -- "$W/pp_$v"; mkdir -p $d/$(dirname $f)
-        cp $C/$v/$f $d/$f && chmod u+w $d/$f || { echo "COPY ERROR $v $f"; err=$((err+1)); }   # the shipped source is read-only
+        cp $W/raw_$v/$f $d/$f && chmod u+w $d/$f || { echo "COPY ERROR $v $f"; err=$((err+1)); }
         if [ "$PLANT" = --plant ] && [ $v = src ] && [ $first = 1 ]; then
           echo "integer, parameter :: planted_control_token = 1" >> $d/$f && grep -q planted_control_token $d/$f \
             || { echo "PLANT FAILED $f"; err=$((err+1)); }   # a plant that did not happen must not look like a pass
@@ -80,12 +83,16 @@ tot=0; err=0; n=0; first=1
 pp=$(( (err > 0 || tot > 0) ? 1 : 0 ))
 if [ "$PLANT" = --plant ] && [ $err -gt 0 ]; then pp=2; fi
 echo $pp > "$OUT/ppcmp.exit"
-if [ "$PLANT" = --plant ]; then echo "skipped (plant control)" > "$OUT/ctest.log"; echo 99 > "$OUT/ctest.exit"
+if [ "$PLANT" = --plant ]; then echo "skipped (plant control)" > "$OUT/ctest.log"; echo 2 > "$OUT/ctest.exit"
 elif [ "$(cat $OUT/build_src.exit)" = 0 ]; then
   ( cd $W/tree_src/testsuite && mkdir -p tests && cd tests && cmake .. > "$OUT/ctest_cmake.log" 2>&1 \
     && cmake --build . -j4 >> "$OUT/ctest_cmake.log" 2>&1 && ctest -j4 --output-on-failure > "$OUT/ctest.log" 2>&1 )
-  echo $? > "$OUT/ctest.exit"
-else echo "build failed" > "$OUT/ctest.log"; echo 99 > "$OUT/ctest.exit"; fi
+  rc=$?   # normalised like acc_ctest.sh: 0 passed, 1 a test failed its check, 2 invalid (crash, timeout, build)
+  if grep -q -E '\*\*\*(Exception|Timeout|Not Run)|SEGFAULT|Child aborted' "$OUT/ctest.log"; then echo 2 > "$OUT/ctest.exit"
+  elif [ $rc = 0 ]; then echo 0 > "$OUT/ctest.exit"
+  elif grep -q '\*\*\*Failed' "$OUT/ctest.log"; then echo 1 > "$OUT/ctest.exit"
+  else echo 2 > "$OUT/ctest.exit"; fi
+else echo "build failed" > "$OUT/ctest.log"; echo 2 > "$OUT/ctest.exit"; fi
 rm -rf -- "$W"
 echo "ppcmp exit $pp ($(tail -1 "$OUT/ppcmp.txt")); ctest exit $(cat "$OUT/ctest.exit") ($(grep 'tests failed out of' "$OUT/ctest.log"))"
 [ $pp = 0 ] && [ "$(cat "$OUT/ctest.exit")" = 0 ]

@@ -148,7 +148,7 @@
      "cuda_cand"
     ]
    ],
-   "_reason": "acceptance 5: GPU=nvidia alf_la.tests output identical to the base (timings dropped)"
+   "_reason": "acceptance 5: GPU=nvidia alf_la.tests output identical to the base (timings dropped) (build paths and backtrace addresses are normalised by acc_ctest.sh; verified on GNU alf_la.tests output, 188 lines, 2026-10-29)"
   }
  ],
  "controls": [

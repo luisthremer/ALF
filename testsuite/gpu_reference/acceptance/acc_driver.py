@@ -148,6 +148,8 @@ def main():
     if os.path.abspath(HERE) != os.path.abspath(os.path.join(src, "testsuite", "gpu_reference", "acceptance")):
         raise SystemExit("run the driver from the shipped candidate tree (its tools were checked against the pre-registration)")
     acc = json.loads(raw)
+    if not cand.get("base_sha", "").startswith(acc.get("base_sha", "-")) or len(acc.get("base_sha", "")) < 12:
+        raise SystemExit(f"shipped base {cand.get('base_sha')} is not the acceptance file's base_sha {acc.get('base_sha')}")
     sys.path.insert(0, HERE)
     import verdict  # noqa: E402  (the shipped, pinned copy)
     errs = verdict.lint_errors(acc)
@@ -157,7 +159,8 @@ def main():
         raise SystemExit(f"unknown machine {acc.get('machine')}")
     if (acc["machine"] == "intel") != (shutil.which("nvidia-smi") is None):
         raise SystemExit(f"this acceptance file is for {acc['machine']}; run it there")
-    attempts = os.path.expanduser(f"~/alf-gpu/work/t{a.ticket}/attempts.log")
+    attempts = os.path.expanduser(f"~/alf-gpu/archive/attempts/t{a.ticket}.log")  # manager-owned directory
+    os.makedirs(os.path.dirname(attempts), exist_ok=True)
     earlier = [l for l in open(attempts)] if os.path.exists(attempts) else []
     if a.who == "mgr" and any(" mgr " in l and name in l for l in earlier) and not a.reason:
         raise SystemExit("a manager T2 of this ticket exists already: give --reason (re-running until green is not allowed)")
@@ -290,11 +293,10 @@ def main():
         if m["kind"] == "ctest_one_failure":
             import re as _re
             new = _re.sub(r"(\d+)% tests passed, 0 tests failed out of (\d+)", lambda x: f"99% tests passed, 1 tests failed out of {x.group(2)}", t)
-            if m.get("exit_file"):
-                open(os.path.join(dst_d, m["exit_file"]), "w").write("1\n")
+            # the exit file stays as it was: the control must be killed by the gate's regex/equals criterion
         elif m["kind"] == "change_first_number":
             import re as _re
-            new = _re.sub(r"\d\.\d+E[-+]\d+", lambda x: x.group(0)[:-1] + str((int(x.group(0)[-1]) + 1) % 10), t, count=1)
+            new = _re.sub(r"(?<![\w.])(\d+\.\d{3,})", lambda x: x.group(1)[:-1] + str((int(x.group(1)[-1]) + 1) % 10), t, count=1)
         else:
             raise SystemExit(f"unknown log mutation {m['kind']}")
         if new == t:
@@ -314,6 +316,8 @@ def main():
     p = subprocess.run([sys.executable, os.path.join(HERE, "verdict.py"), accf, rroot, "--out", vdir,
                         "--candidate", cand["sha"], "--seeds-record", rec_path, "--attempts", attempts])
     log(f"verdict exit {p.returncode}", fh)
+    with open(attempts, "a") as f:
+        f.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {a.who} {cand['sha']} {name} outcome_exit={p.returncode}\n")
     return p.returncode
 
 

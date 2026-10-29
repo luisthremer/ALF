@@ -102,7 +102,11 @@ def check_prov(rd, acc, expect_rc=0, gpu_exclusive=None):
     if not b.get("tar_sha256_built") or b.get("tar_sha256_built") != b.get("candidate", {}).get(tkey):
         raise InputFail(f"{rid}: binary not built from the verified tarball ({b.get('tar_sha256_built')} vs {b.get('candidate', {}).get(tkey)})")
     for f, h in (p.get("outputs") or {}).items():
-        if h is not None and hashlib.sha256(open(need(os.path.join(rd, f)), "rb").read()).hexdigest() != h:
+        fp = os.path.join(rd, f)
+        if h is None:
+            if os.path.exists(fp):
+                raise InputFail(f"{rid}: {f} appeared after the run (absent at run time)")
+        elif hashlib.sha256(open(need(fp), "rb").read()).hexdigest() != h:
             raise InputFail(f"{rid}: {f} changed after the run (sha256 differs from provenance)")
     if not p.get("outputs") or p["outputs"].get("run.log") is None:
         raise InputFail(f"{rid}: no output hashes in provenance")
@@ -451,7 +455,8 @@ def g_compare2(g, root, acc):
     if p.returncode == 1:  # a real difference only if the JSON says so; a traceback also exits 1
         try:
             c = json.loads(read(js))
-            real = c.get("verdict") == "FAIL" and any(r.get("differs") and not r.get("under") for r in c.get("rows", []))
+            real = c.get("verdict") == "FAIL" and (any(r.get("differs") and not r.get("under") for r in c.get("rows", []))
+                                                   or any(not e.get("ok") for e in c.get("exact", [])))
         except (InputFail, ValueError):
             real = False
         if real:
@@ -474,6 +479,9 @@ def g_log_regex(g, root, acc):
             raise InputFail(f"{chk['stamp_file']}: not stamped with candidate {acc.get('candidate_sha')}")
         if os.path.exists(os.path.join(root, os.path.dirname(chk["file"]), "MUTATED")) and not acc.get("_allow_mutated"):
             raise InputFail(f"{chk['file']}: mutated copy outside a control")
+        bl = [l.split()[1] for l in stamp.splitlines() if l.startswith("base_sha ")]
+        if bl and (not acc.get("base_sha") or len(acc["base_sha"]) < 12 or not bl[0].startswith(acc["base_sha"])):
+            raise InputFail(f"{chk['stamp_file']}: base {bl[0]} is not the acceptance file's base {acc.get('base_sha')}")
         for need_s in chk.get("stamp_contains", []):
             if need_s not in stamp:
                 raise InputFail(f"{chk['stamp_file']}: stamp lacks '{need_s}'")
@@ -515,6 +523,13 @@ def g_files_identical(g, root, acc):
             if len(lines) < g.get("min_lines", 1):
                 raise InputFail(f"{d}: only {len(lines)} lines to compare")
             texts.append(lines)
+        st = [{l.split(None, 1)[0]: l.split(None, 1)[1] if " " in l else "" for l in read(os.path.join(root, d, "stamp")).splitlines()}
+              for d in (da, db)]
+        for k in ("tool", "configure", "regex", "repeat", "env", "offload"):
+            if st[0].get(k) != st[1].get(k):
+                raise InputFail(f"{da}/{db}: stamps differ in {k} ({st[0].get(k)} vs {st[1].get(k)})")
+        if {st[0].get("source"), st[1].get("source")} != {"base_src", "src"}:
+            raise InputFail(f"{da}/{db}: must compare a base build with a candidate build")
         diff = [i for i, (x, y) in enumerate(zip(*texts)) if x != y] + ([-1] if len(texts[0]) != len(texts[1]) else [])
         res.append({"pair": [da, db], "lines": len(texts[0]), "differing": len(diff)})
         if diff:
@@ -817,13 +832,25 @@ def selfcheck():
     good &= [(c["outcome"], c["as_expected"]) for c in v3["controls"]][:1] == [("FAIL", False)]
     bad += not good
     print(f"{'ok ' if good else 'BAD'} control semantics (missing runs are not a kill) {sem}")
+    # lint: report_only needs an owner approval with a decision id found in DECISIONS.md; controls cannot swap in
+    # unrelated runs
+    base_acc = {"ticket": "zz9", "builds": builds, "configs": {"x": {}, "y": {}},
+                "runs": {"r1": {"build": "gpu", "config": "x"}, "r2": {"build": "cpu", "config": "x"}, "r3": {"build": "gpu", "config": "y"}},
+                "gates": [dict(ss, pairs=[["r1", "r2", 1]]), dict(ss, id="ro", report_only=True, pairs=[["r1", "r2", 1]], _reason="decision")],
+                "controls": [{"id": "c1", "like": "ss", "replace": {"pairs": [["r3", "r2", 1]]}, "expect": "FAIL"}], "_status": "DRAFT"}
+    le = lint_errors(base_acc)
+    ok_l = any("report_only needs an owner approval" in e for e in le) and any("matches no run of gate" in e for e in le)
+    base_acc["approvals"] = [{"who": "owner", "decision": "99zz", "covers": ["ro"]}]
+    ok_l &= any("not found in docs/gpu/DECISIONS.md" in e for e in lint_errors(base_acc))
+    bad += not ok_l
+    print(f"{'ok ' if ok_l else 'BAD'} lint: report_only without a real owner decision, unrelated control runs")
     shutil.rmtree(tmp)
     print("selfcheck:", "PASS" if not bad else f"FAIL ({bad} wrong)")
     return 0 if not bad else 1
 
 
-GATE_DEBUG_OK = ("ALF_GPU_SELFTEST", "ALF_GPU_EXIT", "ALF_GPU_UPDTEST", "ALF_GPU_TAUDIAG", "ALF_GPU_TAUDIAG_FROM",
-                 "ALF_GPU_DEBUG")
+GATE_DEBUG_OK = ("ALF_GPU_SELFTEST", "ALF_GPU_EXIT", "ALF_GPU_TAUDIAG", "ALF_GPU_TAUDIAG_FROM", "ALF_GPU_DEBUG")
+SELFTEST_ONLY = ("ALF_GPU_UPDTEST",)  # restores no acceptance counters (Wrapgr_mod): only in self-test gates
 
 
 def lint_errors(acc):
@@ -875,8 +902,9 @@ def lint_errors(acc):
             elif x in mut_dst:
                 errs.append(f"gate {g['id']}: uses the mutated copy {x}")
             else:
+                ok_vars = GATE_DEBUG_OK + (SELFTEST_ONLY if g["type"] == "selftest" else ())
                 bad = [kv for kv in runs[x].get("env", []) if kv.split("=")[0].startswith(("ALF_GPU_", "ALFSH_"))
-                       and kv.split("=")[0] not in GATE_DEBUG_OK and g["type"] != "faults"]
+                       and kv.split("=")[0] not in ok_vars and g["type"] != "faults"]
                 if bad:
                     errs.append(f"gate {g['id']}: run {x} carries fault/numerics variables {bad} (allowed only in controls)")
         for p in g.get("pairs", []):
@@ -906,10 +934,16 @@ def lint_errors(acc):
         for x in refs(cg):
             if x not in runs:
                 errs.append(f"control {c['id']}: undeclared run {x}")
+    dec_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "docs", "gpu", "DECISIONS.md")
+    decisions = open(dec_path).read() if os.path.isfile(dec_path) else ""
     for gid, g in gates.items():
         if g.get("report_only"):
-            if "decision" not in g.get("_reason", "").lower():
-                errs.append(f"gate {gid}: report_only needs a _reason that cites the owner's decision")
+            ap = [a for a in acc.get("approvals", []) if a.get("who") == "owner" and gid in a.get("covers", []) and a.get("decision")]
+            row = [l for l in decisions.splitlines() if ap and l.startswith(f"| {ap[0]['decision']} |")]
+            if not ap:
+                errs.append(f"gate {gid}: report_only needs an owner approval covering it, with a decision id")
+            elif not row or f"ticket {acc.get('ticket')}" not in row[0].lower() and str(acc.get("ticket")) not in row[0]:
+                errs.append(f"gate {gid}: decision {ap[0]['decision']} not found in docs/gpu/DECISIONS.md, or it does not name ticket {acc.get('ticket')}")
             continue
         if gid not in fail_ctl:
             errs.append(f"gate {gid}: no positive control with expect FAIL")
@@ -928,6 +962,54 @@ def lint_errors(acc):
     for m in acc.get("mutations", []):
         if m["src"] not in runs or m["dst"] not in runs:
             errs.append(f"mutation {m['dst']}: source or destination not declared")
+    # controls may only swap in runs/outputs of the same kind as the gate's (S3, M2)
+    mut = {m["dst"]: m["src"] for m in acc.get("mutations", [])} | {m["dst"]: m["src"] for m in acc.get("log_mutations", [])}
+    ct = {t["id"]: t for t in acc.get("ctests", [])}
+
+    def same_run(x, y):
+        if x == y or mut.get(x) == y:
+            return True
+        rx, ry = runs.get(x), runs.get(y)
+        return bool(rx and ry and rx["config"] == ry["config"] and rx["build"] == ry["build"])
+
+    def same_dir(x, y):
+        if x == y or mut.get(x) == y:
+            return True
+        tx, ty = ct.get(x), ct.get(y)
+        return bool(tx and ty and all(tx.get(k) == ty.get(k) for k in ("tool", "configure", "regex", "repeat", "base", "gpu")))
+    for c in acc.get("controls", []):
+        g = gates.get(c.get("like"))
+        if not g:
+            continue
+        r = c.get("replace", {})
+        pairs_old, pairs_new = [], []
+        for k in ("runs", "a", "b"):
+            if k in r:
+                o, n = g.get(k), r[k]
+                o, n = (o if isinstance(o, list) else [o]), (n if isinstance(n, list) else [n])
+                pairs_old += o; pairs_new += n
+        if "pairs" in r:
+            for po, pn in zip(g["pairs"], r["pairs"]):
+                pairs_old += po[:2]; pairs_new += pn[:2]
+        if "cases" in r and isinstance(r["cases"], dict):
+            pairs_old += list(g["cases"].keys()); pairs_new += list(r["cases"].keys())
+        if "cases" in r and isinstance(r["cases"], list):
+            for co, cn in zip(g["cases"], r["cases"]):
+                pairs_old += [co["gpu"]] + co["cpu"]; pairs_new += [cn["gpu"]] + cn["cpu"]
+        for n in pairs_new:  # each swapped-in run must be of the kind of some run of the gate, or a mutation of one
+            if not any(same_run(n, o) for o in pairs_old + [x for p in g.get("pairs", []) for x in p[:2]] + list(g.get("runs", []))
+                       + ([g[k] for k in ("a", "b") if k in g]) + (list(g["cases"].keys()) if isinstance(g.get("cases"), dict) else [])
+                       + ([x for cc in g["cases"] for x in [cc["gpu"]] + cc["cpu"]] if isinstance(g.get("cases"), list) else [])) \
+                    and not (c.get("null") and g["type"] == "compare2"):
+                errs.append(f"control {c['id']}: {n} matches no run of gate {g['id']} in config and build, and is no mutation of one")
+        for chk_o, chk_n in zip(g.get("checks", []), r.get("checks", [])):
+            do, dn = chk_o["file"].split("/")[0], chk_n.get("file", chk_o["file"]).split("/")[0]
+            if dn in ct and do in ct and not same_dir(dn, do):
+                errs.append(f"control {c['id']}: ctest {dn} differs from {do} in more than its environment")
+    for g in acc.get("gates", []):
+        for d in dir_refs(g):
+            if ct.get(d, {}).get("control") or ct.get(d, {}).get("env") and not ct.get(d, {}).get("control"):
+                errs.append(f"gate {g['id']}: uses ctest output {d} that is a control or carries an environment")
     return errs
 
 

@@ -73,6 +73,28 @@
    ],
    "quote": "ok",
    "meaning": "T1 about 90 GPU-min, T2 about 120 GPU-min per ticket."
+  },
+  {
+   "date": "2026-10-29",
+   "who": "owner",
+   "channel": "manager session",
+   "decision": "3b",
+   "covers": [
+    "same_seed_log12_reported"
+   ],
+   "quote": "Own ticket for 206",
+   "meaning": "The LOG 12x12 same-seed excess (206 code) goes to ticket 213; 207 is not held open by it; the pair stays as a report-only gate."
+  },
+  {
+   "date": "2026-10-29",
+   "who": "owner",
+   "channel": "manager session",
+   "decision": "4b",
+   "covers": [
+    "blocked"
+   ],
+   "quote": "Not without my OK",
+   "meaning": "207 does not close while acceptance 6 is BLOCKED without the owner's explicit OK."
   }
  ],
  "machine": "nividia",

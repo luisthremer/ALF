@@ -25,7 +25,12 @@ TOOLS="testsuite/gpu_reference/acceptance testsuite/gpu_reference/compare2.py te
 git cat-file -e "$PRE:$ACCF" || { echo "$ACCF does not exist in the pre-registration commit $PRE"; exit 3; }
 [ "$PRE" != "$SHA" ] && git merge-base --is-ancestor "$PRE" "$SHA" || { echo "REFUSED: PREREG must be a strict ancestor of the candidate"; exit 3; }
 git merge-base --is-ancestor "$BASE" "$PRE" || { echo "REFUSED: BASE must be an ancestor of PREREG"; exit 3; }
-other=$(git diff --name-status --no-renames "$BASE" "$PRE" -- $TOOLS | grep -v -E "^A[[:space:]]testsuite/gpu_reference/acceptance/$TICKET[.a-z0-9]*\.json$" || true)
+ABASE=$(git show "$PRE:$ACCF" | python3 -c "import json,sys; print(json.load(sys.stdin).get('base_sha', ''))")
+case "$ABASE" in ????????????*) ;; *) echo "REFUSED: the acceptance file's base_sha must have >= 12 hex digits (got '$ABASE')"; exit 3;; esac
+[ "${BASE#$ABASE}" != "$BASE" ] || { echo "REFUSED: BASE $BASE is not the acceptance file's base_sha $ABASE"; exit 3; }
+git fetch -q fork gpu-port 2>/dev/null || true
+git merge-base --is-ancestor "$BASE" fork/gpu-port || { echo "REFUSED: BASE is not on fork/gpu-port (not an accepted state)"; exit 3; }
+other=$(git diff --name-status --no-renames "$BASE" "$PRE" -- $TOOLS | grep -v -E "^A[[:space:]]testsuite/gpu_reference/acceptance/$TICKET(\.[a-z0-9]+)*\.json$" || true)
 [ -z "$other" ] || { echo "REFUSED: between BASE and PREREG the judging tools changed beyond adding $TICKET*.json:"; echo "$other"; exit 3; }
 allowed=$(git show "$PRE:$ACCF" | python3 -c "import json,sys; print(' '.join(json.load(sys.stdin).get('allowed_test_changes', [])))")
 tch=$(git diff --name-status --no-renames "$PRE" "$SHA" -- testsuite | awk '$1=="M"||$1=="D" {print $2}' | grep -v -E '^testsuite/gpu_reference/acceptance/' || true)

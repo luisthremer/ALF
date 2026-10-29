@@ -37,7 +37,7 @@
    "tool": "intel",
    "configure": "IntelLLVM devel noMPI GPU=intel",
    "regex": "^t_order$",
-   "repeat": 3,
+   "repeat": 100,
    "env": [
     "ALF_LA_TEST_BREAK_ORDER=1"
    ],
@@ -82,6 +82,9 @@
       100,
       0,
       11
+     ],
+     "stamp_contains": [
+      "offload MANDATORY"
      ]
     }
    ]
@@ -99,6 +102,9 @@
      "equals": [
       100,
       100
+     ],
+     "stamp_contains": [
+      "offload MANDATORY"
      ]
     }
    ]
@@ -115,7 +121,10 @@
      {
       "file": "ctl_t_order_broken/summary",
       "stamp_file": "ctl_t_order_broken/stamp",
-      "exit_file": "ctl_t_order_broken/ctest.exit"
+      "exit_file": "ctl_t_order_broken/ctest.exit",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
      }
     ]
    }
@@ -130,7 +139,10 @@
      {
       "file": "ctl_poison_info/ctest.log",
       "stamp_file": "ctl_poison_info/stamp",
-      "exit_file": "ctl_poison_info/ctest.exit"
+      "exit_file": "ctl_poison_info/ctest.exit",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
      }
     ]
    }
@@ -145,7 +157,10 @@
      {
       "file": "ctl_wrong_ld/ctest.log",
       "stamp_file": "ctl_wrong_ld/stamp",
-      "exit_file": "ctl_wrong_ld/ctest.exit"
+      "exit_file": "ctl_wrong_ld/ctest.exit",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
      }
     ]
    }
