@@ -21,7 +21,9 @@
   (`target data use_device_addr`). No array descriptors, no derived types cross the interface.
 - Routines (initial set, from 101 and the profile): `la_init/finalize/sync`; `la_gemm`, `la_gemm_cr`/`la_gemm_rc`
   (complex × real via DGEMM on the interleaved view; dense B_T), `la_gemm_batched` (strided, flavours), `la_geru`,
-  `la_geqrf`, `la_ungqr`, `la_ormqr` (with `_lwork` queries), `la_getrf`, `la_getri` (CGR determinant/inverse paths),
+  `la_geqrf`, `la_ungqr`, `la_ormqr` (with `_lwork` queries), `la_getrf`, `la_getri` (CGR determinant/inverse paths;
+  **as built (202): `la_getri` is not provided, its only call sites are cold; the module has `la_getrs` and `la_trsm`
+  instead** — see `alf_la_mod.F90` public list; documentation note of 2026-10-29, no code change),
   `la_qrpp` = column-norm pre-pivot + `geqrf` returning a ZGEQP3-compatible `IPVT` (104 semantics); `la_geqp3_host` for
   STABLOG's CGR/CGR2_2 (108): copies the matrix to the host, calls ZGEQP3, returns factors and `IPVT` to the device
   (a documented transfer).

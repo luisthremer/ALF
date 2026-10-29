@@ -1,0 +1,557 @@
+{
+ "schema": "alf-acc/1",
+ "_status": "DRAFT, not in force. Becomes 207.json in the 207 candidate tree after the owner's decisions of the 2026-10-29 gate (criterion of acceptance 3, the default paired FAIL, Intel acceptance 6, GPU budget). Paired thresholds below are those of the rewrite approved on 2026-10-29; the owner decides at the gate whether they, the original max rule, or a new pre-registered criterion apply. The self-test and fault runs are listed here for one config each; the frozen file lists every (build, config) pair of acceptance 1.",
+ "ticket": "207",
+ "candidate_sha": "self",
+ "base_sha": "64ecde72",
+ "created": "2026-10-29",
+ "approvals": [
+  {
+   "date": "2026-10-29",
+   "who": "owner",
+   "channel": "manager session",
+   "covers": [
+    "paired.thresholds (rewrite)"
+   ],
+   "quote": "Yes: for Precision tau (and the 206 Green max), replace the 1.5x-max rule with the paired same-trajectory test as you proposed; report the max as information. Keep the diagnostic in the code. Then review, re-run and commit 207."
+  },
+  {
+   "date": "2026-10-29",
+   "who": "owner",
+   "channel": "instruction 'Two lanes, a stricter verification standard'",
+   "covers": [
+    "paired.sd_condition"
+   ],
+   "quote": "do not drop the sd condition, and do not commit 207."
+  }
+ ],
+ "machine": "nividia",
+ "gpu_exclusive": true,
+ "timeout_s": 900,
+ "disk_min_free_GB": 5,
+ "cpu_parallel": 3,
+ "false_alarm_budget": 0.07,
+ "builds": {
+  "nv_def": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5 GPU=nvidia",
+   "gpu": true
+  },
+  "nv_def_pp": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5 GPU=nvidia",
+   "flags_ext": "-DQR_PREPIVOT",
+   "gpu": true
+  },
+  "nv_log": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5 LOG GPU=nvidia",
+   "gpu": true
+  },
+  "nv_none": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5",
+   "gpu": false
+  },
+  "nv_none_pp": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5",
+   "flags_ext": "-DQR_PREPIVOT",
+   "gpu": false
+  },
+  "nv_none_log": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5 LOG",
+   "gpu": false
+  },
+  "base_nv_log": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5 LOG GPU=nvidia",
+   "gpu": true
+  },
+  "gnu_cand": {
+   "tool": "gnu",
+   "configure": "GNU noMPI HDF5",
+   "gpu": false
+  },
+  "base_gnu": {
+   "tool": "gnu",
+   "configure": "GNU noMPI HDF5",
+   "gpu": false
+  }
+ },
+ "configs": {
+  "hub6x6_cb": {
+   "base": "hub6x6_cb"
+  },
+  "hub6x6_dense": {
+   "base": "hub6x6_dense"
+  },
+  "hub12x12_cb": {
+   "base": "hub12x12_cb"
+  },
+  "hub12x12_cb_b10": {
+   "base": "hub12x12_cb",
+   "overrides": {
+    "beta": 10.0
+   }
+  },
+  "hub6x6_cb_flux": {
+   "base": "hub6x6_cb",
+   "overrides": {
+    "N_Phi": 1,
+    "Phi_X": 0.3
+   }
+  },
+  "hub6x6_cb_symm": {
+   "base": "hub6x6_cb_symm"
+  },
+  "hub6x6_cb_fd": {
+   "base": "hub6x6_cb",
+   "overrides": {
+    "NSweep": 1,
+    "NBin": 200
+   }
+  },
+  "hub12x12_cb_fd": {
+   "base": "hub12x12_cb",
+   "overrides": {
+    "NSweep": 1,
+    "NBin": 300
+   }
+  },
+  "hub12x12_cb_p": {
+   "base": "hub12x12_cb",
+   "overrides": {
+    "NSweep": 20,
+    "NBin": 20
+   }
+  },
+  "s8_U4_b2_cb": {
+   "base": "s8_U4_b2_cb"
+  }
+ },
+ "runs": {
+  "st_def_hub6x6_cb": {
+   "build": "nv_def_pp",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=4",
+    "ALF_GPU_EXIT=1"
+   ],
+   "allow_debug": true
+  },
+  "st_log_hub6x6_cb": {
+   "build": "nv_log",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=4",
+    "ALF_GPU_EXIT=1"
+   ],
+   "allow_debug": true
+  },
+  "fault_def_perm": {
+   "build": "nv_def_pp",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=4",
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_FAULT_TAU=perm"
+   ],
+   "allow_debug": true
+  },
+  "ss_def_6": {
+   "build": "nv_def",
+   "config": "hub6x6_cb_fd"
+  },
+  "ss_cpu_pp_6": {
+   "build": "nv_none_pp",
+   "config": "hub6x6_cb_fd"
+  },
+  "ss_log_6": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "ss_cpu_log_6": {
+   "build": "nv_none_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "ss_def_12": {
+   "build": "nv_def",
+   "config": "hub12x12_cb_fd"
+  },
+  "ss_cpu_pp_12": {
+   "build": "nv_none_pp",
+   "config": "hub12x12_cb_fd",
+   "refcache": true
+  },
+  "ss_log_12": {
+   "build": "nv_log",
+   "config": "hub12x12_cb_fd"
+  },
+  "ss_cpu_log_12": {
+   "build": "nv_none_log",
+   "config": "hub12x12_cb_fd",
+   "refcache": true
+  },
+  "ni_base_log_6": {
+   "build": "base_nv_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "rp_log_6b": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "pd_log_s1": {
+   "build": "nv_log",
+   "config": "hub12x12_cb_p",
+   "seeds": "acc1",
+   "env": [
+    "ALF_GPU_TAUDIAG=2",
+    "ALF_GPU_TAUDIAG_FROM=331"
+   ],
+   "allow_debug": true
+  },
+  "pd_def_s1": {
+   "build": "nv_def_pp",
+   "config": "hub12x12_cb_p",
+   "seeds": "acc1",
+   "env": [
+    "ALF_GPU_TAUDIAG=2",
+    "ALF_GPU_TAUDIAG_FROM=331"
+   ],
+   "allow_debug": true
+  },
+  "pc_cpu_log": {
+   "build": "nv_none_log",
+   "config": "hub12x12_cb_p",
+   "seeds": "acc1"
+  },
+  "pc_cpu": {
+   "build": "nv_none",
+   "config": "hub12x12_cb_p",
+   "seeds": "acc1"
+  },
+  "pc_cpu_pp": {
+   "build": "nv_none_pp",
+   "config": "hub12x12_cb_p",
+   "seeds": "acc1"
+  },
+  "c2_gpu": {
+   "build": "nv_def",
+   "config": "s8_U4_b2_cb",
+   "seeds": "acc1"
+  },
+  "c2_cpu": {
+   "build": "nv_none",
+   "config": "s8_U4_b2_cb",
+   "seeds": "acc2"
+  },
+  "ctl_tauswap8_log": {
+   "build": "nv_log",
+   "config": "hub12x12_cb_p",
+   "seeds": "acc1",
+   "env": [
+    "ALF_GPU_TAUDIAG=2",
+    "ALF_GPU_TAUDIAG_FROM=331",
+    "ALF_GPU_TAUSWAP=8"
+   ],
+   "allow_debug": true
+  },
+  "ctl_tauns0_def": {
+   "build": "nv_def_pp",
+   "config": "hub12x12_cb_p",
+   "seeds": "acc1",
+   "env": [
+    "ALF_GPU_TAUDIAG=2",
+    "ALF_GPU_TAUDIAG_FROM=331",
+    "ALF_GPU_TAU_NS=0"
+   ],
+   "allow_debug": true
+  },
+  "id_base_gnu": {
+   "build": "base_gnu",
+   "config": "hub6x6_cb"
+  },
+  "id_cand_gnu": {
+   "build": "gnu_cand",
+   "config": "hub6x6_cb"
+  },
+  "id_cand_gnu_rot": {
+   "build": "gnu_cand",
+   "config": "hub6x6_cb",
+   "seeds": "acc1"
+  }
+ },
+ "gates": [
+  {
+   "id": "selftest",
+   "type": "selftest",
+   "runs": [
+    "st_def_hub6x6_cb",
+    "st_log_hub6x6_cb"
+   ],
+   "passed": 1,
+   "max_rel": 1e-10,
+   "max_patterns": [
+    "G00\\s+([-+0-9.Ee]+)",
+    "GT0\\s+([-+0-9.Ee]+)",
+    "GTT\\s+([-+0-9.Ee]+)",
+    "G0T\\s+([-+0-9.Ee]+)"
+   ],
+   "_reason": "ticket 207 acceptance 1: device vs host per slice <= 1e-10"
+  },
+  {
+   "id": "faults",
+   "type": "faults",
+   "cases": {
+    "fault_def_perm": "tau: pass"
+   },
+   "_reason": "negative controls of the self-test"
+  },
+  {
+   "id": "same_seed",
+   "type": "same_seed",
+   "pairs": [
+    [
+     "ss_def_6",
+     "ss_cpu_pp_6"
+    ],
+    [
+     "ss_log_6",
+     "ss_cpu_log_6"
+    ],
+    [
+     "ss_def_12",
+     "ss_cpu_pp_12"
+    ],
+    [
+     "ss_log_12",
+     "ss_cpu_log_12"
+    ]
+   ],
+   "_reason": "thresholds proposed for pre-registration (not yet approved): 1e-9 tau line, 3e-9 overall (above the LOG 1.214e-9 seen), no bin above 1e-4",
+   "n_datasets": 14,
+   "n_tau_datasets": 5,
+   "nbin": 200,
+   "no_bin_above": 0.0001,
+   "overall_max": 3e-09,
+   "tau_max": 1e-09,
+   "active_lines": [
+    "GPU tau pass (207): ACTIVE",
+    "GPU stabilization (206): ACTIVE"
+   ]
+  },
+  {
+   "id": "non_interference_log",
+   "type": "replay",
+   "datasets": "equal_time",
+   "pairs": [
+    [
+     "ni_base_log_6",
+     "ss_log_6"
+    ]
+   ],
+   "n_datasets": 9,
+   "_reason": "the tau pass must not change the sweep; LOG path only, because the default path is not run-to-run reproducible (2026-10-29)"
+  },
+  {
+   "id": "replay_log",
+   "type": "replay",
+   "pairs": [
+    [
+     "ss_log_6",
+     "rp_log_6b"
+    ]
+   ],
+   "n_datasets": 38,
+   "_reason": "determinism premise (LOG)"
+  },
+  {
+   "id": "paired",
+   "type": "paired",
+   "runs": [
+    "pd_log_s1",
+    "pd_def_s1"
+   ],
+   "env": [
+    "ALF_GPU_TAUDIAG=2"
+   ],
+   "from_pass": 331,
+   "n_points": 3200,
+   "n_used": 560,
+   "ref_row": "b/a",
+   "abs_mean_max": 0.05,
+   "sd_ratio_max": 1.25,
+   "count_thresholds": [
+    1e-07,
+    3e-07
+   ],
+   "count_k": 2.0,
+   "_reason": "rewrite approved 2026-10-29; default path FAILS it (1.707); in force only after the owner's gate decision"
+  },
+  {
+   "id": "precision",
+   "type": "precision",
+   "mean_ratio_max": 1.5,
+   "cases": [
+    {
+     "gpu": "pd_log_s1",
+     "cpu": [
+      "pc_cpu_log"
+     ],
+     "allow_debug": true
+    },
+    {
+     "gpu": "pd_def_s1",
+     "cpu": [
+      "pc_cpu",
+      "pc_cpu_pp"
+     ],
+     "allow_debug": true
+    }
+   ],
+   "_reason": "mean rule of the 2026-10-29 rewrite; a TAUDIAG=2 run's info equals the production run's"
+  },
+  {
+   "id": "compare2",
+   "type": "compare2",
+   "a": "c2_gpu",
+   "b": "c2_cpu",
+   "m": 11,
+   "expect": [
+    "G(k=(pi,0),tau=beta/2)",
+    "Szz(k=(pi,pi),tau=beta/2)",
+    "chi_zz(pi,pi)"
+   ]
+  },
+  {
+   "id": "gpu_none_identity",
+   "type": "replay",
+   "pairs": [
+    [
+     "id_base_gnu",
+     "id_cand_gnu"
+    ]
+   ],
+   "n_datasets": 38,
+   "gpu_exclusive": false
+  },
+  {
+   "id": "gpu_none_static",
+   "type": "log_regex",
+   "checks": [
+    {
+     "file": "../gpunone/ppcmp.txt",
+     "regex": "preprocessor_errors (\\d+) differing_lines (\\d+)$",
+     "equals": [
+      0,
+      0
+     ],
+     "exit_file": "../gpunone/ppcmp.exit"
+    },
+    {
+     "file": "../gpunone/ctest.log",
+     "regex": "(\\d+)% tests passed, (\\d+) tests failed out of (\\d+)",
+     "equals": [
+      100,
+      0,
+      52
+     ],
+     "exit_file": "../gpunone/ctest.exit"
+    }
+   ]
+  }
+ ],
+ "controls": [
+  {
+   "id": "ctl_paired_tauswap8",
+   "type": "paired",
+   "expect": "FAIL",
+   "runs": [
+    "ctl_tauswap8_log"
+   ],
+   "env": [
+    "ALF_GPU_TAUSWAP=8"
+   ],
+   "from_pass": 331,
+   "n_points": 3200,
+   "n_used": 560,
+   "ref_row": "b/a",
+   "abs_mean_max": 0.05,
+   "sd_ratio_max": 1.25,
+   "count_thresholds": [
+    1e-07,
+    3e-07
+   ],
+   "count_k": 2.0
+  },
+  {
+   "id": "ctl_paired_tauns0",
+   "type": "paired",
+   "expect": "FAIL",
+   "runs": [
+    "ctl_tauns0_def"
+   ],
+   "env": [
+    "ALF_GPU_TAU_NS=0"
+   ],
+   "from_pass": 331,
+   "n_points": 3200,
+   "n_used": 560,
+   "ref_row": "b/a",
+   "abs_mean_max": 0.05,
+   "sd_ratio_max": 1.25,
+   "count_thresholds": [
+    1e-07,
+    3e-07
+   ],
+   "count_k": 2.0
+  },
+  {
+   "id": "ctl_same_seed_scale",
+   "type": "same_seed",
+   "expect": "FAIL",
+   "_mutation": "mutate.py ss_log_6 ss_log_6_m scale:Green_tau/obser:1e-6",
+   "pairs": [
+    [
+     "ss_log_6_m",
+     "ss_cpu_log_6"
+    ]
+   ],
+   "n_datasets": 14,
+   "n_tau_datasets": 5,
+   "nbin": 200,
+   "no_bin_above": 0.0001,
+   "overall_max": 3e-09,
+   "tau_max": 1e-09,
+   "per_entry_max": 1e-08,
+   "active_lines": [
+    "GPU tau pass (207): ACTIVE"
+   ]
+  },
+  {
+   "id": "ctl_compare2_shift",
+   "type": "compare2",
+   "expect": "FAIL",
+   "_mutation": "mutate.py c2_gpu c2_gpu_m shift:Ener_scal/obser:5",
+   "a": "c2_gpu_m",
+   "b": "c2_cpu",
+   "m": 11
+  },
+  {
+   "id": "ctl_identity_seeds",
+   "type": "replay",
+   "expect": "FAIL",
+   "pairs": [
+    [
+     "id_base_gnu",
+     "id_cand_gnu_rot"
+    ]
+   ],
+   "n_datasets": 38,
+   "gpu_exclusive": false,
+   "_reason": "other seeds must break the identity gate"
+  }
+ ]
+}

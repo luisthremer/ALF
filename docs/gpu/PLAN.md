@@ -1,6 +1,8 @@
 # ALF GPU port – plan
 
-Status 2026-10-28: Phase 2 in progress – 201–206 done, 207 (τ pass) open (see tickets/). Phase 1 gate passed 2026-10-27 (ADR-001/002 accepted). Why each piece is here: [HARD.md](HARD.md) (items referred to
+Status 2026-10-29: Phase 2 in progress – 201–206 done, 207 (τ pass) **on hold** (owner decision and verification
+standard pending). Process change proposed on branch `gpu-port-process-lanes` (two lanes, [VERIFICATION.md](VERIFICATION.md));
+no lane starts before the owner's go-ahead. Phase 1 gate passed 2026-10-27 (ADR-001/002 accepted). Why each piece is here: [HARD.md](HARD.md) (items referred to
 as H1–H10). Measurements: [PROFILE.md](PROFILE.md), [BASELINE.md](BASELINE.md).
 
 ## 1. Architecture (decided: [ADR-001](ADR-001-programming-model.md), [ADR-002](ADR-002-alf-la-and-data-model.md))
@@ -19,7 +21,8 @@ gpu_state module (plain contiguous device arrays, allocated once)
   └─ alf_la backend layer (~12 ALF-level ops on device arrays + stream/queue handle)
         HOST   : the same LAPACK/BLAS calls as upstream (GPU=none path, test oracle)
         CUDA   : cuBLAS / cuSOLVER (nvfortran modules or ISO_C_BINDING)
-        ONEMKL : !$omp dispatch for BLAS; small C++ SYCL USM shim for geqrf/ormqr/ungqr/getrf/getri
+        ONEMKL : !$omp dispatch for BLAS; small C++ SYCL USM shim for geqrf/ormqr/ungqr/getrf/getrs (+ trsm)
+                 (the module provides la_getrs/la_trsm, not la_getri; 202)
 ```
 
 - **Directive language:** OpenMP 5.x target offload: `target enter/exit data`, `target update`,
@@ -113,18 +116,55 @@ Unsupported inputs are refused at setup (H4).
 | 209 | Validation suite: kernel tests, same-compiler trajectory test (NVHPC CPU vs GPU, first-divergence sweep), test_vs_ed on GPU, statistical compare vs references (106), precision numbers | 205–208 |
 | 210 | BENCHMARKS.md: s/sweep CPU (16 cores, nividia) vs GPU for N = 64…1024, ±Ltau, per-kernel breakdown (incl. rank-1 share), crossover. Development numbers; the official CPU baseline is decided in Phase 3 | 209 |
 | 211 | CPU regression gate: unit tests, `test_branch_parameters.json` / `compare_dirs.py`, GNU + ifx s/sweep within noise | 201–208 |
+| 212 | **Verification hardening** (code): gate all `ALF_GPU_*` debug/fault variables so production runs refuse them; provenance header in the binary's output; "GPU debug env" and "fault armed" info lines; graded fault `ALF_GPU_FAULT_TAU=eps:<x>`; `ALF_GPU_TAUDIAG_SEED`; deterministic default path (fixed-order `k_colnorms`/`k_lognorm`/`k_prec`, explicit cuSOLVER/cuBLAS modes) if the owner decides so; run-twice-identical and "τ pass leaves the sweep unchanged" gates. Must land before any further ticket closes | harness approved |
 
-Every ticket gets review (rev) and acceptance re-run by the manager.
+Every ticket is accepted under [VERIFICATION.md](VERIFICATION.md): pre-registered acceptance file, T2 harness run by
+the manager on a frozen candidate, positive controls, independent verifier and reviewer. 207 closes as described in
+[tickets/207-closing-plan.md](tickets/207-closing-plan.md); order in the NVIDIA lane: 212 → 207 → 208 → 209 …
 
-### Phase 3 – Intel / SuperMUC-NG Phase 2 enablement (gate; owner runs the jobs)
+### Two lanes under one manager (proposed 2026-10-29; starts only with the owner's go-ahead)
 
-| ID | Ticket |
-|---|---|
-| 301 | `SUPERMUC-NG-PVC` profile: ifx, `-fiopenmp -fopenmp-targets=spir64_gen -Xs "-device pvc"`, oneMKL, `mpiifx`, HDF5. Flags checked against current LRZ/Intel docs and the owner's `module avail` |
-| 302 | ONEMKL backend of `alf_la`: `!$omp dispatch` BLAS + SYCL USM shim for the LAPACK pieces that dispatch would run on the host; documented per routine |
-| 303 | ifx build of the full GPU path on the `intel` test machine (Arc B580, `spir64` JIT and AOT), 209 suite on the B580 (correctness; not PVC performance) |
-| 304 | Slurm scripts (`test` partition, 8 ranks/node = 1 per stack, FLAT mode, `I_MPI_OFFLOAD_CELL=tile`, `OMP_TARGET_OFFLOAD=MANDATORY`) + validation recipe with expected values and tolerances |
-| 305 | Evaluate the owner's results; BENCHMARKS.md PVC column; fixes |
+The NVIDIA lane (Phase 2 tickets, `nividia`, `~/alf-gpu/work/t2NN`) and the Intel lane (pulled-forward Phase 3
+tickets, `intel`, `~/alf-gpu/work/t3NN`) run in parallel on two machines that never compete for a GPU. Only the
+manager commits; each lane works on its own sub-branch (`gpu-port-NNN-name`) and both are accepted under
+[VERIFICATION.md](VERIFICATION.md) with the same gates.
+
+**Why now:** under `GPU=intel` only the 205 updates and the checkerboard wraps run on the GPU today, and the oneMKL
+backend is a guard without calls. The longer Intel lags, the more the design fits only NVIDIA (two nvfortran bugs and
+two cuSOLVER quirks are already worked around); oneMKL on a real Intel GPU will have its own, and finding them early is
+cheaper.
+
+**Prerequisites of the Intel lane:** a consistent oneAPI on `intel` (matching ifx and MKL releases; today ifx 2025.3 +
+MKL 2026.2 fails at link time, see MACHINES.md), the owner's approval of the process diff, and the harness.
+
+**File ownership while both lanes run**
+
+| File / area | Owner | Rule |
+|---|---|---|
+| `Prog/gpu_tau_mod.F90`, `Prog/tau_m_mod.F90`, observables (208) | NVIDIA lane | – |
+| `Libraries/Modules/alf_la_mod.F90`: the `ALF_LA_ONEMKL` bodies, `la_init` interop; `alf_la_sycl_shim.cpp`; `configure.sh` intel block; `testsuite/alf_la.tests` ONEMKL mode | Intel lane | HOST and CUDA code paths unchanged; `GPU=none` identity per change |
+| the `ALF_LA_ONEMKL` guards in `gpu_stab_mod.F90:137–140`, `gpu_state_mod.F90` (la_init/finalize), `gpu_wrap_mod.F90:98–102` | Intel lane | one-line guard edits only |
+| everything else in `gpu_stab_mod`, `gpu_state_mod`, `gpu_wrap_mod`; `PLAN.md`; `Prog/Makefile` | shared | the manager sequences edits: one lane at a time, the other rebases |
+| `alf_la` public interface (`alf_la_mod.F90` public list and argument lists) | frozen | no signature change while both lanes run; a new routine needs the manager's decision |
+
+**τ path on Intel:** removing the 302 guard would switch on the 206 stabilization **and** the 207 τ pass at once. The
+τ path under `GPU=intel` gets its own switch (refused at setup until 302c), so 302b validates 204–206 alone.
+
+### Phase 3 – Intel / SuperMUC-NG Phase 2 enablement (Intel lane; owner runs the PVC jobs)
+
+| ID | Ticket | Depends |
+|---|---|---|
+| 301 | `SUPERMUC-NG-PVC` profile: ifx, `-fiopenmp -fopenmp-targets=spir64_gen -Xs "-device pvc"`, oneMKL, `mpiifx`, HDF5. Flags checked against current LRZ/Intel docs and the owner's `module avail` | owner's `module avail` |
+| 302a | ONEMKL backend of `alf_la` + `alf_la.tests` routine tests and `t_order` on the B580; per routine measured GPU / host / hybrid; STABLOG keeps host ZGEQP3; interop queue question (ADR-002 §1) ([draft](tickets/302a-onemkl-backend.md)) | 202 (interface), consistent oneAPI, harness |
+| 302b | 204–206 device paths on the B580 with the 206 gates (self-tests, same-seed vs CPU, precision); τ path still refused | 302a |
+| 302c | τ path (207) on the B580 | 302b, 207 committed |
+| 303 | ifx build of the full GPU path on `intel` (B580, `spir64` JIT and AOT), 209 suite on the B580 (correctness; not PVC performance) | 302c, 209 |
+| 304 | Slurm scripts (`test` partition, one rank per tile by default, CCS mode as an option, `I_MPI_OFFLOAD_CELL=tile`, `OMP_TARGET_OFFLOAD=MANDATORY`) + validation recipe with expected values and tolerances | 301, 303 |
+| 305 | Evaluate the owner's results; BENCHMARKS.md PVC column; fixes | 304 |
+
+Validation tail of the Intel lane: the same gates as NVIDIA under the same harness (kernel self-tests with fault
+controls, same-seed against the CPU, precision, compare2, `GPU=none` identity), run on `intel`; B580 numbers are
+correctness evidence, not PVC performance.
 
 ### Later phases – outline only, wait for the owner's go-ahead
 
@@ -135,6 +175,7 @@ Every ticket gets review (rev) and acceptance re-run by the manager.
 | 403 | GPU versions of 401/402 | Host Γ + device GEMM flush; the expected main GPU speedup (H1) |
 | 404 | Performance work: flavour batching, several chains per GPU, fused checkerboard kernels, device measurements for more observables, CUDA graphs / `nowait` | |
 | 405 | MPI + multi-GPU: one rank per GPU/stack, GPU-aware MPI for tempering | Testable only on SuperMUC |
+| 406 | Idea: the Metropolis accept decision on the device, with each slice's random numbers uploaded in advance, so the RNG stream and same-seed comparisons stay unchanged | idea only |
 
 ## 3. Validation strategy (summary, details in HARD H7 and BASELINE)
 
@@ -146,6 +187,8 @@ Every ticket gets review (rev) and acceptance re-run by the manager.
    - χ² reported;
    - `Precision Green`/`tau`/phase reported next to the CPU values.
 4. CPU path: unit tests, branch comparison, GNU LOG/default identity, performance within noise.
+5. Every gate has a positive control that must FAIL; verdicts are computed by `verdict.py` from stamped raw outputs
+   ([VERIFICATION.md](VERIFICATION.md)).
 
 ## 4. Risks
 
@@ -158,7 +201,7 @@ Every ticket gets review (rev) and acceptance re-run by the manager.
 | R5 | Same-compiler trajectory test diverges early because device round-off flips a decision | medium / low | Report the first-divergence sweep; the statistical tests remain authoritative |
 | R6 | oneMKL/SYCL and OpenMP interop on one device immature | medium / medium | Prototype in 103, shim kept small and separately testable |
 | R7 | Touching hot CPU routines slows `GPU=none` | low / high | New modules + guarded early branches; 211 gate per ticket |
-| R8 | Disk (25 GB free) and node size on nividia | medium / low | Clean up after each run; keep references compact |
+| R8 | Disk (19 GB free, 93 % used, 2026-10-29) and node size on nividia | medium / medium | Evidence kept until the gate (≤ 1.5 GB live per ticket), archive ≤ 2 GB, CPU reference cache ≤ 2 GB, driver refuses below 5 GB free; the owner decides on the old t104–t108 directories (~2.7 GB) |
 | R9 | Max 1550 is EOL; SuperMUC versions differ from docs | – / medium | `alf_la` limits lock-in; owner checks `module avail` |
 
 ## 5. Owner decisions

@@ -1,0 +1,111 @@
+# Verification standard (2026-10-29, proposed; in force after the owner approves `gpu-port-process-lanes`)
+
+Goal: no error reaches a commit. Correctness ranks above speed. Tooling: `testsuite/gpu_reference/acceptance/`
+(README there). Owner decisions: [DECISIONS.md](DECISIONS.md). Measurements behind the rules: gate report of
+2026-10-29 (determinism, MPS, CPU-alongside) and the research notes R4–R9 (outside the repo).
+
+## 1. Test the artifact we commit
+- Acceptance runs only on binaries built from `git archive <candidate-sha>` (`acc_ship.sh`, `acc_build.sh`): read-only
+  source, tarball sha256 checked on both ends, never a synced working tree. A working tree is not a candidate.
+- The committed sha equals the accepted sha, except for `docs/**` (`acc_check_commit.sh`). Any other change after
+  acceptance, including a comment in a `.F90`, needs a new acceptance run of the deterministic tier; the reviewer
+  decides and records whether the statistical tier must be repeated.
+
+## 2. Provenance stamp on every run
+`acc_run.sh` writes `provenance.json` into every run directory: candidate sha, tree hash, tarball sha256, binary
+sha256, configure line and flags, compiler/CUDA/driver versions, the complete environment, parameter and seed
+hashes, GPU processes before and after, start/end time, exit code, timeout flag, sha256 of every output file and of
+every `data.h5` dataset. Runs use `env -i` plus the tool's env file plus an explicit whitelist. Debug and fault
+variables (`ALF_GPU_FAULT*`, `_TAUSWAP`, `_TAU_NS`, `_NS`, `_STABCHECK`, `_STABMIX`, `_TAUDIAG*`, `_NOUPDATE`,
+`_SELFTEST`, `_UPDTEST`, `_EXIT`, `_TAUTIME`, `_STABTIME`, `_DISABLE`) are refused unless the acceptance file declares
+the run as a self-test or control run. A log without a stamp that matches the candidate is not evidence.
+
+## 3. Pre-registration
+Each ticket has `testsuite/gpu_reference/acceptance/NNN.json`, committed **before** implementation results are seen,
+and frozen with the candidate (the driver refuses any other copy). It holds configs, seed sets, bins and sweeps, each
+gate's statistic, threshold and reason, α and the multiple-comparison correction, the expected counts, and the
+positive controls with their expected outcome. Development uses the committed dev seeds; acceptance seeds are drawn
+fresh by the driver (`secrets.randbits`) after the candidate is frozen. Changing the file needs the owner's quoted,
+dated approval (in the file's `approvals` and in DECISIONS.md) **and** fresh seeds afterwards. A statistical FAIL goes
+to the owner; "re-run until green" is forbidden. When a criterion fails, relaxing it is never put forward as the first
+or recommended option.
+
+## 4. Scripted verdicts
+`verdict.py` computes PASS/FAIL for every gate from raw outputs and writes `verdict.json`/`verdict.md`; report tables
+are generated from it, never assembled by hand. NaN or Inf, a missing file, line or dataset, an empty comparison set,
+a count differing from the acceptance file, a nonzero exit, a timeout, a GPU-inactive run and a provenance mismatch
+are all FAIL. `verdict.py --selfcheck` (synthetic data, CPU only) must PASS whenever the script changes.
+`compare2.py` is fail-closed since 2026-10-29 (exit 3: NaN, missing observables, m = 0, identical seeds or means
+without `--same-seed`). The per-ticket `tNNN_*` scripts are development tools only.
+
+## 5. Positive controls for every gate
+Each gate has at least one control, run on the same build profile, that must FAIL; the verdict lists killed / not
+killed. A gate whose control is not killed is not a gate.
+
+| Gate | Control (must FAIL) |
+|---|---|
+| kernel self-test | the `ALF_GPU_FAULT*` classes; a graded fault near 10× the tolerance (hardening ticket) |
+| same-seed vs CPU oracle | `mutate.py scale:<tau dataset>:1e-6` on a small entry; `nan:`; `drop:`; `ALF_GPU_FAULT_STAB=perm` in a production run |
+| paired same-trajectory | `ALF_GPU_TAUSWAP=8` (LOG), `ALF_GPU_TAU_NS=0` (default); `mutate.py taudiag_inflate/taudiag_bias` |
+| precision mean | `ALF_GPU_NS=0` (once per toolchain); known blind spot: the 207 ZUNMQR defect (+17 % on the τ mean) |
+| compare2 | `mutate.py shift:<obs>:5`; `nan:`; `drop:SpinZ_tau` |
+| GPU=none identity | one-token change in an `#else` branch (ppcmp); rotated seeds (`data.h5` identity) |
+| replay / determinism | a 1-ulp-level difference (`mutate.py scale:…:1e-12`) |
+
+## 6. Statistical gates with known power
+Calibrate each with a null run (CPU vs CPU, fresh seeds) and a known small bias. Errors are autocorrelation-corrected
+from ≥ 30 independent bins. The CPU reference has ≥ ~10× the statistics of the test or errors are combined in
+quadrature. Next to every PASS the report states the detectable effect size. **Proposal awaiting owner approval:**
+maximum-error statistics are information only; acceptance is on the mean or a fixed quantile over a fixed number of
+stabilizations, and maxima are compared only between runs of identical length.
+
+## 7. Determinism (from the measurement of 2026-10-29)
+- Where bit identity holds — same binary re-run, same commit rebuilt with the same toolchain — it is demanded.
+  Measured: the LOG path is bitwise reproducible; the default path is **not** (≤ 2.4e-11 relative in observables at
+  12×12 β = 10). Until the hardening ticket makes it reproducible, the default path's replay gate uses the
+  same-seed bound below instead of identity, and this is stated in every verdict.
+- Across source changes: the documented relative bounds (same-seed per-bin 1e-9 overall and in the τ line, no bin
+  above 1e-4) and statistical comparisons.
+- Precision summary numbers are never compared to 4 digits.
+
+## 8. Who runs what (tiers; tolerances identical in every tier)
+| Tier | Who | Content | GPU time (207-sized ticket) |
+|---|---|---|---|
+| T0 fast | implementer, every iteration | self-tests and fault controls; 6×6 same-seed both paths | ~2.5 min |
+| T1 pre-candidate | implementer, once, on its own frozen candidate (`git archive`) | the full acceptance on dev seeds | ~90 min |
+| T2 acceptance | manager, frozen candidate, unattended (`acc_driver.py`) | all deterministic gates in full; every statistical gate once on fresh seeds; all positive controls | ~120 min |
+
+On top of T2 the manager audits the implementer's report against the raw outputs (`audit.py`) and lists every
+mismatch, and an independent `acceptance-verifier` recomputes every verdict (section 10). A ~2 h unattended T2
+sequence of ≤ 15 min runs needs the owner's standing approval of the budget.
+
+## 9. Evidence retention
+Raw outputs (`info`, `data.h5`, `run.log`, `provenance.json`, verdict files) stay until the owner's gate, then go to
+`~/alf-gpu/archive/tNNN/` with a sha256 manifest. Budget: ~0.6 GB per acceptance; the driver refuses to start below
+5 GB free; archive ≤ 2 GB unless the owner approves more. Agents never delete raw evidence; cleanup removes build
+trees only. Run directories are never overwritten (the scripts refuse).
+
+## 10. Independent review and verification
+- `numerics-reviewer` (Opus) reviews three things separately: (a) the code diff, (b) the acceptance file, (c) scripts
+  and verdict tooling. (b) and (c) are reviewed before T2 starts; a finding on (b) after T2 data exists is a criteria
+  change (section 3). Any diff touching tests, references, thresholds or seeds is flagged in the review and in the
+  owner's gate report.
+- `acceptance-verifier` (Opus, fresh, read-only) gets only the candidate sha, the acceptance file and the manager's
+  raw outputs; it recomputes every verdict with its own code, then reads the implementer's report and the manager's
+  summary and lists every mismatch. A ticket closes only when the scripted verdict, the verifier and the reviewer agree;
+  disagreements go to the owner.
+- The implementer never edits the acceptance file after the freeze, and never certifies its own corrections.
+
+## 10b. Agent lifecycle
+- Implementers on Sonnet by default; the manager may propose Opus per ticket for numerically delicate work.
+- Verification never runs in the implementer's context. Corrections of a report go to a fresh verifier.
+- When an implementer passes ~250k tokens, or at a phase boundary (candidate → review fixes), it writes a handoff note
+  into the ticket (state, decisions, what was tried, open problems, evidence paths) and a fresh agent continues.
+- Resuming the same agent is fine only for interruptions (rate limits, deadline changes). After a change to an agent
+  definition, spawn new agents.
+- The manager restarts per phase from a written handoff; every owner decision lives in the ticket and DECISIONS.md.
+
+## 11. CPU reference cache
+`refcache.py` stores CPU reference runs in `~/alf-gpu/refcache/` keyed by the CPU-path sources, build, toolchain,
+parameters and seeds; any mismatch is a miss. Only the manager writes to it; budget ≤ 2 GB (oldest entries removed
+first, after the owner's gate of the tickets that used them). Details in [BASELINE.md](BASELINE.md).
