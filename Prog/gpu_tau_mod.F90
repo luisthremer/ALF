@@ -377,6 +377,14 @@ Contains
     !$omp target update to(A(1:nel))
   end subroutine upd_to_c
 
+  !> H->D of nel contiguous integer elements starting at A (same reason as upd_from_c)
+  Subroutine upd_to_i(A, nel)
+    Implicit none
+    Integer, intent(in) :: nel
+    Integer (c_int) :: A(*)
+    !$omp target update to(A(1:nel))
+  end subroutine upd_to_i
+
   !> D->H of nel contiguous real elements starting at A (same reason as upd_from_c)
   Subroutine upd_from_r(A, nel)
     Implicit none
@@ -496,7 +504,7 @@ Contains
 #endif
     if (fault == 1) then                                    ! negative control: wrong permutation (host and device copy)
        kk = t_ipvt(1); t_ipvt(1) = t_ipvt(2); t_ipvt(2) = kk
-       !$omp target update to(t_ipvt(1:2))
+       call upd_to_i(t_ipvt, 2)
     endif
     call k_diagabs(n2, t_H1, n2, t_D3)                      ! separate off D = |R_ii|
     call k_divrows(n2, t_H1, n2, t_D3)
@@ -1007,8 +1015,9 @@ Contains
     did = .false.
     if (.not. gpu_tau_on) return
     f = ''
-    call get_environment_variable('ALF_GPU_FAULT_TAU', f, status=st)
-    if (st == 0 .and. len_trim(f) > 0) then
+    ! faults only together with the self-test, so that a stray ALF_GPU_FAULT_TAU cannot reach a production run
+    if (env_is('ALF_GPU_SELFTEST', '4')) call get_environment_variable('ALF_GPU_FAULT_TAU', f, status=st)
+    if (len_trim(f) > 0) then
        select case (trim(f))
        case ('perm');   fault = 1
        case ('prop');   fault = 2
