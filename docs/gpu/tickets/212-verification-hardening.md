@@ -88,8 +88,9 @@ Pre-registered in `testsuite/gpu_reference/acceptance/212.json` (gates, threshol
 - Report: cost of the deterministic reductions (s/sweep at N = 144 and 400, default and LOG), with stamped runs.
 
 ## Approvals
-- Pre-registration commit: the commit that adds `212.json` on `gpu-port-212-hardening` (its sha is added here in the
-  next docs-only commit).
+- Pre-registration commit: `6f106abf` (2026-10-29) on `gpu-port-212-hardening`; base `d53f9779`. Any change of
+  `212.json` after this needs the owner's quoted approval and fresh seeds (VERIFICATION.md §3), unless it is made
+  before any implementation result exists and is pre-registered again in a new commit recorded here.
 
 ## Evidence
 `~/alf-gpu/work/t212/`: development runs (T0) anywhere below it; candidates in `cand/agent/<sha12>/` (T1) and
