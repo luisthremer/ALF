@@ -8,8 +8,9 @@
 - acceptance 6 (Intel) is BLOCKED, never PASS (decision 4); the verdict then reads BLOCKED, not PASS;
 - budget: T1 ≈ 90, T2 ≈ 120 GPU-min (decision 11).
 
-Still open with the owner: whether 207 may close while acceptance 6 is BLOCKED, and whether it stays open on the LOG
-12×12 same-seed pair or that 206 finding gets its own ticket.
+- the LOG 12×12 same-seed excess (206 code) has its own ticket 213; 207 is not held open by it (decision 3b).
+
+Still open with the owner: whether 207 may close while acceptance 6 is BLOCKED.
 
 Order:
 1. **212 lands** (hardening, cause of the default-path spread, deterministic reductions). 212 changes code 207 shares.

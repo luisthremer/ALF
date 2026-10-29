@@ -571,8 +571,10 @@ def evaluate(acc, root):
     ok = not out["lint"]
     for g in acc["gates"]:
         v, r, why = run_gate(g, root, acc)
-        out["gates"].append({"id": g["id"], "type": g["type"], "verdict": v, "result": r, "reason": why})
-        ok &= v == "PASS"
+        out["gates"].append({"id": g["id"], "type": g["type"], "verdict": v, "result": r, "reason": why,
+                             "report_only": bool(g.get("report_only"))})
+        if not g.get("report_only"):  # report-only gates (owner decision, stated in _reason) never decide the verdict
+            ok &= v == "PASS"
     gate_verdict = {g["id"]: g["verdict"] for g in out["gates"]}
     for c in acc.get("controls", []):
         cg = resolve_control(c, acc)
@@ -598,7 +600,7 @@ def write_md(v, path):
     L += [
          "| gate | type | verdict | detail |", "|---|---|---|---|"]
     for g in v["gates"]:
-        L.append(f"| {g['id']} | {g['type']} | {g['verdict']} | {(g['reason'] or json.dumps(g['result'], default=str))[:300]} |")
+        L.append(f"| {g['id']} | {g['type']} | {g['verdict']}{' (report only)' if g.get('report_only') else ''} | {(g['reason'] or json.dumps(g['result'], default=str))[:300]} |")
     L += ["", "| control | gate | expected | outcome | as expected | reason |", "|---|---|---|---|---|---|"]
     for c in v["controls"]:
         L.append(f"| {c['id']} | {c['like']} | {c['expect']} | {c['outcome']} | {c['as_expected']} | {(c['reason'] or '')[:200]} |")
@@ -904,7 +906,11 @@ def lint_errors(acc):
         for x in refs(cg):
             if x not in runs:
                 errs.append(f"control {c['id']}: undeclared run {x}")
-    for gid in gates:
+    for gid, g in gates.items():
+        if g.get("report_only"):
+            if "decision" not in g.get("_reason", "").lower():
+                errs.append(f"gate {gid}: report_only needs a _reason that cites the owner's decision")
+            continue
         if gid not in fail_ctl:
             errs.append(f"gate {gid}: no positive control with expect FAIL")
     null_ctl = set()

@@ -29,4 +29,5 @@ The owner answered the manager's recommendations with "ok" (2026-10-29, manager 
 | 8 | t104–t108 on nividia | Archive logs and summaries to `~/alf-gpu/archive/`, then delete raw runs and binaries **after the owner's OK on the listed contents**. |
 | 9 | `module avail` on SuperMUC | The owner runs it; it decides the toolchain pin for both Intel machines. |
 | 10 | Agent setup | Opus `acceptance-verifier`, Opus `numerics-reviewer`, Sonnet implementers (Opus per numerically delicate ticket on the manager's proposal), respawn and handoff rules as in VERIFICATION.md §10b. |
+| 3b | Same-seed LOG 12×12 excess (1.214e-9, 206 code) | (2026-10-29, after the second review) "Own ticket for 206": the excess gets its own ticket (213); 207 is not held open by it. The pair stays in 207 as a reported run; the 1e-9 bound is unchanged. |
 | 11 | GPU budget and lanes | Standing budget per ticket: T1 ≈ 90 GPU-min, T2 ≈ 120 GPU-min unattended, every run ≤ 15 min. Lanes go ahead once the process diff is approved and merged. Order: NVIDIA lane 212 → 207 (controls, T2 on fresh seeds) → 208; Intel lane 302a once oneAPI is fixed. |

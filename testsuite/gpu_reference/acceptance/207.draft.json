@@ -725,11 +725,6 @@
      "ss_def_12",
      "ss_cpu_pp_12",
      300
-    ],
-    [
-     "ss_log_12",
-     "ss_cpu_log_12",
-     300
     ]
    ],
    "n_datasets": 38,
@@ -737,7 +732,7 @@
    "no_bin_above": 0.0001,
    "overall_max": 1e-09,
    "tau_max": 1e-09,
-   "_reason": "VERIFICATION.md 7 and decision 3 (2026-10-29): 1e-9 overall and in the tau line, no bin above 1e-4. The LOG 12x12 pair was measured at 1.214e-9 (bin 184, equal-time only, 206 code): with unchanged code this gate FAILS on that pair; the owner decides whether 207 stays open on it or the 206 finding gets its own ticket. The per-entry metric is reported, not gated (1.4e-5 on clean LOG 6x6 data, harness test 2026-10-29)."
+   "_reason": "VERIFICATION.md 7 and decision 3 (2026-10-29): 1e-9 overall and in the tau line, no bin above 1e-4. The LOG 12x12 pair is not part of this gate: its excess (1.214e-9, bin 184, equal-time, 206 code) has its own ticket 213 (owner decision 3b, 2026-10-29); it still runs and is reported (gate same_seed_log12_reported). The per-entry metric is reported, not gated."
   },
   {
    "id": "non_interference_log",
@@ -896,6 +891,24 @@
      ]
     }
    ]
+  },
+  {
+   "id": "same_seed_log12_reported",
+   "type": "same_seed",
+   "report_only": true,
+   "pairs": [
+    [
+     "ss_log_12",
+     "ss_cpu_log_12",
+     300
+    ]
+   ],
+   "n_datasets": 38,
+   "n_tau_datasets": 5,
+   "no_bin_above": 0.0001,
+   "overall_max": 1e-09,
+   "tau_max": 1e-09,
+   "_reason": "reported only (decision 3b): the outcome goes to ticket 213 and does not decide 207"
   }
  ],
  "controls": [

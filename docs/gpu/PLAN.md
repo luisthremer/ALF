@@ -116,6 +116,7 @@ Unsupported inputs are refused at setup (H4).
 | 209 | Validation suite: kernel tests, same-compiler trajectory test (NVHPC CPU vs GPU, first-divergence sweep), test_vs_ed on GPU, statistical compare vs references (106), precision numbers | 205–208 |
 | 210 | BENCHMARKS.md: s/sweep CPU (16 cores, nividia) vs GPU for N = 64…1024, ±Ltau, per-kernel breakdown (incl. rank-1 share), crossover. Development numbers; the official CPU baseline is decided in Phase 3 | 209 |
 | 211 | CPU regression gate: unit tests, `test_branch_parameters.json` / `compare_dirs.py`, GNU + ifx s/sweep within noise | 201–208 |
+| 213 | STABLOG same-seed excess above 1e-9 at 12×12 (206 code; first bin 184, max 1.214e-9): cause, fix or a pre-registered calibrated criterion ([draft](tickets/213-log-same-seed-excess.md)) | 212 |
 | 212 | **Verification hardening** (code): gate all `ALF_GPU_*` debug/fault variables so production runs refuse them; provenance header in the binary's output; "GPU debug env" and "fault armed" info lines; graded fault `ALF_GPU_FAULT_TAU=eps:<x>`; `ALF_GPU_TAUDIAG_SEED`; the cause of the default-path non-reproducibility and of 207's default paired spread, then a deterministic default path (fixed-order `k_colnorms`/`k_lognorm`/`k_prec`, explicit cuSOLVER/cuBLAS modes; decision 2a of 2026-10-29); run-twice-identical and "τ pass leaves the sweep unchanged" gates. Must land before any further ticket closes | harness approved |
 
 Every ticket is accepted under [VERIFICATION.md](VERIFICATION.md): pre-registered acceptance file, T2 harness run by
