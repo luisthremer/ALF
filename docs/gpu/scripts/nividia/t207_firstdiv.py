@@ -15,8 +15,14 @@ import h5py
 import numpy as np
 
 fa, fb = h5py.File(sys.argv[1], "r"), h5py.File(sys.argv[2], "r")
-names = []
+names, names_b, all_a, all_b = [], [], [], []
 fa.visititems(lambda n, o: names.append(n) if isinstance(o, h5py.Dataset) and n.endswith("obser") else None)
+fb.visititems(lambda n, o: names_b.append(n) if isinstance(o, h5py.Dataset) and n.endswith("obser") else None)
+fa.visititems(lambda n, o: all_a.append(n) if isinstance(o, h5py.Dataset) else None)
+fb.visititems(lambda n, o: all_b.append(n) if isinstance(o, h5py.Dataset) else None)
+if sorted(all_a) != sorted(all_b):  # union of both files, not file A only (2026-10-29)
+    print("FAIL: dataset sets differ:", sorted(set(all_a) ^ set(all_b))[:5])
+    sys.exit(2)
 nb = None
 dev = None
 dev_tau = None
@@ -46,7 +52,8 @@ for k in list(range(min(5, nb))) + list(range(9, nb, max(1, nb // 12))):
     print(f"  bin {k+1:5d}  max dev {dev[k]:.3e}")
 f9 = int(np.argmax(dev > 1e-9)) + 1 if (dev > 1e-9).any() else None
 f4 = int(np.argmax(dev > 1e-4)) + 1 if (dev > 1e-4).any() else None
-print("max dev before the first 1e-4 bin:", f"{dev[:(f4 - 1) if f4 else nb].max():.3e}")
+pre = dev[:(f4 - 1) if f4 else nb]
+print("max dev before the first 1e-4 bin:", f"{pre.max():.3e}" if pre.size else "n/a (bin 1 already above 1e-4)")
 print("first bin with dev > 1e-9:", f9, " first bin with dev > 1e-4:", f4, " overall max dev:", f"{dev.max():.3e}")
 
 if dev_tau is not None:
@@ -54,3 +61,7 @@ if dev_tau is not None:
           f"{int(np.argmax(dev_tau > 1e-9)) + 1 if (dev_tau > 1e-9).any() else None}, first bin > 1e-4: "
           f"{int(np.argmax(dev_tau > 1e-4)) + 1 if (dev_tau > 1e-4).any() else None}")
     print(f"equal-time/scalar datasets ({len(names) - ntau}): overall max dev {dev_eq.max():.3e}")
+
+# exit code (2026-10-29): 0 = no bin above 1e-4 (no divergent decision), 1 = a bin above 1e-4; thresholds below 1e-4 are
+# reported, not gated, here (the acceptance harness gates them: testsuite/gpu_reference/acceptance/verdict.py)
+sys.exit(1 if f4 else 0)

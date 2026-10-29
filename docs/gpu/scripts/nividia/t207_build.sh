@@ -10,6 +10,7 @@ safe() { case "$1" in ""|*..*|*/*) echo "refusing unsafe name: [$1]" >&2; exit 1
 case $TOOL in gnu) . ~/alf-gpu/env/gnu.sh;; nvhpc) . ~/alf-gpu/env/nvhpc.sh;; intel) . ~/alf-gpu/env/intel.sh;; *) echo bad tool; exit 1;; esac
 export ALF_HDF5_DIR=$W/h5
 safe "$NAME"; safe "$SRC"; : "${HOME:?}"
+rm -f -- "$W/bin/ALF_$NAME.out"   # never keep a stale binary (2026-10-29)
 rm -rf -- "$W/tree_$NAME"; mkdir -p "$W/tree_$NAME"; rsync -a "$W/$SRC/" "$W/tree_$NAME/"
 cd "$W/tree_$NAME" || exit 1
 . ./configure.sh "$@" NO-INTERACTIVE > $W/logs/conf_$NAME.log 2>&1 || { echo "configure failed"; tail -20 $W/logs/conf_$NAME.log; exit 2; }

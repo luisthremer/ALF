@@ -11,5 +11,6 @@ for C in "$@"; do
     TAG=fin_$m timeout 900 bash $W/t207_run.sh nv_$m $C
   done
   echo "== $C" >> $W/logs/gpuprec.txt
-  bash $W/t207_prectab.sh $C fin_def fin_log nv_none nv_none_pp nv_none_log 2>/dev/null | tee -a $W/logs/gpuprec.txt
+  rows=""; case "$M" in both) rows="fin_def fin_log";; def) rows=fin_def;; log) rows=fin_log;; esac   # only rows re-run now (2026-10-29)
+  bash $W/t207_prectab.sh $C $rows nv_none nv_none_pp nv_none_log | tee -a $W/logs/gpuprec.txt || { echo "FAIL: table"; exit 1; }
 done

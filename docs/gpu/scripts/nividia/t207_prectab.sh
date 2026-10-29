@@ -10,7 +10,9 @@ import re, sys
 t = open(sys.argv[1]).read().replace("\n", " ")
 def g(label, n):
     m = re.search(label + r"[^:]*:\s+" + r"\s+".join([r"([-+0-9.eEdD]+)"] * n), t)
-    return m.groups() if m else ("nan",) * n
+    if not m:
+        sys.exit("FAIL: cannot parse %s in %s" % (label, sys.argv[1]))
+    return m.groups()
 gm, gx = g("Precision Green", 2)
 tm, tx = g("Precision tau", 2)
 (ph,) = g("Precision Phase", 1)

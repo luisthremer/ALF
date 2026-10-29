@@ -1,5 +1,7 @@
 #!/bin/bash
 # Manager re-run of ticket 207 acceptance on nividia. GPU processes strictly one at a time.
+# SUPERSEDED 2026-10-29: historical record of a manager re-run (unchecked exit codes, prep output hidden: vacuous-pass
+# sites V12/V14/V16/V20 of the evidence audit). Kept unchanged as evidence; use testsuite/gpu_reference/acceptance/.
 W=$HOME/alf-gpu/work/t207; export TMPDIR=$W/tmp; mkdir -p $TMPDIR $W/logs
 L=$W/logs/mgr207.txt; : > $L
 say() { echo "$*" | tee -a $L; }

@@ -8,4 +8,6 @@ rm -rf -- "$W/tree_ctest"; mkdir -p "$W/tree_ctest"; rsync -a "$W/src_new/" "$W/
 make -j${JOBS:-4} all > $W/logs/make_ctest.log 2>&1 || { echo make failed; tail -20 $W/logs/make_ctest.log; exit 3; }
 cd testsuite && mkdir -p tests && cd tests
 cmake .. > $W/logs/cmake_ctest.log 2>&1 && cmake --build . -j${JOBS:-4} >> $W/logs/cmake_ctest.log 2>&1 || { echo cmake build failed; exit 4; }
-ctest -j${JOBS:-4} --output-on-failure > $W/logs/ctest.log 2>&1; tail -6 $W/logs/ctest.log
+ctest -j${JOBS:-4} --output-on-failure > $W/logs/ctest.log 2>&1; rc=$?
+tail -6 $W/logs/ctest.log; echo "ctest exit $rc"
+exit $rc

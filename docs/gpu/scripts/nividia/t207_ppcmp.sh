@@ -9,7 +9,7 @@ W=$HOME/alf-gpu/work/t207; export TMPDIR=$W/tmp
 for v in head new; do
   rm -rf -- "$W/cmp/$v"; mkdir -p "$W/cmp/$v/Prog"
   src=$W/src_$v
-  cp "$W"/tree_nv_none/Prog/*.h "$W/cmp/$v/Prog/" 2>/dev/null
+  cp "$W"/tree_nv_none/Prog/*.h "$W/cmp/$v/Prog/" || { echo "FAIL: generated headers missing (build tree_nv_none first)"; exit 2; }
   for f in main.F90 tau_m_mod.F90 control_mod.F90; do cp "$src/Prog/$f" "$W/cmp/$v/Prog/$f"; done
 done
 tot=0
@@ -24,6 +24,9 @@ for m in "-DMPI -DHDF5 -DHDF5_ZLIB" "-DHDF5 -DHDF5_ZLIB" "-DMPI -DHDF5 -DHDF5_ZL
     n2=$(diff -B "$W/cmp/head_$f.n" "$W/cmp/new_$f.n" | wc -l)
     echo "$f [$m]: $(wc -l < "$W/cmp/new_$f.i") lines, diff -B lines: $n, after removing the __LINE__ numbers: $n2, preprocessor errors: $(cat "$W/cmp/new_$f.err" | wc -l)"
     tot=$((tot+n2))
+    [ -s "$W/cmp/new_$f.err" ] || [ -s "$W/cmp/head_$f.err" ] && tot=$((tot+1000))   # a preprocessor error is a FAIL
+    [ -s "$W/cmp/new_$f.i" ] || tot=$((tot+1000))                                       # so is an empty output
   done
 done
-echo "total differing diff lines (after removing the __LINE__ numbers): $tot"
+echo "total differing diff lines (after removing the __LINE__ numbers; +1000 per preprocessor error or empty output): $tot"
+[ $tot = 0 ]
