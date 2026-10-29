@@ -37,6 +37,11 @@ for n in sorted(names):
         dev_eq = d if dev_eq is None else np.maximum(dev_eq, d)
     nb = nbin
 print("bins:", nb, "datasets:", len(names))
+# a NaN/Inf in either run would make every "dev > tol" test false and look like a pass: fail explicitly instead
+bad = [n for n in sorted(names) if not (np.isfinite(fa[n][()]).all() and np.isfinite(fb[n][()]).all())]
+if bad or len(names) == 0 or not np.isfinite(dev).all():
+    print("FAIL: non-finite values or no datasets:", bad[:5])
+    sys.exit(2)
 for k in list(range(min(5, nb))) + list(range(9, nb, max(1, nb // 12))):
     print(f"  bin {k+1:5d}  max dev {dev[k]:.3e}")
 f9 = int(np.argmax(dev > 1e-9)) + 1 if (dev > 1e-9).any() else None

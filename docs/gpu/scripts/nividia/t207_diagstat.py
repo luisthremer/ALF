@@ -18,6 +18,10 @@ for l in open(sys.argv[1]):
     P = [float(x) for x in f[f.index('P') + 1:f.index('P') + 6]] if 'P' in f else [0.0] * 5
     rows.append(dict(ps=ps, nst=int(f[f.index('nst') + 1]), dev=max(map(float, f[i + 1:i + 5])), host=max(map(float, f[j + 1:j + 5])),
                      dgtt=float(f[i + 2]), hgtt=float(f[j + 2]), P=P))
+vals = [v for r in rows for v in [r['dev'], r['host'], r['dgtt'], r['hgtt']] + r['P']]
+if not rows or not all(math.isfinite(v) for v in vals):
+    print('FAIL: no TAUDIAG lines or non-finite values (%d rows)' % len(rows))
+    sys.exit(2)
 print('all points: %d   max (all pairs): dev %.3e  host %.3e' % (len(rows), max(r['dev'] for r in rows), max(r['host'] for r in rows)))
 for t in (1e-8, 3e-8, 1e-7, 3e-7, 1e-6, 2e-6, 1e-5, 3e-5):
     print('  > %.0e: dev %5d  host %5d' % (t, sum(r['dev'] > t for r in rows), sum(r['host'] > t for r in rows)))
