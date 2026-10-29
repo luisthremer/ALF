@@ -1,0 +1,1168 @@
+{
+ "schema": "alf-acc/1",
+ "ticket": "212",
+ "candidate_sha": "self",
+ "base_sha": "d53f977911fd",
+ "created": "2026-10-29",
+ "_status": "pre-registered for ticket 212 (verification hardening); thresholds and counts fixed before any implementation result",
+ "approvals": [],
+ "machine": "nividia",
+ "gpu_exclusive": true,
+ "timeout_s": 900,
+ "disk_min_free_GB": 5,
+ "cpu_parallel": 3,
+ "false_alarm_budget": 0.02,
+ "_false_alarm_reason": "statistical gates: compare2 (alpha 0.01, Sidak inside) and the precision mean (~1 % at the observed margins); all other gates are deterministic",
+ "active_lines": [
+  "GPU path (gpu_state): ACTIVE",
+  "GPU update path (ticket 205): ACTIVE",
+  "GPU stabilization (206): ACTIVE",
+  "GPU debug env: none",
+  "GPU build: git "
+ ],
+ "allowed_test_changes": [
+  "testsuite/alf_la.tests/CMakeLists.txt"
+ ],
+ "gpunone": true,
+ "builds": {
+  "nv_def": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5 GPU=nvidia",
+   "gpu": true
+  },
+  "nv_def_pp": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5 GPU=nvidia",
+   "flags_ext": "-DQR_PREPIVOT",
+   "gpu": true
+  },
+  "nv_log": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5 LOG GPU=nvidia",
+   "gpu": true
+  },
+  "nv_none": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5",
+   "gpu": false
+  },
+  "nv_none_pp": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5",
+   "flags_ext": "-DQR_PREPIVOT",
+   "gpu": false
+  },
+  "nv_none_log": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5 LOG",
+   "gpu": false
+  }
+ },
+ "configs": {
+  "hub6x6_cb": {
+   "base": "hub6x6_cb",
+   "parameters_sha256": "29f2117541ebbd14b6481c6101b22f0eca364d26fe317e6605956757d64b9915"
+  },
+  "hub6x6_dense": {
+   "base": "hub6x6_dense",
+   "parameters_sha256": "9bdbd7df6e75184196b5deee792f988f742fac2c5b10fe2f28f67287f9329ba0"
+  },
+  "hub12x12_cb": {
+   "base": "hub12x12_cb",
+   "parameters_sha256": "637e5e095e5d3bdb403a9ce9bbd4dd61c094a523843df68c9366b8db106f8d37"
+  },
+  "hub12x12_cb_b10": {
+   "base": "hub12x12_cb",
+   "overrides": {
+    "beta": 10.0
+   },
+   "parameters_sha256": "0ba78a51e7b11625ceb515f720d159e8b42aec9d2d97951cf27106d4f9b85a38"
+  },
+  "hub6x6_cb_flux": {
+   "base": "hub6x6_cb",
+   "overrides": {
+    "N_Phi": 1,
+    "Phi_X": 0.3
+   },
+   "parameters_sha256": "5669e2840154c15330baccc9b112f86c5a1a800984ba78cad86ee69072345d40"
+  },
+  "hub6x6_cb_fd": {
+   "base": "hub6x6_cb",
+   "overrides": {
+    "NSweep": 1,
+    "NBin": 200
+   },
+   "parameters_sha256": "04ae4aa187b9925b984db09d4c2e78eea990c54cbed0f5ef2ec9476162c31d1e"
+  },
+  "hub12x12_cb_fd": {
+   "base": "hub12x12_cb",
+   "overrides": {
+    "NSweep": 1,
+    "NBin": 300
+   },
+   "parameters_sha256": "d4c44e07b153d3fa28e7f1ad0c203ed65b355aba8761ee83d2e5f47ac00a166a"
+  },
+  "hub12x12_cb_p": {
+   "base": "hub12x12_cb",
+   "overrides": {
+    "NSweep": 20,
+    "NBin": 20
+   },
+   "parameters_sha256": "21835ab7c6f5bb077d998a08c54d7b4635d4ae44373ecd64de176a09af22c7c7"
+  },
+  "hub12x12_cb_b10_p": {
+   "base": "hub12x12_cb",
+   "overrides": {
+    "beta": 10.0,
+    "NSweep": 20,
+    "NBin": 8
+   },
+   "parameters_sha256": "eb04a07376afdb930c65b1308d58bae3211077b29284997fbf530bc757d6a466"
+  },
+  "s8_U4_b2_cb": {
+   "base": "s8_U4_b2_cb",
+   "parameters_sha256": "60a0867c7406b36ff419e258f7fa25787c39814d6978ebf956a0976638d090d4"
+  }
+ },
+ "runs": {
+  "st3_nv_def_pp_hub6x6_cb": {
+   "build": "nv_def_pp",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "st3_nv_def_pp_hub6x6_dense": {
+   "build": "nv_def_pp",
+   "config": "hub6x6_dense",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "st3_nv_def_pp_hub12x12_cb": {
+   "build": "nv_def_pp",
+   "config": "hub12x12_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "st3_nv_def_pp_hub12x12_cb_b10": {
+   "build": "nv_def_pp",
+   "config": "hub12x12_cb_b10",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "st3_nv_def_pp_hub6x6_cb_flux": {
+   "build": "nv_def_pp",
+   "config": "hub6x6_cb_flux",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "eps13_nv_def_pp": {
+   "build": "nv_def_pp",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_FAULT_STAB=eps:1e-13"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "fault_nv_def_pp_perm": {
+   "build": "nv_def_pp",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_FAULT_STAB=perm"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "fault_nv_def_pp_phase": {
+   "build": "nv_def_pp",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_FAULT_STAB=phase"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "fault_nv_def_pp_nan": {
+   "build": "nv_def_pp",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_FAULT_STAB=nan"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "fault_nv_def_pp_eps1em9": {
+   "build": "nv_def_pp",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_FAULT_STAB=eps:1e-9"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "st3_nv_log_hub6x6_cb": {
+   "build": "nv_log",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "st3_nv_log_hub6x6_dense": {
+   "build": "nv_log",
+   "config": "hub6x6_dense",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "st3_nv_log_hub12x12_cb": {
+   "build": "nv_log",
+   "config": "hub12x12_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "st3_nv_log_hub12x12_cb_b10": {
+   "build": "nv_log",
+   "config": "hub12x12_cb_b10",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "st3_nv_log_hub6x6_cb_flux": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_flux",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "eps13_nv_log": {
+   "build": "nv_log",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_FAULT_STAB=eps:1e-13"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "fault_nv_log_perm": {
+   "build": "nv_log",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_FAULT_STAB=perm"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "fault_nv_log_phase": {
+   "build": "nv_log",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_FAULT_STAB=phase"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "fault_nv_log_nan": {
+   "build": "nv_log",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_FAULT_STAB=nan"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "fault_nv_log_eps1em9": {
+   "build": "nv_log",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_FAULT_STAB=eps:1e-9"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "st2_nv_def_hub6x6_cb": {
+   "build": "nv_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_SELFTEST=2",
+    "ALF_GPU_EXIT=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "st2_nv_def_hub6x6_dense": {
+   "build": "nv_def",
+   "config": "hub6x6_dense",
+   "env": [
+    "ALF_GPU_SELFTEST=2",
+    "ALF_GPU_EXIT=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "upd_nv_def_hub6x6_cb": {
+   "build": "nv_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_UPDTEST=1",
+    "ALF_GPU_EXIT=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "upd_nv_def_hub6x6_cb_flux": {
+   "build": "nv_def",
+   "config": "hub6x6_cb_flux",
+   "env": [
+    "ALF_GPU_UPDTEST=1",
+    "ALF_GPU_EXIT=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "ref_fault": {
+   "build": "nv_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_FAULT=upd"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: "
+   ]
+  },
+  "ref_fault_stab": {
+   "build": "nv_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_FAULT_STAB=perm"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: "
+   ]
+  },
+  "ref_ns": {
+   "build": "nv_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_NS=0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: "
+   ]
+  },
+  "ref_stabmix": {
+   "build": "nv_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_STABMIX=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: "
+   ]
+  },
+  "ref_stabcheck": {
+   "build": "nv_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_STABCHECK=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: "
+   ]
+  },
+  "ref_tl": {
+   "build": "nv_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_TL=8"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: "
+   ]
+  },
+  "ref_tr": {
+   "build": "nv_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_TR=8"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: "
+   ]
+  },
+  "ref_vb": {
+   "build": "nv_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_VB=4"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: "
+   ]
+  },
+  "ref_noupdate": {
+   "build": "nv_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_NOUPDATE=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: "
+   ]
+  },
+  "ref_trace": {
+   "build": "nv_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_TRACE=trace.txt"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: "
+   ]
+  },
+  "ref_timing": {
+   "build": "nv_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_TIMING=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: "
+   ]
+  },
+  "ref_stabtime": {
+   "build": "nv_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_STABTIME=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: "
+   ]
+  },
+  "ref_exit": {
+   "build": "nv_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: "
+   ]
+  },
+  "acc_ns": {
+   "build": "nv_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_NS=0",
+    "ALF_GPU_DEBUG=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "acc_tl": {
+   "build": "nv_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_TL=8",
+    "ALF_GPU_DEBUG=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU debug env: ALF_GPU_"
+   ]
+  },
+  "ss_log_6": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "ss_cpu_log_6": {
+   "build": "nv_none_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "ss_def_6": {
+   "build": "nv_def",
+   "config": "hub6x6_cb_fd"
+  },
+  "ss_cpu_pp_6": {
+   "build": "nv_none_pp",
+   "config": "hub6x6_cb_fd"
+  },
+  "ss_def_12": {
+   "build": "nv_def",
+   "config": "hub12x12_cb_fd"
+  },
+  "ss_cpu_pp_12": {
+   "build": "nv_none_pp",
+   "config": "hub12x12_cb_fd",
+   "refcache": true
+  },
+  "det_log_6b": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "det_def_6b": {
+   "build": "nv_def",
+   "config": "hub6x6_cb_fd"
+  },
+  "det_def_b10a": {
+   "build": "nv_def",
+   "config": "hub12x12_cb_b10_p"
+  },
+  "det_def_b10b": {
+   "build": "nv_def",
+   "config": "hub12x12_cb_b10_p"
+  },
+  "pr_def_b4": {
+   "build": "nv_def",
+   "config": "hub12x12_cb_p",
+   "seeds": "acc1"
+  },
+  "pr_log_b4": {
+   "build": "nv_log",
+   "config": "hub12x12_cb_p",
+   "seeds": "acc1"
+  },
+  "pr_nv_none_b4": {
+   "build": "nv_none",
+   "config": "hub12x12_cb_p",
+   "seeds": "acc1"
+  },
+  "pr_nv_none_pp_b4": {
+   "build": "nv_none_pp",
+   "config": "hub12x12_cb_p",
+   "seeds": "acc1"
+  },
+  "pr_nv_none_log_b4": {
+   "build": "nv_none_log",
+   "config": "hub12x12_cb_p",
+   "seeds": "acc1"
+  },
+  "ctl_pr_ns0_b4": {
+   "build": "nv_def",
+   "config": "hub12x12_cb_p",
+   "seeds": "acc1",
+   "env": [
+    "ALF_GPU_NS=0",
+    "ALF_GPU_DEBUG=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU stabilization (206): ACTIVE",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_NS=0"
+   ]
+  },
+  "c2_gpu": {
+   "build": "nv_def",
+   "config": "s8_U4_b2_cb",
+   "seeds": "acc1"
+  },
+  "c2_cpu": {
+   "build": "nv_none",
+   "config": "s8_U4_b2_cb",
+   "seeds": "acc2"
+  },
+  "c2_cpu_null": {
+   "build": "nv_none",
+   "config": "s8_U4_b2_cb",
+   "seeds": "acc3"
+  },
+  "ss_log_6_m_small": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "ss_log_6_m_nan": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "det_def_6b_m": {
+   "build": "nv_def",
+   "config": "hub6x6_cb_fd"
+  },
+  "c2_gpu_m": {
+   "build": "nv_def",
+   "config": "s8_U4_b2_cb",
+   "seeds": "acc1"
+  }
+ },
+ "gates": [
+  {
+   "id": "selftests",
+   "type": "selftest",
+   "runs": [
+    "st3_nv_def_pp_hub6x6_cb",
+    "st3_nv_def_pp_hub6x6_dense",
+    "st3_nv_def_pp_hub12x12_cb",
+    "st3_nv_def_pp_hub12x12_cb_b10",
+    "st3_nv_def_pp_hub6x6_cb_flux",
+    "st3_nv_log_hub6x6_cb",
+    "st3_nv_log_hub6x6_dense",
+    "st3_nv_log_hub12x12_cb",
+    "st3_nv_log_hub12x12_cb_b10",
+    "st3_nv_log_hub6x6_cb_flux",
+    "st2_nv_def_hub6x6_cb",
+    "st2_nv_def_hub6x6_dense",
+    "upd_nv_def_hub6x6_cb",
+    "upd_nv_def_hub6x6_cb_flux"
+   ],
+   "require_lines": [
+    "self-test PASSED"
+   ],
+   "_reason": "204/205/206 kernel self-tests (their own 1e-10 tolerances) unchanged by 212; the graded fault at 1e-13 must pass"
+  },
+  {
+   "id": "stab_faults",
+   "type": "faults",
+   "armed_lines": [
+    "GPU fault armed: ALF_GPU_FAULT_STAB="
+   ],
+   "cases": {
+    "fault_nv_def_pp_perm": "stab",
+    "fault_nv_def_pp_phase": "stab",
+    "fault_nv_def_pp_nan": "stab",
+    "fault_nv_def_pp_eps1em9": "stab",
+    "fault_nv_log_perm": "stab",
+    "fault_nv_log_phase": "stab",
+    "fault_nv_log_nan": "stab",
+    "fault_nv_log_eps1em9": "stab"
+   },
+   "_reason": "206 fault controls and the graded fault eps:1e-9 must fail the stabilization self-test; the armed line must show"
+  },
+  {
+   "id": "refusal",
+   "type": "faults",
+   "fail_regex": "GPU debug env refused: ",
+   "cases": {
+    "ref_fault": "refused: ALF_GPU_FAULT ",
+    "ref_fault_stab": "refused: ALF_GPU_FAULT_STAB ",
+    "ref_ns": "refused: ALF_GPU_NS ",
+    "ref_stabmix": "refused: ALF_GPU_STABMIX ",
+    "ref_stabcheck": "refused: ALF_GPU_STABCHECK ",
+    "ref_tl": "refused: ALF_GPU_TL ",
+    "ref_tr": "refused: ALF_GPU_TR ",
+    "ref_vb": "refused: ALF_GPU_VB ",
+    "ref_noupdate": "refused: ALF_GPU_NOUPDATE ",
+    "ref_trace": "refused: ALF_GPU_TRACE ",
+    "ref_timing": "refused: ALF_GPU_TIMING ",
+    "ref_stabtime": "refused: ALF_GPU_STABTIME ",
+    "ref_exit": "refused: ALF_GPU_EXIT "
+   },
+   "_reason": "every listed variable alone in a production run is refused (exact line, exit code 1)"
+  },
+  {
+   "id": "same_seed",
+   "type": "same_seed",
+   "pairs": [
+    [
+     "ss_log_6",
+     "ss_cpu_log_6",
+     200
+    ],
+    [
+     "ss_def_6",
+     "ss_cpu_pp_6",
+     200
+    ],
+    [
+     "ss_def_12",
+     "ss_cpu_pp_12",
+     300
+    ]
+   ],
+   "n_datasets": 38,
+   "n_tau_datasets": 5,
+   "no_bin_above": 0.0001,
+   "overall_max": 1e-09,
+   "tau_max": 1e-09,
+   "_reason": "VERIFICATION.md 7 and decision 3; 12x12 LOG is ticket 213 (decision 3b) and not part of 212"
+  },
+  {
+   "id": "determinism",
+   "type": "replay",
+   "pairs": [
+    [
+     "ss_def_6",
+     "det_def_6b"
+    ],
+    [
+     "ss_log_6",
+     "det_log_6b"
+    ],
+    [
+     "det_def_b10a",
+     "det_def_b10b"
+    ]
+   ],
+   "n_datasets": 38,
+   "_reason": "same binary twice, bit-identical data.h5 and Precision lines; the default path failed this on 2026-10-29 (12x12 beta 10)"
+  },
+  {
+   "id": "precision",
+   "type": "precision",
+   "mean_ratio_max": 1.5,
+   "cases": [
+    {
+     "gpu": "pr_def_b4",
+     "cpu": [
+      "pr_nv_none_b4",
+      "pr_nv_none_pp_b4"
+     ]
+    },
+    {
+     "gpu": "pr_log_b4",
+     "cpu": [
+      "pr_nv_none_log_b4"
+     ]
+    }
+   ],
+   "_reason": "Green and tau mean within 1.5x of the larger CPU mean (approved rule, decision of 2026-10-29); the deterministic reductions must not cost precision"
+  },
+  {
+   "id": "compare2",
+   "type": "compare2",
+   "a": "c2_gpu",
+   "b": "c2_cpu",
+   "m": 11,
+   "alpha": 0.01,
+   "min_bins": 8,
+   "expect": [
+    "G(k=(pi,0),tau=beta/2)",
+    "Szz(k=(pi,pi),tau=beta/2)",
+    "chi_zz(pi,pi)"
+   ],
+   "_reason": "observables of the full default GPU path vs upstream GPU=none on fresh seeds"
+  },
+  {
+   "id": "t_determinism",
+   "type": "log_regex",
+   "checks": [
+    {
+     "file": "det_cuda/ctest.log",
+     "stamp_file": "det_cuda/stamp",
+     "exit_file": "det_cuda/ctest.exit",
+     "stamp_contains": [
+      "offload MANDATORY"
+     ],
+     "regex": "(\\d+)% tests passed, (\\d+) tests failed out of (\\d+)",
+     "equals": [
+      100,
+      0,
+      1
+     ]
+    }
+   ],
+   "_reason": "la_qrpp bitwise reproducible over 1000 calls incl. exact norm ties, CUDA backend"
+  },
+  {
+   "id": "gpu_none_ppcmp",
+   "type": "log_regex",
+   "checks": [
+    {
+     "file": "gpunone/ppcmp.txt",
+     "stamp_file": "gpunone/stamp",
+     "exit_file": "gpunone/ppcmp.exit",
+     "stamp_contains": [
+      "plant no"
+     ],
+     "regex": "comparisons (\\d+) preprocessor_errors (\\d+) differing_lines (\\d+) added_or_deleted (\\d+) build_files (\\d+) other_files (\\d+)$",
+     "equals": [
+      9,
+      0,
+      0,
+      0,
+      1,
+      0
+     ]
+    }
+   ],
+   "_reason": "alf_la_mod.F90 x 9 macro sets (the only changed CPU-path Fortran); 1 build file: testsuite/alf_la.tests/CMakeLists.txt; nothing else outside docs/testsuite/Prog/gpu_*"
+  },
+  {
+   "id": "gpu_none_ctest",
+   "type": "log_regex",
+   "checks": [
+    {
+     "file": "gpunone/ctest.log",
+     "stamp_file": "gpunone/stamp",
+     "exit_file": "gpunone/ctest.exit",
+     "stamp_contains": [
+      "plant no"
+     ],
+     "regex": "(\\d+)% tests passed, (\\d+) tests failed out of (\\d+)",
+     "equals": [
+      100,
+      0,
+      53
+     ]
+    }
+   ],
+   "_reason": "GNU devel ctest: 52 + t_determinism"
+  }
+ ],
+ "controls": [
+  {
+   "id": "c_selftests_on_faulty",
+   "like": "selftests",
+   "replace": {
+    "runs": [
+     "fault_nv_def_pp_perm",
+     "fault_nv_log_eps1em9"
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_faults_on_clean",
+   "like": "stab_faults",
+   "replace": {
+    "cases": {
+     "st3_nv_def_pp_hub6x6_cb": "stab",
+     "eps13_nv_log": "stab"
+    }
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_selftests_graded_1e-13",
+   "like": "selftests",
+   "replace": {
+    "runs": [
+     "eps13_nv_def_pp",
+     "eps13_nv_log"
+    ]
+   },
+   "expect": "PASS",
+   "_reason": "the graded fault at 1e-13 (below the 1e-10 tolerance) must not fail the self-test; with eps:1e-9 (stab_faults) it must"
+  },
+  {
+   "id": "c_refusal_debug_accepted",
+   "like": "refusal",
+   "replace": {
+    "cases": {
+     "acc_ns": "refused: ALF_GPU_NS ",
+     "acc_tl": "refused: ALF_GPU_TL "
+    }
+   },
+   "expect": "FAIL",
+   "_reason": "with ALF_GPU_DEBUG=1 the same variables are accepted (the run is not refused)"
+  },
+  {
+   "id": "c_same_seed_small",
+   "like": "same_seed",
+   "replace": {
+    "pairs": [
+     [
+      "ss_log_6_m_small",
+      "ss_cpu_log_6",
+      200
+     ]
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_same_seed_nan",
+   "like": "same_seed",
+   "replace": {
+    "pairs": [
+     [
+      "ss_log_6_m_nan",
+      "ss_cpu_log_6",
+      200
+     ]
+    ]
+   },
+   "expect": "INPUT_ERROR"
+  },
+  {
+   "id": "c_determinism_1e-12",
+   "like": "determinism",
+   "replace": {
+    "pairs": [
+     [
+      "ss_def_6",
+      "det_def_6b_m"
+     ]
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_precision_ns0",
+   "like": "precision",
+   "replace": {
+    "cases": [
+     {
+      "gpu": "ctl_pr_ns0_b4",
+      "cpu": [
+       "pr_nv_none_b4",
+       "pr_nv_none_pp_b4"
+      ]
+     }
+    ]
+   },
+   "expect": "FAIL",
+   "_reason": "206: ALF_GPU_NS=0 gave Green mean 2.4x the CPU mean at this config"
+  },
+  {
+   "id": "c_compare2_shift",
+   "like": "compare2",
+   "replace": {
+    "a": "c2_gpu_m"
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_compare2_null",
+   "like": "compare2",
+   "null": true,
+   "replace": {
+    "a": "c2_cpu_null"
+   },
+   "expect": "PASS",
+   "_reason": "null calibration: CPU vs CPU on two fresh seed sets must pass"
+  },
+  {
+   "id": "c_t_determinism_plant",
+   "like": "t_determinism",
+   "replace": {
+    "checks": [
+     {
+      "file": "ctl_det_plant/ctest.log",
+      "stamp_file": "ctl_det_plant/stamp",
+      "exit_file": "ctl_det_plant/ctest.exit"
+     }
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_ppcmp_plant",
+   "like": "gpu_none_ppcmp",
+   "replace": {
+    "checks": [
+     {
+      "file": "gpunone_plant/ppcmp.txt",
+      "stamp_file": "gpunone_plant/stamp",
+      "exit_file": "gpunone_plant/ppcmp.exit",
+      "stamp_contains": [
+       "plant --plant"
+      ]
+     }
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_ctest_failure",
+   "like": "gpu_none_ctest",
+   "replace": {
+    "checks": [
+     {
+      "file": "gpunone_m_ctestfail/ctest.log",
+      "stamp_file": "gpunone_m_ctestfail/stamp",
+      "exit_file": "gpunone_m_ctestfail/ctest.exit",
+      "stamp_contains": [
+       "plant no"
+      ]
+     }
+    ]
+   },
+   "expect": "FAIL"
+  }
+ ],
+ "mutations": [
+  {
+   "src": "ss_log_6",
+   "dst": "ss_log_6_m_small",
+   "kind": "scale:Green_tau/obser:1e-3"
+  },
+  {
+   "src": "ss_log_6",
+   "dst": "ss_log_6_m_nan",
+   "kind": "nan:Green_tau/obser"
+  },
+  {
+   "src": "det_def_6b",
+   "dst": "det_def_6b_m",
+   "kind": "scale:Den_eq/obser:1e-12"
+  },
+  {
+   "src": "c2_gpu",
+   "dst": "c2_gpu_m",
+   "kind": "shift:Ener_scal/obser:8"
+  }
+ ],
+ "log_mutations": [
+  {
+   "src": "gpunone",
+   "dst": "gpunone_m_ctestfail",
+   "file": "ctest.log",
+   "kind": "ctest_one_failure"
+  }
+ ],
+ "ctests": [
+  {
+   "id": "det_cuda",
+   "tool": "nvhpc",
+   "configure": "PGI devel noMPI GPU=nvidia",
+   "regex": "^t_determinism$",
+   "gpu": true
+  },
+  {
+   "id": "ctl_det_plant",
+   "tool": "nvhpc",
+   "configure": "PGI devel noMPI GPU=nvidia",
+   "regex": "^t_determinism$",
+   "gpu": true,
+   "env": [
+    "ALF_LA_TEST_PLANT_ULP=1"
+   ],
+   "control": true
+  }
+ ]
+}
