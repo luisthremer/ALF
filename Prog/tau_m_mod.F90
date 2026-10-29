@@ -49,6 +49,9 @@
        Use Langevin_HMC_mod
        use wrapur_mod
        use cgr2_2_mod
+#ifdef ALF_GPU
+       use gpu_tau_mod, only: gpu_tau_on, gpu_tau_pass
+#endif
        
 
        Contains
@@ -74,6 +77,13 @@
            Integer  ::  I, J, nf, nf_eff, NT, NT1, NTST, NST
            Real (Kind=Kind(0.d0))  ::  Mc_step_Weight
            
+#ifdef ALF_GPU
+           ! GPU port, ticket 207: the whole pass on the device (propagation, WRAPUR, CGR2_2, precision); GR is the host copy of G at tau = 0
+           if (gpu_tau_on) then
+              call gpu_tau_pass(GR, PHASE, NSTM, STAB_NT)
+              return
+           endif
+#endif
            Allocate( HLP4(Ndim,Ndim), HLP5(Ndim,Ndim), HLP6(Ndim,Ndim) )
            Allocate( G00(Ndim,Ndim,N_FL), G0T(Ndim,Ndim,N_FL), GT0(Ndim,Ndim,N_FL),  GTT(Ndim,Ndim,N_FL) )
            If (Symm) Then
