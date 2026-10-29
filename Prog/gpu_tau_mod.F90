@@ -73,7 +73,15 @@
 !> Self-test ALF_GPU_SELFTEST=4 (oracle: upstream WRAPUR / CGR2_2 and PROPR / PROPRM1 copies on host objects; the default path
 !> needs a build with -DQR_PREPIVOT), timing ALF_GPU_TAUTIME=1, ALF_GPU_EXIT=1 ends the run after the hook;
 !> ALF_GPU_FAULT_TAU=perm|prop|prec|blocks injects faults (negative controls), ALF_GPU_TAUTEST_V=1 prints the per-slice differences of the
-!> self-test.  Host copies of device matrices go through upd_from_c / upd_to_c (dummy-argument views, as alf_la): a direct
+!> self-test.  DEBUG AIDS (not used in production, no effect when unset): ALF_GPU_TAUDIAG=1|2 prints one "TAUDIAG" line per
+!> stabilization point and flavour (device precision numbers next to a full host tau pass run in lockstep on the same trajectory, host
+!> CGR2_2 on the device inputs, GTT chains with 1-ulp perturbed right states; 1 adds host twins of single CGR2_2 steps; slow, see
+!> diag_post and docs/gpu/scripts/nividia/t207_diagtab.py / t207_diagstat.py), ALF_GPU_TAUDIAG_FROM=<pass> starts the perturbation
+!> chains late, ALF_GPU_TAUSWAP=<mask> replaces CGR2_2 steps by host twins in the production calls (bits as swp below).
+!> Finding (ticket 207, STABLOG precision tail): the tail of Precision tau is the GTT pair at the last stabilization points; its size
+!> per event changes by up to ~10x under a 1-ulp perturbation of U of the right state, on the host as on the device; device / host
+!> per event is unbiased with the same spread as two 1-ulp perturbed host runs (conditioning, not a device defect).
+!> Host copies of device matrices go through upd_from_c / upd_to_c (dummy-argument views, as alf_la): a direct
 !> "target update from(GT0_d(:,:,nf))" of a module allocatable in a small routine returned stale host data with nvfortran 26.9 -fast
 !> (self-test: device GT0 unchanged after a propagation slice, no error), the same update through a dummy argument works.
 !--------------------------------------------------------------------
@@ -89,7 +97,7 @@ Module gpu_tau_mod
   Use Hamiltonian_main
   Use QMC_runtime_var
   Use Hop_mod
-  Use MyMats, only: COMPARE
+  Use MyMats, only: COMPARE, INV
   Use UDV_State_mod
   Use wrapur_mod, only: WRAPUR
   Use cgr2_2_mod, only: CGR2_2
@@ -130,6 +138,21 @@ Module gpu_tau_mod
   Real (Kind=Kind(0.d0)), Save :: last_prec(2,4) = 0.d0       ! last reduction: (max, sum) of the four pairs of tau_stab_cgr
   Integer(int64), Save :: n_pass = 0, n_branch(2) = 0, n_cgr = 0
   Integer(int64), Save :: b_h2d = 0, b_d2h = 0                ! interim bytes (this module's per-pass copies)
+  ! ---- DEBUG AID (ALF_GPU_TAUDIAG=1, not used in production): per stabilization point and flavour, the device CGR2_2 against host
+  ! chains on the same inputs; swp: host twins of single steps of dev_cgr22 (bit 1 V1INV, 2 ZTRSM, 4 Q by host ZUNMQR, 8 Q by device
+  ! ZUNMQR without the Newton-Schulz step); ALF_GPU_TAUSWAP=<mask> sets the mask of the production calls (isolation experiments)
+  Logical, Save :: diag_on = .false., diag_full = .true.        ! ALF_GPU_TAUDIAG=1: all variants; =2: no step twins (E) and no hD
+  Integer, Parameter :: npc = 5                                     ! GTT chains (see diag_post)
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: dg_p(:,:,:,:)      ! (N,N,N_FL,0:npc-1), propagated on the host
+  Integer(int64), Save :: dg_seed = 20261029_int64
+  Integer, Save :: dg_from = 0                                      ! ALF_GPU_TAUDIAG_FROM: perturbation chains from this pass on
+  Class (UDV_State), Allocatable, Save :: dg_hp(:)
+  Integer, Save :: swp = 0, swp_prod = 0
+  Class (UDV_State), Allocatable, Save :: dg_hr(:), dg_hrd(:), dg_hw(:), dg_hl(:)
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: dh00(:,:,:), dhT0(:,:,:), dhTT(:,:,:), dh0T(:,:,:), dg_c(:,:,:), dg_o(:,:,:), dg_ho(:,:,:)
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: dg_hwk(:)
+  Integer(int64), Save :: dg_npt = 0
+  Integer, Save :: last_br = 0
 
 Contains
 
@@ -159,6 +182,7 @@ Contains
     endif
     t_ipvt = 1; t_ipiv = 1
     if (Symm) allocate(G00_T(n,n,N_FL), G0T_T(n,n,N_FL), GT0_T(n,n,N_FL), GTT_T(n,n,N_FL))
+    call diag_setup()
     ! device allocation once, no transfer; the first use of each buffer is a device write
     !$omp target enter data map(alloc: t_H1, t_H2, t_V1i, t_U2h, t_W, t_old, t_GR, t_S, t_tau, t_D3, t_Dm1, t_Dm2, t_Rs, t_ipvt, t_ipiv)
     ! pre-grow the library work spaces for the 2N x 2N factorization and run the 2N QR once, so that nothing is allocated in the sweep
@@ -212,18 +236,23 @@ Contains
 
     Mc_step_Weight = 1.d0
     call tau_begin(GR)
+    if (diag_on) call diag_begin(GR)
     call tau_obs(0, PHASE, Mc_step_Weight)
     NST = 1
     do NT = 0, LTROT - 1
        NT1 = NT + 1
        call tau_slice(NT1)
+       if (diag_on) call diag_slice(NT1)
        call tau_download(.false.)
        call tau_obs(NT1, PHASE, Mc_step_Weight)
        if (STAB_NT(NST) == NT1) then
           NTST = STAB_NT(NST-1)
+          if (diag_on) call diag_prewrap(NTST, NT1)
           call gpu_stab_wrapur(NTST, NT1)             ! WRAPUR(NTST, NT1, udvr) of TAU_M: device slot udvr, decompose, scale test
           do nfe = 1, t_nfe
+             if (diag_on) call diag_pre(nfe, NST)
              call tau_stab_cgr(nfe, NST)              ! CGR2_2 + the four precision checks
+             if (diag_on) call diag_post(nfe, NST, GR)
           enddo
           NST = NST + 1
        endif
@@ -437,6 +466,7 @@ Contains
 #endif
     br = 2
     if (d1 > d2) br = 1
+    last_br = br
     ! MYU2 = U2^dagger
     call k_ct(n, udw_U(1,1,2,nfe), n, t_U2h, n)
     ! V1INV = V1^-1: LU and a solve with the identity (upstream: ZGETRF + ZGETRI)
@@ -444,6 +474,7 @@ Contains
     call la_getrf(n, n, t_W, n, t_ipiv)
     call k_ident(n, t_V1i, n)
     call la_getrs(LA_N, n, n, t_W, n, t_ipiv, t_V1i, n)
+    if (iand(swp, 1) /= 0) call sw_v1inv(nfe, nst)          ! DEBUG AID (diagnostic only): host ZGETRF + ZGETRI
 #if defined(STABLOG)
     ! scales smaller than 1 stay in D1m / D2m, larger ones move to the rows of V1INV / MYU2 (STAB3 / STABLOG branch of CGR2_2)
     call k_dm_log(n, udv_L(1,nst,nfe), dl1, t_Dm1, t_Rs(1,1))
@@ -471,9 +502,19 @@ Contains
     call k_divrows(n2, t_H1, n2, t_D3)
     ! solve_extended_System: rows of [[UCT,0],[0,VINV]] in the order of ZLAPMR(forward, IPVT), ZTRSM, scaling, ZUNMQR
     call k_build_rhs(n, br, t_ipvt, t_V1i, t_U2h, t_H2)
-    call la_trsm('L', 'U', LA_C, 'N', n2, n2, z1, t_H1, n2, t_H2, n2)
+    if (iand(swp, 2) /= 0) then
+       call sw_trsm()                                       ! DEBUG AID (diagnostic only): host ZTRSM
+    else
+       call la_trsm('L', 'U', LA_C, 'N', n2, n2, z1, t_H1, n2, t_H2, n2)
+    endif
     call k_rowscale_inv(n2, t_H2, n2, t_D3)                 ! conj(1/D3(i)) * row i
-    if (tau_ns) then
+    if (iand(swp, 4) /= 0) then
+       call sw_unmqr()                                      ! DEBUG AID (diagnostic only): host ZUNMQR applied to X
+       call k_blocks(n, br, fault == 4, t_H2, G00, GT0, GTT, G0T)
+    else if (iand(swp, 8) /= 0) then
+       call la_ormqr('L', LA_N, n2, n2, n2, t_H1, n2, t_tau, t_H2, n2)   ! DEBUG AID: device ZUNMQR without the Newton-Schulz step
+       call k_blocks(n, br, fault == 4, t_H2, G00, GT0, GTT, G0T)
+    else if (tau_ns) then
        ! Q formed explicitly (ormqr on the unit matrix), one Newton-Schulz step Q <- Q (3 - Q^H Q)/2, then Q * X by one GEMM: cuSOLVER's
        ! ZUNMQR applied directly to X gave a Precision tau about 17 % (mean) and up to 2x (max) above the CPU's (ticket 207; same cause as
        ! the Q orthogonality defect found in 206, docs/gpu/DISCREPANCIES.md)
@@ -489,6 +530,234 @@ Contains
        call k_blocks(n, br, fault == 4, t_H2, G00, GT0, GTT, G0T)
     endif
   end subroutine dev_cgr22
+
+!====================================================================
+!  DEBUG AID, not used in production: ALF_GPU_TAUDIAG=1 (ticket 207, STABLOG precision tail).  Per stabilization point and
+!  flavour one line "TAUDIAG": the device precision numbers of the production CGR2_2, the same numbers of a full host tau pass
+!  run in lockstep (host PROPR / PROPRM1 / WRAPUR / CGR2_2 from the same GR and the same device left states: what the host TAU_M
+!  computes), of the host CGR2_2 on the device inputs (device udvr, device propagated matrices), of the host CGR2_2 on the host
+!  one-block WRAPUR of the device udvr, and of dev_cgr22 with single steps replaced by their host twins (swp masks).  All the
+!  transfers below are diagnostic D->H / H->D copies (host oracle on device data); none of them feeds back into the run.
+!====================================================================
+  Subroutine diag_setup()
+    Implicit none
+    Integer :: nfe, n, n2, info
+    Complex (Kind=Kind(0.d0)) :: wq(1)
+    Character (len=64) :: v
+    Integer :: st
+    v = ''
+    call get_environment_variable('ALF_GPU_TAUSWAP', v, status=st)
+    if (st == 0 .and. len_trim(v) > 0) read(v,*) swp_prod
+    swp = swp_prod
+    diag_on = env_is('ALF_GPU_TAUDIAG', '1') .or. env_is('ALF_GPU_TAUDIAG', '2')
+    diag_full = env_is('ALF_GPU_TAUDIAG', '1')
+    v = ''
+    call get_environment_variable('ALF_GPU_TAUDIAG_FROM', v, status=st)
+    if (st == 0 .and. len_trim(v) > 0) read(v,*) dg_from
+    if (.not. (diag_on .or. swp_prod /= 0)) return
+    n = t_N; n2 = t_N2
+    call ZUNMQR('L', 'N', n2, n2, n2, t_H1, n2, t_tau, t_H2, n2, wq, -1, info)
+    allocate(dg_hwk(max(1, int(dble(wq(1))))))
+    if (swp_prod /= 0) call info_line('GPU tau pass: DEBUG ALF_GPU_TAUSWAP active (host twins of CGR2_2 steps)')
+    if (.not. diag_on) return
+    allocate(dg_hr(t_nfe), dg_hrd(t_nfe), dg_hw(t_nfe), dg_hl(t_nfe), dg_hp(1))
+    call dg_hp(1)%init(n, 'r')
+    do nfe = 1, t_nfe
+       call dg_hr(nfe)%init(n, 'r'); call dg_hrd(nfe)%init(n, 'r'); call dg_hw(nfe)%init(n, 'r')
+       call dg_hl(nfe)%alloc(n); dg_hl(nfe)%side = 'l'
+    enddo
+    allocate(dh00(n,n,N_FL), dhT0(n,n,N_FL), dhTT(n,n,N_FL), dh0T(n,n,N_FL), dg_c(n,n,4), dg_o(n,n,3), dg_ho(n,n,3))
+    dh00 = z0; dhT0 = z0; dhTT = z0; dh0T = z0
+    allocate(dg_p(n,n,N_FL,0:npc-1)); dg_p = z0
+    call info_line('GPU tau pass: DEBUG ALF_GPU_TAUDIAG=1 active (host oracle chains at every stabilization point, slow)')
+  end subroutine diag_setup
+
+  Subroutine diag_begin(GR)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in) :: GR(Ndim,Ndim,N_FL)
+    Integer :: nfe
+    call h_begin(GR, dh00, dhT0, dhTT, dh0T)
+    do nfe = 1, t_nfe
+       call dg_hr(nfe)%reset('r')
+       call diag_pset(Calc_Fl_map(nfe), GR(:,:,Calc_Fl_map(nfe)))
+    enddo
+  end subroutine diag_begin
+
+  Subroutine diag_slice(nt1)
+    Implicit none
+    Integer, intent(in) :: nt1
+    Integer :: k
+    call h_propr(dhT0, nt1)
+    call h_proprm1(dh0T, nt1)
+    call h_proprm1(dhTT, nt1)
+    call h_propr(dhTT, nt1)
+    do k = 0, npc-1
+       if (k > 0 .and. n_pass+1 < dg_from) exit
+       call h_proprm1(dg_p(:,:,:,k), nt1)
+       call h_propr(dg_p(:,:,:,k), nt1)
+    enddo
+  end subroutine diag_slice
+
+  ! GTT chains restart from G (tau = 0)
+  Subroutine diag_pset(nf, G)
+    Implicit none
+    Integer, intent(in) :: nf
+    Complex (Kind=Kind(0.d0)), intent(in) :: G(:,:)
+    Integer :: k
+    do k = 0, npc-1
+       dg_p(:,:,nf,k) = G
+    enddo
+  end subroutine diag_pset
+
+  ! before the device WRAPUR: host WRAPUR of the full host chain, and a host one-block WRAPUR of the current device udvr
+  Subroutine diag_prewrap(ntst, nt1)
+    Implicit none
+    Integer, intent(in) :: ntst, nt1
+    Integer :: nfe
+    call la_sync()
+    do nfe = 1, t_nfe
+       call dl_state(1, 2, nfe, dg_hw(nfe))        ! diagnostic D->H: device udvr before this block
+    enddo
+    call WRAPUR(ntst, nt1, dg_hw)
+    call WRAPUR(ntst, nt1, dg_hr)
+  end subroutine diag_prewrap
+
+  Subroutine diag_pre(nfe, nst)
+    Implicit none
+    Integer, intent(in) :: nfe, nst
+    Integer :: nf, n
+    n = t_N; nf = Calc_Fl_map(nfe)
+    call la_sync()
+    call dl_state(1, 2, nfe, dg_hrd(nfe))           ! diagnostic D->H: device udvr after the device WRAPUR
+    call dl_state(2, nst, nfe, dg_hl(nfe))          ! diagnostic D->H: left state udvst(nst)
+    call upd_from_c(GTT_d(1,1,nf), n*n); call upd_from_c(GT0_d(1,1,nf), n*n); call upd_from_c(G0T_d(1,1,nf), n*n)
+    dg_o(:,:,1) = GTT_d(:,:,nf); dg_o(:,:,2) = GT0_d(:,:,nf); dg_o(:,:,3) = G0T_d(:,:,nf)
+    dg_ho(:,:,1) = dhTT(:,:,nf); dg_ho(:,:,2) = dhT0(:,:,nf); dg_ho(:,:,3) = dh0T(:,:,nf)
+  end subroutine diag_pre
+
+  ! precision numbers (max |A-B|) of the four pairs: (GR, G00), (oTT, GTT), (oT0, GT0), (o0T, G0T); c = (G00, GT0, GTT, G0T)
+  Subroutine diag_p4(GR, o, c00, cT0, cTT, c0T, p)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in) :: GR(:,:), o(:,:,:), c00(:,:), cT0(:,:), cTT(:,:), c0T(:,:)
+    Real (Kind=Kind(0.d0)), intent(out) :: p(4)
+    Real (Kind=Kind(0.d0)) :: xm
+    call COMPARE(GR, c00, p(1), xm)
+    call COMPARE(o(:,:,1), cTT, p(2), xm)
+    call COMPARE(o(:,:,2), cT0, p(3), xm)
+    call COMPARE(o(:,:,3), c0T, p(4), xm)
+  end subroutine diag_p4
+
+  Subroutine diag_post(nfe, nst, GR)
+    Implicit none
+    Integer, intent(in) :: nfe, nst
+    Complex (Kind=Kind(0.d0)), intent(in) :: GR(Ndim,Ndim,N_FL)
+    Integer, parameter :: nv = 5
+    Integer, parameter :: masks(nv) = (/ 1, 2, 4, 8, 7 /)
+    Integer :: nf, n, n2, v, br, brd, i
+    Real (Kind=Kind(0.d0)) :: pdev(4), pB(4), pC(4), pD(4), pE(4,nv), dCd, dU, dV, dS, d3mx, d3mn
+    Real (Kind=Kind(0.d0)) :: l1(3), l2(3), pP(0:npc-1), xm
+    Integer :: k
+    Character (len=1024) :: line
+    n = t_N; n2 = t_N2; nf = Calc_Fl_map(nfe)
+    dg_npt = dg_npt + 1
+    brd = last_br
+    pdev = last_prec(1,:)
+    call la_sync()
+    call upd_from_c(t_D3, n2)                       ! diagnostic D->H: the 2N scales of the production CGR2_2
+    d3mx = maxval(real(t_D3)); d3mn = minval(real(t_D3))
+    ! device outputs of the production call
+    call upd_from_c(GT0_d(1,1,nf), n*n); call upd_from_c(G0T_d(1,1,nf), n*n); call upd_from_c(GTT_d(1,1,nf), n*n)
+    ! (B) full host chain (host TAU_M)
+    call CGR2_2(dhT0(:,:,nf), dh00(:,:,nf), dhTT(:,:,nf), dh0T(:,:,nf), dg_hr(nfe), dg_hl(nfe), n)
+    call diag_p4(GR(:,:,nf), dg_ho, dh00(:,:,nf), dhT0(:,:,nf), dhTT(:,:,nf), dh0T(:,:,nf), pB)
+    ! (C) host CGR2_2 on the device inputs
+    pC = 0.d0; dCd = 0.d0
+    if (diag_full) then
+    call CGR2_2(dg_c(:,:,2), dg_c(:,:,1), dg_c(:,:,3), dg_c(:,:,4), dg_hrd(nfe), dg_hl(nfe), n)
+    call diag_p4(GR(:,:,nf), dg_o, dg_c(:,:,1), dg_c(:,:,2), dg_c(:,:,3), dg_c(:,:,4), pC)
+    call mx(dCd, rel_diff(G00_d(:,:,nf), dg_c(:,:,1))); call mx(dCd, rel_diff(GT0_d(:,:,nf), dg_c(:,:,2)))
+    call mx(dCd, rel_diff(GTT_d(:,:,nf), dg_c(:,:,3))); call mx(dCd, rel_diff(G0T_d(:,:,nf), dg_c(:,:,4)))
+    endif
+    ! GTT chains, each propagated on the host from its own CGR2_2 output of the previous point and compared with its own new GTT:
+    !   0: the device output (device udvr), against the device's new GTT;
+    !   1, 2: host CGR2_2 on the host udvr chain with U perturbed by ~1 ulp (fresh perturbation at each point);
+    !   3, 4: host CGR2_2 on the device udvr with U perturbed by ~1 ulp.
+    call COMPARE(dg_p(:,:,nf,0), GTT_d(:,:,nf), pP(0), xm)
+    dg_p(:,:,nf,0) = GTT_d(:,:,nf)
+    pP(1:) = 0.d0
+    if (n_pass+1 >= dg_from) then
+       do k = 1, npc-1
+          if (k <= 2) then
+             call perturb_state(dg_hr(nfe), dg_hp(1), dg_seed)
+          else
+             call perturb_state(dg_hrd(nfe), dg_hp(1), dg_seed)
+          endif
+          call CGR2_2(dg_c(:,:,2), dg_c(:,:,1), dg_c(:,:,3), dg_c(:,:,4), dg_hp(1), dg_hl(nfe), n)
+          call COMPARE(dg_p(:,:,nf,k), dg_c(:,:,3), pP(k), xm)
+          dg_p(:,:,nf,k) = dg_c(:,:,3)
+       enddo
+    endif
+    pD = 0.d0; pE = 0.d0; dU = 0.d0; dV = 0.d0; dS = 0.d0
+    if (diag_full) then
+    ! (D) host CGR2_2 on the host one-block WRAPUR of the device udvr
+    call CGR2_2(dg_c(:,:,2), dg_c(:,:,1), dg_c(:,:,3), dg_c(:,:,4), dg_hw(nfe), dg_hl(nfe), n)
+    call diag_p4(GR(:,:,nf), dg_o, dg_c(:,:,1), dg_c(:,:,2), dg_c(:,:,3), dg_c(:,:,4), pD)
+    call state_diff(dg_hrd(nfe), dg_hw(nfe), dU, dV, dS)
+    ! (E) dev_cgr22 with host twins of single steps
+    do v = 1, nv
+       swp = masks(v)
+       call dev_cgr22(nfe, nst, 1.d0, 0.d0, br, t_S(1,1,1), t_S(1,1,2), t_S(1,1,3), t_S(1,1,4))
+       call la_sync()
+       call upd_from_c(t_S(1,1,1), 4*n*n)            ! diagnostic D->H of the variant's outputs
+       call diag_p4(GR(:,:,nf), dg_o, t_S(:,:,1), t_S(:,:,2), t_S(:,:,3), t_S(:,:,4), pE(:,v))
+    enddo
+    swp = swp_prod
+    endif
+    last_br = brd
+#if defined(STABLOG)
+    l1 = (/ dg_hl(nfe)%L(1), minval(dg_hl(nfe)%L), maxval(dg_hl(nfe)%L) /)
+    l2 = (/ dg_hrd(nfe)%L(1), minval(dg_hrd(nfe)%L), maxval(dg_hrd(nfe)%L) /)
+#else
+    l1 = (/ log(real(dg_hl(nfe)%D(1))), log(minval(real(dg_hl(nfe)%D))), log(maxval(real(dg_hl(nfe)%D))) /)
+    l2 = (/ log(real(dg_hrd(nfe)%D(1))), log(minval(real(dg_hrd(nfe)%D))), log(maxval(real(dg_hrd(nfe)%D))) /)
+#endif
+    write(line,'(A,I0,A,I0,A,I0,A,I0,A,I0,A,4ES9.2,A,4ES9.2,A,ES9.2,A,ES9.2,A,5ES9.2,A,5ES9.2,A,ES9.2,A,3ES9.2,A,3F9.2,A,3F9.2,A,2ES9.2)') &
+         & 'TAUDIAG pt ', dg_npt, ' pass ', n_pass+1, ' nst ', nst, ' nfe ', nfe, ' br ', brd, &
+         & ' dev', pdev, ' | hostfull', pB, ' | hC', maxval(pC), ' hD', maxval(pD), ' | E1,2,4,8,7', (maxval(pE(:,i)), i = 1, nv), &
+         & ' | P', pP, ' | dCd', dCd, ' dUVS', dU, dV, dS, ' | L1', l1, ' L2', l2, ' D3', d3mx, d3mn
+    call say(line)
+  end subroutine diag_post
+
+  ! host twins of single steps of dev_cgr22 (diagnostic only; every copy below is a diagnostic transfer)
+  Subroutine sw_v1inv(nfe, nst)
+    Implicit none
+    Integer, intent(in) :: nfe, nst
+    Complex (Kind=Kind(0.d0)) :: z
+    call la_sync()
+    call upd_from_c(udv_V(1,1,nst,nfe), t_N*t_N)
+    call INV(udv_V(:,:,nst,nfe), t_V1i, z)
+    call upd_to_c(t_V1i, t_N*t_N)
+  end subroutine sw_v1inv
+
+  Subroutine sw_trsm()
+    Implicit none
+    integer :: n2
+    n2 = t_N2
+    call la_sync()
+    call upd_from_c(t_H1, n2*n2); call upd_from_c(t_H2, n2*n2)
+    call ZTRSM('L', 'U', 'C', 'N', n2, n2, z1, t_H1, n2, t_H2, n2)
+    call upd_to_c(t_H2, n2*n2)
+  end subroutine sw_trsm
+
+  Subroutine sw_unmqr()
+    Implicit none
+    integer :: n2, info
+    n2 = t_N2
+    call la_sync()
+    call upd_from_c(t_H1, n2*n2); call upd_from_c(t_H2, n2*n2); call upd_from_c(t_tau, n2)
+    call ZUNMQR('L', 'N', n2, n2, n2, t_H1, n2, t_tau, t_H2, n2, dg_hwk, size(dg_hwk), info)
+    call upd_to_c(t_H2, n2*n2)
+  end subroutine sw_unmqr
 
 !====================================================================
 !  Device kernels (plain arrays; synchronous target regions)
