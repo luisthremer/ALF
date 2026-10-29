@@ -1,4 +1,4 @@
-# Verification standard (2026-10-29, proposed; in force after the owner approves `gpu-port-process-lanes`)
+# Verification standard (2026-10-29; approved by the owner subject to a second independent review, DECISIONS.md)
 
 Goal: no error reaches a commit. Correctness ranks above speed. Tooling: `testsuite/gpu_reference/acceptance/`
 (README there). Owner decisions: [DECISIONS.md](DECISIONS.md). Measurements behind the rules: gate report of
@@ -63,9 +63,9 @@ is not a gate.
 ## 6. Statistical gates with known power
 Calibrate each with a null run (CPU vs CPU, fresh seeds) and a known small bias. Errors are autocorrelation-corrected
 from ≥ 30 independent bins. The CPU reference has ≥ ~10× the statistics of the test or errors are combined in
-quadrature. Next to every PASS the report states the detectable effect size. **Proposal awaiting owner approval:**
-maximum-error statistics are information only; acceptance is on the mean or a fixed quantile over a fixed number of
-stabilizations, and maxima are compared only between runs of identical length.
+quadrature. Next to every PASS the report states the detectable effect size. **Approved 2026-10-29:** maximum-error
+statistics are information only; acceptance is on the mean (a fixed quantile over a fixed number of stabilizations
+only once calibrated), and maxima are compared only between runs of identical length.
 
 ## 7. Determinism (from the measurement of 2026-10-29)
 - Where bit identity holds — same binary re-run, same commit rebuilt with the same toolchain — it is demanded.
