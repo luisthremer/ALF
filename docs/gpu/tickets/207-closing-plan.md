@@ -10,7 +10,8 @@
 
 - the LOG 12×12 same-seed excess (206 code) has its own ticket 213; 207 is not held open by it (decision 3b).
 
-Still open with the owner: whether 207 may close while acceptance 6 is BLOCKED.
+- 207 does not close while acceptance 6 is BLOCKED without the owner's explicit OK at that time (decision 4b); a
+  BLOCKED verdict is reported to the owner, never committed as accepted.
 
 Order:
 1. **212 lands** (hardening, cause of the default-path spread, deterministic reductions). 212 changes code 207 shares.

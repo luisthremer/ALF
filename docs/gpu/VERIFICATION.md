@@ -42,7 +42,7 @@ are generated from it, never assembled by hand. NaN or Inf, a missing file, line
 a count differing from the acceptance file, a nonzero exit, a timeout, a GPU-inactive run and a provenance mismatch
 are never a PASS: they give INPUT_ERROR (the gate could not be evaluated), which is also never counted as a
 detection. FAIL means the gate's own criterion caught something. BLOCKED items (owner-decided, e.g. 207 acceptance 6)
-make the overall verdict BLOCKED, never PASS. A gate may be `report_only` (run and shown, not deciding) only by an
+make the overall verdict BLOCKED, never PASS; a ticket with a BLOCKED verdict closes only with the owner's explicit OK. A gate may be `report_only` (run and shown, not deciding) only by an
 owner decision cited in its reason (the lint checks it), e.g. 207's LOG 12×12 same-seed pair, split off to ticket 213. `verdict.py --selfcheck` (synthetic data, CPU only) must PASS whenever
 the script changes; `verdict.py --lint` must pass for every acceptance file (the driver refuses otherwise).
 `compare2.py` is fail-closed since 2026-10-29 (exit 3: NaN, missing observables, m = 0, identical seeds or means
