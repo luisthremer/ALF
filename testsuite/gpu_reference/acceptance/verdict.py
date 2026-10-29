@@ -142,7 +142,10 @@ def check_prov(rd, acc, expect_rc=0, gpu_exclusive=None):
         text = read(os.path.join(rd, "run.log"))
         if os.path.isfile(os.path.join(rd, "info")):
             text += read(os.path.join(rd, "info"))
-        missing = [l for l in bdecl.get("active_lines", acc.get("active_lines", [])) if l not in text]
+        need_l = decl.get("active_lines", bdecl.get("active_lines", acc.get("active_lines", [])))
+        if decl.get("active_lines") is not None and not decl.get("allow_debug"):
+            raise InputFail(f"{rid}: only declared debug runs may override the active lines")
+        missing = [l for l in need_l if l not in text]
         if missing or re.search(r"\bINACTIVE\b", text):
             raise InputFail(f"{rid}: GPU path not active (missing {missing[:1]}, or an INACTIVE line)")
     if p.get("mutated") and not acc.get("_allow_mutated"):
