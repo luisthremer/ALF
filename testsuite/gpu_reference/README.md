@@ -50,6 +50,11 @@ constant observable differs. 2 INCONCLUSIVE: nothing resolved differs, but at le
 UNDER-RESOLVED, so its error cannot be trusted (take more or longer bins). Treat any nonzero as "not green".
 (Manager decision in the 106 review: a PASS requires trustworthy errors.)
 
+**Fail-closed since 2026-10-29: exit 3 (INPUT ERROR)** on a non-finite value in any bin, an observable present in
+one run only, an observable named in `--expect` (semicolon-separated) missing, fewer tested observables than
+`--expect-m`, identical or missing `seeds` files, or identical means, unless `--same-seed` is given for a deliberate
+same-seed comparison.
+
 ## Validation set (ticket 106)
 
 `configs_stat.py`: 8x8 square Hubbard, half filling, beta=2, dtau=0.1, Ltau=1, Mz, 4 MPI ranks,

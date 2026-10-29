@@ -17,9 +17,15 @@ Rules:
 - On the test machines `nividia` and `intel` (`ssh nividia`, `ssh intel`, work dir `~/alf-gpu/`): runs ≲ 15 min, clean up processes and large files, don't hold the GPU afterwards, install nothing.
 - Both machines are test sandboxes: develop on the laptop repo and rsync there; never edit source there. Write only inside your ticket dir `~/alf-gpu/work/tNNN/` (set `TMPDIR` to a `tmp/` inside it, never `/tmp`). Never delete or modify anything outside it, never touch other users' files or processes, never kill processes you didn't start. Never use `sudo` or anything needing root. On `intel` (shared workstation) check that no other user is busy before a run and use ≤ 8 cores.
 - Don't trust research reports or your memory of library APIs: check headers/docs/man pages on the machine.
+- Verification standard (`docs/gpu/VERIFICATION.md`): never edit the ticket's acceptance file (`testsuite/gpu_reference/acceptance/NNN.json`); use only the committed dev seeds. Run tier T0 (self-tests, fault controls, 6×6 same-seed) on every iteration; before handing over, freeze your candidate as a local commit the manager makes for you on request, and run T1 on it from `git archive` (`acc_ship.sh`/`acc_driver.py --who agent`). Every number you report must come from a stamped run (provenance.json) of that candidate; give the run directory next to it.
+- Never delete raw outputs (`info`, `data.h5`, `run.log`, `provenance.json`) or binaries; cleanup removes build trees only. Never write a hand-made results table: generate it from `verdict.json`.
+- One GPU process at a time on `nividia` unless the ticket allows MPS (CLAUDE.md); ≤ 4 cores.
+- Report failures as FAILED with the numbers, never as "close to" a threshold. When a criterion fails, do not propose relaxing it.
+- At ~250k tokens of context, or when the manager says a phase ends, write a handoff note into the ticket (state, decisions, what was tried, open problems, evidence paths) and stop.
 
 Final report (compact):
 1. Diff summary: file → what changed and why.
 2. Build commands used and their result (machine, compiler, flags).
 3. Acceptance tests: command, pass/fail, measured numbers (errors vs tolerance, timings).
-4. Anything surprising, any discrepancy with research reports, open questions (`QUESTION:` lines).
+4. Evidence: candidate sha, run directories, `verdict.json` path; T1 verdict per gate and control.
+5. Anything surprising, any discrepancy with research reports, open questions (`QUESTION:` lines).

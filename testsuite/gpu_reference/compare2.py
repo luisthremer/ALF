@@ -38,6 +38,9 @@ EXIT CODE  0: PASS, i.e. no observable differs and all errors are resolved (or a
  e.g. same-seed runs).  1: at least one resolved observable differs (FAIL).
  2: INCONCLUSIVE: no resolved observable differs, but at least one observable is UNDER-RESOLVED (its error
  cannot be trusted; run longer / more bins). Not green.
+ 3: INPUT ERROR (fail-closed, 2026-10-29; also any unexpected exception, so exit 1 always means a real difference): a non-finite value in any bin of either run; no tested observable
+ (m = 0); fewer tested observables than --expect-m; an observable named in --expect missing; identical `seeds`
+ files without --same-seed (or a missing `seeds` file); identical means without --same-seed. Not green.
 """
 import argparse
 import json
@@ -224,8 +227,35 @@ def _is_const(x, rel=1e-9):
     return bool(np.ptp(x) <= rel * max(abs(x).max(), 1e-300))
 
 
-def compare(A, B, alpha, min_bins):
+class InputError(Exception):
+    pass
+
+
+def check_inputs(A, B, expect, expect_m, same_seed):
+    """Fail-closed input checks (exit 3). Returns the list of observable names to test."""
+    for run in (A, B):
+        for k, (x, s) in list(run["series"].items()) + list(run["arrays"].items()):
+            if not (np.all(np.isfinite(x)) and np.all(np.isfinite(s))):
+                raise InputError(f"{run['dir']}: non-finite value in {k}")
+    only_a = sorted(set(A["series"]) - set(B["series"]))
+    only_b = sorted(set(B["series"]) - set(A["series"]))
+    if only_a or only_b:
+        raise InputError(f"observables present in one run only: A {only_a} B {only_b}")
     names = [k for k in A["series"] if k in B["series"]]
+    missing = [e for e in expect if e not in names]
+    if missing:
+        raise InputError(f"expected observables missing: {missing}")
+    seeds = [os.path.join(r["dir"], "seeds") for r in (A, B)]
+    if not same_seed:
+        if not all(os.path.isfile(f) for f in seeds):
+            raise InputError("a seeds file is missing (needed to prove independent seeds)")
+        if open(seeds[0], "rb").read() == open(seeds[1], "rb").read():
+            raise InputError("identical seeds files: this test needs independent seeds (use --same-seed otherwise)")
+    return names
+
+
+def compare(A, B, alpha, min_bins, names=None, same_seed=False):
+    names = names if names is not None else [k for k in A["series"] if k in B["series"]]
     rows, exact = [], []
     for k in names:
         xa, sa = A["series"][k]
@@ -250,8 +280,10 @@ def compare(A, B, alpha, min_bins):
     bad_exact = [e for e in exact if not e["ok"]]
     fail = any(r["differs"] and not r["under"] for r in rows) or bool(bad_exact)
     # identical means (same-seed runs with identical trajectories; round-off ~1e-12) need no error estimate
-    identical = all(abs(r["a"]["mean"] - r["b"]["mean"])
+    identical = bool(rows) and all(abs(r["a"]["mean"] - r["b"]["mean"])
                     <= 1e-9 * max(1.0, abs(r["a"]["mean"]), abs(r["b"]["mean"])) for r in rows)
+    if identical and not same_seed:
+        raise InputError("identical means on independent seeds: the two runs are probably the same run")
     # a PASS needs trustworthy errors: any under-resolved observable makes the result INCONCLUSIVE
     incon = (not fail) and not identical and any(r["differs"] or r["under"] for r in rows)
     return {"rows": rows, "exact": exact, "m": len(rows), "alpha": alpha, "p_crit": p_crit,
@@ -291,9 +323,34 @@ def main(argv=None):
     ap.add_argument("--alpha", type=float, default=0.01, help="family-wise false-alarm rate")
     ap.add_argument("--min-bins", type=int, default=8, help="minimum effective bins after rebinning")
     ap.add_argument("--json", help="write full results here")
+    ap.add_argument("--expect", default="", help="semicolon-separated observables that must be tested (missing: exit 3)")
+    ap.add_argument("--expect-m", type=int, default=1, help="minimum number of tested observables (fewer: exit 3)")
+    ap.add_argument("--expect-m-exact", type=int, default=None, help="exact number of tested observables (else exit 3)")
+    ap.add_argument("--same-seed", action="store_true", help="the two runs share seeds (allows identical means)")
     args = ap.parse_args(argv)
-    A, B = load_run(args.a), load_run(args.b)
-    res = compare(A, B, args.alpha, args.min_bins)
+    expect = [e for e in args.expect.split(";") if e]
+    A = B = {"dir": "?"}
+    try:
+        try:
+            A, B = load_run(args.a), load_run(args.b)
+        except (SystemExit, KeyError, OSError, ValueError, IndexError) as e:  # unreadable input is an input error
+            raise InputError(f"cannot load the runs: {e}")
+        names = check_inputs(A, B, expect, args.expect_m, args.same_seed)
+        res = compare(A, B, args.alpha, args.min_bins, names, args.same_seed)
+        if res["m"] < max(args.expect_m, 1):
+            raise InputError(f"only {res['m']} observables tested, expected >= {max(args.expect_m, 1)}")
+        if args.expect_m_exact is not None and res["m"] != args.expect_m_exact:
+            raise InputError(f"{res['m']} observables tested, expected exactly {args.expect_m_exact}")
+        if not all(math.isfinite(v) for r in res["rows"] for v in (r["t"], r["p"], r["a"]["err"], r["b"]["err"])):
+            raise InputError("non-finite test statistic")
+    except InputError as e:
+        print(f"A = {A['dir']}\nB = {B['dir']}")
+        print("INPUT ERROR:", e)
+        print("RESULT: INPUT_ERROR")
+        if args.json:
+            with open(args.json, "w", encoding="utf-8") as f:
+                json.dump({"verdict": "INPUT_ERROR", "reason": str(e)}, f, indent=1)
+        return 3
     arrays = full_array_chi2(A, B, A["nskip"], B["nskip"])
     res["arrays"] = arrays
     report(res, A, B, arrays)
@@ -303,5 +360,17 @@ def main(argv=None):
     return {"PASS": 0, "FAIL": 1, "INCONCLUSIVE": 2}[res["verdict"]]
 
 
+def main_failclosed(argv=None):
+    """Any unexpected exception (a bug here, in pyALF or scipy) is exit 3, never exit 1 ("differs")."""
+    try:
+        return main(argv)
+    except SystemExit as e:  # argparse usage errors and explicit exits
+        return e.code if isinstance(e.code, int) and e.code != 1 else 3
+    except Exception as e:  # noqa: BLE001
+        print(f"INPUT ERROR: unexpected {type(e).__name__}: {e}")
+        print("RESULT: INPUT_ERROR")
+        return 3
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main_failclosed())

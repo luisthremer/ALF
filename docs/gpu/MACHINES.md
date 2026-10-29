@@ -51,6 +51,11 @@ export PATH=/opt/intel/oneapi/compiler/2025.3/bin:$PATH
 - The CPU reference is 16 Zen 3 cores, not a full HPC node; BENCHMARKS.md must say so.
 - Disk is tight: keep builds and run outputs small, delete after use.
 
+**State 2026-10-29 (read-only checks):** compute mode **Default**, MIG disabled; `/` 19 GB free (93 %); NVIDIA MPS
+binaries present (`/usr/bin/nvidia-cuda-mps-control`, `-server`), no daemon running; other users log in at times
+(no GPU use seen). Two CUDA processes at once are time-sliced (13× slower each, DISCREPANCIES.md); MPS trial results:
+gate report of 2026-10-29 and CLAUDE.md "nividia GPU sharing".
+
 ## `intel` (host `IntelGPU`) – probed 2026-10-27, read-only
 
 Reached via `ssh intel` (jump host). **Test sandbox on a shared workstation** (other users and a desktop session).
@@ -68,6 +73,13 @@ Rules: CLAUDE.md "Machine rules". Our dir `~/alf-gpu/` (mode 700).
 
 Environment: `. ~/alf-gpu/env/intel.sh` (= `/opt/intel/oneapi/2025.3/oneapi-vars.sh --force`; ifx 2025.3.3,
 `MKLROOT=/opt/intel/oneapi/2025.3`, `mpiifx`).
+
+**State 2026-10-29: the oneAPI installation is mixed and `GPU=intel` does not link.** A system update (owner's
+maintenance, 2026-10-28) removed MKL 2025.3 (`dpkg` state `rc`) and installed MKL 2026.2, without a Fortran compiler
+2026.2: `compiler/` has 2025.1, 2025.3 (ifx 2025.3.3), 2026.2 (icx/icpx, no ifx); `mkl/` has 2025.1 (empty) and 2026.2.
+`intel.sh` no longer finds MKL; pairing ifx 2025.3 with MKL 2026.2 fails at link time (`sycl::_V1` symbols from
+`libmkl_sycl_*.so` 2026.2 need the 2026.2 SYCL runtime). Intel supports MKL only with the matching compiler release.
+Snapshot: `~/alf-gpu/backup/oneapi_state_2026-10-29.txt`. Fix options: gate report of 2026-10-29 (step 5).
 
 **GPU access (fixed 2026-10-27 by the owner: account added to `render`).** Checked the same day:
 - Level Zero sees `level_zero:0` = Arc B580 (`[0xe20b]`, driver 1.6.32224) and `level_zero:1` = UHD 730. Select

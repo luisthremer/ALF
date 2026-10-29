@@ -106,3 +106,36 @@ cd ~/alf-gpu
 ./run_ed.sh gnu-DEFAULT hubbard_finT_chain
 ./ref_batch.sh                                         # all of the above reference runs (~75 min)
 ```
+
+## Acceptance harness and CPU reference cache (2026-10-29, proposed)
+
+The standard is [VERIFICATION.md](VERIFICATION.md); the tools are in `testsuite/gpu_reference/acceptance/`.
+
+**Positive-control catalogue (measured outcomes so far):**
+
+| Gate | Control | Outcome |
+|---|---|---|
+| compare2 | cb vs dense, U = 2.0 vs 2.1 (106, CPU) | FAIL, as required |
+| precision mean (206) | `ALF_GPU_NS=0` | Green mean 2.4× the CPU mean: FAIL, as required (unstamped) |
+| kernel self-tests (204–207) | fault classes `ALF_GPU_FAULT*` | all fail, as required |
+| τ precision mean (207) | cuSOLVER ZUNMQR without Newton–Schulz (`ALF_GPU_TAU_NS=0`) | +17 % on the mean: **not detected** by the 1.5× mean rule (known blind spot) |
+| paired test (207) | `ALF_GPU_TAUSWAP=8`, `ALF_GPU_TAU_NS=0` | never run yet |
+| compare2 (fail-closed version) | NaN in a bin; a missing τ group; identical seeds; identical means on "independent" seeds | exit 3 (INPUT ERROR) on real 207 run data, 2026-10-29 |
+| end-to-end harness test (2026-10-29, local test ticket 999 on nividia: ship → build → env -i runs → mutations → GPU=none → verdict) | self-test on a faulty run; faults on clean runs; 1e-12 replay change; NaN in a τ dataset; planted token in `main.F90` | all killed as designed (the planted-token control first was **not**: the read-only shipped source made the plant fail silently; fixed, then 12 differing lines). The per-entry same-seed metric was already 1.4e-5 on clean LOG 6×6 data, so it is reported, not gated, until calibrated |
+| harness test 2 (2026-10-29, local test ticket 998 = 207 code + harness, `--who mgr` and `--who agent`) | every gate type incl. paired, precision, compare2, non-interference vs a base build, ctest, GPU=none with plant; fresh and devN seeds; refcache | controls killed as designed for selftest, faults, same-seed (1e-3 small entry), replay and non-interference (1e-12), compare2 (shift), ctest (planted failure), ppcmp (plant). Found and fixed: a refcache crash (driver fell back to running, fail-safe), global active lines that a base build cannot show. Not killed: `ALF_GPU_NS=0` at 6×6 LOG (the precision-mean gate cannot see it there: power statement). compare2 gave a false FAIL on a short run that a CPU-vs-CPU null reproduced exactly → null control now mandatory. Measured on the way: the 207 τ pass leaves all 23 equal-time datasets bit-identical to the 206 binary (LOG 6×6), and the paired statistic at 6×6 LOG β = 4 is |mean| 0.08 (test thresholds, not a 207 criterion) |
+| ctest identity (2026-10-29, after the third review) | `files_identical` on `acc_ctest.sh -V` output of the GNU `alf_la.tests`, base vs candidate; a copy with one changed digit | clean: 188 lines identical (after normalising the build path and backtrace addresses, and running tests serially: both differed before); planted digit: caught |
+| `verdict.py --selfcheck` | synthetic cases for every gate type: planted defects (FAIL), and NaN, missing data, crashes, timeouts, busy GPU, inactive GPU path, leaked debug variables, other candidate, binary not from the tarball, outputs edited after the run, setup errors with rc 1 (INPUT_ERROR); control semantics (a missing run or an uninformative control is never a kill; controls cannot replace the criterion) | all as expected; the exact count is printed by the script |
+
+**Statistical power of compare2 (207 run, 70 bins, m = 11, Šidák α = 0.01), minimum detectable effect at 80 %:**
+E 0.47 %, Kin 0.49 %, Pot 0.78 %, Den(π,π) 0.71 %, G(0,0) 0.13 %, G(π,0) 1.1 %, G((π,0), β/2) 2.9 %,
+S_zz(π/2,π/2) 6.6 %, S_zz(π,π) 18 %, χ_zz(π,π) 27 %, S_zz((π,π), β/2) 33 %. compare2 is a gross-error detector;
+sub-percent τ errors are covered only by the same-seed τ line and the kernel self-tests.
+
+**False-alarm budget:** about 7 % per ticket with the 207 thresholds (compare2 1 %, paired 2 × 2.5 %, precision ~1 %);
+lowering it needs more events, not wider limits.
+
+**CPU reference cache:** `refcache.py` in `~/alf-gpu/refcache/`, keyed by the CPU-path sources (everything under
+`Prog/`, `Libraries/`, `Analysis/` except `Prog/gpu_*.F90` and `git.h`), build (tool, configure line, `ALF_FLAGS_EXT`,
+compiler versions), parameters and seeds. Written only by the manager from stamped, successful, non-debug runs;
+`refcache.py check` verifies each entry's sha256 manifest. Budget ≤ 2 GB; entries are removed oldest first, only after
+the owner's gate of every ticket that used them.

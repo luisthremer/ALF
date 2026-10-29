@@ -16,7 +16,8 @@ Later phases (only with the owner's go-ahead): delayed and submatrix updates (Su
 
 - `origin` = upstream `ALF-QMC/ALF` (fetch only; push URL is `no_push`). **Never push to origin,
   never open upstream PRs.** `fork` = `git@github-work:luisthremer/ALF.git` (public). Push freely.
-- Work on `gpu-port`; one sub-branch per larger ticket if useful (`gpu-port/NNN-name`).
+- Work on `gpu-port`; one sub-branch per larger ticket or lane (`gpu-port-NNN-name`; git cannot hold
+  `gpu-port/NNN` next to the branch `gpu-port`). Rollback points: tags, see `docs/gpu/ROLLBACK.md`.
 - Leave the fork's other branches (`master`, `luis_playground`) alone.
 - Small, coherent, tested commits. Only the manager session commits and pushes; subagents never do.
 - No secrets in code or commits.
@@ -31,7 +32,10 @@ Later phases (only with the owner's go-ahead): delayed and submatrix updates (Su
 | `configure.sh` | `source configure.sh MACHINE MODE STAB [HDF5] [Devel]`, then `make`. GPU switch `GPU=none\|nvidia\|intel` planned (Phase 1 ADR) |
 | `testsuite/` | CMake unit tests (`matmod.tests`, `Prog.tests`, `Analysis.tests`), `test_vs_ed/` (pyALF), `test_branch_parameters.json` + `compare_dirs.py` |
 | `docs/gpu/` | port documentation: `README.md` index, `HARD.md`, `PLAN.md`, `ADR-*.md`, `BENCHMARKS.md`, `FEATURES.md`, `DISCREPANCIES.md`, `tickets/` |
-| `.claude/agents/` | `fortran-gpu-dev`, `test-runner`, `numerics-reviewer` |
+| `docs/gpu/VERIFICATION.md` | the verification standard (acceptance harness, tiers, evidence, review roles) |
+| `docs/gpu/DECISIONS.md` | owner decisions, quoted and dated |
+| `testsuite/gpu_reference/acceptance/` | acceptance harness: ship/build/run/driver/verdict scripts, `NNN.json` acceptance files |
+| `.claude/agents/` | `fortran-gpu-dev`, `test-runner`, `numerics-reviewer`, `acceptance-verifier` |
 
 Research leads (not ground truth; verify before relying on them, log mismatches in
 `docs/gpu/DISCREPANCIES.md`): `/Users/luis/Documents/_WORK/Coding/CLAUDE/ALF_GPU_research/R{1,2,3}_report.md`.
@@ -67,6 +71,9 @@ cd testsuite && mkdir -p tests && cd tests && cmake .. && cmake --build . -j8 &&
   phase precision stay at CPU levels and are reported.
 - RNG streams differ between compilers: never compare Monte Carlo trajectories bin by bin across builds.
 - **Never weaken a tolerance or skip a test to get green.** If a criterion can't be met: stop, explain.
+  When a criterion fails, never put relaxing it forward as the first or recommended option. Criteria live in the
+  ticket's pre-registered acceptance file; changing one needs the owner's quoted, dated approval (in the file and in
+  `docs/gpu/DECISIONS.md`) and fresh seeds afterwards. Never re-run a statistical test until it is green.
 - When research, docs or a subagent report conflicts with a measurement, trust the measurement and
   record the discrepancy.
 
@@ -92,7 +99,25 @@ host↔device transfer is documented. Target the default and `STABLOG` stabiliza
   globs that could expand outside your directory.
 - **Never use `sudo`** or anything that needs root, even where the account could (`luis` on `intel` is
   in the sudo group). No changes to system settings, groups, drivers or packages: ask the owner.
-- Each test/benchmark run ≲ 15 min; ask the owner before anything longer.
+- Each test/benchmark run ≲ 15 min; ask the owner before anything longer. A T2 acceptance sequence of such runs
+  (~2 h unattended) needs the owner's standing approval of the per-ticket GPU budget.
+- **nividia GPU sharing:** one GPU process at a time (two time-sliced CUDA processes ran 13–15× slower each, 2026-10-28/29),
+  except under the project's MPS daemon (approved 2026-10-29, DECISIONS.md): started and stopped only
+  by the manager (the acceptance driver itself runs GPU jobs one at a time, without MPS), as the ordinary user, `CUDA_VISIBLE_DEVICES=0`, pipe/log directories under
+  `~/alf-gpu/work/mps/`, at most 2 concurrent clients, never while another user's process is on the GPU; afterwards
+  `echo quit | nvidia-cuda-mps-control` and check that no MPS process is left; after a killed client, quit the daemon.
+  Measured 2026-10-29: two MPS clients each at solo speed, outputs bit-identical to a solo run.
+  GPU runs of the acceptance driver take the lock `~/alf-gpu/gpu.lock`.
+- **nividia cores and disk:** ≤ 4 cores per agent ; up to 3 single-threaded CPU runs may run alongside one GPU run: measured 2026-10-29, the GPU run took 66 s alone,
+  66 s with 2 and 67 s with 3 CPU runs alongside, output bit-identical; keep ≥ 5 GB free on `/`
+  (the acceptance driver refuses to start below); per ticket ≤ 1.5 GB live evidence.
+- **Evidence retention:** never delete raw outputs (`info`, `data.h5`, `run.log`, `provenance.json`, verdicts) or
+  binaries of an unclosed ticket; cleanup removes build trees only. At the owner's gate the manager archives them to
+  `~/alf-gpu/archive/tNNN/` with a sha256 manifest.
+- **Confinement exceptions (manager only):** `~/alf-gpu/backup/`, `~/alf-gpu/archive/`, `~/alf-gpu/refcache/` (CPU
+  reference cache, written by the manager, read by everyone), `~/alf-gpu/work/mps_trial/`, `~/alf-gpu/work/mps/`,
+  `~/alf-gpu/gpu.lock`, `~/alf-gpu/hdf5/` (prebuilt HDF5 for the harness), and the acceptance driver's attempts log
+  `~/alf-gpu/archive/attempts/` (written by the driver for every party, including an implementer's T1).
 - Clean up processes and large files afterwards; don't hold the GPU between tasks.
 - Install nothing system-wide without asking. User-space installs (e.g. oneAPI) only after the owner agrees.
 - `intel` is a shared workstation (other users, a desktop session): before a run check `uptime` and
@@ -105,7 +130,18 @@ host↔device transfer is documented. Target the default and `STABLOG` stabiliza
 - Tickets: `docs/gpu/tickets/NNN-short-name.md` (template `000-template.md`): goal, files allowed,
   acceptance (tests + tolerances), out of scope.
 - One ticket per subagent, with all needed context. Independent tickets run in parallel.
-- Every diff is reviewed (manager or `numerics-reviewer`) and acceptance tests are re-run by the
-  manager before a ticket closes.
+- **Acceptance follows `docs/gpu/VERIFICATION.md`:** a ticket closes only on a PASS `verdict.json` of the T2 harness
+  run by the manager on a frozen candidate built from `git archive`, with all positive controls killed, an independent
+  `acceptance-verifier` agreeing, and the `numerics-reviewer` approving code, acceptance file and scripts. The committed
+  sha equals the accepted sha up to `docs/**` (`acc_check_commit.sh`). Logs without a matching provenance stamp are not
+  evidence. Acceptance runs use `env -i` and refuse debug/fault variables outside declared control runs.
+- **Roles:** implementers (`fortran-gpu-dev`, Sonnet by default; Opus per ticket for numerically delicate work on the
+  manager's proposal) run tier T0 per iteration and T1 on their own frozen candidate; verification never runs in the
+  implementer's context; corrections of a report go to a fresh verifier, not to the author. At ~250k tokens or a phase
+  boundary an implementer writes a handoff note into the ticket and a fresh agent continues. Resume an agent only after
+  an interruption; after a change to an agent definition, spawn new agents.
+- **Lanes:** NVIDIA lane (2xx tickets, `nividia`, `~/alf-gpu/work/t2NN`) and Intel lane (3xx tickets, `intel`,
+  `~/alf-gpu/work/t3NN`) under one manager, each on its own sub-branch with file ownership in `docs/gpu/PLAN.md`; the
+  manager sequences edits of shared files; the `alf_la` interface is frozen while both lanes run.
 - Stuck after 2–3 different approaches: write down what was tried and ask the owner.
 - Phases end at gates (owner review): summary, numbers, plan changes, open decisions, next tickets.

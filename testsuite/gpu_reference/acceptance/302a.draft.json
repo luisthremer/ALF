@@ -1,0 +1,169 @@
+{
+ "schema": "alf-acc/1",
+ "ticket": "302a",
+ "candidate_sha": "self",
+ "base_sha": "TBD: gpu-port at the start of 302a",
+ "created": "2026-10-29",
+ "approvals": [],
+ "timeout_s": 900,
+ "disk_min_free_GB": 5,
+ "cpu_parallel": 2,
+ "false_alarm_budget": 0.0,
+ "_false_alarm_reason": "all gates are deterministic (unit tests, ordering canary, identity)",
+ "_status": "DRAFT for ticket 302a, Intel part (runs on intel, B580). Becomes 302a.json, pre-registered before implementation after review (b). The control modes ALF_LA_TEST_BREAK_ORDER, ALF_LA_TEST_POISON_INFO and ALF_LA_TEST_WRONG_LD are test-only switches that 302a adds to testsuite/alf_la.tests (files allowed); the count 11 is fixed when frozen.",
+ "machine": "intel",
+ "gpu_exclusive": true,
+ "builds": {},
+ "configs": {},
+ "runs": {},
+ "ctests": [
+  {
+   "id": "onemkl_all",
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI GPU=intel",
+   "regex": "^t_",
+   "gpu": true
+  },
+  {
+   "id": "t_order",
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI GPU=intel",
+   "regex": "^t_order$",
+   "repeat": 100,
+   "gpu": true
+  },
+  {
+   "id": "ctl_t_order_broken",
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI GPU=intel",
+   "regex": "^t_order$",
+   "repeat": 100,
+   "env": [
+    "ALF_LA_TEST_BREAK_ORDER=1"
+   ],
+   "control": true,
+   "gpu": true
+  },
+  {
+   "id": "ctl_poison_info",
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI GPU=intel",
+   "regex": "^t_",
+   "env": [
+    "ALF_LA_TEST_POISON_INFO=1"
+   ],
+   "control": true,
+   "gpu": true
+  },
+  {
+   "id": "ctl_wrong_ld",
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI GPU=intel",
+   "regex": "^t_",
+   "env": [
+    "ALF_LA_TEST_WRONG_LD=1"
+   ],
+   "control": true,
+   "gpu": true
+  }
+ ],
+ "gates": [
+  {
+   "id": "alf_la_tests_onemkl",
+   "type": "log_regex",
+   "_reason": "acceptance 1: routine tests with unchanged tolerances under GPU=intel on the B580",
+   "checks": [
+    {
+     "file": "onemkl_all/ctest.log",
+     "stamp_file": "onemkl_all/stamp",
+     "exit_file": "onemkl_all/ctest.exit",
+     "regex": "(\\d+)% tests passed, (\\d+) tests failed out of (\\d+)",
+     "equals": [
+      100,
+      0,
+      11
+     ],
+     "stamp_contains": [
+      "offload MANDATORY"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "t_order",
+   "type": "log_regex",
+   "_reason": "acceptance 2: ordering canary passes 100 of 100 repetitions",
+   "checks": [
+    {
+     "file": "t_order/summary",
+     "stamp_file": "t_order/stamp",
+     "exit_file": "t_order/ctest.exit",
+     "regex": "\\^t_order\\$: (\\d+) of (\\d+) repetitions passed",
+     "equals": [
+      100,
+      100
+     ],
+     "stamp_contains": [
+      "offload MANDATORY"
+     ]
+    }
+   ]
+  }
+ ],
+ "controls": [
+  {
+   "id": "ctl_t_order_broken",
+   "like": "t_order",
+   "expect": "FAIL",
+   "_reason": "deliberately broken ordering must be detected",
+   "replace": {
+    "checks": [
+     {
+      "file": "ctl_t_order_broken/summary",
+      "stamp_file": "ctl_t_order_broken/stamp",
+      "exit_file": "ctl_t_order_broken/ctest.exit",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "ctl_poison_info",
+   "like": "alf_la_tests_onemkl",
+   "expect": "FAIL",
+   "_reason": "a poisoned device info must make the routine tests fail",
+   "replace": {
+    "checks": [
+     {
+      "file": "ctl_poison_info/ctest.log",
+      "stamp_file": "ctl_poison_info/stamp",
+      "exit_file": "ctl_poison_info/ctest.exit",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "ctl_wrong_ld",
+   "like": "alf_la_tests_onemkl",
+   "expect": "FAIL",
+   "_reason": "a wrong leading dimension must make the routine tests fail",
+   "replace": {
+    "checks": [
+     {
+      "file": "ctl_wrong_ld/ctest.log",
+      "stamp_file": "ctl_wrong_ld/stamp",
+      "exit_file": "ctl_wrong_ld/ctest.exit",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}
