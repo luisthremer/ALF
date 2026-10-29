@@ -97,7 +97,7 @@ Pre-registered in `testsuite/gpu_reference/acceptance/212.json` (gates, threshol
 
 ## Approvals
 - First pre-registration `21e23a6a` (base `d53f9779`) was superseded before any implementation existed, after review
-  (b) of the acceptance file (findings M1–M6, S1–S11). Current pre-registration commit: `PREREG_SHA` (2026-10-29) on
+  (b) of the acceptance file (findings M1–M6, S1–S11). Current pre-registration commit: `71bbcc93` (2026-10-29) on
   `gpu-port-212-hardening`; base `1a363070`. Deviation to put to the owner: the compare2 positive control uses a
   shift of 8 standard errors, not the 5 of VERIFICATION.md §5 (at m = 11, α = 0.01 Šidák a shift of 5 is caught only
   ~60 % of the time). Any change of
