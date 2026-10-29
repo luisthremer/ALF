@@ -33,6 +33,8 @@ done
 mod=$(awk '$1=="M" {print $2}' $C/changed_files.txt | grep -E '\.(F90|f90|F|f)$' | grep -v -E '^(Prog/gpu_|gpu_bench/|testsuite/)')
 addel=$(awk '$1=="A" || $1=="D" {print $1" "$2}' $C/changed_files.txt | grep -E '\.(F90|f90|F|f)$' | grep -v -E ' (Prog/gpu_|gpu_bench/|testsuite/)' | wc -l)
 build=$(awk '{print $2}' $C/changed_files.txt | grep -E '(^|/)(Makefile[^/]*|configure\.sh|CMakeLists\.txt|[^/]*\.mk)$' | wc -l)
+# the plant control needs a compared file: without changed CPU-path Fortran it compares Prog/main.F90 (identical on both sides)
+[ "$PLANT" = --plant ] && [ -z "$mod" ] && mod=Prog/main.F90
 tot=0; err=0; n=0; first=1
 {
   echo "compared files: ${mod:-none}"
