@@ -145,5 +145,20 @@ Unit level (`testsuite/Prog.tests/36-lowrank-unit.F90`, ctest `36-lowrank-unit`;
   last bound is loose for the high-cond cases (actual ratio ≤ 1e-3 there); it only catches gross loss.
 - Inter-slice similarity: S = I + 0.1·R/√Ndim (cond(S) ≈ 1.3); mz_illcond: S = I + 0.1·R (cond(S) ≈ 20).
 
+## Phase 3 results: delayed (verified 2026-10-30, commit 3de8a5f9)
+- Unit (ctest 36): delayed vs real Upgrade2, all cases × up/down × N_delay {1,7,32,1000}: max ratio err 2.0e-12,
+  max G err 1.4e-12 (mz_illcond); ≤ 8.6e-13 / 7.4e-14 for the well-conditioned cases. Kernel equivalence
+  (Upgrade2 Final vs Upgrade_lowrank, 200 proposals): 0 toggle mismatches, |ΔPhase| ≤ 1e-15, identical next ranf.
+- Trajectory (trace build, NSweep=3 NBin=2): IDENTICAL decisions vs standard for start, doped, density, continuous,
+  kondo (mixed eligible/ineligible), pv_adiab (projector + adiabatic g_t + reconstruction), z2gt (Global_tau, N_delay=5),
+  start N_delay=3.
+- Statistical (delayed s3 vs standard s1): half, doped (sign 0.603(11) vs 0.590(10)), density: PASS; all scalar |z| < 3.
+  Precision Green max ratio delayed/standard: 1.11, 0.25, 0.61 (stability no worse).
+- Regression: 9 sets bit-identical to baseline f81b5cbc. Debug build (-DALF_LOWRANK_DEBUG): shadow-G max rel. err
+  2e-14 over ~1e5 checks; self-tests fire.
+- Implementation notes: lazy init at the first WRAPGRUP/WRAPGRDO (main.F90 calls Wrapgr_alloc only for Global_tau);
+  G is flushed at every slice end, so the effective delay is min(N_delay, accepts per slice); submatrix rejected at
+  init until Phase 4.
+
 ## Open questions
 - See the design spec, section "Open questions for Checkpoint 1".
