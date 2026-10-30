@@ -4,8 +4,8 @@ Validation tools for the delayed/submatrix local updates (branch `feature/delaye
 
 ## make_params.py
 
-`make_params.py OUT_DIR KEY=VALUE ...` copies `Scripts_and_Parameters_files/Start/{parameters,seeds}`
-to `OUT_DIR` and sets each `KEY = VALUE` in every namelist that contains `KEY` (case-insensitive; the
+`make_params.py [--template DIR] OUT_DIR KEY=VALUE ...` copies `Scripts_and_Parameters_files/Start/{parameters,seeds}`
+(or `DIR/{parameters,seeds}`) to `OUT_DIR` and sets each `KEY = VALUE` in every namelist that contains `KEY` (case-insensitive; the
 line's comment is kept). A key present in no namelist (e.g. `Sequential_scheme`) is appended to
 `&VAR_QMC`. `SEED=<int>` replaces the first seed in `seeds`. Run it with `python3 -I`.
 
@@ -19,8 +19,9 @@ BRANCH_EXTRA="Sequential_scheme=0" testsuite/lowrank/regress_vs_baseline.sh   # 
 ```
 
 - Creates the worktree `../ALF_baseline` (detached at `f81b5cbc`) if missing and builds it; rebuilds the branch.
-- Runs five short sets (`NSweep=5 NBin=2`, `OMP_NUM_THREADS=1`) with identical parameters and seeds:
-  `start`, `doped` (`ham_chem=-0.5 L1=4 L2=4 Beta=4`), `density` (`Mz=.F.`), `continuous`
+- Each side starts from its own tree's `Start` template (`--template`), since the branch template carries keys the baseline cannot parse.
+- Runs six short sets (`NSweep=5 NBin=2`, `OMP_NUM_THREADS=1`) with identical parameters and seeds:
+  `start`, `explicit` (`start` plus branch-only `Sequential_scheme="standard" N_delay=32`), `doped` (`ham_chem=-0.5 L1=4 L2=4 Beta=4`), `density` (`Mz=.F.`), `continuous`
   (`Continuous=.T.`), `tv` (see below). Outputs go to `runs/regress/<set>/{base,branch}`.
 - `cmp`s every output file except `info*` (commit and time stamps) and the inputs `parameters`, `seeds`
   (they differ textually with branch-only keys); the `*_info` companions are compared. Exit 2 if a run

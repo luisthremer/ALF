@@ -32,6 +32,8 @@ build() {  # build ALF.out in the tree $1, log to $2
 # Parameter sets: "name|common keys|branch-only keys"
 SETS=(
   "start||"
+  # explicit: the new keys at their defaults must not change anything (branch-only: baseline cannot parse them)
+  "explicit||Sequential_scheme=\"standard\" N_delay=32"
   "doped|ham_chem=-0.5 L1=4 L2=4 Beta=4|"
   "density|Mz=.F.|"
   "continuous|Continuous=.T.|"
@@ -64,13 +66,17 @@ for entry in "${SETS[@]}"; do
         keys="$SHORT $common"
         [ ${#COMMON_EXTRA[@]} -gt 0 ] && keys="$keys ${COMMON_EXTRA[*]}"
         exe="$BASEDIR/Prog/ALF.out"
+        # Each side starts from its own tree's Start template: the branch template carries keys
+        # (Sequential_scheme, N_delay) that the baseline binary cannot parse.
+        template="$BASEDIR/Scripts_and_Parameters_files/Start"
         if [ "$side" = branch ]; then
+            template="$ALFDIR/Scripts_and_Parameters_files/Start"
             keys="$keys $branch_only $BRANCH_EXTRA"
             exe="$ALFDIR/Prog/ALF.out"
         fi
         mkdir -p "$dir"
         read -r -a keyarr <<<"$keys"   # plain word split: quotes in values stay literal
-        python3 -I "$MAKE_PARAMS" "$dir" "${keyarr[@]}"
+        python3 -I "$MAKE_PARAMS" --template "$template" "$dir" "${keyarr[@]}"
         (cd "$dir" && "$exe" >stdout.log 2>&1) \
             || { echo "$name: $side run failed, see $dir/stdout.log" >&2; exit 2; }
         /bin/rm -f "$dir/stdout.log"

@@ -52,6 +52,8 @@ Module QMC_runtime_var
         Integer :: Nt_sequential_start, Nt_sequential_end, mpi_per_parameter_set
         Integer :: N_Global_tau
         Logical :: Sequential
+        Character (len=64) :: Sequential_scheme  !  "standard", "delayed" or "submatrix"; validated in Lowrank_init
+        Integer :: N_delay                        !  max pending accepted vertices before a flush (delayed/submatrix)
         real (Kind=Kind(0.d0)) ::  Amplitude  !    Needed for  update of  type  3  and  4  fields.
 
         Character (len=64) :: ham_name
@@ -74,7 +76,8 @@ Module QMC_runtime_var
               &               Propose_S0,Global_moves,  N_Global, Global_tau_moves, &
               &               Nt_sequential_start, Nt_sequential_end, N_Global_tau, &
               &               sequential, Langevin, HMC, Delta_t_Langevin_HMC, &
-              &               Max_Force, Leapfrog_steps, N_HMC_sweeps, Amplitude
+              &               Max_Force, Leapfrog_steps, N_HMC_sweeps, Amplitude, &
+              &               Sequential_scheme, N_delay
        
         NAMELIST /VAR_HAM_NAME/ ham_name
 
@@ -119,6 +122,8 @@ Module QMC_runtime_var
     public :: get_Delta_t_Langevin_HMC, set_Delta_t_Langevin_HMC
     public :: get_Amplitude,         set_Amplitude
     public :: get_ham_name,          set_ham_name
+    public :: get_Sequential_scheme, set_Sequential_scheme
+    public :: get_N_delay,           set_N_delay
     public :: get_mpi_per_parameter_set, set_mpi_per_parameter_set
     public :: get_Tempering_calc_det, set_Tempering_calc_det
 #if defined(TEMPERING)
@@ -148,6 +153,7 @@ Module QMC_runtime_var
             Global_tau_moves = .false.; sequential = .true.; Langevin = .false. ; HMC =.false.
             Delta_t_Langevin_HMC = 0.d0;  Max_Force = 0.d0 ; Leapfrog_steps = 0; N_HMC_sweeps = 1
             Nt_sequential_start = 1 ;  Nt_sequential_end  = 0;  N_Global_tau  = 0;  Amplitude = 1.d0
+            Sequential_scheme = "standard";  N_delay = 32
             settings_locked = .false.
 
         end subroutine set_QMC_runtime_default_var
@@ -528,6 +534,26 @@ Module QMC_runtime_var
             call ensure_settings_unlocked("set_ham_name")
             ham_name = val
         end subroutine set_ham_name
+
+        character(len=64) function get_Sequential_scheme() result(val)
+            val = Sequential_scheme
+        end function get_Sequential_scheme
+
+        subroutine set_Sequential_scheme(val)
+            character(len=*), intent(in) :: val
+            call ensure_settings_unlocked("set_Sequential_scheme")
+            Sequential_scheme = val
+        end subroutine set_Sequential_scheme
+
+        integer function get_N_delay() result(val)
+            val = N_delay
+        end function get_N_delay
+
+        subroutine set_N_delay(val)
+            integer, intent(in) :: val
+            call ensure_settings_unlocked("set_N_delay")
+            N_delay = val
+        end subroutine set_N_delay
      
 
 !--------------------------------------------------------------------
@@ -571,6 +597,8 @@ Module QMC_runtime_var
             CALL MPI_BCAST(Max_Force            ,1 ,MPI_REAL8    ,0,MPI_COMM_i,ierr)
             CALL MPI_BCAST(Delta_t_Langevin_HMC ,1 ,MPI_REAL8    ,0,MPI_COMM_i,ierr)
             CALL MPI_BCAST(Amplitude            ,1 ,MPI_REAL8    ,0,MPI_COMM_i,ierr)
+            CALL MPI_BCAST(Sequential_scheme    ,64,MPI_CHARACTER,0,MPI_COMM_i,ierr)
+            CALL MPI_BCAST(N_delay              ,1 ,MPI_INTEGER  ,0,MPI_COMM_i,ierr)
 
         end subroutine broadcast_QMC_runtime_var
 #endif           
