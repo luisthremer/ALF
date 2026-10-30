@@ -84,6 +84,7 @@
 !> diag_post and docs/gpu/scripts/nividia/t207_diagtab.py / t207_diagstat.py), ALF_GPU_TAUDIAG_FROM=<pass> starts the perturbation
 !> chains late, ALF_GPU_TAUDIAG_SEED=<n> seeds the 1-ulp perturbations (unset: derived from the run's RNG state at setup; printed in
 !> the setup line), ALF_GPU_TAUDIAG_VAR=<m1,m2,...> adds GTT chains of dev_cgr22 with the swp masks m_k (" | V" fields),
+!> ALF_GPU_TAUDIAG_NUL=<c1,c2,...> adds GTT chains of a host copy of CGR2_2 with rounding-order null variants (" | N", " | Nd"; dn_code),
 !> ALF_GPU_TAUSWAP=<mask> replaces CGR2_2 steps by host twins in the production calls (bits as swp below).
 !> Finding (ticket 207, STABLOG precision tail): the tail of Precision tau is the GTT pair at the last stabilization points; its size
 !> per event changes by up to ~10x under a 1-ulp perturbation of U of the right state, on the host as on the device; device / host
@@ -187,6 +188,17 @@ Module gpu_tau_mod
   Real (Kind=Kind(0.d0)), Save :: da_amp(ndv_max) = 0.d0
   Integer(int64), Save :: da_seed = 0
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: da_p(:,:,:,:)      ! (N,N,N_FL,da_n)
+  ! ALF_GPU_TAUDIAG_NUL=<c1,c2,...> (with TAUDIAG=1|2; ticket 207 dev4, rounding-order nulls): GTT chains of nul_cgr22, a host copy of
+  ! CGR2_2 (same routines, same order) with mathematically neutral variants, host-propagated like P0 (" | N" precision numbers,
+  ! " | Nd" max rel. difference of the chain's new GTT from the host chain's new GTT at the same point).  Code c = flags + 100*nb +
+  ! 100000*stream; flags: 1 V1INV as the inverse of V1 with randomly permuted columns (rows permuted back), 2 unblocked Householder
+  ! QR and Q application (default: ZGEQR2 / ZUNM2R; STABLOG: ZLAQP2 / ZUNM2R), 4 QR of the randomly row-permuted matrix (rows of the
+  ! result permuted back), 8 compact-WY QR with block size nb (ZGEQRT / ZGEMQRT; default path only), 16 input: the device right
+  ! state (as P3 / P4) instead of the host chain's; stream: index of the chain's own permutation stream (same code = same chain)
+  Integer, Parameter :: ndn_max = 12
+  Integer, Save :: dn_n = 0, dn_code(ndn_max) = 0
+  Integer(int64), Save :: dn_seed(ndn_max) = 0
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: dn_p(:,:,:,:)      ! (N,N,N_FL,dn_n)
 
 Contains
 
@@ -659,6 +671,20 @@ Contains
           vv = vv(i+1:)
        enddo
     endif
+    dn_n = 0
+    if (gpu_env_get('ALF_GPU_TAUDIAG_NUL', v)) then
+       vv = v
+       do
+          if (len_trim(vv) == 0) exit
+          i = index(vv, ',')
+          if (i == 0) i = len_trim(vv) + 1
+          if (dn_n == ndn_max) call env_bad('ALF_GPU_TAUDIAG_NUL', v)
+          dn_n = dn_n + 1
+          read(vv(1:i-1),*,iostat=ios) dn_code(dn_n)
+          if (ios /= 0 .or. .not. nul_code_ok(dn_code(dn_n))) call env_bad('ALF_GPU_TAUDIAG_NUL', v)
+          vv = vv(i+1:)
+       enddo
+    endif
     if (.not. (diag_on .or. swp_prod /= 0)) return
     n = t_N; n2 = t_N2
     call ZUNMQR('L', 'N', n2, n2, n2, t_H1, n2, t_tau, t_H2, n2, wq, -1, info)
@@ -696,6 +722,11 @@ Contains
     allocate(dv_p(n,n,N_FL,max(1,dv_n)), dg_hcTT(n,n)); dv_p = z0; dg_hcTT = z0
     allocate(da_p(n,n,N_FL,max(1,da_n))); da_p = z0
     da_seed = mod(dg_seed + 1234567_int64, 2147483648_int64)
+    allocate(dn_p(n,n,N_FL,max(1,dn_n))); dn_p = z0
+    do i = 1, dn_n
+       dn_seed(i) = mod(dg_seed + 104729_int64*int(dn_code(i)/100000 + 1, int64) + 7919_int64*int(mod(dn_code(i),100), int64) &
+            &           + 2654435_int64, 2147483648_int64)
+    enddo
     v = '2'
     if (diag_full) v = '1'
     write(line,'(A,A,A,I0,A,A,A,I0,A)') 'GPU tau pass: DEBUG ALF_GPU_TAUDIAG=', trim(v), &
@@ -709,6 +740,13 @@ Contains
        write(line(len_trim(line)+1:),'(A,I0,A)') ', amplitude chains ', da_n, ' (ALF_GPU_TAUDIAG_AMP:'
        do i = 1, da_n
           write(line(len_trim(line)+1:),'(A,ES9.2)') ' ', da_amp(i)
+       enddo
+       line = trim(line)//')'
+    endif
+    if (dn_n > 0) then
+       write(line(len_trim(line)+1:),'(A,I0,A)') ', null chains ', dn_n, ' (ALF_GPU_TAUDIAG_NUL:'
+       do i = 1, dn_n
+          write(line(len_trim(line)+1:),'(A,I0)') ' ', dn_code(i)
        enddo
        line = trim(line)//')'
     endif
@@ -756,6 +794,10 @@ Contains
        call h_proprm1(da_p(:,:,:,k), nt1)
        call h_propr(da_p(:,:,:,k), nt1)
     enddo
+    do k = 1, dn_n
+       call h_proprm1(dn_p(:,:,:,k), nt1)
+       call h_propr(dn_p(:,:,:,k), nt1)
+    enddo
   end subroutine diag_slice
 
   ! GTT chains restart from G (tau = 0)
@@ -772,6 +814,9 @@ Contains
     enddo
     do k = 1, da_n
        da_p(:,:,nf,k) = G
+    enddo
+    do k = 1, dn_n
+       dn_p(:,:,nf,k) = G
     enddo
   end subroutine diag_pset
 
@@ -822,6 +867,7 @@ Contains
     Integer :: nf, n, n2, v, br, brd, i
     Real (Kind=Kind(0.d0)) :: pdev(4), pB(4), pC(4), pD(4), pE(4,nv), dCd, dU, dV, dS, d3mx, d3mn
     Real (Kind=Kind(0.d0)) :: l1(3), l2(3), pP(0:npc-1), xm, pV(ndv_max), dvx(ndv_max), pA(ndv_max), dA(ndv_max+1)
+    Real (Kind=Kind(0.d0)) :: pN(ndn_max), dN(ndn_max)
     Integer :: k
     Character (len=2000) :: line
     n = t_N; n2 = t_N2; nf = Calc_Fl_map(nfe)
@@ -880,6 +926,22 @@ Contains
        enddo
        swp = swp_prod
     endif
+    ! null chains (ALF_GPU_TAUDIAG_NUL): host copy of CGR2_2 with a neutral variant, on the host udvr (or the device udvr, flag 16),
+    ! GTT propagated on the host from its own output of the previous point; dN: max rel. difference of its new GTT from the host
+    ! chain's new GTT (B) at this point (0 = bitwise equal)
+    pN = 0.d0; dN = -1.d0
+    if (n_pass+1 >= dg_from) then
+       do k = 1, dn_n
+          if (iand(mod(dn_code(k),100), 16) /= 0) then
+             call nul_cgr22(dg_c(:,:,2), dg_c(:,:,1), dg_c(:,:,3), dg_c(:,:,4), dg_hrd(nfe), dg_hl(nfe), dn_code(k), dn_seed(k))
+          else
+             call nul_cgr22(dg_c(:,:,2), dg_c(:,:,1), dg_c(:,:,3), dg_c(:,:,4), dg_hr(nfe), dg_hl(nfe), dn_code(k), dn_seed(k))
+          endif
+          call COMPARE(dn_p(:,:,nf,k), dg_c(:,:,3), pN(k), xm)
+          dn_p(:,:,nf,k) = dg_c(:,:,3)
+          dN(k) = rel_diff(dg_c(:,:,3), dhTT(:,:,nf))
+       enddo
+    endif
     pA = 0.d0; dA = 0.d0
     if (n_pass+1 >= dg_from .and. da_n > 0) then
        do k = 1, da_n
@@ -925,6 +987,10 @@ Contains
     endif
     if (da_n > 0) write(line(len_trim(line)+1:),'(A,10ES9.2)') ' | A', pA(1:da_n)
     if (da_n > 0) write(line(len_trim(line)+1:),'(A,11ES9.2)') ' | Ad', dA(1:da_n+1)
+    if (dn_n > 0 .and. n_pass+1 >= dg_from) then             ! only where the null chains are active (no negative placeholders)
+       write(line(len_trim(line)+1:),'(A,12ES10.2)') ' | N', pN(1:dn_n)
+       write(line(len_trim(line)+1:),'(A,12ES10.2)') ' | Nd', dN(1:dn_n)
+    endif
     call say(line)
   end subroutine diag_post
 
@@ -1084,6 +1150,316 @@ Contains
        call la_geqrf(n2, n2, t_H1, n2, t_tau)
     endif
   end subroutine sw_qrpp
+
+!====================================================================
+!  DEBUG AID, not used in production (ticket 207 dev4, ALF_GPU_TAUDIAG_NUL): rounding-order null variants of the host CGR2_2.
+!  nul_cgr22 is CGR2_2 of cgr2_2_mod (default: QR_PREPIVOT variant 1 resp. ZGEQP3; STABLOG: ZGEQP3), written out with the same
+!  library routines in the same order, so that code 0 reproduces CGR2_2; the flags of the code (see dn_code) change only the
+!  rounding order of mathematically identical operations.  Host only, no transfer.
+!====================================================================
+  Logical function nul_code_ok(c)
+    Implicit none
+    Integer, intent(in) :: c
+    Integer :: fl, nb
+    nul_code_ok = .false.
+    if (c < 0 .or. c >= 10000000) return
+    fl = mod(c, 100); nb = mod(c/100, 1000)
+    if (fl > 31) return
+    if (iand(fl, 8) /= 0) then
+#if defined(STABLOG)
+       return                                               ! compact-WY QR has no column pivoting: not a STABLOG variant
+#endif
+       if (iand(fl, 2) /= 0 .or. nb < 1 .or. nb > t_N2) return
+    else
+       if (nb /= 0) return
+    endif
+    nul_code_ok = .true.
+  end function nul_code_ok
+
+  ! random permutation p(1:n) (Fisher-Yates on the stream seed)
+  Subroutine nperm(n, p, seed)
+    Implicit none
+    Integer, intent(in) :: n
+    Integer, intent(out) :: p(n)
+    Integer(int64), intent(inout) :: seed
+    Integer :: i, j, t
+    do i = 1, n
+       p(i) = i
+    enddo
+    do i = n, 2, -1
+       j = 1 + int((rnd(seed) + 0.5d0)*dble(i))
+       j = min(max(j, 1), i)
+       t = p(i); p(i) = p(j); p(j) = t
+    enddo
+  end subroutine nperm
+
+#if !((defined(STAB2) || defined(STAB1)) && !defined(STABLOG))
+  Subroutine nul_cgr22(GRT0, GR00, GRTT, GR0T, udv2, udv1, code, seed)
+    Use QDRP_mod, only: QDRP_decompose
+    Use cgr2_2_mod, only: solve_extended_System, get_blocks
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(inout) :: GRT0(:,:), GR00(:,:), GRTT(:,:), GR0T(:,:)
+    Class (UDV_State), intent(in) :: udv2, udv1
+    Integer, intent(in) :: code
+    Integer(int64), intent(inout) :: seed
+    Complex (Kind=Kind(0.d0)), allocatable, Dimension(:) :: D3, D1m, D2m, TAU, WORK
+    Complex (Kind=Kind(0.d0)), allocatable, Dimension(:,:) :: MYU2, HLPB1, HLPB2, V1INV, TMP, TT
+    Integer, allocatable :: IPVT(:), RP(:), CP(:)
+    Complex (Kind=Kind(0.d0)) :: Z
+    Integer :: LQ, LQ2, I, J, LWORK, fl, nb, mode
+    Logical :: br1, rowp
+
+    LQ = t_N; LQ2 = 2*LQ
+    fl = mod(code, 100); nb = mod(code/100, 1000)
+    rowp = iand(fl, 4) /= 0
+    mode = 0                                                ! 0: QDRP_decompose + solve_extended_System (as CGR2_2)
+    if (iand(fl, 2) /= 0) mode = 2                          ! unblocked QR and Q application
+    if (iand(fl, 8) /= 0) mode = 8                          ! ZGEQRT / ZGEMQRT with block size nb
+    ALLOCATE(MYU2(LQ, LQ), V1INV(LQ,LQ), HLPB1(LQ2, LQ2), HLPB2(LQ2, LQ2), D3(LQ2), D1m(LQ), D2m(LQ))
+    Allocate(IPVT(LQ2), TAU(LQ2))
+    IPVT = 0
+    MYU2 = CONJG(TRANSPOSE(udv2%U))
+    if (iand(fl, 1) /= 0) then
+       ! (V1 P)^-1 = P^T V1^-1: inverse of V1 with randomly permuted columns, rows of the inverse permuted back
+       allocate(CP(LQ), TMP(LQ,LQ), TT(LQ,LQ))
+       call nperm(LQ, CP, seed)
+       do I = 1, LQ
+          TMP(:,I) = udv1%V(:,CP(I))
+       enddo
+       CALL INV(TMP, TT, Z)
+       do I = 1, LQ
+          V1INV(CP(I),:) = TT(I,:)
+       enddo
+       deallocate(CP, TMP, TT)
+    else
+       CALL INV(udv1%V, V1INV, Z)
+    endif
+#if defined(STAB3) || defined(STABLOG)
+#if defined(STABLOG)
+    DO J=1,LQ
+      If(udv1%L(J) <= 0.d0) then
+        D1m(J)=cmplx(exp(udv1%L(J)),0.d0,kind(0.d0))
+      else
+        D1m(J)=cmplx(1.d0,0.d0,kind(0.d0))
+        call zscal(LQ,cmplx(exp(-udv1%L(J)),0.d0,kind(0.d0)),V1INV(J,1),LQ)
+      endif
+      If(udv2%L(J) <= 0.d0) then
+        D2m(J)=cmplx(exp(udv2%L(J)),0.d0,kind(0.d0))
+      else
+        D2m(J)=cmplx(1.d0,0.d0,kind(0.d0))
+        call zscal(LQ,cmplx(exp(-udv2%L(J)),0.d0,kind(0.d0)),MYU2(J,1),LQ)
+      endif
+    ENDDO
+#else
+    DO J=1,LQ
+      If(dble(udv1%D(J)) <= 1.d0) then
+        D1m(J)=udv1%D(J)
+      else
+        D1m(J)=cmplx(1.d0,0.d0,kind(0.d0))
+        call zscal(LQ,1.d0/udv1%D(J),V1INV(J,1),LQ)
+      endif
+      If(dble(udv2%D(J)) <=1.d0) then
+        D2m(J)=udv2%D(J)
+      else
+        D2m(J)=cmplx(1.d0,0.d0,kind(0.d0))
+        call zscal(LQ,1.d0/udv2%D(J),MYU2(J,1),LQ)
+      endif
+    ENDDO
+#endif
+#else
+    D1m=udv1%D
+    D2m=udv2%D
+#endif
+#if defined(STABLOG)
+    br1 = udv1%L(1) > udv2%L(1)
+#else
+    br1 = dble(udv1%D(1)) > dble(udv2%D(1))
+#endif
+    if (br1) then
+       call zlacpy('A',LQ,LQ,V1INV(1,1) ,LQ,HLPB2(1   ,1   ),LQ2)
+       call zlacpy('A',LQ,LQ,MYU2(1,1)  ,LQ,HLPB2(1+LQ,1+LQ),LQ2)
+       DO J = 1,LQ
+          DO I = 1,LQ
+             HLPB2(I   , J+LQ ) =  D1m(I)*conjg(udv1%U(J,I))
+             HLPB2(I+LQ, J    ) = -D2m(I)*udv2%V(I,J)
+          ENDDO
+       ENDDO
+    else
+       call zlacpy('A',LQ,LQ,MYU2(1,1) ,LQ,HLPB2(1   ,1   ),LQ2)
+       call zlacpy('A',LQ,LQ,V1INV(1,1),LQ,HLPB2(1+LQ,1+LQ),LQ2)
+       DO J = 1,LQ
+          DO I = 1,LQ
+             HLPB2(I   , J+LQ ) = -D2m(I)*udv2%V(I,J)
+             HLPB2(I+LQ, J    ) =  D1m(I)*conjg(udv1%U(J,I))
+          ENDDO
+       ENDDO
+    endif
+    HLPB1 = conjg(transpose(HLPB2))
+#if defined(QR_PREPIVOT) && !defined(STABLOG)
+    ! variant-1 pre-pivot of CGR2_2: DZNRM2 column norms, stable descending insertion sort, permuted copy, all columns fixed
+    block
+      Real(Kind=Kind(0.d0)), allocatable :: pp_nrm(:)
+      Real(Kind=Kind(0.d0)) :: DZNRM2
+      Complex(Kind=Kind(0.d0)), allocatable :: pp_tmp(:,:)
+      Integer, allocatable :: pp_perm(:)
+      Integer :: pp_i, pp_j, pp_k
+      Allocate(pp_nrm(LQ2), pp_tmp(LQ2,LQ2), pp_perm(size(IPVT)))
+      do pp_j = 1, LQ2
+         pp_nrm(pp_j) = DZNRM2(LQ2, HLPB1(1,pp_j), 1)
+         pp_perm(pp_j) = pp_j
+      enddo
+      do pp_i = 2, LQ2
+         pp_k = pp_perm(pp_i)
+         pp_j = pp_i - 1
+         do while (pp_j >= 1)
+            if (pp_nrm(pp_perm(pp_j)) >= pp_nrm(pp_k)) exit
+            pp_perm(pp_j+1) = pp_perm(pp_j)
+            pp_j = pp_j - 1
+         enddo
+         pp_perm(pp_j+1) = pp_k
+      enddo
+      do pp_j = 1, LQ2
+         pp_tmp(:,pp_j) = HLPB1(1:LQ2,pp_perm(pp_j))
+      enddo
+      HLPB1(1:LQ2,1:LQ2) = pp_tmp
+      IPVT = 1
+      if (rowp) call nul_rowperm()
+      call nul_qr(.true.)
+      IPVT = pp_perm
+      Deallocate(pp_nrm, pp_tmp, pp_perm)
+    end block
+#else
+    if (rowp) call nul_rowperm()
+    call nul_qr(.false.)
+#endif
+    if (br1) then
+       call nul_solve(V1INV, MYU2)
+    else
+       call nul_solve(MYU2, V1INV)
+    endif
+    if (rowp) then                                          ! Q' = P Q Phi: the result is P (Q X); rows back
+       allocate(TMP(LQ2,LQ2))
+       do I = 1, LQ2
+          TMP(RP(I),:) = HLPB2(I,:)
+       enddo
+       HLPB2 = TMP
+       deallocate(TMP, RP)
+    endif
+    if (br1) then
+       call get_blocks(GR00, GR0T, GRT0, GRTT, HLPB2, LQ)
+    else
+       call get_blocks(GRTT, GRT0, GR0T, GR00, HLPB2, LQ)
+    endif
+    DEALLOCATE(MYU2, V1INV, HLPB1, HLPB2, IPVT, TAU, D3, D1m, D2m)
+    if (allocated(WORK)) deallocate(WORK)
+    if (allocated(TT)) deallocate(TT)
+
+  contains
+
+    ! rows of the QR input randomly permuted: new row I = old row RP(I)
+    Subroutine nul_rowperm()
+      allocate(RP(LQ2), TMP(LQ2,LQ2))
+      call nperm(LQ2, RP, seed)
+      do I = 1, LQ2
+         TMP(I,:) = HLPB1(RP(I),:)
+      enddo
+      HLPB1 = TMP
+      deallocate(TMP)
+    end subroutine nul_rowperm
+
+    ! QR of HLPB1 (fixed: all columns fixed, as QDRP_decompose with IPVT = 1; else column pivoting), then D separated off as in
+    ! QDRP_decompose
+    Subroutine nul_qr(fixed)
+      Logical, intent(in) :: fixed
+      Complex (Kind=Kind(0.d0)), allocatable :: ZW(:)
+      Real (Kind=Kind(0.d0)), allocatable :: VN1(:), VN2(:)
+      Real (Kind=Kind(0.d0)) :: X, DZNRM2
+      Integer :: info, ii, jj
+      if (mode == 0) then
+         call QDRP_decompose(LQ2, LQ2, HLPB1, D3, IPVT, TAU, WORK, LWORK)
+         return
+      endif
+      if (mode == 2) then
+         allocate(ZW(LQ2))
+         if (fixed) then
+            call ZGEQR2(LQ2, LQ2, HLPB1, LQ2, TAU, ZW, info)
+         else
+            allocate(VN1(LQ2), VN2(LQ2))
+            do jj = 1, LQ2
+               IPVT(jj) = jj
+               VN1(jj) = DZNRM2(LQ2, HLPB1(1,jj), 1)
+               VN2(jj) = VN1(jj)
+            enddo
+            call ZLAQP2(LQ2, LQ2, 0, HLPB1, LQ2, IPVT, TAU, VN1, VN2, ZW)
+            deallocate(VN1, VN2)
+            info = 0
+         endif
+         deallocate(ZW)
+      else
+         allocate(TT(nb, LQ2), ZW(nb*LQ2))
+         call ZGEQRT(LQ2, LQ2, nb, HLPB1, LQ2, TT, nb, ZW, info)
+         deallocate(ZW)
+      endif
+      if (info /= 0) call env_bad('nul_qr info', 'nonzero')
+      do ii = 1, LQ2
+         X = ABS(HLPB1(ii, ii))
+         D3(ii) = X
+         do jj = ii, LQ2
+            HLPB1(ii, jj) = HLPB1(ii, jj) / X
+         enddo
+      enddo
+    end subroutine nul_qr
+
+    ! solve_extended_System(HLPB2, UCT, VINV, HLPB1, D3, TAU, IPVT, LQ, ...); modes 2 / 8: the same steps with ZUNM2R / ZGEMQRT
+    Subroutine nul_solve(UCT, VINV)
+      Complex (Kind=Kind(0.d0)), intent(in) :: UCT(LQ,LQ), VINV(LQ,LQ)
+      Complex (Kind=Kind(0.d0)), allocatable :: TMPVEC(:), ZW(:)
+      Complex (Kind=Kind(0.d0)) :: zz
+      Integer :: info, ii, jj
+      if (mode == 0) then
+         call solve_extended_System(HLPB2, UCT, VINV, HLPB1, D3, TAU, IPVT, LQ, WORK, LWORK)
+         return
+      endif
+      zz = 0.D0
+      ALLOCATE(TMPVEC(LQ2))
+      TMPVEC = conjg(1.D0/D3)
+      call zlaset('A', LQ2, LQ2, zz, zz, HLPB2, LQ2)
+      DO ii = 1, LQ
+         DO jj = 1, LQ
+            HLPB2(ii   , jj    ) =  UCT(ii, jj)
+            HLPB2(ii+LQ, jj+LQ ) =  VINV(ii,jj)
+         ENDDO
+      ENDDO
+      zz = 1.D0
+      CALL ZLAPMR(.true., LQ2, LQ2, HLPB2(1, 1), LQ2, IPVT(1))
+      CALL ZTRSM('L', 'U', 'C', 'N', LQ2, LQ2, zz, HLPB1(1, 1), LQ2, HLPB2(1, 1), LQ2)
+      DO jj = 1,LQ2
+         DO ii = 1,LQ2
+            HLPB2(ii, jj)  = TMPVEC(ii)*HLPB2(ii, jj)
+         ENDDO
+      ENDDO
+      deallocate(TMPVEC)
+      if (mode == 2) then
+         allocate(ZW(LQ2))
+         call ZUNM2R('L', 'N', LQ2, LQ2, LQ2, HLPB1, LQ2, TAU, HLPB2, LQ2, ZW, info)
+      else
+         allocate(ZW(nb*LQ2))
+         call ZGEMQRT('L', 'N', LQ2, LQ2, LQ2, nb, HLPB1, LQ2, TT, nb, HLPB2, LQ2, ZW, info)
+      endif
+      deallocate(ZW)
+      if (info /= 0) call env_bad('nul_solve info', 'nonzero')
+    end subroutine nul_solve
+  end subroutine nul_cgr22
+#else
+  Subroutine nul_cgr22(GRT0, GR00, GRTT, GR0T, udv2, udv1, code, seed)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(inout) :: GRT0(:,:), GR00(:,:), GRTT(:,:), GR0T(:,:)
+    Class (UDV_State), intent(in) :: udv2, udv1
+    Integer, intent(in) :: code
+    Integer(int64), intent(inout) :: seed
+    call env_bad('ALF_GPU_TAUDIAG_NUL', 'not available with STAB1 / STAB2')
+  end subroutine nul_cgr22
+#endif
 
 !====================================================================
 !  Device kernels (plain arrays; synchronous target regions)
