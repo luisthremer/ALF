@@ -37,7 +37,15 @@ details in `testsuite/lowrank/README.md`):
 ```bash
 cd ALF && testsuite/lowrank/regress_vs_baseline.sh      # BRANCH_EXTRA="K=V ..." adds branch-only keys
 ```
-ALF test suite (CTest; 39 tests, all pass at baseline):
+Trajectory comparison of two `Sequential_scheme` values (same seeds, same Metropolis decisions required;
+builds/reuses the trace binary `builds/ALF_trace.out`, `-DALF_TRACE_UPDATES`; exit 0 = pass, 1 = BUG/mismatch;
+a ROUNDOFF divergence prints `DIVERGED-ROUNDOFF at proposal k (margin ...)` and exits 0; `--rebuild` forces a
+rebuild; details in `testsuite/lowrank/README.md`):
+```bash
+cd ALF && testsuite/lowrank/compare_trajectory.sh start standard standard [N_delay=8 SEED=42 ...]
+```
+After adding source files under `Prog/`, rerun `cmake ..` in `testsuite/tests` (test 36 globs `Prog/*.o`).
+ALF test suite (CTest; 39 tests at baseline, 40 with `36-lowrank-unit`, all pass):
 ```bash
 cd ALF && source configure.sh GNU noMPI NO-INTERACTIVE >/dev/null 2>&1 && mkdir -p testsuite/tests && cd testsuite/tests && cmake .. && make -j8 && ctest -j8
 ```
