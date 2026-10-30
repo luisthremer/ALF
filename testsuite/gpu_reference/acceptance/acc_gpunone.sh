@@ -2,7 +2,7 @@
 # Acceptance harness, MACHINE side: GPU=none guarantee of a shipped candidate against its base (both from git archive).
 #   usage: acc_gpunone.sh TICKET WHO SHA12 OUTDIR [--plant]
 #   (1) preprocessed sources: every Fortran file that git reports as modified between base and candidate
-#       (cand/<sha12>/changed_files.txt from acc_ship.sh), except Prog/gpu_*.F90 (compiled only with ALF_GPU),
+#       (cand/<sha12>/changed_files.txt from acc_ship.sh), except Prog/gpu_*.F90 (compiled only with ALF_GPU), docs/ and .claude/ (not built),
 #       gpu_bench/ and testsuite/; 6 macro sets; gfortran -E -cpp -P with each side's OWN generated headers;
 #       diff -B after masking the __LINE__ numbers of runtime-error calls. Macro sets: plain (noMPI, no HDF5, as in CI),
 #       MPI+HDF5, HDF5, STABLOG, QR_PREPIVOT, TEMPERING, STAB3, PARALLEL_PARAMS, OBS_LEGACY (gfortran -E; ifx-only
@@ -38,8 +38,8 @@ for v in base_src src; do   # from the tarballs after a fresh hash check, not fr
     $W/tree_$v "$OUT" $v
   echo $? > "$OUT/build_$v.exit"
 done
-mod=$(awk '$1=="M" || $1=="T" {print $2}' $C/changed_files.txt | grep -E '\.(F90|f90|F|f)$' | grep -v -E '^(Prog/gpu_|gpu_bench/|testsuite/)')
-addel=$(awk '$1=="A" || $1=="D" {print $1" "$2}' $C/changed_files.txt | grep -E '\.(F90|f90|F|f)$' | grep -v -E ' (Prog/gpu_|gpu_bench/|testsuite/)' | wc -l)
+mod=$(awk '$1=="M" || $1=="T" {print $2}' $C/changed_files.txt | grep -E '\.(F90|f90|F|f)$' | grep -v -E '^(Prog/gpu_|gpu_bench/|testsuite/|docs/|\.claude/)')
+addel=$(awk '$1=="A" || $1=="D" {print $1" "$2}' $C/changed_files.txt | grep -E '\.(F90|f90|F|f)$' | grep -v -E ' (Prog/gpu_|gpu_bench/|testsuite/|docs/|\.claude/)' | wc -l)
 build=$(awk '{print $2}' $C/changed_files.txt | grep -E '(^|/)(Makefile[^/]*|configure\.sh|CMakeLists\.txt|[^/]*\.mk)$' | wc -l)
 otherl=$(awk '{print $2}' $C/changed_files.txt | grep -v -E '^(docs/|testsuite/|gpu_bench/|\.claude/|Prog/gpu_)' \
         | grep -v -E '\.(F90|f90|F|f)$' | grep -v -E '(^|/)(Makefile[^/]*|configure\.sh|CMakeLists\.txt|[^/]*\.mk)$')
