@@ -24,7 +24,7 @@ if("-DALF_LA_ONEMKL" IN_LIST FLAG_LIST)
 endif()
 
 add_library(la_test_util STATIC la_test_util.F90)
-set(alfla_tests t_checks t_gemm t_geru t_trsm t_lu t_qr t_qrpp t_geqp3 t_order t_fail t_info)
+set(alfla_tests t_checks t_gemm t_geru t_trsm t_lu t_qr t_qrpp t_geqp3 t_order t_fail t_info t_determinism)
 foreach(iter ${alfla_tests} t_timing)
   add_executable(${iter} ${iter}.F90)
 endforeach(iter)

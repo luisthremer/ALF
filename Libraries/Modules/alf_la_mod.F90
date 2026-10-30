@@ -159,36 +159,34 @@ module alf_la_mod
   logical, save :: islot_tol(LA_NSLOT)          ! positive info tolerated (getrf)
   interface
     integer(c_int) function cublasCreate_v2(h) bind(C, name='cublasCreate_v2')
-      import :: c_ptr, c_int
-      type(c_ptr) :: h
+      import :: c_ptr, c_int; type(c_ptr) :: h
     end function
     integer(c_int) function cublasDestroy_v2(h) bind(C, name='cublasDestroy_v2')
-      import :: c_ptr, c_int
-      type(c_ptr), value :: h
+      import :: c_ptr, c_int; type(c_ptr), value :: h
     end function
     integer(c_int) function cublasSetStream_v2(h, s) bind(C, name='cublasSetStream_v2')
-      import :: c_ptr, c_int
-      type(c_ptr), value :: h, s
+      import :: c_ptr, c_int; type(c_ptr), value :: h, s
     end function
     integer(c_int) function cusolverDnCreate(h) bind(C, name='cusolverDnCreate')
-      import :: c_ptr, c_int
-      type(c_ptr) :: h
+      import :: c_ptr, c_int; type(c_ptr) :: h
     end function
     integer(c_int) function cusolverDnDestroy(h) bind(C, name='cusolverDnDestroy')
-      import :: c_ptr, c_int
-      type(c_ptr), value :: h
+      import :: c_ptr, c_int; type(c_ptr), value :: h
     end function
     integer(c_int) function cusolverDnSetStream(h, s) bind(C, name='cusolverDnSetStream')
-      import :: c_ptr, c_int
-      type(c_ptr), value :: h, s
+      import :: c_ptr, c_int; type(c_ptr), value :: h, s
+    end function
+    integer(c_int) function cusolverDnSetDeterministicMode(h, mode) bind(C, name='cusolverDnSetDeterministicMode')
+      import :: c_ptr, c_int; type(c_ptr), value :: h; integer(c_int), value :: mode   ! mode 1 = CUSOLVER_DETERMINISTIC_RESULTS
+    end function
+    integer(c_int) function cublasSetAtomicsMode(h, mode) bind(C, name='cublasSetAtomicsMode')
+      import :: c_ptr, c_int; type(c_ptr), value :: h; integer(c_int), value :: mode   ! mode 0 = CUBLAS_ATOMICS_NOT_ALLOWED
     end function
     integer(c_int) function cudaStreamCreate(s) bind(C, name='cudaStreamCreate')
-      import :: c_ptr, c_int
-      type(c_ptr) :: s
+      import :: c_ptr, c_int; type(c_ptr) :: s
     end function
     integer(c_int) function cudaStreamDestroy(s) bind(C, name='cudaStreamDestroy')
-      import :: c_ptr, c_int
-      type(c_ptr), value :: s
+      import :: c_ptr, c_int; type(c_ptr), value :: s
     end function
     integer(c_int) function cudaStreamSynchronize(s) bind(C, name='cudaStreamSynchronize')
       import :: c_ptr, c_int
@@ -340,6 +338,8 @@ contains
     call chk(cusolverDnCreate(hsolv), 'cusolverDnCreate')
     call chk(cublasSetStream_v2(hblas, hstream), 'cublasSetStream')
     call chk(cusolverDnSetStream(hsolv, hstream), 'cusolverDnSetStream')
+    call chk(cusolverDnSetDeterministicMode(hsolv, 1_c_int), 'cusolverDnSetDeterministicMode')   ! ticket 212: bitwise reproducible
+    call chk(cublasSetAtomicsMode(hblas, 0_c_int), 'cublasSetAtomicsMode')                       ! library results (no atomics)
     islot = 0
     lib_pending = .false.
 #endif
@@ -557,11 +557,12 @@ contains
     real(8) :: mx, s, v
     integer(8) :: b1, b2, mask
     mask = int(z'7FF0000000000000', 8)
-    !$omp target teams distribute private(mx, s, v, nf, b1, b2)
+    ! ticket 212: one thread per column with serial loops, so the floating-point sum has a fixed order (an OpenMP
+    ! device reduction combines in an unspecified order and made near-tied pivots flip from run to run)
+    !$omp target teams distribute parallel do private(i, mx, s, v, nf, b1, b2)
     do j = 1, n
       mx = 0.d0
       nf = 0
-      !$omp parallel do reduction(max: mx) reduction(+: nf) private(b1, b2)
       do i = 1, m
         b1 = transfer(dble(A(i,j)), 0_8)
         b2 = transfer(aimag(A(i,j)), 0_8)
@@ -572,7 +573,6 @@ contains
       if (nf > 0) then
         nrm(j) = transfer(int(z'7FF8000000000000', 8), 0.d0)                  ! quiet NaN: detected on the host
       else if (mx > 0.d0) then
-        !$omp parallel do reduction(+: s) private(v)
         do i = 1, m
           v = dble(A(i,j)) / mx
           s = s + v*v

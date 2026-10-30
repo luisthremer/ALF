@@ -3,60 +3,191 @@
 - **Phase / lane:** 2 (NVIDIA lane; the env-variable gating also applies to `GPU=intel`)
 - **Owner agent:** fortran-gpu-dev (Sonnet)
 - **Review:** numerics-reviewer (code, acceptance file, scripts) · **Verification:** acceptance-verifier
-- **Depends on:** the owner's approval of `gpu-port-process-lanes` (harness)
-- **Status:** draft (2026-10-29), not started; scope confirmed by the owner's decision 2(a) of 2026-10-29
+- **Depends on:** the verification standard (merged 2026-10-29)
+- **Base:** `gpu-port` 1a363070 (206 state + harness; the 207 τ code is **not** in this base)
+- **Branch:** `gpu-port-212-hardening-b` (the old `gpu-port-212-hardening` keeps the superseded first pre-registration)
+- **Acceptance file:** `testsuite/gpu_reference/acceptance/212.json`, pre-registered in its own commit before any
+  implementation (the commit sha is recorded below under Approvals; DECISIONS.md is pinned at that commit; it is edited on
+  this branch only in a pre-registration commit)
+- **Status:** open (2026-10-29); scope confirmed by the owner's decision 2(a) of 2026-10-29
 
 Must land before any further ticket closes (207 included).
 
 ## Goal
-Debug and fault switches can no longer reach a production run unnoticed; every run states what it is; the cause of the
-default-path non-reproducibility and of the default paired-test spread (207: sd ratio 1.707 > 1.25) is found and, where
-it is the reduction order, fixed (decision 2a); two cheap gates guard determinism and non-interference.
+Debug and fault switches can no longer reach a production run unnoticed; every run states what it is; the default GPU
+path becomes run-to-run reproducible (bitwise, same binary, same seeds) by fixing the reduction order; a graded fault
+shows that the stabilization self-test resolves errors near its tolerance.
 
 ## Context
-- Today these are read without a self-test gate and change production numerics (measured or read in the code,
-  2026-10-29): `ALF_GPU_TAUSWAP` (`gpu_tau_mod.F90`, diag_setup), `ALF_GPU_TAU_NS` (`gpu_tau_mod.F90:178`),
-  `ALF_GPU_NS` (`gpu_stab_mod.F90:156`), `ALF_GPU_FAULT_STAB` (`gpu_stab_mod.F90:1401`, used at `:456, :511, :798`),
-  `ALF_GPU_STABMIX` (`:1388–1391`). `ALF_GPU_FAULT_TAU` is gated since 207's review fix.
-- The default path is not bitwise reproducible run to run (same binary twice, 12×12 β = 10: ≤ 2.4e-11 relative in
-  observables); LOG is. Suspects: OpenMP device reductions whose combination order NVHPC does not specify —
-  `k_colnorms` (feeds the `la_qrpp` pivot sort; ties flip pivots), `k_lognorm`, `k_prec`
-  (`alf_la_mod.F90` ≈ 1014, `gpu_stab_mod.F90:1281, 1314`). cuBLAS/cuSOLVER are deterministic as configured.
-- Gate report of 2026-10-29 (determinism test 3a) for the measured state; DISCREPANCIES.md row of 2026-10-29.
+- Measured 2026-10-29 (gate report): the default path is **not** bit-reproducible run to run (same binary twice,
+  12×12 β = 10: 20 of 38 datasets differ, ≤ 2.4e-11 relative; Precision Green mean 6.188 vs 6.180e-10); the LOG path is.
+  cuBLAS/cuSOLVER are deterministic as configured (single stream, atomics off, default cuSOLVER mode). The remaining
+  suspects are OpenMP device reductions whose combination order NVHPC does not specify: `k_colnorms` in
+  `Libraries/Modules/alf_la_mod.F90` (feeds the `la_qrpp` pivot sort; near-ties flip pivots — default path only),
+  `k_lognorm` (`Prog/gpu_stab_mod.F90`, STABLOG selection sort) and `k_prec` (precision sums).
+- The 207 default-path paired spread (1.707 > 1.25) is suspected to come from the same pivot-order sensitivity. The
+  paired test needs the 207 code; it is re-measured after the 207 rebase onto 212 (207 closing plan), not here.
+- Variables the base code reads (grep of `gpu-port`, 2026-10-29): `ALF_GPU_DISABLE, _EXIT, _FAULT, _FAULT_STAB,
+  _NOUPDATE, _NS, _SELFTEST, _STABCHECK, _STABMIX, _STABTIME, _TIMING, _TL, _TR, _TRACE, _UPDTEST, _VB`.
+
+## Work (exact formats: the acceptance file depends on them)
+1. **One reader** of every `ALF_GPU_*` variable at setup (a small module or routine in `gpu_state_mod.F90`). The other
+   files keep only calls to it; `Prog/Wrapgr_mod.F90` changes only inside its existing `#ifdef ALF_GPU` blocks.
+   - "Set" means: defined and not empty, whatever the value (`ALF_GPU_NS=0` is set: it switches Newton–Schulz off).
+     A run is a **debug run** if `ALF_GPU_SELFTEST`, `ALF_GPU_UPDTEST` or `ALF_GPU_DEBUG` is set to a value other than
+     `0`; otherwise it is a **production run**. (Only for this debug/production decision does the value `0` of these
+     three switches count as off; they are still listed in the debug-env line when set.)
+   - **Allow-list:** in a production run every set `ALF_GPU_*` variable other than `ALF_GPU_DISABLE` and `ALF_GPU_DEBUG`
+     is **refused** — the known debug/fault variables (`ALF_GPU_FAULT, _FAULT_STAB, _NS, _STABMIX, _STABCHECK, _TL,
+     _TR, _VB, _NOUPDATE, _TRACE, _TIMING, _STABTIME, _EXIT`) and any unknown name (a typo, or 207's `_TAUSWAP`). The
+     program prints exactly ` GPU debug env refused: <NAME> (production run; set ALF_GPU_DEBUG=1 for a debug run)` on
+     stdout and in `info` (first refused name in sorted order) and stops with exit code 1 before the first sweep.
+   - An unknown or unparsable **value** of a fault variable (e.g. `ALF_GPU_FAULT_STAB=xyz`) is an error in every run:
+     ` GPU fault value invalid: <NAME>=<value>`, exit code 1 (no longer a warning).
+   - Every GPU run prints at setup, on stdout and in `info`, exactly one line ` GPU debug env: none` (no `ALF_GPU_*`
+     variable set) or ` GPU debug env: <NAME>=<value>, <NAME>=<value>` (sorted by name, every `ALF_GPU_*` variable that
+     is set).
+   - Every armed fault prints ` GPU fault armed: <NAME>=<value>` with the value exactly as given (stdout and `info`),
+     for `ALF_GPU_FAULT` (204/205) and `ALF_GPU_FAULT_STAB` (206) alike.
+2. **Build stamp line** at setup: ` GPU build: git <GIT_COMMIT_HASH, or none if git.h defines none> backend
+   <CUDA|ONEMKL|HOST>` (harness builds come from `git archive` without `.git`, so `none` is expected there).
+3. **Graded fault** for the stabilization self-test: `ALF_GPU_FAULT_STAB=eps:<x>` (debug runs only, as every fault)
+   multiplies, in every compared CGR of the `ALF_GPU_SELFTEST=3` comparison, the element of largest |G| of the device G
+   by `(1 + x)`. It must make the self-test fail at `x = 1e-9` (line ` GPU self-test FAILED: stab: ...`, exit code 1)
+   and pass at `x = 1e-11` (0.1× the 1e-10 tolerance).
+4. **Deterministic reductions:**
+   - `k_colnorms`, `k_lognorm`, `k_prec`: a fixed combination order for floating-point **sums** (e.g. one thread per
+     column with a serial sum, or a fixed-shape two-stage tree into scratch); max reductions are order-independent and
+     may stay;
+   - `la_init` (CUDA backend only): `cusolverDnSetDeterministicMode(…, CUSOLVER_DETERMINISTIC_RESULTS)` and
+     `cublasSetAtomicsMode(…, CUBLAS_ATOMICS_NOT_ALLOWED)`; the HOST path of `alf_la_mod.F90` stays byte-identical in
+     its preprocessed form, **including the integers `__LINE__` expands to** (`LA_FAIL` passes `__LINE__`; the harness
+     masks only `"X.F90",N` line markers). Lines added or removed inside `ALF_LA_CUDA`-only blocks above HOST code must
+     be compensated there (same line count per block, or a `#line` directive inside the CUDA-only region). The same
+     holds for `Prog/Wrapgr_mod.F90` outside its `#ifdef ALF_GPU` blocks.
+5. **Micro-test** `t_determinism` in `testsuite/alf_la.tests` (added to its `CMakeLists.txt`): `la_qrpp` on fixed inputs
+   including matrices with exactly equal column norms (duplicated and permuted columns), 1000 calls, pivots and factors
+   compared bit for bit between calls; prints ` FAILED t_determinism` and stops with `error stop 1` on a mismatch
+   (la_test_util convention). Test-only switch `ALF_LA_TEST_PLANT_ULP=1`: changes one input element by 1 ulp in one of
+   the calls, so the test must fail (positive control). Under the HOST backend the test runs too (and passes).
 
 ## Files allowed
-- `Prog/gpu_state_mod.F90`, `Prog/gpu_stab_mod.F90`, `Prog/gpu_tau_mod.F90`, `Prog/gpu_update_mod.F90`,
-  `Prog/gpu_wrap_mod.F90` (env handling, info lines, reductions)
-- `Libraries/Modules/alf_la_mod.F90` (fixed-order `k_colnorms`; `la_init` library modes) — HOST path unchanged
-- `testsuite/alf_la.tests/` (reduction determinism micro-tests)
-- `testsuite/gpu_reference/acceptance/212.json`, `docs/gpu/scripts/nividia/t212_*`
+- `Prog/gpu_state_mod.F90`, `Prog/gpu_stab_mod.F90`, `Prog/gpu_wrap_mod.F90`, `Prog/gpu_update_mod.F90`,
+  `Prog/Wrapgr_mod.F90` (only where it reads `ALF_GPU_*`)
+- `Libraries/Modules/alf_la_mod.F90` (CUDA paths and `k_colnorms`; HOST paths byte-identical when preprocessed)
+- `testsuite/alf_la.tests/t_determinism.F90` (new), `testsuite/alf_la.tests/CMakeLists.txt`
+- `docs/gpu/scripts/nividia/t212_*` (development only)
+- Not allowed: `testsuite/gpu_reference/acceptance/**` (frozen), any `GPU=none` behaviour, `configure.sh`.
 
-## Work
-1. One module-level routine reads every `ALF_GPU_*` variable once at setup. A production run (no `ALF_GPU_SELFTEST`,
-   `ALF_GPU_UPDTEST` or the new `ALF_GPU_DEBUG=1`) refuses to start if any debug/fault variable is set, with a clear
-   message. Self-test runs accept them as today.
-2. Info lines at setup: "GPU debug env: none" or the list of variables read with non-default values; "fault X armed"
-   whenever a fault is active; a provenance header (git hash from `git.h`, compile flags, backend).
-3. `ALF_GPU_FAULT_TAU=eps:<x>` (graded fault: one element of GT0 at one slice × (1 + x)); `ALF_GPU_TAUDIAG_SEED`.
-4. **Cause first (decision 2a):** measure whether the pivot order from `k_colnorms` (and `la_qrpp`'s sort) differs run to
-   run and whether it explains the default-path spread (paired statistic on dev seeds, with the fix vs without). Then
-   fixed-order reductions in `k_colnorms`, `k_lognorm`, `k_prec`
-   (one thread per column, serial sum; or a fixed-shape two-stage tree into scratch); `cusolverDnSetDeterministicMode`
-   and `cublasSetAtomicsMode(NOT_ALLOWED)` in `la_init`; `CUBLAS_WORKSPACE_CONFIG=:4096:8` in the run scripts.
-5. Gates: (a) run-twice-identical — the same binary twice, same seeds, all `data.h5` datasets and full-precision
-   `info` Precision lines bit-identical (6×6 fd and 12×12 β = 10, default and LOG); (b) the τ pass leaves the sweep
-   unchanged — `Ltau = 1` vs the previous accepted binary with identical equal-time/scalar datasets.
+## Acceptance
+Pre-registered in `testsuite/gpu_reference/acceptance/212.json` (gates, thresholds, counts, controls; read it). In short:
+- **Kernel self-tests** 204 (`SELFTEST=2`) and 205 (`UPDTEST=1`) on the default build (their code does not depend on the
+  stabilization variant), 206 (`SELFTEST=3`) default and LOG, PASS with their numbers ≤ 1e-10; the 204/205/206 fault
+  controls and the graded fault behave as specified, and every armed fault shows its armed line.
+- **Refusal:** every listed variable alone in a production run is refused with the exact line and exit code 1; with
+  `ALF_GPU_DEBUG=1` the same variable is accepted (sampled: `NS`, `TL`). An unparsable fault value (`ALF_GPU_FAULT=xyz`,
+  `ALF_GPU_FAULT_STAB=xyz`) gives the exact invalid-value line and exit code 1; a valid value does not.
+- The 204/205 fault controls are sampled with one fault class each (`hop`, `upd`). The report quotes the CGR numbers of
+  the `eps:1e-11` runs (expected ≈ 1e-11, showing that the fault was applied).
+- **Production line:** every production GPU run prints ` GPU debug env: none` and the build stamp line (harness builds:
+  ` GPU build: git none backend CUDA`).
+- **Determinism:** the same binary twice gives bit-identical `data.h5` and full-precision Precision lines: 6×6 (200
+  one-sweep bins) default and LOG, 12×12 β = 10 (8 bins × 20 sweeps) default and LOG.
+- **Same seeds vs the CPU oracle:** 6×6 default and LOG, 12×12 default: no bin above 1e-4, overall and τ line ≤ 1e-9.
+  (12×12 LOG is ticket 213, decision 3b; 213 re-measures it on top of 212.)
+- **Precision mean** (Green, τ) ≤ 1.5× the larger CPU mean, 12×12 β = 4, default and LOG.
+- **compare2** GPU vs GPU=none on fresh seeds (`s8_U4_b2_cb` shortened to 120 bins × 30 sweeps; the full 250 × 40
+  would take ~51 min), with a CPU-vs-CPU null control. First registered at 120 × 15; the T1 GPU run (537 s) left
+  G(k=(π,0)) under-resolved (INCONCLUSIVE), so the owner chose longer bins for T2 (2026-10-30, DECISIONS.md row 14):
+  120 × 30, ~18 min per GPU run (exception to the 15-min run rule for the compare2 runs), timeout 1500 s for all runs.
+  α, m, the observables, `min_bins` and the shift-8 control are unchanged; T2 uses fresh seeds.
+- **`t_determinism`** passes under CUDA; its planted-ulp control fails.
+- **GPU=none:** preprocessed changed CPU-path Fortran identical (`alf_la_mod.F90` and `Wrapgr_mod.F90`, 9 macro sets
+  each = 18 comparisons; one build file, the `alf_la.tests` CMakeLists), ctest 53/53 (52 + `t_determinism`).
+- Report: cost of the deterministic reductions — s/sweep at N = 144 and 400, default and LOG, from the declared timing
+  runs `tm_*` (candidate) and `tmb_*` (base build) of `212.json` (no gate reads them: each number is quoted with its run's
+  provenance stamp; 2 bins of 5–10 sweeps include setup time).
 
-## Acceptance (to be pre-registered in `212.json` before implementation)
-- Production refusal: each listed variable set alone in a production run → the run refuses (exit ≠ 0, message names
-  it); positive control: the same variable with `ALF_GPU_SELFTEST` → accepted.
-- Graded fault: `eps:1e-9` FAILS the 207 self-test, `eps:1e-13` PASSES.
-- Determinism: gate (a) bit-identical on both paths; micro-tests of the reductions (1000 calls, tie cases)
-  bit-identical; all 204–207 kernel self-tests and fault controls unchanged; same-seed vs CPU within the 207 bounds.
-- `GPU=none`: preprocessed sources of changed files identical (`acc_gpunone.sh`), ctest count unchanged.
-- Cost of item 4 reported (s/sweep, N = 144 and 400).
-- Report for 207: the default paired statistic (dev seeds) with and without the fix; whether the 1.707 is explained.
-  This is evidence for the owner, not a 207 acceptance.
+## Approvals
+- First pre-registration `21e23a6a` (base `d53f9779`) was superseded before any implementation existed, after review
+  (b) of the acceptance file (findings M1–M6, S1–S11). Second pre-registration `71bbcc93` was superseded before
+  any implementation result existed, after its re-review (wrong base sha, the "set" rule vs `ALF_GPU_NS=0`, `__LINE__`
+  in the HOST preprocessed output, an untested invalid-value rule, 204/205 numbers, compare2 timing margin). Third pre-registration
+  `aed4da4d`; the owner's approval of the shift 8 was added in `74cdac8f` (2026-10-30), which is the current
+  pre-registration commit on
+  `gpu-port-212-hardening-b`; base `1a363070`. Deviation to put to the owner: the compare2 positive control uses a
+  shift of 8 standard errors, not the 5 of VERIFICATION.md §5 (at m = 11, α = 0.01 Šidák a shift of 5 is caught only
+  ~60 % of the time); approved by the owner on 2026-10-29 ("Approve shift 8", DECISIONS.md row 12). Any change of
+  `212.json` after this needs the owner's quoted approval and fresh seeds (VERIFICATION.md §3), unless it is made
+  before any implementation result exists and is pre-registered again in a new commit recorded here.
+- Fourth pre-registration (after the T1 result, with the owner's quoted approval, DECISIONS.md row 14, 2026-10-30):
+  compare2 config `s8_U4_b2_cb_short` NSweep 15 → 30 (parameters sha256 `06c10c72…`, prepared twice on nividia, only
+  `Nsweep` differs from the old file, which still gives the old hash), `timeout_s` 900 → 1500. T2 on fresh seeds. Pre-registration commit `ea22ba36`; the T2 candidate is the
+  commit recording it, whose code equals candidate 2 `510ec2cd` (`git diff 510ec2cd` touches only `docs/**` and `212.json`).
+
+## Evidence
+`~/alf-gpu/work/t212/`: development runs (T0) anywhere below it; candidates in `cand/agent/<sha12>/` (T1) and
+`cand/mgr/<sha12>/` (T2). Never delete raw outputs or binaries before the owner's gate; cleanup removes build trees only.
+
+## Handoff notes
+(implementer, at ~250k tokens or at a phase boundary)
+- Known limitation (manager decision 2026-10-30, follow-up): the `GPU build: git <hash|none>` stamp comes from `Prog/git.h`
+  through `__has_include`. `Prog/Makefile` makes only `main.o` depend on `git.h`, so with `make -j` the stamp of
+  `gpu_state_mod.o` can say `git none` (git.h not yet generated) or a stale hash (git.h regenerated later). Harness builds
+  (git archive, no .git) always give `none`. Fix needs `gpu_state_mod.o: git.h` in the Makefile (not done here).
+- Development scripts: `docs/gpu/scripts/nividia/t212_*.sh`; T0 raw outputs in `~/alf-gpu/work/t212/dev/{logs,runs}`.
+
+## Review and T1 record (manager)
+- **T1 of candidate 1 `21f04980`** (2026-10-30, dev seeds, `nividia:~/alf-gpu/work/t212/cand/agent/21f04980f9ac/`):
+  12 of 13 gates PASS. compare2 INCONCLUSIVE (INPUT_ERROR): G(k=(π,0)) of the GPU run under-resolved (autocorrelation,
+  8× rebinning → 14 effective bins); all 11 observables agree (max |t| 1.61, Σt² p = 0.51); null control passes. Not
+  re-run (CLAUDE.md); the compare2 run length for T2 is the owner's decision. The driver stopped before the verdict on a
+  harness ordering bug (log mutation of `gpunone` before the GPU=none step); the manager ran `acc_gpunone.sh` with the
+  driver's exact arguments and re-ran the driver, which kept every finished step (attempts log: two entries). Fixed on
+  `gpu-port` 46f3a0de; this ticket keeps the pre-registered harness.
+- **Review (a) of candidate 1:** one must-fix (unbounded debug-env line buffer) and should-fixes (long or surplus
+  `ALF_GPU_*` entries dropped instead of refused, I/O errors read as end of file, setup lines on every MPI rank, the
+  graded fault distorting the reported sensitivity); fixed in candidate 2.
+- `t_determinism` does detect the original defect: built against the base `k_colnorms` it FAILED in 3 of 3 runs
+  (T0 of the first implementer: 144×144 1–4 calls, 150×144 499–924 calls with differing pivots).
+- The test prints `FAILED t_determinism` (la_test_util convention, no leading blank); the gate uses ctest's result.
+- Follow-ups (not in 212): `Prog/Makefile` dependency `gpu_state_mod.o: git.h` plus one check build from a git clone
+  with nvfortran and ifx (until then a `git <hash>` stamp is not authoritative); `cusolverDnSetDeterministicMode`
+  needs CUDA ≥ 12.2 (MACHINES.md); `device_kernel_check` keeps one floating-point `reduction(+)` (a setup checksum
+  compared with a tolerance, not output).
+
+- **Review (a) of candidate 2 `510ec2cd`:** approved (nits only).
+- **T2 of candidate `8022c4b0`** (code = `510ec2cd`; pre-registration `ea22ba36` with decision 14; 2026-10-30, fresh
+  seeds acc1–acc3 drawn 07:56 after shipping; `nividia:~/alf-gpu/work/t212/cand/mgr/8022c4b0de64/`): **Overall PASS**,
+  13/13 gates, 16/16 controls as expected. compare2 (120 × 30): m = 11, max |t| 2.317 (E), no observable
+  under-resolved; shift-8 control caught (t = 7.22), null control passes (max |t| 0.85). Same seed overall max
+  3.10e-10 (12×12 default), τ max 1.72e-10, no bin above 1e-9. Precision Green mean ratio 1.31 (default), 1.19 (LOG).
+  Determinism 4 pairs bit-identical. GPU=none 18 comparisons 0 lines, ctest 53/53. Longest run c2_gpu 1073 s (decision
+  14 exception). ~2 h GPU time (slightly above the 120-min budget, as announced to the owner).
+  Process: the GPU=none step (`gpunone`, `gpunone_plant`) was run by hand before the driver with the driver's exact
+  arguments (pinned harness ordering bug); the first driver start stopped in seed preparation (venv not on PATH under
+  `env -i`) before any build or run, the second carries a `--reason` (attempts log).
+- **Independent acceptance-verifier:** AGREES (own code for every gate and control, all provenance checks clean). It
+  corrected one number of the manager's summary (same-seed max 3.10e-10, not ≤ 2.6e-10). Minor notes: the compare2
+  `_reason` text in `212.json` still names the old 15-sweep length (text only); the `gpunone` stamp is minimal and its
+  cmake/ctest/`gfortran -E` steps inherit the launching shell rather than `env -i` (pinned harness); the manual
+  gpunone runs are not in the attempts log.
+- **compare2 Σt² (report item, not a criterion):** 24.79 at m = 11 would be p = 0.0098 if the observables were
+  independent, but they are strongly correlated (E = Kin + Pot exactly; Szz(π,π), Szz(π,π,β/2), χzz r ≈ 0.97–0.99;
+  effective number ≈ 3.9). The verifier's correlation-aware Hotelling T² gives p = 0.30 (GPU vs CPU), 0.87 (GPU vs
+  null CPU set), 0.82 (CPU vs CPU). Follow-up for the harness: the "Σt² vs χ²_m" information line of compare2 is
+  miscalibrated for this observable set and must not be quoted as a p-value; Šidák at m = 11 stays conservative.
+- Cost of the deterministic reductions (verifier, s/sweep from `info` incl. setup, candidate vs base): default N = 144
+  1.507 vs 1.501, N = 400 7.173 vs 7.230; LOG N = 144 1.504 vs 1.492, N = 400 7.569 vs 7.816 (no measurable cost).
+- **Review (b) of the re-registration** (`git diff 510ec2cd 8022c4b0`): approved, no must-fix. Notes recorded here
+  instead of editing the accepted file: (1) the compare2 gate's `_reason` in `212.json` still says 15 sweeps / ~560 s /
+  900 s; the authoritative run length is the config's NSweep 30 (decision 14). (2) `timeout_s` 1500 applies to every run
+  (the driver has only a global timeout), so a hung non-compare2 run could hold the GPU ~25 min; follow-up: per-run
+  timeout override in the harness. (3) Decision 14's quote "Longer bins" answered the manager's proposal of 120 bins ×
+  30 sweeps, ~18 min per GPU run, needing an exception to the 15-min rule, α and observables unchanged, fresh seeds;
+  the timeout 1500 s is the manager's implementation of that run length, not part of the owner's wording.
+- **Closed** on the PASS verdict, the verifier's agreement and both reviews; merged into `gpu-port`.
 
 ## Out of scope
-New numerics; observables; anything in 207's open decisions.
+207 (τ pass) and its paired test; 213 (STABLOG same-seed excess); performance work beyond the deterministic reductions;
+Intel/oneMKL.
