@@ -96,7 +96,7 @@ contains
     complex(8), intent(inout) :: M(N,N)
     real(8), intent(in) :: v
     integer :: ii, jj
-#ifdef ALF_LA_CUDA
+#if defined(ALF_LA_CUDA) || defined(ALF_LA_ONEMKL)
     !$omp target teams distribute parallel do collapse(2)
 #endif
     do jj = 1, N
@@ -113,7 +113,7 @@ contains
     complex(8), intent(inout) :: M(N,N)
     real(8), intent(in) :: v
     integer :: ii, jj
-#ifdef ALF_LA_CUDA
+#if defined(ALF_LA_CUDA) || defined(ALF_LA_ONEMKL)
     !$omp target teams distribute parallel do collapse(2)
 #endif
     do jj = 1, N
@@ -128,7 +128,7 @@ contains
     integer :: ii
     real(8) :: s
     s = 0.d0
-#ifdef ALF_LA_CUDA
+#if defined(ALF_LA_CUDA) || defined(ALF_LA_ONEMKL)
     !$omp target teams distribute parallel do reduction(+: s)
 #endif
     do ii = 1, N
@@ -142,7 +142,7 @@ contains
     integer :: ii, jj
     real(8) :: s
     s = 0.d0
-#ifdef ALF_LA_CUDA
+#if defined(ALF_LA_CUDA) || defined(ALF_LA_ONEMKL)
     !$omp target teams distribute parallel do collapse(2) reduction(+: s)
 #endif
     do jj = 1, N

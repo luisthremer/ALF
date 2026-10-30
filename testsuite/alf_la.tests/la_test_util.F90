@@ -194,56 +194,56 @@ contains
   subroutine dev_enter_z(a, n)
     integer, intent(in) :: n
     complex(8) :: a(n)
-#ifdef ALF_LA_CUDA
+#if defined(ALF_LA_CUDA) || defined(ALF_LA_ONEMKL)
     !$omp target enter data map(to: a)
 #endif
   end subroutine
   subroutine dev_enter_i(a, n)
     integer, intent(in) :: n
     integer(4) :: a(n)
-#ifdef ALF_LA_CUDA
+#if defined(ALF_LA_CUDA) || defined(ALF_LA_ONEMKL)
     !$omp target enter data map(to: a)
 #endif
   end subroutine
   subroutine dev_exit_z(a, n)
     integer, intent(in) :: n
     complex(8) :: a(n)
-#ifdef ALF_LA_CUDA
+#if defined(ALF_LA_CUDA) || defined(ALF_LA_ONEMKL)
     !$omp target exit data map(delete: a)
 #endif
   end subroutine
   subroutine dev_exit_i(a, n)
     integer, intent(in) :: n
     integer(4) :: a(n)
-#ifdef ALF_LA_CUDA
+#if defined(ALF_LA_CUDA) || defined(ALF_LA_ONEMKL)
     !$omp target exit data map(delete: a)
 #endif
   end subroutine
   subroutine dev_from_z(a, n)
     integer, intent(in) :: n
     complex(8) :: a(n)
-#ifdef ALF_LA_CUDA
+#if defined(ALF_LA_CUDA) || defined(ALF_LA_ONEMKL)
     !$omp target update from(a)
 #endif
   end subroutine
   subroutine dev_from_i(a, n)
     integer, intent(in) :: n
     integer(4) :: a(n)
-#ifdef ALF_LA_CUDA
+#if defined(ALF_LA_CUDA) || defined(ALF_LA_ONEMKL)
     !$omp target update from(a)
 #endif
   end subroutine
   subroutine dev_enter_d(a, n)
     integer, intent(in) :: n
     real(8) :: a(n)
-#ifdef ALF_LA_CUDA
+#if defined(ALF_LA_CUDA) || defined(ALF_LA_ONEMKL)
     !$omp target enter data map(to: a)
 #endif
   end subroutine
   subroutine dev_exit_d(a, n)
     integer, intent(in) :: n
     real(8) :: a(n)
-#ifdef ALF_LA_CUDA
+#if defined(ALF_LA_CUDA) || defined(ALF_LA_ONEMKL)
     !$omp target exit data map(delete: a)
 #endif
   end subroutine
