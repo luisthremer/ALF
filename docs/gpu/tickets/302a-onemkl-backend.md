@@ -215,5 +215,28 @@ change only, with the owner's approval at that time). The `alf_la` interface sta
   exactly zero column runs through oneMKL `zgetrf` without exception or crash; `la_getrf`/`la_sync` return normally (info > 0 tolerated as on
   HOST), U(3,3) = 0. No `terminate`, no `omptarget`.
 
+## Review and acceptance record (manager)
+- **Review (a):** candidate 1 `a1d89e89`: changes required (M1/M2 presence guard missed pivot arrays; S1–S4; nits);
+  candidate 2 `45fbe22c`: approved on re-review (nits only: getrs message order, a shim comment, evidence paths for the
+  guard probes, PVC sub-device note for 301, unused `ensure_hws` under ONEMKL left for byte identity).
+- **T1:** candidate 1: intel PASS; nvidia FAILED `gpu_none_ppcmp` only (harness defect, docs/ probes counted; fixed in
+  `05717b98`, review (c) approved; base moved by decision 17). Candidate `fe0fefa3` (code = `45fbe22c`) on base `05717b98`:
+  both parts PASS.
+- **T2** (manager, 2026-10-30): intel `~/alf-gpu/work/t302a/cand/mgr/fe0fefa3febc/` **Overall PASS** (13/13 with the
+  onemkl backend and B580 device lines; `t_order` 100/100; ctl_t_order_broken 0/100, ctl_poison_info, ctl_wrong_ld
+  killed). nvidia (same path on nividia) **Overall PASS** (ppcmp [9,0,0,0,3,1]; ctest 52/52; ifx identity 38/38; CUDA
+  alf_la 164 lines 0 differing; four controls killed). The nvidia part's first start stopped at the GPU idle check before
+  any gate (a ticket-207 run on the GPU); the second start carries a `--reason`.
+- **Independent acceptance-verifier:** AGREES (own code for all 6 gates and 7 controls; all hashes and ancestry checked;
+  `__LINE__` integers identical even unmasked). Record-keeping findings, none changing a verdict: (1) ctest runs carry no
+  full provenance stamp (no binary sha256, toolchain or GPU-before record): harness follow-up; (2) the manager did not
+  record the intel dpkg versions at the start of T2 (decision 13); `/var/lib/dpkg/status` was last modified 08:54, before
+  every T1/T2 run, so the pinned set was in use; (3) the nvidia part uses the dev seed set (deterministic gates only); (4)
+  the attempts log has no outcome line for the stopped 14:32 start; (5) intel controls are judged from the exit file
+  (their regexes fail as well).
+- **Follow-up for 302b:** the shim reports oneMKL's info = -3 for `ungqr` in t_fail, the Fortran layer reports -1: pass the
+  info value through unchanged.
+- **Closed** 2026-10-30; merged into `gpu-port`.
+
 ## Out of scope
 Activating 204–206 device paths on the B580 (302b), the τ path (302c), PVC (301, 304), performance work.
