@@ -221,3 +221,29 @@ none of the runs so far used `env -i` or recorded the toolchain and environment,
     are read without a self-test gate (verification-hardening ticket).
 11. **Positive controls missing** for the same-seed, paired, precision-mean and compare2 gates (`TAUSWAP=8`,
     `TAU_NS=0` never run through the paired test).
+
+## Handoff notes
+
+### 2026-10-30, rebase onto 212 (implementer, T0 only; uncommitted working tree on `gpu-port-207-tau` over 93efa861)
+- **State:** 207 rebased on 3f8ec8fa (206 + 212). Builds (nvhpc 26.9, default / QR_PREPIVOT / LOG; GPU=none GNU and nvhpc).
+  Stopped at acceptance 3: the **default-path paired test still FAILS the sd condition** (dev1 seeds: sd ratio 1.353 > 1.25;
+  mean −0.0021, counts 51/47 and 11/14 pass). Not tuned, not re-run. LOG passes (1.062).
+- **Code decisions:**
+  - every `ALF_GPU_*` read in `gpu_tau_mod` goes through `gpu_env_get`/`gpu_env_is`; all 207 variables are refused in
+    production by 212's allow-list (no new code); `ALF_GPU_FAULT_TAU` validated in `gpu_env_check` (invalid → exit 1 in
+    every run, armed line); graded fault `eps:<x>` multiplies the largest |GT0| element of the host copy of the device GT0
+    in every device-vs-host GT0 comparison of the SELFTEST=4 self-test (fails at 1e-9, passes at 1e-11). Faults now act in
+    any debug run where the faulted step runs (as 212's FAULT_STAB), not only under SELFTEST=4.
+  - `G00_d` lives in `gpu_tau_mod`, not in `gpu_state_mod`: a fourth Ltau array in `gpu_state_mod` made nvfortran 26.9
+    (`-fast`, STABLOG) crash compiling `gpu_stab_mod` (fort1 `malloc(): mismatching next->prev_size`, signal 6;
+    reproducible; `-O0` compiles; the unchanged 212 `gpu_stab_mod` crashes too against the modified `gpu_state_mod`).
+  - `ALF_GPU_TAUDIAG_SEED` not implemented (meaning unspecified).
+- **Harness finding (blocks the paired gate):** 212's line ` GPU debug env: ..., ALF_GPU_TAUDIAG=2, ...` contains
+  "TAUDIAG"; `verdict.py:taudiag()` (and `mutate.py`) select lines by `"TAUDIAG" in line` and raise INPUT_ERROR
+  ("malformed TAUDIAG line") on it. Dev script `t207_diagstat.py` now selects `TAUDIAG pt ` lines only.
+  `verdict.py` replay also compares only the first line of each `Precision` entry (the Max value is on the next line).
+- **Evidence (T0, dev seeds, not acceptance):** nividia `~/alf-gpu/work/t207/dev2/` — `logs/t0a_1.txt` (self-tests,
+  faults, refusals), `logs/t0b_1_eval.txt` (determinism, Ltau invariance, non-interference, same seed),
+  `logs/t0c_1_paired.txt`, `logs/t0c_1_precision.txt`, `logs/t0c_1_compare2.txt`, `gpunone1/`, `logs/t0d_1.txt`;
+  run directories `runs/t0a1_*`, `runs/t0b1_*`, `runs/t0c1_*`, `runs/t0c2_*`, `runs/t0d1_*`; binaries `bin/`.
+  Scripts `docs/gpu/scripts/nividia/t207_d2_*`.

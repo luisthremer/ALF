@@ -35,7 +35,7 @@
 !> device.  Compiled only with -DALF_GPU.  Called from the guarded early branch in TAU_M (tau_m_mod) when gpu_tau_on.
 !>
 !> What runs on the device (Ltau = 1, no projector, no Langevin/HMC, no weight reconstruction: all refused by gpu_supported):
-!>   * the four Green functions GT0, G0T, GTT, G00 (gpu_state_mod GT0_d, G0T_d, GTT_d, G00_d; the arrays are the host shadows
+!>   * the four Green functions GT0, G0T, GTT, G00 (gpu_state_mod GT0_d, G0T_d, GTT_d and this module's G00_d; the arrays are the host shadows
 !>     of the device arrays) stay on the device during the pass;
 !>   * the per-slice propagation PROPR / PROPRM1 (ticket 204 kernels: hopping mmthr / mmthl_m1 and the fused Op_V slice
 !>     kernels), in TAU_M's order: GT0 = PROPR, G0T = PROPRM1, GTT = PROPRM1 then PROPR;
@@ -70,10 +70,15 @@
 !>   plus the WRAPUR block of gpu_stab_mod (206: 8N + 4N + 24 B per flavour and point).
 !>   host-update path only (ALF_GPU_NOUPDATE=1): nsigma H->D once per pass (N_op * L * 16 B).
 !>
+!> Environment (ticket 212): every ALF_GPU_* variable is read through gpu_state_mod (gpu_env_get / gpu_env_is), which refuses all of the
+!> variables below in a production run (no ALF_GPU_SELFTEST / _UPDTEST / _DEBUG), validates ALF_GPU_FAULT_TAU in every run and prints its
+!> "GPU fault armed" line.
 !> Self-test ALF_GPU_SELFTEST=4 (oracle: upstream WRAPUR / CGR2_2 and PROPR / PROPRM1 copies on host objects; the default path
 !> needs a build with -DQR_PREPIVOT), timing ALF_GPU_TAUTIME=1, ALF_GPU_EXIT=1 ends the run after the hook;
-!> ALF_GPU_FAULT_TAU=perm|prop|prec|blocks injects faults (negative controls), ALF_GPU_TAUTEST_V=1 prints the per-slice differences of the
-!> self-test.  DEBUG AIDS (not used in production, no effect when unset): ALF_GPU_TAUDIAG=1|2 prints one "TAUDIAG" line per
+!> ALF_GPU_FAULT_TAU=perm|prop|prec|blocks injects faults (negative controls; they act wherever the faulted step runs), and the graded
+!> fault ALF_GPU_FAULT_TAU=eps:<x> multiplies, in every device-vs-host comparison of GT0 in the SELFTEST=4 self-test (pass and CGR2_2
+!> alone), the element of largest |GT0| of the host copy of the device GT0 by (1 + x) (the device data and the run are unchanged);
+!> ALF_GPU_TAUTEST_V=1 prints the per-slice differences of the self-test.  DEBUG AIDS (not used in production, no effect when unset): ALF_GPU_TAUDIAG=1|2 prints one "TAUDIAG" line per
 !> stabilization point and flavour (device precision numbers next to a full host tau pass run in lockstep on the same trajectory, host
 !> CGR2_2 on the device inputs, GTT chains with 1-ulp perturbed right states; 1 adds host twins of single CGR2_2 steps; slow, see
 !> diag_post and docs/gpu/scripts/nividia/t207_diagtab.py / t207_diagstat.py), ALF_GPU_TAUDIAG_FROM=<pass> starts the perturbation
@@ -119,6 +124,10 @@ Module gpu_tau_mod
   Complex (Kind=Kind(0.d0)), Parameter :: z1 = (1.d0, 0.d0), z0 = (0.d0, 0.d0)
 
   ! ---- own device buffers (allocated once in gpu_tau_setup) ----
+  ! G00 at tau = 0 / after each CGR2_2 (N x N x N_FL, device + host shadow).  Here and not in gpu_state_mod next to GT0_d, G0T_d,
+  ! GTT_d: with a fourth such array in gpu_state_mod, nvfortran 26.9 (-fast, STABLOG) crashed compiling gpu_stab_mod (fort1 heap
+  ! corruption, signal 6; reproducible; -O0 compiles)
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: G00_d(:,:,:)
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: t_H1(:,:), t_H2(:,:)          ! 2N x 2N: QR matrix / solution
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: t_V1i(:,:), t_U2h(:,:), t_W(:,:)   ! N x N: V1^-1, U2^dagger, LU work
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: t_Q(:,:), t_A(:,:), t_B(:,:)   ! 2N x 2N: explicit Q, Q^H Q, orthogonalised Q (tau_ns)
@@ -174,8 +183,8 @@ Contains
     n = t_N; n2 = t_N2
     allocate(t_nt(0:NSTM)); t_nt = Stab_nt
     allocate(t_H1(n2,n2), t_H2(n2,n2), t_V1i(n,n), t_U2h(n,n), t_W(n,n), t_old(n,n,3), t_GR(n,n,N_FL), t_S(n,n,4))
-    allocate(t_tau(n2), t_D3(n2), t_Dm1(n), t_Dm2(n), t_Rs(n,2), t_ipvt(n2), t_ipiv(n))
-    if (env_is('ALF_GPU_TAU_NS', '0')) tau_ns = .false.
+    allocate(t_tau(n2), t_D3(n2), t_Dm1(n), t_Dm2(n), t_Rs(n,2), t_ipvt(n2), t_ipiv(n), G00_d(n,n,N_FL))
+    if (gpu_env_is('ALF_GPU_TAU_NS', '0')) tau_ns = .false.        ! debug runs only (ticket 212 refuses it in production)
     if (tau_ns) then
        allocate(t_Q(n2,n2), t_A(n2,n2), t_B(n2,n2))
        !$omp target enter data map(alloc: t_Q, t_A, t_B)
@@ -184,7 +193,7 @@ Contains
     if (Symm) allocate(G00_T(n,n,N_FL), G0T_T(n,n,N_FL), GT0_T(n,n,N_FL), GTT_T(n,n,N_FL))
     call diag_setup()
     ! device allocation once, no transfer; the first use of each buffer is a device write
-    !$omp target enter data map(alloc: t_H1, t_H2, t_V1i, t_U2h, t_W, t_old, t_GR, t_S, t_tau, t_D3, t_Dm1, t_Dm2, t_Rs, t_ipvt, t_ipiv)
+    !$omp target enter data map(alloc: t_H1, t_H2, t_V1i, t_U2h, t_W, t_old, t_GR, t_S, t_tau, t_D3, t_Dm1, t_Dm2, t_Rs, t_ipvt, t_ipiv, G00_d)
     ! pre-grow the library work spaces for the 2N x 2N factorization and run the 2N QR once, so that nothing is allocated in the sweep
     call k_ident(n2, t_H1, n2)
     lw = la_geqrf_lwork(n2, n2, t_H1, n2)
@@ -216,8 +225,8 @@ Contains
        !$omp target exit data map(delete: t_Q, t_A, t_B)
        deallocate(t_Q, t_A, t_B)
     endif
-    !$omp target exit data map(delete: t_H1, t_H2, t_V1i, t_U2h, t_W, t_old, t_GR, t_S, t_tau, t_D3, t_Dm1, t_Dm2, t_Rs, t_ipvt, t_ipiv)
-    deallocate(t_H1, t_H2, t_V1i, t_U2h, t_W, t_old, t_GR, t_S, t_tau, t_D3, t_Dm1, t_Dm2, t_Rs, t_ipvt, t_ipiv, t_nt)
+    !$omp target exit data map(delete: t_H1, t_H2, t_V1i, t_U2h, t_W, t_old, t_GR, t_S, t_tau, t_D3, t_Dm1, t_Dm2, t_Rs, t_ipvt, t_ipiv, G00_d)
+    deallocate(t_H1, t_H2, t_V1i, t_U2h, t_W, t_old, t_GR, t_S, t_tau, t_D3, t_Dm1, t_Dm2, t_Rs, t_ipvt, t_ipiv, t_nt, G00_d)
     if (allocated(G00_T)) deallocate(G00_T, G0T_T, GT0_T, GTT_T)
     gpu_tau_on = .false.
     gpu_stab_tau_dev = .false.
@@ -551,17 +560,23 @@ Contains
     Implicit none
     Integer :: nfe, n, n2, info
     Complex (Kind=Kind(0.d0)) :: wq(1)
-    Character (len=64) :: v
-    Integer :: st
-    v = ''
-    call get_environment_variable('ALF_GPU_TAUSWAP', v, status=st)
-    if (st == 0 .and. len_trim(v) > 0) read(v,*) swp_prod
+    Character (len=256) :: v
+    Integer :: ios
+    ! debug variables, read through the ticket 212 reader (refused in production runs); an unparsable value stops the run
+    if (gpu_env_get('ALF_GPU_TAUSWAP', v)) then
+       read(v,*,iostat=ios) swp_prod
+       if (ios /= 0 .or. swp_prod < 0 .or. swp_prod > 15) call env_bad('ALF_GPU_TAUSWAP', v)
+    endif
     swp = swp_prod
-    diag_on = env_is('ALF_GPU_TAUDIAG', '1') .or. env_is('ALF_GPU_TAUDIAG', '2')
-    diag_full = env_is('ALF_GPU_TAUDIAG', '1')
-    v = ''
-    call get_environment_variable('ALF_GPU_TAUDIAG_FROM', v, status=st)
-    if (st == 0 .and. len_trim(v) > 0) read(v,*) dg_from
+    if (gpu_env_get('ALF_GPU_TAUDIAG', v)) then
+       if (trim(v) /= '1' .and. trim(v) /= '2' .and. trim(v) /= '0') call env_bad('ALF_GPU_TAUDIAG', v)
+    endif
+    diag_on = gpu_env_is('ALF_GPU_TAUDIAG', '1') .or. gpu_env_is('ALF_GPU_TAUDIAG', '2')
+    diag_full = gpu_env_is('ALF_GPU_TAUDIAG', '1')
+    if (gpu_env_get('ALF_GPU_TAUDIAG_FROM', v)) then
+       read(v,*,iostat=ios) dg_from
+       if (ios /= 0 .or. dg_from < 0) call env_bad('ALF_GPU_TAUDIAG_FROM', v)
+    endif
     if (.not. (diag_on .or. swp_prod /= 0)) return
     n = t_N; n2 = t_N2
     call ZUNMQR('L', 'N', n2, n2, n2, t_H1, n2, t_tau, t_H2, n2, wq, -1, info)
@@ -579,6 +594,14 @@ Contains
     allocate(dg_p(n,n,N_FL,0:npc-1)); dg_p = z0
     call info_line('GPU tau pass: DEBUG ALF_GPU_TAUDIAG=1 active (host oracle chains at every stabilization point, slow)')
   end subroutine diag_setup
+
+  !> unparsable value of a debug variable of this module: stop (stdout and info)
+  Subroutine env_bad(name, v)
+    Implicit none
+    Character (len=*), intent(in) :: name, v
+    call say('GPU debug value invalid: '//trim(name)//'='//trim(v))
+    call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+  end subroutine env_bad
 
   Subroutine diag_begin(GR)
     Implicit none
@@ -1009,29 +1032,27 @@ Contains
 !====================================================================
   Subroutine gpu_tau_hook()
     Implicit none
-    Character (len=64) :: f
-    Integer :: st, nfe, ib
+    Character (len=256) :: f
+    Integer :: nfe, ib
     Logical :: did
     did = .false.
     if (.not. gpu_tau_on) return
-    f = ''
-    ! faults only together with the self-test, so that a stray ALF_GPU_FAULT_TAU cannot reach a production run
-    if (env_is('ALF_GPU_SELFTEST', '4')) call get_environment_variable('ALF_GPU_FAULT_TAU', f, status=st)
-    if (len_trim(f) > 0) then
+    ! ticket 212: ALF_GPU_FAULT_TAU is refused in production runs and its value was validated (and the armed line printed) by
+    ! gpu_env_check; eps:<x> acts in the SELFTEST=4 comparison only (gpu_env_fault_tau_eps)
+    if (gpu_env_get('ALF_GPU_FAULT_TAU', f)) then
        select case (trim(f))
        case ('perm');   fault = 1
        case ('prop');   fault = 2
        case ('prec');   fault = 3
        case ('blocks'); fault = 4
-       case default
-          write(error_unit,'(A,A)') ' ALF_GPU_FAULT_TAU: unknown value ', trim(f)
+       case default                  ! eps:<x>
        end select
     endif
-    if (env_is('ALF_GPU_SELFTEST', '4')) then
+    if (gpu_env_is('ALF_GPU_SELFTEST', '4')) then
        call gpu_tau_selftest()
        did = .true.
     endif
-    if (env_is('ALF_GPU_TAUTIME', '1')) then
+    if (gpu_env_is('ALF_GPU_TAUTIME', '1')) then
        call gpu_tau_timing()
        did = .true.
     endif
@@ -1043,10 +1064,10 @@ Contains
              call gpu_stab_reset_st(ib, nfe)
           enddo
        enddo
-       fault = 0; prec_report = .true.
+       prec_report = .true.
        n_pass = 0; n_branch = 0; n_cgr = 0; b_h2d = 0; b_d2h = 0
     endif
-    if (did .and. env_is('ALF_GPU_EXIT', '1')) then
+    if (did .and. gpu_env_is('ALF_GPU_EXIT', '1')) then
        call gpu_tau_finalize()
        call gpu_stab_finalize()
        call gpu_state_finalize()
@@ -1170,7 +1191,7 @@ Contains
     enddo
     call build_states(GR, hst)
     prec_report = .false.
-    verbose = env_is('ALF_GPU_TAUTEST_V', '1')
+    verbose = gpu_env_is('ALF_GPU_TAUTEST_V', '1')
     m_all = 0.d0; m_cgr = 0.d0; m_alone = 0.d0; m_state = 0.d0; m_prec = 0.d0; sens_h = 0.d0; sens_d = 0.d0
     nslices = 0; nstab = 0; nalone = 0; nsyn = 0; worst = 0; wslice = 0.d0
 
@@ -1249,7 +1270,7 @@ Contains
                 endif
                 ! self-test: D->H of the four scratch outputs for the comparison
                 call upd_from_c(t_S(1,1,1), 4*N*N)
-                call cmp_set(t_S, c, dvec)
+                call cmp_set(t_S, c, dvec, .true.)
                 do k = 1, 4
                    call mx(m_alone(k,v), dvec(k))
                 enddo
@@ -1257,7 +1278,7 @@ Contains
                    ! intrinsic sensitivity (reported, not a criterion): U_R perturbed by 2e-16 relative per entry
                    call perturb_state(hrd(nfe), hp(nfe), seed)
                    call CGR2_2(cp(:,:,2), cp(:,:,1), cp(:,:,3), cp(:,:,4), hp(nfe), hsy(nfe), N)
-                   call cmp_set(cp, c, dvec)
+                   call cmp_set(cp, c, dvec, .false.)
                    do k = 1, 4
                       call mx(sens_h, dvec(k))
                    enddo
@@ -1265,7 +1286,7 @@ Contains
                    call ul_state(2, nfe, hp(nfe))                  ! self-test: upload the perturbed udvr
                    call dev_cgr22(nfe, nst, 1.d0, 0.d0, br, t_S(1,1,1), t_S(1,1,2), t_S(1,1,3), t_S(1,1,4))
                    call upd_from_c(t_S(1,1,1), 4*N*N)
-                   call cmp_set(t_S, dS, dvec)
+                   call cmp_set(t_S, dS, dvec, .false.)
                    do k = 1, 4
                       call mx(sens_d, dvec(k))
                    enddo
@@ -1335,6 +1356,18 @@ Contains
     call say('GPU tau self-test PASSED')
   end subroutine gpu_tau_selftest
 
+  ! m = max(m, d); a non-finite d makes m huge (same as mx of gpu_stab_mod)
+  Subroutine mx(m, d)
+    Implicit none
+    Real (Kind=Kind(0.d0)), intent(inout) :: m
+    Real (Kind=Kind(0.d0)), intent(in) :: d
+    if (.not. is_finite(d)) then
+       m = huge(1.d0)
+    else if (d > m) then
+       m = d
+    endif
+  end subroutine mx
+
   Character (len=64) function fmt4(d)
     Implicit none
     Real (Kind=Kind(0.d0)), intent(in) :: d(4)
@@ -1351,22 +1384,56 @@ Contains
     do nfe = 1, t_nfe
        nf = Calc_Fl_map(nfe)
        call mx(dd(1), rel_diff(G00_d(:,:,nf), h00(:,:,nf)))
-       call mx(dd(2), rel_diff(GT0_d(:,:,nf), hT0(:,:,nf)))
+       call mx(dd(2), rel_diff_f(GT0_d(:,:,nf), hT0(:,:,nf)))     ! graded fault (eps:<x>) on a copy, see rel_diff_f
        call mx(dd(3), rel_diff(GTT_d(:,:,nf), hTT(:,:,nf)))
        call mx(dd(4), rel_diff(G0T_d(:,:,nf), h0T(:,:,nf)))
     enddo
   end subroutine cmp_all
 
-  ! relative differences of two (N,N,4) sets (G00, GT0, GTT, G0T)
-  Subroutine cmp_set(a, b, dvec)
+  ! relative differences of two (N,N,4) sets (G00, GT0, GTT, G0T); dev: a is the device result compared with the host (the graded
+  ! fault acts on its GT0)
+  Subroutine cmp_set(a, b, dvec, dev)
     Implicit none
     Complex (Kind=Kind(0.d0)), intent(in) :: a(:,:,:), b(:,:,:)
     Real (Kind=Kind(0.d0)), intent(out) :: dvec(4)
+    Logical, intent(in) :: dev
     Integer :: k
     do k = 1, 4
-       dvec(k) = rel_diff(a(:,:,k), b(:,:,k))
+       if (dev .and. k == 2) then
+          dvec(k) = rel_diff_f(a(:,:,k), b(:,:,k))
+       else
+          dvec(k) = rel_diff(a(:,:,k), b(:,:,k))
+       endif
     enddo
   end subroutine cmp_set
+
+  ! rel_diff(A, B) of the host copy A of a device GT0 against the host B; with the graded fault ALF_GPU_FAULT_TAU=eps:<x> armed, the
+  ! element of largest |A| of a copy of A is multiplied by (1 + x) first (self-test comparison only; A itself is not changed)
+  Real (Kind=Kind(0.d0)) function rel_diff_f(A, B)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in) :: A(:,:), B(:,:)
+    Complex (Kind=Kind(0.d0)), allocatable :: Af(:,:)
+    Integer :: i, j, im, jm
+    Real (Kind=Kind(0.d0)) :: x, a_, amax
+    x = gpu_env_fault_tau_eps()
+    if (x <= 0.d0) then
+       rel_diff_f = rel_diff(A, B)
+       return
+    endif
+    Af = A
+    amax = -1.d0; im = 1; jm = 1
+    do j = 1, size(Af,2)
+       do i = 1, size(Af,1)
+          a_ = abs(Af(i,j))
+          if (a_ > amax) then
+             amax = a_; im = i; jm = j
+          endif
+       enddo
+    enddo
+    Af(im,jm) = Af(im,jm) * (1.d0 + x)
+    rel_diff_f = rel_diff(Af, B)
+    deallocate(Af)
+  end function rel_diff_f
 
   ! device reduction numbers of the pair k (last tau_stab_cgr) against COMPARE: relative difference of max and mean
   Subroutine cmp_prec(k, xmax_h, xmean_h, m)

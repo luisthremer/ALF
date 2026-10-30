@@ -126,7 +126,7 @@ Module gpu_state_mod
   Public :: GT0_d, G0T_d, GTT_d, scr_c, scr_vec, scr_r, scr_work, scr_ipiv
   Public :: upd_cnt
   ! ticket 212: the single reader of every ALF_GPU_* variable (all other GPU files only call these)
-  Public :: gpu_env_get, gpu_env_is, gpu_env_int, gpu_env_fault_stab_eps, gpu_env_check
+  Public :: gpu_env_get, gpu_env_is, gpu_env_int, gpu_env_fault_stab_eps, gpu_env_fault_tau_eps, gpu_env_check
 
   Logical, Save :: gpu_active = .false.
   Character (len=256), Save :: gpu_reason = 'gpu_state_setup not called'
@@ -156,7 +156,7 @@ Module gpu_state_mod
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: udw_U(:,:,:,:), udw_V(:,:,:,:)   ! (Ndim,Ndim,2,N_FL_eff) udvl, udvr
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: udw_D(:,:,:)                  ! (Ndim,2,N_FL_eff)
   Real    (Kind=Kind(0.d0)), Allocatable, Save :: udw_L(:,:,:)                  ! (Ndim,2,N_FL_eff)
-  Complex (Kind=Kind(0.d0)), Allocatable, Save :: GT0_d(:,:,:), G0T_d(:,:,:), GTT_d(:,:,:)   ! only if Ltau = 1
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: GT0_d(:,:,:), G0T_d(:,:,:), GTT_d(:,:,:)   ! only if Ltau = 1 (G00_d: gpu_tau_mod, ticket 207)
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: scr_c(:,:,:), scr_vec(:,:), scr_work(:)
   Real    (Kind=Kind(0.d0)), Allocatable, Save :: scr_r(:,:)
   Integer,                 Allocatable, Save :: scr_ipiv(:)
@@ -177,6 +177,7 @@ Module gpu_state_mod
   Logical, Save :: env_read_done = .false.
   Integer, Save :: env_rank = 0, env_size = 1              ! MPI_COMM_WORLD rank and size (1 and 0 without MPI)
   Real (Kind=Kind(0.d0)), Save :: env_eps = 0.d0          ! x of ALF_GPU_FAULT_STAB=eps:<x>
+  Real (Kind=Kind(0.d0)), Save :: env_eps_tau = 0.d0      ! x of ALF_GPU_FAULT_TAU=eps:<x> (ticket 207)
 
 Contains
 
@@ -295,6 +296,12 @@ Contains
     gpu_env_fault_stab_eps = env_eps
   End Function gpu_env_fault_stab_eps
 
+  !> x of ALF_GPU_FAULT_TAU=eps:<x>; 0 if that fault is not armed (ticket 207)
+  Real (Kind=Kind(0.d0)) Function gpu_env_fault_tau_eps()
+    Implicit none
+    gpu_env_fault_tau_eps = env_eps_tau
+  End Function gpu_env_fault_tau_eps
+
   !> rank in and size of MPI_COMM_WORLD (0 and 1 in a build without MPI)
   Subroutine env_mpi_ids()
 #if defined(MPI)
@@ -345,7 +352,7 @@ Contains
     Real (Kind=Kind(0.d0)) :: x
     Character (len=6) :: bk
     If (.not. env_read_done) Call gpu_env_read()
-    env_eps = 0.d0
+    env_eps = 0.d0; env_eps_tau = 0.d0
 #if defined(ALF_LA_CUDA)
     bk = 'CUDA'
 #elif defined(ALF_LA_ONEMKL)
@@ -418,6 +425,28 @@ Contains
           Call env_fail('GPU fault value invalid: ALF_GPU_FAULT_STAB='//trim(v))
        Endif
        Call env_say('GPU fault armed: ALF_GPU_FAULT_STAB='//trim(v))
+    Endif
+    ! ticket 207 (gpu_tau_mod): perm|prop|prec|blocks, or the graded fault eps:<x> of the ALF_GPU_SELFTEST=4 comparison
+    If (gpu_env_get('ALF_GPU_FAULT_TAU', v)) then
+       ok = .false.
+       Select case (trim(v))
+       Case ('perm', 'prop', 'prec', 'blocks'); ok = .true.
+       Case default
+          If (len_trim(v) > 4) then
+             If (v(1:4) == 'eps:') then
+                Read(v(5:),*,iostat=ios) x
+                If (ios == 0) then
+                   If (x > 0.d0 .and. x < 1.d300) then
+                      ok = .true.; env_eps_tau = x
+                   Endif
+                Endif
+             Endif
+          Endif
+       End Select
+       If (.not. ok) then
+          Call env_fail('GPU fault value invalid: ALF_GPU_FAULT_TAU='//trim(v))
+       Endif
+       Call env_say('GPU fault armed: ALF_GPU_FAULT_TAU='//trim(v))
     Endif
   End Subroutine gpu_env_check
 
@@ -600,8 +629,9 @@ Contains
     ! ALF_GPU_SELFTEST=1 (any value except empty/0): self-test, then the run continues.  Negative controls, which must
     ! fail with a nonzero exit: =fault (hop_Rval(1) *= 1+1e-9), =fault_c (hop_Cval(1) += 1e-9), =fault_v (V_exp(1) *=
     ! 1+1e-9), =nan (hop_Rval(1) = NaN), =nan_v (V_exp(1) = NaN); all applied to the host copy after the upload.
-    ! ALF_GPU_SELFTEST=3 (ticket 206, stabilization self-test in gpu_stab_mod) does not run this mirror self-test: O(N^3) host loops
-    if (ok .and. trim(env) /= '3') then
+    ! ALF_GPU_SELFTEST=3 (ticket 206, stabilization self-test in gpu_stab_mod) and =4 (ticket 207, tau pass, gpu_tau_mod) do not run
+    ! this mirror self-test: O(N^3) host loops
+    if (ok .and. trim(env) /= '3' .and. trim(env) /= '4') then
        select case (trim(env))
        case ('fault');   hop_Rval(1) = hop_Rval(1)*(1.d0 + 1.d-9)
        case ('fault_c'); hop_Cval(1) = hop_Cval(1) + cmplx(1.d-9, 0.d0, kind(0.d0))

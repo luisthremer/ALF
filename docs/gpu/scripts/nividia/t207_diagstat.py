@@ -19,7 +19,7 @@ def die(msg):
     print('FAIL:', msg); sys.exit(2)
 rows = []
 for l in open(fn):
-    if 'TAUDIAG' not in l:
+    if not l.lstrip().startswith('TAUDIAG pt '):   # 2026-10-30: 212's " GPU debug env: ... ALF_GPU_TAUDIAG=2" line also contains TAUDIAG
         continue
     f = l.split()
     try:

@@ -63,7 +63,13 @@ gpu_state module (plain contiguous device arrays, allocated once)
 | 206: per default decompose / per CGR | D→H | 24 B (scale test) / 16 B (phase) | NaN and range test of the scales; Phase of the determinant |
 | 206 **INTERIM** (removed by 207/208): per CGR | D→H, H→D | 16N² B each way (new G, wrapped G) + 32 B | GR is host-authoritative until 208; the precision check reduces on the device (`Control_PrecisionG_vals`) |
 | 206 **INTERIM** (host-update path only, `ALF_GPU_NOUPDATE=1`; skipped with device updates, 205): per WRAPUR/WRAPUL block | H→D | N_op·Nwrap·16 B | HS fields changed by the host updates (`nsigma_d`) |
-| 206 **INTERIM** (removed by 207): per backward stabilization, Ltau = 1 | D→H | 32N² + 16N B per flavour | `TAU_M` (host) reads `udvst` |
+| 206 (removed by 207 when the device τ pass is active): per backward stabilization, Ltau = 1 | D→H | 32N² + 16N B per flavour | the host `TAU_M` reads `udvst`; done only if the device τ path is inactive (e.g. `GPU=intel` until 302) |
+| 207 **INTERIM** (removed by 208): per τ pass | H→D | 16N² B per flavour | GR (host-authoritative G at time 0) into `G00_d`; GT0/GTT/G0T are derived on the device |
+| 207 **INTERIM** (removed by 208): per τ pass and time slice | D→H | 3 · 16N² B per flavour | `GT0`, `G0T`, `GTT` for the host `ham%OBSERT` / `Hop_mod_Symm` (L slices per pass) |
+| 207 **INTERIM** (removed by 208): per τ pass and stabilization point | D→H | 16N² B per flavour | new `G00` after CGR2_2 (host observables); the precision check itself is a device reduction |
+| 207: per CGR2_2 (per stabilization point of the τ pass and flavour), default | D→H, H→D | 16N B D→H / 8N B H→D | `la_qrpp` on the 2N × 2N matrix: 2N column norms (8 B each), 2N-entry permutation (4 B each), host sort |
+| 207: per CGR2_2, **STABLOG only** | D→H, H→D | 64N² B D→H; 64N² + 32N + 8N B H→D | host ZGEQP3 on the 2N × 2N matrix (108, ADR-001 §4): matrix out, factors, τ-vector and pivots back |
+| 207: per CGR2_2 and per τ precision check | D→H | 32 B (default: complex D1(1), D2(1)) or 16 B (LOG: real L1(1), L2(1)); 4 · 32 B (precision numbers) | branch of CGR2_2 and `Control_Precision_tau` (4 reductions per call) |
 | end of bin / run | D→H | nsigma (confout), and G only if needed | output |
 
 ## 2. Phases, gates and tickets

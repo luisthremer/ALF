@@ -50,9 +50,10 @@
 !>     numbers, handed to Control_PrecisionG_vals (control_mod).
 !>
 !> Device states (gpu_state_mod): udw_*(.,.,1,nfe) = udvl, udw_*(.,.,2,nfe) = udvr, udv_*(.,.,NST,nfe) = udvst.  Host UDV_State
-!> objects of main are NOT updated by the device path, except (interim) udvst(NST) in the backward sweep when Ltau = 1,
-!> because TAU_M (host, ticket 207) reads it.  TAU_M calls the host WRAPUR/CGR2_2 on its own objects, so WRAPUR/WRAPUL
-!> themselves stay CPU code; the device branches are in main.
+!> objects of main are NOT updated by the device path, except (host tau path only, i.e. when the device tau pass of ticket 207
+!> is inactive) udvst(NST) in the backward sweep when Ltau = 1, because the host TAU_M reads it.  TAU_M calls the host
+!> WRAPUR/CGR2_2 on its own objects, so WRAPUR/WRAPUL themselves stay CPU code; the device branches are in main (and, for the
+!> tau pass, in gpu_tau_mod).
 !>
 !> Transfers (every one is marked in the code; per stabilization of one flavour, N = Ndim):
 !>   decompose, default : 8 N B D->H (column norms), 4 N B H->D (permutation), 24 B D->H (scale test) [inside la_qrpp: the
@@ -60,8 +61,9 @@
 !>   decompose, STABLOG : 8 N B D->H (log norms), 4 N B H->D, 0 B for the test
 !>   CGR default        : 8 N + 4 N B (la_qrpp), 16 B D->H (phase)
 !>   CGR STABLOG        : 16 N^2 B D->H + 16 N^2 + 16 N + 4 N B H->D (la_geqp3_host), 16 B D->H (phase)
-!>   INTERIM 206 (removed by 207/208): G D->H 16 N^2 B (GR is host-authoritative), wrapped G H->D 16 N^2 B (for the precision
-!>   reduction), 32 B D->H (precision numbers); with Ltau = 1 in the backward sweep: udvst(NST) D->H, 32 N^2 + 16 N B.
+!>   INTERIM 206 (removed by 208): G D->H 16 N^2 B (GR is host-authoritative), wrapped G H->D 16 N^2 B (for the precision
+!>   reduction), 32 B D->H (precision numbers); with Ltau = 1 in the backward sweep and the HOST tau path only: udvst(NST) D->H,
+!>   32 N^2 + 16 N B (ticket 207: not done when the device tau pass is active).
 !>
 !> Self-test ALF_GPU_SELFTEST=3 (oracle = the upstream host routines WRAPUR/WRAPUL/CGR/decompose on host UDV_State objects;
 !> the default path needs a build with -DQR_PREPIVOT, the CPU variant of the same algorithm), timing ALF_GPU_STABTIME=1,
@@ -96,8 +98,12 @@ Module gpu_stab_mod
   Public :: gpu_stab_on, gpu_stab_setup, gpu_stab_finalize, gpu_stab_hook
   Public :: gpu_stab_wrapur, gpu_stab_wrapul, gpu_stab_exchange, gpu_stab_store_l, gpu_stab_cgr
   Public :: gpu_stab_reset_l, gpu_stab_reset_r, gpu_stab_reset_st
+  ! ticket 207 (gpu_tau_mod): slot access and the generic plain-array kernels it reuses
+  Public :: gpu_stab_tau_dev, sync_fields, dev_prec, dl_state, ul_state, state_diff, say
+  Public :: k_ident, k_copy_c, k_ct, k_diagabs, k_divrows
 
   Logical, Save :: gpu_stab_on = .false.
+  Logical, Save :: gpu_stab_tau_dev = .false.   ! ticket 207: TAU_M runs on the device and reads the udvst slots there (set by gpu_tau_setup)
 
   Integer, Save :: s_N = 0, s_nfe = 0, s_nstm = 0
   Integer, Allocatable, Save :: s_nt(:)                     ! Stab_nt(0:NSTM)
@@ -320,8 +326,9 @@ Contains
   end subroutine gpu_stab_store_l
 
   !> fwd = .true.  (forward sweep):  udvl = udvst(NST); udvst(NST) = udvr
-  !> fwd = .false. (backward sweep): udvr = udvst(NST); udvst(NST) = udvl; with Ltau = 1 the new udvst(NST) is copied D->H
-  !>                                 into the host object ust, because TAU_M (host) reads it  (INTERIM 206: removed by 207)
+  !> fwd = .false. (backward sweep): udvr = udvst(NST); udvst(NST) = udvl; with Ltau = 1 and the host tau path the new udvst(NST)
+  !>                                 is copied D->H into the host object ust, because the host TAU_M reads it (not with the
+  !>                                 device tau pass of ticket 207, which reads the slot on the device)
   Subroutine gpu_stab_exchange(nst, nfe, fwd, ust)
     Implicit none
     Integer, intent(in) :: nst, nfe
@@ -333,8 +340,9 @@ Contains
     else
        call copy_st_to_w(nst, nfe, 2)
        call copy_w_to_st(1, nfe, nst)
-       if (get_Ltau() == 1) then
-          ! INTERIM 206: removed by 207/208: D->H of the stored left propagation, TAU_M (host) reads udvst
+       if (get_Ltau() == 1 .and. .not. gpu_stab_tau_dev) then
+          ! host tau path only (the device tau pass of ticket 207 reads the slots on the device, no export):
+          ! D->H of the stored left propagation, TAU_M (host) reads udvst
           !$omp target update from(udv_U(:,:,nst,nfe), udv_V(:,:,nst,nfe))
           ust%U = udv_U(:,:,nst,nfe)
           ust%V = udv_V(:,:,nst,nfe)
