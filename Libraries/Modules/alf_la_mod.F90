@@ -135,7 +135,7 @@ module alf_la_om_mod
   use iso_c_binding
   use iso_fortran_env, only: error_unit
   use omp_lib, only: omp_interop_kind, omp_get_interop_ptr, omp_get_interop_int, omp_ipr_fr_id, omp_ipr_targetsync, &
-       omp_interop_none, omp_get_default_device, omp_get_num_devices, omp_target_is_present
+       omp_interop_none, omp_get_default_device, omp_get_num_devices, omp_target_is_present, omp_ifr_sycl
   use onemkl_blas_omp_offload_lp64, only: zgemm, dgemm, zgemm_batch_strided, zgeru, ztrsm
   use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
   implicit none
@@ -152,7 +152,8 @@ module alf_la_om_mod
   logical, save :: hook_break = .false., hook_poison = .false., hook_wrongld = .false.
   complex(8), allocatable, target, save :: dws(:)              ! device scratch of the shim solvers
   integer, save :: dws_n = 0
-  integer(c_int64_t), allocatable, target, save :: dpiv(:)     ! device int64 pivots (oneMKL USM API)
+  ! dpiv: device int64 pivots (oneMKL USM API); module-owned scratch, mapped by ensure_dpiv, so it needs no guard
+  integer(c_int64_t), allocatable, target, save :: dpiv(:)
   integer, save :: dpiv_n = 0
   complex(8), allocatable, target, save :: dscr(:)             ! column-permutation scratch of om_qrpp
   integer, save :: dscr_n = 0
@@ -184,6 +185,8 @@ module alf_la_om_mod
     integer(c_int) function alfsh_wait() bind(C, name='alfsh_wait')
       import :: c_int
     end function
+    subroutine alfsh_release() bind(C, name='alfsh_release')   ! opens the BREAK_ORDER gate (error exit path)
+    end subroutine
     integer(c_int) function alfsh_zgeqrf_ws(m, n, lda, ws) bind(C, name='alfsh_zgeqrf_ws')
       import :: c_int, c_int64_t
       integer(c_int64_t), value :: m, n, lda
@@ -255,7 +258,10 @@ contains
     character(len=*), intent(in) :: msg
     integer, intent(in) :: line
     write(error_unit,*) 'alf_la: ', msg
-    call Terminate_on_error(ERROR_GENERIC, 'alf_la_mod.F90', line)
+    ! the test-hook gate of the unordered GEMMs must not outlive an error exit (a closed gate would hang the runtime
+    ! shutdown); the shim also releases it in alfsh_finalize and from an atexit handler
+    call alfsh_release()
+    call Terminate_on_error(ERROR_GENERIC, 'alf_la_mod.F90[onemkl]', line)
   end subroutine om_fail
 
   ! ---- host-side presence guard ----------------------------------------------------------------------------------
@@ -276,6 +282,14 @@ contains
       OM_FAIL(trim(msg))
     end if
   end subroutine need_present
+
+  subroutine need_i(a, nel, rname, aname)
+    integer(c_int), target :: a(*)
+    integer(8), intent(in) :: nel
+    character(len=*), intent(in) :: rname, aname
+    if (nel <= 0) return
+    call need_present(c_loc(a(1)), c_loc(a(nel)), rname, aname)
+  end subroutine need_i
 
   subroutine need_z(a, nel, rname, aname)
     complex(8), target :: a(*)
@@ -335,11 +349,13 @@ contains
     if (iop == omp_interop_none) OM_FAIL('ONEMKL backend: OpenMP interop object not available')
     fr = omp_get_interop_int(iop, omp_ipr_fr_id, rc)
     qh = c_null_ptr
-    if (rc == 0 .and. fr == 4) qh = omp_get_interop_ptr(iop, omp_ipr_targetsync, rc)   ! 4 = omp_ifr_sycl
+    if (rc == 0 .and. fr == omp_ifr_sycl) qh = omp_get_interop_ptr(iop, omp_ipr_targetsync, rc)
     if (.not. c_associated(qh)) OM_FAIL('ONEMKL backend: no sycl::queue from OpenMP interop')
     if (alfsh_init(qh) /= 0) OM_FAIL('ONEMKL backend: shim initialisation failed')
     nm = c_null_char
+    is_l0 = 0
     rc = alfsh_device_info(nm, 128_c_int, is_l0)
+    if (rc /= 0) OM_FAIL('ONEMKL backend: cannot query the SYCL device')
     name = ''
     do i = 1, 127
       if (nm(i) == c_null_char) exit
@@ -348,7 +364,7 @@ contains
     write(*,'(2A)') ' alf_la: ONEMKL device: ', trim(name)
     if (is_l0 /= 1) OM_FAIL('ONEMKL backend: the SYCL queue is not on a Level Zero device')
     ! the OpenMP default device and the queue's device must be the same: a device pointer of the OpenMP device must be
-    ! device USM in the queue's context
+    ! device USM of the queue's device itself (not only of its context: another device or tile of one context is refused)
     allocate(probe(1)); probe = (0.d0, 0.d0)
     !$omp target enter data map(to: probe)
     !$omp target data use_device_addr(probe)
@@ -725,6 +741,9 @@ contains
     integer(c_int), target :: ipiv(*)
     integer :: s, lw, i, mn
     mn = min(m, n)
+    ! ipiv is checked before anything runs: the int32 <-> int64 conversion regions below would map an absent array
+    ! implicitly (a silent temporary mapping)
+    call need_i(ipiv, int(mn,8), 'la_getrf', 'ipiv')
     lw = om_getrf_lwork(m, n, lda)
     call ensure_dws(lw)
     call ensure_dpiv(mn)
@@ -748,6 +767,7 @@ contains
     integer :: s, lw, i
     integer(c_int64_t) :: ws
     integer(c_int) :: rc
+    call need_i(ipiv, int(n,8), 'la_getrs', 'ipiv')      ! before any target region (see om_getrf)
     ws = 0
     rc = alfsh_zgetrs_ws(int(trans,c_int), int(n,c_int64_t), int(nrhs,c_int64_t), int(lda,c_int64_t), int(ldb,c_int64_t), ws)
     lw = ws_result(rc, ws, 'getrs_ws')
@@ -832,6 +852,7 @@ contains
     end do
   end subroutine k_colnorms
 
+  ! ipvt, A and scr are device-resident: om_qrpp checks ipvt and A on the host before calling this (scr is module scratch)
   subroutine k_permute_cols(m, n, A, lda, ipvt, scr)
     integer, intent(in) :: m, n, lda
     complex(8), intent(inout) :: A(lda,*)
@@ -858,9 +879,13 @@ contains
     integer(c_int), target :: ipvt(*)
     integer :: i
     logical :: bad
+    ! presence of every array argument first: the target regions below (colnorms, permutation) and the H->D update of
+    ! ipvt would otherwise map an absent array implicitly
+    call need_z(A, ext2(m, n, lda), 'la_qrpp', 'A')
+    call need_z(tau, int(min(m,n),8), 'la_qrpp', 'tau')
+    call need_i(ipvt, int(n,8), 'la_qrpp', 'ipvt')
     call ensure_dnrm(n)
     call ensure_dscr(m*n)
-    call need_z(A, ext2(m, n, lda), 'la_qrpp', 'A')
     call k_colnorms(m, n, A, lda, dnrm)
     ! D->H: n column norms for the host sort (ticket 202: la_qrpp)
     !$omp target update from(dnrm(1:n))
@@ -899,17 +924,26 @@ contains
     integer :: lw, info, nel
     complex(8) :: w(1)
     nel = (n-1)*lda + m
+    ! the D->H / H->D updates below would not fail on an absent array: check before touching anything
+    call need_z(A, int(nel,8), 'la_geqp3_host', 'A')
+    call need_z(tau, int(min(m,n),8), 'la_geqp3_host', 'tau')
+    call need_i(ipvt, int(n,8), 'la_geqp3_host', 'ipvt')
     call om_sync()
     ! D->H: ZGEQP3 has no device implementation (STABLOG pivoting, ticket 108)
     call upd_from_z(A, nel)
-    if (allocated(hrws)) deallocate(hrws)
-    allocate(hrws(max(2*n,1)))
+    ! host work arrays grow only when needed (as the HOST and CUDA paths do)
+    if (allocated(hrws)) then
+      if (size(hrws) < 2*n) deallocate(hrws)
+    end if
+    if (.not. allocated(hrws)) allocate(hrws(max(2*n,1)))
     ipvt(1:n) = 0
     call zgeqp3(m, n, A, lda, ipvt, tau, w, -1, hrws, info)
     if (info /= 0) OM_FAIL('zgeqp3 work query failed')
     lw = int(dble(w(1)))
-    if (allocated(hws)) deallocate(hws)
-    allocate(hws(max(lw,1)))
+    if (allocated(hws)) then
+      if (size(hws) < lw) deallocate(hws)
+    end if
+    if (.not. allocated(hws)) allocate(hws(max(lw,1)))
     call zgeqp3(m, n, A, lda, ipvt, tau, hws, lw, hrws, info)
     if (info /= 0) OM_FAIL('zgeqp3 failed')
     ! H->D: factors, reflectors and permutation back to the device (STABLOG pivoting, ticket 108)
@@ -1216,9 +1250,11 @@ contains
   !> Pre-grow the work memory (complex(8) elements): host and, with CUDA, device.
   subroutine la_reserve_work(nelem)
     integer, intent(in) :: nelem
-    call ensure_hws(nelem)
 #if defined(ALF_LA_ONEMKL)
-    call om_reserve(nelem)
+    call om_reserve(nelem)      ! the host workspace of the HOST/CUDA paths is unused under ONEMKL
+#else
+#line 397
+    call ensure_hws(nelem)
 #endif
 #line 398
 #if defined(ALF_LA_CUDA)

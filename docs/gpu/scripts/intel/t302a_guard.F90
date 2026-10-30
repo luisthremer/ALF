@@ -3,13 +3,16 @@
 !   t302a_guard pos     : la_gemm with all arguments mapped (must work)
 !   t302a_guard neg A|B|C : la_gemm with that argument NOT mapped: must stop with "argument X is not present on the device"
 !                         before anything is queued (exit code /= 0, no omptarget message, no crash)
+!   t302a_guard neg_ipiv  : la_getrf with A mapped and ipiv NOT mapped (same expectation, argument ipiv)
+!   t302a_guard neg_ipvt  : la_qrpp with A and tau mapped and ipvt NOT mapped (same expectation, argument ipvt)
 program t302a_guard
   use iso_c_binding
   use omp_lib
   use alf_la_mod
   implicit none
   character(len=16) :: mode, which
-  complex(8), allocatable, target :: A(:,:), B(:,:), C(:,:)
+  complex(8), allocatable, target :: A(:,:), B(:,:), C(:,:), tau(:)
+  integer(c_int), allocatable, target :: ip(:)
   integer, parameter :: n = 16
   integer :: i, j
   call get_command_argument(1, mode)
@@ -31,6 +34,19 @@ program t302a_guard
     stop 0
   end if
   call la_init()
+  if (trim(mode) == 'neg_ipiv' .or. trim(mode) == 'neg_ipvt') then
+    allocate(tau(n), ip(n)); tau = 0; ip = 0
+    !$omp target enter data map(to: A, tau)          ! ip stays unmapped on purpose
+    if (trim(mode) == 'neg_ipiv') then
+      call la_getrf(n, n, A, n, ip)
+    else
+      call la_qrpp(n, n, A, n, ip, tau)
+    end if
+    call la_sync()
+    write(*,'(A)') 'FAILED guard: the call returned although ipiv/ipvt is not mapped'
+    call la_finalize()
+    stop 0
+  end if
   if (trim(mode) == 'pos' .or. trim(which) /= 'A') then
     !$omp target enter data map(to: A)
   end if

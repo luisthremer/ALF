@@ -3,9 +3,9 @@
 // Derived from the 103 prototype (gpu_bench/src/bench_sycl_shim.cpp).
 //
 // Conventions
-//  * alfsh_init(q): q is the opaque sycl::queue* of the OpenMP offload runtime (OpenMP interop, prefer_type("sycl")),
-//    or null: then the shim creates its own in-order queue on the default GPU (ONEAPI_DEVICE_SELECTOR is honoured).
-//    The queue is used by every later call; it is NOT owned (interop) or owned (null case).
+//  * alfsh_init(q): q is the opaque sycl::queue* of the OpenMP offload runtime (OpenMP interop, prefer_type("sycl")).
+//    The queue is used by every later call and is NOT owned by the shim (a null q is refused: alf_la always passes the
+//    interop queue, so that the shim calls are ordered with the OpenMP target regions).
 //  * All matrix/vector arguments are USM pointers (device addresses from !$omp target data use_device_addr).
 //  * Each call waits for completion before it returns (host-synchronous): the caller's OpenMP target regions and the
 //    dispatched BLAS calls then see the result without any further ordering argument. oneMKL's USM API reports
@@ -26,6 +26,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <stdexcept>
 #include <string>
 
 namespace {
@@ -33,8 +34,8 @@ using cd = std::complex<double>;
 namespace lp = oneapi::mkl::lapack;
 
 sycl::queue *g_q = nullptr;             // the queue every call uses
-std::unique_ptr<sycl::queue> g_own;     // owned queue (null-queue case)
 std::unique_ptr<sycl::queue> g_other;   // separate queue of the ordering-break test hook
+std::atomic<bool> g_async_err{false};   // set by the async handler of the shim-owned queues
 std::atomic<bool> g_release{false};     // test hook: releases the gate that holds back the unordered GEMMs
 std::optional<sycl::event> g_gate;      // test hook: host task that every unordered GEMM depends on
 
@@ -44,10 +45,27 @@ oneapi::mkl::transpose tr(int t) {  // Fortran side: 0=N, 1=T, 2=C (the LA_* val
 }
 oneapi::mkl::side sd(int s) { return s == 0 ? oneapi::mkl::side::left : oneapi::mkl::side::right; }
 
+// Asynchronous errors of the shim-owned queue (the test-hook queue): recorded, reported on stderr, and turned into the
+// return code -1 of the routine that waited (no handler would mean std::terminate). The interop queue of the OpenMP
+// runtime keeps the runtime's own handling.
+void async_handler(sycl::exception_list l) {
+  for (auto &p : l) {
+    g_async_err.store(true);
+    try {
+      std::rethrow_exception(p);
+    } catch (std::exception &e) {
+      std::fprintf(stderr, "alfsh: asynchronous SYCL error: %s\n", e.what());
+    } catch (...) {
+      std::fprintf(stderr, "alfsh: asynchronous error of unknown type\n");
+    }
+  }
+}
+
 template <class F> int guarded(const char *what, F &&f) {
+  g_async_err.store(false);
   try {
     f();
-    return 0;
+    return g_async_err.load() ? -1 : 0;
   } catch (lp::exception &e) {
     // positive info = LAPACK computation error (e.g. exactly singular U in getrf); the data are still complete
     if (e.info() <= 0)
@@ -59,6 +77,9 @@ template <class F> int guarded(const char *what, F &&f) {
   } catch (std::exception &e) {
     std::fprintf(stderr, "alfsh: %s: exception: %s\n", what, e.what());
     return -1;
+  } catch (...) {
+    std::fprintf(stderr, "alfsh: %s: exception of unknown type\n", what);
+    return -1;
   }
 }
 sycl::queue &Q() { return *g_q; }
@@ -69,18 +90,20 @@ extern "C" {
 // Select the queue (see header). Returns 0, or -1 if no queue could be made.
 int alfsh_init(void *q) {
   return guarded("init", [&] {
-    if (q) {
-      g_q = static_cast<sycl::queue *>(q);
-    } else {
-      g_own.reset(new sycl::queue{sycl::gpu_selector_v, sycl::property::queue::in_order()});
-      g_q = g_own.get();
-    }
+    if (!q) throw std::runtime_error("alfsh_init: no queue");
+    g_q = static_cast<sycl::queue *>(q);
   });
 }
 
+// Opens the gate of the ordering-break test hook (idempotent, async-signal-safe enough: one atomic store). Called by
+// alfsh_wait, alfsh_finalize, the Fortran failure path (om_fail) and at process exit, so that an error exit while the gate
+// is closed cannot leave the host task spinning (the runtime shutdown would wait for it).
+void alfsh_release() { g_release.store(true); }
+
 void alfsh_finalize() {
-  g_other.reset();
-  g_own.reset();
+  g_release.store(true);
+  g_gate.reset();
+  g_other.reset();     // the queue destructor waits for its (now released) tasks
   g_q = nullptr;
 }
 
@@ -94,13 +117,16 @@ int alfsh_device_info(char *buf, int n, int *is_l0) {
   });
 }
 
-// USM kind of p in the shim queue's context: 0 unknown/host-malloc, 1 host, 2 device, 3 shared; -1 on error.
+// USM kind of p in the shim queue's context: 0 unknown/host-malloc, 1 host, 2 device USM of THE QUEUE'S DEVICE,
+// 3 shared, 4 device USM of another device of the same context (e.g. another PVC tile); -1 on error.
 int alfsh_ptr_kind(const void *p) {
   int r = -1;
   guarded("ptr_kind", [&] {
     switch (sycl::get_pointer_type(p, Q().get_context())) {
       case sycl::usm::alloc::host: r = 1; break;
-      case sycl::usm::alloc::device: r = 2; break;
+      case sycl::usm::alloc::device:
+        r = (sycl::get_pointer_device(p, Q().get_context()) == Q().get_device()) ? 2 : 4;
+        break;
       case sycl::usm::alloc::shared: r = 3; break;
       default: r = 0;
     }
@@ -113,7 +139,7 @@ int alfsh_wait() {
   return guarded("wait", [&] {
     if (g_gate) g_release.store(true);     // test hook: release the held-back unordered GEMMs, then wait for them
     Q().wait_and_throw();
-    if (g_other) g_other->wait_and_throw();
+    if (g_other) g_other->wait_and_throw();    // its async_handler records errors (g_async_err)
     g_gate.reset();
   });
 }
@@ -169,8 +195,13 @@ int alfsh_zgetrs(int trans, int64_t n, int64_t nrhs, void *a, int64_t lda, int64
 int alfsh_zgemm_unordered(int ta, int tb, int64_t m, int64_t n, int64_t k, double ar, double ai, void *a, int64_t lda,
                           void *b, int64_t ldb, double br, double bi, void *c, int64_t ldc) {
   return guarded("zgemm_unordered", [&] {
-    if (!g_other) g_other.reset(new sycl::queue{Q().get_context(), Q().get_device()});   // separate, out-of-order queue
+    if (!g_other) g_other.reset(new sycl::queue{Q().get_context(), Q().get_device(), async_handler});   // separate, out-of-order
     if (!g_gate) {
+      static bool at_exit = false;
+      if (!at_exit) {     // an error exit with the gate closed must not hang the runtime shutdown
+        std::atexit([] { g_release.store(true); });
+        at_exit = true;
+      }
       g_release.store(false);
       g_gate = g_other->submit([](sycl::handler &h) {
         h.host_task([] {

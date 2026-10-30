@@ -193,5 +193,23 @@ change only, with the owner's approval at that time). The `alf_la` interface sta
   (dev experiment, reverted, build `dev/build_exp1`, not evidence): `t_order` 2.91 s and 2.74 s, `t_qr` 1.25 s. Other options: ahead-of-time
   compilation does not help (JIT is about 1 s of 11); a custom tiny-QR SYCL kernel (more code and numerics to verify).
 
+**Implementer 4 (2026-10-30, review (a) findings of candidate 1; uncommitted tree).** Details of what changed and of the T0 runs are in the report to the manager; durable notes:
+
+- **What `t_order` shows.** `ALF_LA_TEST_BREAK_ORDER` is a maximal-reordering control: every GEMM is held back by a gate until `la_sync` /
+  `la_finalize`, so it shows that the test detects gross reordering, not partial overlap or a short race window. A PASS of `t_order` on the
+  correct path shows host-synchronous ordering (every shim call waits, dispatched BLAS calls are enqueued on the OpenMP runtime's queue and
+  the caller's target regions follow), not queue-level dependencies: the backend declares none and relies on the host-synchronous design.
+- **BLAS dispatch and ADR-001 §2.** The BLAS calls use `!$omp dispatch` with the host-side presence guard (`need_*`, `omp_target_is_present`),
+  not `target data use_device_addr` around each call as the ADR §2 wording says; the dispatch maps the (present) arrays itself. Deviation
+  recorded for the ADR; `use_device_addr` is used only around shim calls.
+- **`-I${MKLROOT}/include`** reaches ANA/PROG as well as `Libraries/Modules` (`configure.sh`'s intel block adds it to `ALF_FLAGS_MODULES`, `_ANA` and `_PROG` alike). Harmless
+  (no MKL module is used there); left as is.
+- **`om_fail` tag** is now `alf_la_mod.F90[onemkl]` (checked: no ctest or acceptance regex reads the file name of ONEMKL failures; the HOST/CUDA
+  `LA_FAIL` text is unchanged).
+
+- **Singular `la_getrf` on the B580** (`t302a_singular.{F90,sh}`, `intel:~/alf-gpu/work/t302a/dev/t0h/singular.out`): an 8x8 matrix with an
+  exactly zero column runs through oneMKL `zgetrf` without exception or crash; `la_getrf`/`la_sync` return normally (info > 0 tolerated as on
+  HOST), U(3,3) = 0. No `terminate`, no `omptarget`.
+
 ## Out of scope
 Activating 204–206 device paths on the B580 (302b), the τ path (302c), PVC (301, 304), performance work.
