@@ -82,7 +82,9 @@
 !> stabilization point and flavour (device precision numbers next to a full host tau pass run in lockstep on the same trajectory, host
 !> CGR2_2 on the device inputs, GTT chains with 1-ulp perturbed right states; 1 adds host twins of single CGR2_2 steps; slow, see
 !> diag_post and docs/gpu/scripts/nividia/t207_diagtab.py / t207_diagstat.py), ALF_GPU_TAUDIAG_FROM=<pass> starts the perturbation
-!> chains late, ALF_GPU_TAUSWAP=<mask> replaces CGR2_2 steps by host twins in the production calls (bits as swp below).
+!> chains late, ALF_GPU_TAUDIAG_SEED=<n> seeds the 1-ulp perturbations (unset: derived from the run's RNG state at setup; printed in
+!> the setup line), ALF_GPU_TAUDIAG_VAR=<m1,m2,...> adds GTT chains of dev_cgr22 with the swp masks m_k (" | V" fields),
+!> ALF_GPU_TAUSWAP=<mask> replaces CGR2_2 steps by host twins in the production calls (bits as swp below).
 !> Finding (ticket 207, STABLOG precision tail): the tail of Precision tau is the GTT pair at the last stabilization points; its size
 !> per event changes by up to ~10x under a 1-ulp perturbation of U of the right state, on the host as on the device; device / host
 !> per event is unbiased with the same spread as two 1-ulp perturbed host runs (conditioning, not a device defect).
@@ -111,6 +113,7 @@ Module gpu_tau_mod
   Use gpu_state_mod
   Use gpu_wrap_mod, only: gpu_mmthr, gpu_mmthl_m1, gpu_Vslice_R, gpu_Vslice_L
   Use gpu_stab_mod
+  Use Random_Wrap, only: Get_seed_Len, Ranget
 
   Implicit none
 
@@ -149,11 +152,15 @@ Module gpu_tau_mod
   Integer(int64), Save :: b_h2d = 0, b_d2h = 0                ! interim bytes (this module's per-pass copies)
   ! ---- DEBUG AID (ALF_GPU_TAUDIAG=1, not used in production): per stabilization point and flavour, the device CGR2_2 against host
   ! chains on the same inputs; swp: host twins of single steps of dev_cgr22 (bit 1 V1INV, 2 ZTRSM, 4 Q by host ZUNMQR, 8 Q by device
-  ! ZUNMQR without the Newton-Schulz step); ALF_GPU_TAUSWAP=<mask> sets the mask of the production calls (isolation experiments)
+  ! ZUNMQR without the Newton-Schulz step, 16 pre-pivoted QR on the host (DZNRM2, sort, ZGEQRF; default path), 32 host norms and sort
+  ! with the device geqrf (default path), 64 with 16 / 4: unblocked host ZGEQR2 / ZUNM2R instead of ZGEQRF / ZUNMQR, 128 V1INV on the host
+  ! by ZGETRF + ZGETRS (the device algorithm), 256 explicit Q + Newton-Schulz + GEMM on the host (the device algorithm), 512 a second
+  ! Newton-Schulz step on the device, 1024 with 16|4: host QR of the randomly row-permuted matrix (rows of the result permuted back),
+  ! 2048 with 1: host INV of V1 with randomly permuted columns: null variants, same algorithm, independent rounding); ALF_GPU_TAUSWAP=<mask> sets the mask of the production calls (isolation experiments)
   Logical, Save :: diag_on = .false., diag_full = .true.        ! ALF_GPU_TAUDIAG=1: all variants; =2: no step twins (E) and no hD
   Integer, Parameter :: npc = 5                                     ! GTT chains (see diag_post)
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: dg_p(:,:,:,:)      ! (N,N,N_FL,0:npc-1), propagated on the host
-  Integer(int64), Save :: dg_seed = 20261029_int64
+  Integer(int64), Save :: dg_seed = 20261029_int64                ! ALF_GPU_TAUDIAG_SEED, else derived from the run's RNG state (diag_setup)
   Integer, Save :: dg_from = 0                                      ! ALF_GPU_TAUDIAG_FROM: perturbation chains from this pass on
   Class (UDV_State), Allocatable, Save :: dg_hp(:)
   Integer, Save :: swp = 0, swp_prod = 0
@@ -162,6 +169,24 @@ Module gpu_tau_mod
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: dg_hwk(:)
   Integer(int64), Save :: dg_npt = 0
   Integer, Save :: last_br = 0
+  ! ALF_GPU_TAUDIAG_VAR=<m1,m2,...> (with TAUDIAG=1|2): GTT chains of dev_cgr22 with swp mask m_k, host-propagated like P0 (diag_post)
+  Integer, Parameter :: ndv_max = 10
+  Integer, Save :: dv_n = 0, dv_mask(ndv_max) = 0
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: dv_p(:,:,:,:)      ! (N,N,N_FL,dv_n)
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: dg_hcTT(:,:)        ! GTT of the host CGR2_2 on the device inputs (C), TAUDIAG=1
+  ! host twins of the pre-pivoted QR (swp bits 16, 32): DZNRM2 norms, stable sort, permuted copy, ZGEQRF work
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: dg_qwk(:), dg_tmp(:,:), dg_q(:,:), dg_q2(:,:)
+  Real (Kind=Kind(0.d0)), Allocatable, Save :: dg_nrm(:)
+  Integer (c_int), Allocatable, Save :: dg_perm(:)
+  Integer, Allocatable, Save :: dg_rp(:)                               ! random permutation of the null variants (bits 1024, 2048)
+  Integer(int64), Save :: dg_rseed = 0
+  ! ALF_GPU_TAUDIAG_AMP=<a1,a2,...> (with TAUDIAG=1|2): calibration chains, host CGR2_2 on the host udvr with every entry of U multiplied
+  ! by (1 + a_k * 4e-16 * r) (a_k = 1: the P1/P2 perturbation), own seed stream (the P chains are unchanged), host-propagated (" | A");
+  ! " | Ad": max rel. difference of each chain's new GTT, then of the device's new GTT, from the host chain's new GTT (same point)
+  Integer, Save :: da_n = 0
+  Real (Kind=Kind(0.d0)), Save :: da_amp(ndv_max) = 0.d0
+  Integer(int64), Save :: da_seed = 0
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: da_p(:,:,:,:)      ! (N,N,N_FL,da_n)
 
 Contains
 
@@ -491,7 +516,8 @@ Contains
     call la_getrf(n, n, t_W, n, t_ipiv)
     call k_ident(n, t_V1i, n)
     call la_getrs(LA_N, n, n, t_W, n, t_ipiv, t_V1i, n)
-    if (iand(swp, 1) /= 0) call sw_v1inv(nfe, nst)          ! DEBUG AID (diagnostic only): host ZGETRF + ZGETRI
+    if (iand(swp, 1) /= 0) call sw_v1inv(nfe, nst, .false.) ! DEBUG AID (diagnostic only): host ZGETRF + ZGETRI
+    if (iand(swp, 128) /= 0) call sw_v1inv(nfe, nst, .true.) ! DEBUG AID (diagnostic only): host ZGETRF + ZGETRS (identity)
 #if defined(STABLOG)
     ! scales smaller than 1 stay in D1m / D2m, larger ones move to the rows of V1INV / MYU2 (STAB3 / STABLOG branch of CGR2_2)
     call k_dm_log(n, udv_L(1,nst,nfe), dl1, t_Dm1, t_Rs(1,1))
@@ -509,7 +535,13 @@ Contains
     call la_geqp3_host(n2, n2, t_H1, n2, t_ipvt, t_tau)
 #else
     ! column-norm pre-pivot + unpivoted QR: 8 * 2N B D->H (norms), 4 * 2N B H->D (permutation) inside la_qrpp
-    call la_qrpp(n2, n2, t_H1, n2, t_ipvt, t_tau)
+    if (iand(swp, 16) /= 0) then
+       call sw_qrpp(.true.)                                 ! DEBUG AID (diagnostic only): host DZNRM2 + sort + ZGEQRF
+    else if (iand(swp, 32) /= 0) then
+       call sw_qrpp(.false.)                                ! DEBUG AID (diagnostic only): host DZNRM2 + sort, device geqrf
+    else
+       call la_qrpp(n2, n2, t_H1, n2, t_ipvt, t_tau)
+    endif
 #endif
     if (fault == 1) then                                    ! negative control: wrong permutation (host and device copy)
        kk = t_ipvt(1); t_ipvt(1) = t_ipvt(2); t_ipvt(2) = kk
@@ -525,7 +557,10 @@ Contains
        call la_trsm('L', 'U', LA_C, 'N', n2, n2, z1, t_H1, n2, t_H2, n2)
     endif
     call k_rowscale_inv(n2, t_H2, n2, t_D3)                 ! conj(1/D3(i)) * row i
-    if (iand(swp, 4) /= 0) then
+    if (iand(swp, 256) /= 0) then
+       call sw_nsq()                                        ! DEBUG AID (diagnostic only): explicit Q + Newton-Schulz + GEMM on the host
+       call k_blocks(n, br, fault == 4, t_H2, G00, GT0, GTT, G0T)
+    else if (iand(swp, 4) /= 0) then
        call sw_unmqr()                                      ! DEBUG AID (diagnostic only): host ZUNMQR applied to X
        call k_blocks(n, br, fault == 4, t_H2, G00, GT0, GTT, G0T)
     else if (iand(swp, 8) /= 0) then
@@ -540,6 +575,12 @@ Contains
        call la_gemm(LA_C, LA_N, n2, n2, n2, z1, t_Q, n2, t_Q, n2, z0, t_A, n2)
        call k_ns2(n2, t_A)
        call la_gemm(LA_N, LA_N, n2, n2, n2, z1, t_Q, n2, t_A, n2, z0, t_B, n2)
+       if (iand(swp, 512) /= 0) then                        ! DEBUG AID (diagnostic only): a second Newton-Schulz step
+          call la_gemm(LA_C, LA_N, n2, n2, n2, z1, t_B, n2, t_B, n2, z0, t_A, n2)
+          call k_ns2(n2, t_A)
+          call la_gemm(LA_N, LA_N, n2, n2, n2, z1, t_B, n2, t_A, n2, z0, t_Q, n2)
+          call k_copy_c(n2*n2, t_Q, t_B)
+       endif
        call la_gemm(LA_N, LA_N, n2, n2, n2, z1, t_B, n2, t_H2, n2, z0, t_A, n2)
        call k_blocks(n, br, fault == 4, t_A, G00, GT0, GTT, G0T)
     else
@@ -560,12 +601,15 @@ Contains
     Implicit none
     Integer :: nfe, n, n2, info
     Complex (Kind=Kind(0.d0)) :: wq(1)
-    Character (len=256) :: v
-    Integer :: ios
+    Character (len=256) :: v, vv
+    Character (len=512) :: line
+    Character (len=40) :: seed_src
+    Integer :: ios, i, k
+    Integer, Allocatable :: sv(:)
     ! debug variables, read through the ticket 212 reader (refused in production runs); an unparsable value stops the run
     if (gpu_env_get('ALF_GPU_TAUSWAP', v)) then
        read(v,*,iostat=ios) swp_prod
-       if (ios /= 0 .or. swp_prod < 0 .or. swp_prod > 15) call env_bad('ALF_GPU_TAUSWAP', v)
+       if (ios /= 0 .or. swp_prod < 0 .or. swp_prod > 4095) call env_bad('ALF_GPU_TAUSWAP', v)
     endif
     swp = swp_prod
     if (gpu_env_get('ALF_GPU_TAUDIAG', v)) then
@@ -577,12 +621,69 @@ Contains
        read(v,*,iostat=ios) dg_from
        if (ios /= 0 .or. dg_from < 0) call env_bad('ALF_GPU_TAUDIAG_FROM', v)
     endif
+    ! ALF_GPU_TAUDIAG_SEED: seed of the 1-ulp perturbation chains (perturb_state); unset: derived from the run's own RNG state at setup
+    ! (seeds file / confin), so fresh ALF seeds give fresh perturbations.  Reading the state (RANDOM_SEED GET) does not advance it.
+    if (gpu_env_get('ALF_GPU_TAUDIAG_SEED', v)) then
+       read(v,*,iostat=ios) dg_seed
+       if (ios /= 0 .or. dg_seed < 0) call env_bad('ALF_GPU_TAUDIAG_SEED', v)
+       dg_seed = mod(dg_seed, 2147483648_int64)
+       seed_src = 'ALF_GPU_TAUDIAG_SEED'
+    else
+       seed_src = ''
+    endif
+    dv_n = 0
+    if (gpu_env_get('ALF_GPU_TAUDIAG_VAR', v)) then
+       vv = v
+       do
+          if (len_trim(vv) == 0) exit
+          i = index(vv, ',')
+          if (i == 0) i = len_trim(vv) + 1
+          if (dv_n == ndv_max) call env_bad('ALF_GPU_TAUDIAG_VAR', v)
+          dv_n = dv_n + 1
+          read(vv(1:i-1),*,iostat=ios) dv_mask(dv_n)
+          if (ios /= 0 .or. dv_mask(dv_n) < 0 .or. dv_mask(dv_n) > 4095) call env_bad('ALF_GPU_TAUDIAG_VAR', v)
+          vv = vv(i+1:)
+       enddo
+    endif
+    da_n = 0
+    if (gpu_env_get('ALF_GPU_TAUDIAG_AMP', v)) then
+       vv = v
+       do
+          if (len_trim(vv) == 0) exit
+          i = index(vv, ',')
+          if (i == 0) i = len_trim(vv) + 1
+          if (da_n == ndv_max) call env_bad('ALF_GPU_TAUDIAG_AMP', v)
+          da_n = da_n + 1
+          read(vv(1:i-1),*,iostat=ios) da_amp(da_n)
+          if (ios /= 0 .or. .not. (da_amp(da_n) > 0.d0 .and. da_amp(da_n) < 1.d10)) call env_bad('ALF_GPU_TAUDIAG_AMP', v)
+          vv = vv(i+1:)
+       enddo
+    endif
     if (.not. (diag_on .or. swp_prod /= 0)) return
     n = t_N; n2 = t_N2
     call ZUNMQR('L', 'N', n2, n2, n2, t_H1, n2, t_tau, t_H2, n2, wq, -1, info)
     allocate(dg_hwk(max(1, int(dble(wq(1))))))
-    if (swp_prod /= 0) call info_line('GPU tau pass: DEBUG ALF_GPU_TAUSWAP active (host twins of CGR2_2 steps)')
+    call ZGEQRF(n2, n2, t_H1, n2, t_tau, wq, -1, info)
+    allocate(dg_qwk(max(n2, int(dble(wq(1))))), dg_tmp(n2,n2), dg_nrm(n2), dg_perm(n2), dg_q(n2,n2), dg_q2(n2,n2), dg_rp(n2))
+    dg_rseed = mod(dg_seed + 7654321_int64, 2147483648_int64)
+    if (swp_prod /= 0) then
+       write(line,'(A,I0,A)') 'GPU tau pass: DEBUG ALF_GPU_TAUSWAP=', swp_prod, ' active (host twins of CGR2_2 steps)'
+       call info_line(line)
+    endif
     if (.not. diag_on) return
+    if (len_trim(seed_src) == 0) then
+       call Get_seed_Len(k)
+       allocate(sv(k))
+       sv = 0
+       call Ranget(sv)
+       dg_seed = 0_int64
+       do i = 1, k
+          dg_seed = mod(dg_seed*1000003_int64 + int(sv(i), int64) + 2147483648_int64, 2147483648_int64)
+       enddo
+       deallocate(sv)
+       seed_src = 'derived from the run''s RNG state'
+    endif
+    dg_rseed = mod(dg_seed + 7654321_int64, 2147483648_int64)
     allocate(dg_hr(t_nfe), dg_hrd(t_nfe), dg_hw(t_nfe), dg_hl(t_nfe), dg_hp(1))
     call dg_hp(1)%init(n, 'r')
     do nfe = 1, t_nfe
@@ -592,7 +693,26 @@ Contains
     allocate(dh00(n,n,N_FL), dhT0(n,n,N_FL), dhTT(n,n,N_FL), dh0T(n,n,N_FL), dg_c(n,n,4), dg_o(n,n,3), dg_ho(n,n,3))
     dh00 = z0; dhT0 = z0; dhTT = z0; dh0T = z0
     allocate(dg_p(n,n,N_FL,0:npc-1)); dg_p = z0
-    call info_line('GPU tau pass: DEBUG ALF_GPU_TAUDIAG=1 active (host oracle chains at every stabilization point, slow)')
+    allocate(dv_p(n,n,N_FL,max(1,dv_n)), dg_hcTT(n,n)); dv_p = z0; dg_hcTT = z0
+    allocate(da_p(n,n,N_FL,max(1,da_n))); da_p = z0
+    da_seed = mod(dg_seed + 1234567_int64, 2147483648_int64)
+    v = '2'
+    if (diag_full) v = '1'
+    write(line,'(A,A,A,I0,A,A,A,I0,A)') 'GPU tau pass: DEBUG ALF_GPU_TAUDIAG=', trim(v), &
+         & ' active (host oracle chains at every stabilization point, slow), perturbation seed ', dg_seed, ' (', trim(seed_src), &
+         & '), variant chains ', dv_n, ' (ALF_GPU_TAUDIAG_VAR masks:'
+    do i = 1, dv_n
+       write(line(len_trim(line)+1:),'(A,I0)') ' ', dv_mask(i)
+    enddo
+    line = trim(line)//')'
+    if (da_n > 0) then
+       write(line(len_trim(line)+1:),'(A,I0,A)') ', amplitude chains ', da_n, ' (ALF_GPU_TAUDIAG_AMP:'
+       do i = 1, da_n
+          write(line(len_trim(line)+1:),'(A,ES9.2)') ' ', da_amp(i)
+       enddo
+       line = trim(line)//')'
+    endif
+    call say(line)                                         ! stdout and info: the run.log of a paired run records the seed
   end subroutine diag_setup
 
   !> unparsable value of a debug variable of this module: stop (stdout and info)
@@ -627,6 +747,15 @@ Contains
        call h_proprm1(dg_p(:,:,:,k), nt1)
        call h_propr(dg_p(:,:,:,k), nt1)
     enddo
+    if (n_pass+1 < dg_from) return
+    do k = 1, dv_n
+       call h_proprm1(dv_p(:,:,:,k), nt1)
+       call h_propr(dv_p(:,:,:,k), nt1)
+    enddo
+    do k = 1, da_n
+       call h_proprm1(da_p(:,:,:,k), nt1)
+       call h_propr(da_p(:,:,:,k), nt1)
+    enddo
   end subroutine diag_slice
 
   ! GTT chains restart from G (tau = 0)
@@ -637,6 +766,12 @@ Contains
     Integer :: k
     do k = 0, npc-1
        dg_p(:,:,nf,k) = G
+    enddo
+    do k = 1, dv_n
+       dv_p(:,:,nf,k) = G
+    enddo
+    do k = 1, da_n
+       da_p(:,:,nf,k) = G
     enddo
   end subroutine diag_pset
 
@@ -686,9 +821,9 @@ Contains
     Integer, parameter :: masks(nv) = (/ 1, 2, 4, 8, 7 /)
     Integer :: nf, n, n2, v, br, brd, i
     Real (Kind=Kind(0.d0)) :: pdev(4), pB(4), pC(4), pD(4), pE(4,nv), dCd, dU, dV, dS, d3mx, d3mn
-    Real (Kind=Kind(0.d0)) :: l1(3), l2(3), pP(0:npc-1), xm
+    Real (Kind=Kind(0.d0)) :: l1(3), l2(3), pP(0:npc-1), xm, pV(ndv_max), dvx(ndv_max), pA(ndv_max), dA(ndv_max+1)
     Integer :: k
-    Character (len=1024) :: line
+    Character (len=2000) :: line
     n = t_N; n2 = t_N2; nf = Calc_Fl_map(nfe)
     dg_npt = dg_npt + 1
     brd = last_br
@@ -706,6 +841,7 @@ Contains
     if (diag_full) then
     call CGR2_2(dg_c(:,:,2), dg_c(:,:,1), dg_c(:,:,3), dg_c(:,:,4), dg_hrd(nfe), dg_hl(nfe), n)
     call diag_p4(GR(:,:,nf), dg_o, dg_c(:,:,1), dg_c(:,:,2), dg_c(:,:,3), dg_c(:,:,4), pC)
+    dg_hcTT = dg_c(:,:,3)
     call mx(dCd, rel_diff(G00_d(:,:,nf), dg_c(:,:,1))); call mx(dCd, rel_diff(GT0_d(:,:,nf), dg_c(:,:,2)))
     call mx(dCd, rel_diff(GTT_d(:,:,nf), dg_c(:,:,3))); call mx(dCd, rel_diff(G0T_d(:,:,nf), dg_c(:,:,4)))
     endif
@@ -727,6 +863,33 @@ Contains
           call COMPARE(dg_p(:,:,nf,k), dg_c(:,:,3), pP(k), xm)
           dg_p(:,:,nf,k) = dg_c(:,:,3)
        enddo
+    endif
+    ! variant chains (ALF_GPU_TAUDIAG_VAR): dev_cgr22 with swp = mask on the production inputs, GTT propagated on the host from its own
+    ! output of the previous point (as P0), precision number against its own new GTT; dvx: max rel. difference of the variant's GTT
+    ! from the host CGR2_2 on the same device inputs (C, TAUDIAG=1 only; 0 = bitwise equal)
+    pV = 0.d0; dvx = -1.d0
+    if (n_pass+1 >= dg_from) then
+       do k = 1, dv_n
+          swp = dv_mask(k)
+          call dev_cgr22(nfe, nst, 1.d0, 0.d0, br, t_S(1,1,1), t_S(1,1,2), t_S(1,1,3), t_S(1,1,4))
+          call la_sync()
+          call upd_from_c(t_S(1,1,3), n*n)                 ! diagnostic D->H of the variant's GTT
+          call COMPARE(dv_p(:,:,nf,k), t_S(:,:,3), pV(k), xm)
+          dv_p(:,:,nf,k) = t_S(:,:,3)
+          if (diag_full) dvx(k) = rel_diff(t_S(:,:,3), dg_hcTT)
+       enddo
+       swp = swp_prod
+    endif
+    pA = 0.d0; dA = 0.d0
+    if (n_pass+1 >= dg_from .and. da_n > 0) then
+       do k = 1, da_n
+          call perturb_state_amp(dg_hr(nfe), dg_hp(1), da_seed, da_amp(k))
+          call CGR2_2(dg_c(:,:,2), dg_c(:,:,1), dg_c(:,:,3), dg_c(:,:,4), dg_hp(1), dg_hl(nfe), n)
+          call COMPARE(da_p(:,:,nf,k), dg_c(:,:,3), pA(k), xm)
+          da_p(:,:,nf,k) = dg_c(:,:,3)
+          dA(k) = rel_diff(dg_c(:,:,3), dhTT(:,:,nf))
+       enddo
+       dA(da_n+1) = rel_diff(GTT_d(:,:,nf), dhTT(:,:,nf))
     endif
     pD = 0.d0; pE = 0.d0; dU = 0.d0; dV = 0.d0; dS = 0.d0
     if (diag_full) then
@@ -756,19 +919,87 @@ Contains
          & 'TAUDIAG pt ', dg_npt, ' pass ', n_pass+1, ' nst ', nst, ' nfe ', nfe, ' br ', brd, &
          & ' dev', pdev, ' | hostfull', pB, ' | hC', maxval(pC), ' hD', maxval(pD), ' | E1,2,4,8,7', (maxval(pE(:,i)), i = 1, nv), &
          & ' | P', pP, ' | dCd', dCd, ' dUVS', dU, dV, dS, ' | L1', l1, ' L2', l2, ' D3', d3mx, d3mn
+    if (dv_n > 0) then
+       write(line(len_trim(line)+1:),'(A,10ES9.2)') ' | V', pV(1:dv_n)
+       if (diag_full) write(line(len_trim(line)+1:),'(A,10ES9.2)') ' | Vx', dvx(1:dv_n)
+    endif
+    if (da_n > 0) write(line(len_trim(line)+1:),'(A,10ES9.2)') ' | A', pA(1:da_n)
+    if (da_n > 0) write(line(len_trim(line)+1:),'(A,11ES9.2)') ' | Ad', dA(1:da_n+1)
     call say(line)
   end subroutine diag_post
 
   ! host twins of single steps of dev_cgr22 (diagnostic only; every copy below is a diagnostic transfer)
-  Subroutine sw_v1inv(nfe, nst)
+  Subroutine sw_v1inv(nfe, nst, lu)
     Implicit none
     Integer, intent(in) :: nfe, nst
+    Logical, intent(in) :: lu
     Complex (Kind=Kind(0.d0)) :: z
+    Integer :: i, info
     call la_sync()
     call upd_from_c(udv_V(1,1,nst,nfe), t_N*t_N)
-    call INV(udv_V(:,:,nst,nfe), t_V1i, z)
+    if (lu) then
+       ! the device algorithm on the host: LU and a solve with the identity
+       dg_tmp(1:t_N,1:t_N) = udv_V(:,:,nst,nfe)
+       t_V1i = z0
+       do i = 1, t_N
+          t_V1i(i,i) = z1
+       enddo
+       call ZGETRF(t_N, t_N, dg_tmp, t_N2, dg_perm, info)
+       call ZGETRS('N', t_N, t_N, dg_tmp, t_N2, dg_perm, t_V1i, t_N, info)
+    else if (iand(swp, 2048) /= 0) then
+       ! null variant: INV of V1 with randomly permuted columns, rows of the inverse permuted back ((V P)^-1 = P^T V^-1): the same
+       ! algorithm and accuracy, other elimination order (independent rounding)
+       call rperm(t_N)
+       do i = 1, t_N
+          dg_q(1:t_N,i) = udv_V(:,dg_rp(i),nst,nfe)
+       enddo
+       call INV(dg_q(1:t_N,1:t_N), dg_q2(1:t_N,1:t_N), z)
+       do i = 1, t_N
+          t_V1i(dg_rp(i),:) = dg_q2(i,1:t_N)
+       enddo
+    else
+       call INV(udv_V(:,:,nst,nfe), t_V1i, z)
+    endif
     call upd_to_c(t_V1i, t_N*t_N)
   end subroutine sw_v1inv
+
+  ! random permutation dg_rp(1:n) (Fisher-Yates on the own stream dg_rseed)
+  Subroutine rperm(n)
+    Implicit none
+    Integer, intent(in) :: n
+    Integer :: i, j, t
+    do i = 1, n
+       dg_rp(i) = i
+    enddo
+    do i = n, 2, -1
+       j = 1 + int((rnd(dg_rseed) + 0.5d0)*dble(i))
+       j = min(max(j, 1), i)
+       t = dg_rp(i); dg_rp(i) = dg_rp(j); dg_rp(j) = t
+    enddo
+  end subroutine rperm
+
+  ! the device Q application on the host: Q = ZUNMQR on the identity, Q <- Q (3 - Q^H Q)/2, X <- Q X (ZGEMM); result in t_H2
+  Subroutine sw_nsq()
+    Implicit none
+    integer :: n2, info, i
+    n2 = t_N2
+    call la_sync()
+    call upd_from_c(t_H1, n2*n2); call upd_from_c(t_H2, n2*n2); call upd_from_c(t_tau, n2)
+    dg_q = z0
+    do i = 1, n2
+       dg_q(i,i) = z1
+    enddo
+    call ZUNMQR('L', 'N', n2, n2, n2, t_H1, n2, t_tau, dg_q, n2, dg_hwk, size(dg_hwk), info)
+    call ZGEMM('C', 'N', n2, n2, n2, z1, dg_q, n2, dg_q, n2, z0, dg_tmp, n2)
+    dg_tmp = -0.5d0*dg_tmp
+    do i = 1, n2
+       dg_tmp(i,i) = dg_tmp(i,i) + 1.5d0
+    enddo
+    call ZGEMM('N', 'N', n2, n2, n2, z1, dg_q, n2, dg_tmp, n2, z0, dg_q2, n2)
+    call ZGEMM('N', 'N', n2, n2, n2, z1, dg_q2, n2, t_H2, n2, z0, dg_tmp, n2)
+    t_H2 = dg_tmp
+    call upd_to_c(t_H2, n2*n2)
+  end subroutine sw_nsq
 
   Subroutine sw_trsm()
     Implicit none
@@ -782,13 +1013,77 @@ Contains
 
   Subroutine sw_unmqr()
     Implicit none
-    integer :: n2, info
+    integer :: n2, info, i
     n2 = t_N2
     call la_sync()
     call upd_from_c(t_H1, n2*n2); call upd_from_c(t_H2, n2*n2); call upd_from_c(t_tau, n2)
-    call ZUNMQR('L', 'N', n2, n2, n2, t_H1, n2, t_tau, t_H2, n2, dg_hwk, size(dg_hwk), info)
+    if (iand(swp, 64) /= 0) then
+       call ZUNM2R('L', 'N', n2, n2, n2, t_H1, n2, t_tau, t_H2, n2, dg_hwk, info)   ! unblocked application of Q
+    else
+       call ZUNMQR('L', 'N', n2, n2, n2, t_H1, n2, t_tau, t_H2, n2, dg_hwk, size(dg_hwk), info)
+    endif
+    if (iand(swp, 1024) /= 0 .and. iand(swp, 16) /= 0) then   ! undo the row permutation of the QR (sw_qrpp)
+       do i = 1, n2
+          dg_tmp(dg_rp(i),:) = t_H2(i,:)
+       enddo
+       t_H2 = dg_tmp
+    endif
     call upd_to_c(t_H2, n2*n2)
   end subroutine sw_unmqr
+
+  ! the pre-pivoted QR of la_qrpp with the CPU variant-1 arithmetic (QR_PREPIVOT #else branch of cgr2_2_mod): DZNRM2 column norms,
+  ! stable descending insertion sort, permuted copy; full: host ZGEQRF (= ZGEQP3 with all columns fixed), else device geqrf
+  Subroutine sw_qrpp(full)
+    Implicit none
+    Logical, intent(in) :: full
+    Integer :: n2, i, j, info
+    Integer (c_int) :: kk
+    Real (Kind=Kind(0.d0)), external :: DZNRM2
+    n2 = t_N2
+    call la_sync()
+    call upd_from_c(t_H1, n2*n2)
+    do j = 1, n2
+       dg_nrm(j) = DZNRM2(n2, t_H1(1,j), 1)
+       dg_perm(j) = j
+    enddo
+    do i = 2, n2
+       kk = dg_perm(i)
+       j = i - 1
+       do while (j >= 1)
+          if (dg_nrm(dg_perm(j)) >= dg_nrm(kk)) exit
+          dg_perm(j+1) = dg_perm(j)
+          j = j - 1
+       enddo
+       dg_perm(j+1) = kk
+    enddo
+    do j = 1, n2
+       dg_tmp(:,j) = t_H1(:,dg_perm(j))
+    enddo
+    t_H1 = dg_tmp
+    t_ipvt(1:n2) = dg_perm(1:n2)
+    call upd_to_i(t_ipvt, n2)
+    if (full .and. iand(swp, 1024) /= 0) then
+       ! null variant: QR of P A (rows randomly permuted): the same R up to phases, Q' = P Q Phi^H; sw_unmqr permutes the rows of
+       ! the result back.  Same algorithm and accuracy, other summation order (independent rounding)
+       call rperm(n2)
+       do i = 1, n2
+          dg_tmp(i,:) = t_H1(dg_rp(i),:)
+       enddo
+       t_H1 = dg_tmp
+    endif
+    if (full) then
+       if (iand(swp, 64) /= 0) then
+          call ZGEQR2(n2, n2, t_H1, n2, t_tau, dg_qwk, info)    ! unblocked Householder QR (an equally valid host algorithm)
+       else
+          call ZGEQRF(n2, n2, t_H1, n2, t_tau, dg_qwk, size(dg_qwk), info)
+       endif
+       if (info /= 0) call env_bad('sw_qrpp ZGEQRF info', 'nonzero')
+       call upd_to_c(t_H1, n2*n2); call upd_to_c(t_tau, n2)
+    else
+       call upd_to_c(t_H1, n2*n2)
+       call la_geqrf(n2, n2, t_H1, n2, t_tau)
+    endif
+  end subroutine sw_qrpp
 
 !====================================================================
 !  Device kernels (plain arrays; synchronous target regions)
@@ -1466,6 +1761,27 @@ Contains
        enddo
     enddo
   end subroutine perturb_state
+
+  ! as perturb_state with the amplitude a: every entry of U multiplied by (1 + a * 4e-16 * r)
+  Subroutine perturb_state_amp(a, p, seed, amp)
+    Implicit none
+    Class (UDV_State), intent(in) :: a
+    Class (UDV_State), intent(inout) :: p
+    Integer(int64), intent(inout) :: seed
+    Real (Kind=Kind(0.d0)), intent(in) :: amp
+    Integer :: i, j
+    p%U = a%U; p%V = a%V
+#if defined(STABLOG)
+    p%L = a%L
+#else
+    p%D = a%D
+#endif
+    do j = 1, size(p%U,2)
+       do i = 1, size(p%U,1)
+          p%U(i,j) = p%U(i,j) * (1.d0 + amp*4.d-16*rnd(seed))
+       enddo
+    enddo
+  end subroutine perturb_state_amp
 
 !====================================================================
 !  Timing (ALF_GPU_TAUTIME=1): one tau pass without the observables, device vs host, same states
