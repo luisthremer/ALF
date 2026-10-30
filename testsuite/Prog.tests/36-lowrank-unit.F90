@@ -32,6 +32,8 @@ module lowrank_unit_harness
    use Predefined_Int
    use upgrade_mod
    use Random_Wrap
+   use Lowrank_update_mod, only: Lowrank_init, Lowrank_finalize, Lowrank_propose, Lowrank_accept, &
+        &                        Lowrank_wrap_hook, Lowrank_flush, Upgrade_lowrank
    implicit none
 
    integer, parameter :: dp = kind(0.d0)
@@ -47,10 +49,10 @@ module lowrank_unit_harness
    character(len=10), parameter :: case_name(N_CASES) = &
         & [character(len=10) :: 'mz', 'density', 'continuous', 'repeat', 'mz_illcond']
 
-   ! Candidate schemes. Tasks 7 / 11 add SCHEME_DELAYED / SCHEME_SUBMATRIX here.
-   integer, parameter :: N_SCHEMES = 1
-   integer, parameter :: SCHEME_STANDARD = 1
-   character(len=10), parameter :: scheme_name(N_SCHEMES) = [character(len=10) :: 'standard']
+   ! Candidate schemes. Task 11 adds SCHEME_SUBMATRIX here.
+   integer, parameter :: N_SCHEMES = 2
+   integer, parameter :: SCHEME_STANDARD = 1, SCHEME_DELAYED = 2
+   character(len=10), parameter :: scheme_name(N_SCHEMES) = [character(len=10) :: 'standard', 'delayed']
 
    integer, parameter :: N_NDELAY = 4
    integer, parameter :: N_DELAY_LIST(N_NDELAY) = [1, 7, 32, 1000]
@@ -86,6 +88,9 @@ contains
       case (SCHEME_STANDARD)
          if (allocated(std_Gwork)) deallocate(std_Gwork)
          allocate(std_Gwork(Ndim, Ndim, N_FL))
+      case (SCHEME_DELAYED)
+         ! Works on the driver's Gc (= G0 between flushes); prints the scheme info line.
+         call Lowrank_init('delayed', N_delay)
       case default
          error stop 'cand_init: unknown scheme'
       end select
@@ -95,6 +100,8 @@ contains
       select case (cand_scheme)
       case (SCHEME_STANDARD)
          if (allocated(std_Gwork)) deallocate(std_Gwork)
+      case (SCHEME_DELAYED)
+         call Lowrank_finalize()
       end select
    end subroutine cand_finalize
 
@@ -106,6 +113,8 @@ contains
       select case (cand_scheme)
       case (SCHEME_STANDARD)
          ! no-op
+      case (SCHEME_DELAYED)
+         call Lowrank_wrap_hook(n_op, nt, HS_field, dir)
       end select
    end subroutine cand_hook
 
@@ -125,6 +134,8 @@ contains
          phase = cmplx(1.d0, 0.d0, dp)
          mode  = "Intermediate"
          call Upgrade2(std_Gwork, n_op, nt, phase, HS_new, ratio, 1.d0, 1.d0, toggle, mode)
+      case (SCHEME_DELAYED)
+         call Lowrank_propose(Gc, n_op, nt, HS_new, ratio)
       end select
    end subroutine cand_propose
 
@@ -137,6 +148,8 @@ contains
       select case (cand_scheme)
       case (SCHEME_STANDARD)
          Gc = std_Gwork
+      case (SCHEME_DELAYED)
+         call Lowrank_accept(Gc, n_op, nt, HS_new)   ! sets nsigma%f(n_op,nt); the driver resets it
       end select
    end subroutine cand_accept
 
@@ -146,6 +159,8 @@ contains
       select case (cand_scheme)
       case (SCHEME_STANDARD)
          ! no-op
+      case (SCHEME_DELAYED)
+         call Lowrank_flush(Gc)
       end select
    end subroutine cand_flush
 
@@ -685,17 +700,135 @@ contains
 end module lowrank_eligibility_section
 
 
+! Kernel-equivalence section: from a flushed state with the same RNG state, N_PROP_EQ
+! proposals (case mz, mode "Final", S0_ratio = T0_proposal_ratio = 1, proposals drawn once
+! beforehand) through the real Upgrade2 and through Upgrade_lowrank (delayed), each on its
+! own G copy and its own copy of the global nsigma. Asserted: identical toggle sequence and
+! fields, |Delta Phase| <= PHASE_TOL, the same next ranf_wrap() value (same RNG consumption),
+! and G after the final flush (and Lowrank_current_G before it) within TOL_UNIT.
+module lowrank_kernel_equiv_section
+   use lowrank_unit_harness, only: dp, TOL_UNIT, N_SLICES, N_DELAY_LIST, N_NDELAY, CASE_MZ, &
+        &                          M_ops, setup_case, random_initial_G, clear_case
+   use Hamiltonian_main, only: nsigma, Ndim, N_FL
+   use upgrade_mod
+   use Random_Wrap
+   use Lowrank_update_mod, only: Lowrank_init, Lowrank_finalize, Upgrade_lowrank, Lowrank_flush, &
+        &                        Lowrank_pending, Lowrank_current_G
+   implicit none
+
+   integer,  parameter :: N_PROP_EQ = 200
+   real(dp), parameter :: PHASE_TOL = 1.0d-12
+
+contains
+
+   subroutine run_kernel_equivalence(n_fail)
+      integer, intent(inout) :: n_fail
+
+      complex(dp), allocatable :: G0(:,:,:), Ga(:,:,:), Gb(:,:,:), Aex(:,:,:), Gcur(:,:)
+      complex(dp), allocatable :: f_save(:,:), f_a(:,:)
+      integer,     allocatable :: rng_state(:)
+      integer     :: n_eq(N_PROP_EQ), nt_eq(N_PROP_EQ)
+      complex(dp) :: hs_eq(N_PROP_EQ)
+      logical     :: tog_a(N_PROP_EQ), tog_b(N_PROP_EQ)
+      integer     :: id, k, nf, k_seed, n_acc, n_mis, n_pend_end
+      complex(dp) :: phase0, phase_a, phase_b, prev
+      real(dp)    :: next_a, next_b, dphase, gerr_cur, gerr, gmax
+      character(len=64) :: mode
+      character(len=4)  :: flag
+      logical     :: same_f
+
+      write(6,'(A,I0,A)') '36-lowrank-unit: kernel equivalence, Upgrade2(Final) vs Upgrade_lowrank (delayed), case mz, ', &
+           & N_PROP_EQ, ' proposals'
+      write(6,'(A7,1X,A5,1X,A8,1X,A8,1X,A10,1X,A22,1X,A22,1X,A11,1X,A11,1X,A6,1X,A4)') 'N_delay', 'acc', 'tog_mis', &
+           & 'fld_same', '|dPhase|', 'next ranf (Upgrade2)', 'next ranf (lowrank)', 'G_cur_err', 'G_err', 'n_pend', ''
+      mode = "Final"
+      call Get_seed_Len(k_seed)
+      allocate(rng_state(k_seed))
+      do id = 1, N_NDELAY
+         call Ranset([1000 + 17 * CASE_MZ])
+         call setup_case(CASE_MZ)
+         allocate(G0(Ndim,Ndim,N_FL), Ga(Ndim,Ndim,N_FL), Gb(Ndim,Ndim,N_FL), Aex(Ndim,Ndim,N_FL), Gcur(Ndim,Ndim))
+         do nf = 1, N_FL
+            call random_initial_G(G0(:,:,nf), Aex(:,:,nf))
+         enddo
+         ! Proposals, drawn once (relative to the initial configuration)
+         do k = 1, N_PROP_EQ
+            n_eq(k)  = min(M_ops,    1 + int(real(M_ops, dp)    * ranf_wrap()))
+            nt_eq(k) = min(N_SLICES, 1 + int(real(N_SLICES, dp) * ranf_wrap()))
+            hs_eq(k) = nsigma%flip(n_eq(k), nt_eq(k))
+         enddo
+         phase0 = cmplx(cos(0.3d0), sin(0.3d0), dp)
+         f_save = nsigma%f
+         call random_seed(get=rng_state)
+
+         ! ---- pass A: Upgrade2, mode Final ----
+         Ga = G0
+         phase_a = phase0
+         do k = 1, N_PROP_EQ
+            prev = cmplx(1.d0, 0.d0, dp)
+            call Upgrade2(Ga, n_eq(k), nt_eq(k), phase_a, hs_eq(k), prev, 1.d0, 1.d0, tog_a(k), mode)
+         enddo
+         next_a = ranf_wrap()
+         f_a = nsigma%f
+
+         ! ---- pass B: Upgrade_lowrank (delayed), same RNG state and fields ----
+         nsigma%f = f_save
+         call random_seed(put=rng_state)
+         call Lowrank_init('delayed', N_DELAY_LIST(id))
+         Gb = G0
+         phase_b = phase0
+         do k = 1, N_PROP_EQ
+            call Upgrade_lowrank(Gb, n_eq(k), nt_eq(k), phase_b, hs_eq(k), 1.d0, 1.d0, tog_b(k))
+         enddo
+         next_b = ranf_wrap()
+         n_pend_end = Lowrank_pending()
+         gmax = maxval(abs(Ga))
+         gerr_cur = 0.d0
+         do nf = 1, N_FL
+            call Lowrank_current_G(Gb, nf, Gcur)
+            gerr_cur = max(gerr_cur, maxval(abs(Gcur - Ga(:,:,nf))) / gmax)
+         enddo
+         call Lowrank_flush(Gb)
+         gerr = maxval(abs(Gb - Ga)) / gmax
+         same_f = all(nsigma%f == f_a)
+         call Lowrank_finalize()
+         nsigma%f = f_save
+
+         n_acc  = count(tog_a)
+         n_mis  = count(tog_a .neqv. tog_b)
+         dphase = abs(phase_a - phase_b)
+         flag = ''
+         if (n_mis /= 0 .or. .not. same_f .or. .not. (dphase <= PHASE_TOL) .or. next_a /= next_b &
+              & .or. .not. (gerr <= TOL_UNIT) .or. .not. (gerr_cur <= TOL_UNIT)) then
+            flag = 'FAIL'
+            n_fail = n_fail + 1
+         endif
+         write(6,'(I7,1X,I5,1X,I8,1X,L8,1X,ES10.3,1X,F22.17,1X,F22.17,1X,ES11.4,1X,ES11.4,1X,I6,1X,A4)') &
+              & N_DELAY_LIST(id), n_acc, n_mis, same_f, dphase, next_a, next_b, gerr_cur, gerr, n_pend_end, flag
+         deallocate(G0, Ga, Gb, Aex, Gcur)
+      enddo
+      call clear_case()
+   end subroutine run_kernel_equivalence
+
+end module lowrank_kernel_equiv_section
+
+
 program lowrank_unit
    use lowrank_unit_harness
    use lowrank_eligibility_section, only: run_eligibility_section
+   use lowrank_kernel_equiv_section, only: run_kernel_equivalence
    implicit none
    integer :: ic, is, id, idir, n_fail
    real(dp) :: rerr, gerr, drift, max_drift, tol, drift_rel
    character(len=4), parameter :: dirs(2) = [character(len=4) :: 'up', 'down']
    character(len=4) :: flag
+   logical :: info_existed
+   integer :: u_info
 
    call Fields_init(1.d0)
    n_fail = 0
+   ! Lowrank_init (delayed candidate, eligibility section) appends to the file 'info'.
+   inquire(file='info', exist=info_existed)
    max_drift = 0.d0
 
    write(6,'(A,ES9.2,A,ES9.2,A)') '36-lowrank-unit: TOL_UNIT = ', TOL_UNIT, ', TOL_ILL = ', TOL_ILL, &
@@ -741,6 +874,14 @@ program lowrank_unit
    enddo
    write(6,'(A,ES10.3)') 'max std_drift_vs_exact (well-conditioned cases) = ', max_drift
    call run_eligibility_section(n_fail)
+   call run_kernel_equivalence(n_fail)
+   if (.not. info_existed) then
+      inquire(file='info', exist=info_existed)
+      if (info_existed) then
+         open(newunit=u_info, file='info', status='old')
+         close(u_info, status='delete')
+      endif
+   endif
    if (n_fail > 0) then
       write(6,'(A,I0,A)') '36-lowrank-unit: ', n_fail, ' row(s) FAILED'
       stop 1
