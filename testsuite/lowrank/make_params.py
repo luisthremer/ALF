@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""Create an ALF run directory from the Start template and override parameters.
+
+Usage: make_params.py OUT_DIR KEY=VALUE ...
+
+Copies Scripts_and_Parameters_files/Start/{parameters,seeds} to OUT_DIR and sets
+each KEY = VALUE in every namelist that contains KEY (case-insensitive match; the
+trailing '! comment' of the line is kept). A KEY found in no namelist (for example
+Sequential_scheme before it exists in the template) is appended to &VAR_QMC.
+SEED=<int> replaces the first seed in 'seeds' instead.
+"""
+import os
+import re
+import shutil
+import sys
+
+START = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                     "..", "..", "Scripts_and_Parameters_files", "Start")
+
+
+def set_key(lines, key, value):
+    """Set key=value in all namelists containing key; append to &VAR_QMC if absent."""
+    pat = re.compile(r"^(\s*)(" + re.escape(key) + r")(\s*=\s*)([^!\n]*?)(\s*)(!.*)?$", re.I)
+    found = False
+    for i, line in enumerate(lines):
+        m = pat.match(line.rstrip("\n"))
+        if m:
+            found = True
+            comment = m.group(6)
+            tail = ("  " + comment) if comment else ""
+            lines[i] = "%s%s%s%s%s\n" % (m.group(1), m.group(2), m.group(3), value, tail)
+    if not found:
+        start = None
+        for i, line in enumerate(lines):
+            if re.match(r"^\s*&VAR_QMC\b", line, re.I):
+                start = i
+            elif start is not None and line.strip() == "/":
+                lines.insert(i, "%s = %s\n" % (key, value))
+                return
+        sys.exit("make_params.py: &VAR_QMC namelist not found, cannot append " + key)
+
+
+def main(argv):
+    if len(argv) < 2:
+        sys.exit(__doc__)
+    out = argv[1]
+    os.makedirs(out, exist_ok=True)
+    for name in ("parameters", "seeds"):
+        shutil.copyfile(os.path.join(START, name), os.path.join(out, name))
+    with open(os.path.join(out, "parameters")) as f:
+        params = f.readlines()
+    with open(os.path.join(out, "seeds")) as f:
+        seeds = f.readlines()
+    for arg in argv[2:]:
+        if "=" not in arg:
+            sys.exit("make_params.py: expected KEY=VALUE, got " + arg)
+        key, value = arg.split("=", 1)
+        if key.upper() == "SEED":
+            seeds[0] = "%12d\n" % int(value)
+        else:
+            set_key(params, key, value)
+    with open(os.path.join(out, "parameters"), "w") as f:
+        f.writelines(params)
+    with open(os.path.join(out, "seeds"), "w") as f:
+        f.writelines(seeds)
+
+
+if __name__ == "__main__":
+    main(sys.argv)
