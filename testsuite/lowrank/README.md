@@ -66,13 +66,14 @@ same accept/reject decisions. `SET` is one of the `sets.sh` sets (its common key
   ROUNDOFF, 1 for BUG, 2 for unusable input. `--selftest` checks the classification on synthetic traces.
 - `compare_runs.py` requires `confout_0` identical field by field and all bin files (`*_scal`, `*_eq`, `*_tau`) within
   relative tolerance 1e-8 plus an absolute floor of 1e-12 times the file's largest value (the floor overrides rtol for small entries, e.g. imaginary parts of order 1e-16; `stdout.log` and `trace_updates.txt` are not compared here, the trace is compared by `trace_diff.py`). For a
-  non-standard scheme the run's `info` must contain `Sequential scheme: <NAME>` (upper case), so a silent fallback to
+  non-standard scheme the run's `info` must contain a line starting with `Sequential scheme: <NAME>` (upper case) followed by
+  `,` or the end of the line (`Lowrank_init` writes `Sequential scheme: DELAYED, N_delay = 7`), so a silent fallback to
   standard fails; for `standard` there is nothing to check.
 - Outcome: no differing toggle -> pass iff `compare_runs.py` passes (exit 0/1). ROUNDOFF -> prints
   `DIVERGED-ROUNDOFF at proposal k (margin ...)`, the trajectories legitimately diverge, so only the `info` line is
   checked, exit 0. BUG -> exit 1. Exit 2: build, run or usage failure.
-- Until the low-rank schemes exist only `standard standard` is meaningful; `standard delayed` currently fails the
-  `info` check (non-standard values are silently ignored).
+- `standard delayed` is the trajectory check of the delayed scheme (wired into `WRAPGRUP`/`WRAPGRDO`, Task 8);
+  `submatrix` stops with "not implemented" until it exists.
 
 ## stat_runs.sh, stat_compare.py (statistical comparison of independent chains)
 
