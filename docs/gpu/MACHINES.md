@@ -79,6 +79,10 @@ Checked 2026-10-30: `ifx -fiopenmp -fopenmp-targets=spir64 -qmkl ... -lmkl_sycl_
 with the correct result; `ldd`: all MKL/SYCL/iomp libraries from 2026.2. Sourcing prints a harmless UMF warning on
 stderr.
 
+**No package hold (owner, 2026-10-30, DECISIONS.md row 13):** before every Intel-lane T1/T2 run, record
+`dpkg-query -W 'intel-oneapi-compiler-fortran*' 'intel-oneapi-mkl*' intel-opencl-icd libze-intel-gpu1 libze1 libigc2`
+into the run directory and compare it with the ticket's recorded set; on any difference stop and report.
+
 **Fixed 2026-10-29 evening by the admin** (a matching 2026.2 set instead of decision 6's MKL 2025.3 + hold; no hold, so a
 later system update can mix versions again). Earlier state, kept for the record:
 **State 2026-10-29: the oneAPI installation is mixed and `GPU=intel` does not link.** A system update (owner's
