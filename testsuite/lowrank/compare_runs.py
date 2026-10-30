@@ -16,6 +16,7 @@ Checks (exit 0 iff all pass, 1 otherwise, 2 on unusable input):
     absorbs round-off noise on values that are zero up to ~1e-16, e.g. imaginary parts). The absolute
     floor overrides rtol for small entries: an entry below 1e-4 of the file maximum can differ by up
     to 100% at rtol 1e-8 without failing.
+The summary line reports the worst ratio |a-b| / (allowed tolerance) over all entries; <= 1 passes.
 --info-only restricts the checks to the info line (used after a legitimate round-off divergence of
 the trajectories, where confout and bins differ by construction).
 """
@@ -93,15 +94,16 @@ def compare_bins(da, db, rtol):
             err = abs(x - y)
             lim = rtol * max(abs(x), abs(y)) + 1e-12 * scale
             rel = err / max(abs(x), abs(y), 1e-300) if err > 0 else 0.0
+            ratio = err / lim if lim > 0 else (0.0 if err == 0 else math.inf)
             if err > lim:
                 ok = False
-                msgs.append("%s: %.17g vs %.17g (rel %.2e)" % (n, x, y, rel))
+                msgs.append("%s: %.17g vs %.17g (rel %.2e, %.2e x tolerance)" % (n, x, y, rel, ratio))
                 break
-            if err > 0 and err <= lim and rel > worst:
-                worst, worst_file = rel, n
+            if ratio > worst:
+                worst, worst_file = ratio, n
     if not ok:
         return False, "bins differ beyond rtol=%g: %s" % (rtol, "; ".join(msgs[:5]))
-    return True, "%d bin files within rtol=%g (max relative difference %.2e%s)" \
+    return True, "%d bin files within tolerance (rtol=%g + 1e-12*file max; worst |difference|/allowed = %.2e%s, <= 1 passes)" \
         % (len(fa), rtol, worst, " in " + worst_file if worst_file else "")
 
 

@@ -45,6 +45,8 @@ rebuild; details in `testsuite/lowrank/README.md`):
 cd ALF && testsuite/lowrank/compare_trajectory.sh start standard standard [N_delay=8 SEED=42 ...]
 ```
 After adding source files under `Prog/`, rerun `cmake ..` in `testsuite/tests` (test 36 globs `Prog/*.o`).
+CTest unit test 36 links whatever `Prog/*.o` the last `make program` produced: a trace build (`ALF_FLAGS_EXT=-DALF_TRACE_UPDATES`) or any
+other flagged build leaves incompatible objects. Always rebuild the normal binary (no `ALF_FLAGS_EXT`) and re-run `cmake ..` before `ctest`.
 ALF test suite (CTest; 39 tests at baseline, 40 with `36-lowrank-unit`, all pass):
 ```bash
 cd ALF && source configure.sh GNU noMPI NO-INTERACTIVE >/dev/null 2>&1 && mkdir -p testsuite/tests && cd testsuite/tests && cmake .. && make -j8 && ctest -j8

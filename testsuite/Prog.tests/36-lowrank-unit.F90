@@ -675,12 +675,13 @@ contains
       call Lowrank_finalize()
       call elig_check(.not. Lowrank_active(), 'Lowrank_finalize: inactive', n_fail)
 
-      ! Submatrix after finalize (re-init path)
-      call Lowrank_init('SUBMATRIX', 3)
+      ! Re-init after finalize (re-init path). Lowrank_init('submatrix') terminates until Phase 4 implements the
+      ! scheme (it cannot be tested in-process); Phase 4 must restore a submatrix re-init check here.
+      call Lowrank_init('delayed', 3)
       call elig_check(Lowrank_active() .and. Lowrank_pending() == 0, &
-           & "Lowrank_init('SUBMATRIX', 3) after finalize: active, pending = 0", n_fail)
+           & "Lowrank_init('delayed', 3) after finalize: active, pending = 0", n_fail)
       call elig_check(Lowrank_eligible(1) .and. Lowrank_eligible(2) .and. .not. Lowrank_eligible(3) &
-           & .and. .not. Lowrank_eligible(4), 'submatrix: same eligibility pattern', n_fail)
+           & .and. .not. Lowrank_eligible(4), 're-init: same eligibility pattern', n_fail)
       call Lowrank_finalize()
 
       ! Standard: nothing active, nothing pending
