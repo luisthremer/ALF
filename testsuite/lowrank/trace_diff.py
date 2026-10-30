@@ -44,7 +44,9 @@ def read_trace(path):
 
 
 def margin(w, r):
-    return abs(w - r) / w if w > 0.0 else math.inf
+    if not (math.isfinite(w) and math.isfinite(r)) or w <= 0.0:
+        return math.inf
+    return abs(w - r) / w
 
 
 def rel_diff(a, b):
@@ -67,6 +69,10 @@ def compare(ta, tb):
             return "BUG", ("BUG proposal %d differs in (nt, n_op, ranf): A=(%d,%d,%.17g) B=(%d,%d,%.17g), "
                            "RNG order or proposal sequence out of step"
                            % (k, a[0], a[1], a[4], b[0], b[1], b[4])), 1
+        for tag, row in (("A", a), ("B", b)):
+            if not all(math.isfinite(v) for v in (row[2].real, row[2].imag, row[3], row[4])):
+                print("proposals compared: %d, max relative ratio difference: %.3e" % (i, maxrel))
+                return "BUG", "BUG proposal %d: non-finite ratio, Weight or ranf in run %s" % (k, tag), 1
         maxrel = max(maxrel, rel_diff(a[2], b[2]))
         if a[5] != b[5]:
             ma, mb = margin(a[3], a[4]), margin(b[3], b[4])
@@ -74,9 +80,10 @@ def compare(ta, tb):
             print("first differing toggle at proposal %d (nt=%d n_op=%d): A toggle=%d Weight=%.17g ranf=%.17g, "
                   "B toggle=%d Weight=%.17g ranf=%.17g" % (k, a[0], a[1], a[5], a[3], a[4], b[5], b[3], b[4]))
             print("margin |Weight-ranf|/Weight: A %.3e, B %.3e" % (ma, mb))
-            if max(ma, mb) <= MARGIN_TOL:
+            # explicit: a NaN margin compares False and must never be classified ROUNDOFF
+            if math.isfinite(ma) and math.isfinite(mb) and ma <= MARGIN_TOL and mb <= MARGIN_TOL:
                 return "ROUNDOFF", "ROUNDOFF %d %.3e" % (k, max(ma, mb)), 0
-            return "BUG", "BUG at proposal %d (margin %.3e exceeds %.0e)" % (k, max(ma, mb), MARGIN_TOL), 1
+            return "BUG", "BUG at proposal %d (margin %.3e, %.3e; tolerance %.0e)" % (k, ma, mb, MARGIN_TOL), 1
     print("proposals compared: %d, max relative ratio difference: %.3e" % (n, maxrel))
     if len(ta) != len(tb):
         return "BUG", ("BUG traces have different lengths (%d vs %d) but identical decisions over the common prefix"
@@ -103,6 +110,18 @@ def selftest():
     cases.append(("identical", base, "IDENTICAL", 0))
     short = base[:2]
     cases.append(("different length", (base, short), "BUG", 1))
+    nan_a = list(base)
+    nan_a[0] = row(1, 1, 0.5 + 0j, float("nan"), 0.3, 1)
+    cases.append(("NaN Weight", (nan_a, big), "BUG", 1))
+    nan_b = list(base)
+    nan_b[0] = row(1, 1, 0.5 + 0j, 0.3, float("nan"), 0)
+    nan_c = list(base)
+    nan_c[0] = row(1, 1, 0.5 + 0j, 0.3, float("nan"), 1)
+    cases.append(("NaN ranf (diff toggle)", (nan_c, nan_b), "BUG", 1))
+    # Weight > 1 flipped although ranf < 1: always-accept decision reversed
+    w1 = list(base)
+    w1[2] = row(1, 3, 1.5 + 0j, 1.5, 0.9, 0)
+    cases.append(("Weight>1 flip", w1, "BUG", 1))
     ranf_bad = list(base)
     ranf_bad[1] = row(1, 2, 0.2 + 0j, 0.2, 0.71, 0)
     cases.append(("ranf out of step", ranf_bad, "BUG", 1))
