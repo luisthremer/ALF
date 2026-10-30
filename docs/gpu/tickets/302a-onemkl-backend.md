@@ -236,7 +236,12 @@ change only, with the owner's approval at that time). The `alf_la` interface sta
   (their regexes fail as well).
 - **Follow-up for 302b:** the shim reports oneMKL's info = -3 for `ungqr` in t_fail, the Fortran layer reports -1: pass the
   info value through unchanged.
-- **Closed** 2026-10-30; merged into `gpu-port`.
+- **Not closed after all:** that T2 ran on a base without 212, against the sequencing rule above (manager error, found by
+  the 302b draft before the merge). Rebase onto `d8cc74f7` (owner, "Yes, rebase"): merge `c0c0b55a`; fixes `f2866434`
+  (two `#line` markers shifted by 212's interface block; oneMKL info passed through, planned for 302b, done here; the
+  `*_scratchpad_size` queries still report -1). Review of the rebase: approved. New counts (owner, "Yes, approve",
+  DECISIONS.md row 18): 14 ONEMKL tests incl. `t_determinism` with control `ALF_LA_TEST_PLANT_ULP=1`, GNU 53.
+  Pre-registration `b0b7280d`; the T2 candidate is the commit recording it (code = `f2866434`). T1 and T2 again in full.
 
 ## Out of scope
 Activating 204–206 device paths on the B580 (302b), the τ path (302c), PVC (301, 304), performance work.
