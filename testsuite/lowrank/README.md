@@ -22,7 +22,9 @@ BRANCH_EXTRA="Sequential_scheme=0" testsuite/lowrank/regress_vs_baseline.sh   # 
 - Runs five short sets (`NSweep=5 NBin=2`, `OMP_NUM_THREADS=1`) with identical parameters and seeds:
   `start`, `doped` (`ham_chem=-0.5 L1=4 L2=4 Beta=4`), `density` (`Mz=.F.`), `continuous`
   (`Continuous=.T.`), `tv` (see below). Outputs go to `runs/regress/<set>/{base,branch}`.
-- `cmp`s every file except `info*` (commit and time stamps); the `*_info` companions are compared.
+- `cmp`s every output file except `info*` (commit and time stamps) and the inputs `parameters`, `seeds`
+  (they differ textually with branch-only keys); the `*_info` companions are compared. Exit 2 if a run
+  produced no `confout_0` or `*_scal`, or if `../ALF_baseline` is not at `f81b5cbc`.
 - Prints `<set> IDENTICAL|DIFFERENT`, exit 0 iff all identical. Differing files are listed on stderr.
 - Sanity check of the harness: `BRANCH_EXTRA=NSweep=6 ...` must report `DIFFERENT` for every set.
 
