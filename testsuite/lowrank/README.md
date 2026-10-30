@@ -104,6 +104,9 @@ python3 -I testsuite/lowrank/stat_compare.py --selftest
   to 1e-12 relative (absolute floor 1e-14), or agree after flipping the sign of both values together (Im(k) = -Im(-k)).
   Both runs enter, so a genuine difference between A and B is never merged with an entry that differs. Entries that are
   numerically zero in both runs (|value|, error < 1e-10, e.g. Im of SpinZ) are skipped (column `skip0`).
+  **Non-finite input** (NaN/inf in a value or error of either run) is a FAIL: scalar and sign rows get z = nan; an
+  array entry with any non-finite number is counted in column `nonfin` (checked before the zero skip) and fails
+  its array (also `*_eqJR`); non-finite precision values are flagged.
   **Particle-hole merge (default, `--no-ph` switches it off)**: entries q and r are also merged if q = c - r in BOTH runs
   with the same constant c and equal errors (rtol 1e-9). For Green_eq at half filling G(k)+G(k+Q) = 2 holds to
   ~1e-11 in the output, so such partners are exact duplicates; a genuine difference in either run breaks the

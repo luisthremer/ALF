@@ -27,7 +27,11 @@ the unique entries is printed. (*_eqJR, the Fourier transform of the same data, 
 and does not decide.)
 Entries that are numerically zero in both runs (|value| < 1e-10 and error < 1e-10, e.g. Im parts of
 symmetric correlations) are skipped from the array statistics (their count is reported).
-Also reports 'Precision Green/Phase' lines of both info files; flags (does not fail) if B's max > 10x A's.
+Non-finite input (NaN/inf in a value or error, in either run) is a FAIL: a scalar or sign row gets z = nan; an
+array entry with any non-finite number is counted in column 'nonfin' (checked BEFORE the zero skip) and fails
+its array, also for *_eqJR. Never relies on max()/min() over NaN (Python's max(0.0, nan) is 0.0).
+Also reports 'Precision Green/Phase' lines of both info files; flags (does not fail) if B's max > 10x A's
+or if either value is non-finite.
 Exit 0 PASS, 1 FAIL, 2 unusable input.
 """
 import glob
@@ -74,10 +78,17 @@ def parse_eqJ(path):
     return out
 
 
+def finite(*xs):
+    return all(math.isfinite(x) for x in xs)
+
+
 def zscore(a, ea, b, eb):
     """z = (a-b)/sqrt(ea^2+eb^2). A quantity that is constant to roundoff in both runs (errors and
     difference below 1e-9 relative, e.g. the particle number at half filling) has z = 0; a difference
-    larger than that with zero/roundoff errors gives |z| = inf."""
+    larger than that with zero/roundoff errors gives |z| = inf. Any non-finite input gives z = nan (an
+    infinite error would otherwise give z = 0, and max() below would drop a NaN)."""
+    if not finite(a, ea, b, eb):
+        return math.nan
     s = math.hypot(ea, eb)
     d = a - b
     tol = 1e-9 * max(1.0, abs(a), abs(b))
@@ -93,6 +104,8 @@ def array_limit(n):
 
 
 def _same(x, y, rtol=1e-12, atol=1e-14):
+    if not finite(x, y):          # never merge non-finite numbers (inf "equals" any finite value below)
+        return False
     return abs(x - y) <= rtol * max(abs(x), abs(y)) + atol
 
 
@@ -171,7 +184,10 @@ def compare(da, db, out=print, ph=True):
     out("%-22s %14.6g %10.3g %14.6g %10.3g %9.2f  %s" % (
         "avg sign/phase", sa[1], sa[2], sb[1], sb[2], z, "FAIL" if bad else "ok"))
     for b2, a2, c2 in signs:
-        if abs(a2[1] - sa[1]) > 1e-10 or abs(c2[1] - sb[1]) > 1e-10:
+        if not finite(a2[1], a2[2], c2[1], c2[2]):
+            ok = False
+            out("FAIL: non-finite sign/phase row in %s_scalJ (A %r %r, B %r %r)" % (b2, a2[1], a2[2], c2[1], c2[2]))
+        elif abs(a2[1] - sa[1]) > 1e-10 or abs(c2[1] - sb[1]) > 1e-10:
             out("warning: sign in %s_scalJ differs from %s_scalJ" % (b2, base))
 
     # arrays
@@ -186,39 +202,44 @@ def compare(da, db, out=print, ph=True):
         out("no common *_eqJK/*_eqJR files")
         return 2
     out("")
-    out("%-12s %6s %6s %5s %8s %8s %7s %6s  %s" % ("array", "unique", "skip0", "n>2", "frac>2", "limit", "max|z|",
-                                                  "rms z", ""))
+    out("%-12s %6s %6s %6s %5s %8s %8s %7s %6s  %s" % ("array", "unique", "skip0", "nonfin", "n>2", "frac>2",
+                                                       "limit", "max|z|", "rms z", ""))
     for f in arr_files:
         A, B = parse_eqJ(os.path.join(da, f)), parse_eqJ(os.path.join(db, f))
         if set(A) != set(B):
             out("%s: entry sets differ" % f)
             return 2
-        quads, skipped = [], 0
+        quads, skipped, nonfin = [], 0, 0
         for key in A:
             (a, ea), (b, eb) = A[key], B[key]
-            if max(abs(a), abs(b)) < ZERO and max(ea, eb) < ZERO:
+            if not finite(a, ea, b, eb):     # before the zero skip: max(0.0, nan) == 0.0 would hide it
+                nonfin += 1
+                if nonfin <= 3:
+                    out("%s: non-finite entry %s: A %r +- %r, B %r +- %r" % (f, key, a, ea, b, eb))
+                continue
+            if abs(a) < ZERO and abs(b) < ZERO and ea < ZERO and eb < ZERO:
                 skipped += 1
                 continue
             quads.append((a, ea, b, eb))
         zs = unique_zs(quads, ph)
         n = len(zs)
-        if n == 0:
+        if n == 0 and nonfin == 0:
             out("%s: no usable entries" % f)
             return 2
-        n2 = sum(1 for z in zs if abs(z) > Z_ARR_FRAC)
-        frac = n2 / n
-        limit = array_limit(n)
-        mx = max(abs(z) for z in zs)
-        finite = all(math.isfinite(z) for z in zs)
-        if not finite:
-            mx = math.inf
-        rms = math.sqrt(sum(z * z for z in zs) / n)
-        # only the k-point arrays (*_eqJK) decide the verdict; *_eqJR is the Fourier transform (info only)
+        # all z are finite here (finite inputs); the guard below is defensive (zscore gives nan otherwise)
+        zfin = all(math.isfinite(z) for z in zs)
+        n2 = sum(1 for z in zs if not (abs(z) <= Z_ARR_FRAC))
+        frac = n2 / n if n else 0.0
+        limit = array_limit(n) if n else 1.0
+        mx = (max(abs(z) for z in zs) if zfin else math.inf) if n else 0.0
+        rms = math.sqrt(sum(z * z for z in zs) / n) if n else 0.0
+        # the k-point arrays (*_eqJK) decide the statistical verdict; *_eqJR is the Fourier transform (info only),
+        # but non-finite input fails any array
         decides = f.endswith("JK")
-        bad = decides and not (finite and frac <= limit and mx < Z_ARR_MAX)
+        bad = nonfin > 0 or not zfin or (decides and not (frac <= limit and mx < Z_ARR_MAX))
         ok &= not bad
-        out("%-12s %6d %6d %5d %7.1f%% %7.1f%% %7.2f %6.2f  %s" % (
-            f, n, skipped, n2, 100 * frac, 100 * limit, mx, rms,
+        out("%-12s %6d %6d %6d %5d %7.1f%% %7.1f%% %7.2f %6.2f  %s" % (
+            f, n, skipped, nonfin, n2, 100 * frac, 100 * limit, mx, rms,
             "FAIL" if bad else ("ok" if decides else "(info)")))
 
     # precision diagnostics
@@ -230,8 +251,11 @@ def compare(da, db, out=print, ph=True):
         pa = pb = {}
     out("%-14s %12s %12s %8s  %s" % ("precision", "A", "B", "B/A", ""))
     for k in sorted(set(pa) & set(pb)):
-        r = pb[k] / pa[k] if pa[k] > 0 else (math.inf if pb[k] > 0 else 1.0)
-        flag = "FLAG (B max > %gx A)" % PREC_FLAG if k.endswith("max") and r > PREC_FLAG else ""
+        if not finite(pa[k], pb[k]):
+            r, flag = math.nan, "FLAG (non-finite)"
+        else:
+            r = pb[k] / pa[k] if pa[k] > 0 else (math.inf if pb[k] > 0 else 1.0)
+            flag = "FLAG (B max > %gx A)" % PREC_FLAG if k.endswith("max") and r > PREC_FLAG else ""
         out("%-14s %12.3e %12.3e %8.2f  %s" % (k, pa[k], pb[k], r, flag))
     out("")
     out("VERDICT: %s" % ("PASS" if ok else "FAIL"))
@@ -243,6 +267,10 @@ def selftest():
     assert abs(zscore(2.0, 0.3, 1.0, 0.4) - 2.0) < 1e-12
     assert zscore(1.0, 0.0, 1.0, 0.0) == 0.0 and zscore(1.0, 0.0, 2.0, 0.0) == -math.inf
     assert zscore(36.0, 3e-13, 36.0, 1e-12) == 0.0 and zscore(36.0, 3e-13, 36.001, 1e-12) == -math.inf
+    for q in ((0.0, 0.0, math.nan, 0.0), (math.nan, 0.0, 0.0, 0.0), (1.0, math.inf, 1.0, 0.1),
+              (1.0, 0.1, 1.0, math.nan), (math.inf, 0.1, math.inf, 0.1)):
+        assert math.isnan(zscore(*q)), q
+    assert not _same(math.inf, 5.0) and not _same(math.nan, math.nan) and _same(5.0, 5.0)
     import tempfile
     t = tempfile.mkdtemp()
     p = os.path.join(t, "x_scalJ")
@@ -272,6 +300,21 @@ def selftest():
     for d in ("nan_scal", "nan_arr"):
         msgs = []
         assert compare(os.path.join(t, "ok1"), os.path.join(t, d), out=msgs.append) == 1, (d, msgs)
+    # a non-finite value in an entry that is zero in the other run must not be skipped as "zero in both runs"
+    # (max(0.0, nan) == 0.0 in Python), in either order; a genuine zero/zero entry is still skipped
+    def mk_im(d, im, eim="0.0E+00", sign="1.0E+00"):
+        os.makedirs(os.path.join(t, d), exist_ok=True)
+        open(os.path.join(t, d, "Ener_scalJ"), "w").write(" bins\n\n 1 1.0E+00 1.0E-01\n\n 2 %s 0.0E+00\n" % sign)
+        open(os.path.join(t, d, "Green_eqJK"), "w").write(" 0.5 0.5\n 1 1 1.0E+00 1.0E-01 %s %s\n" % (im, eim))
+    mk_im("zero", "0.0E+00")
+    mk_im("zero_nan", "nan")
+    mk_im("zero_inf_err", "0.0E+00", "inf")
+    mk_im("nan_sign", "0.0E+00", sign="nan")
+    assert compare(os.path.join(t, "zero"), os.path.join(t, "zero"), out=lambda m: None) == 0
+    for da, db in (("zero", "zero_nan"), ("zero_nan", "zero"), ("zero", "zero_inf_err"), ("zero_inf_err", "zero"),
+                   ("zero", "nan_sign"), ("nan_sign", "zero")):
+        msgs = []
+        assert compare(os.path.join(t, da), os.path.join(t, db), out=msgs.append) == 1, (da, db, msgs)
     print("selftest ok")
     return 0
 
