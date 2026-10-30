@@ -9,7 +9,7 @@
 //  * All matrix/vector arguments are USM pointers (device addresses from !$omp target data use_device_addr).
 //  * Each call waits for completion before it returns (host-synchronous): the caller's OpenMP target regions and the
 //    dispatched BLAS calls then see the result without any further ordering argument. oneMKL's USM API reports
-//    failures by exception; it is translated into the return value (0 = ok, > 0 = LAPACK info, -1 = other error).
+//    failures by exception; it is translated into the return value (0 = ok, > 0 = LAPACK info, -1 = other error; a negative LAPACK info is passed through unchanged).
 //  * `_ws` functions return the scratchpad size in complex<double> elements; the caller owns the scratchpad
 //    (device-resident). ipiv is int64_t here (oneMKL USM API); the Fortran side converts from/to its int32 ipiv.
 //  * Test hook (testsuite/alf_la.tests, ALF_LA_TEST_BREAK_ORDER): alfsh_zgemm_unordered runs a GEMM on a SEPARATE
@@ -70,7 +70,7 @@ template <class F> int guarded(const char *what, F &&f) {
     // positive info = LAPACK computation error (e.g. exactly singular U in getrf); the data are still complete
     if (e.info() <= 0)
       std::fprintf(stderr, "alfsh: %s: oneMKL LAPACK exception info=%lld: %s\n", what, (long long)e.info(), e.what());
-    return e.info() > 0 ? (int)e.info() : -1;
+    return e.info() != 0 ? (int)e.info() : -1;   // the oneMKL info value is passed through unchanged (<0: argument -info illegal)
   } catch (sycl::exception &e) {
     std::fprintf(stderr, "alfsh: %s: SYCL exception: %s\n", what, e.what());
     return -1;

@@ -1136,14 +1136,14 @@ contains
 #if defined(ALF_LA_ONEMKL)
     s = 'onemkl'
 #else
-#line 296
+#line 294
 #if defined(ALF_LA_CUDA)
     s = 'cuda'
 #else
     s = 'host'
 #endif
 #endif
-#line 301
+#line 299
   end function la_backend_name
 
   subroutine la_fail(msg, line)
