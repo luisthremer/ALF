@@ -52,7 +52,11 @@ Module Wrapgr_mod
   Use Hamiltonian_main
   Use Hop_mod
   use upgrade_mod
-  use Lowrank_update_mod
+  use Lowrank_update_mod, only: Lowrank_initialised, Lowrank_init, Lowrank_active, Lowrank_eligible, &
+       &                        Lowrank_flush, Lowrank_wrap_hook, Upgrade_lowrank, Lowrank_assert_flushed
+#ifdef ALF_LOWRANK_DEBUG
+  use Lowrank_update_mod, only: Lowrank_debug_check
+#endif
   use QMC_runtime_var, only: get_Sequential_scheme, get_N_delay
 
   Implicit none
@@ -109,6 +113,7 @@ Contains
     
     ! Low-rank scheme (Sequential_scheme / N_delay): initialised on the first call
     if (.not. Lowrank_initialised()) call Lowrank_init(get_Sequential_scheme(), get_N_delay())
+    call Lowrank_assert_flushed("WRAPGRUP entry")
 
     ! Wrap up, upgrade ntau1.  with B^{1}(tau1) 
     NTAU1 = NTAU + 1
@@ -128,6 +133,9 @@ Contains
        enddo
        ! Eligible vertex: carry the pending factors through the type-1 wrap (old field)
        if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_wrap_hook(n, ntau1, HS_Field, +1)
+#ifdef ALF_LOWRANK_DEBUG
+       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_debug_check(GR, n, ntau1, "Lowrank_wrap_hook (up)")
+#endif
        nf = 1
        T0_proposal       = 1.5D0
        T0_Proposal_ratio = 1.D0
@@ -206,6 +214,7 @@ Contains
 
     ! Low-rank scheme (Sequential_scheme / N_delay): initialised on the first call
     if (.not. Lowrank_initialised()) call Lowrank_init(get_Sequential_scheme(), get_N_delay())
+    call Lowrank_assert_flushed("WRAPGRDO entry")
 
     ! G is flushed here (the previous WRAPGRUP/WRAPGRDO returned a flushed G)
     If ( N_Global_tau > 0 ) then 
@@ -262,6 +271,9 @@ Contains
        enddo
        ! Eligible vertex: carry the pending factors through the type-1 un-wrap (new field)
        if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_wrap_hook(n, ntau, HS_Field, -1)
+#ifdef ALF_LOWRANK_DEBUG
+       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_debug_check(GR, n, ntau, "Lowrank_wrap_hook (down)")
+#endif
     enddo
     ! G must be the full Green function before the hopping propagation and on return
     if (Lowrank_active()) call Lowrank_flush(GR)

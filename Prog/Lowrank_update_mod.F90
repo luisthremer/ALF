@@ -48,6 +48,14 @@
 !>                Dvec(N_delay, nf_eff), Ginv(N_delay, N_delay, nf_eff)
 !> Columns are counted in vectors (n_cols(nf_eff)), N_cols_max = N_delay*N_P_max, so a rank-N_P
 !> extension only changes the column bookkeeping.
+!>
+!> Debug mode (-DALF_LOWRANK_DEBUG, delayed scheme): a shadow Gsh(Ndim,Ndim,N_FL) is set to GR at
+!> the first accept after a flush (n_pend 0 -> 1), receives the standard rank-1 update on every
+!> accept and the diagonal factors of every hook. After every accept and every hook,
+!> max|Lowrank_current_G - Gsh|/max|Gsh| <= TOL_UNIT is checked per computed flavour, and after
+!> every flush max|GR - Gsh|/max|Gsh| <= TOL_UNIT; a violation terminates. Lowrank_debug_report
+!> prints the number of checks and the largest relative error. -DLOWRANK_DEBUG_SELFTEST (never
+!> defined by default) skips the X-row scaling of the first hook so that the check must fire.
 !--------------------------------------------------------------------
 
 module Lowrank_update_mod
@@ -62,6 +70,9 @@ module Lowrank_update_mod
         &    Lowrank_pending, Lowrank_assert_flushed
    public :: Lowrank_propose, Lowrank_accept, Upgrade_lowrank, Lowrank_wrap_hook, &
         &    Lowrank_flush, Lowrank_current_G
+#ifdef ALF_LOWRANK_DEBUG
+   public :: Lowrank_debug_check, Lowrank_debug_report
+#endif
 
    !> Maximal number of non-zero eigenvalues per eligible vertex and flavour (rank-1 now)
    Integer, parameter :: N_P_max = 1
@@ -90,6 +101,18 @@ module Lowrank_update_mod
    ! ---- submatrix -------------------------------------------------------
    Integer,                   allocatable :: S(:,:), slot(:,:)
    Complex (Kind=Kind(0.d0)), allocatable :: Dvec(:,:), Ginv(:,:,:)
+
+#ifdef ALF_LOWRANK_DEBUG
+   ! ---- debug: shadow G with standard rank-1 updates ---------------------
+   Real (Kind=Kind(0.d0)), parameter      :: DBG_TOL = 1.d-10     ! TOL_UNIT (CLAUDE.md, Tolerances)
+   Complex (Kind=Kind(0.d0)), allocatable :: Gsh(:,:,:)
+   Real (Kind=Kind(0.d0))                 :: dbg_max_err  = 0.d0
+   Integer (Kind=Kind(0_8))               :: dbg_n_checks = 0
+   Integer                                :: dbg_last_nop = 0, dbg_last_nt = 0  ! last accept
+#ifdef LOWRANK_DEBUG_SELFTEST
+   Logical                                :: dbg_selftest_done = .false.
+#endif
+#endif
 
 contains
 
@@ -245,6 +268,9 @@ contains
       if (allocated(Ginv))     deallocate (Ginv)
       if (allocated(prop_Delta)) deallocate (prop_Delta)
       if (allocated(prop_d))     deallocate (prop_d)
+#ifdef ALF_LOWRANK_DEBUG
+      if (allocated(Gsh))        deallocate (Gsh)
+#endif
       prop_valid = .false.
       lr_initialised = .false.
       lr_scheme  = SCHEME_STANDARD
@@ -459,6 +485,9 @@ contains
 
       Complex (Kind=Kind(0.d0)) :: z
       Integer                   :: nf, nf_eff, p, j
+#ifdef ALF_LOWRANK_DEBUG
+      Complex (Kind=Kind(0.d0)), allocatable :: c_sh(:), r_sh(:)
+#endif
 
       if (.not. Lowrank_eligible(n_op)) then
          Write(error_unit,'(A,I0)') ' Lowrank_accept: vertex not eligible, n_op = ', n_op
@@ -469,6 +498,30 @@ contains
               &                          n_op, ', nt = ', nt
          CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
       endif
+
+#ifdef ALF_LOWRANK_DEBUG
+      ! Shadow: G before the first accept after a flush is G0; then the standard rank-1 update
+      ! G' = G - G(:,p) (Delta/d) (e_p - G(p,:)) (docs/algorithm-notes.md, section 2)
+      if (.not. allocated(Gsh)) allocate (Gsh(Ndim,Ndim,N_FL))
+      if (n_pend == 0) then
+         Do nf_eff = 1,N_FL_eff
+            nf = Calc_Fl_map(nf_eff)
+            Gsh(:,:,nf) = GR(:,:,nf)
+         Enddo
+      endif
+      allocate (c_sh(Ndim), r_sh(Ndim))
+      Do nf_eff = 1,N_FL_eff
+         nf = Calc_Fl_map(nf_eff)
+         if (Op_V(n_op,nf)%N_non_zero == 0) cycle
+         p = Op_V(n_op,nf)%P(1)
+         c_sh = Gsh(:,p,nf)
+         r_sh = - Gsh(p,:,nf)
+         r_sh(p) = r_sh(p) + 1.d0
+         z = - prop_Delta(nf_eff)/prop_d(nf_eff)
+         call ZGERU(Ndim, Ndim, z, c_sh, 1, r_sh, 1, Gsh(1,1,nf), Ndim)
+      Enddo
+      deallocate (c_sh, r_sh)
+#endif
 
       Do nf_eff = 1,N_FL_eff
          nf = Calc_Fl_map(nf_eff)
@@ -500,6 +553,11 @@ contains
       nsigma%f(n_op,nt) = Hs_new
 
       n_pend = n_pend + 1
+#ifdef ALF_LOWRANK_DEBUG
+      dbg_last_nop = n_op
+      dbg_last_nt  = nt
+      call Lowrank_debug_check(GR, n_op, nt, "Lowrank_accept")
+#endif
       if (n_pend == lr_N_delay) call Lowrank_flush(GR)
 
    end subroutine Lowrank_accept
@@ -619,6 +677,9 @@ contains
       Type (Fields)             :: nsigma_single
       Complex (Kind=Kind(0.d0)) :: phi, g_loc, t
       Integer                   :: nf, nf_eff, i, j, q
+#if defined(ALF_LOWRANK_DEBUG) && defined(LOWRANK_DEBUG_SELFTEST)
+      Logical                   :: skip_x
+#endif
 
       prop_valid = .false.
       if (n_pend == 0) return
@@ -644,11 +705,38 @@ contains
          do i = 1,Op_V(n_op,nf)%N
             q = Op_V(n_op,nf)%P(i)
             t = exp( real(dir, kind(0.d0)) * g_loc * phi * Op_V(n_op,nf)%E(i) )
+#if defined(ALF_LOWRANK_DEBUG) && defined(LOWRANK_DEBUG_SELFTEST)
+            ! Self-test of the debug check: deliberately skip one X-row scaling (first time only)
+            skip_x = .not. dbg_selftest_done
+            dbg_selftest_done = .true.
+            if (.not. skip_x) X(q,1:j,nf_eff) = X(q,1:j,nf_eff) * t
+#else
             X(q,1:j,nf_eff) = X(q,1:j,nf_eff) * t
+#endif
             Y(q,1:j,nf_eff) = Y(q,1:j,nf_eff) / t
          enddo
       Enddo
+#ifdef ALF_LOWRANK_DEBUG
+      ! Shadow: the same diagonal similarity G <- T G T^{-1} for every computed flavour (also
+      ! those without pending columns, whose GR was wrapped by ALF as well)
+      Do nf_eff = 1,N_FL_eff
+         nf = Calc_Fl_map(nf_eff)
+         nsigma_single%f(1,1) = HS_field
+         nsigma_single%t(1)   = Op_V(n_op,nf)%type
+         phi   = nsigma_single%Phi(1,1)
+         g_loc = Op_V(n_op,nf)%g
+         if (Op_V(n_op,nf)%get_g_t_alloc()) g_loc = Op_V(n_op,nf)%g_t(nt)
+         do i = 1,Op_V(n_op,nf)%N
+            q = Op_V(n_op,nf)%P(i)
+            t = exp( real(dir, kind(0.d0)) * g_loc * phi * Op_V(n_op,nf)%E(i) )
+            Gsh(q,:,nf) = Gsh(q,:,nf) * t
+            Gsh(:,q,nf) = Gsh(:,q,nf) / t
+         enddo
+      Enddo
+#endif
       Call nsigma_single%clear()
+      ! Debug check: the hook has no GR argument; WRAPGRUP/WRAPGRDO call Lowrank_debug_check
+      ! right after each hook (under ALF_LOWRANK_DEBUG).
 
    end subroutine Lowrank_wrap_hook
 
@@ -682,6 +770,10 @@ contains
                  &     cone, GR(1,1,nf), Ndim)
          Enddo
          n_cols = 0
+#ifdef ALF_LOWRANK_DEBUG
+         ! n_cols = 0 and n_pend > 0: Lowrank_current_G returns GR, which must equal the shadow
+         call Lowrank_debug_check(GR, dbg_last_nop, dbg_last_nt, "Lowrank_flush (n_op, nt of last accept)")
+#endif
       case default
          Write(error_unit,*) 'Lowrank_flush: only the delayed scheme is implemented'
          CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
@@ -735,5 +827,86 @@ contains
            &                cone, Gcur, Ndim)
 
    end subroutine Lowrank_current_G
+
+#ifdef ALF_LOWRANK_DEBUG
+!--------------------------------------------------------------------
+!> @author
+!> ALF-project
+!
+!> @brief
+!> Debug builds only (-DALF_LOWRANK_DEBUG): checks that the current Green function
+!> Lowrank_current_G(GR, nf) equals the shadow Gsh(:,:,nf) for every computed flavour,
+!> max|Gcur - Gsh| / max|Gsh| <= TOL_UNIT = 1e-10; terminates otherwise. No-op when nothing is
+!> pending (the shadow is then not in use). Records the largest relative error seen.
+!> @param [in] GR(Ndim,Ndim,N_FL)
+!> Complex
+!> \verbatim
+!>  G0 (flushed part of G).
+!> \endverbatim
+!> @param [in] n_op, nt
+!> Integer
+!> \verbatim
+!>  Vertex and time slice, reported on a violation.
+!> \endverbatim
+!> @param [in] where
+!> Character
+!> \verbatim
+!>  Calling site, reported on a violation.
+!> \endverbatim
+!--------------------------------------------------------------------
+   subroutine Lowrank_debug_check(GR, n_op, nt, where)
+
+      Use Hamiltonian_main, only: Ndim, N_FL, N_FL_eff, Calc_Fl_map
+      Implicit none
+
+      Complex (Kind=Kind(0.d0)), Intent(In) :: GR(Ndim,Ndim,N_FL)
+      Integer,                   Intent(In) :: n_op, nt
+      Character (len=*),         Intent(In) :: where
+
+      Complex (Kind=Kind(0.d0)), allocatable :: Gcur(:,:)
+      Real    (Kind=Kind(0.d0))              :: err, scale
+      Integer                                :: nf, nf_eff
+
+      if (n_pend == 0 .or. lr_scheme /= SCHEME_DELAYED) return
+      if (.not. allocated(Gsh)) then
+         Write(error_unit,'(A,A)') ' Lowrank_debug_check: shadow G not allocated at ', trim(where)
+         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      endif
+      allocate (Gcur(Ndim,Ndim))
+      Do nf_eff = 1,N_FL_eff
+         nf = Calc_Fl_map(nf_eff)
+         call Lowrank_current_G(GR, nf, Gcur)
+         scale = maxval(abs(Gsh(:,:,nf)))
+         err   = maxval(abs(Gcur - Gsh(:,:,nf)))
+         if (scale > 0.d0) err = err/scale
+         dbg_n_checks = dbg_n_checks + 1
+         ! .not. (err <= tol) also catches NaN
+         if (.not. (err <= DBG_TOL)) then
+            Write(error_unit,'(A,A)')               ' Lowrank_debug_check: stale G (low-rank G /= shadow G) at ', &
+                 &                                   trim(where)
+            Write(error_unit,'(A,I0,A,I0,A,I0,A,I0)') '   n_op = ', n_op, ', nt = ', nt, ', nf = ', nf, &
+                 &                                   ', n_pend = ', n_pend
+            Write(error_unit,'(A,ES12.4,A,ES12.4)')  '   max|G_lowrank - G_shadow|/max|G_shadow| = ', err, &
+                 &                                   ' > TOL_UNIT = ', DBG_TOL
+            CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+         endif
+         if (err > dbg_max_err) dbg_max_err = err
+      Enddo
+      deallocate (Gcur)
+
+   end subroutine Lowrank_debug_check
+
+!--------------------------------------------------------------------
+!> @brief
+!> Debug builds only: writes the number of shadow-G checks and the largest relative error seen
+!> to output_unit (main calls it at the end of the run).
+!--------------------------------------------------------------------
+   subroutine Lowrank_debug_report()
+      Implicit none
+      if (lr_scheme == SCHEME_STANDARD) return
+      Write(output_unit,'(A,I0,A,ES12.4,A,ES9.2,A)') ' Lowrank debug: ', dbg_n_checks, &
+           & ' shadow-G checks, max relative error ', dbg_max_err, ' (TOL_UNIT = ', DBG_TOL, ')'
+   end subroutine Lowrank_debug_report
+#endif
 
 end module Lowrank_update_mod
