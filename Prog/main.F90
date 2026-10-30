@@ -140,9 +140,6 @@ Program Main
         use cgr1_mod
         use set_random
         use iso8601_datetime_mod
-#ifdef ALF_LOWRANK_DEBUG
-        use Lowrank_update_mod, only: Lowrank_debug_report
-#endif
          
 #ifdef HDF5
         use hdf5
@@ -944,9 +941,6 @@ Program Main
 #endif
 
         Call Control_Print(Group_Comm, Langevin_HMC%get_Update_scheme())
-#ifdef ALF_LOWRANK_DEBUG
-        Call Lowrank_debug_report()
-#endif
 
 #if defined(MPI)
         If (Irank_g == 0 ) then

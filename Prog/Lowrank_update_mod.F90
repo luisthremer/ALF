@@ -53,8 +53,9 @@
 !> the first accept after a flush (n_pend 0 -> 1), receives the standard rank-1 update on every
 !> accept and the diagonal factors of every hook. After every accept and every hook,
 !> max|Lowrank_current_G - Gsh|/max|Gsh| <= TOL_UNIT is checked per computed flavour, and after
-!> every flush max|GR - Gsh|/max|Gsh| <= TOL_UNIT; a violation terminates. Lowrank_debug_report
-!> prints the number of checks and the largest relative error. -DLOWRANK_DEBUG_SELFTEST (never
+!> every flush max|GR - Gsh|/max|Gsh| <= TOL_UNIT; a violation terminates. After every flush the
+!> number of checks and the largest relative error so far are (re)written to the file
+!> lowrank_debug_summary.txt in the run directory. -DLOWRANK_DEBUG_SELFTEST (never
 !> defined by default) skips the X-row scaling of the first hook so that the check must fire.
 !--------------------------------------------------------------------
 
@@ -71,7 +72,7 @@ module Lowrank_update_mod
    public :: Lowrank_propose, Lowrank_accept, Upgrade_lowrank, Lowrank_wrap_hook, &
         &    Lowrank_flush, Lowrank_current_G
 #ifdef ALF_LOWRANK_DEBUG
-   public :: Lowrank_debug_check, Lowrank_debug_report
+   public :: Lowrank_debug_check
 #endif
 
    !> Maximal number of non-zero eigenvalues per eligible vertex and flavour (rank-1 now)
@@ -780,6 +781,9 @@ contains
       end select
       n_pend     = 0
       prop_valid = .false.
+#ifdef ALF_LOWRANK_DEBUG
+      call Lowrank_debug_summary()
+#endif
 
    end subroutine Lowrank_flush
 
@@ -898,15 +902,19 @@ contains
 
 !--------------------------------------------------------------------
 !> @brief
-!> Debug builds only: writes the number of shadow-G checks and the largest relative error seen
-!> to output_unit (main calls it at the end of the run).
+!> Debug builds only: (re)writes lowrank_debug_summary.txt in the run directory with the number
+!> of shadow-G checks and the largest relative error so far. Called after every flush, so the
+!> file holds the totals of the run when it ends.
 !--------------------------------------------------------------------
-   subroutine Lowrank_debug_report()
+   subroutine Lowrank_debug_summary()
       Implicit none
-      if (lr_scheme == SCHEME_STANDARD) return
-      Write(output_unit,'(A,I0,A,ES12.4,A,ES9.2,A)') ' Lowrank debug: ', dbg_n_checks, &
-           & ' shadow-G checks, max relative error ', dbg_max_err, ' (TOL_UNIT = ', DBG_TOL, ')'
-   end subroutine Lowrank_debug_report
+      Integer :: unit_dbg
+      Open(newunit=unit_dbg, file="lowrank_debug_summary.txt", status="replace", action="write")
+      Write(unit_dbg,'(A,I0)')    'shadow-G checks         : ', dbg_n_checks
+      Write(unit_dbg,'(A,ES12.4)') 'max relative error      : ', dbg_max_err
+      Write(unit_dbg,'(A,ES12.4)') 'TOL_UNIT                : ', DBG_TOL
+      Close(unit_dbg)
+   end subroutine Lowrank_debug_summary
 #endif
 
 end module Lowrank_update_mod
