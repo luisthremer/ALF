@@ -58,7 +58,7 @@ module Lowrank_update_mod
 
    Integer, parameter, public :: SCHEME_STANDARD = 0, SCHEME_DELAYED = 1, SCHEME_SUBMATRIX = 2
 
-   public :: Lowrank_init, Lowrank_finalize, Lowrank_active, Lowrank_eligible, &
+   public :: Lowrank_init, Lowrank_finalize, Lowrank_initialised, Lowrank_active, Lowrank_eligible, &
         &    Lowrank_pending, Lowrank_assert_flushed
    public :: Lowrank_propose, Lowrank_accept, Upgrade_lowrank, Lowrank_wrap_hook, &
         &    Lowrank_flush, Lowrank_current_G
@@ -67,6 +67,7 @@ module Lowrank_update_mod
    Integer, parameter :: N_P_max = 1
 
    ! ---- common state ----------------------------------------------------
+   Logical              :: lr_initialised = .false.  ! true after Lowrank_init (any scheme)
    Integer              :: lr_scheme  = SCHEME_STANDARD
    Integer              :: lr_N_delay = 0
    Integer              :: N_cols_max = 0       ! N_delay*N_P_max
@@ -139,6 +140,7 @@ contains
 #endif
 
       call Lowrank_finalize()
+      lr_initialised = .true.
 
       name = str_to_upper(trim(adjustl(scheme_name)))
       select case (name)
@@ -244,11 +246,22 @@ contains
       if (allocated(prop_Delta)) deallocate (prop_Delta)
       if (allocated(prop_d))     deallocate (prop_d)
       prop_valid = .false.
+      lr_initialised = .false.
       lr_scheme  = SCHEME_STANDARD
       lr_N_delay = 0
       N_cols_max = 0
       n_pend     = 0
    end subroutine Lowrank_finalize
+
+!--------------------------------------------------------------------
+!> @brief
+!> True after Lowrank_init (for every scheme, "standard" included) until Lowrank_finalize.
+!> Used by WRAPGRUP/WRAPGRDO to initialise lazily on their first call.
+!--------------------------------------------------------------------
+   logical function Lowrank_initialised()
+      Implicit none
+      Lowrank_initialised = lr_initialised
+   end function Lowrank_initialised
 
 !--------------------------------------------------------------------
 !> @brief
@@ -361,6 +374,10 @@ contains
          Write(error_unit,*) 'Lowrank_propose: only the delayed scheme is implemented'
          CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
       endif
+      if (.not. Lowrank_eligible(n_op)) then
+         Write(error_unit,'(A,I0)') ' Lowrank_propose: vertex not eligible, n_op = ', n_op
+         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      endif
 
       Call nsigma_new%make(1,1)
 
@@ -443,6 +460,10 @@ contains
       Complex (Kind=Kind(0.d0)) :: z
       Integer                   :: nf, nf_eff, p, j
 
+      if (.not. Lowrank_eligible(n_op)) then
+         Write(error_unit,'(A,I0)') ' Lowrank_accept: vertex not eligible, n_op = ', n_op
+         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      endif
       if (.not. prop_valid .or. prop_n_op /= n_op .or. prop_nt /= nt .or. prop_Hs /= Hs_new) then
          Write(error_unit,'(A,I0,A,I0)') ' Lowrank_accept: no matching Lowrank_propose for n_op = ', &
               &                          n_op, ', nt = ', nt
@@ -566,8 +587,10 @@ contains
 !> @brief
 !> Carries the pending factors X, Y through the type-1 wrap of an eligible (diagonal) vertex.
 !> @details
-!> Call after Op_Wrapup(.,Op_V(n_op,nf),HS_field,.,1,nt) with dir = +1, and after
-!> Op_Wrapdo(.,Op_V(n_op,nf),HS_field,.,1,nt) with dir = -1, on every flavour. The wrap is
+!> Call once per vertex, after the flavour loop of the type-1 wrap (the routine loops over the
+!> computed flavours itself): after Op_Wrapup(.,Op_V(n_op,nf),HS_field,.,1,nt) with dir = +1, and
+!> after Op_Wrapdo(.,Op_V(n_op,nf),HS_field,.,1,nt) with dir = -1. Invalidates the cache of
+!> Lowrank_propose (the frame changes). The wrap is
 !> G <- T G T^{-1} with T = diag(t_i) on rows P(i), t_i = exp(dir g_loc phi(HS_field) E(i));
 !> applied to G0 by ALF, to the pending factors here: X(P(i),:) *= t_i, Y(P(i),:) /= t_i
 !> (docs/algorithm-notes.md, section 3). Consumes no random numbers. No-op if nothing is pending.
@@ -597,6 +620,7 @@ contains
       Complex (Kind=Kind(0.d0)) :: phi, g_loc, t
       Integer                   :: nf, nf_eff, i, j, q
 
+      prop_valid = .false.
       if (n_pend == 0) return
       if (lr_scheme /= SCHEME_DELAYED) then
          Write(error_unit,*) 'Lowrank_wrap_hook: only the delayed scheme is implemented'

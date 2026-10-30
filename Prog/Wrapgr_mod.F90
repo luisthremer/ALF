@@ -52,6 +52,8 @@ Module Wrapgr_mod
   Use Hamiltonian_main
   Use Hop_mod
   use upgrade_mod
+  use Lowrank_update_mod
+  use QMC_runtime_var, only: get_Sequential_scheme, get_N_delay
 
   Implicit none
 
@@ -105,6 +107,9 @@ Contains
     Character (Len=64)        :: Mode
     Logical                   :: Acc, toggle1
     
+    ! Low-rank scheme (Sequential_scheme / N_delay): initialised on the first call
+    if (.not. Lowrank_initialised()) call Lowrank_init(get_Sequential_scheme(), get_N_delay())
+
     ! Wrap up, upgrade ntau1.  with B^{1}(tau1) 
     NTAU1 = NTAU + 1
     Do nf_eff = 1,N_FL_eff
@@ -113,12 +118,16 @@ Contains
        CALL HOP_MOD_mmthl_m1(GR(:,:,nf), nf, ntau1 )
     Enddo
     Do n = Nt_sequential_start,Nt_sequential_end
+       ! Ineligible vertex: apply the pending low-rank updates before G0 is wrapped
+       if (Lowrank_active() .and. .not. Lowrank_eligible(n)) call Lowrank_flush(GR)
        Do nf_eff = 1, N_FL_eff
           nf=Calc_Fl_map(nf_eff)
           HS_Field =  nsigma%f(n,ntau1) 
           N_type = 1
           Call Op_Wrapup(Gr(:,:,nf),Op_V(n,nf),HS_Field,Ndim,N_Type,ntau1)
        enddo
+       ! Eligible vertex: carry the pending factors through the type-1 wrap (old field)
+       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_wrap_hook(n, ntau1, HS_Field, +1)
        nf = 1
        T0_proposal       = 1.5D0
        T0_Proposal_ratio = 1.D0
@@ -134,7 +143,11 @@ Contains
           !Write(6,*) 'Hi', n, Op_V(n,nf)%type, T0_Proposal_ratio, S0_ratio  
           mode = "Final"
           Prev_Ratiotot = cmplx(1.d0,0.d0,kind(0.d0))
-          Call Upgrade2(GR,n,ntau1,PHASE,HS_new, Prev_Ratiotot, S0_ratio,T0_Proposal_ratio, Acc, mode ) 
+          if (Lowrank_active() .and. Lowrank_eligible(n)) then
+             Call Upgrade_lowrank(GR,n,ntau1,PHASE,HS_new, S0_ratio,T0_Proposal_ratio, Acc)
+          else
+             Call Upgrade2(GR,n,ntau1,PHASE,HS_new, Prev_Ratiotot, S0_ratio,T0_Proposal_ratio, Acc, mode ) 
+          endif
        else
           toggle1 = .false.
           Call Control_upgrade_eff(toggle1)
@@ -145,6 +158,8 @@ Contains
           Call Op_Wrapup(Gr(:,:,nf),Op_V(n,nf),HS_Field,Ndim,N_Type,ntau1)
        enddo
     Enddo
+    ! G must be the full Green function for the Global_tau moves and on return
+    if (Lowrank_active()) call Lowrank_flush(GR)
 
     If ( N_Global_tau > 0 ) then 
        m         = Nt_sequential_end
@@ -152,6 +167,8 @@ Contains
        Call Wrapgr_Random_update(GR,m,ntau1, PHASE, N_Global_tau )
        Call Wrapgr_PlaceGR(GR,m, Size(OP_V,1), ntau1)
     Endif
+
+    call Lowrank_assert_flushed("WRAPGRUP")
 
   END SUBROUTINE WRAPGRUP
 
@@ -187,6 +204,10 @@ Contains
     Logical                   :: Acc, toggle1
 
 
+    ! Low-rank scheme (Sequential_scheme / N_delay): initialised on the first call
+    if (.not. Lowrank_initialised()) call Lowrank_init(get_Sequential_scheme(), get_N_delay())
+
+    ! G is flushed here (the previous WRAPGRUP/WRAPGRDO returned a flushed G)
     If ( N_Global_tau > 0 ) then 
        m         = Size(OP_V,1)
        !Write(6,*) 'Call Ran_up ', m,ntau
@@ -196,6 +217,8 @@ Contains
 
     
     Do n =  Nt_sequential_end, Nt_sequential_start, -1
+       ! Ineligible vertex: apply the pending low-rank updates before G0 is wrapped
+       if (Lowrank_active() .and. .not. Lowrank_eligible(n)) call Lowrank_flush(GR)
        N_type = 2
        nf = 1
        HS_Field = nsigma%f(n,ntau) 
@@ -218,7 +241,11 @@ Contains
        If ( T0_proposal > ranf_wrap() ) Then
           mode = "Final"
           Prev_Ratiotot = cmplx(1.d0,0.d0,kind(0.d0))
-          Call Upgrade2(GR,n,ntau,PHASE,HS_new, Prev_Ratiotot, S0_ratio,T0_Proposal_ratio, Acc, mode ) 
+          if (Lowrank_active() .and. Lowrank_eligible(n)) then
+             Call Upgrade_lowrank(GR,n,ntau,PHASE,HS_new, S0_ratio,T0_Proposal_ratio, Acc)
+          else
+             Call Upgrade2(GR,n,ntau,PHASE,HS_new, Prev_Ratiotot, S0_ratio,T0_Proposal_ratio, Acc, mode ) 
+          endif
        else
           toggle1 = .false.
           Call Control_upgrade_eff(toggle1)
@@ -233,12 +260,18 @@ Contains
           nf=Calc_Fl_map(nf_eff)
           Call Op_Wrapdo( Gr(:,:,nf), Op_V(n,nf), HS_Field, Ndim, N_Type, ntau )
        enddo
+       ! Eligible vertex: carry the pending factors through the type-1 un-wrap (new field)
+       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_wrap_hook(n, ntau, HS_Field, -1)
     enddo
+    ! G must be the full Green function before the hopping propagation and on return
+    if (Lowrank_active()) call Lowrank_flush(GR)
     DO nf_eff = 1,N_FL_eff
        nf=Calc_Fl_map(nf_eff)
        Call Hop_mod_mmthl   (GR(:,:,nf), nf,ntau)
        Call Hop_mod_mmthr_m1(GR(:,:,nf), nf,ntau)
     enddo
+
+    call Lowrank_assert_flushed("WRAPGRDO")
     
   end SUBROUTINE WRAPGRDO
   

@@ -4,8 +4,9 @@
 Usage: compare_runs.py [--info-only] [--rtol R] DIR_A DIR_B SCHEME_A SCHEME_B
 
 Checks (exit 0 iff all pass, 1 otherwise, 2 on unusable input):
-  * info: for every non-"standard" scheme the run's info file must contain the line
-    "Sequential scheme: <NAME>" (NAME = scheme in upper case), so a run that silently fell back
+  * info: for every non-"standard" scheme the run's info file must contain a line starting with
+    "Sequential scheme: <NAME>" (NAME = scheme in upper case) followed by "," or the end of the line
+    (Lowrank_init writes "Sequential scheme: DELAYED, N_delay = 7"), so a run that silently fell back
     to the standard update fails. For "standard" nothing is checked.
   * confout_0 (RNG state and field configuration): identical field by field (all tokens equal).
   * every other output file except info*, parameters, seeds, *_info, stdout.log and trace_updates.txt
@@ -41,9 +42,13 @@ def check_info(d, scheme):
     path = os.path.join(d, "info")
     if not os.path.isfile(path):
         return False, "no info file in " + d
+    # Lowrank_init writes "Sequential scheme: <NAME>, N_delay = <n>": the line must start with
+    # want, followed by "," or the end of the line (so DELAYED does not match DELAYEDX).
     with open(path) as f:
-        if any(line.strip() == want for line in f):
-            return True, "'" + want + "' found"
+        for line in f:
+            line = line.strip()
+            if line == want or line.startswith(want + ","):
+                return True, "'" + line + "' found"
     return False, "line '%s' missing in %s/info (silent fallback to standard?)" % (want, d)
 
 
