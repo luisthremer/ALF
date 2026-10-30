@@ -117,6 +117,7 @@ for name, c in spec.items():
             s = r.get("seeds", "dev")
             if s.startswith("acc"):
                 record[f"{s}/{r['config']}"] = record[f"dev{s[3:]}/{r['config']}"]
+    os.makedirs(cdir, exist_ok=True)  # an acceptance file with ctests only has no runs and no prepared configs
     json.dump(record, open(os.path.join(cdir, "seeds_record.json"), "w"), indent=1)
     return record
 
