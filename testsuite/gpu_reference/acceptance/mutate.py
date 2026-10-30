@@ -63,7 +63,7 @@ def main(a, b, kind):
         rng = random.Random(4711)
         out = []
         for line in open(os.path.join(b, "run.log")):
-            if "TAUDIAG" in line:
+            if line.lstrip().startswith("TAUDIAG pt "):  # data lines only, as verdict.py
                 t = line.split()  # same tokenisation as verdict.py
                 i = t.index("dev") + 2  # GTT value
                 v = float(t[i])
