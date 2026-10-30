@@ -131,6 +131,25 @@ Pre-registered in `testsuite/gpu_reference/acceptance/212.json` (gates, threshol
   (git archive, no .git) always give `none`. Fix needs `gpu_state_mod.o: git.h` in the Makefile (not done here).
 - Development scripts: `docs/gpu/scripts/nividia/t212_*.sh`; T0 raw outputs in `~/alf-gpu/work/t212/dev/{logs,runs}`.
 
+## Review and T1 record (manager)
+- **T1 of candidate 1 `21f04980`** (2026-10-30, dev seeds, `nividia:~/alf-gpu/work/t212/cand/agent/21f04980f9ac/`):
+  12 of 13 gates PASS. compare2 INCONCLUSIVE (INPUT_ERROR): G(k=(π,0)) of the GPU run under-resolved (autocorrelation,
+  8× rebinning → 14 effective bins); all 11 observables agree (max |t| 1.61, Σt² p = 0.51); null control passes. Not
+  re-run (CLAUDE.md); the compare2 run length for T2 is the owner's decision. The driver stopped before the verdict on a
+  harness ordering bug (log mutation of `gpunone` before the GPU=none step); the manager ran `acc_gpunone.sh` with the
+  driver's exact arguments and re-ran the driver, which kept every finished step (attempts log: two entries). Fixed on
+  `gpu-port` 46f3a0de; this ticket keeps the pre-registered harness.
+- **Review (a) of candidate 1:** one must-fix (unbounded debug-env line buffer) and should-fixes (long or surplus
+  `ALF_GPU_*` entries dropped instead of refused, I/O errors read as end of file, setup lines on every MPI rank, the
+  graded fault distorting the reported sensitivity); fixed in candidate 2.
+- `t_determinism` does detect the original defect: built against the base `k_colnorms` it FAILED in 3 of 3 runs
+  (T0 of the first implementer: 144×144 1–4 calls, 150×144 499–924 calls with differing pivots).
+- The test prints `FAILED t_determinism` (la_test_util convention, no leading blank); the gate uses ctest's result.
+- Follow-ups (not in 212): `Prog/Makefile` dependency `gpu_state_mod.o: git.h` plus one check build from a git clone
+  with nvfortran and ifx (until then a `git <hash>` stamp is not authoritative); `cusolverDnSetDeterministicMode`
+  needs CUDA ≥ 12.2 (MACHINES.md); `device_kernel_check` keeps one floating-point `reduction(+)` (a setup checksum
+  compared with a tolerance, not output).
+
 ## Out of scope
 207 (τ pass) and its paired test; 213 (STABLOG same-seed excess); performance work beyond the deterministic reductions;
 Intel/oneMKL.

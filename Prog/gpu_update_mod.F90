@@ -93,8 +93,6 @@ Contains
 !> .true. iff the device update path replaces WRAPGRUP/WRAPGRDO: GPU path active and ALF_GPU_NOUPDATE /= 1.
   Logical function gpu_upd_enabled()
     Implicit none
-    Character (len=16) :: env
-    Integer :: st
     if (forced) then
        gpu_upd_enabled = forced_val .and. gpu_active
        return
@@ -160,8 +158,6 @@ Contains
 !> .true. once, at the first call with ALF_GPU_UPDTEST=1 (the update path must be active)
   Logical function gpu_upd_selftest_due()
     Implicit none
-    Character (len=16) :: env
-    Integer :: st
     gpu_upd_selftest_due = .false.
     if (sel_done) return
     if (.not. sel_checked) then

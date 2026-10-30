@@ -16,8 +16,9 @@ def ds(p):
         f.visititems(lambda n, x: o.__setitem__(n, np.asarray(x[()])) if isinstance(x, h5py.Dataset) else None)
     return o
 da, db = ds(a), ds(b)
-nd = sum(1 for k in da if k not in db or da[k].tobytes() != db[k].tobytes())
-print("  datasets", len(da), "differing", nd)
+keys = set(da) | set(db)      # symmetric: a dataset missing on either side counts as differing
+nd = sum(1 for k in keys if k not in da or k not in db or da[k].tobytes() != db[k].tobytes())
+print("  datasets", len(keys), "differing", nd)
 pa = [l for l in open(a + "/info") if "Precision" in l]; pb = [l for l in open(b + "/info") if "Precision" in l]
 print("  Precision lines", len(pa), "identical" if pa == pb else "DIFFER")
 for l in pa[:3]: print("   ", l.strip()[:150])

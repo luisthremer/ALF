@@ -170,11 +170,12 @@ Module gpu_state_mod
   Logical, Save :: info_root = .true.
 
   ! ---- ticket 212: environment, read once ----
-  Integer, parameter :: ENV_MAX = 64
-  Character (len=48),  Save :: env_name(ENV_MAX) = ''     ! set ALF_GPU_* variables (non-empty, not '0'), sorted by name
+  Integer, parameter :: ENV_MAX = 256
+  Character (len=48),  Save :: env_name(ENV_MAX) = ''     ! set ALF_GPU_* variables (non-empty value; '0' counts as set), sorted by name
   Character (len=256), Save :: env_val(ENV_MAX)  = ''
   Integer, Save :: env_n = 0
   Logical, Save :: env_read_done = .false.
+  Integer, Save :: env_rank = 0, env_size = 1              ! MPI_COMM_WORLD rank and size (1 and 0 without MPI)
   Real (Kind=Kind(0.d0)), Save :: env_eps = 0.d0          ! x of ALF_GPU_FAULT_STAB=eps:<x>
 
 Contains
@@ -189,38 +190,50 @@ Contains
   Subroutine gpu_env_read()
     Implicit none
     Character (len=512) :: entry
-    Character (len=48)  :: nm, tn
+    Character (len=48)  :: tn
     Character (len=256) :: tv
     Character (len=1) :: c
     Integer :: u, ios, l, ie, i, j
+    Character (len=48)  :: bad
+    Call env_mpi_ids()
     env_n = 0
     env_read_done = .true.
     ! /proc/self/environ: NUL-separated NAME=value entries (Linux; read byte by byte, the file reports size 0)
     Open(newunit=u, file='/proc/self/environ', access='stream', form='unformatted', action='read', status='old', iostat=ios)
     If (ios /= 0) then
-       Write(error_unit,'(A)') ' GPU env: cannot read /proc/self/environ'
+       Write(error_unit,'(A)') ' GPU debug env: cannot read /proc/self/environ (Linux /proc required for the ALF_GPU_* allow-list)'
        Call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
     Endif
     l = 0
+    ie = 0      ! position of the first '=' of the entry (0: none yet); l counts all bytes, only the first 512 are kept
     Do
        Read(u, iostat=ios) c
-       If (ios /= 0) c = achar(0)
+       If (ios /= 0) then
+          If (.not. is_iostat_end(ios)) then
+             Write(error_unit,'(A,I0,A)') ' GPU debug env: error reading /proc/self/environ (iostat ', ios, &
+                  & '), cannot check the ALF_GPU_* allow-list'
+             Call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+          Endif
+          c = achar(0)       ! end of file: closes the last entry
+       Endif
        If (c /= achar(0)) then
           l = l + 1
           If (l <= 512) entry(l:l) = c
+          If (c == '=' .and. ie == 0) ie = l
        Else
-          If (l >= 9) then
-             l = min(l, 512)
-             If (entry(1:8) == 'ALF_GPU_') then
-                ie = index(entry(1:l), '=')
-                If (ie >= 2 .and. ie <= 49 .and. ie < l .and. env_n < ENV_MAX) then
-                   env_n = env_n + 1
-                   env_name(env_n) = entry(1:ie-1)
-                   env_val(env_n)  = entry(ie+1:l)
-                Endif
+          ! entry(1:l) is ALF_GPU_<name>=<non-empty value>: never dropped; if it does not fit, the run is refused
+          If (l >= 9 .and. ie > 0 .and. ie < l .and. entry(1:min(l,8)) == 'ALF_GPU_') then
+             If (ie >= 2 .and. ie <= 49 .and. env_n < ENV_MAX) then
+                env_n = env_n + 1
+                env_name(env_n) = entry(1:ie-1)
+                env_val(env_n)  = entry(ie+1:min(l,512))
+             Else
+                bad = entry(1:min(ie-1,48))
+                Call env_fail('GPU debug env refused: '//trim(bad)// &
+                     & ' (name too long or too many ALF_GPU_ variables)')
              Endif
           Endif
-          l = 0
+          l = 0; ie = 0
           If (ios /= 0) exit
        Endif
     Enddo
@@ -282,18 +295,42 @@ Contains
     gpu_env_fault_stab_eps = env_eps
   End Function gpu_env_fault_stab_eps
 
+  !> rank in and size of MPI_COMM_WORLD (0 and 1 in a build without MPI)
+  Subroutine env_mpi_ids()
+#if defined(MPI)
+    Use mpi
+#endif
+    Implicit none
+#if defined(MPI)
+    Integer :: ierr
+    Call MPI_Comm_rank(MPI_COMM_WORLD, env_rank, ierr)
+    Call MPI_Comm_size(MPI_COMM_WORLD, env_size, ierr)
+#endif
+  End Subroutine env_mpi_ids
+
+  !> setup line: info file and stdout, root rank only (every rank still runs the check)
   Subroutine env_say(text)
     Implicit none
     Character (len=*), intent(in) :: text
     Call info_line(text)
-    Write(output_unit,'(1X,A)') trim(text)
-    Flush(output_unit)
+    If (info_root) then
+       Write(output_unit,'(1X,A)') trim(text)
+       Flush(output_unit)
+    Endif
   End Subroutine env_say
 
-  Subroutine env_stop()
+  !> refusal line, printed by the refusing rank (' (rank N)' appended only if the run has more than one rank); stops the run
+  Subroutine env_fail(text)
     Implicit none
+    Character (len=*), intent(in) :: text
+    Character (len=24) :: sfx
+    sfx = ''
+    If (env_size > 1) Write(sfx,'(A,I0,A)') ' (rank ', env_rank, ')'
+    Call info_line(text)
+    Write(output_unit,'(1X,A)') trim(text)//trim(sfx)
+    Flush(output_unit)
     Call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
-  End Subroutine env_stop
+  End Subroutine env_fail
 
 !--------------------------------------------------------------------
 !> Ticket 212, at setup of every GPU run: build stamp, debug-env line, allow-list (production runs refuse every set
@@ -301,9 +338,7 @@ Contains
 !--------------------------------------------------------------------
   Subroutine gpu_env_check()
     Implicit none
-    Character (len=1024) :: line
-    Character (len=320) :: nm
-    Integer :: ll
+    Character (len=:), allocatable :: line
     Character (len=256) :: v
     Logical :: debug_run, ok
     Integer :: i, ios
@@ -332,15 +367,11 @@ Contains
        Call env_say('GPU debug env: none')
     Else
        line = 'GPU debug env: '
-       ll = len('GPU debug env: ')
        Do i = 1, env_n
-          If (i > 1) then
-             line(ll+1:ll+2) = ', '; ll = ll + 2
-          Endif
-          nm = trim(env_name(i))//'='//trim(env_val(i))
-          line(ll+1:ll+len_trim(nm)) = trim(nm); ll = ll + len_trim(nm)
+          If (i > 1) line = line // ', '
+          line = line // trim(env_name(i)) // '=' // trim(env_val(i))
        Enddo
-       Call env_say(line(1:ll))
+       Call env_say(line)
     Endif
     debug_run = .false.
     Do i = 1, env_n
@@ -353,9 +384,8 @@ Contains
           Select case (trim(env_name(i)))
           Case ('ALF_GPU_DISABLE', 'ALF_GPU_DEBUG')
           Case default
-             Call env_say('GPU debug env refused: '//trim(env_name(i))// &
+             Call env_fail('GPU debug env refused: '//trim(env_name(i))// &
                   & ' (production run; set ALF_GPU_DEBUG=1 for a debug run)')
-             Call env_stop()
           End Select
        Enddo
     Endif
@@ -364,8 +394,7 @@ Contains
        Select case (trim(v))
        Case ('hop', 'hopc', 'vexp', 'nan', 'order', 'upd', 'nsig', 'hostonly')
        Case default
-          Call env_say('GPU fault value invalid: ALF_GPU_FAULT='//trim(v))
-          Call env_stop()
+          Call env_fail('GPU fault value invalid: ALF_GPU_FAULT='//trim(v))
        End Select
        Call env_say('GPU fault armed: ALF_GPU_FAULT='//trim(v))
     Endif
@@ -386,8 +415,7 @@ Contains
           Endif
        End Select
        If (.not. ok) then
-          Call env_say('GPU fault value invalid: ALF_GPU_FAULT_STAB='//trim(v))
-          Call env_stop()
+          Call env_fail('GPU fault value invalid: ALF_GPU_FAULT_STAB='//trim(v))
        Endif
        Call env_say('GPU fault armed: ALF_GPU_FAULT_STAB='//trim(v))
     Endif
@@ -420,8 +448,7 @@ Contains
     Implicit none
     Character (len=*), intent(out) :: reason
 
-    Character (len=16) :: env
-    Integer :: n, nf, nc, st, nh, ek
+    Integer :: n, nf, nc, nh, ek
     Logical :: act
     Integer, allocatable :: P(:)
     Real    (Kind=Kind(0.d0)), allocatable :: rm(:,:,:)
@@ -516,7 +543,6 @@ Contains
     Real (Kind=Kind(0.d0)) :: tsetup
     Character (len=256) :: reason, line
     Character (len=16)  :: env
-    Integer :: st
     Logical :: ok
 
     info_file = file_info

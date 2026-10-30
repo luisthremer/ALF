@@ -306,7 +306,10 @@ Contains
     Real (Kind=Kind(0.d0)) :: dGu, dGd, dPu, dPd, x, mGu, mGd, mPu, mPd
     Character (len=16) :: env
     Character (len=512) :: line
-    Integer :: st
+    ! (ticket 212: no environment locals left)
+    ! (ticket 212: the ALF_GPU_* variables are read by gpu_state_mod; these comment lines keep the line count of this
+    ! #ifdef ALF_GPU block equal to the base, so that the line numbers of the code after it, and with them the
+    ! __LINE__ values of the GPU=none build, stay unchanged)
     Logical :: ok
 
     env = ''

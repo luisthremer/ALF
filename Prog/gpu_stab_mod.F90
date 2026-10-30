@@ -1534,7 +1534,7 @@ Contains
     Integer :: NT1, NT
     Real (Kind=Kind(0.d0)) :: dU, dV, dS, mu(2), mv(2), ms(2), mg(2), mph(2), d, xmax_h, xmean_h, xmax_d, xsum_d
     Real (Kind=Kind(0.d0)) :: dpr(4), sens_h(2), sens_d(2), orth_d, orth_h
-    Complex (Kind=Kind(0.d0)), Allocatable :: Gh(:,:), Gd(:,:,:), Gp(:,:), Gd2(:,:,:)
+    Complex (Kind=Kind(0.d0)), Allocatable :: Gh(:,:), Gd(:,:,:), Gp(:,:), Gd2(:,:,:), Gf(:,:)
     Complex (Kind=Kind(0.d0)) :: ph_h, ph_d, ph_p
     Integer(int64) :: seed
     Integer :: nna, nnb, nblk(2)
@@ -1551,7 +1551,7 @@ Contains
     in_selftest = .true.
     call say('GPU stabilization self-test (ticket 206) start')
     allocate(hl(s_nfe), hr(s_nfe), dl_(s_nfe), dr_(s_nfe), hp(s_nfe))
-    allocate(Gh(N,N), Gp(N,N), Gd(N,N,N_FL), Gd2(N,N,N_FL))
+    allocate(Gh(N,N), Gp(N,N), Gd(N,N,N_FL), Gd2(N,N,N_FL), Gf(N,N))
     sens_h = 0.d0; sens_d = 0.d0; orth_d = 0.d0; orth_h = 0.d0
     mu = 0.d0; mv = 0.d0; ms = 0.d0; mg = 0.d0; mph = 0.d0; dpr = 0.d0; nblk = 0
     do nfe = 1, s_nfe
@@ -1606,8 +1606,8 @@ Contains
           do nvar = 1, 2
              call CGR(ph_h, nvar, Gh, hr(nfe), hl(nfe))
              call gpu_stab_cgr(nfe, nf, nvar, Gd, ph_d, .false.)
-             call fault_eps_apply(Gd(:,:,nf))
-             call state_gdiff(Gd(:,:,nf), Gh, d)
+             Gf = Gd(:,:,nf); call fault_eps_apply(Gf)      ! the graded fault acts on this copy, used by the comparison only
+             call state_gdiff(Gf, Gh, d)
              call mx(mg(nvar), d)
              call mx(mph(nvar), abs(ph_d - ph_h))
              ! intrinsic sensitivity (reported, not a criterion): U_R perturbed by 2e-16 relative per entry, host and device CGR
@@ -1654,7 +1654,7 @@ Contains
     do nfe = 1, s_nfe
        call hl(nfe)%dealloc; call hr(nfe)%dealloc; call dl_(nfe)%dealloc; call dr_(nfe)%dealloc; call hp(nfe)%dealloc
     enddo
-    deallocate(hl, hr, dl_, dr_, hp, Gh, Gp, Gd, Gd2)
+    deallocate(hl, hr, dl_, dr_, hp, Gh, Gp, Gd, Gd2, Gf)
     in_selftest = .false.
     call say('GPU stab self-test PASSED')
   end subroutine gpu_stab_selftest

@@ -982,7 +982,6 @@ Contains
   Subroutine gpu_wrap_hook()
     Implicit none
     Character (len=64) :: f
-    Integer :: st
     Logical :: did
     did = .false.
     call gpu_env_int('ALF_GPU_TL', gpu_tl)
