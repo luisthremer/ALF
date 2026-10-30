@@ -99,6 +99,16 @@ cd ALF && source configure.sh GNU noMPI NO-INTERACTIVE >/dev/null 2>&1 && mkdir 
   Submatrix flushes before re-proposing a site already in the block.
 - Plan: `docs/superpowers/plans/2026-10-30-delayed-submatrix.md` (execution: subagent-driven-development).
 
+## Statistical harness (Task 5)
+- Sets in `testsuite/lowrank/sets.sh` (`STAT_SETS`); `stat_runs.sh`/`stat_compare.py`, see `testsuite/lowrank/README.md`.
+  Reference chains: `runs/stat/<set>/standard_s1` (seed 1), compared with `standard_s2` for the harness validation.
+- Doped chemical potential: **mu = -1.0** (6x6, U=4, beta=4, Mz). Measured average sign (seed 1, NSweep=50 NBin=20,
+  n_skip=2): mu=-0.6: 0.941(9), -0.8: 0.920(10), -1.0: 0.926(11), -1.2: 0.927(11), -1.4: 0.954(4), -1.6: 0.970(5), -1.8: 0.978(4).
+  Short pilots (NSweep=20 NBin=5): -0.3: 0.978(9), -0.5: 0.945(22), -0.8: 0.975(11), -1.0: 0.88(5), -1.5: 0.92(5),
+  -2.0: 0.998. The requested window [0.3, 0.8] is NOT reachable at beta=4 (minimum about 0.92); mu=-1.0 is the
+  smallest-sign region (density 30.1/36 per site-sum, ~16 % hole doping). For reference beta=8, NSweep=50 NBin=20:
+  mu=-1.0: 0.02(2), mu=-1.4: 0.26(2) (beta between 4 and 8 would hit the window).
+
 ## Tolerances
 Unit level (`testsuite/Prog.tests/36-lowrank-unit.F90`, ctest `36-lowrank-unit`; measured 2026-10-30):
 - `TOL_UNIT = 1e-10` (relative ratio error and max|G_cand − G_ref|/max|G_ref|) for the cases mz, density,
