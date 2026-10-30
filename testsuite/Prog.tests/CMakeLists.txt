@@ -87,6 +87,20 @@ foreach(iter ${progtests})
 endforeach(iter)
 
 
+# 36-lowrank-unit: unit-level harness for the low-rank local updates. It drives the real
+# Upgrade2 / Op_Wrapup / Op_Wrapdo, so it links every Prog object except main.o, plus the
+# Hamiltonian submodules (Hamiltonian_main needs them). Run `make program` before cmake.
+add_executable(36-lowrank-unit 36-lowrank-unit.F90)
+file(GLOB LOWRANK_UNIT_PROG_OBJS ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/*.o)
+list(FILTER LOWRANK_UNIT_PROG_OBJS EXCLUDE REGEX ".*/main\\.o$")
+file(GLOB LOWRANK_UNIT_HAM_OBJS ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/Hamiltonians/*.o)
+target_link_libraries(36-lowrank-unit ${LOWRANK_UNIT_PROG_OBJS} ${LOWRANK_UNIT_HAM_OBJS} ${LIB_LIST})
+foreach(iflag ${FLAG_LIST})
+  target_compile_options(36-lowrank-unit PRIVATE ${iflag})
+endforeach(iflag)
+target_include_directories(36-lowrank-unit PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/)
+target_include_directories(36-lowrank-unit PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules/)
+
 target_include_directories(26-Test-Polymorphic-Fortran PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/)
 target_link_libraries(26-Test-Polymorphic-Fortran ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/OpTTypes_mod.o ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/DynamicMatrixArray_mod.o ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/ContainerElementBase_mod.o)
 foreach(iflag ${FLAG_LIST})
@@ -136,3 +150,4 @@ add_test(33-Op-equal 33-Op-equal)
 add_test(34-Op-V-symm-pass 34-Op-V-symm-pass)
 add_test(35-Op-V-symm-fail 35-Op-V-symm-fail)
 set_tests_properties(35-Op-V-symm-fail PROPERTIES WILL_FAIL TRUE)
+add_test(36-lowrank-unit 36-lowrank-unit)

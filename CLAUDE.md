@@ -92,7 +92,30 @@ cd ALF && source configure.sh GNU noMPI NO-INTERACTIVE >/dev/null 2>&1 && mkdir 
 - Plan: `docs/superpowers/plans/2026-10-30-delayed-submatrix.md` (execution: subagent-driven-development).
 
 ## Tolerances
-- To be set in Phase 2 (target ~1e-10 relative for the unit level).
+Unit level (`testsuite/Prog.tests/36-lowrank-unit.F90`, ctest `36-lowrank-unit`; measured 2026-10-30):
+- `TOL_UNIT = 1e-10` (relative ratio error and max|G_cand − G_ref|/max|G_ref|) for the cases mz, density,
+  continuous, repeat (cond(1+A) ≲ 1e7). `TOL_ILL = 1e-8` for `mz_illcond` (cond(1+A) ~ 1.9e8).
+- Measured drift of the standard path (real `Upgrade2`) against an exact recomputation `(1+A)^{-1}`
+  (A tracked explicitly), max over 3 slice ends; cond = cond_2(1+A) at the last slice; ε = 2.2e-16:
+
+  | case | dir | cond(1+A) | std drift | drift/(cond·ε) |
+  |---|---|---|---|---|
+  | mz | up / down | 4.6e6 / 6.3e6 | 1.6e-13 / 5.5e-14 | 1.6e-4 / 3.9e-5 |
+  | density | up / down | 2.7e2 / 2.0e2 | 1.4e-14 / 4.2e-15 | 0.22 / 0.09 |
+  | continuous | up / down | 1.5e3 / 1.2e3 | 7.2e-15 / 5.2e-15 | 0.021 / 0.019 |
+  | repeat | up / down | 2.6e6 / 7.7e6 | 6.4e-14 / 1.5e-12 | 1.1e-4 / 9.0e-4 |
+  | mz_illcond | up / down | 1.5e7 / 1.9e8 | 3.5e-12 / 3.5e-11 | 1.1e-3 / 8.5e-4 |
+
+- Justification: candidate and reference each lie within about the drift of exact, so |cand − ref| ≲ 2× drift.
+  TOL_UNIT = 1e-10 vs max well-conditioned drift 1.5e-12 → 65× margin; TOL_ILL = 1e-8 vs 3.5e-11 →
+  ~280× margin. The margin covers N_delay-dependent summation order in the low-rank schemes.
+  The drift grows with cond(1+A) (mz/repeat reach ~1e6–1e7 because diagonal wraps and flips make A
+  strongly non-normal; mz_illcond uses an ill-conditioned inter-slice similarity), but it stays
+  well below cond·ε (ratio 4e-5 … 0.22), i.e. at the double-precision floor.
+- Asserted in the test: errors ≤ TOL (per case); drift ≤ TOL_UNIT/2 (not for mz_illcond, where the
+  double-precision "exact" inverse is itself unreliable); drift ≤ 10·cond(1+A)·ε for every case. The
+  last bound is loose for the high-cond cases (actual ratio ≤ 1e-3 there); it only catches gross loss.
+- Inter-slice similarity: S = I + 0.1·R/√Ndim (cond(S) ≈ 1.3); mz_illcond: S = I + 0.1·R (cond(S) ≈ 20).
 
 ## Open questions
 - See the design spec, section "Open questions for Checkpoint 1".
