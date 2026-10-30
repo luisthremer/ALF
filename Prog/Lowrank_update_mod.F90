@@ -182,7 +182,9 @@ contains
       case ("DELAYED")
          lr_scheme = SCHEME_DELAYED
       case ("SUBMATRIX")
-         lr_scheme = SCHEME_SUBMATRIX
+         ! Phase 4 will implement the scheme; until then refuse it at init, not at the first eligible proposal.
+         Write(error_unit,*) 'Lowrank_init: Sequential_scheme = submatrix is not implemented yet'
+         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
       case default
          Write(error_unit,*) 'Lowrank_init: unknown Sequential_scheme "', trim(scheme_name), &
               &              '" (allowed: standard, delayed, submatrix)'
@@ -203,7 +205,7 @@ contains
       do n = 1, M
          eligible(n) = .true.
          do nf = 1, N_FL
-            if (Op_V(n,nf)%N_non_zero > 1 .or. .not. Op_V(n,nf)%diag) eligible(n) = .false.
+            if (Op_V(n,nf)%N_non_zero > N_P_max .or. .not. Op_V(n,nf)%diag) eligible(n) = .false.
          enddo
          if (.not. eligible(n)) then
             n_inel = n_inel + 1

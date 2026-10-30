@@ -3,7 +3,7 @@
 #
 # Usage:  testsuite/lowrank/compare_trajectory.sh [--rebuild] SET SCHEME_A SCHEME_B [KEY=VALUE ...]
 #   SET                 one of the sets of testsuite/lowrank/sets.sh (start, explicit, doped, density,
-#                       continuous, tv); only its common keys are used (the scheme is set explicitly).
+#                       continuous, tv, kondo, pv_adiab, z2gt); only its common keys are used (the scheme is set explicitly).
 #   SCHEME_A, SCHEME_B  standard | delayed | submatrix (any case)
 #   KEY=VALUE ...       extra parameters for both runs (e.g. N_delay=8, SEED=42)
 #   --rebuild           force a rebuild of the trace binary.

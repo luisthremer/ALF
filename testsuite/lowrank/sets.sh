@@ -12,6 +12,14 @@ SETS=(
   # tV: the Start default ham_V=4 aborts at baseline (unstable, positive V gives an imaginary
   # coupling), so use the parameters of testsuite/test_branch_parameters.json (ham_V=-1, N_SUN=1).
   "tv|ham_name=\"tV\" Model=\"tV\" ham_V=-1.d0 N_SUN=1 L1=4 L2=4 Beta=4|"
+  # kondo: mixes eligible (diagonal rank-1) and ineligible (non-diagonal / rank>1) vertices in one time slice.
+  "kondo|ham_name=\"Kondo\" Model=\"Kondo\" Lattice_type=\"Bilayer_square\" L1=4 L2=4 Beta=2.d0|"
+  # pv_adiab: projective algorithm with adiabatic switching (time-dependent couplings g_t, N_FL_eff < N_FL
+  # via flavour reconstruction). Beta/Theta/Projector/Adiabatic live in VAR_Model_Generic and VAR_Hubbard_Plain_Vanilla.
+  "pv_adiab|ham_name=\"Hubbard_Plain_Vanilla\" Model=\"Hubbard_Plain_Vanilla\" L1=4 L2=4 Projector=.T. Adiabatic=.T. Theta=2.d0 Beta=1.d0|"
+  # z2gt: Z2 matter with Global_tau moves (global moves while low-rank updates are pending). Run the delayed side
+  # with N_delay=5 so that flushes are exercised.
+  "z2gt|ham_name=\"Z2_Matter\" Model=\"Z2_Matter\" L1=4 L2=4 Beta=1.d0 ham_U=1.0 Global_tau_moves=.T. N_Global_tau=4 Symm=.F. Checkerboard=.F.|"
 )
 
 # Statistical sets for stat_runs.sh (independent long chains compared with stat_compare.py): "name|keys".

@@ -20,15 +20,22 @@ BRANCH_EXTRA="Sequential_scheme=0" testsuite/lowrank/regress_vs_baseline.sh   # 
 
 - Creates the worktree `../ALF_baseline` (detached at `f81b5cbc`) if missing and builds it; rebuilds the branch.
 - Each side starts from its own tree's `Start` template (`--template`), since the branch template carries keys the baseline cannot parse.
-- The six sets are defined in `sets.sh` (sourced by this script and by `compare_trajectory.sh`).
-- Runs six short sets (`NSweep=5 NBin=2`, `OMP_NUM_THREADS=1`) with identical parameters and seeds:
+- The nine sets are defined in `sets.sh` (sourced by this script and by `compare_trajectory.sh`).
+- Runs nine short sets (`NSweep=5 NBin=2`, `OMP_NUM_THREADS=1`) with identical parameters and seeds:
   `start`, `explicit` (`start` plus branch-only `sequential_scheme='STANDARD' N_delay=7`: lower-case key name, single-quoted upper-case value, non-default `N_delay`, which must be irrelevant for the standard scheme), `doped` (`ham_chem=-0.5 L1=4 L2=4 Beta=4`), `density` (`Mz=.F.`), `continuous`
-  (`Continuous=.T.`), `tv` (see below). Outputs go to `runs/regress/<set>/{base,branch}`.
+  (`Continuous=.T.`), `tv` (see below), `kondo`, `pv_adiab`, `z2gt` (see below). Outputs go to `runs/regress/<set>/{base,branch}`.
 - `cmp`s every output file except `info*` (commit and time stamps) and the inputs `parameters`, `seeds`
   (they differ textually with branch-only keys); the `*_info` companions are compared. Exit 2 if a run
   produced no `confout_0` or `*_scal`, or if `../ALF_baseline` is not at `f81b5cbc`.
 - Prints `<set> IDENTICAL|DIFFERENT`, exit 0 iff all identical. Differing files are listed on stderr.
 - Sanity check of the harness: `BRANCH_EXTRA=NSweep=6 ...` must report `DIFFERENT` for every set.
+
+Model coverage sets (all run on the baseline binary in seconds):
+- `kondo`: Kondo bilayer 4x4, Beta=2; eligible and ineligible vertices (16 of 32 are not diagonal rank-1) mix in one time slice.
+- `pv_adiab`: Hubbard_Plain_Vanilla with `Projector=.T. Adiabatic=.T. Theta=2 Beta=1`: time-dependent couplings `g_t`, and
+  particle-hole symmetry gives `N_FL_eff = 1 < N_FL = 2` (flavour reconstruction).
+- `z2gt`: Z2_Matter 4x4, `ham_U=1`, `Global_tau_moves=.T. N_Global_tau=4 Symm=.F. Checkerboard=.F.`: Global_tau moves with
+  low-rank updates pending (run the trajectory check with `N_delay=5`).
 
 The `tv` set does not use the Start default `ham_V=4`: it aborts at baseline (positive V gives an
 imaginary coupling, the run is flagged unstable). It uses `ham_V=-1`, `N_SUN=1`, `L1=L2=4`, `Beta=4`
@@ -65,7 +72,7 @@ same accept/reject decisions. `SET` is one of the `sets.sh` sets (its common key
   different trace lengths are `BUG`. Last line `RESULT: IDENTICAL|ROUNDOFF k margin|BUG ...`; exit 0 for IDENTICAL and
   ROUNDOFF, 1 for BUG, 2 for unusable input. `--selftest` checks the classification on synthetic traces.
 - `compare_runs.py` requires `confout_0` identical field by field and all bin files (`*_scal`, `*_eq`, `*_tau`) within
-  relative tolerance 1e-8 plus an absolute floor of 1e-12 times the file's largest value (the floor overrides rtol for small entries, e.g. imaginary parts of order 1e-16; `stdout.log` and `trace_updates.txt` are not compared here, the trace is compared by `trace_diff.py`). For a
+  relative tolerance 1e-8 plus an absolute floor of 1e-12 times the file's largest value (the floor overrides rtol for small entries, e.g. imaginary parts of order 1e-16; the summary reports the worst ratio |difference| / allowed tolerance over all entries, <= 1 passes; `stdout.log` and `trace_updates.txt` are not compared here, the trace is compared by `trace_diff.py`). For a
   non-standard scheme the run's `info` must contain a line starting with `Sequential scheme: <NAME>` (upper case) followed by
   `,` or the end of the line (`Lowrank_init` writes `Sequential scheme: DELAYED, N_delay = 7`), so a silent fallback to
   standard fails; for `standard` there is nothing to check.
@@ -73,7 +80,7 @@ same accept/reject decisions. `SET` is one of the `sets.sh` sets (its common key
   `DIVERGED-ROUNDOFF at proposal k (margin ...)`, the trajectories legitimately diverge, so only the `info` line is
   checked, exit 0. BUG -> exit 1. Exit 2: build, run or usage failure.
 - `standard delayed` is the trajectory check of the delayed scheme (wired into `WRAPGRUP`/`WRAPGRDO`, Task 8);
-  `submatrix` stops with "not implemented" until it exists.
+  `submatrix` terminates in `Lowrank_init` with "Sequential_scheme = submatrix is not implemented yet" until Phase 4.
 
 ## stat_runs.sh, stat_compare.py (statistical comparison of independent chains)
 
