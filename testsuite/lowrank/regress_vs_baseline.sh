@@ -32,8 +32,9 @@ build() {  # build ALF.out in the tree $1, log to $2
 # Parameter sets: "name|common keys|branch-only keys"
 SETS=(
   "start||"
-  # explicit: the new keys at their defaults must not change anything (branch-only: baseline cannot parse them)
-  "explicit||Sequential_scheme=\"standard\" N_delay=32"
+  # explicit: parser check for the branch-only keys (baseline cannot parse them): key name in another case,
+  # single-quoted upper-case value, non-default N_delay; N_delay must be irrelevant for "standard".
+  "explicit||sequential_scheme='STANDARD' N_delay=7"
   "doped|ham_chem=-0.5 L1=4 L2=4 Beta=4|"
   "density|Mz=.F.|"
   "continuous|Continuous=.T.|"
