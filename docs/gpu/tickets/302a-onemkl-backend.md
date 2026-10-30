@@ -94,8 +94,11 @@ changed build files, means re-registration before T1):
 - **No crash markers:** the C++ shim catches every exception (oneMKL throws on illegal arguments, e.g. `t_fail`'s m < n
   `ungqr`) and returns it as an info/error code, so `terminate called` never appears; no runtime message may contain
   `omptarget` (the harness counts it as a crash). T0 greps the logs for both.
-- **Time:** one `t_order` repetition ≤ 8 s on the B580 (100 repetitions within 15 min), measured in T0; otherwise stop
-  and report (a different count needs the owner's approval).
+- **Time:** first registered as one `t_order` repetition ≤ 8 s on the B580 (100 repetitions within 15 min). T0
+  measured 11.3 s per repetition (100 ≈ 19 min); the owner allowed ~19-minute runs for the `t_order` gate and its
+  control `ctl_t_order_broken` (2026-10-30, DECISIONS.md row 15, "Allow ~19 min"). New limit: one repetition ≤ 12 s
+  (100 repetitions ≤ 20 min), measured again in T0 of the candidate; above it, stop and report. The repetition count
+  (100) and every other criterion are unchanged.
 
 1. `alf_la.tests` under `GPU=intel` on the B580: all 13 routine tests pass with unchanged assertions and tolerances;
    controls: poisoned info and wrong ld fail.
@@ -126,6 +129,8 @@ change only, with the owner's approval at that time). The `alf_la` interface sta
   `7b3c0dc6`. Any change of
   `302a.json` / `302a.nvidia.json` after this needs the owner's quoted approval and fresh seeds (VERIFICATION.md §3),
   unless made before any implementation result exists and pre-registered again in a new commit recorded here.
+- Third pre-registration (after T0 results, with the owner's quoted approval, DECISIONS.md row 15, 2026-10-30): only
+  the `t_order` time rule above changes; `302a.json` and `302a.nvidia.json` are unchanged.
 
 ## Evidence
 `intel:~/alf-gpu/work/t302a/` and `nividia:~/alf-gpu/work/t302a/`: development runs (T0) under `dev/`; candidates in
