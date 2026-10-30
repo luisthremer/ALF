@@ -1,0 +1,174 @@
+{
+ "schema": "alf-acc/1",
+ "ticket": "302a",
+ "candidate_sha": "self",
+ "base_sha": "5f062f2941c0",
+ "created": "2026-10-30",
+ "approvals": [],
+ "timeout_s": 900,
+ "disk_min_free_GB": 5,
+ "cpu_parallel": 2,
+ "false_alarm_budget": 0.0,
+ "_false_alarm_reason": "all gates are deterministic counts (unit tests with fixed inputs, ordering canary 100/100, identity)",
+ "_status": "pre-registered for ticket 302a, Intel part (intel, Arc B580, ifx 2026.2 + oneMKL 2026.2 per DECISIONS.md row 13); counts and controls fixed before any implementation",
+ "machine": "intel",
+ "gpu_exclusive": true,
+ "builds": {},
+ "configs": {},
+ "runs": {},
+ "ctests": [
+  {
+   "id": "onemkl_all",
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI GPU=intel",
+   "regex": "^t_",
+   "gpu": true
+  },
+  {
+   "id": "t_order",
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI GPU=intel",
+   "regex": "^t_order$",
+   "repeat": 100,
+   "gpu": true
+  },
+  {
+   "id": "ctl_t_order_broken",
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI GPU=intel",
+   "regex": "^t_order$",
+   "repeat": 100,
+   "env": [
+    "ALF_LA_TEST_BREAK_ORDER=1"
+   ],
+   "control": true,
+   "gpu": true
+  },
+  {
+   "id": "ctl_poison_info",
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI GPU=intel",
+   "regex": "^t_",
+   "env": [
+    "ALF_LA_TEST_POISON_INFO=1"
+   ],
+   "control": true,
+   "gpu": true
+  },
+  {
+   "id": "ctl_wrong_ld",
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI GPU=intel",
+   "regex": "^t_",
+   "env": [
+    "ALF_LA_TEST_WRONG_LD=1"
+   ],
+   "control": true,
+   "gpu": true
+  }
+ ],
+ "gates": [
+  {
+   "id": "alf_la_tests_onemkl",
+   "type": "log_regex",
+   "_reason": "acceptance 1: the 13 alf_la routine tests of HOST/CUDA (t_checks t_gemm t_geru t_trsm t_lu t_qr t_qrpp t_geqp3 t_order t_fail t_fail_exit t_info_recycle t_info_sync) with unchanged assertions and tolerances, under GPU=intel on the B580",
+   "checks": [
+    {
+     "file": "onemkl_all/ctest.log",
+     "stamp_file": "onemkl_all/stamp",
+     "exit_file": "onemkl_all/ctest.exit",
+     "regex": "(\\d+)% tests passed, (\\d+) tests failed out of (\\d+)",
+     "equals": [
+      100,
+      0,
+      13
+     ],
+     "stamp_contains": [
+      "offload MANDATORY"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "t_order",
+   "type": "log_regex",
+   "_reason": "acceptance 2: ordering canary passes 100 of 100 repetitions",
+   "checks": [
+    {
+     "file": "t_order/summary",
+     "stamp_file": "t_order/stamp",
+     "exit_file": "t_order/ctest.exit",
+     "regex": "\\^t_order\\$: (\\d+) of (\\d+) repetitions passed",
+     "equals": [
+      100,
+      100
+     ],
+     "stamp_contains": [
+      "offload MANDATORY"
+     ]
+    }
+   ]
+  }
+ ],
+ "controls": [
+  {
+   "id": "ctl_t_order_broken",
+   "like": "t_order",
+   "expect": "FAIL",
+   "_reason": "deliberately broken ordering must be detected",
+   "replace": {
+    "checks": [
+     {
+      "file": "ctl_t_order_broken/summary",
+      "stamp_file": "ctl_t_order_broken/stamp",
+      "exit_file": "ctl_t_order_broken/ctest.exit",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "ctl_poison_info",
+   "like": "alf_la_tests_onemkl",
+   "expect": "FAIL",
+   "_reason": "a poisoned device info must make the routine tests fail",
+   "replace": {
+    "checks": [
+     {
+      "file": "ctl_poison_info/ctest.log",
+      "stamp_file": "ctl_poison_info/stamp",
+      "exit_file": "ctl_poison_info/ctest.exit",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "ctl_wrong_ld",
+   "like": "alf_la_tests_onemkl",
+   "expect": "FAIL",
+   "_reason": "a wrong leading dimension must make the routine tests fail",
+   "replace": {
+    "checks": [
+     {
+      "file": "ctl_wrong_ld/ctest.log",
+      "stamp_file": "ctl_wrong_ld/stamp",
+      "exit_file": "ctl_wrong_ld/ctest.exit",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
+     }
+    ]
+   }
+  }
+ ],
+ "allowed_test_changes": [
+  "testsuite/alf_la.tests/CMakeLists.txt",
+  "testsuite/alf_la.tests/la_test_util.F90",
+  "testsuite/alf_la.tests/t_order.F90"
+ ]
+}
