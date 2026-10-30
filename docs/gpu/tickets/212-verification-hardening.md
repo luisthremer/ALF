@@ -122,7 +122,8 @@ Pre-registered in `testsuite/gpu_reference/acceptance/212.json` (gates, threshol
   before any implementation result exists and is pre-registered again in a new commit recorded here.
 - Fourth pre-registration (after the T1 result, with the owner's quoted approval, DECISIONS.md row 14, 2026-10-30):
   compare2 config `s8_U4_b2_cb_short` NSweep 15 → 30 (parameters sha256 `06c10c72…`, prepared twice on nividia, only
-  `Nsweep` differs from the old file, which still gives the old hash), `timeout_s` 900 → 1500. T2 on fresh seeds.
+  `Nsweep` differs from the old file, which still gives the old hash), `timeout_s` 900 → 1500. T2 on fresh seeds. Pre-registration commit `ea22ba36`; the T2 candidate is the
+  commit recording it, whose code equals candidate 2 `510ec2cd` (`git diff 510ec2cd` touches only `docs/**` and `212.json`).
 
 ## Evidence
 `~/alf-gpu/work/t212/`: development runs (T0) anywhere below it; candidates in `cand/agent/<sha12>/` (T1) and
