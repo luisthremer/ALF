@@ -80,6 +80,10 @@ harness's `acc_ctest.sh` sources the env file inside `bash -c` and then reads `$
 each `vars.sh` inside a function with an empty argument list; the resulting environment is identical (`env | sort`
 diff empty), the previous file is kept as `intel.sh.argreset_2026-10-30`. The nividia env files do not have this problem
 (checked 2026-10-30). No acceptance run had used `intel` before the fix.
+GPU runs on `intel` wrote the Intel GPU compiler cache to `~/.cache/neo_compiler_cache` (16 MB by 2026-10-30, from the
+302a runs), outside `~/alf-gpu/` (found by the 302b draft). Since 2026-10-30 `intel.sh` sets `NEO_CACHE_PERSISTENT=0`
+(kernels are JIT-compiled at each start; previous file `intel.sh.neocache_2026-10-30`). The existing cache directory is
+left in place until the owner decides.
 Checked 2026-10-30: `ifx -fiopenmp -fopenmp-targets=spir64 -qmkl ... -lmkl_sycl_blas -lmkl_sycl_lapack -lsycl` links
 (the link that failed on 2026-10-29); ZGEMM plus a target region runs on the B580 under `OMP_TARGET_OFFLOAD=MANDATORY`
 with the correct result; `ldd`: all MKL/SYCL/iomp libraries from 2026.2. Sourcing prints a harmless UMF warning on
