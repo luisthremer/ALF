@@ -14,11 +14,21 @@
    "covers": [
     "c_compare2_shift"
    ]
+  },
+  {
+   "who": "owner",
+   "decision": "14",
+   "date": "2026-10-30",
+   "quote": "Longer bins",
+   "covers": [
+    "compare2"
+   ]
   }
  ],
  "machine": "nividia",
  "gpu_exclusive": true,
- "timeout_s": 900,
+ "timeout_s": 1500,
+ "_timeout_reason": "compare2 at 120 bins x 30 sweeps (owner, DECISIONS.md row 14): the GPU run took 537 s at 120 x 15 in T1, so ~1075 s now; 1500 s leaves margin. Every other run stays far below 900 s",
  "disk_min_free_GB": 5,
  "cpu_parallel": 3,
  "false_alarm_budget": 0.04,
@@ -153,10 +163,10 @@
   "s8_U4_b2_cb_short": {
    "base": "s8_U4_b2_cb",
    "overrides": {
-    "NSweep": 15,
+    "NSweep": 30,
     "NBin": 120
    },
-   "parameters_sha256": "36cb300caf997c0b17adb30e10a00de979a7990ef6be54d713661bdf1cf81610"
+   "parameters_sha256": "06c10c72653a64d7c092d2c4d0df5fd45c0e3db40cacefe7dacb55b4752d1fcc"
   },
   "hub12x12_cb_tm": {
    "base": "hub12x12_cb",

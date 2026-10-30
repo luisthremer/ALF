@@ -96,9 +96,11 @@ Pre-registered in `testsuite/gpu_reference/acceptance/212.json` (gates, threshol
 - **Same seeds vs the CPU oracle:** 6×6 default and LOG, 12×12 default: no bin above 1e-4, overall and τ line ≤ 1e-9.
   (12×12 LOG is ticket 213, decision 3b; 213 re-measures it on top of 212.)
 - **Precision mean** (Green, τ) ≤ 1.5× the larger CPU mean, 12×12 β = 4, default and LOG.
-- **compare2** GPU vs GPU=none on fresh seeds (`s8_U4_b2_cb` shortened to 120 bins × 15 sweeps: the base GPU build needs
-  0.31 s/sweep there, so the full 250 × 40 would take ~51 min; 120 × 15 ≈ 560 s leaves headroom under the 900 s
-  timeout for the cost of the deterministic sums), with a CPU-vs-CPU null control.
+- **compare2** GPU vs GPU=none on fresh seeds (`s8_U4_b2_cb` shortened to 120 bins × 30 sweeps; the full 250 × 40
+  would take ~51 min), with a CPU-vs-CPU null control. First registered at 120 × 15; the T1 GPU run (537 s) left
+  G(k=(π,0)) under-resolved (INCONCLUSIVE), so the owner chose longer bins for T2 (2026-10-30, DECISIONS.md row 14):
+  120 × 30, ~18 min per GPU run (exception to the 15-min run rule for the compare2 runs), timeout 1500 s for all runs.
+  α, m, the observables, `min_bins` and the shift-8 control are unchanged; T2 uses fresh seeds.
 - **`t_determinism`** passes under CUDA; its planted-ulp control fails.
 - **GPU=none:** preprocessed changed CPU-path Fortran identical (`alf_la_mod.F90` and `Wrapgr_mod.F90`, 9 macro sets
   each = 18 comparisons; one build file, the `alf_la.tests` CMakeLists), ctest 53/53 (52 + `t_determinism`).
@@ -118,6 +120,9 @@ Pre-registered in `testsuite/gpu_reference/acceptance/212.json` (gates, threshol
   ~60 % of the time); approved by the owner on 2026-10-29 ("Approve shift 8", DECISIONS.md row 12). Any change of
   `212.json` after this needs the owner's quoted approval and fresh seeds (VERIFICATION.md §3), unless it is made
   before any implementation result exists and is pre-registered again in a new commit recorded here.
+- Fourth pre-registration (after the T1 result, with the owner's quoted approval, DECISIONS.md row 14, 2026-10-30):
+  compare2 config `s8_U4_b2_cb_short` NSweep 15 → 30 (parameters sha256 `06c10c72…`, prepared twice on nividia, only
+  `Nsweep` differs from the old file, which still gives the old hash), `timeout_s` 900 → 1500. T2 on fresh seeds.
 
 ## Evidence
 `~/alf-gpu/work/t212/`: development runs (T0) anywhere below it; candidates in `cand/agent/<sha12>/` (T1) and
