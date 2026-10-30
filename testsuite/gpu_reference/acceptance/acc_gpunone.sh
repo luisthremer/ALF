@@ -38,10 +38,11 @@ for v in base_src src; do   # from the tarballs after a fresh hash check, not fr
     $W/tree_$v "$OUT" $v
   echo $? > "$OUT/build_$v.exit"
 done
-mod=$(awk '$1=="M" || $1=="T" {print $2}' $C/changed_files.txt | grep -E '\.(F90|f90|F|f)$' | grep -v -E '^(Prog/gpu_|gpu_bench/|testsuite/|docs/|\.claude/)')
-addel=$(awk '$1=="A" || $1=="D" {print $1" "$2}' $C/changed_files.txt | grep -E '\.(F90|f90|F|f)$' | grep -v -E ' (Prog/gpu_|gpu_bench/|testsuite/|docs/|\.claude/)' | wc -l)
+NB='Prog/gpu_|gpu_bench/|testsuite/|docs/|\.claude/'   # not built: one list for compared, added/deleted and other files
+mod=$(awk '$1=="M" || $1=="T" {print $2}' $C/changed_files.txt | grep -E '\.(F90|f90|F|f)$' | grep -v -E "^($NB)")
+addel=$(awk '$1=="A" || $1=="D" {print $1" "$2}' $C/changed_files.txt | grep -E '\.(F90|f90|F|f)$' | grep -v -E " ($NB)" | wc -l)
 build=$(awk '{print $2}' $C/changed_files.txt | grep -E '(^|/)(Makefile[^/]*|configure\.sh|CMakeLists\.txt|[^/]*\.mk)$' | wc -l)
-otherl=$(awk '{print $2}' $C/changed_files.txt | grep -v -E '^(docs/|testsuite/|gpu_bench/|\.claude/|Prog/gpu_)' \
+otherl=$(awk '{print $2}' $C/changed_files.txt | grep -v -E "^($NB)" \
         | grep -v -E '\.(F90|f90|F|f)$' | grep -v -E '(^|/)(Makefile[^/]*|configure\.sh|CMakeLists\.txt|[^/]*\.mk)$')
 other=$(echo -n "$otherl" | grep -c . || true)
 # the plant control needs a compared file: without changed CPU-path Fortran it compares Prog/main.F90 (identical on both sides)
