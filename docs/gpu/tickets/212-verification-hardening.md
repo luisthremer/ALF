@@ -110,8 +110,9 @@ Pre-registered in `testsuite/gpu_reference/acceptance/212.json` (gates, threshol
 - First pre-registration `21e23a6a` (base `d53f9779`) was superseded before any implementation existed, after review
   (b) of the acceptance file (findings M1–M6, S1–S11). Second pre-registration `71bbcc93` was superseded before
   any implementation result existed, after its re-review (wrong base sha, the "set" rule vs `ALF_GPU_NS=0`, `__LINE__`
-  in the HOST preprocessed output, an untested invalid-value rule, 204/205 numbers, compare2 timing margin). Current
-  pre-registration commit: `aed4da4d` (2026-10-29) on
+  in the HOST preprocessed output, an untested invalid-value rule, 204/205 numbers, compare2 timing margin). Third pre-registration
+  `aed4da4d`; the owner's approval of the shift 8 was added in `74cdac8f` (2026-10-30), which is the current
+  pre-registration commit on
   `gpu-port-212-hardening-b`; base `1a363070`. Deviation to put to the owner: the compare2 positive control uses a
   shift of 8 standard errors, not the 5 of VERIFICATION.md §5 (at m = 11, α = 0.01 Šidák a shift of 5 is caught only
   ~60 % of the time); approved by the owner on 2026-10-29 ("Approve shift 8", DECISIONS.md row 12). Any change of
