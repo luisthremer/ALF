@@ -96,7 +96,9 @@ only once calibrated), and maxima are compared only between runs of identical le
 
 On top of T2 the manager audits the implementer's report against the raw outputs (`audit.py`) and lists every
 mismatch, and an independent `acceptance-verifier` recomputes every verdict (section 10). A ~2 h unattended T2
-sequence of ≤ 15 min runs needs the owner's standing approval of the budget.
+sequence needs the owner's standing approval of the budget. Runs have no fixed time limit (decision 16): the acceptance
+file's `timeout_s` is a hang guard, never a criterion, and run times are not acceptance criteria unless the ticket is about
+performance.
 
 ## 9. Evidence retention
 Raw outputs (`info`, `data.h5`, `run.log`, `provenance.json`, verdict files) stay until the owner's gate, then go to
