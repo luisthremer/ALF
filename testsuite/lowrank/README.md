@@ -73,3 +73,33 @@ same accept/reject decisions. `SET` is one of the `sets.sh` sets (its common key
   checked, exit 0. BUG -> exit 1. Exit 2: build, run or usage failure.
 - Until the low-rank schemes exist only `standard standard` is meaningful; `standard delayed` currently fails the
   `info` check (non-standard values are silently ignored).
+
+## stat_runs.sh, stat_compare.py (statistical comparison of independent chains)
+
+```bash
+testsuite/lowrank/stat_runs.sh SET SCHEME SEED [KEY=VALUE ...]     # SET = half | doped | density
+python3 -I testsuite/lowrank/stat_compare.py DIR_A DIR_B           # A = reference (standard), B = candidate
+python3 -I testsuite/lowrank/stat_compare.py --selftest
+```
+
+- `stat_runs.sh` builds `runs/stat/<SET>/<SCHEME>_s<SEED>[$STAT_TAG]` from `STAT_SETS` in `sets.sh` plus
+  `NSweep=50 NBin=40 Ltau=0 n_skip=5 N_rebin=1 Sequential_scheme="<SCHEME>" SEED=<SEED>` (extra `KEY=VALUE` args are
+  applied last and override), runs `Prog/ALF.out` (`OMP_NUM_THREADS=1`) and `Analysis/ana.out` on `Ener_scal Pot_scal
+  Kin_scal Part_scal SpinZ_eq Green_eq`. One job takes 25-55 s on the M1 Pro (6x6, 2000 sweeps), so no reduction of
+  NSweep was needed. Start it with `run_in_background` / `&`; keep <= 8 jobs concurrent.
+- Sets: `half` 6x6 U=4 beta=5 mu=0 (Mz); `doped` 6x6 U=4 beta=4 mu=-1.0 (Mz); `density` `Mz=.F.` 6x6 U=4 beta=4 mu=0.
+- ana.out output layout: `*_scalJ` rows `idx value error` (the last row is the average sign/phase; the observable
+  values are jackknife sign-reweighted); `*_eqJK`/`*_eqJR`: a coordinate line, then `orb orb Re errRe Im errIm`.
+  `Pot_scal` (= U sum <(n_up-1/2)(n_dn-1/2)>-like) is used as the double-occupancy proxy; `Part_scal` is
+  the particle number (constant at half filling and in the SU(N) density set; handled as constant, z = 0).
+- `stat_compare.py`: z = (a-b)/sqrt(sa^2+sb^2) for every scalar (Ener, Kin, Pot, Part, avg sign/phase) and every Re
+  and Im entry of `SpinZ_eqJK` and `Green_eqJK`. PASS: all scalar |z| < 3; for each k-point array fraction(|z|>2) <=
+  10 % and max|z| < 4.5. `*_eqJR` (Fourier transform of the same data) is printed for information only.
+  Entries that are numerically zero in both runs (|value|, error < 1e-10, e.g. Im of SpinZ) are skipped; the
+  "unique" columns count lattice-symmetry copies (identical |z|) once; they are informational, not part of the verdict.
+  It also reports `Precision Green Mean/Max` and `Precision Phase` of both `info` files and flags B/A > 10 for the maxima.
+  Exit 0 PASS, 1 FAIL, 2 unusable input.
+- Known property of the fraction criterion: many array entries are exact lattice-symmetry copies (4-fold), so
+  one 2-sigma fluctuation of an independent value counts up to 4 times. Measured with 4 independent standard seeds
+  (6 pairs per set, 18 comparisons): 8 of 36 k-point arrays and 6 of 18 comparisons exceed 10 % although the errors are
+  well calibrated (pooled over symmetry-unique entries: fraction(|z|>2) = 5.1 %, rms z = 1.04, max |z| = 3.39).
