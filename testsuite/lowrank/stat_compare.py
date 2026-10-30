@@ -157,7 +157,7 @@ def compare(da, db, out=print, ph=True):
         base = f[:-len("_scalJ")]
         for k in range(len(ra) - 1):
             z = zscore(ra[k][1], ra[k][2], rb[k][1], rb[k][2])
-            bad = not abs(z) < Z_SCALAR
+            bad = not (math.isfinite(z) and abs(z) < Z_SCALAR)
             ok &= not bad
             out("%-22s %14.6g %10.3g %14.6g %10.3g %9.2f  %s" % (
                 "%s[%d]" % (base, ra[k][0]), ra[k][1], ra[k][2], rb[k][1], rb[k][2], z, "FAIL" if bad else "ok"))
@@ -166,7 +166,7 @@ def compare(da, db, out=print, ph=True):
     ref = [s for s in signs if s[0] == "Ener_scal"] or signs[:1]
     base, sa, sb = ref[0]
     z = zscore(sa[1], sa[2], sb[1], sb[2])
-    bad = not abs(z) < Z_SCALAR
+    bad = not (math.isfinite(z) and abs(z) < Z_SCALAR)
     ok &= not bad
     out("%-22s %14.6g %10.3g %14.6g %10.3g %9.2f  %s" % (
         "avg sign/phase", sa[1], sa[2], sb[1], sb[2], z, "FAIL" if bad else "ok"))
@@ -209,10 +209,13 @@ def compare(da, db, out=print, ph=True):
         frac = n2 / n
         limit = array_limit(n)
         mx = max(abs(z) for z in zs)
+        finite = all(math.isfinite(z) for z in zs)
+        if not finite:
+            mx = math.inf
         rms = math.sqrt(sum(z * z for z in zs) / n)
         # only the k-point arrays (*_eqJK) decide the verdict; *_eqJR is the Fourier transform (info only)
         decides = f.endswith("JK")
-        bad = decides and not (frac <= limit and mx < Z_ARR_MAX)
+        bad = decides and not (finite and frac <= limit and mx < Z_ARR_MAX)
         ok &= not bad
         out("%-12s %6d %6d %5d %7.1f%% %7.1f%% %7.2f %6.2f  %s" % (
             f, n, skipped, n2, 100 * frac, 100 * limit, mx, rms,
@@ -256,6 +259,19 @@ def selftest():
     assert len(unique_zs([(0.1, 0.01, 0.12, 0.02), (1.9, 0.01, 1.88, 0.02)], ph=False)) == 2
     assert len(unique_zs([(0.1, 0.01, 0.12, 0.02), (1.9, 0.01, 1.87, 0.02)], ph=True)) == 2   # c differs between runs
     assert abs(array_limit(18) - 0.1920) < 1e-3
+    # non-finite z (NaN in the data) must fail, in scalars and in arrays
+    def mk(d, scal, arr):
+        os.makedirs(os.path.join(t, d), exist_ok=True)
+        open(os.path.join(t, d, "Ener_scalJ"), "w").write(" bins\n\n 1 %s 1.0E-01\n\n 2 1.0E+00 0.0E+00\n" % scal)
+        open(os.path.join(t, d, "Green_eqJK"), "w").write(" 0.5 0.5\n 1 1 %s 1.0E-01 1.0E+00 1.0E-01\n" % arr)
+    mk("ok1", "1.0E+00", "1.0E+00")
+    mk("ok2", "1.0E+00", "1.0E+00")
+    mk("nan_scal", "nan", "1.0E+00")
+    mk("nan_arr", "1.0E+00", "nan")
+    assert compare(os.path.join(t, "ok1"), os.path.join(t, "ok2"), out=lambda m: None) == 0
+    for d in ("nan_scal", "nan_arr"):
+        msgs = []
+        assert compare(os.path.join(t, "ok1"), os.path.join(t, d), out=msgs.append) == 1, (d, msgs)
     print("selftest ok")
     return 0
 

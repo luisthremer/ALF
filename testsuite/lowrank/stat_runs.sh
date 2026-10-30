@@ -17,6 +17,11 @@ ALFDIR="$(cd "$HERE/../.." && pwd)"
 SET="$1"; SCHEME="$2"; SEED="$3"; shift 3
 EXTRA=("$@")
 
+case "$SCHEME" in
+    standard|delayed|submatrix) ;;
+    *) echo "unknown scheme '$SCHEME' (standard|delayed|submatrix)" >&2; exit 2 ;;
+esac
+
 source "$HERE/sets.sh"
 keys=""
 for entry in "${STAT_SETS[@]}"; do
@@ -34,6 +39,11 @@ python3 -I "$HERE/make_params.py" "$DIR" "${keyarr[@]}"
 export OMP_NUM_THREADS=1
 cd "$DIR"
 "$ALFDIR/Prog/ALF.out" >stdout.log 2>&1 || { echo "$SET/$SCHEME: run failed, see $DIR/stdout.log" >&2; exit 1; }
+# A non-standard scheme must really have been active (stale binary / silent fallback would pass vacuously).
+if [ "$SCHEME" != standard ]; then
+    want="Sequential scheme: $(printf '%s' "$SCHEME" | tr '[:lower:]' '[:upper:]')"
+    grep -q -F "$want" info || { echo "$SET/$SCHEME: expected line '$want' not found in $DIR/info (scheme not active, stale binary?)" >&2; exit 1; }
+fi
 for obs in Ener_scal Pot_scal Kin_scal Part_scal SpinZ_eq Green_eq; do
     "$ALFDIR/Analysis/ana.out" "$obs" >"ana_$obs.log" 2>&1 || { echo "ana.out $obs failed in $DIR" >&2; exit 1; }
 done
