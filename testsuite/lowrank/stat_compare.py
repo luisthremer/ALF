@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Statistical comparison of two ALF run directories (independent chains, different seeds).
 
-Usage: python3 -I stat_compare.py DIR_A DIR_B      (A = reference, e.g. standard; B = candidate)
+Usage: python3 -I stat_compare.py [--ph] DIR_A DIR_B      (A = reference, e.g. standard; B = candidate)
        python3 -I stat_compare.py --selftest
 
 Reads the analysed outputs (ana.out, run by stat_runs.sh):
@@ -12,8 +12,18 @@ Reads the analysed outputs (ana.out, run by stat_runs.sh):
   *_eqJK / *_eqJR   k- / r-resolved equal-time correlations; entries "i j Re errRe Im errIm" under each
             coordinate line; Re and Im are separate entries (SpinZ_eq, Green_eq).
 z = (a-b)/sqrt(sa^2+sb^2).
-PASS: every scalar |z| < 3; for each k-point array (*_eqJK): fraction(|z|>2) <= 10 % and max|z| < 4.5.
-(*_eqJR, the Fourier transform of the same data, is printed for information and does not decide.)
+PASS: every scalar |z| < 3; for each k-point array (*_eqJK), evaluated on the symmetry-UNIQUE entries only
+(n = their number): fraction(|z|>2) <= 0.0455 + 3*sqrt(0.0455*0.9545/n) and max|z| < 4.5.
+Rationale: for independent Gaussian entries P(|z|>2) = 4.55 %, so the fraction is binomial(n, 0.0455) and the
+bound is its mean + 3 sigma. Lattice-symmetry copies of one correlator value are not independent samples
+(a single fluctuation would count up to 4 times), so they are counted once. Uniqueness: two entries are the
+same if their (A value, A error, B value, B error) agree to 1e-12 relative (absolute floor 1e-14), or after
+flipping the sign of both values (A, B) together (e.g. Im(k) = -Im(-k)). Both runs enter the comparison, so a
+genuine difference between A and B is never merged away with an entry that differs from it.
+--ph additionally merges particle-hole partners (q = c - r in both runs with the same constant c and equal errors;
+exact for Green_eq at half filling, G(k) + G(k+Q) = 2): optional, off by default. The rms z over
+the unique entries is printed. (*_eqJR, the Fourier transform of the same data, is printed for information
+and does not decide.)
 Entries that are numerically zero in both runs (|value| < 1e-10 and error < 1e-10, e.g. Im parts of
 symmetric correlations) are skipped from the array statistics (their count is reported).
 Also reports 'Precision Green/Phase' lines of both info files; flags (does not fail) if B's max > 10x A's.
@@ -27,7 +37,7 @@ import sys
 
 Z_SCALAR = 3.0
 Z_ARR_FRAC = 2.0
-FRAC_MAX = 0.10
+FRAC_P = 0.0455
 Z_ARR_MAX = 4.5
 ZERO = 1e-10
 PREC_FLAG = 10.0
@@ -75,6 +85,40 @@ def zscore(a, ea, b, eb):
     return d / s
 
 
+def array_limit(n):
+    """Binomial mean + 3 sigma for the fraction of |z| > 2 among n independent entries."""
+    p = FRAC_P
+    return p + 3.0 * math.sqrt(p * (1.0 - p) / n)
+
+
+def _same(x, y, rtol=1e-12, atol=1e-14):
+    return abs(x - y) <= rtol * max(abs(x), abs(y)) + atol
+
+
+def _copy(q, r, ph):
+    """True if entry q is a symmetry copy of entry r (both are (a, ea, b, eb))."""
+    if all(_same(x, y) for x, y in zip(q, r)):                      # identical in both runs
+        return True
+    if all(_same(x, y) for x, y in zip(q, (-r[0], r[1], -r[2], r[3]))):   # sign flip, e.g. Im(k) = -Im(-k)
+        return True
+    # optional particle-hole partner: q = c - r in BOTH runs with the same constant c (Green_eq at half filling,
+    # G(k) + G(k+Q) = 2), same errors
+    # (the half-filling symmetry holds to ~1e-11 relative in the output, so this uses rtol 1e-9, still far below
+    # any statistical difference)
+    return (ph and _same(q[1], r[1], 1e-9, 1e-12) and _same(q[3], r[3], 1e-9, 1e-12)
+            and _same(q[0] + r[0], q[2] + r[2], 1e-9, 1e-12))
+
+
+def unique_zs(quads, ph=False):
+    """quads: list of (a, ea, b, eb). Lattice-symmetry copies count once (see _copy); returns the z of each
+    distinct entry. All four numbers (both runs) enter every comparison."""
+    reps = []
+    for q in quads:
+        if not any(_copy(q, r, ph) for r in reps):
+            reps.append(q)
+    return [zscore(*r) for r in reps]
+
+
 def parse_precision(path):
     """-> {'Green mean','Green max','Phase max',...} from the info file."""
     res = {}
@@ -91,7 +135,7 @@ def parse_precision(path):
     return res
 
 
-def compare(da, db, out=print):
+def compare(da, db, out=print, ph=False):
     ok = True
     # scalars
     names_a = {os.path.basename(p) for p in glob.glob(os.path.join(da, "*_scalJ"))}
@@ -141,35 +185,36 @@ def compare(da, db, out=print):
         out("no common *_eqJK/*_eqJR files")
         return 2
     out("")
-    out("%-12s %7s %8s %8s %7s %6s | %s" % ("array", "entries", "skipped0", "frac>2", "max|z|", "mean z",
-                                          "informational: symmetry-unique entries, frac>2"))
+    out("%-12s %6s %6s %5s %8s %8s %7s %6s  %s" % ("array", "unique", "skip0", "n>2", "frac>2", "limit", "max|z|",
+                                                  "rms z", ""))
     for f in arr_files:
         A, B = parse_eqJ(os.path.join(da, f)), parse_eqJ(os.path.join(db, f))
         if set(A) != set(B):
             out("%s: entry sets differ" % f)
             return 2
-        zs, skipped = [], 0
+        quads, skipped = [], 0
         for key in A:
             (a, ea), (b, eb) = A[key], B[key]
             if max(abs(a), abs(b)) < ZERO and max(ea, eb) < ZERO:
                 skipped += 1
                 continue
-            zs.append(zscore(a, ea, b, eb))
+            quads.append((a, ea, b, eb))
+        zs = unique_zs(quads, ph)
         n = len(zs)
         if n == 0:
             out("%s: no usable entries" % f)
             return 2
-        frac = sum(1 for z in zs if abs(z) > Z_ARR_FRAC) / n
+        n2 = sum(1 for z in zs if abs(z) > Z_ARR_FRAC)
+        frac = n2 / n
+        limit = array_limit(n)
         mx = max(abs(z) for z in zs)
-        # lattice-symmetry copies of one entry have identical z (up to sign): count each |z| once
-        uz = sorted({round(abs(z), 5) for z in zs})
-        ufrac = sum(1 for z in uz if z > Z_ARR_FRAC) / len(uz)
+        rms = math.sqrt(sum(z * z for z in zs) / n)
         # only the k-point arrays (*_eqJK) decide the verdict; *_eqJR is the Fourier transform (info only)
         decides = f.endswith("JK")
-        bad = decides and not (frac <= FRAC_MAX and mx < Z_ARR_MAX)
+        bad = decides and not (frac <= limit and mx < Z_ARR_MAX)
         ok &= not bad
-        out("%-12s %7d %8d %7.1f%% %7.2f %6.2f | %d unique, %.1f%%  %s" % (
-            f, n, skipped, 100 * frac, mx, sum(zs) / n, len(uz), 100 * ufrac,
+        out("%-12s %6d %6d %5d %7.1f%% %7.1f%% %7.2f %6.2f  %s" % (
+            f, n, skipped, n2, 100 * frac, 100 * limit, mx, rms,
             "FAIL" if bad else ("ok" if decides else "(info)")))
 
     # precision diagnostics
@@ -203,6 +248,13 @@ def selftest():
     open(p, "w").write(" 0.5 -0.5\n 1 1 1.0E+00 1.0E-01 2.0E-17 1.0E-17\n")
     d = parse_eqJ(p)
     assert d[((0.5, -0.5), 1, 1, "Re")] == (1.0, 0.1)
+    # symmetry copies count once; a genuine difference in one run is never merged
+    q = [(1.0, 0.1, 1.5, 0.1)] * 4 + [(-1.0, 0.1, -1.5, 0.1), (1.0, 0.1, 1.5 + 1e-3, 0.1)]
+    assert len(unique_zs(q)) == 2, unique_zs(q)
+    assert len(unique_zs([(0.1, 0.01, 0.12, 0.02), (1.9, 0.01, 1.88, 0.02)], ph=True)) == 1
+    assert len(unique_zs([(0.1, 0.01, 0.12, 0.02), (1.9, 0.01, 1.88, 0.02)])) == 2
+    assert len(unique_zs([(0.1, 0.01, 0.12, 0.02), (1.9, 0.01, 1.87, 0.02)], ph=True)) == 2   # c differs between runs
+    assert abs(array_limit(18) - 0.1920) < 1e-3
     print("selftest ok")
     return 0
 
@@ -210,6 +262,8 @@ def selftest():
 def main(argv):
     if argv[1:] == ["--selftest"]:
         return selftest()
+    ph = "--ph" in argv
+    argv = [a for a in argv if a != "--ph"]
     if len(argv) != 3:
         sys.stderr.write(__doc__)
         return 2
@@ -217,7 +271,7 @@ def main(argv):
         if not os.path.isdir(d):
             sys.stderr.write("not a directory: %s\n" % d)
             return 2
-    return compare(argv[1], argv[2])
+    return compare(argv[1], argv[2], ph=ph)
 
 
 if __name__ == "__main__":

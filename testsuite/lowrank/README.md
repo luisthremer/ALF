@@ -87,19 +87,28 @@ python3 -I testsuite/lowrank/stat_compare.py --selftest
   applied last and override), runs `Prog/ALF.out` (`OMP_NUM_THREADS=1`) and `Analysis/ana.out` on `Ener_scal Pot_scal
   Kin_scal Part_scal SpinZ_eq Green_eq`. One job takes 25-55 s on the M1 Pro (6x6, 2000 sweeps), so no reduction of
   NSweep was needed. Start it with `run_in_background` / `&`; keep <= 8 jobs concurrent.
-- Sets: `half` 6x6 U=4 beta=5 mu=0 (Mz); `doped` 6x6 U=4 beta=4 mu=-1.0 (Mz); `density` `Mz=.F.` 6x6 U=4 beta=4 mu=0.
+- Sets: `half` 6x6 U=4 beta=5 mu=0 (Mz); `doped` 6x6 U=4 beta=5 mu=-1.0 (Mz, average sign ~0.59, NBin=80 n_skip=10, ~105 s); `density` `Mz=.F.` 6x6 U=4 beta=4 mu=0.
 - ana.out output layout: `*_scalJ` rows `idx value error` (the last row is the average sign/phase; the observable
   values are jackknife sign-reweighted); `*_eqJK`/`*_eqJR`: a coordinate line, then `orb orb Re errRe Im errIm`.
   `Pot_scal` (= U sum <(n_up-1/2)(n_dn-1/2)>-like) is used as the double-occupancy proxy; `Part_scal` is
   the particle number (constant at half filling and in the SU(N) density set; handled as constant, z = 0).
-- `stat_compare.py`: z = (a-b)/sqrt(sa^2+sb^2) for every scalar (Ener, Kin, Pot, Part, avg sign/phase) and every Re
-  and Im entry of `SpinZ_eqJK` and `Green_eqJK`. PASS: all scalar |z| < 3; for each k-point array fraction(|z|>2) <=
-  10 % and max|z| < 4.5. `*_eqJR` (Fourier transform of the same data) is printed for information only.
-  Entries that are numerically zero in both runs (|value|, error < 1e-10, e.g. Im of SpinZ) are skipped; the
-  "unique" columns count lattice-symmetry copies (identical |z|) once; they are informational, not part of the verdict.
+- `stat_compare.py [--ph] DIR_A DIR_B`: z = (a-b)/sqrt(sa^2+sb^2) for every scalar (Ener, Kin, Pot, Part, avg
+  sign/phase) and every Re and Im entry of `SpinZ_eqJK` and `Green_eqJK`.
+  **Pass rule**: all scalar |z| < 3; for each k-point array (`*_eqJK`), on the symmetry-UNIQUE entries only (n of them):
+  fraction(|z|>2) <= 0.0455 + 3*sqrt(0.0455*0.9545/n) and max|z| < 4.5. Rationale: for independent Gaussian entries
+  P(|z|>2) = 4.55 %, so the number of exceedances is binomial(n, 0.0455) and the limit is its mean + 3 sigma (n = 36
+  gives 15 %, n = 20 gives 18.5 %). Lattice-symmetry copies of one value are not independent samples (one
+  fluctuation would count up to 4 times), so they are merged. The rms z over the unique entries is printed.
+  `*_eqJR` (Fourier transform of the same data) is printed for information only.
+  **Uniqueness**: two entries are merged iff all four numbers (value and error in run A, value and error in run B) agree
+  to 1e-12 relative (absolute floor 1e-14), or agree after flipping the sign of both values together (Im(k) = -Im(-k)).
+  Both runs enter, so a genuine difference between A and B is never merged with an entry that differs. Entries that are
+  numerically zero in both runs (|value|, error < 1e-10, e.g. Im of SpinZ) are skipped (column `skip0`). `--ph` (off by
+  default) also merges particle-hole partners (q = c - r in both runs with the same constant c and equal errors to 1e-9;
+  exact for Green_eq at half filling, G(k) + G(k+Q) = 2): n for Green_eqJK drops from 36 to 26 (half) and from 54 to 36
+  (density); no effect for the doped set.
   It also reports `Precision Green Mean/Max` and `Precision Phase` of both `info` files and flags B/A > 10 for the maxima.
   Exit 0 PASS, 1 FAIL, 2 unusable input.
-- Known property of the fraction criterion: many array entries are exact lattice-symmetry copies (4-fold), so
-  one 2-sigma fluctuation of an independent value counts up to 4 times. Measured with 4 independent standard seeds
-  (6 pairs per set, 18 comparisons): 8 of 36 k-point arrays and 6 of 18 comparisons exceed 10 % although the errors are
-  well calibrated (pooled over symmetry-unique entries: fraction(|z|>2) = 5.1 %, rms z = 1.04, max |z| = 3.39).
+- Calibration of the rule on 4 independent standard chains per set (6 pairs per set, 18 comparisons): 15/18 pass with
+  the default merging, 16/18 with `--ph`; pooled over unique entries the errors are calibrated (fraction(|z|>2) 1.7-7.4 %,
+  rms z 0.91-1.09). The remaining failures are density 2-3 and 3-4 (`Green_eqJK`), and half 1-3 without `--ph`.

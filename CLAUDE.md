@@ -102,12 +102,14 @@ cd ALF && source configure.sh GNU noMPI NO-INTERACTIVE >/dev/null 2>&1 && mkdir 
 ## Statistical harness (Task 5)
 - Sets in `testsuite/lowrank/sets.sh` (`STAT_SETS`); `stat_runs.sh`/`stat_compare.py`, see `testsuite/lowrank/README.md`.
   Reference chains: `runs/stat/<set>/standard_s1` (seed 1), compared with `standard_s2` for the harness validation.
-- Doped chemical potential: **mu = -1.0** (6x6, U=4, beta=4, Mz). Measured average sign (seed 1, NSweep=50 NBin=20,
-  n_skip=2): mu=-0.6: 0.941(9), -0.8: 0.920(10), -1.0: 0.926(11), -1.2: 0.927(11), -1.4: 0.954(4), -1.6: 0.970(5), -1.8: 0.978(4).
-  Short pilots (NSweep=20 NBin=5): -0.3: 0.978(9), -0.5: 0.945(22), -0.8: 0.975(11), -1.0: 0.88(5), -1.5: 0.92(5),
-  -2.0: 0.998. The requested window [0.3, 0.8] is NOT reachable at beta=4 (minimum about 0.92); mu=-1.0 is the
-  smallest-sign region (density 30.1/36 per site-sum, ~16 % hole doping). For reference beta=8, NSweep=50 NBin=20:
-  mu=-1.0: 0.02(2), mu=-1.4: 0.26(2) (beta between 4 and 8 would hit the window).
+- Doped set: **mu = -1.0, beta = 5** (6x6, U=4, Mz, `NBin=80 n_skip=10`, ~105 s per job); average sign 0.58(2) / 0.59(2)
+  (seeds 1/2; the requested window is [0.3, 0.8]). Pilot (mu=-1.0, NSweep=50 NBin=20, 26-36 s, seeds 1/2):
+  beta=4: 0.926(11); beta=5: 0.577(21) / 0.592(17); beta=6: 0.224(19) / 0.210(24); beta=7: 0.083(17) / 0.088(21).
+  So beta=5 is the smallest beta in {5,6,7} in the window. At beta=4 the sign is ~0.92 for every mu: seed 1,
+  NSweep=50 NBin=20: mu=-0.6: 0.941(9), -0.8: 0.920(10), -1.0: 0.926(11), -1.2: 0.927(11), -1.4: 0.954(4),
+  -1.6: 0.970(5), -1.8: 0.978(4); short pilots (NSweep=20 NBin=5): -0.3: 0.978(9), -0.5: 0.945(22), -0.8: 0.975(11).
+- Statistical array rule (Controller ruling, Task 5 fix round 1): binomial 3-sigma bound on the fraction of |z|>2 over
+  symmetry-unique entries; see the README.
 
 ## Tolerances
 Unit level (`testsuite/Prog.tests/36-lowrank-unit.F90`, ctest `36-lowrank-unit`; measured 2026-10-30):

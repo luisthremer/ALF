@@ -15,11 +15,12 @@ SETS=(
 )
 
 # Statistical sets for stat_runs.sh (independent long chains compared with stat_compare.py): "name|keys".
-# Common keys (NSweep, NBin, Ltau, n_skip) are added by stat_runs.sh. doped: ham_chem=-1.0 was chosen
-# in the Task 5 pilot (measured sign 0.926 +- 0.011; the requested window 0.3..0.8 is not reachable at
-# beta=4, see CLAUDE.md).
+# Common keys (NSweep=50 NBin=40 Ltau=0 n_skip=5) are added by stat_runs.sh; keys given here override them.
+# doped: ham_chem=-1.0 with Beta=5 is the smallest beta in {5,6,7} whose average sign lies in [0.3, 0.8]
+# (measured 0.58(2), 0.59(2); at Beta=4 the sign is ~0.92, see CLAUDE.md). NBin=80 (4000 sweeps, ~105 s) keeps the
+# sign-reweighted error bars usable.
 STAT_SETS=(
   "half|L1=6 L2=6 ham_U=4.d0 Beta=5.d0 ham_chem=0.d0"
-  "doped|L1=6 L2=6 ham_U=4.d0 Beta=4.d0 ham_chem=-1.0d0"
+  "doped|L1=6 L2=6 ham_U=4.d0 Beta=5.d0 ham_chem=-1.0d0 NBin=80 n_skip=10"
   "density|Mz=.F. L1=6 L2=6 ham_U=4.d0 Beta=4.d0 ham_chem=0.d0"
 )
