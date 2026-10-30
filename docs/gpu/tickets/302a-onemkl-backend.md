@@ -133,7 +133,11 @@ change only, with the owner's approval at that time). The `alf_la` interface sta
 - Third pre-registration (after T0 results, with the owner's quoted approval, DECISIONS.md row 15, 2026-10-30): only
   the `t_order` time rule above changes; `302a.json` and `302a.nvidia.json` are unchanged. Commit `ef30771b`; the owner's
   per-repetition reading ("Each rep") was added in `cf31bc8b`. Decision 16 (no time limit) was pre-registered in
-  `84dade95`, the current pre-registration.
+  `84dade95`. T1 of candidate 1 `a1d89e89`: intel part PASS; nvidia part FAILED `gpu_none_ppcmp` only (added_or_deleted 6
+  instead of 0: six `docs/gpu/scripts/intel/*.F90` dev probes counted by a harness defect, fixed in `05717b98`). Candidate 2
+  `45fbe22c` (review (a) fixes) approved on re-review. Base moved to `05717b98` with the owner's approval (decision 17) in
+  `3b32d9b6`, the current pre-registration; the T2 candidate is the commit recording it (code = candidate 2); T1 is repeated
+  in full on it.
 
 ## Evidence
 `intel:~/alf-gpu/work/t302a/` and `nividia:~/alf-gpu/work/t302a/`: development runs (T0) under `dev/`; candidates in
