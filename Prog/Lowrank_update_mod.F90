@@ -60,6 +60,8 @@ module Lowrank_update_mod
 
    public :: Lowrank_init, Lowrank_finalize, Lowrank_active, Lowrank_eligible, &
         &    Lowrank_pending, Lowrank_assert_flushed
+   public :: Lowrank_propose, Lowrank_accept, Upgrade_lowrank, Lowrank_wrap_hook, &
+        &    Lowrank_flush, Lowrank_current_G
 
    !> Maximal number of non-zero eigenvalues per eligible vertex and flavour (rank-1 now)
    Integer, parameter :: N_P_max = 1
@@ -71,6 +73,15 @@ module Lowrank_update_mod
    Integer              :: n_pend     = 0       ! pending accepted vertices since the last flush
    Logical, allocatable :: eligible(:)          ! eligible(n), n = 1..size(Op_V,1)
    Integer, allocatable :: n_cols(:)            ! used columns per computed flavour
+
+   ! ---- cache of the last Lowrank_propose (consumed by Lowrank_accept) ---
+   Logical                                :: prop_valid = .false.
+   Integer                                :: prop_n_op = 0, prop_nt = 0
+   Complex (Kind=Kind(0.d0))              :: prop_Hs
+   Complex (Kind=Kind(0.d0)), allocatable :: prop_Delta(:), prop_d(:)  ! per computed flavour
+
+   Complex (Kind=Kind(0.d0)), parameter :: cone  = cmplx( 1.d0, 0.d0, kind(0.d0))
+   Complex (Kind=Kind(0.d0)), parameter :: cmone = cmplx(-1.d0, 0.d0, kind(0.d0))
 
    ! ---- delayed ---------------------------------------------------------
    Complex (Kind=Kind(0.d0)), allocatable :: X(:,:,:), Y(:,:,:)
@@ -169,6 +180,10 @@ contains
       allocate (n_cols(N_FL_eff))
       n_cols = 0
       n_pend = 0
+      allocate (prop_Delta(N_FL_eff), prop_d(N_FL_eff))
+      prop_Delta = cmplx(0.d0, 0.d0, kind(0.d0))
+      prop_d     = cmplx(1.d0, 0.d0, kind(0.d0))
+      prop_valid = .false.
       select case (lr_scheme)
       case (SCHEME_DELAYED)
          allocate (X(Ndim, N_cols_max, N_FL_eff), Y(Ndim, N_cols_max, N_FL_eff))
@@ -226,6 +241,9 @@ contains
       if (allocated(slot))     deallocate (slot)
       if (allocated(Dvec))     deallocate (Dvec)
       if (allocated(Ginv))     deallocate (Ginv)
+      if (allocated(prop_Delta)) deallocate (prop_Delta)
+      if (allocated(prop_d))     deallocate (prop_d)
+      prop_valid = .false.
       lr_scheme  = SCHEME_STANDARD
       lr_N_delay = 0
       N_cols_max = 0
@@ -287,5 +305,411 @@ contains
          CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
       endif
    end subroutine Lowrank_assert_flushed
+
+!--------------------------------------------------------------------
+!> @author
+!> ALF-project
+!
+!> @brief
+!> Fermionic ratio of the proposal nsigma%f(n_op,nt) -> Hs_new for an eligible vertex,
+!> without random numbers and without changing G.
+!> @details
+!> The scalar expressions and their order are those of Upgrade2 (rank-1 branch); the only
+!> difference is that G_pp is the element of the current G = G0 - X Y^T,
+!> G_pp = G0(p,p) - sum_k X(p,k) Y(p,k), p = Op_V(n_op,nf)%P(1). A flavour with
+!> N_non_zero = 0 contributes D_mat = 1. Delta_f = e^{Z1 E_1} - 1 and d_f = D_mat are cached
+!> per computed flavour for Lowrank_accept. See docs/algorithm-notes.md, sections 1 and 3.
+!> @param [in] GR(Ndim,Ndim,N_FL)
+!> Complex
+!> \verbatim
+!>  G0, the flushed part of the Green function. Not modified (intent(inout) only to match
+!>  the calling convention of Upgrade2).
+!> \endverbatim
+!> @param [in] n_op, nt
+!> Integer
+!> \verbatim
+!>  Vertex and time slice. nsigma%f(n_op,nt) holds the old field.
+!> \endverbatim
+!> @param [in] Hs_new
+!> Complex
+!> \verbatim
+!>  Proposed field.
+!> \endverbatim
+!> @param [out] Ratiotot
+!> Complex
+!> \verbatim
+!>  (Prod_nf R_nf)^N_SUN * Gama(Hs_new)/Gama(old), as Upgrade2 before the mode branch.
+!> \endverbatim
+!--------------------------------------------------------------------
+   subroutine Lowrank_propose(GR, n_op, nt, Hs_new, Ratiotot)
+
+      Use Hamiltonian_main, only: Op_V, nsigma, ham, Ndim, N_FL, N_FL_eff, Calc_Fl_map, N_SUN, &
+           &                      reconstruction_needed
+      Use Fields_mod
+      Implicit none
+
+      Complex (Kind=Kind(0.d0)), Intent(InOut) :: GR(Ndim,Ndim,N_FL)
+      Integer,                   Intent(In)    :: n_op, nt
+      Complex (Kind=Kind(0.d0)), Intent(In)    :: Hs_new
+      Complex (Kind=Kind(0.d0)), Intent(Out)   :: Ratiotot
+
+      Type (Fields)             :: nsigma_new
+      Complex (Kind=Kind(0.d0)) :: Ratio(N_FL), Z1, Z, D_mat, myexp, g_loc, G_pp, Mat11
+      Integer                   :: nf, nf_eff, p, j
+
+      if (lr_scheme /= SCHEME_DELAYED) then
+         Write(error_unit,*) 'Lowrank_propose: only the delayed scheme is implemented'
+         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      endif
+
+      Call nsigma_new%make(1,1)
+
+      ! Same expressions and order as Upgrade2
+      nf = 1
+      nsigma_new%f(1,1)  = Hs_new
+      nsigma_new%t(1)    = Op_V(n_op,nf)%Type
+      Do nf_eff = 1,N_FL_eff
+         nf = Calc_Fl_map(nf_eff)
+         g_loc = Op_V(n_op,nf)%g
+         if (Op_V(n_op,nf)%get_g_t_alloc()) g_loc = Op_V(n_op,nf)%g_t(nt)
+         Z1 = g_loc * ( nsigma_new%Phi(1,1) -  nsigma%Phi(n_op,nt) )
+         If (Op_V(n_op,nf)%N_non_zero == 0) then
+            D_mat = 1.0d0
+            prop_Delta(nf_eff) = cmplx(0.d0, 0.d0, kind(0.d0))
+         else
+            ! Current element G_pp = G0(p,p) - X(p,1:j) . Y(p,1:j)  (no complex BLAS functions)
+            p = Op_V(n_op,nf)%P(1)
+            j = n_cols(nf_eff)
+            G_pp = GR(p,p,nf)
+            if (j > 0) G_pp = G_pp - sum( X(p,1:j,nf_eff) * Y(p,1:j,nf_eff) )
+            myexp = exp( Z1* Op_V(n_op,nf)%E(1) )
+            Z = myexp - 1.d0
+            Mat11 = - Z * G_pp
+            Mat11 = myexp + Mat11
+            D_mat = Mat11
+            prop_Delta(nf_eff) = Z
+         endif
+         prop_d(nf_eff) = D_mat
+         Ratio(nf) =  D_Mat * exp( Z1*Op_V(n_op,nf)%alpha )
+      Enddo
+
+      ! Fill the non-calculated flavours, as Upgrade2
+      if (reconstruction_needed) call ham%weight_reconstruction(Ratio)
+
+      Ratiotot = Product(Ratio)
+      nf = 1
+      Ratiotot = (Ratiotot**dble(N_SUN)) * nsigma_new%Gama(1,1)/nsigma%Gama(n_op,nt)
+
+      Call nsigma_new%clear()
+
+      prop_valid = .true.
+      prop_n_op  = n_op
+      prop_nt    = nt
+      prop_Hs    = Hs_new
+
+   end subroutine Lowrank_propose
+
+!--------------------------------------------------------------------
+!> @author
+!> ALF-project
+!
+!> @brief
+!> Accepts the proposal evaluated by the preceding Lowrank_propose(GR, n_op, nt, Hs_new, .).
+!> @details
+!> Per computed flavour with N_non_zero = 1 (p = P(1), j = n_cols):
+!>   c = G0(:,p) - X(:,1:j) Y(p,1:j)^T,   r = G0(p,:)^T - Y(:,1:j) X(p,1:j)^T   (ZGEMV)
+!>   X(:,j+1) = (Delta/d) c,              Y(:,j+1) = e_p - r
+!> i.e. Sherman-Morrison on the current G (docs/algorithm-notes.md, sections 2-3).
+!> Then nsigma%f(n_op,nt) = Hs_new; after N_delay pending vertices G is flushed.
+!> @param [inout] GR(Ndim,Ndim,N_FL)
+!> Complex
+!> \verbatim
+!>  G0. Modified only by the flush after N_delay pending vertices.
+!> \endverbatim
+!> @param [in] n_op, nt, Hs_new
+!> \verbatim
+!>  Must be those of the preceding Lowrank_propose.
+!> \endverbatim
+!--------------------------------------------------------------------
+   subroutine Lowrank_accept(GR, n_op, nt, Hs_new)
+
+      Use Hamiltonian_main, only: Op_V, nsigma, Ndim, N_FL, N_FL_eff, Calc_Fl_map
+      Implicit none
+
+      Complex (Kind=Kind(0.d0)), Intent(InOut) :: GR(Ndim,Ndim,N_FL)
+      Integer,                   Intent(In)    :: n_op, nt
+      Complex (Kind=Kind(0.d0)), Intent(In)    :: Hs_new
+
+      Complex (Kind=Kind(0.d0)) :: z
+      Integer                   :: nf, nf_eff, p, j
+
+      if (.not. prop_valid .or. prop_n_op /= n_op .or. prop_nt /= nt .or. prop_Hs /= Hs_new) then
+         Write(error_unit,'(A,I0,A,I0)') ' Lowrank_accept: no matching Lowrank_propose for n_op = ', &
+              &                          n_op, ', nt = ', nt
+         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      endif
+
+      Do nf_eff = 1,N_FL_eff
+         nf = Calc_Fl_map(nf_eff)
+         if (Op_V(n_op,nf)%N_non_zero == 0) cycle
+         p = Op_V(n_op,nf)%P(1)
+         j = n_cols(nf_eff)
+         if (j >= N_cols_max) then
+            Write(error_unit,'(A,I0)') ' Lowrank_accept: column overflow, N_cols_max = ', N_cols_max
+            CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+         endif
+         ! X(:,j+1) <- c = G0(:,p) - X(:,1:j) Y(p,1:j)^T
+         call ZCOPY(Ndim, GR(1,p,nf), 1, X(1,j+1,nf_eff), 1)
+         ! Y(:,j+1) <- r = G0(p,:)^T - Y(:,1:j) X(p,1:j)^T   (rows: increment Ndim)
+         call ZCOPY(Ndim, GR(p,1,nf), Ndim, Y(1,j+1,nf_eff), 1)
+         if (j > 0) then
+            call ZGEMV('N', Ndim, j, cmone, X(1,1,nf_eff), Ndim, Y(p,1,nf_eff), Ndim, cone, X(1,j+1,nf_eff), 1)
+            call ZGEMV('N', Ndim, j, cmone, Y(1,1,nf_eff), Ndim, X(p,1,nf_eff), Ndim, cone, Y(1,j+1,nf_eff), 1)
+         endif
+         ! X(:,j+1) = (Delta/d) c,  Y(:,j+1) = e_p - r
+         z = prop_Delta(nf_eff)/prop_d(nf_eff)
+         call ZSCAL(Ndim, z, X(1,j+1,nf_eff), 1)
+         Y(:,j+1,nf_eff) = - Y(:,j+1,nf_eff)
+         Y(p,j+1,nf_eff) = Y(p,j+1,nf_eff) + 1.d0
+         n_cols(nf_eff)  = j + 1
+      Enddo
+      prop_valid = .false.
+
+      ! Flip the field
+      nsigma%f(n_op,nt) = Hs_new
+
+      n_pend = n_pend + 1
+      if (n_pend == lr_N_delay) call Lowrank_flush(GR)
+
+   end subroutine Lowrank_accept
+
+!--------------------------------------------------------------------
+!> @author
+!> ALF-project
+!
+!> @brief
+!> Low-rank counterpart of Upgrade2 in mode "Final" for an eligible vertex.
+!> @details
+!> Lowrank_propose, then Weight, the single ranf_wrap() draw and the phase update exactly as
+!> Upgrade2 (Final, Prev_Ratiotot = 1), Lowrank_accept if accepted, the trace record under
+!> ALF_TRACE_UPDATES, and Control_upgrade / Control_upgrade_eff.
+!> @param [inout] GR(Ndim,Ndim,N_FL)
+!> Complex
+!> \verbatim
+!>  G0 (flushed part of G).
+!> \endverbatim
+!> @param [in] n_op, nt
+!> Integer
+!> @param [inout] Phase
+!> Complex
+!> \verbatim
+!>  Updated if the move is accepted.
+!> \endverbatim
+!> @param [in] Hs_new
+!> Complex
+!> @param [in] S0_ratio, T0_proposal_ratio
+!> Real
+!> @param [inout] toggle
+!> Logical
+!> \verbatim
+!>  True if the move is accepted.
+!> \endverbatim
+!--------------------------------------------------------------------
+   subroutine Upgrade_lowrank(GR, n_op, nt, Phase, Hs_new, S0_ratio, T0_proposal_ratio, toggle)
+
+      Use Hamiltonian_main, only: Ndim, N_FL
+      Use Random_wrap
+      Use Control
+#ifdef ALF_TRACE_UPDATES
+      Use Trace_updates_mod
+#endif
+      Implicit none
+
+      Complex (Kind=Kind(0.d0)), Intent(InOut) :: GR(Ndim,Ndim,N_FL)
+      Integer,                   Intent(In)    :: n_op, nt
+      Complex (Kind=Kind(0.d0)), Intent(InOut) :: Phase
+      Complex (Kind=Kind(0.d0)), Intent(In)    :: Hs_new
+      Real    (Kind=Kind(0.d0)), Intent(In)    :: S0_ratio, T0_proposal_ratio
+      Logical,                   Intent(InOut) :: toggle
+
+      Complex (Kind=Kind(0.d0)) :: Ratiotot, Prev_Ratiotot
+      Real    (Kind=Kind(0.d0)) :: Weight, ranf_val
+
+      call Lowrank_propose(GR, n_op, nt, Hs_new, Ratiotot)
+
+      ! Upgrade2, mode "Final"
+      Prev_Ratiotot = cmplx(1.d0, 0.d0, kind(0.d0))
+      Ratiotot = Ratiotot * Prev_Ratiotot
+      Weight = S0_ratio * T0_proposal_ratio * abs(  real(Phase * Ratiotot, kind=Kind(0.d0))/real(Phase,kind=Kind(0.d0)) )
+
+      toggle = .false.
+      ranf_val = ranf_wrap()           ! exactly one draw, as Upgrade2
+      if ( Weight > ranf_val )  Then
+         toggle = .true.
+         Phase = Phase * Ratiotot/sqrt(Ratiotot*conjg(Ratiotot))
+         call Lowrank_accept(GR, n_op, nt, Hs_new)
+      endif
+      prop_valid = .false.
+
+#ifdef ALF_TRACE_UPDATES
+      Call Trace_update_write(nt, n_op, Ratiotot, Weight, ranf_val, toggle)
+#endif
+      Call Control_upgrade(toggle)
+      Call Control_upgrade_eff(toggle)
+
+   end subroutine Upgrade_lowrank
+
+!--------------------------------------------------------------------
+!> @author
+!> ALF-project
+!
+!> @brief
+!> Carries the pending factors X, Y through the type-1 wrap of an eligible (diagonal) vertex.
+!> @details
+!> Call after Op_Wrapup(.,Op_V(n_op,nf),HS_field,.,1,nt) with dir = +1, and after
+!> Op_Wrapdo(.,Op_V(n_op,nf),HS_field,.,1,nt) with dir = -1, on every flavour. The wrap is
+!> G <- T G T^{-1} with T = diag(t_i) on rows P(i), t_i = exp(dir g_loc phi(HS_field) E(i));
+!> applied to G0 by ALF, to the pending factors here: X(P(i),:) *= t_i, Y(P(i),:) /= t_i
+!> (docs/algorithm-notes.md, section 3). Consumes no random numbers. No-op if nothing is pending.
+!> @param [in] n_op, nt
+!> Integer
+!> @param [in] HS_field
+!> Complex
+!> \verbatim
+!>  The field used in the wrap.
+!> \endverbatim
+!> @param [in] dir
+!> Integer
+!> \verbatim
+!>  +1 after Op_Wrapup type 1, -1 after Op_Wrapdo type 1.
+!> \endverbatim
+!--------------------------------------------------------------------
+   subroutine Lowrank_wrap_hook(n_op, nt, HS_field, dir)
+
+      Use Hamiltonian_main, only: Op_V, N_FL_eff, Calc_Fl_map
+      Use Fields_mod
+      Implicit none
+
+      Integer,                   Intent(In) :: n_op, nt, dir
+      Complex (Kind=Kind(0.d0)), Intent(In) :: HS_field
+
+      Type (Fields)             :: nsigma_single
+      Complex (Kind=Kind(0.d0)) :: phi, g_loc, t
+      Integer                   :: nf, nf_eff, i, j, q
+
+      if (n_pend == 0) return
+      if (lr_scheme /= SCHEME_DELAYED) then
+         Write(error_unit,*) 'Lowrank_wrap_hook: only the delayed scheme is implemented'
+         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      endif
+      if (.not. eligible(n_op)) then
+         Write(error_unit,'(A,I0)') ' Lowrank_wrap_hook: vertex not eligible, n_op = ', n_op
+         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      endif
+
+      Call nsigma_single%make(1,1)
+      Do nf_eff = 1,N_FL_eff
+         j = n_cols(nf_eff)
+         if (j == 0) cycle
+         nf = Calc_Fl_map(nf_eff)
+         nsigma_single%f(1,1) = HS_field
+         nsigma_single%t(1)   = Op_V(n_op,nf)%type
+         phi   = nsigma_single%Phi(1,1)
+         g_loc = Op_V(n_op,nf)%g
+         if (Op_V(n_op,nf)%get_g_t_alloc()) g_loc = Op_V(n_op,nf)%g_t(nt)
+         do i = 1,Op_V(n_op,nf)%N
+            q = Op_V(n_op,nf)%P(i)
+            t = exp( real(dir, kind(0.d0)) * g_loc * phi * Op_V(n_op,nf)%E(i) )
+            X(q,1:j,nf_eff) = X(q,1:j,nf_eff) * t
+            Y(q,1:j,nf_eff) = Y(q,1:j,nf_eff) / t
+         enddo
+      Enddo
+      Call nsigma_single%clear()
+
+   end subroutine Lowrank_wrap_hook
+
+!--------------------------------------------------------------------
+!> @author
+!> ALF-project
+!
+!> @brief
+!> Applies the pending updates to G: GR(:,:,nf) <- GR(:,:,nf) - X Y^T (ZGEMM) per computed
+!> flavour, and resets the pending counters. No-op when nothing is pending.
+!> @param [inout] GR(Ndim,Ndim,N_FL)
+!> Complex
+!--------------------------------------------------------------------
+   subroutine Lowrank_flush(GR)
+
+      Use Hamiltonian_main, only: Ndim, N_FL, N_FL_eff, Calc_Fl_map
+      Implicit none
+
+      Complex (Kind=Kind(0.d0)), Intent(InOut) :: GR(Ndim,Ndim,N_FL)
+
+      Integer :: nf, nf_eff, j
+
+      if (n_pend == 0) return
+      select case (lr_scheme)
+      case (SCHEME_DELAYED)
+         Do nf_eff = 1,N_FL_eff
+            j = n_cols(nf_eff)
+            if (j == 0) cycle
+            nf = Calc_Fl_map(nf_eff)
+            call ZGEMM('N', 'T', Ndim, Ndim, j, cmone, X(1,1,nf_eff), Ndim, Y(1,1,nf_eff), Ndim, &
+                 &     cone, GR(1,1,nf), Ndim)
+         Enddo
+         n_cols = 0
+      case default
+         Write(error_unit,*) 'Lowrank_flush: only the delayed scheme is implemented'
+         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      end select
+      n_pend     = 0
+      prop_valid = .false.
+
+   end subroutine Lowrank_flush
+
+!--------------------------------------------------------------------
+!> @author
+!> ALF-project
+!
+!> @brief
+!> Materialises the current Green function of flavour nf, Gcur = GR(:,:,nf) - X Y^T,
+!> without changing GR or the pending state (tests and debugging).
+!> @param [in] GR(Ndim,Ndim,N_FL)
+!> Complex
+!> @param [in] nf
+!> Integer
+!> \verbatim
+!>  Actual flavour index (third index of GR). A flavour that is not computed is copied.
+!> \endverbatim
+!> @param [out] Gcur(Ndim,Ndim)
+!> Complex
+!--------------------------------------------------------------------
+   subroutine Lowrank_current_G(GR, nf, Gcur)
+
+      Use Hamiltonian_main, only: Ndim, N_FL, N_FL_eff, Calc_Fl_map
+      Implicit none
+
+      Complex (Kind=Kind(0.d0)), Intent(In)  :: GR(Ndim,Ndim,N_FL)
+      Integer,                   Intent(In)  :: nf
+      Complex (Kind=Kind(0.d0)), Intent(Out) :: Gcur(Ndim,Ndim)
+
+      Integer :: nf_eff, nf_e, j
+
+      Gcur = GR(:,:,nf)
+      if (n_pend == 0) return
+      if (lr_scheme /= SCHEME_DELAYED) then
+         Write(error_unit,*) 'Lowrank_current_G: only the delayed scheme is implemented'
+         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      endif
+      nf_e = 0
+      Do nf_eff = 1,N_FL_eff
+         if (Calc_Fl_map(nf_eff) == nf) nf_e = nf_eff
+      Enddo
+      if (nf_e == 0) return
+      j = n_cols(nf_e)
+      if (j > 0) call ZGEMM('N', 'T', Ndim, Ndim, j, cmone, X(1,1,nf_e), Ndim, Y(1,1,nf_e), Ndim, &
+           &                cone, Gcur, Ndim)
+
+   end subroutine Lowrank_current_G
 
 end module Lowrank_update_mod
