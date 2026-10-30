@@ -122,7 +122,7 @@ change only, with the owner's approval at that time). The `alf_la` interface sta
 
 ## Approvals
 - First pre-registration `469a2255` (base `5f062f29`) was superseded before any implementation result, after review
-  (b) (M1–M7, S1–S8). Current pre-registration commit: `PREREG_SHA` (2026-10-30) on `gpu-port-302a-onemkl`; base
+  (b) (M1–M7, S1–S8). Current pre-registration commit: `0707248f` (2026-10-30) on `gpu-port-302a-onemkl`; base
   `7b3c0dc6`. Any change of
   `302a.json` / `302a.nvidia.json` after this needs the owner's quoted approval and fresh seeds (VERIFICATION.md §3),
   unless made before any implementation result exists and pre-registered again in a new commit recorded here.
