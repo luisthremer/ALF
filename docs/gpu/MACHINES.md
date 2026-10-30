@@ -74,6 +74,12 @@ Rules: CLAUDE.md "Machine rules". Our dir `~/alf-gpu/` (mode 700).
 Environment: `. ~/alf-gpu/env/intel.sh`, pinned per component since 2026-10-30: `tcm/1.6 umf/1.2 tbb/2023.2
 mpi/2021.19 compiler/2026.2 mkl/2026.2` (each `env/vars.sh`; never `latest`). Gives ifx 2026.2.0 20261001,
 `MKLROOT=/opt/intel/oneapi/mkl/2026.2`, `mpiifx` 2021.19. The old script is kept as `intel.sh.2025.3`.
+oneAPI's `vars.sh` parses and resets the positional parameters of whoever sources it, so until 2026-10-30 sourcing
+`intel.sh` inside a script emptied the caller's `"$@"` (found by the 302a implementer: `-V`/`-R` silently dropped; the
+harness's `acc_ctest.sh` sources the env file inside `bash -c` and then reads `$1`–`$3`). Since 2026-10-30 the script sources
+each `vars.sh` inside a function with an empty argument list; the resulting environment is identical (`env | sort`
+diff empty), the previous file is kept as `intel.sh.argreset_2026-10-30`. The nividia env files do not have this problem
+(checked 2026-10-30). No acceptance run had used `intel` before the fix.
 Checked 2026-10-30: `ifx -fiopenmp -fopenmp-targets=spir64 -qmkl ... -lmkl_sycl_blas -lmkl_sycl_lapack -lsycl` links
 (the link that failed on 2026-10-29); ZGEMM plus a target region runs on the B580 under `OMP_TARGET_OFFLOAD=MANDATORY`
 with the correct result; `ldd`: all MKL/SYCL/iomp libraries from 2026.2. Sourcing prints a harmless UMF warning on

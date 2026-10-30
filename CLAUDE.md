@@ -99,8 +99,11 @@ host↔device transfer is documented. Target the default and `STABLOG` stabiliza
   processes, never kill a process you didn't start. No `rm -rf` on paths built from variables or
   globs that could expand outside your directory.
 - **Never use `sudo`** or anything that needs root, even where the account could. No changes to system settings, groups, drivers or packages: ask the owner.
-- Each test/benchmark run ≲ 15 min; ask the owner before anything longer. A T2 acceptance sequence of such runs
-  (~2 h unattended) needs the owner's standing approval of the per-ticket GPU budget.
+- **Run length** (decision 16): no fixed time limit per run. If a run shows no progress for 15 min (no new output,
+  log lines or bins, no CPU/GPU activity of its process), whoever started it investigates (process, log, GPU) and stops
+  it if it hangs. Run times are never acceptance criteria unless the ticket is about performance. Unattended harness runs
+  keep the acceptance file's `timeout_s` as a hang guard only (generous, with a reason). The per-ticket GPU budget
+  (decision 11) still applies; a T2 sequence (~2 h unattended) needs the owner's standing approval of it.
 - **nividia GPU sharing:** one GPU process at a time (two time-sliced CUDA processes ran 13–15× slower each, 2026-10-28/29),
   except under the project's MPS daemon (approved 2026-10-29, DECISIONS.md): started and stopped only
   by the manager (the acceptance driver itself runs GPU jobs one at a time, without MPS), as the ordinary user, `CUDA_VISIBLE_DEVICES=0`, pipe/log directories under

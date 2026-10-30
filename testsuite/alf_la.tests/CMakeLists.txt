@@ -5,7 +5,7 @@ Project(alf_la.tests C Fortran)
 # nonzero on a violated check. HOST backend: bit-identical to the direct BLAS/LAPACK call. CUDA backend (the flags in
 # ALF_FLAGS_PROG contain -DALF_LA_CUDA): tolerances of the ticket. t_timing is a benchmark, not registered.
 add_library(la_test_util STATIC la_test_util.F90)
-set(alfla_tests t_checks t_gemm t_geru t_trsm t_lu t_qr t_qrpp t_geqp3 t_order t_fail t_info)
+set(alfla_tests t_checks t_gemm t_geru t_trsm t_lu t_qr t_qrpp t_geqp3 t_order t_fail t_info t_determinism)
 foreach(iter ${alfla_tests} t_timing)
   add_executable(${iter} ${iter}.F90)
 endforeach(iter)

@@ -181,7 +181,7 @@ def h5_datasets(path):
 def taudiag(rd):
     rows = []
     for line in read(os.path.join(rd, "run.log")).splitlines():
-        if "TAUDIAG" not in line:
+        if not line.lstrip().startswith("TAUDIAG pt "):  # data lines only, not "GPU debug env: ...ALF_GPU_TAUDIAG=..." (212)
             continue
         t = line.split()
         try:
@@ -339,6 +339,17 @@ def g_same_seed(g, root, acc):
     return res
 
 
+def precision_lines(text):
+    """The Precision lines of info, each with its numeric continuation line (the Max of "Mean, Max" entries)."""
+    L, out = text.splitlines(), []
+    for i, l in enumerate(L):
+        if "Precision" in l:
+            out.append(l.strip())
+            if i + 1 < len(L) and re.fullmatch(rf"\s*(?:{FLOAT}\s*)+", L[i + 1]):  # NaN/Inf: the precision gate's job
+                out.append(L[i + 1].strip())
+    return out
+
+
 def g_replay(g, root, acc):
     """Bit identity of two runs (re-run of one binary, two builds of one commit, base vs candidate on GPU=none).
     "datasets": "equal_time" compares only non-tau datasets (non-interference gate)."""
@@ -361,8 +372,7 @@ def g_replay(g, root, acc):
                 raise InputFail(f"{ra}: non-finite values in {n}")
         diff = [n for n in sorted(da) if da[n].shape != db[n].shape or da[n].tobytes() != db[n].tobytes()]
         if g.get("datasets") != "equal_time":
-            pa = [l.strip() for l in read(os.path.join(A, "info")).splitlines() if "Precision" in l]
-            pb = [l.strip() for l in read(os.path.join(B, "info")).splitlines() if "Precision" in l]
+            pa, pb = precision_lines(read(os.path.join(A, "info"))), precision_lines(read(os.path.join(B, "info")))
             if not pa:
                 raise InputFail(f"{ra}: no Precision lines in info")
             if pa != pb:
@@ -746,6 +756,9 @@ def selfcheck():
              ("same_seed output edited later", dict(ss, pairs=[["A_tamper", "B", NB]]), "INPUT_ERROR"),
              ("replay identical", dict(rp, pairs=[["A", "A_twin"]]), "PASS"),
              ("replay 1e-12", dict(rp, pairs=[["A", "B"]], gpu_exclusive=False), "FAIL"),
+             ("replay Precision Max only", dict(rp, pairs=[["A", mkrun("A_pmax", base, info(5e-11, 1.0000001e-6, 6e-12, 5e-7))]]), "FAIL"),
+             ("replay Precision Max unwrapped", dict(rp, pairs=[[mkrun("A_unw", base, info(5e-11, 1e-6, 6e-12, 5e-7).replace(" \n   ", "  ")),
+                                                                 mkrun("A_unw2", base, info(5e-11, 1.0000001e-6, 6e-12, 5e-7).replace(" \n   ", "  "))]]), "FAIL"),
              ("precision clean", dict(pr, cases=[{"gpu": "A", "cpu": ["B"]}]), "PASS"),
              ("precision NaN", dict(pr, cases=[{"gpu": "A_nanprec", "cpu": ["B"]}]), "INPUT_ERROR"),
              ("precision 2x mean", dict(pr, cases=[{"gpu": "A_2x", "cpu": ["B"]}]), "FAIL"),
@@ -770,7 +783,7 @@ def selfcheck():
     cnt_lines = []
     for line in taulog(50, 0.1, 0.0).splitlines():  # count-only failure: dev x30 only for passes < from_pass
         t = line.split()
-        if "TAUDIAG" in line and int(t[t.index("pass") + 1]) < 26:
+        if line.lstrip().startswith("TAUDIAG pt ") and int(t[t.index("pass") + 1]) < 26:
             i = t.index("dev") + 2
             t[i] = f"{float(t[i]) * 30:.3E}"
             line = " " + " ".join(t)
@@ -784,7 +797,10 @@ def selfcheck():
               ("paired wrong from_pass", dict(pg, from_pass=27, runs=["P_ok"]), "INPUT_ERROR"),
               ("paired undeclared debug var", dict(pg, runs=[mkrun("P_leak", base, ok_info, taulog(50, 0.1, 0.0), env=E, allow=True,
                                                                   debug=["ALF_GPU_TAUDIAG", "ALF_GPU_TAUSWAP"])]), "INPUT_ERROR"),
-              ("paired debug without allow", dict(pg, runs=[mkrun("P_noallow", base, ok_info, taulog(50, 0.1, 0.0), env=E, allow=False)]), "INPUT_ERROR")]
+              ("paired debug without allow", dict(pg, runs=[mkrun("P_noallow", base, ok_info, taulog(50, 0.1, 0.0), env=E, allow=False)]), "INPUT_ERROR"),
+              ("paired with 212 env and debug lines", dict(pg, runs=[mkrun("P_envline", base, ok_info, " GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_TAUDIAG=2\n"
+                                                                            " GPU tau pass: DEBUG ALF_GPU_TAUDIAG=1 active (host oracle chains)\n" + taulog(50, 0.1, 0.0), env=E, allow=True)]), "PASS"),
+              ("paired malformed data line", dict(pg, runs=[mkrun("P_garbled", base, ok_info, taulog(50, 0.1, 0.0) + " TAUDIAG pt 9 pass x\n", env=E, allow=True)]), "INPUT_ERROR")]
     STL = ACT + ("    G00  3.478E-14 (worst slice 11), GT0  9.805E-14 (40), GTT  4.954E-12 (40), G0T  3.122E-13 (40)\n"
                  " GPU tau self-test CGR2_2 alone: natural calls with D1(1) > D2(1): 4, else: 4, total 8\n"
                  " GPU tau self-test precision reduction vs COMPARE: max rel diff (max and mean)  0.000E+00 (tol  1.0E-12\n"

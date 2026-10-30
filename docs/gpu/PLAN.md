@@ -163,6 +163,7 @@ ifx 2026.2 + MKL 2026.2, see MACHINES.md), the owner's approval of the process d
 | 303 | ifx build of the full GPU path on `intel` (B580, `spir64` JIT and AOT), 209 suite on the B580 (correctness; not PVC performance) | 302c, 209 |
 | 304 | Slurm scripts (`test` partition, one rank per tile by default, CCS mode as an option, `I_MPI_OFFLOAD_CELL=tile`, `OMP_TARGET_OFFLOAD=MANDATORY`) + validation recipe with expected values and tolerances | 301, 303 |
 | 305 | Evaluate the owner's results; BENCHMARKS.md PVC column; fixes | 304 |
+| 306 | Small dense linear algebra on PVC, host vs device per routine and size (planned 2026-10-30, owner): on the B580, oneMKL `zgeqrf` costs a fixed ~0.45 ms per call at any size, and host MKL with copies was faster at every size measured (8 to 400: 0.02–2.3 ms host vs 0.6–7.8 ms oneMKL; 302a, implementer 3). Measure the same on PVC (QR family, `la_qrpp`, LU, trsm; N = 36…1024; including the H↔D copies) and decide per routine whether a size threshold "small → host, large → device" pays off on the GPU node; the threshold is a measured, documented constant, not a guess | 304, 302a |
 
 Validation tail of the Intel lane: the same gates as NVIDIA under the same harness (kernel self-tests with fault
 controls, same-seed against the CPU, precision, compare2, `GPU=none` identity), run on `intel`; B580 numbers are
@@ -178,6 +179,7 @@ correctness evidence, not PVC performance.
 | 404 | Performance work: flavour batching, several chains per GPU, fused checkerboard kernels, device measurements for more observables, CUDA graphs / `nowait` | |
 | 405 | MPI + multi-GPU: one rank per GPU/stack, GPU-aware MPI for tempering | Testable only on SuperMUC |
 | 406 | Idea: the Metropolis accept decision on the device, with each slice's random numbers uploaded in advance, so the RNG stream and same-seed comparisons stay unchanged | idea only |
+| 407 | **Vertices with `Op_V%N_non_zero > 1` on the device** (other Hamiltonians; planned 2026-10-30, owner): today the device update refuses them (`gpu_state_mod`, "device update supports <= 1"). Rank-n update: n×n ratio determinant and Woodbury apply per vertex. Measure where the small n×n work should run (custom device kernel, batched library calls, host), on A30, B580 and PVC; the fixed per-call library cost seen in 302a/306 makes the answer rank-dependent. Together with 401–403 (delayed/submatrix updates batch exactly these updates) | owner's choice of Hamiltonians; 306 for PVC |
 
 ## 3. Validation strategy (summary, details in HARD H7 and BASELINE)
 

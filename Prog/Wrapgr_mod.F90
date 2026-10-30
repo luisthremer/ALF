@@ -53,7 +53,7 @@ Module Wrapgr_mod
   Use Hop_mod
   use upgrade_mod
 #ifdef ALF_GPU
-  use gpu_state_mod,  only: gpu_active, gpu_state_finalize, info_line, rel_diff, selftest_fail
+  use gpu_state_mod,  only: gpu_active, gpu_state_finalize, info_line, rel_diff, selftest_fail, gpu_env_get, gpu_env_is
   use gpu_update_mod
 #endif
 
@@ -306,12 +306,14 @@ Contains
     Real (Kind=Kind(0.d0)) :: dGu, dGd, dPu, dPd, x, mGu, mGd, mPu, mPd
     Character (len=16) :: env
     Character (len=512) :: line
-    Integer :: st
+    ! (ticket 212: no environment locals left)
+    ! (ticket 212: the ALF_GPU_* variables are read by gpu_state_mod; these comment lines keep the line count of this
+    ! #ifdef ALF_GPU block equal to the base, so that the line numbers of the code after it, and with them the
+    ! __LINE__ values of the GPU=none build, stay unchanged)
     Logical :: ok
 
     env = ''
-    call get_environment_variable('ALF_GPU_FAULT', env, status=st)
-    if (st == 0) call gpu_upd_fault_set(trim(env))
+    if (gpu_env_get('ALF_GPU_FAULT', env)) call gpu_upd_fault_set(trim(env))
     ntau1 = NTAU + 1
     call random_seed(size=K)
     allocate(seed0(K), seed1(K))
@@ -391,9 +393,7 @@ Contains
     call info_line(line); write(output_unit,'(1X,A)') trim(line)
     if (.not. ok) call selftest_fail('one-slice update test (accept pattern, G, Phase or device fields differ)')
     call info_line('GPU update self-test PASSED'); write(output_unit,'(A)') ' GPU update self-test PASSED'
-    env = ''
-    call get_environment_variable('ALF_GPU_EXIT', env, status=st)
-    if (st == 0 .and. trim(env) == '1') then
+    if (gpu_env_is('ALF_GPU_EXIT', '1')) then
        call gpu_state_finalize()
        write(output_unit,'(A)') ' GPU update self-test: ALF_GPU_EXIT=1, stopping after the test'
        stop
