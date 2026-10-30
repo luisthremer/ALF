@@ -57,6 +57,9 @@ N_HMC_sweeps        = 1     ! # of HMC updates between  sequential ones
 Leapfrog_steps      = 0     ! Number of leapfrog iterations
 
 Amplitude           = 1.d0  ! For update of  type=3,4  fields
+
+Sequential_scheme   = "standard"  ! "standard" | "delayed" | "submatrix"
+N_delay             = 32    ! max pending accepted vertices before a flush (delayed/submatrix)
 /
 
 &VAR_errors                !! Variables for analysis programs

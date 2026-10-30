@@ -31,7 +31,7 @@ Run the Hubbard example (6x6, U=4, β=5, 20 sweeps × 5 bins, ~5 s):
 ```bash
 cd ALF && cp -r Scripts_and_Parameters_files/Start Run && cd Run && ../Prog/ALF.out && ../Analysis/ana.out Ener_scal
 ```
-Bit-identity regression of the branch's default path vs baseline `f81b5cbc` (5 short sets, builds
+Bit-identity regression of the branch's default path vs baseline `f81b5cbc` (6 short sets, builds
 `../ALF_baseline` worktree on first use, prints `<set> IDENTICAL|DIFFERENT`, exit 0 iff all identical;
 details in `testsuite/lowrank/README.md`):
 ```bash

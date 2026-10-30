@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Create an ALF run directory from the Start template and override parameters.
 
-Usage: make_params.py OUT_DIR KEY=VALUE ...
+Usage: make_params.py [--template DIR] OUT_DIR KEY=VALUE ...
 
-Copies Scripts_and_Parameters_files/Start/{parameters,seeds} to OUT_DIR and sets
+Copies Scripts_and_Parameters_files/Start/{parameters,seeds} (or DIR/{parameters,seeds},
+e.g. the Start directory of the baseline worktree) to OUT_DIR and sets
 each KEY = VALUE in every namelist that contains KEY (case-insensitive match; the
 trailing '! comment' of the line is kept). A KEY found in no namelist (for example
 Sequential_scheme before it exists in the template) is appended to &VAR_QMC.
@@ -41,12 +42,16 @@ def set_key(lines, key, value):
 
 
 def main(argv):
+    template = START
+    if len(argv) >= 3 and argv[1] == "--template":
+        template = argv[2]
+        argv = argv[:1] + argv[3:]
     if len(argv) < 2:
         sys.exit(__doc__)
     out = argv[1]
     os.makedirs(out, exist_ok=True)
     for name in ("parameters", "seeds"):
-        shutil.copyfile(os.path.join(START, name), os.path.join(out, name))
+        shutil.copyfile(os.path.join(template, name), os.path.join(out, name))
     with open(os.path.join(out, "parameters")) as f:
         params = f.readlines()
     with open(os.path.join(out, "seeds")) as f:
