@@ -2,7 +2,7 @@
  "schema": "alf-acc/1",
  "ticket": "302a",
  "candidate_sha": "self",
- "base_sha": "5f062f2941c0",
+ "base_sha": "7b3c0dc69532",
  "created": "2026-10-30",
  "approvals": [],
  "timeout_s": 900,
@@ -10,7 +10,7 @@
  "cpu_parallel": 2,
  "false_alarm_budget": 0.0,
  "_false_alarm_reason": "all gates are deterministic (unit tests, ordering canary, identity)",
- "_status": "pre-registered for ticket 302a, nividia part (GPU=none identity with GNU and ifx, CUDA alf_la unchanged)",
+ "_status": "pre-registered for ticket 302a, nividia part (GPU=none identity with GNU and ifx, CUDA alf_la unchanged); re-registered after review (b) on base 7b3c0dc6",
  "machine": "nividia",
  "gpu_exclusive": true,
  "gpunone": true,
@@ -135,7 +135,7 @@
      "id_ifx_cand"
     ]
    ],
-   "_reason": "acceptance 4: ifx CPU build output bit-identical to the base"
+   "_reason": "acceptance 4 (ifx part): the ifx CPU build (ifx 2025.3.3 on nividia, a CPU-only stand-in; not the Intel-lane pin 2026.2) gives bit-identical data.h5 to the base; it covers configure.sh/Makefile changes mainly (alf_la is used only by Prog/gpu_*). Default stabilization path: a single-threaded CPU build is deterministic, unlike the GPU default path that VERIFICATION 7 restricts"
   },
   {
    "id": "cuda_alf_la_unchanged",
@@ -149,7 +149,7 @@
      "cuda_cand"
     ]
    ],
-   "_reason": "acceptance 5: GPU=nvidia alf_la.tests output identical to the base (timings dropped) (build paths and backtrace addresses are normalised by acc_ctest.sh; verified on GNU alf_la.tests output, 188 lines, 2026-10-29)"
+   "_reason": "acceptance 5: GPU=nvidia alf_la.tests output identical to the base (timings dropped) (build paths and backtrace addresses are normalised by acc_ctest.sh; verified on GNU alf_la.tests output, 188 lines, 2026-10-29); includes the alf_la_mod.F90 line numbers of LA_FAIL messages, so CUDA __LINE__ must stay unchanged too"
   }
  ],
  "controls": [
@@ -224,6 +224,8 @@
  "allowed_test_changes": [
   "testsuite/alf_la.tests/CMakeLists.txt",
   "testsuite/alf_la.tests/la_test_util.F90",
-  "testsuite/alf_la.tests/t_order.F90"
+  "testsuite/alf_la.tests/t_order.F90",
+  "testsuite/alf_la.tests/t_info.F90",
+  "testsuite/alf_la.tests/t_fail.F90"
  ]
 }
