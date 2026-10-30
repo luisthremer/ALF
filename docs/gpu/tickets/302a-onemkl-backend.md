@@ -86,7 +86,7 @@ first, its acceptance base moves, and its T2 runs on the rebased candidate (a ne
 change only, with the owner's approval at that time). The `alf_la` interface stays frozen.
 
 ## Approvals
-- Pre-registration commit: `PREREG_SHA` (2026-10-30) on `gpu-port-302a-onemkl`; base `5f062f29`. Any change of
+- Pre-registration commit: `469a2255` (2026-10-30) on `gpu-port-302a-onemkl`; base `5f062f29`. Any change of
   `302a.json` / `302a.nvidia.json` after this needs the owner's quoted approval and fresh seeds (VERIFICATION.md §3),
   unless made before any implementation result exists and pre-registered again in a new commit recorded here.
 
