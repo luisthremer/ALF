@@ -5,7 +5,17 @@
  "base_sha": "1a363070087c",
  "created": "2026-10-29",
  "_status": "pre-registered for ticket 212 (verification hardening) after review (b); thresholds and counts fixed before any implementation result",
- "approvals": [],
+ "approvals": [
+  {
+   "who": "owner",
+   "decision": "12",
+   "date": "2026-10-29",
+   "quote": "Approve shift 8",
+   "covers": [
+    "c_compare2_shift"
+   ]
+  }
+ ],
  "machine": "nividia",
  "gpu_exclusive": true,
  "timeout_s": 900,
@@ -1411,7 +1421,7 @@
     "a": "c2_gpu_m"
    },
    "expect": "FAIL",
-   "_reason": "shift of 8 standard errors (rebinned): with m = 11, alpha = 0.01 Sidak, z_crit ~3.3 and t ~ k/sqrt(2), k = 5 is caught only ~60 % of the time, k = 8 ~99 % (deviation from the 5 in VERIFICATION.md 5, flagged to the owner)"
+   "_reason": "shift of 8 standard errors (rebinned): with m = 11, alpha = 0.01 Sidak, z_crit ~3.3 and t ~ k/sqrt(2), k = 5 is caught only ~60 % of the time, k = 8 ~99 % (deviation from the 5 in VERIFICATION.md 5, approved by the owner: DECISIONS.md gate row 12)"
   },
   {
    "id": "c_compare2_null",
