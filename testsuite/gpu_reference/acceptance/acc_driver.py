@@ -285,6 +285,12 @@ def main():
             cmd += ["--env", kv]
         q = subprocess.run(cmd + ["--"] + t["configure"].split(), capture_output=True, text=True)
         log(f"ctest {t['id']}: rc {q.returncode} {q.stdout.strip()[-200:]}", fh)
+    # GPU=none before the log mutations: a log mutation may copy gpunone (e.g. gpunone_m_ctestfail)
+    for sub, extra in (("gpunone", []), ("gpunone_plant", ["--plant"])):
+        if acc.get("gpunone") and not os.path.exists(os.path.join(rroot, sub)):
+            q = subprocess.run(["bash", os.path.join(HERE, "acc_gpunone.sh"), a.ticket, a.who, a.sha12, os.path.join(rroot, sub)] + extra,
+                               capture_output=True, text=True)
+            log(f"{sub}: rc {q.returncode} {q.stdout.strip()[-300:]}", fh)
     for m in acc.get("log_mutations", []):  # script-level controls of log gates: a copy with one planted failure
         src_d, dst_d = os.path.join(rroot, m["src"]), os.path.join(rroot, m["dst"])
         if os.path.exists(dst_d) or not os.path.isdir(src_d):
@@ -308,11 +314,6 @@ def main():
         open(f, "w").write(new)
         open(os.path.join(dst_d, "MUTATED"), "w").write(m["kind"] + "\n")
         log(f"log mutation {m['dst']} ({m['kind']} in {m['file']})", fh)
-    for sub, extra in (("gpunone", []), ("gpunone_plant", ["--plant"])):
-        if acc.get("gpunone") and not os.path.exists(os.path.join(rroot, sub)):
-            q = subprocess.run(["bash", os.path.join(HERE, "acc_gpunone.sh"), a.ticket, a.who, a.sha12, os.path.join(rroot, sub)] + extra,
-                               capture_output=True, text=True)
-            log(f"{sub}: rc {q.returncode} {q.stdout.strip()[-300:]}", fh)
     if a.no_verdict:
         return 0
     vdir = os.path.join(C, "verdict", a.part or "main")
