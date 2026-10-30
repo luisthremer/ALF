@@ -135,8 +135,9 @@ backend is a guard without calls. The longer Intel lags, the more the design fit
 two cuSOLVER quirks are already worked around); oneMKL on a real Intel GPU will have its own, and finding them early is
 cheaper.
 
-**Prerequisites of the Intel lane:** a consistent oneAPI on `intel` (matching ifx and MKL releases; today ifx 2025.3 +
-MKL 2026.2 fails at link time, see MACHINES.md), the owner's approval of the process diff, and the harness.
+**Prerequisites of the Intel lane:** a consistent oneAPI on `intel` (matching ifx and MKL releases: since 2026-10-29
+ifx 2026.2 + MKL 2026.2, see MACHINES.md), the owner's approval of the process diff, and the harness. All met
+2026-10-30.
 
 **File ownership while both lanes run**
 
@@ -218,6 +219,7 @@ Decided at the Phase 1 gate (2026-10-27):
 
 Still open:
 1. oneAPI/ifx, MKL, MPI and HDF5 module versions on SuperMUC-NG Phase 2: needed in Phase 3 (301); until then pin
-   ifx 2025.3.
+   **ifx 2026.2 + oneMKL 2026.2** for `GPU=intel` on `intel` (pin change of 2026-10-30, DECISIONS.md row 13; was ifx
+   2025.3). The ifx on `nividia` (2025.3, CPU-only stand-in builds) is not the Intel-lane toolchain.
 2. Official CPU baseline for BENCHMARKS.md (nividia 16-core VM vs a SuperMUC full-node CPU run): decided in
    Phase 3. Phase 2 reports nividia numbers as development numbers.

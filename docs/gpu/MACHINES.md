@@ -63,17 +63,24 @@ Rules: CLAUDE.md "Machine rules". Our dir `~/alf-gpu/` (mode 700).
 
 | Item | Value |
 |---|---|
-| OS | Ubuntu 25.04 |
+| OS | Ubuntu 26.04.1 LTS (was 25.04 until the admin's update of 2026-10-29) |
 | CPU | Intel Core i5-14400 (6P + 4E cores, 16 threads), 1 socket, 61 GB RAM |
 | GPU | **Intel Arc B580** (Battlemage G21, Xe2, discrete, `/dev/dri/renderD128`); iGPU UHD 730 (`renderD129`) |
-| GPU driver | `intel-opencl-icd` 24.52, `libze-intel-gpu1` 24.52, Level Zero loader 1.20.3, `libigc2` 2.5 |
-| oneAPI | 2025.1 … 2026.1 in `/opt/intel/oneapi`. **ifx only up to 2025.3** (2025.3.3). MKL per release, Intel MPI 2021.15–2021.18 |
+| GPU driver | `intel-opencl-icd` 26.35.39758.17, `libze-intel-gpu1` 26.35.39758.17, Level Zero loader `libze1` 1.32.0, `libigc2` 2.41.15 (checked 2026-10-30; 24.52 / 1.20.3 / 2.5 until 2026-10-29) |
+| oneAPI | `/opt/intel/oneapi`: compiler 2025.1, 2025.3 (ifx 2025.3.3), **2026.2 (ifx 2026.2.0)**; MKL **2026.2** only (`mkl/2025.1` is an empty dir); Intel MPI 2021.15–2021.19; TBB 2023.2, UMF 1.2, TCM 1.6. **No `apt-mark hold`** on any intel package (checked 2026-10-30) |
 | `ocloc` | system-wide → AOT `spir64_gen` builds possible here (not on nividia) |
 | Other | gfortran, cmake, python3, clinfo; ample disk |
 
-Environment: `. ~/alf-gpu/env/intel.sh` (= `/opt/intel/oneapi/2025.3/oneapi-vars.sh --force`; ifx 2025.3.3,
-`MKLROOT=/opt/intel/oneapi/2025.3`, `mpiifx`).
+Environment: `. ~/alf-gpu/env/intel.sh`, pinned per component since 2026-10-30: `tcm/1.6 umf/1.2 tbb/2023.2
+mpi/2021.19 compiler/2026.2 mkl/2026.2` (each `env/vars.sh`; never `latest`). Gives ifx 2026.2.0 20261001,
+`MKLROOT=/opt/intel/oneapi/mkl/2026.2`, `mpiifx` 2021.19. The old script is kept as `intel.sh.2025.3`.
+Checked 2026-10-30: `ifx -fiopenmp -fopenmp-targets=spir64 -qmkl ... -lmkl_sycl_blas -lmkl_sycl_lapack -lsycl` links
+(the link that failed on 2026-10-29); ZGEMM plus a target region runs on the B580 under `OMP_TARGET_OFFLOAD=MANDATORY`
+with the correct result; `ldd`: all MKL/SYCL/iomp libraries from 2026.2. Sourcing prints a harmless UMF warning on
+stderr.
 
+**Fixed 2026-10-29 evening by the admin** (a matching 2026.2 set instead of decision 6's MKL 2025.3 + hold; no hold, so a
+later system update can mix versions again). Earlier state, kept for the record:
 **State 2026-10-29: the oneAPI installation is mixed and `GPU=intel` does not link.** A system update (owner's
 maintenance, 2026-10-28) removed MKL 2025.3 (`dpkg` state `rc`) and installed MKL 2026.2, without a Fortran compiler
 2026.2: `compiler/` has 2025.1, 2025.3 (ifx 2025.3.3), 2026.2 (icx/icpx, no ifx); `mkl/` has 2025.1 (empty) and 2026.2.
