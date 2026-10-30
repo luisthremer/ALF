@@ -79,6 +79,11 @@ cd ALF && source configure.sh GNU noMPI NO-INTERACTIVE >/dev/null 2>&1 && mkdir 
 
 ## Decisions
 - (2026-10-30) Rank-1 eligibility, flush points, frame handling: see `docs/algorithm-notes.md` and the design spec.
+- (2026-10-30, Checkpoint 1, approved as proposed) Eligible = diagonal rank-1 vertices in every flavour; other
+  vertices → flush + standard Upgrade2. Parameters `Sequential_scheme` / `N_delay` in `&VAR_QMC`. A trace write
+  in `upgrade_mod.F90` only under `#ifdef ALF_TRACE_UPDATES`. Trajectory tolerance for bins: 1e-8 relative.
+  Submatrix flushes before re-proposing a site already in the block.
+- Plan: `docs/superpowers/plans/2026-10-30-delayed-submatrix.md` (execution: subagent-driven-development).
 
 ## Tolerances
 - To be set in Phase 2 (target ~1e-10 relative for the unit level).
