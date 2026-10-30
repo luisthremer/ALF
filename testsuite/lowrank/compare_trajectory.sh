@@ -17,6 +17,7 @@
 # within 1e-8; the first differing toggle is classified ROUNDOFF (both runs within 1e-10 of the Metropolis
 # threshold: prints "DIVERGED-ROUNDOFF at proposal k (margin ...)", skips the confout/bin comparison, exit 0)
 # or BUG (exit 1). Non-standard schemes must also report "Sequential scheme: <NAME>" in info.
+# The normal binary is restored on any exit (trap) if the trace build has touched the tree.
 # Exit: 0 pass, 1 mismatch or BUG, 2 harness failure (build, run, usage).
 set -euo pipefail
 
@@ -30,7 +31,7 @@ SHORT="NSweep=3 NBin=2"
 
 REBUILD=0
 if [ "${1:-}" = "--rebuild" ]; then REBUILD=1; shift; fi
-if [ $# -lt 3 ]; then sed -n '2,20p' "${BASH_SOURCE[0]}" >&2; exit 2; fi
+if [ $# -lt 3 ]; then sed -n '2,21p' "${BASH_SOURCE[0]}" >&2; exit 2; fi
 SET="$1"; SCHEME_A="$2"; SCHEME_B="$3"; shift 3
 EXTRA=("$@")
 
@@ -49,8 +50,25 @@ build_in_tree() {  # $1 = extra flag or empty; leaves Prog/ALF.out built from sc
       if [ -n "$1" ]; then export ALF_FLAGS_EXT="$1"; fi
       source configure.sh GNU noMPI NO-INTERACTIVE >/dev/null 2>&1
       make -C Prog clean >/dev/null 2>&1 && make program -j8 ) >"$ALFDIR/runs/build_trace.log" 2>&1 \
-        || { echo "build failed, see $ALFDIR/runs/build_trace.log" >&2; exit 2; }
+        || { echo "build failed, see $ALFDIR/runs/build_trace.log" >&2; return 2; }
 }
+
+# While the tree holds traced objects (between the two builds) TRACE_TREE_DIRTY=1. Any exit (failure,
+# interrupt) then rebuilds the normal binary, so later incremental builds never reuse traced objects.
+TRACE_TREE_DIRTY=0
+restore_normal_build() {
+    local rc=$?
+    trap - EXIT INT TERM
+    if [ "$TRACE_TREE_DIRTY" = 1 ]; then
+        echo "restoring the normal build ..." >&2
+        build_in_tree "" || rc=2
+        TRACE_TREE_DIRTY=0
+    fi
+    exit $rc
+}
+trap restore_normal_build EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 trace_binary_stale() {
     [ -x "$TRACE_BIN" ] || return 0
@@ -65,10 +83,13 @@ if [ -n "$TRACE_BIN_OVERRIDE" ]; then
     TRACE_BIN="$TRACE_BIN_OVERRIDE"; echo "using $TRACE_BIN (ALF_TRACE_BIN)"
 elif [ $REBUILD = 1 ] || trace_binary_stale; then
     echo "building trace binary (-DALF_TRACE_UPDATES) ..."
-    build_in_tree "-DALF_TRACE_UPDATES"
+    TRACE_TREE_DIRTY=1
+    build_in_tree "-DALF_TRACE_UPDATES" || exit 2
     cp "$ALFDIR/Prog/ALF.out" "$TRACE_BIN"
+    if [ -n "${TRAJ_TEST_FAIL_AFTER_TRACE:-}" ]; then echo "simulated failure after the trace build" >&2; exit 1; fi
     echo "rebuilding the normal binary ..."
-    build_in_tree ""
+    build_in_tree "" || exit 2
+    TRACE_TREE_DIRTY=0
 else
     echo "reusing $TRACE_BIN"
 fi

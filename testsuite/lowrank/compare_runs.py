@@ -8,10 +8,13 @@ Checks (exit 0 iff all pass, 1 otherwise, 2 on unusable input):
     "Sequential scheme: <NAME>" (NAME = scheme in upper case), so a run that silently fell back
     to the standard update fails. For "standard" nothing is checked.
   * confout_0 (RNG state and field configuration): identical field by field (all tokens equal).
-  * every other output file except info*, parameters, seeds and *_info (bin files *_scal, *_eq, *_tau):
+  * every other output file except info*, parameters, seeds, *_info, stdout.log and trace_updates.txt
+    (the trace is compared by trace_diff.py) (bin files *_scal, *_eq, *_tau):
     same set of files in both runs, same shape, and every number within relative tolerance
     |a-b| <= rtol*max(|a|,|b|) + 1e-12*max|value in that file| (default rtol 1e-8; the second term
-    absorbs round-off noise on values that are zero up to ~1e-16, e.g. imaginary parts).
+    absorbs round-off noise on values that are zero up to ~1e-16, e.g. imaginary parts). The absolute
+    floor overrides rtol for small entries: an entry below 1e-4 of the file maximum can differ by up
+    to 100% at rtol 1e-8 without failing.
 --info-only restricts the checks to the info line (used after a legitimate round-off divergence of
 the trajectories, where confout and bins differ by construction).
 """
@@ -60,7 +63,9 @@ def compare_confout(da, db):
 
 
 def compare_bins(da, db, rtol):
-    skip = lambda n: n in ("parameters", "seeds", "confout_0") or n.startswith("info") or n.endswith("_info")
+    # stdout.log (run log) and trace_updates.txt (compared by trace_diff.py) are not bin files
+    skip = lambda n: n in ("parameters", "seeds", "confout_0", "stdout.log", "trace_updates.txt") \
+        or n.startswith("info") or n.endswith("_info")
     fa = sorted(n for n in os.listdir(da) if not skip(n) and os.path.isfile(os.path.join(da, n)))
     fb = sorted(n for n in os.listdir(db) if not skip(n) and os.path.isfile(os.path.join(db, n)))
     if fa != fb:

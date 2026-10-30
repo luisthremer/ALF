@@ -65,7 +65,7 @@ same accept/reject decisions. `SET` is one of the `sets.sh` sets (its common key
   different trace lengths are `BUG`. Last line `RESULT: IDENTICAL|ROUNDOFF k margin|BUG ...`; exit 0 for IDENTICAL and
   ROUNDOFF, 1 for BUG, 2 for unusable input. `--selftest` checks the classification on synthetic traces.
 - `compare_runs.py` requires `confout_0` identical field by field and all bin files (`*_scal`, `*_eq`, `*_tau`) within
-  relative tolerance 1e-8 (plus an absolute floor 1e-12 of the file's largest value for noise-level entries). For a
+  relative tolerance 1e-8 plus an absolute floor of 1e-12 times the file's largest value (the floor overrides rtol for small entries, e.g. imaginary parts of order 1e-16; `stdout.log` and `trace_updates.txt` are not compared here, the trace is compared by `trace_diff.py`). For a
   non-standard scheme the run's `info` must contain `Sequential scheme: <NAME>` (upper case), so a silent fallback to
   standard fails; for `standard` there is nothing to check.
 - Outcome: no differing toggle -> pass iff `compare_runs.py` passes (exit 0/1). ROUNDOFF -> prints
