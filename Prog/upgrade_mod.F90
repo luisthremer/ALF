@@ -110,6 +110,9 @@ module upgrade_mod
         Use Control
         Use Fields_mod
         use iso_fortran_env, only: output_unit, error_unit
+#ifdef ALF_TRACE_UPDATES
+        use Trace_updates_mod
+#endif
         Implicit none
 
         Complex (Kind=Kind(0.d0)), INTENT(INOUT) :: GR(Ndim,Ndim, N_FL)
@@ -130,6 +133,9 @@ module upgrade_mod
         Complex (Kind=Kind(0.d0)) :: Z, D_Mat, myexp, s1, s2
 
         Real    (Kind=Kind(0.d0)) :: Weight
+#ifdef ALF_TRACE_UPDATES
+        Real    (Kind=Kind(0.d0)) :: ranf_val
+#endif
         Complex (Kind=Kind(0.d0)) :: alpha, beta, g_loc
         Complex (Kind=Kind(0.d0)), Dimension(:, :), Allocatable :: Mat, Delta
         Complex (Kind=Kind(0.d0)), Dimension(:, :), Allocatable :: u, v
@@ -219,7 +225,12 @@ module upgrade_mod
         endif
 
         toggle = .false.
+#ifdef ALF_TRACE_UPDATES
+        ranf_val = ranf_wrap()
+        if ( Weight > ranf_val )  Then
+#else
         if ( Weight > ranf_wrap() )  Then
+#endif
            toggle = .true.
            If ( str_to_upper(mode) == "FINAL"  )  Phase = Phase * Ratiotot/sqrt(Ratiotot*conjg(Ratiotot))
            !Write(6,*) 'Accepted : ', Ratiotot
@@ -292,6 +303,9 @@ module upgrade_mod
            deallocate ( y_v, xp_v, x_v )
         endif
 
+#ifdef ALF_TRACE_UPDATES
+        If ( str_to_upper(mode) == "FINAL" )  Call Trace_update_write(nt, n_op, Ratiotot, Weight, ranf_val, toggle)
+#endif
         If ( str_to_upper(mode) == "FINAL" )  then
            Call Control_upgrade(toggle)
            Call Control_upgrade_eff(toggle)
