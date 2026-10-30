@@ -156,6 +156,38 @@ Pre-registered in `testsuite/gpu_reference/acceptance/212.json` (gates, threshol
   needs CUDA ≥ 12.2 (MACHINES.md); `device_kernel_check` keeps one floating-point `reduction(+)` (a setup checksum
   compared with a tolerance, not output).
 
+- **Review (a) of candidate 2 `510ec2cd`:** approved (nits only).
+- **T2 of candidate `8022c4b0`** (code = `510ec2cd`; pre-registration `ea22ba36` with decision 14; 2026-10-30, fresh
+  seeds acc1–acc3 drawn 07:56 after shipping; `nividia:~/alf-gpu/work/t212/cand/mgr/8022c4b0de64/`): **Overall PASS**,
+  13/13 gates, 16/16 controls as expected. compare2 (120 × 30): m = 11, max |t| 2.317 (E), no observable
+  under-resolved; shift-8 control caught (t = 7.22), null control passes (max |t| 0.85). Same seed overall max
+  3.10e-10 (12×12 default), τ max 1.72e-10, no bin above 1e-9. Precision Green mean ratio 1.31 (default), 1.19 (LOG).
+  Determinism 4 pairs bit-identical. GPU=none 18 comparisons 0 lines, ctest 53/53. Longest run c2_gpu 1073 s (decision
+  14 exception). ~2 h GPU time (slightly above the 120-min budget, as announced to the owner).
+  Process: the GPU=none step (`gpunone`, `gpunone_plant`) was run by hand before the driver with the driver's exact
+  arguments (pinned harness ordering bug); the first driver start stopped in seed preparation (venv not on PATH under
+  `env -i`) before any build or run, the second carries a `--reason` (attempts log).
+- **Independent acceptance-verifier:** AGREES (own code for every gate and control, all provenance checks clean). It
+  corrected one number of the manager's summary (same-seed max 3.10e-10, not ≤ 2.6e-10). Minor notes: the compare2
+  `_reason` text in `212.json` still names the old 15-sweep length (text only); the `gpunone` stamp is minimal and its
+  cmake/ctest/`gfortran -E` steps inherit the launching shell rather than `env -i` (pinned harness); the manual
+  gpunone runs are not in the attempts log.
+- **compare2 Σt² (report item, not a criterion):** 24.79 at m = 11 would be p = 0.0098 if the observables were
+  independent, but they are strongly correlated (E = Kin + Pot exactly; Szz(π,π), Szz(π,π,β/2), χzz r ≈ 0.97–0.99;
+  effective number ≈ 3.9). The verifier's correlation-aware Hotelling T² gives p = 0.30 (GPU vs CPU), 0.87 (GPU vs
+  null CPU set), 0.82 (CPU vs CPU). Follow-up for the harness: the "Σt² vs χ²_m" information line of compare2 is
+  miscalibrated for this observable set and must not be quoted as a p-value; Šidák at m = 11 stays conservative.
+- Cost of the deterministic reductions (verifier, s/sweep from `info` incl. setup, candidate vs base): default N = 144
+  1.507 vs 1.501, N = 400 7.173 vs 7.230; LOG N = 144 1.504 vs 1.492, N = 400 7.569 vs 7.816 (no measurable cost).
+- **Review (b) of the re-registration** (`git diff 510ec2cd 8022c4b0`): approved, no must-fix. Notes recorded here
+  instead of editing the accepted file: (1) the compare2 gate's `_reason` in `212.json` still says 15 sweeps / ~560 s /
+  900 s; the authoritative run length is the config's NSweep 30 (decision 14). (2) `timeout_s` 1500 applies to every run
+  (the driver has only a global timeout), so a hung non-compare2 run could hold the GPU ~25 min; follow-up: per-run
+  timeout override in the harness. (3) Decision 14's quote "Longer bins" answered the manager's proposal of 120 bins ×
+  30 sweeps, ~18 min per GPU run, needing an exception to the 15-min rule, α and observables unchanged, fresh seeds;
+  the timeout 1500 s is the manager's implementation of that run length, not part of the owner's wording.
+- **Closed** on the PASS verdict, the verifier's agreement and both reviews; merged into `gpu-port`.
+
 ## Out of scope
 207 (τ pass) and its paired test; 213 (STABLOG same-seed excess); performance work beyond the deterministic reductions;
 Intel/oneMKL.
