@@ -21,7 +21,7 @@ BRANCH_EXTRA="Sequential_scheme=0" testsuite/lowrank/regress_vs_baseline.sh   # 
 - Creates the worktree `../ALF_baseline` (detached at `f81b5cbc`) if missing and builds it; rebuilds the branch.
 - Each side starts from its own tree's `Start` template (`--template`), since the branch template carries keys the baseline cannot parse.
 - Runs six short sets (`NSweep=5 NBin=2`, `OMP_NUM_THREADS=1`) with identical parameters and seeds:
-  `start`, `explicit` (`start` plus branch-only `Sequential_scheme="standard" N_delay=32`), `doped` (`ham_chem=-0.5 L1=4 L2=4 Beta=4`), `density` (`Mz=.F.`), `continuous`
+  `start`, `explicit` (`start` plus branch-only `sequential_scheme='STANDARD' N_delay=7`: lower-case key name, single-quoted upper-case value, non-default `N_delay`, which must be irrelevant for the standard scheme), `doped` (`ham_chem=-0.5 L1=4 L2=4 Beta=4`), `density` (`Mz=.F.`), `continuous`
   (`Continuous=.T.`), `tv` (see below). Outputs go to `runs/regress/<set>/{base,branch}`.
 - `cmp`s every output file except `info*` (commit and time stamps) and the inputs `parameters`, `seeds`
   (they differ textually with branch-only keys); the `*_info` companions are compared. Exit 2 if a run
