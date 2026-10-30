@@ -2,8 +2,8 @@
  "schema": "alf-acc/1",
  "ticket": "302a",
  "candidate_sha": "self",
- "base_sha": "05717b989982",
- "_base_reason": "moved from 7b3c0dc6 to 05717b98 after T1 (owner, decision 17, 2026-10-30): T1 of candidate a1d89e89 FAILED gpu_none_ppcmp of the nvidia part with added_or_deleted 6 instead of 0 because acc_gpunone.sh counted six dev probes docs/gpu/scripts/intel/*.F90 as CPU-path Fortran (harness defect; docs/ is documented as not built). The fix (05717b98, review (c) approved) gives 6 -> 0 on the same changed-file list; the compared file alf_la_mod.F90 and every criterion are unchanged. 7b3c0dc6..05717b98 changes only acc_driver.py (GPU=none step before log mutations) and acc_gpunone.sh. Failed T1 evidence and its attempts-log entries are kept; T1 is repeated in full on the new base",
+ "base_sha": "d8cc74f724f8",
+ "_base_reason": "moved from 05717b98 to d8cc74f7 (owner, 2026-10-30: \"Yes, rebase\"; counts: \"Yes, approve\", DECISIONS.md row 18): 302a's sequencing rule requires the ticket landing second to be rebased onto 212; 302a had been accepted on a base without 212 (manager error). d8cc74f7 = gpu-port with 212 and the harness fixes. Consequences: 212 registers t_determinism for every backend, so ONEMKL ctest has 14 tests (positive control ALF_LA_TEST_PLANT_ULP=1 added) and the GNU ctest of the nvidia part 53. Earlier history: moved from 7b3c0dc6 to 05717b98 by decision 17 after a harness defect in gpu_none_ppcmp. Evidence of all earlier T1/T2 attempts is kept",
  "created": "2026-10-30",
  "approvals": [
   {
@@ -13,6 +13,16 @@
    "quote": "Yes, move base",
    "covers": [
     "base_sha"
+   ]
+  },
+  {
+   "who": "owner",
+   "decision": "18",
+   "date": "2026-10-30",
+   "quote": "Yes, approve",
+   "covers": [
+    "base_sha",
+    "gpu_none_ctest"
    ]
   }
  ],
@@ -129,11 +139,11 @@
      "equals": [
       100,
       0,
-      52
+      53
      ]
     }
    ],
-   "_reason": "GNU devel ctest count of the base (52) unchanged"
+   "_reason": "GNU devel ctest count of the base d8cc74f7 (53 = 52 + 212's t_determinism) unchanged"
   },
   {
    "id": "gpu_none_ifx_identity",
