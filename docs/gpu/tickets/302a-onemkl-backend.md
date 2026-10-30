@@ -242,6 +242,17 @@ change only, with the owner's approval at that time). The `alf_la` interface sta
   `*_scratchpad_size` queries still report -1). Review of the rebase: approved. New counts (owner, "Yes, approve",
   DECISIONS.md row 18): 14 ONEMKL tests incl. `t_determinism` with control `ALF_LA_TEST_PLANT_ULP=1`, GNU 53.
   Pre-registration `b0b7280d`; the T2 candidate is the commit recording it (code = `f2866434`). T1 and T2 again in full.
+- **T1 of the rebased candidate `3a31aea4`:** both parts PASS (intel 14/14, t_order 100/100, four controls killed;
+  nvidia ppcmp [9,0,0,0,3,1], GNU 53/53, ifx identity 38/38, CUDA 178 lines 0 differing, four controls killed).
+- **T2 of `3a31aea4`** (manager, 2026-10-30, `--reason`: the earlier manager T2 on fe0fefa3 ran without 212): intel
+  **Overall PASS** (start 21:31, dpkg recorded at 21:29 and identical to the pin), nvidia **Overall PASS** (start 21:53).
+  Raw outputs `~/alf-gpu/work/t302a/cand/mgr/3a31aea4b651/` on both machines.
+- **Independent acceptance-verifier (second):** AGREES, no mismatch in any value, verdict or count. Findings for the
+  harness (none changes a verdict): ctest runs still lack full provenance (binary sha256, toolchain, device selector,
+  GPU idle at start); the mutated identity control `id_ifx_cand_m` keeps `run_dir` and dataset hashes of its source
+  and has no MUTATED marker; `gpunone_m_ctestfail/ctest.exit` stays 0 while its log shows 1 failure; the nvidia part
+  uses the dev seed set (deterministic gates only). The Intel compiler cache was not written during this T2.
+- **Closed** 2026-10-30 on `3a31aea4`; merged into `gpu-port`.
 
 ## Out of scope
 Activating 204–206 device paths on the B580 (302b), the τ path (302c), PVC (301, 304), performance work.
