@@ -1,0 +1,26 @@
+   after up-sweep only: seq=7.8e-16, delayed=5.4e-16, subA=1.0e-15, subB=1.0e-15, subBnaive=1.0e-15, subXu=1.0e-15, subGen=6.9e-16
+--- diag ops, distinct sites  (nd=4)   exact-vs-seq ratio rel.dev = 2.53e-15
+   seq         max|G-G_exact| = 4.82e-15   max rel ratio dev vs seq = 0.00e+00
+   delayed     max|G-G_exact| = 4.76e-15   max rel ratio dev vs seq = 3.85e-16
+   subA        max|G-G_exact| = 5.19e-15   max rel ratio dev vs seq = 9.08e-16
+   subB        max|G-G_exact| = 4.47e-15   max rel ratio dev vs seq = 6.84e-16
+   subBnaive   max|G-G_exact| = 1.57e-01   max rel ratio dev vs seq = 4.11e-02
+   subXu       max|G-G_exact| = 4.47e-15   max rel ratio dev vs seq = 6.84e-16
+   subGen      max|G-G_exact| = 5.48e-15   max rel ratio dev vs seq = 5.99e-16
+   max |Delta*Schur - R|/|R| over correct submatrix engines = 3.49e-16
+   after up-sweep only: seq=1.3e-15, delayed=1.6e-15, subA=1.7e-15, subB=1.8e-15, subBnaive=4.6e-02, subXu=7.8e-01, subGen=1.6e-15
+--- diag ops, repeated sites in block  (nd=8)   exact-vs-seq ratio rel.dev = 2.47e-15
+   seq         max|G-G_exact| = 1.07e-14   max rel ratio dev vs seq = 0.00e+00
+   delayed     max|G-G_exact| = 9.80e-15   max rel ratio dev vs seq = 7.72e-16
+   subA        max|G-G_exact| = 1.13e-14   max rel ratio dev vs seq = 9.16e-16
+   subB        max|G-G_exact| = 8.96e-15   max rel ratio dev vs seq = 9.89e-16
+   subBnaive   max|G-G_exact| = 7.67e-01   max rel ratio dev vs seq = 8.92e-02
+   subXu       max|G-G_exact| = 1.67e+00   max rel ratio dev vs seq = 1.69e+00
+   subGen      max|G-G_exact| = 1.31e-14   max rel ratio dev vs seq = 1.37e-15
+   max |Delta*Schur - R|/|R| over correct submatrix engines = 3.34e-16
+   after up-sweep only: seq=1.7e-15, delayed=1.6e-15, subGen=1.6e-15
+--- non-diag rank-1 ops (overlapping bonds)  (nd=5)   exact-vs-seq ratio rel.dev = 2.50e-15
+   seq         max|G-G_exact| = 4.88e-15   max rel ratio dev vs seq = 0.00e+00
+   delayed     max|G-G_exact| = 4.45e-15   max rel ratio dev vs seq = 3.53e-16
+   subGen      max|G-G_exact| = 8.20e-15   max rel ratio dev vs seq = 1.12e-15
+   max |Delta*Schur - R|/|R| over correct submatrix engines = 2.35e-16
