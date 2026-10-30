@@ -544,8 +544,150 @@ contains
 end module lowrank_unit_harness
 
 
+! Eligibility section: Lowrank_init on a mixed vertex list, independent of the
+! candidate-dispatch table above. A vertex is eligible iff, in every flavour,
+! Op_V(n,nf)%N_non_zero <= 1 and Op_V(n,nf)%diag.
+module lowrank_eligibility_section
+   use lowrank_unit_harness, only: dp, clear_case
+   use Hamiltonian_main, only: Op_V, Ndim, N_FL, N_FL_eff, Calc_Fl_map
+   use Operator_mod
+   use Predefined_Int
+   use Lowrank_update_mod, only: Lowrank_init, Lowrank_finalize, Lowrank_active, &
+        &                        Lowrank_eligible, Lowrank_pending
+   implicit none
+
+   real(dp), parameter :: ELIG_DTAU = 0.1d0, ELIG_U = 4.d0
+
+contains
+
+   subroutine elig_check(ok, label, n_fail)
+      logical,          intent(in)    :: ok
+      character(len=*), intent(in)    :: label
+      integer,          intent(inout) :: n_fail
+      if (ok) then
+         write(6,'(A,A)') '  eligibility: ok   ', label
+      else
+         write(6,'(A,A)') '  eligibility: FAIL ', label
+         n_fail = n_fail + 1
+      endif
+   end subroutine elig_check
+
+   ! Non-diagonal rank-1 operator on sites (i,j): O = (1 1; 1 1)/2, eigenvalues 1 and 0.
+   subroutine make_nondiag_rank1(Op, i, j)
+      type(Operator), intent(inout) :: Op
+      integer,        intent(in)    :: i, j
+      call Op_make(Op, 2)
+      Op%P = [i, j]
+      Op%O = cmplx(0.5d0, 0.d0, dp)
+      Op%g     = cmplx(sqrt(ELIG_DTAU), 0.d0, dp)
+      Op%alpha = cmplx(0.d0, 0.d0, dp)
+      Op%type  = 2
+      call Op_set(Op)
+   end subroutine make_nondiag_rank1
+
+   ! Diagonal rank-1 operator on site i (O = 1).
+   subroutine make_diag_rank1(Op, i)
+      type(Operator), intent(inout) :: Op
+      integer,        intent(in)    :: i
+      call Op_make(Op, 1)
+      Op%P(1)   = i
+      Op%O(1,1) = cmplx(1.d0, 0.d0, dp)
+      Op%g      = cmplx(sqrt(ELIG_DTAU), 0.d0, dp)
+      Op%alpha  = cmplx(0.d0, 0.d0, dp)
+      Op%type   = 2
+      call Op_set(Op)
+   end subroutine make_diag_rank1
+
+   ! True iff the file 'info' contains a line equal (after trimming) to want.
+   logical function info_has_line(want)
+      character(len=*), intent(in) :: want
+      character(len=256) :: line
+      integer :: u, ios
+      logical :: ex
+      info_has_line = .false.
+      inquire(file='info', exist=ex)
+      if (.not. ex) return
+      open(newunit=u, file='info', status='old', action='read')
+      do
+         read(u, '(A)', iostat=ios) line
+         if (ios /= 0) exit
+         if (trim(adjustl(line)) == want) info_has_line = .true.
+      enddo
+      close(u)
+   end function info_has_line
+
+   subroutine run_eligibility_section(n_fail)
+      integer, intent(inout) :: n_fail
+      integer :: nf, u
+      logical :: info_existed
+
+      write(6,'(A)') '36-lowrank-unit: eligibility section'
+      call clear_case()
+      Ndim = 8; N_FL = 2; N_FL_eff = 2
+      allocate(Calc_Fl_map(N_FL))
+      Calc_Fl_map = [1, 2]
+
+      ! Vertices: 1, 2 = Mz (eligible); 3 = V_SUN bond, rank 2 (ineligible);
+      ! 4 = diagonal rank-1 in flavour 1 but non-diagonal rank-1 in flavour 2 (ineligible).
+      allocate(Op_V(4, N_FL))
+      call Predefined_Int_U_MZ(Op_V(1,1), Op_V(1,2), 1, ELIG_DTAU, ELIG_U)
+      call Predefined_Int_U_MZ(Op_V(2,1), Op_V(2,2), 2, ELIG_DTAU, ELIG_U)
+      do nf = 1, N_FL
+         call Predefined_Int_V_SUN(Op_V(3,nf), 3, 4, 1, ELIG_DTAU, 1.d0)
+      enddo
+      call make_diag_rank1(Op_V(4,1), 7)
+      call make_nondiag_rank1(Op_V(4,2), 5, 6)
+
+      ! The hand-built operators must have the intended structure.
+      call elig_check(Op_V(3,1)%N_non_zero == 2 .and. .not. Op_V(3,1)%diag, &
+           & 'V_SUN bond: N_non_zero = 2, not diagonal', n_fail)
+      call elig_check(Op_V(4,1)%N_non_zero == 1 .and. Op_V(4,1)%diag, &
+           & 'hand-built diagonal rank-1: N_non_zero = 1, diagonal', n_fail)
+      call elig_check(Op_V(4,2)%N_non_zero == 1 .and. .not. Op_V(4,2)%diag, &
+           & 'hand-built (1 1;1 1)/2: N_non_zero = 1, not diagonal', n_fail)
+
+      inquire(file='info', exist=info_existed)
+
+      ! Delayed, mixed-case name
+      call Lowrank_init('Delayed', 7)
+      call elig_check(Lowrank_active(), "Lowrank_init('Delayed', 7): active", n_fail)
+      call elig_check(Lowrank_pending() == 0, "Lowrank_init('Delayed', 7): pending = 0", n_fail)
+      call elig_check(Lowrank_eligible(1) .and. Lowrank_eligible(2), 'Mz vertices 1, 2 eligible', n_fail)
+      call elig_check(.not. Lowrank_eligible(3), 'V_SUN bond vertex 3 ineligible', n_fail)
+      call elig_check(.not. Lowrank_eligible(4), 'vertex 4 (non-diagonal rank-1 in flavour 2) ineligible', n_fail)
+      call elig_check(info_has_line('Sequential scheme: DELAYED, N_delay = 7'), &
+           & "info contains 'Sequential scheme: DELAYED, N_delay = 7'", n_fail)
+      call Lowrank_finalize()
+      call elig_check(.not. Lowrank_active(), 'Lowrank_finalize: inactive', n_fail)
+
+      ! Submatrix after finalize (re-init path)
+      call Lowrank_init('SUBMATRIX', 3)
+      call elig_check(Lowrank_active() .and. Lowrank_pending() == 0, &
+           & "Lowrank_init('SUBMATRIX', 3) after finalize: active, pending = 0", n_fail)
+      call elig_check(Lowrank_eligible(1) .and. Lowrank_eligible(2) .and. .not. Lowrank_eligible(3) &
+           & .and. .not. Lowrank_eligible(4), 'submatrix: same eligibility pattern', n_fail)
+      call Lowrank_finalize()
+
+      ! Standard: nothing active, nothing pending
+      call Lowrank_init('standard', 32)
+      call elig_check(.not. Lowrank_active(), "Lowrank_init('standard', 32): not active", n_fail)
+      call elig_check(Lowrank_pending() == 0, "Lowrank_init('standard', 32): pending = 0", n_fail)
+      call Lowrank_finalize()
+
+      ! Remove the info file if this section created it.
+      if (.not. info_existed) then
+         open(newunit=u, file='info', status='old')
+         close(u, status='delete')
+      endif
+      call clear_case()
+   end subroutine run_eligibility_section
+
+end module lowrank_eligibility_section
+
+
 program lowrank_unit
    use lowrank_unit_harness
+   use lowrank_eligibility_section, only: run_eligibility_section
    implicit none
    integer :: ic, is, id, idir, n_fail
    real(dp) :: rerr, gerr, drift, max_drift, tol, drift_rel
@@ -598,6 +740,7 @@ program lowrank_unit
       enddo
    enddo
    write(6,'(A,ES10.3)') 'max std_drift_vs_exact (well-conditioned cases) = ', max_drift
+   call run_eligibility_section(n_fail)
    if (n_fail > 0) then
       write(6,'(A,I0,A)') '36-lowrank-unit: ', n_fail, ' row(s) FAILED'
       stop 1
