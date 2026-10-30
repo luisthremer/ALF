@@ -132,7 +132,8 @@ change only, with the owner's approval at that time). The `alf_la` interface sta
   unless made before any implementation result exists and pre-registered again in a new commit recorded here.
 - Third pre-registration (after T0 results, with the owner's quoted approval, DECISIONS.md row 15, 2026-10-30): only
   the `t_order` time rule above changes; `302a.json` and `302a.nvidia.json` are unchanged. Commit `ef30771b`; the owner's
-  per-repetition reading ("Each rep") was added in `cf31bc8b`, the current pre-registration.
+  per-repetition reading ("Each rep") was added in `cf31bc8b`. Decision 16 (no time limit) was pre-registered in
+  `84dade95`, the current pre-registration.
 
 ## Evidence
 `intel:~/alf-gpu/work/t302a/` and `nividia:~/alf-gpu/work/t302a/`: development runs (T0) under `dev/`; candidates in
