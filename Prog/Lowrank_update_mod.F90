@@ -55,8 +55,12 @@
 !> max|Lowrank_current_G - Gsh|/max|Gsh| <= TOL_UNIT is checked per computed flavour, and after
 !> every flush max|GR - Gsh|/max|Gsh| <= TOL_UNIT; a violation terminates. After every flush the
 !> number of checks and the largest relative error so far are (re)written to the file
-!> lowrank_debug_summary.txt in the run directory. -DLOWRANK_DEBUG_SELFTEST (never
-!> defined by default) skips the X-row scaling of the first hook so that the check must fire.
+!> lowrank_debug_summary.txt in the run directory. On every accept the denominator d of the
+!> proposal (computed from the low-rank G_pp) is also compared with d_sh = 1 + (1 - Gsh(p,p)) Delta
+!> from the shadow, and the shadow update uses d_sh, so a stale G_pp read in Lowrank_propose is
+!> caught. Self-tests (never defined by default): -DLOWRANK_DEBUG_SELFTEST skips the X-row scaling
+!> of the first hook; -DLOWRANK_DEBUG_SELFTEST_PROPOSE omits the X.Y correction of G_pp in
+!> Lowrank_propose until a perturbed proposal is accepted. Each must make the debug check fire.
 !--------------------------------------------------------------------
 
 module Lowrank_update_mod
@@ -110,6 +114,11 @@ module Lowrank_update_mod
    Real (Kind=Kind(0.d0))                 :: dbg_max_err  = 0.d0
    Integer (Kind=Kind(0_8))               :: dbg_n_checks = 0
    Integer                                :: dbg_last_nop = 0, dbg_last_nt = 0  ! last accept
+   Real (Kind=Kind(0.d0))                 :: dbg_max_derr = 0.d0  ! max relative error of d
+#ifdef LOWRANK_DEBUG_SELFTEST_PROPOSE
+   Logical                                :: dbg_selftest_prop_done = .false.  ! perturbed proposal accepted
+   Logical                                :: dbg_prop_perturbed     = .false.  ! last proposal perturbed
+#endif
 #ifdef LOWRANK_DEBUG_SELFTEST
    Logical                                :: dbg_selftest_done = .false.
 #endif
@@ -407,6 +416,9 @@ contains
       endif
 
       Call nsigma_new%make(1,1)
+#if defined(ALF_LOWRANK_DEBUG) && defined(LOWRANK_DEBUG_SELFTEST_PROPOSE)
+      dbg_prop_perturbed = .false.
+#endif
 
       ! Same expressions and order as Upgrade2
       nf = 1
@@ -425,7 +437,17 @@ contains
             p = Op_V(n_op,nf)%P(1)
             j = n_cols(nf_eff)
             G_pp = GR(p,p,nf)
+#if defined(ALF_LOWRANK_DEBUG) && defined(LOWRANK_DEBUG_SELFTEST_PROPOSE)
+            ! Self-test of the d check: read the stale G0(p,p) (omit the X.Y correction) until a
+            ! perturbed proposal has been accepted
+            if (j > 0 .and. .not. dbg_selftest_prop_done) then
+               dbg_prop_perturbed = .true.
+            else if (j > 0) then
+               G_pp = G_pp - sum( X(p,1:j,nf_eff) * Y(p,1:j,nf_eff) )
+            endif
+#else
             if (j > 0) G_pp = G_pp - sum( X(p,1:j,nf_eff) * Y(p,1:j,nf_eff) )
+#endif
             myexp = exp( Z1* Op_V(n_op,nf)%E(1) )
             Z = myexp - 1.d0
             Mat11 = - Z * G_pp
@@ -488,6 +510,8 @@ contains
       Integer                   :: nf, nf_eff, p, j
 #ifdef ALF_LOWRANK_DEBUG
       Complex (Kind=Kind(0.d0)), allocatable :: c_sh(:), r_sh(:)
+      Complex (Kind=Kind(0.d0))              :: d_sh
+      Real    (Kind=Kind(0.d0))              :: derr, dscale
 #endif
 
       if (.not. Lowrank_eligible(n_op)) then
@@ -510,15 +534,36 @@ contains
             Gsh(:,:,nf) = GR(:,:,nf)
          Enddo
       endif
+#ifdef LOWRANK_DEBUG_SELFTEST_PROPOSE
+      if (dbg_prop_perturbed) dbg_selftest_prop_done = .true.
+#endif
       allocate (c_sh(Ndim), r_sh(Ndim))
       Do nf_eff = 1,N_FL_eff
          nf = Calc_Fl_map(nf_eff)
          if (Op_V(n_op,nf)%N_non_zero == 0) cycle
          p = Op_V(n_op,nf)%P(1)
+         ! d from the shadow (d = 1 + (1 - G_pp) Delta, Upgrade2's Mat11), independent of the
+         ! low-rank G_pp read in Lowrank_propose
+         d_sh   = 1.d0 + (1.d0 - Gsh(p,p,nf))*prop_Delta(nf_eff)
+         dscale = max(abs(d_sh), abs(prop_d(nf_eff)))
+         derr   = abs(d_sh - prop_d(nf_eff))
+         if (dscale > 0.d0) derr = derr/dscale
+         ! .not. (derr <= tol) also catches NaN
+         if (.not. (derr <= DBG_TOL)) then
+            Write(error_unit,'(A)')                   ' Lowrank_debug: proposal ratio from a stale G (d /= d_shadow) at Lowrank_accept'
+            Write(error_unit,'(A,I0,A,I0,A,I0,A,I0)') '   n_op = ', n_op, ', nt = ', nt, ', nf = ', nf, &
+                 &                                     ', n_pend = ', n_pend
+            Write(error_unit,'(A,2ES23.15)')          '   d (Lowrank_propose)  = ', prop_d(nf_eff)
+            Write(error_unit,'(A,2ES23.15)')          '   d_sh (shadow G)      = ', d_sh
+            Write(error_unit,'(A,ES12.4,A,ES12.4)')   '   |d - d_sh|/max(|d|,|d_sh|) = ', derr, &
+                 &                                     ' > TOL_UNIT = ', DBG_TOL
+            CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+         endif
+         if (derr > dbg_max_derr) dbg_max_derr = derr
          c_sh = Gsh(:,p,nf)
          r_sh = - Gsh(p,:,nf)
          r_sh(p) = r_sh(p) + 1.d0
-         z = - prop_Delta(nf_eff)/prop_d(nf_eff)
+         z = - prop_Delta(nf_eff)/d_sh
          call ZGERU(Ndim, Ndim, z, c_sh, 1, r_sh, 1, Gsh(1,1,nf), Ndim)
       Enddo
       deallocate (c_sh, r_sh)
@@ -911,7 +956,8 @@ contains
       Integer :: unit_dbg
       Open(newunit=unit_dbg, file="lowrank_debug_summary.txt", status="replace", action="write")
       Write(unit_dbg,'(A,I0)')    'shadow-G checks         : ', dbg_n_checks
-      Write(unit_dbg,'(A,ES12.4)') 'max relative error      : ', dbg_max_err
+      Write(unit_dbg,'(A,ES12.4)') 'max relative error of G : ', dbg_max_err
+      Write(unit_dbg,'(A,ES12.4)') 'max relative error of d : ', dbg_max_derr
       Write(unit_dbg,'(A,ES12.4)') 'TOL_UNIT                : ', DBG_TOL
       Close(unit_dbg)
    end subroutine Lowrank_debug_summary
