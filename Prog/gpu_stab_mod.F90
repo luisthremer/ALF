@@ -110,9 +110,11 @@ Module gpu_stab_mod
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: st_c(:)                      ! device scalars: 1 phase, 2 1/phase, 3 CGR phase
   Real    (Kind=Kind(0.d0)), Allocatable, Save :: st_r(:)                      ! device scalars: scale test, precision numbers
   Real    (Kind=Kind(0.d0)), Allocatable, Save :: st_nrm(:), st_Lt(:)          ! column norms / log norms; L work vector
+  Real    (Kind=Kind(0.d0)), Allocatable, Save :: st_pw(:)                     ! per-column partial sums of k_prec (ticket 212)
   Integer (c_int), Allocatable, Save :: st_ipvt(:), st_perm(:), st_ipiv(:)      ! pivot (ZGEQP3 semantics), sort permutation, LU pivots
   Logical, Save :: warn_once = .true.
   Logical, Save :: ns_on = .true.    ! Newton-Schulz step on Q in decompose (ALF_GPU_NS=0 switches it off; see DISCREPANCIES.md, cuSOLVER Q orthogonality)
+  Logical, Save :: in_selftest = .false.                                        ! inside gpu_stab_selftest (ticket 212)
   Integer, Save :: fault = 0                                                    ! 1 perm, 2 phase, 3 nan (negative controls)
   ! ---- DEBUG AIDS, not used in production: ALF_GPU_STABCHECK=1|2: every CGR (1) and every WRAPUR/WRAPUL block (2) of the run is repeated on the host
   ! with the upstream routines from the same device state, and the deviations are summarised in info (host work, slow)
@@ -141,13 +143,13 @@ Contains
     s_N = Ndim; s_nfe = N_FL_eff; s_nstm = NSTM
     allocate(s_nt(0:NSTM)); s_nt = Stab_nt
     n = s_N
-    allocate(sA(n,n), sB(n,n), sC(n,n), st_Gn(n,n), st_Gt(n,n), st_tau(n), st_Dl(n), st_c(8), st_r(16), st_nrm(n), st_Lt(n))
+    allocate(sA(n,n), sB(n,n), sC(n,n), st_Gn(n,n), st_Gt(n,n), st_tau(n), st_Dl(n), st_c(8), st_r(16), st_nrm(n), st_Lt(n), st_pw(n))
     allocate(st_ipvt(n), st_perm(n), st_ipiv(n))
     st_ipvt = 1; st_perm = 1; st_ipiv = 1
     ! device allocation once, no transfer; the first use of each buffer is a device write
-    !$omp target enter data map(alloc: sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_ipvt, st_perm, st_ipiv)
+    !$omp target enter data map(alloc: sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_ipvt, st_perm, st_ipiv)
     call la_init()
-    if (env_is('ALF_GPU_NS', '0')) ns_on = .false.
+    if (gpu_env_is('ALF_GPU_NS', '0')) ns_on = .false.      ! (ticket 212: the value 0 is listed in the debug-env line)
     ! pre-grow the cuSOLVER work space (no device allocation inside the sweep)
     lw = la_geqrf_lwork(n, n, sA, n)
     lw = max(lw, la_ormqr_lwork('L', LA_C, n, n, n, sA, n, st_tau, sB, n))
@@ -175,8 +177,8 @@ Contains
     Implicit none
     if (.not. gpu_stab_on) return
     call check_report()
-    !$omp target exit data map(delete: sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_ipvt, st_perm, st_ipiv)
-    deallocate(sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_ipvt, st_perm, st_ipiv, s_nt)
+    !$omp target exit data map(delete: sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_ipvt, st_perm, st_ipiv)
+    deallocate(sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_ipvt, st_perm, st_ipiv, s_nt)
     call la_finalize()
     gpu_stab_on = .false.
   end subroutine gpu_stab_finalize
@@ -556,6 +558,8 @@ Contains
     ! D->H: NaN count and the extreme scales (testscale of UDV_State, 24 B)
     !$omp target update from(st_r(1:3))
     if (st_r(1) > 0.5d0 .or. fault == 3) then
+       ! ticket 212: inside the self-test the NaN scale is a detected failure: print the FAILED line before the abort
+       if (in_selftest) call selftest_fail('stab: NaN scale in decompose')
        write(error_unit,*)
        write(error_unit,*) "Error: At least one scale is NaN."
        write(error_unit,*) "       Switch to LOG is required."
@@ -1268,11 +1272,14 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: A(n,*), B(n,*)
     Real (Kind=Kind(0.d0)), intent(inout) :: r(*)
     Integer :: i, j, na, nb
-    Real (Kind=Kind(0.d0)) :: xm, xs, d
+    Real (Kind=Kind(0.d0)) :: xm, xs, d, cs
     Logical :: fa, fb
     xm = 0.d0; xs = 0.d0; na = 0; nb = 0
-    !$omp target teams distribute parallel do collapse(2) reduction(max:xm) reduction(+:xs, na, nb) private(d, fa, fb)
+    ! ticket 212: the sum has a fixed order: one thread per column sums serially into st_pw(j), then one thread adds the
+    ! n column sums in order (max and the integer counts are order independent and stay reductions)
+    !$omp target teams distribute parallel do reduction(max:xm) reduction(+:na, nb) private(i, d, fa, fb, cs)
     do j = 1, n
+       cs = 0.d0
        do i = 1, n
           fa = isnan_bits(real(A(i,j))) .or. isnan_bits(aimag(A(i,j)))
           fb = isnan_bits(real(B(i,j))) .or. isnan_bits(aimag(B(i,j)))
@@ -1280,14 +1287,21 @@ Contains
           if (fb) nb = nb + 1
           if (.not. (fa .or. fb)) then
              d = abs(A(i,j) - B(i,j))
-             xs = xs + d
+             cs = cs + d
              xm = max(xm, d)
           endif
        enddo
+       st_pw(j) = cs
     enddo
     !$omp target
-    r(4) = xm
+    xs = 0.d0
+    do j = 1, n
+       xs = xs + st_pw(j)
+    enddo
     r(5) = xs
+    !$omp end target
+    !$omp target
+    r(4) = xm
     r(6) = real(na, kind(0.d0))
     r(7) = real(nb, kind(0.d0))
     !$omp end target
@@ -1312,16 +1326,15 @@ Contains
     Real (Kind=Kind(0.d0)), intent(inout) :: out(*)
     Integer :: i, j
     Real (Kind=Kind(0.d0)) :: mx, s, v
-    !$omp target teams distribute private(mx, s, v)
+    ! ticket 212: one thread per column, serial sums (fixed order; a device reduction combines in an unspecified order)
+    !$omp target teams distribute parallel do private(i, mx, s, v)
     do j = 1, n
        mx = 0.d0
-       !$omp parallel do reduction(max: mx)
        do i = 1, n
           mx = max(mx, abs(real(U(i,j))), abs(aimag(U(i,j))))
        enddo
        s = 0.d0
        if (mx > 0.d0) then
-          !$omp parallel do reduction(+: s) private(v)
           do i = 1, n
              v = real(U(i,j)) / mx
              s = s + v*v
@@ -1359,15 +1372,7 @@ Contains
 !====================================================================
 !  Hook: self-test, timing
 !====================================================================
-  Logical function env_is(name, val)
-    Implicit none
-    Character (len=*), intent(in) :: name, val
-    Character (len=64) :: e
-    Integer :: st
-    e = ''
-    call get_environment_variable(name, e, status=st)
-    env_is = (st == 0 .and. trim(e) == val)
-  end function env_is
+  ! ticket 212: all ALF_GPU_* variables are read once by gpu_state_mod (gpu_env_get / gpu_env_is)
 
   Subroutine gpu_stab_hook()
     Implicit none
@@ -1376,12 +1381,12 @@ Contains
     Logical :: did
     did = .false.
     if (.not. gpu_stab_on) return
-    if (env_is('ALF_GPU_STABCHECK', '1')) chk_level = 1
-    if (env_is('ALF_GPU_STABCHECK', '2')) chk_level = 2
-    if (env_is('ALF_GPU_STABMIX', '1')) then
+    if (gpu_env_is('ALF_GPU_STABCHECK', '1')) chk_level = 1
+    if (gpu_env_is('ALF_GPU_STABCHECK', '2')) chk_level = 2
+    if (gpu_env_is('ALF_GPU_STABMIX', '1')) then
        chk_level = max(chk_level, 1); chk_mix = 1
     endif
-    if (env_is('ALF_GPU_STABMIX', '2')) then
+    if (gpu_env_is('ALF_GPU_STABMIX', '2')) then
        chk_level = 2; chk_mix = 2
     endif
     if (chk_level > 0) then
@@ -1390,22 +1395,20 @@ Contains
           call ck_l(st)%init(s_N, 'l'); call ck_r(st)%init(s_N, 'r'); call ck_d(st)%init(s_N, 'r')
        enddo
     endif
-    f = ''
-    call get_environment_variable('ALF_GPU_FAULT_STAB', f, status=st)
-    if (st == 0 .and. len_trim(f) > 0) then
+    ! values were validated (and the armed line printed) by gpu_env_check; eps:<x> acts in the SELFTEST=3 comparison only
+    if (gpu_env_get('ALF_GPU_FAULT_STAB', f)) then
        select case (trim(f))
        case ('perm');  fault = 1
        case ('phase'); fault = 2
        case ('nan');   fault = 3
-       case default
-          write(error_unit,'(A,A)') ' ALF_GPU_FAULT_STAB: unknown value ', trim(f)
+       case default                  ! eps:<x>
        end select
     endif
-    if (env_is('ALF_GPU_SELFTEST', '3')) then
+    if (gpu_env_is('ALF_GPU_SELFTEST', '3')) then
        call gpu_stab_selftest()
        did = .true.
     endif
-    if (env_is('ALF_GPU_STABTIME', '1')) then
+    if (gpu_env_is('ALF_GPU_STABTIME', '1')) then
        call gpu_stab_timing()
        did = .true.
     endif
@@ -1418,7 +1421,7 @@ Contains
           enddo
        enddo
     endif
-    if (did .and. env_is('ALF_GPU_EXIT', '1')) then
+    if (did .and. gpu_env_is('ALF_GPU_EXIT', '1')) then
        call gpu_stab_finalize()
        call gpu_state_finalize()
        write(output_unit,'(A)') ' GPU stabilization hook: ALF_GPU_EXIT=1, stopping after the test'
@@ -1545,6 +1548,7 @@ Contains
 #endif
     N = s_N
     seed = 20251101_int64
+    in_selftest = .true.
     call say('GPU stabilization self-test (ticket 206) start')
     allocate(hl(s_nfe), hr(s_nfe), dl_(s_nfe), dr_(s_nfe), hp(s_nfe))
     allocate(Gh(N,N), Gp(N,N), Gd(N,N,N_FL), Gd2(N,N,N_FL))
@@ -1602,6 +1606,7 @@ Contains
           do nvar = 1, 2
              call CGR(ph_h, nvar, Gh, hr(nfe), hl(nfe))
              call gpu_stab_cgr(nfe, nf, nvar, Gd, ph_d, .false.)
+             call fault_eps_apply(Gd(:,:,nf))
              call state_gdiff(Gd(:,:,nf), Gh, d)
              call mx(mg(nvar), d)
              call mx(mph(nvar), abs(ph_d - ph_h))
@@ -1650,8 +1655,29 @@ Contains
        call hl(nfe)%dealloc; call hr(nfe)%dealloc; call dl_(nfe)%dealloc; call dr_(nfe)%dealloc; call hp(nfe)%dealloc
     enddo
     deallocate(hl, hr, dl_, dr_, hp, Gh, Gp, Gd, Gd2)
+    in_selftest = .false.
     call say('GPU stab self-test PASSED')
   end subroutine gpu_stab_selftest
+
+  ! graded fault (ALF_GPU_FAULT_STAB=eps:<x>): the element of largest |G| of the device G (host copy) times (1 + x)
+  Subroutine fault_eps_apply(G)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(inout) :: G(:,:)
+    Integer :: i, j, im, jm
+    Real (Kind=Kind(0.d0)) :: x, a, amax
+    x = gpu_env_fault_stab_eps()
+    if (x <= 0.d0) return
+    amax = -1.d0; im = 1; jm = 1
+    do j = 1, size(G,2)
+       do i = 1, size(G,1)
+          a = abs(G(i,j))
+          if (a > amax) then
+             amax = a; im = i; jm = j
+          endif
+       enddo
+    enddo
+    G(im,jm) = G(im,jm) * (1.d0 + x)
+  end subroutine fault_eps_apply
 
   ! hp = hr with every entry of U multiplied by (1 + 4e-16 * r), r in (-1/2, 1/2): +-2e-16, about one ulp
   Subroutine perturb_state(a, p, seed)

@@ -125,6 +125,11 @@ Pre-registered in `testsuite/gpu_reference/acceptance/212.json` (gates, threshol
 
 ## Handoff notes
 (implementer, at ~250k tokens or at a phase boundary)
+- Known limitation (manager decision 2026-10-30, follow-up): the `GPU build: git <hash|none>` stamp comes from `Prog/git.h`
+  through `__has_include`. `Prog/Makefile` makes only `main.o` depend on `git.h`, so with `make -j` the stamp of
+  `gpu_state_mod.o` can say `git none` (git.h not yet generated) or a stale hash (git.h regenerated later). Harness builds
+  (git archive, no .git) always give `none`. Fix needs `gpu_state_mod.o: git.h` in the Makefile (not done here).
+- Development scripts: `docs/gpu/scripts/nividia/t212_*.sh`; T0 raw outputs in `~/alf-gpu/work/t212/dev/{logs,runs}`.
 
 ## Out of scope
 207 (τ pass) and its paired test; 213 (STABLOG same-seed excess); performance work beyond the deterministic reductions;

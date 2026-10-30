@@ -976,29 +976,7 @@ Contains
 !====================================================================
 !  Hook, self-test, timing
 !====================================================================
-  Logical function env_is(name, val)
-    Implicit none
-    Character (len=*), intent(in) :: name, val
-    Character (len=64) :: e
-    Integer :: st
-    e = ''
-    call get_environment_variable(name, e, status=st)
-    env_is = (st == 0 .and. trim(e) == val)
-  end function env_is
-
-  Subroutine env_int(name, v)
-    Implicit none
-    Character (len=*), intent(in) :: name
-    Integer, intent(inout) :: v
-    Character (len=32) :: e
-    Integer :: st, iv, ios
-    e = ''
-    call get_environment_variable(name, e, status=st)
-    if (st == 0 .and. len_trim(e) > 0) then
-       read(e,*,iostat=ios) iv
-       if (ios == 0 .and. iv >= 1) v = iv
-    endif
-  end subroutine env_int
+  ! ticket 212: all ALF_GPU_* variables are read once by gpu_state_mod (gpu_env_get / gpu_env_is / gpu_env_int)
 
 !> Called from main after gpu_state_setup (guarded by ALF_GPU and gpu_active).
   Subroutine gpu_wrap_hook()
@@ -1007,21 +985,19 @@ Contains
     Integer :: st
     Logical :: did
     did = .false.
-    call env_int('ALF_GPU_TL', gpu_tl)
-    call env_int('ALF_GPU_TR', gpu_tr)
-    call env_int('ALF_GPU_VB', gpu_vb)
-    f = ''
-    call get_environment_variable('ALF_GPU_FAULT', f, status=st)
-    if (st == 0 .and. len_trim(f) > 0 .and. env_is('ALF_GPU_SELFTEST', '2')) call inject_fault(trim(f))
-    if (env_is('ALF_GPU_SELFTEST', '2')) then
+    call gpu_env_int('ALF_GPU_TL', gpu_tl)
+    call gpu_env_int('ALF_GPU_TR', gpu_tr)
+    call gpu_env_int('ALF_GPU_VB', gpu_vb)
+    if (gpu_env_get('ALF_GPU_FAULT', f) .and. gpu_env_is('ALF_GPU_SELFTEST', '2')) call inject_fault(trim(f))
+    if (gpu_env_is('ALF_GPU_SELFTEST', '2')) then
        call gpu_wrap_selftest()
        did = .true.
     endif
-    if (env_is('ALF_GPU_TIMING', '1')) then
+    if (gpu_env_is('ALF_GPU_TIMING', '1')) then
        call gpu_wrap_timing()
        did = .true.
     endif
-    if (did .and. env_is('ALF_GPU_EXIT', '1')) then
+    if (did .and. gpu_env_is('ALF_GPU_EXIT', '1')) then
        call gpu_state_finalize()
        write(output_unit,'(A)') ' GPU wrap hook: ALF_GPU_EXIT=1, stopping after the test'
        stop

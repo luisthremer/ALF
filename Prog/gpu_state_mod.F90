@@ -125,6 +125,8 @@ Module gpu_state_mod
   Public :: G_d, udv_U, udv_V, udv_D, udv_L, udw_U, udw_V, udw_D, udw_L
   Public :: GT0_d, G0T_d, GTT_d, scr_c, scr_vec, scr_r, scr_work, scr_ipiv
   Public :: upd_cnt
+  ! ticket 212: the single reader of every ALF_GPU_* variable (all other GPU files only call these)
+  Public :: gpu_env_get, gpu_env_is, gpu_env_int, gpu_env_fault_stab_eps, gpu_env_check
 
   Logical, Save :: gpu_active = .false.
   Character (len=256), Save :: gpu_reason = 'gpu_state_setup not called'
@@ -167,7 +169,229 @@ Module gpu_state_mod
   Character (len=256), Save :: info_file = 'info'
   Logical, Save :: info_root = .true.
 
+  ! ---- ticket 212: environment, read once ----
+  Integer, parameter :: ENV_MAX = 64
+  Character (len=48),  Save :: env_name(ENV_MAX) = ''     ! set ALF_GPU_* variables (non-empty, not '0'), sorted by name
+  Character (len=256), Save :: env_val(ENV_MAX)  = ''
+  Integer, Save :: env_n = 0
+  Logical, Save :: env_read_done = .false.
+  Real (Kind=Kind(0.d0)), Save :: env_eps = 0.d0          ! x of ALF_GPU_FAULT_STAB=eps:<x>
+
 Contains
+
+!--------------------------------------------------------------------
+!  Ticket 212: the one and only reader of the ALF_GPU_* environment.  Listed / refused: defined and not empty (the value
+!  '0' included: ALF_GPU_NS=0 is the active setting of that switch).  Debug run: ALF_GPU_SELFTEST / _UPDTEST / _DEBUG set
+!  to a non-empty value other than '0'.
+!  The list of all variables comes from the C environ array (Fortran cannot enumerate the environment), so that unknown
+!  names (typos, other tickets' switches) are seen as well.
+!--------------------------------------------------------------------
+  Subroutine gpu_env_read()
+    Implicit none
+    Character (len=512) :: entry
+    Character (len=48)  :: nm, tn
+    Character (len=256) :: tv
+    Character (len=1) :: c
+    Integer :: u, ios, l, ie, i, j
+    env_n = 0
+    env_read_done = .true.
+    ! /proc/self/environ: NUL-separated NAME=value entries (Linux; read byte by byte, the file reports size 0)
+    Open(newunit=u, file='/proc/self/environ', access='stream', form='unformatted', action='read', status='old', iostat=ios)
+    If (ios /= 0) then
+       Write(error_unit,'(A)') ' GPU env: cannot read /proc/self/environ'
+       Call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+    Endif
+    l = 0
+    Do
+       Read(u, iostat=ios) c
+       If (ios /= 0) c = achar(0)
+       If (c /= achar(0)) then
+          l = l + 1
+          If (l <= 512) entry(l:l) = c
+       Else
+          If (l >= 9) then
+             l = min(l, 512)
+             If (entry(1:8) == 'ALF_GPU_') then
+                ie = index(entry(1:l), '=')
+                If (ie >= 2 .and. ie <= 49 .and. ie < l .and. env_n < ENV_MAX) then
+                   env_n = env_n + 1
+                   env_name(env_n) = entry(1:ie-1)
+                   env_val(env_n)  = entry(ie+1:l)
+                Endif
+             Endif
+          Endif
+          l = 0
+          If (ios /= 0) exit
+       Endif
+    Enddo
+    Close(u)
+    ! sort by name (insertion sort)
+    Do i = 2, env_n
+       tn = env_name(i); tv = env_val(i)
+       j = i - 1
+       Do while (j >= 1)
+          If (env_name(j) <= tn) exit
+          env_name(j+1) = env_name(j); env_val(j+1) = env_val(j)
+          j = j - 1
+       Enddo
+       env_name(j+1) = tn; env_val(j+1) = tv
+    Enddo
+  End Subroutine gpu_env_read
+
+  !> .true. and the value if ALF_GPU_<name> (full name given) is set.
+  Logical Function gpu_env_get(name, val)
+    Implicit none
+    Character (len=*), intent(in)  :: name
+    Character (len=*), intent(out) :: val
+    Integer :: i
+    If (.not. env_read_done) Call gpu_env_read()
+    gpu_env_get = .false.
+    val = ''
+    Do i = 1, env_n
+       If (trim(env_name(i)) == trim(name)) then
+          val = env_val(i); gpu_env_get = .true.; return
+       Endif
+    Enddo
+  End Function gpu_env_get
+
+  !> variable is set and equals val
+  Logical Function gpu_env_is(name, val)
+    Implicit none
+    Character (len=*), intent(in) :: name, val
+    Character (len=256) :: e
+    gpu_env_is = gpu_env_get(name, e)
+    If (gpu_env_is) gpu_env_is = (trim(e) == val)
+  End Function gpu_env_is
+
+  !> integer >= 1 from the variable (unchanged if unset or unparsable)
+  Subroutine gpu_env_int(name, v)
+    Implicit none
+    Character (len=*), intent(in) :: name
+    Integer, intent(inout) :: v
+    Character (len=256) :: e
+    Integer :: iv, ios
+    If (gpu_env_get(name, e)) then
+       Read(e,*,iostat=ios) iv
+       If (ios == 0 .and. iv >= 1) v = iv
+    Endif
+  End Subroutine gpu_env_int
+
+  !> x of ALF_GPU_FAULT_STAB=eps:<x>; 0 if that fault is not armed
+  Real (Kind=Kind(0.d0)) Function gpu_env_fault_stab_eps()
+    Implicit none
+    gpu_env_fault_stab_eps = env_eps
+  End Function gpu_env_fault_stab_eps
+
+  Subroutine env_say(text)
+    Implicit none
+    Character (len=*), intent(in) :: text
+    Call info_line(text)
+    Write(output_unit,'(1X,A)') trim(text)
+    Flush(output_unit)
+  End Subroutine env_say
+
+  Subroutine env_stop()
+    Implicit none
+    Call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+  End Subroutine env_stop
+
+!--------------------------------------------------------------------
+!> Ticket 212, at setup of every GPU run: build stamp, debug-env line, allow-list (production runs refuse every set
+!> ALF_GPU_* variable except DISABLE and DEBUG), value check of the fault variables, armed-fault lines.
+!--------------------------------------------------------------------
+  Subroutine gpu_env_check()
+    Implicit none
+    Character (len=1024) :: line
+    Character (len=320) :: nm
+    Integer :: ll
+    Character (len=256) :: v
+    Logical :: debug_run, ok
+    Integer :: i, ios
+    Real (Kind=Kind(0.d0)) :: x
+    Character (len=6) :: bk
+    If (.not. env_read_done) Call gpu_env_read()
+    env_eps = 0.d0
+#if defined(ALF_LA_CUDA)
+    bk = 'CUDA'
+#elif defined(ALF_LA_ONEMKL)
+    bk = 'ONEMKL'
+#else
+    bk = 'HOST'
+#endif
+#if defined(__has_include)
+#if __has_include("git.h")
+#include "git.h"
+#endif
+#endif
+#if defined(GIT_COMMIT_HASH)
+    Call env_say('GPU build: git '//GIT_COMMIT_HASH//' backend '//bk)
+#else
+    Call env_say('GPU build: git none backend '//bk)
+#endif
+    If (env_n == 0) then
+       Call env_say('GPU debug env: none')
+    Else
+       line = 'GPU debug env: '
+       ll = len('GPU debug env: ')
+       Do i = 1, env_n
+          If (i > 1) then
+             line(ll+1:ll+2) = ', '; ll = ll + 2
+          Endif
+          nm = trim(env_name(i))//'='//trim(env_val(i))
+          line(ll+1:ll+len_trim(nm)) = trim(nm); ll = ll + len_trim(nm)
+       Enddo
+       Call env_say(line(1:ll))
+    Endif
+    debug_run = .false.
+    Do i = 1, env_n
+       Select case (trim(env_name(i)))
+       Case ('ALF_GPU_SELFTEST', 'ALF_GPU_UPDTEST', 'ALF_GPU_DEBUG'); if (trim(env_val(i)) /= '0') debug_run = .true.
+       End Select
+    Enddo
+    If (.not. debug_run) then
+       Do i = 1, env_n
+          Select case (trim(env_name(i)))
+          Case ('ALF_GPU_DISABLE', 'ALF_GPU_DEBUG')
+          Case default
+             Call env_say('GPU debug env refused: '//trim(env_name(i))// &
+                  & ' (production run; set ALF_GPU_DEBUG=1 for a debug run)')
+             Call env_stop()
+          End Select
+       Enddo
+    Endif
+    ! fault values: an unknown or unparsable value is an error in every run
+    If (gpu_env_get('ALF_GPU_FAULT', v)) then
+       Select case (trim(v))
+       Case ('hop', 'hopc', 'vexp', 'nan', 'order', 'upd', 'nsig', 'hostonly')
+       Case default
+          Call env_say('GPU fault value invalid: ALF_GPU_FAULT='//trim(v))
+          Call env_stop()
+       End Select
+       Call env_say('GPU fault armed: ALF_GPU_FAULT='//trim(v))
+    Endif
+    If (gpu_env_get('ALF_GPU_FAULT_STAB', v)) then
+       ok = .false.
+       Select case (trim(v))
+       Case ('perm', 'phase', 'nan'); ok = .true.
+       Case default
+          If (len_trim(v) > 4) then
+             If (v(1:4) == 'eps:') then
+                Read(v(5:),*,iostat=ios) x
+                If (ios == 0) then
+                   If (x > 0.d0 .and. x < 1.d300) then
+                      ok = .true.; env_eps = x
+                   Endif
+                Endif
+             Endif
+          Endif
+       End Select
+       If (.not. ok) then
+          Call env_say('GPU fault value invalid: ALF_GPU_FAULT_STAB='//trim(v))
+          Call env_stop()
+       Endif
+       Call env_say('GPU fault armed: ALF_GPU_FAULT_STAB='//trim(v))
+    Endif
+  End Subroutine gpu_env_check
 
 !--------------------------------------------------------------------
 !> QR/LU work space (complex entries) per scratch buffer: 64 blocks of Ndim, provisional size for tickets 204-206.
@@ -205,9 +429,7 @@ Contains
 
     gpu_supported = .false.
     reason = ''
-    env = ''
-    call get_environment_variable('ALF_GPU_DISABLE', env, status=st)
-    if (st == 0 .and. trim(env) == '1') then
+    if (gpu_env_is('ALF_GPU_DISABLE', '1')) then
        reason = 'disabled by ALF_GPU_DISABLE=1'; return
     endif
 #if defined(MPI)
@@ -299,15 +521,14 @@ Contains
 
     info_file = file_info
     info_root = root
+    call gpu_env_check()      ! ticket 212: build stamp, debug-env line, allow-list, fault values (may stop the run)
     call system_clock(c0, crate)
     ok = gpu_supported(reason)
     gpu_reason = reason
     if (.not. ok) then
        gpu_active = .false.
        call info_line('GPU path (gpu_state): INACTIVE, reason: '//trim(reason))
-       env = ''
-       call get_environment_variable('ALF_GPU_SELFTEST', env, status=st)
-       if (st == 0 .and. len_trim(env) > 0 .and. trim(env) /= '0') then
+       if (gpu_env_get('ALF_GPU_SELFTEST', env) .and. trim(env) /= '0') then
           write(error_unit,'(A)') ' ALF_GPU_SELFTEST is set but the GPU path is inactive: '//trim(reason)
           call info_line('GPU self-test requested but GPU path inactive: '//trim(reason))
           call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
@@ -348,13 +569,13 @@ Contains
     call info_line(line)
     write(output_unit,'(A,F10.4,A)') ' GPU mirror setup time (incl. host->device copies): ', tsetup, ' s'
 
-    env = ''
-    call get_environment_variable('ALF_GPU_SELFTEST', env, status=st)
+    ok = gpu_env_get('ALF_GPU_SELFTEST', env)
+    if (ok) ok = (trim(env) /= '0')
     ! ALF_GPU_SELFTEST=1 (any value except empty/0): self-test, then the run continues.  Negative controls, which must
     ! fail with a nonzero exit: =fault (hop_Rval(1) *= 1+1e-9), =fault_c (hop_Cval(1) += 1e-9), =fault_v (V_exp(1) *=
     ! 1+1e-9), =nan (hop_Rval(1) = NaN), =nan_v (V_exp(1) = NaN); all applied to the host copy after the upload.
     ! ALF_GPU_SELFTEST=3 (ticket 206, stabilization self-test in gpu_stab_mod) does not run this mirror self-test: O(N^3) host loops
-    if (st == 0 .and. len_trim(env) > 0 .and. trim(env) /= '0' .and. trim(env) /= '3') then
+    if (ok .and. trim(env) /= '3') then
        select case (trim(env))
        case ('fault');   hop_Rval(1) = hop_Rval(1)*(1.d0 + 1.d-9)
        case ('fault_c'); hop_Cval(1) = hop_Cval(1) + cmplx(1.d-9, 0.d0, kind(0.d0))

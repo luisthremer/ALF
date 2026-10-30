@@ -102,9 +102,7 @@ Contains
     if (.not. checked) then
        enabled = gpu_active
        if (enabled) then
-          env = ''
-          call get_environment_variable('ALF_GPU_NOUPDATE', env, status=st)
-          if (st == 0 .and. trim(env) == '1') then
+          if (gpu_env_is('ALF_GPU_NOUPDATE', '1')) then
              enabled = .false.
              call info_line('GPU update path (ticket 205): DISABLED by ALF_GPU_NOUPDATE=1, host WRAPGRUP/DO')
           else
@@ -168,9 +166,7 @@ Contains
     if (sel_done) return
     if (.not. sel_checked) then
        sel_checked = .true.
-       env = ''
-       call get_environment_variable('ALF_GPU_UPDTEST', env, status=st)
-       sel_done = .not. (st == 0 .and. trim(env) == '1')
+       sel_done = .not. gpu_env_is('ALF_GPU_UPDTEST', '1')
     endif
     if (.not. sel_done) then
        sel_done = .true.
@@ -187,9 +183,7 @@ Contains
     Integer :: st
     if (.not. tr_checked) then
        tr_checked = .true.
-       env = ''
-       call get_environment_variable('ALF_GPU_TRACE', env, status=st)
-       if (st == 0 .and. len_trim(env) > 0) then
+       if (gpu_env_get('ALF_GPU_TRACE', env)) then
           open(newunit=tr_unit, file=trim(env), status='unknown', action='write')
           tr_on = .true.
        endif
