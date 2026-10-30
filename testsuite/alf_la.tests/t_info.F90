@@ -25,5 +25,5 @@ program t_info
   else
     call la_sync()
   end if
-  write(*,*) 'ERROR: t_info reached the end without failing'
+  write(*,'(A)') 'FAILED t_info: reached the end without failing'
 end program t_info

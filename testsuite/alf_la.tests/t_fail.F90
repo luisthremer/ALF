@@ -11,5 +11,5 @@ program t_fail
   call dev_enter_z(A, 10); call dev_enter_z(tau, 5)
   call la_ungqr(2, 5, 5, A, 2, tau)      ! m < n: illegal
   call la_sync()
-  write(*,*) 'ERROR: t_fail reached the end without failing'
+  write(*,'(A)') 'FAILED t_fail: reached the end without failing'
 end program t_fail

@@ -4,25 +4,6 @@ Project(alf_la.tests C Fortran)
 # Unit tests of Libraries/Modules/alf_la_mod.F90 (ticket 202). One program per routine family; every test exits
 # nonzero on a violated check. HOST backend: bit-identical to the direct BLAS/LAPACK call. CUDA backend (the flags in
 # ALF_FLAGS_PROG contain -DALF_LA_CUDA): tolerances of the ticket. t_timing is a benchmark, not registered.
-if("-DALF_LA_ONEMKL" IN_LIST FLAG_LIST)
-  # GPU=intel: the ONEMKL backend does not exist yet (ticket 302) and la_init stops the run. Only the guard itself is
-  # tested; the routine tests come with 302.
-  message(STATUS "alf_la.tests: ONEMKL backend not implemented (ticket 302); testing only the la_init guard")
-  add_library(la_test_util STATIC la_test_util.F90)
-  add_executable(t_gemm t_gemm.F90)
-  foreach(iter la_test_util t_gemm)
-    foreach(iflag ${FLAG_LIST})
-      target_compile_options(${iter} PRIVATE ${iflag})
-    endforeach(iflag)
-    target_include_directories(${iter} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules/)
-  endforeach(iter)
-  target_link_libraries(t_gemm la_test_util ${LIB_LIST})
-  enable_testing()
-  add_test(t_onemkl_guard t_gemm)
-  set_tests_properties(t_onemkl_guard PROPERTIES PASS_REGULAR_EXPRESSION "ONEMKL backend not implemented")
-  return()
-endif()
-
 add_library(la_test_util STATIC la_test_util.F90)
 set(alfla_tests t_checks t_gemm t_geru t_trsm t_lu t_qr t_qrpp t_geqp3 t_order t_fail t_info t_determinism)
 foreach(iter ${alfla_tests} t_timing)
@@ -64,7 +45,7 @@ set(alfla_all ${alfla_tests} t_fail_exit t_info_recycle t_info_sync)
 list(REMOVE_ITEM alfla_all t_info)
 foreach(iter ${alfla_all})
   set_tests_properties(${iter} PROPERTIES TIMEOUT 900)
-  if("-DALF_LA_CUDA" IN_LIST FLAG_LIST)
+  if("-DALF_LA_CUDA" IN_LIST FLAG_LIST OR "-DALF_LA_ONEMKL" IN_LIST FLAG_LIST)
     # fail loudly instead of silently running the target regions on the host
     set_property(TEST ${iter} APPEND PROPERTY ENVIRONMENT OMP_TARGET_OFFLOAD=MANDATORY)
   endif()

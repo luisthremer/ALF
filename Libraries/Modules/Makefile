@@ -35,8 +35,15 @@ lib: $(LIB) libfakeintel.so
 # OBJS and MODS are auto-generated into $(DEPSFILE) by gen_deps.py
 -include $(DEPSFILE)
 
-$(LIB): $(DEPSFILE) $(OBJS)
-	ar -r $(LIB) $(OBJS)
+# GPU=intel (ALF_GPU=intel, exported by configure.sh): C++ SYCL/oneMKL shim of the alf_la ONEMKL backend (ticket 302a)
+ifeq ($(ALF_GPU),intel)
+SHIMOBJ = alf_la_sycl_shim.o
+alf_la_sycl_shim.o: alf_la_sycl_shim.cpp
+	icpx -fsycl -O2 -std=c++17 -I$(MKLROOT)/include -c $<
+endif
+
+$(LIB): $(DEPSFILE) $(OBJS) $(SHIMOBJ)
+	ar -r $(LIB) $(OBJS) $(SHIMOBJ)
 
 lattices_x86-64.so: runtime_error_mod.F90 lattices_interface_mod.F90 matrix_mod.F90 lattices_v3_mod.F90
 	(make clean)
@@ -75,7 +82,7 @@ $(DEPSFILE): $(SRCS) $(DEPSGEN)
 	python3 $(DEPSGEN) $(SRCS) > $(DEPSFILE)
 
 clean: $(DEPSFILE)
-	rm -f $(OBJS) $(MODS) $(LIB) $(DEPSFILE) libfakeintel.so
+	rm -f $(OBJS) $(MODS) $(LIB) $(DEPSFILE) libfakeintel.so alf_la_sycl_shim.o
 
 #unused modules: histograms histograms_v2 log_mesh natural_constants
 #unused, except for in Prog/FFA_Orginals/: precdef

@@ -1,0 +1,286 @@
+{
+ "schema": "alf-acc/1",
+ "ticket": "302a",
+ "candidate_sha": "self",
+ "base_sha": "d8cc74f724f8",
+ "_base_reason": "moved from 05717b98 to d8cc74f7 (owner, 2026-10-30: \"Yes, rebase\"; counts: \"Yes, approve\", DECISIONS.md row 18): 302a's sequencing rule requires the ticket landing second to be rebased onto 212; 302a had been accepted on a base without 212 (manager error). d8cc74f7 = gpu-port with 212 and the harness fixes. Consequences: 212 registers t_determinism for every backend, so ONEMKL ctest has 14 tests (positive control ALF_LA_TEST_PLANT_ULP=1 added) and the GNU ctest of the nvidia part 53. Earlier history: moved from 7b3c0dc6 to 05717b98 by decision 17 after a harness defect in gpu_none_ppcmp. Evidence of all earlier T1/T2 attempts is kept",
+ "created": "2026-10-30",
+ "approvals": [
+  {
+   "who": "owner",
+   "decision": "17",
+   "date": "2026-10-30",
+   "quote": "Yes, move base",
+   "covers": [
+    "base_sha"
+   ]
+  },
+  {
+   "who": "owner",
+   "decision": "18",
+   "date": "2026-10-30",
+   "quote": "Yes, approve",
+   "covers": [
+    "base_sha",
+    "alf_la_tests_onemkl"
+   ]
+  }
+ ],
+ "timeout_s": 900,
+ "disk_min_free_GB": 5,
+ "cpu_parallel": 2,
+ "false_alarm_budget": 0.0,
+ "_false_alarm_reason": "all gates are deterministic counts (unit tests with fixed inputs, ordering canary 100/100, identity)",
+ "_status": "pre-registered for ticket 302a, Intel part (intel, Arc B580, ifx 2026.2 + oneMKL 2026.2 per DECISIONS.md row 13); counts and controls fixed before any implementation; re-registered after review (b) on base 7b3c0dc6",
+ "machine": "intel",
+ "gpu_exclusive": true,
+ "builds": {},
+ "configs": {},
+ "runs": {},
+ "ctests": [
+  {
+   "id": "onemkl_all",
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI GPU=intel",
+   "regex": "^t_",
+   "gpu": true
+  },
+  {
+   "id": "t_order",
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI GPU=intel",
+   "regex": "^t_order$",
+   "repeat": 100,
+   "gpu": true
+  },
+  {
+   "id": "ctl_t_order_broken",
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI GPU=intel",
+   "regex": "^t_order$",
+   "repeat": 100,
+   "env": [
+    "ALF_LA_TEST_BREAK_ORDER=1"
+   ],
+   "control": true,
+   "gpu": true
+  },
+  {
+   "id": "ctl_poison_info",
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI GPU=intel",
+   "regex": "^t_",
+   "env": [
+    "ALF_LA_TEST_POISON_INFO=1"
+   ],
+   "control": true,
+   "gpu": true
+  },
+  {
+   "id": "ctl_plant_ulp",
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI GPU=intel",
+   "regex": "^t_",
+   "env": [
+    "ALF_LA_TEST_PLANT_ULP=1"
+   ],
+   "control": true,
+   "gpu": true
+  },
+  {
+   "id": "ctl_wrong_ld",
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI GPU=intel",
+   "regex": "^t_",
+   "env": [
+    "ALF_LA_TEST_WRONG_LD=1"
+   ],
+   "control": true,
+   "gpu": true
+  }
+ ],
+ "gates": [
+  {
+   "id": "alf_la_tests_onemkl",
+   "type": "log_regex",
+   "_reason": "acceptance 1: the 14 alf_la routine tests of HOST/CUDA (t_checks t_gemm t_geru t_trsm t_lu t_qr t_qrpp t_geqp3 t_order t_fail t_fail_exit t_info_recycle t_info_sync, t_determinism from 212) with unchanged assertions and tolerances, under GPU=intel on the B580; the log must show the onemkl backend and the B580 as the device",
+   "checks": [
+    {
+     "file": "onemkl_all/ctest.log",
+     "stamp_file": "onemkl_all/stamp",
+     "exit_file": "onemkl_all/ctest.exit",
+     "regex": "(\\d+)% tests passed, (\\d+) tests failed out of (\\d+)",
+     "equals": [
+      100,
+      0,
+      14
+     ],
+     "stamp_contains": [
+      "offload MANDATORY"
+     ]
+    },
+    {
+     "file": "onemkl_all/ctest.log",
+     "stamp_file": "onemkl_all/stamp",
+     "stamp_contains": [
+      "offload MANDATORY"
+     ],
+     "regex": "^TEST t_gemm  backend=onemkl$",
+     "equals": []
+    },
+    {
+     "file": "onemkl_all/ctest.log",
+     "stamp_file": "onemkl_all/stamp",
+     "stamp_contains": [
+      "offload MANDATORY"
+     ],
+     "regex": "alf_la: ONEMKL device: [^\\n]*B580",
+     "equals": []
+    }
+   ]
+  },
+  {
+   "id": "t_order",
+   "type": "log_regex",
+   "_reason": "acceptance 2: ordering canary passes 100 of 100 repetitions; T0 must show <= 8 s per repetition (100 repetitions within 15 min)",
+   "checks": [
+    {
+     "file": "t_order/summary",
+     "stamp_file": "t_order/stamp",
+     "exit_file": "t_order/ctest.exit",
+     "regex": "\\^t_order\\$: (\\d+) of (\\d+) repetitions passed",
+     "equals": [
+      100,
+      100
+     ],
+     "stamp_contains": [
+      "offload MANDATORY"
+     ]
+    }
+   ]
+  }
+ ],
+ "controls": [
+  {
+   "id": "ctl_t_order_broken",
+   "like": "t_order",
+   "expect": "FAIL",
+   "_reason": "ALF_LA_TEST_BREAK_ORDER: la_gemm submits to a second queue (la_sync/la_finalize still wait on both, as BADSTREAM on CUDA); must be detected in at least one of 100 repetitions, without a crash",
+   "replace": {
+    "checks": [
+     {
+      "file": "ctl_t_order_broken/summary",
+      "stamp_file": "ctl_t_order_broken/stamp",
+      "exit_file": "ctl_t_order_broken/ctest.exit",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "ctl_poison_info",
+   "like": "alf_la_tests_onemkl",
+   "expect": "FAIL",
+   "_reason": "ALF_LA_TEST_POISON_INFO: the ONEMKL backend never reads the info slots back; t_info_recycle and t_info_sync (and t_fail, t_fail_exit if affected) must fail with FAILED lines, without a crash",
+   "replace": {
+    "checks": [
+     {
+      "file": "ctl_poison_info/ctest.log",
+      "stamp_file": "ctl_poison_info/stamp",
+      "exit_file": "ctl_poison_info/ctest.exit",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
+     },
+     {
+      "file": "ctl_poison_info/ctest.log",
+      "stamp_file": "ctl_poison_info/stamp",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
+     },
+     {
+      "file": "ctl_poison_info/ctest.log",
+      "stamp_file": "ctl_poison_info/stamp",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "ctl_plant_ulp",
+   "like": "alf_la_tests_onemkl",
+   "expect": "FAIL",
+   "_reason": "ALF_LA_TEST_PLANT_ULP: t_determinism's planted 1-ulp difference (212's control) must make t_determinism fail (FAILED t_determinism) under ONEMKL, without a crash",
+   "replace": {
+    "checks": [
+     {
+      "file": "ctl_plant_ulp/ctest.log",
+      "stamp_file": "ctl_plant_ulp/stamp",
+      "exit_file": "ctl_plant_ulp/ctest.exit",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
+     },
+     {
+      "file": "ctl_plant_ulp/ctest.log",
+      "stamp_file": "ctl_plant_ulp/stamp",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
+     },
+     {
+      "file": "ctl_plant_ulp/ctest.log",
+      "stamp_file": "ctl_plant_ulp/stamp",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "ctl_wrong_ld",
+   "like": "alf_la_tests_onemkl",
+   "expect": "FAIL",
+   "_reason": "ALF_LA_TEST_WRONG_LD: la_gemm calls with opa='N' and lda > m pass lda' = m (valid, in bounds); t_gemm must fail its checks (FAILED t_gemm), without a crash",
+   "replace": {
+    "checks": [
+     {
+      "file": "ctl_wrong_ld/ctest.log",
+      "stamp_file": "ctl_wrong_ld/stamp",
+      "exit_file": "ctl_wrong_ld/ctest.exit",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
+     },
+     {
+      "file": "ctl_wrong_ld/ctest.log",
+      "stamp_file": "ctl_wrong_ld/stamp",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
+     },
+     {
+      "file": "ctl_wrong_ld/ctest.log",
+      "stamp_file": "ctl_wrong_ld/stamp",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
+     }
+    ]
+   }
+  }
+ ],
+ "allowed_test_changes": [
+  "testsuite/alf_la.tests/CMakeLists.txt",
+  "testsuite/alf_la.tests/la_test_util.F90",
+  "testsuite/alf_la.tests/t_order.F90",
+  "testsuite/alf_la.tests/t_info.F90",
+  "testsuite/alf_la.tests/t_fail.F90"
+ ]
+}

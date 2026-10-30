@@ -1,0 +1,252 @@
+{
+ "schema": "alf-acc/1",
+ "ticket": "302a",
+ "candidate_sha": "self",
+ "base_sha": "d8cc74f724f8",
+ "_base_reason": "moved from 05717b98 to d8cc74f7 (owner, 2026-10-30: \"Yes, rebase\"; counts: \"Yes, approve\", DECISIONS.md row 18): 302a's sequencing rule requires the ticket landing second to be rebased onto 212; 302a had been accepted on a base without 212 (manager error). d8cc74f7 = gpu-port with 212 and the harness fixes. Consequences: 212 registers t_determinism for every backend, so ONEMKL ctest has 14 tests (positive control ALF_LA_TEST_PLANT_ULP=1 added) and the GNU ctest of the nvidia part 53. Earlier history: moved from 7b3c0dc6 to 05717b98 by decision 17 after a harness defect in gpu_none_ppcmp. Evidence of all earlier T1/T2 attempts is kept",
+ "created": "2026-10-30",
+ "approvals": [
+  {
+   "who": "owner",
+   "decision": "17",
+   "date": "2026-10-30",
+   "quote": "Yes, move base",
+   "covers": [
+    "base_sha"
+   ]
+  },
+  {
+   "who": "owner",
+   "decision": "18",
+   "date": "2026-10-30",
+   "quote": "Yes, approve",
+   "covers": [
+    "base_sha",
+    "gpu_none_ctest"
+   ]
+  }
+ ],
+ "timeout_s": 900,
+ "disk_min_free_GB": 5,
+ "cpu_parallel": 2,
+ "false_alarm_budget": 0.0,
+ "_false_alarm_reason": "all gates are deterministic (unit tests, ordering canary, identity)",
+ "_status": "pre-registered for ticket 302a, nividia part (GPU=none identity with GNU and ifx, CUDA alf_la unchanged); re-registered after review (b) on base 7b3c0dc6",
+ "machine": "nividia",
+ "gpu_exclusive": true,
+ "gpunone": true,
+ "builds": {
+  "ifx_none": {
+   "tool": "intel",
+   "configure": "IntelLLVM noMPI HDF5",
+   "gpu": false
+  },
+  "base_ifx_none": {
+   "tool": "intel",
+   "configure": "IntelLLVM noMPI HDF5",
+   "gpu": false
+  }
+ },
+ "configs": {
+  "hub6x6_cb": {
+   "base": "hub6x6_cb",
+   "parameters_sha256": "29f2117541ebbd14b6481c6101b22f0eca364d26fe317e6605956757d64b9915"
+  }
+ },
+ "runs": {
+  "id_ifx_base": {
+   "build": "base_ifx_none",
+   "config": "hub6x6_cb"
+  },
+  "id_ifx_cand": {
+   "build": "ifx_none",
+   "config": "hub6x6_cb"
+  },
+  "id_ifx_cand_m": {
+   "build": "ifx_none",
+   "config": "hub6x6_cb"
+  }
+ },
+ "ctests": [
+  {
+   "id": "cuda_cand",
+   "tool": "nvhpc",
+   "configure": "PGI devel noMPI GPU=nvidia",
+   "regex": "^t_",
+   "gpu": true
+  },
+  {
+   "id": "cuda_base",
+   "tool": "nvhpc",
+   "configure": "PGI devel noMPI GPU=nvidia",
+   "regex": "^t_",
+   "gpu": true,
+   "base": true
+  }
+ ],
+ "log_mutations": [
+  {
+   "src": "gpunone",
+   "dst": "gpunone_m_ctestfail",
+   "file": "ctest.log",
+   "kind": "ctest_one_failure",
+   "exit_file": "ctest.exit"
+  },
+  {
+   "src": "cuda_cand",
+   "dst": "cuda_cand_m",
+   "file": "ctest.log",
+   "kind": "change_first_number"
+  }
+ ],
+ "gates": [
+  {
+   "id": "gpu_none_ppcmp",
+   "type": "log_regex",
+   "_reason": "acceptance 4: alf_la_mod.F90 x 9 macro sets, identical including the __LINE__ integers; 3 build files: configure.sh, Libraries/Modules/Makefile, testsuite/alf_la.tests/CMakeLists.txt; 1 other file: Libraries/Modules/alf_la_sycl_shim.cpp",
+   "checks": [
+    {
+     "file": "gpunone/ppcmp.txt",
+     "stamp_file": "gpunone/stamp",
+     "exit_file": "gpunone/ppcmp.exit",
+     "stamp_contains": [
+      "plant no"
+     ],
+     "regex": "comparisons (\\d+) preprocessor_errors (\\d+) differing_lines (\\d+) added_or_deleted (\\d+) build_files (\\d+) other_files (\\d+)$",
+     "equals": [
+      9,
+      0,
+      0,
+      0,
+      3,
+      1
+     ]
+    }
+   ]
+  },
+  {
+   "id": "gpu_none_ctest",
+   "type": "log_regex",
+   "checks": [
+    {
+     "file": "gpunone/ctest.log",
+     "stamp_file": "gpunone/stamp",
+     "exit_file": "gpunone/ctest.exit",
+     "stamp_contains": [
+      "plant no"
+     ],
+     "regex": "(\\d+)% tests passed, (\\d+) tests failed out of (\\d+)",
+     "equals": [
+      100,
+      0,
+      53
+     ]
+    }
+   ],
+   "_reason": "GNU devel ctest count of the base d8cc74f7 (53 = 52 + 212's t_determinism) unchanged"
+  },
+  {
+   "id": "gpu_none_ifx_identity",
+   "type": "replay",
+   "gpu_exclusive": false,
+   "n_datasets": 38,
+   "pairs": [
+    [
+     "id_ifx_base",
+     "id_ifx_cand"
+    ]
+   ],
+   "_reason": "acceptance 4 (ifx part): the ifx CPU build (ifx 2025.3.3 on nividia, a CPU-only stand-in; not the Intel-lane pin 2026.2) gives bit-identical data.h5 to the base; it covers configure.sh/Makefile changes mainly (alf_la is used only by Prog/gpu_*). Default stabilization path: a single-threaded CPU build is deterministic, unlike the GPU default path that VERIFICATION 7 restricts"
+  },
+  {
+   "id": "cuda_alf_la_unchanged",
+   "type": "files_identical",
+   "file": "ctest.log",
+   "ignore_regex": "(Test time|Total Test time|sec$|^\\s*Start\\s|Test project|tests passed)",
+   "min_lines": 5,
+   "pairs": [
+    [
+     "cuda_base",
+     "cuda_cand"
+    ]
+   ],
+   "_reason": "acceptance 5: GPU=nvidia alf_la.tests output identical to the base (timings dropped) (build paths and backtrace addresses are normalised by acc_ctest.sh; verified on GNU alf_la.tests output, 188 lines, 2026-10-29); includes the alf_la_mod.F90 line numbers of LA_FAIL messages, so CUDA __LINE__ must stay unchanged too"
+  }
+ ],
+ "controls": [
+  {
+   "id": "ctl_ppcmp_planted_token",
+   "like": "gpu_none_ppcmp",
+   "expect": "FAIL",
+   "replace": {
+    "checks": [
+     {
+      "file": "gpunone_plant/ppcmp.txt",
+      "stamp_file": "gpunone_plant/stamp",
+      "exit_file": "gpunone_plant/ppcmp.exit",
+      "stamp_contains": [
+       "plant --plant"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "ctl_ctest_one_failure",
+   "like": "gpu_none_ctest",
+   "expect": "FAIL",
+   "replace": {
+    "checks": [
+     {
+      "file": "gpunone_m_ctestfail/ctest.log",
+      "stamp_file": "gpunone_m_ctestfail/stamp",
+      "exit_file": "gpunone_m_ctestfail/ctest.exit",
+      "stamp_contains": [
+       "plant no"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "ctl_ifx_identity_1e-12",
+   "like": "gpu_none_ifx_identity",
+   "expect": "FAIL",
+   "replace": {
+    "pairs": [
+     [
+      "id_ifx_base",
+      "id_ifx_cand_m"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "ctl_cuda_changed_number",
+   "like": "cuda_alf_la_unchanged",
+   "expect": "FAIL",
+   "replace": {
+    "pairs": [
+     [
+      "cuda_base",
+      "cuda_cand_m"
+     ]
+    ]
+   }
+  }
+ ],
+ "mutations": [
+  {
+   "src": "id_ifx_cand",
+   "dst": "id_ifx_cand_m",
+   "kind": "scale:Den_eq/obser:1e-12"
+  }
+ ],
+ "allowed_test_changes": [
+  "testsuite/alf_la.tests/CMakeLists.txt",
+  "testsuite/alf_la.tests/la_test_util.F90",
+  "testsuite/alf_la.tests/t_order.F90",
+  "testsuite/alf_la.tests/t_info.F90",
+  "testsuite/alf_la.tests/t_fail.F90"
+ ]
+}
