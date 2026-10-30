@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Statistical comparison of two ALF run directories (independent chains, different seeds).
 
-Usage: python3 -I stat_compare.py [--ph] DIR_A DIR_B      (A = reference, e.g. standard; B = candidate)
+Usage: python3 -I stat_compare.py [--no-ph] DIR_A DIR_B      (A = reference, e.g. standard; B = candidate)
        python3 -I stat_compare.py --selftest
 
 Reads the analysed outputs (ana.out, run by stat_runs.sh):
@@ -20,8 +20,9 @@ bound is its mean + 3 sigma. Lattice-symmetry copies of one correlator value are
 same if their (A value, A error, B value, B error) agree to 1e-12 relative (absolute floor 1e-14), or after
 flipping the sign of both values (A, B) together (e.g. Im(k) = -Im(-k)). Both runs enter the comparison, so a
 genuine difference between A and B is never merged away with an entry that differs from it.
---ph additionally merges particle-hole partners (q = c - r in both runs with the same constant c and equal errors;
-exact for Green_eq at half filling, G(k) + G(k+Q) = 2): optional, off by default. The rms z over
+Particle-hole partners are also merged by default (q = c - r in both runs with the same constant c and equal errors,
+rtol 1e-9; exact to ~1e-11 for Green_eq at half filling, G(k) + G(k+Q) = 2, so a genuine difference in either run
+breaks the match and is never hidden); --no-ph switches this off. The rms z over
 the unique entries is printed. (*_eqJR, the Fourier transform of the same data, is printed for information
 and does not decide.)
 Entries that are numerically zero in both runs (|value| < 1e-10 and error < 1e-10, e.g. Im parts of
@@ -109,7 +110,7 @@ def _copy(q, r, ph):
             and _same(q[0] + r[0], q[2] + r[2], 1e-9, 1e-12))
 
 
-def unique_zs(quads, ph=False):
+def unique_zs(quads, ph=True):
     """quads: list of (a, ea, b, eb). Lattice-symmetry copies count once (see _copy); returns the z of each
     distinct entry. All four numbers (both runs) enter every comparison."""
     reps = []
@@ -135,7 +136,7 @@ def parse_precision(path):
     return res
 
 
-def compare(da, db, out=print, ph=False):
+def compare(da, db, out=print, ph=True):
     ok = True
     # scalars
     names_a = {os.path.basename(p) for p in glob.glob(os.path.join(da, "*_scalJ"))}
@@ -252,7 +253,7 @@ def selftest():
     q = [(1.0, 0.1, 1.5, 0.1)] * 4 + [(-1.0, 0.1, -1.5, 0.1), (1.0, 0.1, 1.5 + 1e-3, 0.1)]
     assert len(unique_zs(q)) == 2, unique_zs(q)
     assert len(unique_zs([(0.1, 0.01, 0.12, 0.02), (1.9, 0.01, 1.88, 0.02)], ph=True)) == 1
-    assert len(unique_zs([(0.1, 0.01, 0.12, 0.02), (1.9, 0.01, 1.88, 0.02)])) == 2
+    assert len(unique_zs([(0.1, 0.01, 0.12, 0.02), (1.9, 0.01, 1.88, 0.02)], ph=False)) == 2
     assert len(unique_zs([(0.1, 0.01, 0.12, 0.02), (1.9, 0.01, 1.87, 0.02)], ph=True)) == 2   # c differs between runs
     assert abs(array_limit(18) - 0.1920) < 1e-3
     print("selftest ok")
@@ -262,8 +263,8 @@ def selftest():
 def main(argv):
     if argv[1:] == ["--selftest"]:
         return selftest()
-    ph = "--ph" in argv
-    argv = [a for a in argv if a != "--ph"]
+    ph = "--no-ph" not in argv        # particle-hole merging is the default (--ph accepted, no-op)
+    argv = [a for a in argv if a not in ("--ph", "--no-ph")]
     if len(argv) != 3:
         sys.stderr.write(__doc__)
         return 2

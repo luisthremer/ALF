@@ -98,6 +98,11 @@ cd ALF && source configure.sh GNU noMPI NO-INTERACTIVE >/dev/null 2>&1 && mkdir 
   in `upgrade_mod.F90` only under `#ifdef ALF_TRACE_UPDATES`. Trajectory tolerance for bins: 1e-8 relative.
   Submatrix flushes before re-proposing a site already in the block.
 - Plan: `docs/superpowers/plans/2026-10-30-delayed-submatrix.md` (execution: subagent-driven-development).
+- (2026-10-30, Task 5, pre-registered validation protocol for delayed/submatrix) The scalar rule |z| < 3 is decisive: any
+  scalar failure is a bug. If a candidate fails ONLY an array rule, run ONE replicate with fresh seeds (candidate seed+10
+  vs standard seed 2); the scheme passes iff the replicate passes everything. An array failure that replicates is a bug.
+  Measured standard-vs-standard false-fail rate of the array rule (4 seeds, 18 comparisons): 3/18 literal, 2/18 with the
+  default particle-hole merge; density `Green_eqJK` is mildly above calibration (pooled fraction 7.4 %, rms z 1.09).
 
 ## Statistical harness (Task 5)
 - Sets in `testsuite/lowrank/sets.sh` (`STAT_SETS`); `stat_runs.sh`/`stat_compare.py`, see `testsuite/lowrank/README.md`.
@@ -108,8 +113,9 @@ cd ALF && source configure.sh GNU noMPI NO-INTERACTIVE >/dev/null 2>&1 && mkdir 
   So beta=5 is the smallest beta in {5,6,7} in the window. At beta=4 the sign is ~0.92 for every mu: seed 1,
   NSweep=50 NBin=20: mu=-0.6: 0.941(9), -0.8: 0.920(10), -1.0: 0.926(11), -1.2: 0.927(11), -1.4: 0.954(4),
   -1.6: 0.970(5), -1.8: 0.978(4); short pilots (NSweep=20 NBin=5): -0.3: 0.978(9), -0.5: 0.945(22), -0.8: 0.975(11).
-- Statistical array rule (Controller ruling, Task 5 fix round 1): binomial 3-sigma bound on the fraction of |z|>2 over
-  symmetry-unique entries; see the README.
+- Statistical array rule (Controller rulings, Task 5 fix rounds 1-2): binomial 3-sigma bound on the fraction of |z|>2 over
+  symmetry-unique entries (copies, sign flips and, by default, particle-hole partners G(k)+G(k+Q)=2 merged only when
+  they agree in BOTH runs; `--no-ph` disables); see the README.
 
 ## Tolerances
 Unit level (`testsuite/Prog.tests/36-lowrank-unit.F90`, ctest `36-lowrank-unit`; measured 2026-10-30):
