@@ -94,13 +94,12 @@ changed build files, means re-registration before T1):
 - **No crash markers:** the C++ shim catches every exception (oneMKL throws on illegal arguments, e.g. `t_fail`'s m < n
   `ungqr`) and returns it as an info/error code, so `terminate called` never appears; no runtime message may contain
   `omptarget` (the harness counts it as a crash). T0 greps the logs for both.
-- **Time:** first registered as one `t_order` repetition ≤ 8 s on the B580 (100 repetitions within 15 min). T0
-  measured 11.3 s per repetition (100 ≈ 19 min); the owner allowed ~19-minute runs for the `t_order` gate and its
-  control `ctl_t_order_broken` (2026-10-30, DECISIONS.md row 15, "Allow ~19 min"). New limit: one repetition ≤ 12 s
-  (100 repetitions ≤ 20 min), measured again in T0 of the candidate; above it, stop and report. The repetition count
-  (100) and every other criterion are unchanged. The second T0 (with the presence guard) gave mean 11.50 s, min 9.80 s,
-  max 12.98 s, 22 of 100 repetitions above 12 s; asked how to read the limit, the owner answered "Each rep"
-  (2026-10-30, DECISIONS.md row 15): **every single repetition ≤ 12 s**, in T0 and in the T1/T2 `t_order` runs.
+- **Time:** no time limit (decision 16, 2026-10-30, replacing decision 15's per-repetition limit): run times are not
+  acceptance criteria of this ticket. History: first registered as ≤ 8 s per `t_order` repetition (100 within 15 min);
+  decision 15 allowed ~19-min runs with ≤ 12 s per repetition; the second T0 (presence guard) had mean 11.50 s, min
+  9.80 s, max 12.98 s, 22 of 100 above 12 s; implementer 3 traced it to a fixed ~0.45 ms per oneMKL `zgeqrf` call (8292
+  8×8 calls per pass in the info-slot loop), see Handoff notes and PLAN.md ticket 306. A run that shows no progress for
+  15 min is investigated (CLAUDE.md). Expect ~20 min per 100-repetition `t_order` run.
 
 1. `alf_la.tests` under `GPU=intel` on the B580: all 13 routine tests pass with unchanged assertions and tolerances;
    controls: poisoned info and wrong ld fail.
@@ -175,6 +174,23 @@ change only, with the owner's approval at that time). The `alf_la` interface sta
   with per-repetition logs and `reps.txt`, `table/`), `dev/guard_out/`; older T0: `dev/t0/`. nividia: `dev/gnu_run2.log`,
   `dev/ifxrun2.log`, `dev/ifxid_h5c2.out`, `dev/cuda_*`.
 - **Open:** `t_order` repetitions vary 9.8 to 13.0 s (mean 11.50, 22 of 100 above 12 s); see the report to the manager.
+
+**Implementer 3 (2026-10-30, time profile of `t_order`; STOPPED for a design decision, nothing implemented; tree unchanged except dev scripts).**
+
+- **Profile** (`t302a_tprof.{F90,sh}`, a timing copy of `t_order`; `t302a_micro.*`; `t302a_qrbench.{cpp,sh}`; build `intel:~/alf-gpu/work/t302a/dev/build_g1`):
+  one repetition = 11.0 s in main: both passes together `la_init` 0.12 s, JIT of the first gemm/target regions ~0.05 s, first geqrf 0.74 s,
+  RAW+WAR+WAW loops 1.0 s per pass (2.0 s), and the **"info slot traffic" loop of 2*LA_NSLOT+100 = 8292 `la_geqrf(8,8)` calls per pass
+  = 3.9 s and 4.1 s (7.99 s, 73 percent)**. Process start-up and runtime init are small (`t_checks`, which never inits: 0.17 s;
+  `t_gemm` 3.1 s). Per tiny `la_geqrf` 0.45 to 0.8 ms; the pieces (`t302a_micro`): `omp_target_is_present` guard 0.05 us each,
+  `target data use_device_addr` 2 us, scratchpad query 0.4 us, **oneMKL `zgeqrf` itself 400 to 450 us**. Cause: oneMKL's hybrid geqrf, a
+  fixed cost per call independent of the queue (in-order or not, waiting or not: 8x8 447/469 us, 64x64 540/466 us, 144x144 786/784 us),
+  of `MKL_NUM_THREADS=1`, `KMP_BLOCKTIME=0`. The 3 s spread between repetitions is the jitter of these ~16600 calls (0.45 to 0.8 ms each);
+  guard, shim queue set-up and JIT do not show up. `geqrf_batch` (strided, batch 1) is not an alternative: wrong results (max diff 0.4 at n=8).
+- **Measured option (needs the owner's/manager's decision, because it moves `la_geqrf` for small sizes from hybrid to host with two
+  USM copies):** in the shim, `m,n <= 64`: copy A to the host, MKL host `zgeqrf`, copy A and tau back. Micro (`t302a_qrbench`): 8x8 19 to 25 us
+  vs 600 us (oneMKL), 64x64 37 us vs 570 to 710 us, 144x144 400 us vs 790 to 920 us, 400x400 2.2 to 2.4 ms vs 7.7 to 7.9 ms. End to end
+  (dev experiment, reverted, build `dev/build_exp1`, not evidence): `t_order` 2.91 s and 2.74 s, `t_qr` 1.25 s. Other options: ahead-of-time
+  compilation does not help (JIT is about 1 s of 11); a custom tiny-QR SYCL kernel (more code and numerics to verify).
 
 ## Out of scope
 Activating 204–206 device paths on the B580 (302b), the τ path (302c), PVC (301, 304), performance work.
