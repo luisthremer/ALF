@@ -92,7 +92,7 @@ python3 -I testsuite/lowrank/stat_compare.py --selftest
   values are jackknife sign-reweighted); `*_eqJK`/`*_eqJR`: a coordinate line, then `orb orb Re errRe Im errIm`.
   `Pot_scal` (= U sum <(n_up-1/2)(n_dn-1/2)>-like) is used as the double-occupancy proxy; `Part_scal` is
   the particle number (constant at half filling and in the SU(N) density set; handled as constant, z = 0).
-- `stat_compare.py [--ph] DIR_A DIR_B`: z = (a-b)/sqrt(sa^2+sb^2) for every scalar (Ener, Kin, Pot, Part, avg
+- `stat_compare.py [--no-ph] DIR_A DIR_B`: z = (a-b)/sqrt(sa^2+sb^2) for every scalar (Ener, Kin, Pot, Part, avg
   sign/phase) and every Re and Im entry of `SpinZ_eqJK` and `Green_eqJK`.
   **Pass rule**: all scalar |z| < 3; for each k-point array (`*_eqJK`), on the symmetry-UNIQUE entries only (n of them):
   fraction(|z|>2) <= 0.0455 + 3*sqrt(0.0455*0.9545/n) and max|z| < 4.5. Rationale: for independent Gaussian entries
@@ -103,12 +103,27 @@ python3 -I testsuite/lowrank/stat_compare.py --selftest
   **Uniqueness**: two entries are merged iff all four numbers (value and error in run A, value and error in run B) agree
   to 1e-12 relative (absolute floor 1e-14), or agree after flipping the sign of both values together (Im(k) = -Im(-k)).
   Both runs enter, so a genuine difference between A and B is never merged with an entry that differs. Entries that are
-  numerically zero in both runs (|value|, error < 1e-10, e.g. Im of SpinZ) are skipped (column `skip0`). `--ph` (off by
-  default) also merges particle-hole partners (q = c - r in both runs with the same constant c and equal errors to 1e-9;
-  exact for Green_eq at half filling, G(k) + G(k+Q) = 2): n for Green_eqJK drops from 36 to 26 (half) and from 54 to 36
-  (density); no effect for the doped set.
+  numerically zero in both runs (|value|, error < 1e-10, e.g. Im of SpinZ) are skipped (column `skip0`).
+  **Particle-hole merge (default, `--no-ph` switches it off)**: entries q and r are also merged if q = c - r in BOTH runs
+  with the same constant c and equal errors (rtol 1e-9). For Green_eq at half filling G(k)+G(k+Q) = 2 holds to
+  ~1e-11 in the output, so such partners are exact duplicates; a genuine difference in either run breaks the
+  match, so nothing real can be hidden. n for Green_eqJK drops from 36 to 26 (half) and from 54 to 36 (density); no
+  effect for the doped set.
   It also reports `Precision Green Mean/Max` and `Precision Phase` of both `info` files and flags B/A > 10 for the maxima.
   Exit 0 PASS, 1 FAIL, 2 unusable input.
-- Calibration of the rule on 4 independent standard chains per set (6 pairs per set, 18 comparisons): 15/18 pass with
-  the default merging, 16/18 with `--ph`; pooled over unique entries the errors are calibrated (fraction(|z|>2) 1.7-7.4 %,
-  rms z 0.91-1.09). The remaining failures are density 2-3 and 3-4 (`Green_eqJK`), and half 1-3 without `--ph`.
+- Calibration (4 independent standard chains per set, seeds 1-4, 6 pairs per set, 18 comparisons): with `--no-ph`
+  15/18 pass (3 false fails: half 1-3, density 2-3 and 3-4, all `Green_eqJK`); with the default merge 16/18 pass (2 false
+  fails, density 2-3 and 3-4). No scalar failure and no max|z| >= 4.5 in any comparison. Pooled over unique entries the
+  errors are calibrated: fraction(|z|>2) 1.7-7.4 %, rms z 0.91-1.09. The density `Green_eqJK` is mildly above
+  calibration (pooled fraction 7.4 %, rms z 1.09); a rebinning check (N_rebin 1-8) showed no systematic error growth.
+
+### Validation protocol for candidate schemes (pre-registered)
+
+For `delayed`/`submatrix` (each set: candidate seed S, e.g. 1, against the standard reference chain):
+1. Scalars decide: any scalar |z| >= 3 (energy, kinetic, Pot_scal double-occupancy proxy, Part_scal, average
+   sign/phase) is a bug and triggers debugging; no replicate.
+2. If only an array rule (`Green_eqJK`/`SpinZ_eqJK`) fails: run ONE replicate with fresh seeds, candidate seed+10
+   against standard seed 2 (`stat_runs.sh SET SCHEME <seed+10>` vs the existing `standard_s2`). The scheme passes iff the
+   replicate passes everything (scalars and arrays). An array failure that replicates is a bug and triggers debugging.
+3. The expected false-fail rate of the array rule for a correct scheme is about 2/18 (11 %) per comparison (measured
+   above), so a single array failure alone is not evidence of a bug; the replicate is.
