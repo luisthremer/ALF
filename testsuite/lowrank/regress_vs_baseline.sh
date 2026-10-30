@@ -7,7 +7,7 @@
 #                      (keys the baseline cannot parse, or a deliberate difference).
 # For each parameter set it runs the baseline and the branch binary from
 # identical parameters/seeds in runs/regress/<set>/{base,branch} and cmp's every
-# file except info* (those carry commit and time stamps).
+# output file except info* (commit and time stamps) and the inputs parameters, seeds.
 # Prints "<set> IDENTICAL|DIFFERENT"; exit 0 iff all sets are identical.
 set -euo pipefail
 
@@ -46,6 +46,11 @@ mkdir -p "$LOGDIR"
 if [ ! -d "$BASEDIR" ]; then
     git -C "$ALFDIR" worktree add --detach "$BASEDIR" "$BASELINE_COMMIT" >&2
 fi
+base_head="$(git -C "$BASEDIR" rev-parse HEAD)"
+case "$base_head" in
+    "$BASELINE_COMMIT"*) ;;
+    *) echo "$BASEDIR is at $base_head, expected $BASELINE_COMMIT" >&2; exit 2 ;;
+esac
 [ -x "$BASEDIR/Prog/ALF.out" ] || build "$BASEDIR" "$LOGDIR/build_baseline.log"
 build "$ALFDIR" "$LOGDIR/build_branch.log"
 
@@ -70,8 +75,20 @@ for entry in "${SETS[@]}"; do
             || { echo "$name: $side run failed, see $dir/stdout.log" >&2; exit 2; }
         /bin/rm -f "$dir/stdout.log"
     done
+    # Sanity: both runs must have produced outputs.
+    for side in base branch; do
+        d="$OUTROOT/$name/$side"
+        if [ ! -s "$d/confout_0" ] || ! compgen -G "$d/*_scal" >/dev/null; then
+            echo "$name: $side run produced no outputs (need confout_0 and *_scal) in $d" >&2
+            exit 2
+        fi
+    done
     same=1
-    files=$( (cd "$OUTROOT/$name/base" && ls; cd "$OUTROOT/$name/branch" && ls) | sort -u | grep -v '^info' )
+    # Compare outputs only: skip info* (commit/time stamps) and the inputs parameters, seeds
+    # (they may differ textually when branch-only keys are used).
+    files=$( (cd "$OUTROOT/$name/base" && ls; cd "$OUTROOT/$name/branch" && ls) | sort -u \
+             | { grep -v -x -e 'parameters' -e 'seeds' -e 'info.*' || true; } )
+    [ -n "$files" ] || { echo "$name: no output files to compare" >&2; exit 2; }
     for f in $files; do
         if ! cmp -s "$OUTROOT/$name/base/$f" "$OUTROOT/$name/branch/$f"; then
             same=0
