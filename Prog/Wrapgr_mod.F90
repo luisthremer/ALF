@@ -132,7 +132,7 @@ Contains
           Call Op_Wrapup(Gr(:,:,nf),Op_V(n,nf),HS_Field,Ndim,N_Type,ntau1)
        enddo
        ! Eligible vertex: carry the pending state through the type-1 wrap (old field)
-       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_wrap_hook(n, ntau1, HS_Field, 1, +1)
+       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_wrap_hook(n, ntau1, HS_Field, 1, +1, GR)
 #ifdef ALF_LOWRANK_DEBUG
        if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_debug_check(GR, n, ntau1, "Lowrank_wrap_hook (up, 1)")
 #endif
@@ -166,7 +166,7 @@ Contains
           Call Op_Wrapup(Gr(:,:,nf),Op_V(n,nf),HS_Field,Ndim,N_Type,ntau1)
        enddo
        ! Eligible vertex: carry the pending state through the type-2 wrap (no-op for diagonal flavours)
-       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_wrap_hook(n, ntau1, HS_Field, 2, +1)
+       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_wrap_hook(n, ntau1, HS_Field, 2, +1, GR)
 #ifdef ALF_LOWRANK_DEBUG
        if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_debug_check(GR, n, ntau1, "Lowrank_wrap_hook (up, 2)")
 #endif
@@ -241,7 +241,7 @@ Contains
           Call Op_Wrapdo( Gr(:,:,nf), Op_V(n,nf), HS_Field, Ndim, N_Type,ntau)
        enddo
        ! Eligible vertex: carry the pending state through the type-2 wrap (no-op for diagonal flavours)
-       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_wrap_hook(n, ntau, HS_Field, 2, -1)
+       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_wrap_hook(n, ntau, HS_Field, 2, -1, GR)
 #ifdef ALF_LOWRANK_DEBUG
        if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_debug_check(GR, n, ntau, "Lowrank_wrap_hook (down, 2)")
 #endif
@@ -280,7 +280,7 @@ Contains
           Call Op_Wrapdo( Gr(:,:,nf), Op_V(n,nf), HS_Field, Ndim, N_Type, ntau )
        enddo
        ! Eligible vertex: carry the pending state through the type-1 un-wrap (new field)
-       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_wrap_hook(n, ntau, HS_Field, 1, -1)
+       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_wrap_hook(n, ntau, HS_Field, 1, -1, GR)
 #ifdef ALF_LOWRANK_DEBUG
        if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_debug_check(GR, n, ntau, "Lowrank_wrap_hook (down, 1)")
 #endif

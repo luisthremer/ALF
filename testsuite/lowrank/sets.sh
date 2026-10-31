@@ -13,7 +13,7 @@ SETS=(
   # coupling), so use the parameters of testsuite/test_branch_parameters.json (ham_V=-1, N_SUN=1).
   "tv|ham_name=\"tV\" Model=\"tV\" ham_V=-1.d0 N_SUN=1 L1=4 L2=4 Beta=4|"
   # kondo: mixes diagonal rank-1 (U) and non-diagonal rank-2 (V_SUN/VJ_SUN, J) vertices in one time slice: all eligible
-  # for delayed (support <= 8); the J vertices are ineligible for the rank-1 submatrix (flush + Upgrade2).
+  # for delayed and, since the submatrix M-form (Task 5), for submatrix (support <= 8).
   "kondo|ham_name=\"Kondo\" Model=\"Kondo\" Lattice_type=\"Bilayer_square\" L1=4 L2=4 Beta=2.d0|"
   # pv_adiab: projective algorithm with adiabatic switching (time-dependent couplings g_t, N_FL_eff < N_FL
   # via flavour reconstruction). Beta/Theta/Projector/Adiabatic live in VAR_Model_Generic and VAR_Hubbard_Plain_Vanilla.
