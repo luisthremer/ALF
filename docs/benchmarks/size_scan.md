@@ -1,6 +1,6 @@
 # Size scan: standard vs delayed vs submatrix
 
-Mz Hubbard model on an L x L square lattice, U=4, Beta=2, Dtau=0.1 (Ltrot=20), Ltau=0, LOBS_ST=LOBS_EN=1, NBin=2, default Nwrap=10, N_Global=1, same seed for all schemes. sec/sweep = wall time of the run (`CPU Time` in `info`) / (NSweep*NBin); NSweep differs per L (same for the three schemes). Speedup = standard / scheme. Produced by `testsuite/lowrank/bench.sh` and `testsuite/lowrank/bench_report.py`.
+Mz Hubbard model on an L x L square lattice, U=4, Beta=2, Dtau=0.1 (Ltrot=20), Ltau=0, LOBS_ST=LOBS_EN=1, NBin=2, default Nwrap=10, N_Global=1, same seed for all schemes. sec/sweep = `CPU Time` / (NSweep*NBin); NSweep differs per L (same for the three schemes). Speedup = standard / scheme. Timing = wall time of the sweep phase only (`CPU Time` in `info`; the timer starts after the initial Green function computation, setup is excluded). Produced by `testsuite/lowrank/bench.sh` and `testsuite/lowrank/bench_report.py`.
 
 | L | N | N_delay | threads | NSweep | standard [s/sweep] | delayed [s/sweep] | submatrix [s/sweep] | delayed speedup | submatrix speedup | acceptance |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -14,17 +14,17 @@ Mz Hubbard model on an L x L square lattice, U=4, Beta=2, Dtau=0.1 (Ltrot=20), L
 
 ## Provenance
 
-- Git commit: 26b354c7
+- Git commit (of the binary, from `info`): 26b354c7
 - Compiler: GNU Fortran (Homebrew GCC 16.2.0) 16.2.0
 - Flags: `-std=f2008 -cpp -O3 -ffree-line-length-none -ffast-math -fopenmp`
 - BLAS/LAPACK: Apple Accelerate (vecLib), linked as `-llapack -lblas`
 - Threads: OMP_NUM_THREADS = VECLIB_MAXIMUM_THREADS = 1
 - Machine: Apple M1 Pro (8 performance + 2 efficiency cores)
-- Date: 2026-10-31
+- Date (START TIME in `info`): 2026-10-31
 
 ## Notes
 
 - Acceptance is identical between the three schemes at every L (same seed, identical Metropolis trajectories).
-- The standard time at L=16 (N=256) lies above the N^2.4 trend of its neighbours (1.098 s/sweep; a re-run gave 1.093),
-  so it is reproducible and not a timing outlier of one run; it lowers the speedups at L=16 relative to the trend.
-- Single runs, no repetitions, so timings carry a few-percent noise. Total scan wall time: 1017 s.
+- N_delay=32 is the maximum, not always the effective delay: the capacity is capped at min(N_delay, vertices per slice[, Ndim for submatrix]) and G is flushed at the end of every slice, so the effective delay is min(N_delay, accepts per slice); at small L (L=6: 36 vertices per slice, about 15 accepts) N_delay=32 is never reached.
+- All three schemes jump at N=256 (L=16): standard 0.368 -> 1.098, delayed 0.219 -> 0.728, submatrix 0.210 -> 0.700 s/sweep from L=14 to L=16, steeper than the N^2.4 trend of the other points, and standard jumps most, so the L=16 speedups (about 1.5-1.6) dip below L=14 (about 1.7). A power-of-two / cache effect (leading dimension 256) is an unverified guess; L=18 will be added in Task 15 to test it.
+- Single runs; the only repeat is standard at L=16 (1.098 vs 1.093 s/sweep, 0.5 %), so timing noise is otherwise unquantified and differences of a few percent between delayed and submatrix are not significant. L=20 has only 24 sweeps in total.
