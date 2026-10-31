@@ -116,6 +116,7 @@ Module gpu_stab_mod
   Logical, Save :: ns_on = .true.    ! Newton-Schulz step on Q in decompose (ALF_GPU_NS=0 switches it off; see DISCREPANCIES.md, cuSOLVER Q orthogonality)
   Logical, Save :: in_selftest = .false.                                        ! inside gpu_stab_selftest (ticket 212)
   Integer, Save :: fault = 0                                                    ! 1 perm, 2 phase, 3 nan (negative controls)
+  Logical, Save :: eps_prod = .false.   ! decision 26: ALF_GPU_FAULT_STAB=eps:<x> acts on the device G of every production stabilization
   ! ---- DEBUG AIDS, not used in production: ALF_GPU_STABCHECK=1|2: every CGR (1) and every WRAPUR/WRAPUL block (2) of the run is repeated on the host
   ! with the upstream routines from the same device state, and the deviations are summarised in info (host work, slow)
   Integer, Save :: chk_level = 0, chk_ncgr = 0, chk_nblk = 0, chk_nbad = 0, chk_mix = 0   ! chk_mix 1: use the host CGR result, 2: the host WRAPUR/UL result (isolation experiments)
@@ -136,10 +137,6 @@ Contains
 
     gpu_stab_on = .false.
     if (.not. gpu_active) return
-#if defined(ALF_LA_ONEMKL)
-    call info_line('GPU stabilization (206): INACTIVE, the alf_la backend of GPU=intel is not implemented yet (ticket 302)')
-    return
-#else
     s_N = Ndim; s_nfe = N_FL_eff; s_nstm = NSTM
     allocate(s_nt(0:NSTM)); s_nt = Stab_nt
     n = s_N
@@ -170,7 +167,6 @@ Contains
     line = trim(line)//' in decompose and CGR (default)'
 #endif
     call info_line(line)
-#endif
   end subroutine gpu_stab_setup
 
   Subroutine gpu_stab_finalize()
@@ -608,6 +604,12 @@ Contains
     phase = st_c(3)
     ! INTERIM 206: removed by 207/208: D->H of the new G, 16 N^2 B (GR is host-authoritative: observables on the host)
     !$omp target update from(st_Gn)
+    if (eps_prod .and. with_prec) then
+       ! decision 26 (debug control only): graded fault on the device result of the precision check; the returned G carries it too
+       call fault_eps_apply(st_Gn)
+       ! H->D: the perturbed st_Gn must reach the device for the precision reduction (control runs only, 16 N^2 B)
+       !$omp target update to(st_Gn)
+    endif
     G(:,:,nf) = st_Gn
     if (chk_level >= 1) call check_cgr(nfe, nvar, phase, G(:,:,nf))
     if (with_prec) then
@@ -1401,8 +1403,15 @@ Contains
        case ('perm');  fault = 1
        case ('phase'); fault = 2
        case ('nan');   fault = 3
-       case default                  ! eps:<x>
+       case default                  ! eps:<x>: SELFTEST=3 comparison, or (decision 26) the production sweep, see eps_prod
        end select
+    endif
+    ! decision 26: outside the self-test / timing hooks, eps:<x> perturbs the device G of every stabilization in the sweep
+    if (gpu_env_fault_stab_eps() > 0.d0 .and. .not. gpu_env_is('ALF_GPU_SELFTEST', '3') &
+         & .and. .not. gpu_env_is('ALF_GPU_STABTIME', '1')) then
+       eps_prod = .true.
+       call say('GPU fault armed (production sweep): ALF_GPU_FAULT_STAB eps: the element of largest |G| of the device G ' // &
+            & 'of every stabilization (precision check and returned G) is multiplied by (1 + x)')
     endif
     if (gpu_env_is('ALF_GPU_SELFTEST', '3')) then
        call gpu_stab_selftest()
