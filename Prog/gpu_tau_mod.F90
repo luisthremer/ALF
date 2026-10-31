@@ -85,6 +85,7 @@
 !> chains late, ALF_GPU_TAUDIAG_SEED=<n> seeds the 1-ulp perturbations (unset: derived from the run's RNG state at setup; printed in
 !> the setup line), ALF_GPU_TAUDIAG_VAR=<m1,m2,...> adds GTT chains of dev_cgr22 with the swp masks m_k (" | V" fields),
 !> ALF_GPU_TAUDIAG_NUL=<c1,c2,...> adds GTT chains of a host copy of CGR2_2 with rounding-order null variants (" | N", " | Nd"; dn_code),
+!> ALF_GPU_TAUDIAG_QREF=<stride> (with _QVAR, _QHOST) dumps CGR2_2 inputs and outputs for the offline quad-precision reference (qf_on),
 !> ALF_GPU_TAUSWAP=<mask> replaces CGR2_2 steps by host twins in the production calls (bits as swp below).
 !> Finding (ticket 207, STABLOG precision tail): the tail of Precision tau is the GTT pair at the last stabilization points; its size
 !> per event changes by up to ~10x under a 1-ulp perturbation of U of the right state, on the host as on the device; device / host
@@ -199,6 +200,17 @@ Module gpu_tau_mod
   Integer, Save :: dn_n = 0, dn_code(ndn_max) = 0
   Integer(int64), Save :: dn_seed(ndn_max) = 0
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: dn_p(:,:,:,:)      ! (N,N,N_FL,dn_n)
+  ! ALF_GPU_TAUDIAG_QREF=<stride> (ticket 207 dev5, accuracy against a quad-precision reference; debug aid only): at every stride-th
+  ! stabilization point from pass ALF_GPU_TAUDIAG_FROM on, one stream file qref/q<point>.bin in the run directory with the inputs of
+  ! the production CGR2_2 (device right state udvr, left state udvst(nst)), its four outputs, the outputs of dev_cgr22 with the swp
+  ! masks of ALF_GPU_TAUDIAG_QVAR=<m1,...> on the same inputs, with ALF_GPU_TAUDIAG_QHOST=1 the outputs of the host CGR2_2 of this
+  ! binary on the same inputs, and with TAUDIAG=1|2 the host chain's right state (input of the host tau pass).  The quad reference
+  ! and all error numbers are computed offline (docs/gpu/scripts/nividia/t207_d5_qref.F90; nvfortran has no real(16)).
+  Logical, Save :: qf_on = .false., qf_host = .false.
+  Integer, Save :: qf_stride = 1, qf_nv = 0, qf_mask(ndv_max) = 0
+  Integer(int64), Save :: qf_cnt = 0, qf_nfile = 0
+  Class (UDV_State), Allocatable, Save :: qf_st(:)                  ! (1) device udvr, (2) left state udvst(nst)
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: qf_c(:,:,:)        ! N x N x 4 host CGR2_2 outputs (QHOST)
 
 Contains
 
@@ -229,6 +241,7 @@ Contains
     t_ipvt = 1; t_ipiv = 1
     if (Symm) allocate(G00_T(n,n,N_FL), G0T_T(n,n,N_FL), GT0_T(n,n,N_FL), GTT_T(n,n,N_FL))
     call diag_setup()
+    call qref_setup()
     ! device allocation once, no transfer; the first use of each buffer is a device write
     !$omp target enter data map(alloc: t_H1, t_H2, t_V1i, t_U2h, t_W, t_old, t_GR, t_S, t_tau, t_D3, t_Dm1, t_Dm2, t_Rs, t_ipvt, t_ipiv, G00_d)
     ! pre-grow the library work spaces for the 2N x 2N factorization and run the 2N QR once, so that nothing is allocated in the sweep
@@ -298,6 +311,7 @@ Contains
           do nfe = 1, t_nfe
              if (diag_on) call diag_pre(nfe, NST)
              call tau_stab_cgr(nfe, NST)              ! CGR2_2 + the four precision checks
+             if (qf_on) call qref_post(nfe, NST)
              if (diag_on) call diag_post(nfe, NST, GR)
           enddo
           NST = NST + 1
@@ -600,6 +614,138 @@ Contains
        call k_blocks(n, br, fault == 4, t_H2, G00, GT0, GTT, G0T)
     endif
   end subroutine dev_cgr22
+
+!====================================================================
+!  DEBUG AID, not used in production (ticket 207 dev5, ALF_GPU_TAUDIAG_QREF): dumps for the accuracy test against a quad-precision
+!  reference (see the declaration of qf_on).  Every copy below is a diagnostic D->H copy of device data that feeds nothing back into
+!  the run; the files are written on the host.
+!====================================================================
+  Subroutine qref_setup()
+    Implicit none
+    Character (len=256) :: v, vv
+    Character (len=512) :: line
+    Integer :: ios, i, k
+    qf_on = .false.
+    if (gpu_env_get('ALF_GPU_TAUDIAG_QREF', v)) then
+       read(v,*,iostat=ios) qf_stride
+       if (ios /= 0 .or. qf_stride < 0) call env_bad('ALF_GPU_TAUDIAG_QREF', v)
+       qf_on = qf_stride > 0
+    endif
+    qf_nv = 0
+    if (gpu_env_get('ALF_GPU_TAUDIAG_QVAR', v)) then
+       vv = v
+       do
+          if (len_trim(vv) == 0) exit
+          i = index(vv, ',')
+          if (i == 0) i = len_trim(vv) + 1
+          if (qf_nv == ndv_max) call env_bad('ALF_GPU_TAUDIAG_QVAR', v)
+          qf_nv = qf_nv + 1
+          read(vv(1:i-1),*,iostat=ios) qf_mask(qf_nv)
+          if (ios /= 0 .or. qf_mask(qf_nv) < 0 .or. qf_mask(qf_nv) > 4095) call env_bad('ALF_GPU_TAUDIAG_QVAR', v)
+          vv = vv(i+1:)
+       enddo
+    endif
+    if (gpu_env_get('ALF_GPU_TAUDIAG_QHOST', v)) then
+       if (trim(v) /= '0' .and. trim(v) /= '1') call env_bad('ALF_GPU_TAUDIAG_QHOST', v)
+       qf_host = trim(v) == '1'
+    endif
+    if (.not. qf_on) return
+    ! masks with host-twin bits (all but 8 and 512) use the work arrays of diag_setup (allocated there when TAUDIAG or TAUSWAP is set)
+    do k = 1, qf_nv
+       if (iand(qf_mask(k), not(8 + 512)) /= 0 .and. .not. allocated(dg_hwk)) &
+            & call env_bad('ALF_GPU_TAUDIAG_QVAR', 'host-twin masks need ALF_GPU_TAUDIAG=1|2 or ALF_GPU_TAUSWAP')
+    enddo
+    allocate(qf_st(2))
+    call qf_st(1)%init(t_N, 'r')
+    call qf_st(2)%alloc(t_N); qf_st(2)%side = 'l'
+    allocate(qf_c(t_N, t_N, 4)); qf_c = z0
+    write(line,'(A,I0,A,I0,A,L1,A)') 'GPU tau pass: DEBUG ALF_GPU_TAUDIAG_QREF=', qf_stride, ' active (dumps to qref/, from pass ', &
+         & dg_from, ', host CGR2_2 outputs ', qf_host, ', device variant masks:'
+    do k = 1, qf_nv
+       write(line(len_trim(line)+1:),'(A,I0)') ' ', qf_mask(k)
+    enddo
+    line = trim(line)//')'
+    call say(line)
+  end subroutine qref_setup
+
+  Subroutine qref_post(nfe, nst)
+    Implicit none
+    Integer, intent(in) :: nfe, nst
+    Integer :: nf, n, k, u, ios, br, brs, hasdg, hasb, nt
+    Character (len=64) :: fn
+    Character (len=256) :: line
+    if (n_pass+1 < dg_from) return
+    qf_cnt = qf_cnt + 1
+    if (mod(qf_cnt - 1, int(qf_stride, int64)) /= 0) return
+    n = t_N; nf = Calc_Fl_map(nfe)
+    brs = last_br
+    call la_sync()
+    call dl_state(1, 2, nfe, qf_st(1))               ! diagnostic D->H: device udvr (input of the production CGR2_2)
+    call dl_state(2, nst, nfe, qf_st(2))             ! diagnostic D->H: left state udvst(nst)
+    ! diagnostic D->H of the production outputs into the host shadows (the next slice downloads them again before OBSERT)
+    call upd_from_c(G00_d(1,1,nf), n*n); call upd_from_c(GT0_d(1,1,nf), n*n)
+    call upd_from_c(GTT_d(1,1,nf), n*n); call upd_from_c(G0T_d(1,1,nf), n*n)
+    qf_nfile = qf_nfile + 1
+    write(fn,'(A,I6.6,A)') 'qref/q', qf_nfile, '.bin'
+    open(newunit=u, file=trim(fn), access='stream', form='unformatted', status='replace', action='write', iostat=ios)
+    if (ios /= 0) call env_bad('ALF_GPU_TAUDIAG_QREF', 'cannot open '//trim(fn)//' (run directory needs qref/)')
+    hasdg = 0
+    if (diag_on) hasdg = 1
+    hasb = 0
+    if (nst < t_nstm) hasb = 1                         ! the next block's propagation exists (not after the last point)
+#if defined(STABLOG)
+    write(u) 20791, 2, int(qf_nfile), int(n_pass+1), nst, nfe, brs, n, 1, qf_nv, merge(1, 0, qf_host), hasdg, hasb
+#else
+    write(u) 20791, 2, int(qf_nfile), int(n_pass+1), nst, nfe, brs, n, 0, qf_nv, merge(1, 0, qf_host), hasdg, hasb
+#endif
+    if (qf_nv > 0) write(u) qf_mask(1:qf_nv)
+    call qref_wstate(u, qf_st(1)); call qref_wstate(u, qf_st(2))
+    write(u) G00_d(:,:,nf), GT0_d(:,:,nf), GTT_d(:,:,nf), G0T_d(:,:,nf)
+    do k = 1, qf_nv
+       swp = qf_mask(k)
+       call dev_cgr22(nfe, nst, 1.d0, 0.d0, br, t_S(1,1,1), t_S(1,1,2), t_S(1,1,3), t_S(1,1,4))
+       call la_sync()
+       call upd_from_c(t_S(1,1,1), 4*n*n)              ! diagnostic D->H of the variant's outputs (G00, GT0, GTT, G0T)
+       write(u) t_S(:,:,1:4)
+    enddo
+    swp = swp_prod
+    last_br = brs
+    if (qf_host) then
+       call CGR2_2(qf_c(:,:,2), qf_c(:,:,1), qf_c(:,:,3), qf_c(:,:,4), qf_st(1), qf_st(2), n)
+       write(u) qf_c(:,:,1:4)
+    endif
+    if (diag_on) call qref_wstate(u, dg_hr(nfe))      ! host chain's right state at this point (input of the host tau pass)
+    if (hasb == 1) then
+       ! the next block's propagation on the device, applied to the identity with the slice kernels of tau_slice: B = B_n ... B_1
+       ! (PROPR: GT0 <- B GT0) and Bi = B_1^-1 ... B_n^-1 (PROPRM1: G0T <- G0T Bi); GTT <- B GTT Bi.  The offline program measures
+       ! how each method's error is carried to the next precision check (scratch t_S, after the variants)
+       call k_ident(n, t_S(1,1,1), n); call k_ident(n, t_S(1,1,2), n)
+       do nt = t_nt(nst) + 1, t_nt(nst+1)
+          call gpu_mmthr(t_S(1,1,1), n, n, nf)
+          call gpu_Vslice_R(t_S(1,1,1), n, n, nf, nt, 'n', .false.)
+          call gpu_mmthl_m1(t_S(1,1,2), n, n, nf)
+          call gpu_Vslice_L(t_S(1,1,2), n, n, nf, nt, 'n', -1, .false.)
+       enddo
+       call la_sync()
+       call upd_from_c(t_S(1,1,1), 2*n*n)              ! diagnostic D->H of B and Bi
+       write(u) t_S(:,:,1:2)
+    endif
+    close(u)
+    write(line,'(A,I0,A,I0,A,I0,A,I0,A,I0,A,A)') 'TAUQREF file ', qf_nfile, ' pass ', n_pass+1, ' nst ', nst, ' nfe ', nfe, &
+         & ' br ', brs, ' ', trim(fn)
+    call say(line)
+  end subroutine qref_post
+
+  Subroutine qref_wstate(u, st)
+    Implicit none
+    Integer, intent(in) :: u
+    Class (UDV_State), intent(in) :: st
+#if defined(STABLOG)
+    write(u) st%U, st%L, st%V
+#else
+    write(u) st%U, st%D, st%V
+#endif
+  end subroutine qref_wstate
 
 !====================================================================
 !  DEBUG AID, not used in production: ALF_GPU_TAUDIAG=1 (ticket 207, STABLOG precision tail).  Per stabilization point and

@@ -247,3 +247,79 @@ none of the runs so far used `env -i` or recorded the toolchain and environment,
   `logs/t0c_1_paired.txt`, `logs/t0c_1_precision.txt`, `logs/t0c_1_compare2.txt`, `gpunone1/`, `logs/t0d_1.txt`;
   run directories `runs/t0a1_*`, `runs/t0b1_*`, `runs/t0c1_*`, `runs/t0c2_*`, `runs/t0d1_*`; binaries `bin/`.
   Scripts `docs/gpu/scripts/nividia/t207_d2_*`.
+
+### 2026-10-31, dev5: accuracy test against a quad-precision reference (decision 19, option E): proposal for the owner
+Development on dev seeds (dev1–dev4 = the dev4 seed sets), not a candidate, no acceptance file or harness script touched. Working
+tree on `gpu-port-207-tau` over c1cc528e (uncommitted diff sha256 `eba7029c…`).
+
+- **Code (debug aid only):** `Prog/gpu_tau_mod.F90` gets `ALF_GPU_TAUDIAG_QREF=<stride>` (+ `_QVAR=<masks>`, `_QHOST=1`; with
+  `_FROM`): at every stride-th stabilization point a stream file `qref/q<k>.bin` with the inputs of the production CGR2_2 (device
+  udvr, udvst(nst)), its four outputs, the outputs of `dev_cgr22` with the swp masks of `_QVAR` on the same inputs, the host
+  CGR2_2 of the same binary (`_QHOST`), with TAUDIAG=1|2 the host chain's state, and the next block's device propagation B, B⁻¹
+  (slice kernels applied to the identity). Diagnostic D→H copies only; production identity: `data.h5` of
+  `hub12x12_cb_b10_s` (no debug variable) identical to c1cc528e, 38/38 datasets, default and LOG.
+- **Quad reference** (`docs/gpu/scripts/nividia/t207_d5_qref.F90`, offline, gfortran 13.3 `real(16)`; **nvfortran 26.9 has no
+  `real(16)`/`complex(16)`**, KIND error): CGR2_2 in binary128 with the same formulae, branch and STABLOG splitting; V1⁻¹ by LU
+  with partial pivoting; Householder QR (zlarfg convention) after the column-norm pre-pivot (default) or with exact-norm column
+  pivoting (LOG); D3 separated; extended system solved as `solve_extended_System`. Checks: quad vs itself with randomly
+  row-permuted QR input and with the other branch: max 3.3e-29 / 3.1e-29 over 144 real points (synthetic easy states 2e-32);
+  double host CGR2_2 vs quad on easy synthetic states 8e-15 – 2e-14. Cost 1.8–2.6 s per CGR2_2 at N = 144 (4 threads); a
+  280-point run takes 12.5 (default) / 16 (LOG) CPU-minutes. The same program evaluates the double oracle (cgr2_2_mod objects
+  of a GNU build, QR_PREPIVOT resp. STABLOG), 9 (default) / 7 (LOG) rounding-order nulls (copy of `nul_cgr22`, compiled with the
+  ALF flags so that code 0 reproduces the oracle bit for bit; codes 4, 100004, 1, 100001, 2, 5, 100005, and 1608, 4808 on
+  default), and two 1-ulp input perturbations.
+- **Finding 1, pointwise accuracy does not see the planted defects.** Max-relative / Frobenius error of the four blocks against
+  quad: the device is *more* accurate than the CPU oracle (mean log10 ratio, pooled: default emax −0.157, eF −0.159; LOG −0.039,
+  −0.034), and `var8` (device ZUNMQR without the Newton–Schulz step = the `ALF_GPU_TAU_NS=0` / `ALF_GPU_TAUSWAP=8` defect) has
+  the identical error (equal to 3 digits on every set). A pointwise accuracy criterion cannot kill either control.
+- **Finding 2, the error as the next precision check receives it does.** pTT = max|B (G − Gq)_TT B⁻¹| (B: the next block's
+  device propagation; ΔG formed in quad): CGR2_2's ~4e-13 pointwise error becomes ~2.5e-9 (default) / 5e-9 (LOG), the size of
+  the Precision-tau numbers. Statistic S_ens = mean over points of log10(pTT_m / g), g = geometric mean of pTT over the correct
+  host variants at that point (oracle, nvfortran host CGR2_2, nulls; leave-one-out for a member). Per seed set dev1..dev4
+  (210 points each; generated tables `logs/report_agg_{def,log}_pTT.txt`):
+  - default: device +0.084, +0.055, +0.034, +0.054 (pooled +0.057 [0.039, 0.074]); `var8` +0.280, +0.294, +0.307, +0.266;
+    production control `ALF_GPU_TAU_NS=0` (dev1) +0.280; correct variants max per set +0.074, +0.076, +0.120, +0.073;
+  - LOG: device −0.012, −0.030, −0.059, −0.048 (pooled −0.037 [−0.052, −0.021]); `var8` +0.215, +0.194, +0.214, +0.205;
+    production control `ALF_GPU_TAUSWAP=8` (dev1) +0.215; correct variants max per set +0.036, +0.058, +0.050, +0.093.
+  - The production controls give exactly the stand-in's numbers (the τ pass does not feed back into the CGR2_2 inputs).
+  - Against the oracle alone (S_cpu) the device is +0.093…+0.119 (default) / −0.016…+0.022 (LOG); S_cpu separates LOG worse
+    (correct variants up to +0.152, control down to +0.220), hence the ensemble reference.
+- **206 input part** (TAUDIAG=2 runs, dev1, 140 points; `logs/report_checks.txt`): quad G of the device input vs quad G of the
+  host chain's input differ pointwise by eF 3.4e-13 (geometric mean; the size of CGR2_2's rounding error) but carry only
+  7.5e-13 / 7.8e-13 into the next check (pTT), against 2.5e-9 / 5.0e-9 for the CGR2_2 error; host CGR2_2 is not harder on the
+  device input (mean log10 pTT ratio device input / host input +0.028 default, −0.024 LOG). The Precision-tau numbers are
+  dominated by CGR2_2 rounding amplified by the next block, not by the 206 states. (Not measured: the inputs' own error against an
+  exact WRAPUR, which would need a quad propagation.)
+- **Proposed criterion (replaces the three paired conditions of acceptance 3 if the owner approves; decision 1's sd condition
+  stays in force until then):** per path (default with the QR_PREPIVOT-variant-1 oracle, LOG with upstream), `hub12x12_cb_p`
+  (β = 4, 400 sweeps), debug run with `ALF_GPU_TAUDIAG_QREF=2 ALF_GPU_TAUDIAG_QHOST=1 ALF_GPU_TAUDIAG_FROM=331` (280 points, 210
+  with a next block), offline `t207_d5_qref` with the null codes above; **S_ens(pTT) pooled over two fresh seed sets ≤ 0.15 on
+  each path**; positive controls `ALF_GPU_TAU_NS=0` (default) and `ALF_GPU_TAUSWAP=8` (LOG), one fresh seed set each, must give
+  S_ens > 0.15; input checks (else INPUT_ERROR): every dump processed, quad self-check (row-permuted, other branch) ≤ 1e-25
+  where evaluated, null code 0 identical to the oracle, 210 points with B. Pointwise errors and S_cpu reported as information.
+- **Calibration of the bound 0.15** (`logs/report_agg_*`, `logs/report_pairs_015.txt`): margins per set (device max / correct
+  max / control min): default +0.084 / +0.120 / +0.266, LOG −0.012 / +0.093 / +0.194; correct variants' bootstrap exceedance of
+  0.15 per set: mean 0.005, worst 0.125 (default dev3 n100005) / mean 1e-4, worst 0.003 (LOG); pooled over any two of the four
+  sets (6 pairs × 2 paths, 2000 bootstrap draws): P(device > 0.15) = 0, P(control ≤ 0.15) = 0, worst correct variant ≤ 0.001.
+  Graded fault: the device's propagated error would have to grow by a factor 10^(0.15 − S) = 1.24 (default, pooled) / 1.54
+  (LOG) to fail; the controls are factors 1.31 / 1.11 above the bound (per-set minimum). Thresholds chosen after seeing all
+  dev data (same caveat as decision 1's thresholds): judge only on fresh seeds.
+- **Old conditions:** sd condition: measures rounding-pattern similarity (dev4), not accuracy: replace. Mean condition: its
+  defect separation was +0.050…+0.064 (default) against correct ≤ 0.032, a margin of 0.018 at the bound 0.05; the proposed
+  statistic separates controls from correct variants by 0.146 (default) / 0.101 (LOG). I see no added detection power in
+  keeping it as a gate; report-only is possible (it needs a TAUDIAG=2 run, 11–12 GPU-min per path). Count condition: tail
+  information only.
+- **Run length and GPU minutes:** QREF runs 8.0–9.7 min (default) / 9.4–10.4 min (LOG) on the A30, plus 12.5 / 16 CPU-min
+  (4 threads, GPU idle) and 1.6 GB transient dumps per run. T2 as proposed (2 sets × 2 paths + 2 controls): ≈ 55 GPU-min,
+  ≈ 85 CPU-min; T1 (one set per path + 2 controls) ≈ 37 GPU-min. Needs harness support (build of the offline program and the GNU
+  oracle objects from the archive, dump processing, verdict from `qref.txt`): manager/owner.
+- **Open:** the default-path device is at the top of the correct band (S_ens +0.034…+0.084; S_cpu ≈ +0.10, i.e. ~25 % larger
+  propagated error than the oracle, like the blocked-QR null n4808 at +0.095); not attributed to a device step (QVAR host-twin
+  masks 16/32/1/2/4/256 in one TAUDIAG run would do it). nvfortran 26.9 crashed once (fort2 signal 11) on `gpu_wrap_mod` /
+  `gpu_stab_mod` in a parallel make; the rebuild passed.
+- **Evidence:** nividia `~/alf-gpu/work/t207/dev5/`: runs `runs/{s,m,c,d}_*/hub12x12_cb_p/` (run.log, info, data.h5,
+  provenance.json, stamp.txt, qref.txt, qref_proc.json, qref_manifest.txt with the sha256 of every dump; every 40th dump kept,
+  smoke runs all), identity runs `runs/id_*`; generated reports `logs/report_*.txt|json`, chains `logs/chain_*.txt`; binaries
+  `bin/` (GPU `nv_def_pp2` 0637587e…, `nv_log2` fd6022df…; base c1cc528e `base_nv_*`; offline `old_q/v2/qref_{pp,log}`
+  d0c1f5bd…/9e17e710… for the main and control runs, `qref_{pp,log}` e989f36d…/b27c2643… for the din runs). GPU total 140.3
+  min. Scripts `docs/gpu/scripts/nividia/t207_d5_*`.
