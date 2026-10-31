@@ -10,8 +10,10 @@
 - **Branch:** `gpu-port-302b` (the 2026-10-30 draft branch `gpu-port-302b-b580` is superseded)
 - **Acceptance files:** `testsuite/gpu_reference/acceptance/302b.json` (Intel part, `intel`: 83 runs, 15 gates, 19
   controls) and `302b.nvidia.json` (`nividia` part, `acc_driver.py --part nvidia`: 10 runs, 5 gates, 5 controls).
-- **Status:** RE-REGISTRATION for decisions 28 (compare2 120 × 60) and 29 (false-alarm budget 0.35) pending review (b); until then the last approved
-  pre-registration is **PREREG_SHA `3e7d1992`** (`3e7d199242a88760cd3b319769a2848020fc0620`, 2026-10-31) on `gpu-port-302b`,
+- **Status:** RE-REGISTERED for decisions 28 (compare2 120 × 60) and 29 (false-alarm budget 0.35): **PREREG_SHA
+  `8167e684`** (2026-10-31, `gpu-port-302b`), approved by review (b) of the final state. Candidate 2 = `25cf8269`
+  (branch `gpu-port-302b-impl2`, code identical to candidate 1). The previous pre-registration was `3e7d1992`
+  (`3e7d199242a88760cd3b319769a2848020fc0620`, 2026-10-31) on `gpu-port-302b`,
   base `71af3e076322`; decisions 26 (precision control eps:1e-10 replaces NS=0) and 27 (near-threshold control
   eps:1e-12); supersedes the first pre-registration `0e427164`. T0, candidate 1 `08b095b4`, review (a), T1 (PASS) and
   T2 (compare2 INCONCLUSIVE) done, see the record below. Next: review (b) of the decision-28 re-registration, record its
