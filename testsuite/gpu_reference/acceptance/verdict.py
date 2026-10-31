@@ -519,6 +519,9 @@ def g_log_regex(g, root, acc):
             raise InputFail(f"{chk['file']}: no match for {chk['regex']}")
         groups = [int(x) for x in m.groups()]
         res.append({"file": chk["file"], "groups": groups})
+        ce = os.path.join(root, os.path.dirname(chk["file"]), "ctest.exit")   # read even when the check names none
+        if "exit_file" not in chk and os.path.isfile(ce) and read(ce).strip() not in ("0", "1"):
+            raise InputFail(f"{os.path.dirname(chk['file'])}/ctest.exit: exit value {read(ce).strip()} (invalid run)")
         if "exit_file" in chk:
             ev = read(os.path.join(root, chk["exit_file"])).strip()
             if ev not in ("0", "1"):
@@ -747,6 +750,10 @@ def selfcheck():
     mkrun("A_ladecl", base, ok_info, env=["ALF_LA_TEST_X=1"])
     mkrun("A_laenv", base, ok_info, debug=[], envextra={"ALF_LA_TEST_X": "1"})
     mkrun("A_in_order", base, ok_info, build="igpu", envextra={"ZE_ENABLE_PCI_ID_DEVICE_ORDER": "1"})
+    builds["gpuf"] = dict(builds["gpu"], forbidden_lines=["FORBIDDEN B"])
+    builds["cpuf"] = dict(builds["cpu"], forbidden_lines=["FORBIDDEN B"])
+    mkrun("A_forbid_b", base, ok_info, log=ACT + "FORBIDDEN B\n", build="gpuf")
+    mkrun("B_forbid_cpu", {k: v * (1 + 1e-12) for k, v in base.items()}, ok_info, build="cpuf", log="FORBIDDEN B\n")
     mkrun("A_forbid", base, ok_info, log=ACT + " GPU tau pass (207): ACTIVE on the device\n")
     acc["runs"]["A_forbid"]["forbidden_lines"] = ["GPU tau pass (207): ACTIVE on the device"]
     open(os.path.join(tmp, "A_tamper", "run.log"), "a").write("edited later\n")
@@ -791,6 +798,8 @@ def selfcheck():
              ("same_seed ALF_LA_TEST_ only in env", dict(ss, pairs=[["A_laenv", "B", NB]]), "INPUT_ERROR"),
              ("same_seed GPU=intel device reorder var", dict(ss, pairs=[["A_in_order", "B", NB]]), "INPUT_ERROR"),
              ("same_seed forbidden line", dict(ss, pairs=[["A_forbid", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed forbidden line (build)", dict(ss, pairs=[["A_forbid_b", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed forbidden line, CPU run ignored", dict(ss, pairs=[["A", "B_forbid_cpu", NB]]), "PASS"),
              ("replay identical", dict(rp, pairs=[["A", "A_twin"]]), "PASS"),
              ("replay 1e-12", dict(rp, pairs=[["A", "B"]], gpu_exclusive=False), "FAIL"),
              ("replay Precision Max only", dict(rp, pairs=[["A", mkrun("A_pmax", base, info(5e-11, 1.0000001e-6, 6e-12, 5e-7))]]), "FAIL"),
@@ -882,6 +891,16 @@ def selfcheck():
         v, r, why = run_gate(g, tmp, acc)
         bad += v != exp
         print(f"{'ok ' if v == exp else 'BAD'} {name:36s} expected {exp:11s} got {v:11s} {('(' + why + ')') if why else ''}"[:220])
+    v, r, why = run_gate(dict(ss, pairs=[["A", "B", NB]]), tmp, dict(acc, forbidden_lines=["GPU tau pass (207): ACTIVE"]))
+    bad += v != "INPUT_ERROR"
+    print(f"{'ok ' if v == 'INPUT_ERROR' else 'BAD'} same_seed forbidden line (file level)  expected INPUT_ERROR got {v}")
+    os.makedirs(os.path.join(tmp, "gx"))
+    open(os.path.join(tmp, "gx", "stamp"), "w").write(CAND + "\n")
+    open(os.path.join(tmp, "gx", "ctest.log"), "w").write("100% tests passed, 0 tests failed out of 52\n")
+    open(os.path.join(tmp, "gx", "ctest.exit"), "w").write("2\n")
+    v, r, why = run_gate(dict(lg, checks=[{"file": "gx/ctest.log", "regex": ck["regex"], "stamp_file": "gx/stamp", "equals": [100, 0, 52]}]), tmp, acc)
+    bad += v != "INPUT_ERROR"
+    print(f"{'ok ' if v == 'INPUT_ERROR' else 'BAD'} log_regex INVALID ctest.exit, no exit_file  expected INPUT_ERROR got {v}")
     acc2 = dict(acc, gates=[dict(ss, pairs=[["A", "B", NB]])],
                 controls=[{"id": "c_missing", "like": "ss", "replace": {"pairs": [["A_nowhere", "B", NB]]}, "expect": "FAIL"},
                           {"id": "c_real", "like": "ss", "replace": {"pairs": [["A_small", "B_small", NB]]}, "expect": "PASS"}])
@@ -962,9 +981,16 @@ def lint_errors(acc):
         if bv.get("gpu", True) != gtok:
             errs.append(f"build {b}: 'gpu' {bv.get('gpu', True)} does not match its configure line (GPU checks would be skipped or misapplied)")
     for t in acc.get("ctests", []):
-        pin = [kv for kv in t.get("env", []) if kv.split("=")[0] in ("ONEAPI_DEVICE_SELECTOR", "ZE_AFFINITY_MASK", "OMP_TARGET_OFFLOAD", "CUDA_VISIBLE_DEVICES")]
+        pin = [kv for kv in t.get("env", []) if kv.split("=")[0] in ("ONEAPI_DEVICE_SELECTOR", "OMP_TARGET_OFFLOAD", "CUDA_VISIBLE_DEVICES") + DEVICE_ORDER_VARS]
         if pin:
             errs.append(f"ctest {t['id']}: {pin} declared (acc_ctest.sh sets or refuses these)")
+        gtok = any(x.startswith("GPU=") and x != "GPU=none" for x in t.get("configure", "").split())
+        if bool(t.get("gpu")) != gtok:
+            errs.append(f"ctest {t['id']}: 'gpu' {t.get('gpu')} does not match its configure line (load/lock checks)")
+    for where, obj in [("file", acc)] + [(f"build {k}", v) for k, v in builds.items()] + [(f"run {k}", v) for k, v in runs.items()]:
+        fl = obj.get("forbidden_lines", [])
+        if not isinstance(fl, list) or not all(isinstance(x, str) and x.strip() for x in fl):
+            errs.append(f"{where}: forbidden_lines must be a list of non-empty strings")
     if not draft:
         for c, v in configs.items():
             if "parameters_sha256" not in v:

@@ -40,13 +40,18 @@ commit. Raw outputs stay until the owner's gate.
 ## Acceptance file (schema `alf-acc/1`)
 - `ticket`, `candidate_sha` (`"self"`), `base_sha`, `created`, `_status`, `approvals` (owner quotes, dated), `machine`
   (`nividia` | `intel`), `gpu_exclusive`, `timeout_s`, `disk_min_free_GB`, `cpu_parallel`, `false_alarm_budget`,
-  `active_lines` (lines every GPU run must print), `blocked` (owner-decided BLOCKED items), `allowed_test_changes`.
-- `builds`: name → `tool`, `configure`, `flags_ext`, `gpu`, optional `active_lines` (replaces the file-wide list,
+  `active_lines` (lines every GPU run must print), `forbidden_lines` (lines no GPU run may print; also per build and
+  per run, all three levels apply together; ignored for CPU runs), `blocked` (owner-decided BLOCKED items),
+  `allowed_test_changes`.
+- `builds`: name → `tool`, `configure`, `flags_ext`, `gpu` (must match a `GPU=` token in `configure`; lint),
+  optional `forbidden_lines`, optional `active_lines` (replaces the file-wide list,
   e.g. for a base build without the new GPU path); names starting with `base_` build the base.
 - `configs`: name → `base` (from `configs.py`/`configs_stat.py`), `overrides`, `parameters_sha256` (required when frozen).
 - `runs`: id → `build`, `config`, `seeds` (`dev`, `accN`), `env`, `allow_debug`, `refcache`, and for debug runs
   only `active_lines` (replaces the build's/file's list, e.g. without the production line "GPU debug env: none").
-- `ctests`: `{id, tool, configure, regex, repeat, env, control, gpu, base}` (acc_ctest.sh); `gpunone`: true.
+- `ctests`: `{id, tool, configure, regex, repeat, env, control, gpu, base}` (acc_ctest.sh; `gpu` must match the
+  `GPU=` token; `env` may not hold offload or device variables); `gpunone`: true. A `log_regex` check on a ctest
+  directory also reads its `ctest.exit` (2 = INVALID) when the check names no `exit_file`.
 - `mutations` (`mutate.py` on run directories) and `log_mutations` (planted failures in harness logs).
 - `gates`: `{id, type, …, _reason}`; types `selftest`, `faults`, `same_seed`, `replay`, `paired`, `precision`,
   `compare2`, `log_regex`, `files_identical`.

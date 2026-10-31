@@ -29,11 +29,13 @@ TARH=$have
 env -i HOME="$HOME" USER="$USER" LANG=C LC_ALL=C PATH=/usr/bin:/bin TMPDIR="$TMPDIR" ALF_HDF5_DIR="$H5" \
     ALF_FLAGS_EXT="${ALF_FLAGS_EXT:-}" LOGC=$C/logs/conf_$NAME.log LOGE=$C/logs/env_$NAME.txt LOGM=$C/logs/make_$NAME.log \
     bash --noprofile --norc -c '
-  . "$1" > /dev/null 2>&1 || { echo "env file failed"; exit 2; }; shift
-  cd "$0" || exit 2
-  . ./configure.sh "$@" NO-INTERACTIVE > "$LOGC" 2>&1 || { echo "configure failed: $LOGC"; exit 3; }
-  env | grep "^ALF_" | sort > "$LOGE"
-  make -j4 program > "$LOGM" 2>&1 || { echo "make failed: $LOGM"; exit 4; }' "$T" "$ENVF" "$@"
+  # readonly copies (an env file may reset the positionals); NO-FALLBACK: never a silent default (CPU) machine
+  readonly __acc_t="$0" __acc_envf="$1" __acc_logc="$LOGC" __acc_loge="$LOGE" __acc_logm="$LOGM"; readonly -a __acc_args=("${@:2}")
+  . "$__acc_envf" > /dev/null 2>&1 || { echo "env file failed"; exit 2; }
+  builtin cd "$__acc_t" || exit 2
+  . ./configure.sh "${__acc_args[@]}" NO-FALLBACK NO-INTERACTIVE > "$__acc_logc" 2>&1 || { echo "configure failed: $__acc_logc"; exit 3; }
+  command env | command grep "^ALF_" | command sort > "$__acc_loge"
+  make -j4 program > "$__acc_logm" 2>&1 || { echo "make failed: $__acc_logm"; exit 4; }' "$T" "$ENVF" "$@"
 rc=$?; [ $rc = 0 ] || exit $rc
 if grep -q -i -E "download|wget|curl" $C/logs/conf_$NAME.log; then echo "configure tried to download (HDF5 for this compiler missing in $H5)"; exit 3; fi
 cp "$T/Prog/ALF.out" "$B" && chmod a-w "$B" || exit 5

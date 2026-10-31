@@ -58,21 +58,24 @@ LOCK=(); [ "$GPUB" = 1 ] && [ -n "${ACC_GPU_LOCK:-}" ] && LOCK=(flock "$ACC_GPU_
 date -Is > start.txt
 "${LOCK[@]}" env -i HOME="$HOME" USER="$USER" LANG=C LC_ALL=C PATH=/usr/bin:/bin TMPDIR="$D/tmp" $OFF "${ENVX[@]}" \
   bash --noprofile --norc -c '
-  # copied into readonly names: an env file may reset the positionals or reuse short variable names
-  readonly __acc_bin="$0" __acc_envf="$1" __acc_t="$2" __acc_sel="$3" __acc_dir="$4"
-  __acc_no() { echo "$1" | tee "$__acc_dir/refused.txt" >&2; exit 2; }
+  # copied into readonly names: an env file may reset the positionals or reuse short variable names; builtin/command
+  # so that functions the env file defines cannot stand in for export, cd, env or grep
+  readonly __acc_bin="$0" __acc_envf="$1" __acc_t="$2" __acc_sel="$3" __acc_dir="$4" __acc_off="$5"
+  __acc_no() { builtin echo "$1" | command tee "$__acc_dir/refused.txt" >&2; builtin exit 2; }
+  readonly -f __acc_no
   . "$__acc_envf" > "$__acc_dir/env_file.log" 2>&1 || __acc_no "env file failed: $__acc_envf"
-  cd "$__acc_dir" || exit 2
+  command grep -q "readonly variable\|readonly function\|cannot unset" "$__acc_dir/env_file.log" && __acc_no "env file tried to change the harness variables: refusing"
+  builtin cd "$__acc_dir" || __acc_no "cannot return to the run directory"
+  [ -n "$__acc_off" ] && builtin export "$__acc_off"   # GPU builds: offload MANDATORY after the env file too
   if [ -n "$__acc_sel" ]; then   # GPU=intel: pin the device after the env file, so the env file cannot override it
-    for __acc_v in ZE_AFFINITY_MASK ZE_ENABLE_PCI_ID_DEVICE_ORDER ZE_FLAT_DEVICE_HIERARCHY SYCL_DEVICE_FILTER; do
-      [ -n "${!__acc_v+x}" ] && __acc_no "env file sets $__acc_v: refusing (device pinning)"
-    done
-    export "$__acc_sel"
+    [ -n "${ZE_AFFINITY_MASK+x}${ZE_ENABLE_PCI_ID_DEVICE_ORDER+x}${ZE_FLAT_DEVICE_HIERARCHY+x}${SYCL_DEVICE_FILTER+x}" ] && \
+      __acc_no "env file sets ZE_AFFINITY_MASK, ZE_ENABLE_PCI_ID_DEVICE_ORDER, ZE_FLAT_DEVICE_HIERARCHY or SYCL_DEVICE_FILTER: refusing (device pinning)"
+    builtin export "$__acc_sel"
     [ "$ONEAPI_DEVICE_SELECTOR" = level_zero:0 ] || __acc_no "device selector not in effect: refusing"
   fi
-  export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
-  env | sort > env.txt
-  exec timeout -k 30 "$__acc_t" "$__acc_bin" > run.log 2>&1' "$BIN" "$ENVF" "$T" "$SEL" "$D"
+  builtin export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+  command env | command sort > env.txt
+  exec timeout -k 30 "$__acc_t" "$__acc_bin" > run.log 2>&1' "$BIN" "$ENVF" "$T" "$SEL" "$D" "$OFF"
 rc=$?
 date -Is > end.txt
 GPUCK2=-1
