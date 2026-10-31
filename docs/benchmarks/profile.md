@@ -21,7 +21,8 @@ Mz Hubbard, L=20 (N=400), U=4, Beta=2, Dtau=0.1 (Ltrot=20), Ltau=0, LOBS_ST=LOBS
   - hopping/interaction wraps: `Hop_mod_*`, `Op_mmult*`, `Op_wrapup/do` (the `ZSCAL`), `RealExpOpt_*`/`ZDSLSYMM`;
   - stabilisation: `CGR`, `QDRP_decompose` (ZGEQP3), `Decompose_UDV_state`, `WRAPUR`/`WRAPUL` self time, `det_c`;
   - measurements: `Obser`/Hamiltonian observables; other: remainder.
-- The raw `sample` files are in `runs/bench/` (not committed).
+- The raw `sample` files are in `runs/bench/` (not committed); the output of `profile_samples.py` on them (the sample counts behind the
+  table below) is committed as `raw_profile_tables.txt`.
 
 ## Time fractions in the sweep phase
 
@@ -60,5 +61,5 @@ This is outside the timed region and unrelated to the local update, but it domin
 
 THREADS=8 at L=20, N_delay=32 (see `ndelay_scan.md`, section "Multithreaded comparison"; raw `raw_threads.txt`):
 standard 2.596, delayed 1.185, submatrix 1.121 s/sweep, versus 2.592 / 1.178 / 1.121 with one thread. There is no gain from
-8 threads for any scheme (the reason was not investigated; the dominant calls are 400 x 400 or smaller BLAS/LAPACK calls, for which
-vecLib evidently does not use more threads), so the speedups at 8 threads are the same as at 1 thread: 2.19 (delayed) and 2.32 (submatrix).
+8 threads for any scheme (the reason was not investigated; the dominant calls are 400 x 400 or smaller BLAS/LAPACK calls, which vecLib may not
+thread), so the speedups at 8 threads are the same as at 1 thread: 2.19 (delayed) and 2.32 (submatrix).

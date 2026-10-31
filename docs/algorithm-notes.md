@@ -206,4 +206,5 @@ No unresolved mismatches.
 * None in the formulas. Implementation choices (diagonal-only eligibility, flush on a repeated site) are in the design spec.
 * Recommended block sizes from the papers: [SX-D] `k·n_d = 2^λ`, `λ = max(6, [log2(N/20)])`.
   [SX-S] `λ = [log2(N/12)]`. These are tuned for their platforms. Our scan (Phase 5, `docs/benchmarks/ndelay_scan.md`, Mz Hubbard L=12 and L=20 on an M1 Pro)
-  gives a flat optimum at N_delay = 16-64 for both schemes at both sizes, with 32 best or within noise of best; the default is 32 for all N.
+  finds the lowest time at N_delay = 16 (L=12) and 32 (L=20) for both schemes (within the 2.3 % noise: 16-32 at L=12, 32-64 at L=20);
+  the default is the single value 32, chosen for N = 144-400 and untested outside that range.
