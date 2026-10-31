@@ -52,7 +52,7 @@ Module QMC_runtime_var
         Integer :: Nt_sequential_start, Nt_sequential_end, mpi_per_parameter_set
         Integer :: N_Global_tau
         Logical :: Sequential
-        Character (len=64) :: Sequential_scheme  !  "standard", "delayed" or "submatrix"; validated in Lowrank_init
+        Character (len=64) :: Sequential_scheme  !  "standard", "delayed" or "submatrix"; validated in validate_sequential_scheme and Lowrank_init
         Integer :: N_delay                        !  max pending accepted vertices before a flush (delayed/submatrix)
         real (Kind=Kind(0.d0)) ::  Amplitude  !    Needed for  update of  type  3  and  4  fields.
 
