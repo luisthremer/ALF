@@ -40,6 +40,9 @@
 !> interaction on every nearest-neighbour bond,
 !>   H = -t sum_<ij>,s c^dag_{is} c_{js}  - mu N  + U sum_i (n_{i,up}-1/2)(n_{i,do}-1/2)
 !>       + Jz sum_<ij> S^z_i S^z_j,      S^z_i = (n_{i,up} - n_{i,do})/2.
+!> Note: the Predefined_Int_Jz decomposition simulates -(|Jz|/2) (S^z_i - sgn(Jz) S^z_j)^2 per bond, i.e. the Jz term
+!> above plus on-site (S^z_i)^2 terms (an effective shift of U by about Jz per bond pair); Pot and Ener measure the H
+!> written above only, not that extra term. Irrelevant for the scheme comparisons this model exists for.
 !> The on-site term uses Predefined_Int_U_MZ (diagonal rank-1 vertices). The bond term uses Predefined_Int_Jz
 !> (type 2, N_P = 2 multi-site vertices acting on sites i and j, one per nearest-neighbour bond;
 !> O = diag(1, -sgn Jz), alpha = 0, g = +-sqrt(dtau |Jz| / 8) for the two flavours).
@@ -422,7 +425,6 @@
 
 
           Zkin = cmplx(0.d0, 0.d0, kind(0.D0))
-          Zkin = Zkin* dble(N_SUN)
           Do I = 1,Latt%N
              Ix = Latt%nnlist(I,1,0)
              Zkin = Zkin  + GRC(I,Ix,1)  + GRC(Ix,I,1)  &
