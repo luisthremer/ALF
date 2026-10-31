@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit checks of collect.py's parsers on fixtures: every N_delay info format, timers.txt (T1), duplicate keys.
+"""Unit checks of collect.py's parsers on fixtures: every N_delay info format, timers.txt (real T1 sample), duplicate keys.
 Run: python3 -I testsuite/lowrank/campaign/tests/test_collect.py   (prints one line per check, exit 0 iff all pass)"""
 import os
 import sys
@@ -61,17 +61,34 @@ check("tolerant spacing", collect.parse_ndelay("Sequential scheme:delayed ,N_del
       == ("DELAYED", "auto+tune", 32, 16, 64))
 
 t = collect.parse_timers(os.path.join(FIX, "timers.txt"))
-check("timers parse", t["rate"] == 1e9 and t["sweeps"]["2"] == 10 and t["timers"]["3"]["T_STAB"]["max"] == 3e8)
-cat, cnt = report.split_per_sweep(t)
-check("timing split drops bin 1, uses max/rate", abs(cat["T_SWEEP"] - (0.82 + 0.8) / 20) < 1e-12
-      and abs(cat["T_UPDATE"] - (0.41 + 0.4) / 20) < 1e-12 and abs(cnt["proposals"] - 256.0) < 1e-12, str(cat))
+check("timers header (T1 format, # comments skipped)", t["rate"] == 1e9 and t["clock"] == "system_clock"
+      and t["ranks"] == 1 and t["tick"] == 1e-6 and t["sweeps"] == {"1": 140, "2": 140, "3": 140}, str(t["sweeps"]))
+check("timers values in seconds", t["timers"]["2"]["stab"]["max"] == 10.664966 and t["timers"]["1"]["sweep"]["rank0"] == 17.570315)
+check("timers counters (integer rank0/max, real mean)", t["counters"]["2"]["accepts"]["max"] == 349337
+      and abs(t["counters"]["1"]["flush_rank_mean"]["mean"] - 26.51377337) < 1e-9)
+check("real sample: sweep = sum of the nine, flush_unattributed = 0: no warnings", t["warnings"] == [], str(t["warnings"]))
+val, cnt = report.split_per_sweep(t)
+e2, e3 = t["timers"]["2"], t["timers"]["3"]
+check("timing split drops bin 1 (bins 2, 3 / 280 sweeps)",
+      abs(val["sweep"] - (e2["sweep"]["mean"] + e3["sweep"]["mean"]) / 280) < 1e-12
+      and abs(val["stab"] - (e2["stab"]["mean"] + e3["stab"]["mean"]) / 280) < 1e-12, str(val))
+check("nine categories add up to sweep", abs(sum(val[c] for c in report.CATEGORIES) - val["sweep"]) < 1e-9)
+check("bin_overhead separate, not in sweep", "bin_overhead" in val and "bin_overhead" not in report.CATEGORIES)
+check("counters per sweep; flush_rank_mean averaged over bins", abs(cnt["proposals"] - 5760.0) < 1e-9
+      and abs(cnt["flush_rank_mean"] - (26.44889461 + 26.49889461) / 2) < 1e-6, str(cnt))
+t = collect.parse_timers(os.path.join(FIX, "timers_restart.txt"))
+check("restart: two header blocks, last kept, warning", t["sweeps"]["1"] == 140 and len(t["warnings"]) == 1
+      and "2 header blocks" in t["warnings"][0], str(t["warnings"]))
+t = collect.parse_timers(os.path.join(FIX, "timers_unattributed.txt"))
+check("flush_unattributed != 0 is flagged", t["flush_unattributed_max"] == 3
+      and any("flush_unattributed = 3" in w for w in t["warnings"]), str(t["warnings"]))
 
 with tempfile.TemporaryDirectory() as tmp:
     p = os.path.join(tmp, "x.prov")
     open(p, "w").write("a=1\nb=2\na=3\n")
     check("duplicate key in .prov is an error", raises(collect.read_prov, p) is not None)
     p2 = os.path.join(tmp, "t.txt")
-    open(p2, "w").write("TIMER 2 T_SWEEP 1 2 3\nTIMER 2 T_SWEEP 1 2 3\n")
+    open(p2, "w").write("TIMER_RATE 1000000000\nTIMER 2 sweep 1 2 3\nTIMER 2 sweep 1 2 3\n")
     check("duplicate timer line is an error", raises(collect.parse_timers, p2) is not None)
 
 # --strict rules (strict_problems): generic unavailable values, cluster-only rules, --allow

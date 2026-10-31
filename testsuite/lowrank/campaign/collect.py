@@ -5,7 +5,8 @@ Usage: python3 -I collect.py CAMPAIGN_DIR [--out FILE.json] [--strict [--allow K
 
 One row per run of campaign.json, from the latest attempt runs/<id>/<latest>/: run.prov, the job's job.prov, info
 (CPU Time, Acceptance, Precision, commit, START/FIN TIME, Sequential scheme / N_delay in every format) and timers.txt
-(T1 format; "absent" if the binary was built without -DALF_TIMERS). Exit 1 if an OK run lacks a required key, a .prov
+(T1 format, see parse_timers; "absent" if the binary was built without -DALF_TIMERS; warnings for a restart block,
+sweep != sum of the nine categories, flush_unattributed != 0, or sweep + bin_overhead off info's CPU Time by > 1 %). Exit 1 if an OK run lacks a required key, a .prov
 file repeats a key, a run appears twice, or the job script's sha256 differs from campaign.json. Runs whose status is
 not OK (FAILED, INVALID pinning, or info contradicting the request) are excluded from the statistics and listed with the
 reason; runs never started are listed as missing. --strict also fails on any required field reading "unknown" or
@@ -143,30 +144,78 @@ def parse_info(path):
     return d
 
 
+TIMER_CATEGORIES = ("update", "flush", "vwrap", "hop", "stab", "meas", "global", "langevin_hmc", "other")
+TIMER_TOTAL = "sweep"                 # inclusive body of the sweep loop = sum of the nine exclusive categories
+TIMER_EXTRA = ("bin_overhead",)       # per-bin wall time outside the sweeps (not part of sweep)
+
+
 def parse_timers(path):
-    """T1 format: TIMER <bin> <id> <rank0> <max> <mean>; COUNTER <bin> <name> <rank0> <max> <mean>;
-    TIMER_SWEEPS <bin> <n>; TIMER_RATE <count_rate>."""
-    t = {"timers": {}, "counters": {}, "sweeps": {}, "rate": None}
+    """timers.txt of a -DALF_TIMERS binary (T1, Prog/Timers_mod.F90; testsuite/lowrank/README.md):
+    '#' comment lines; header TIMER_RATE <count_rate>, TIMER_CLOCK <name>, TIMER_RANKS <n>, TIMER_TICK <s>; per bin
+    TIMER_SWEEPS <bin> <n>, TIMER <bin> <id> <rank0> <max> <mean> (seconds, ES format) for the nine exclusive categories,
+    sweep and bin_overhead, COUNTER <bin> <name> <rank0> <max> <mean> (rank0/max integers, mean real; flush_rank_mean all
+    real). A second header (TIMER_RATE after bin data: a restart in the same directory, the file is appended) starts a
+    new block; the last block is kept and a warning recorded. Checks (warnings, not errors): sweep = sum of the nine per
+    bin (rank0 and mean, within 1e-6 relative + 2 ticks per category), flush_unattributed = 0."""
+    blocks, cur = [], None
     for n, line in enumerate(open(path), 1):
         w = line.split()
-        if not w:
+        if not w or w[0].startswith("#"):
             continue
         try:
-            if w[0] in ("TIMER", "COUNTER") and len(w) == 6:
+            if w[0] == "TIMER_RATE" and len(w) == 2:
+                cur = {"timers": {}, "counters": {}, "sweeps": {}, "rate": _num(w[1]), "clock": None, "ranks": None,
+                       "tick": None, "first_line": n}
+                blocks.append(cur)
+                continue
+            if cur is None:
+                raise CollectError("%s:%d: data before the TIMER_RATE header: %r" % (path, n, line.rstrip()))
+            if w[0] == "TIMER_CLOCK" and len(w) == 2:
+                cur["clock"] = w[1]
+            elif w[0] == "TIMER_RANKS" and len(w) == 2:
+                cur["ranks"] = int(w[1])
+            elif w[0] == "TIMER_TICK" and len(w) == 2:
+                cur["tick"] = _num(w[1])
+            elif w[0] in ("TIMER", "COUNTER") and len(w) == 6:
                 key = "timers" if w[0] == "TIMER" else "counters"
-                b = t[key].setdefault(w[1], {})
+                b = cur[key].setdefault(w[1], {})
                 if w[2] in b:
                     raise CollectError("%s:%d: duplicate %s %s in bin %s" % (path, n, w[0], w[2], w[1]))
-                b[w[2]] = {"rank0": _num(w[3]), "max": _num(w[4]), "mean": _num(w[5]),
-                           "is_count": all(re.match(r"^-?\d+$", x) for x in w[3:6])}
+                b[w[2]] = {"rank0": _num(w[3]), "max": _num(w[4]), "mean": _num(w[5])}
             elif w[0] == "TIMER_SWEEPS" and len(w) == 3:
-                t["sweeps"][w[1]] = int(w[2])
-            elif w[0] == "TIMER_RATE" and len(w) == 2:
-                t["rate"] = _num(w[1])
+                if w[1] in cur["sweeps"]:
+                    raise CollectError("%s:%d: duplicate TIMER_SWEEPS for bin %s" % (path, n, w[1]))
+                cur["sweeps"][w[1]] = int(w[2])
             else:
                 raise CollectError("%s:%d: unknown line %r" % (path, n, line.rstrip()))
         except ValueError:
             raise CollectError("%s:%d: bad number in %r" % (path, n, line.rstrip()))
+    if not blocks:
+        raise CollectError("%s: no TIMER_RATE header" % path)
+    t = blocks[-1]
+    t["warnings"] = []
+    if len(blocks) > 1:
+        t["warnings"].append("%s has %d header blocks (restart in the same directory?): kept the last one (from line %d)"
+                             % (os.path.basename(path), len(blocks), t["first_line"]))
+    tick = t["tick"] or 0.0
+    for b in sorted(t["timers"], key=int):
+        e = t["timers"][b]
+        missing = [k for k in TIMER_CATEGORIES + (TIMER_TOTAL,) + TIMER_EXTRA if k not in e]
+        if missing:
+            raise CollectError("%s: bin %s lacks TIMER %s" % (path, b, ",".join(missing)))
+        if b not in t["sweeps"]:
+            raise CollectError("%s: bin %s has no TIMER_SWEEPS line" % (path, b))
+        for col in ("rank0", "mean"):
+            tot = sum(e[k][col] for k in TIMER_CATEGORIES)
+            if abs(tot - e[TIMER_TOTAL][col]) > 1e-6 * abs(e[TIMER_TOTAL][col]) + 2 * len(TIMER_CATEGORIES) * tick + 1e-12:
+                t["warnings"].append("bin %s: sum of the nine categories %.9g != sweep %.9g (%s)"
+                                     % (b, tot, e[TIMER_TOTAL][col], col))
+    for b, c in sorted(t["counters"].items(), key=lambda x: int(x[0])):
+        u = c.get("flush_unattributed")
+        if u is not None and (u["rank0"] != 0 or u["max"] != 0):
+            t["warnings"].append("bin %s: flush_unattributed = %g (max %g), must be 0" % (b, u["rank0"], u["max"]))
+    t["flush_unattributed_max"] = max([c["flush_unattributed"]["max"] for c in t["counters"].values()
+                                       if "flush_unattributed" in c] or [0])
     return t
 
 
@@ -255,6 +304,14 @@ def collect(cdir, strict=False, allow=()):
         tpath = os.path.join(adir, "timers.txt")
         row["timers_present"] = "present" if os.path.exists(tpath) else "absent"
         row["timers"] = parse_timers(tpath) if os.path.exists(tpath) else None
+        if row["timers"]:
+            for w in row["timers"]["warnings"]:
+                warnings.append("%s: timers: %s" % (rid, w))
+            tsum = sum(e[TIMER_TOTAL]["rank0"] + e["bin_overhead"]["rank0"] for e in row["timers"]["timers"].values())
+            row["timers_vs_cpu_time"] = tsum / info["cpu_time_s"] if info["cpu_time_s"] else None
+            if row["timers_vs_cpu_time"] is not None and abs(row["timers_vs_cpu_time"] - 1.0) > 0.01:
+                warnings.append("%s: timers: sum of sweep + bin_overhead over bins = %.4g x info's CPU Time (expected "
+                                "within 1 %%)" % (rid, row["timers_vs_cpu_time"]))
         # consistency of the run with its request: excluded (listed), not fatal
         problems = []
         if info["scheme_used"] != req["scheme"].upper():

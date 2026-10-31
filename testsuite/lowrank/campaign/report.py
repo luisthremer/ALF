@@ -12,8 +12,9 @@ Tables:
      speedup vs the standard scheme (same point, L, layout, config), N_delay used, median setup time and max RSS (an
      upper bound, marked "<=", where only the job-level sacct value exists);
   2. layouts: node throughput = ranks / (s per sweep) (sweeps per second per node, all ranks counted) per layout;
-  3. timing split (runs with timers.txt): s/sweep per category over bins >= 2 (bin 1 dropped), slowest rank (max column),
-     median over repetitions, share of T_SWEEP; counters per sweep (mean over ranks).
+  3. timing split (runs with a T1 timers.txt): s/sweep of the nine exclusive categories over bins >= 2 (bin 1 dropped),
+     mean over ranks, median over repetitions, share of `sweep` (their sum); `sweep` of the slowest rank and
+     `bin_overhead` shown separately (not categories); counters per sweep; flush_unattributed != 0 flagged.
 Excluded (FAILED / INVALID) and missing runs are listed with their status.
 """
 import hashlib
@@ -50,24 +51,30 @@ def single(rows, key, what):
     return vals[0] if vals else "-"
 
 
-def timer_seconds(entry, rate):
-    v = entry["max"]
-    return v / rate if entry["is_count"] and rate else v
+CATEGORIES = ("update", "flush", "vwrap", "hop", "stab", "meas", "global", "langevin_hmc", "other")
 
 
 def split_per_sweep(t):
-    """category -> s/sweep over bins >= 2 (bin 1 dropped), slowest rank; counters -> per sweep (mean over ranks)."""
+    """T1 timers.txt (collect.parse_timers) -> (per-sweep values, counters per sweep).
+    Bins >= 2 only (bin 1 holds setup / Lowrank_init). Values: seconds per sweep from the 'mean' column (mean over
+    ranks: the nine exclusive categories add up to 'sweep' exactly, so shares are consistent) plus 'sweep_max' (slowest
+    rank's sweep) and 'bin_overhead' (outside the sweeps, not a category). Counters: per sweep (mean over ranks), except
+    flush_rank_mean, which is averaged over the bins."""
     bins = sorted((b for b in t["sweeps"] if int(b) >= 2), key=int)
     sweeps = sum(t["sweeps"][b] for b in bins)
     if not sweeps:
         return {}, {}
-    cat, cnt = defaultdict(float), defaultdict(float)
+    val, cnt = defaultdict(float), defaultdict(float)
     for b in bins:
-        for k, e in t["timers"].get(b, {}).items():
-            cat[k] += timer_seconds(e, t["rate"])
-        for k, e in t["counters"].get(b, {}).items():
-            cnt[k] += e["mean"]
-    return {k: v / sweeps for k, v in cat.items()}, {k: v / sweeps for k, v in cnt.items()}
+        e = t["timers"][b]
+        for k in CATEGORIES + ("sweep", "bin_overhead"):
+            val[k] += e[k]["mean"]
+        val["sweep_max"] += e["sweep"]["max"]
+        for k, c in t["counters"].get(b, {}).items():
+            cnt[k] += c["mean"]
+    out = {k: v / sweeps for k, v in val.items()}
+    cnts = {k: (v / len(bins) if k == "flush_rank_mean" else v / sweeps) for k, v in cnt.items()}
+    return out, cnts
 
 
 def main(argv):
@@ -160,24 +167,37 @@ def main(argv):
                     "median s/sweep", "node sweeps/s"], T))
     L.append("")
 
-    L.append("## 3. Timing split (bins >= 2, slowest rank, median over repetitions)")
+    L.append("## 3. Timing split (T1 timers.txt; bins >= 2; median over repetitions)")
     L.append("")
-    T = []
+    T, C, flagged = [], [], []
     for k, g in groups.items():
-        splits = [split_per_sweep(x["timers"]) for x in g if x.get("timers")]
+        runs_t = [x for x in g if x.get("timers")]
+        splits = [split_per_sweep(x["timers"]) for x in runs_t]
         splits = [s for s in splits if s[0]]
         if not splits:
             continue
-        cats = sorted(set(c for s in splits for c in s[0]))
-        tot = statistics.median(s[0].get("T_SWEEP", 0.0) for s in splits)
-        for c in cats:
-            v = statistics.median(s[0].get(c, 0.0) for s in splits)
+        flagged += ["%s (flush_unattributed max %g)" % (x["run_id"], x["timers"]["flush_unattributed_max"])
+                    for x in runs_t if x["timers"].get("flush_unattributed_max")]
+        tot = statistics.median(s[0]["sweep"] for s in splits)
+        for c in CATEGORIES:
+            v = statistics.median(s[0][c] for s in splits)
             T.append(list(k) + [len(splits), c, v, "%.1f %%" % (100 * v / tot) if tot else "-"])
+        T.append(list(k) + [len(splits), "**sweep** (sum of the nine)", tot, "100 %"])
+        T.append(list(k) + [len(splits), "sweep, slowest rank", statistics.median(s[0]["sweep_max"] for s in splits), "-"])
+        T.append(list(k) + [len(splits), "bin_overhead (outside the sweeps)",
+                            statistics.median(s[0]["bin_overhead"] for s in splits), "-"])
         for c in sorted(set(c for s in splits for c in s[1])):
-            T.append(list(k) + [len(splits), "counter " + c, statistics.median(s[1].get(c, 0.0) for s in splits),
-                                "per sweep"])
+            C.append(list(k) + [len(splits), c, statistics.median(s[1].get(c, 0.0) for s in splits),
+                                "mean over bins" if c == "flush_rank_mean" else "per sweep"])
     if T:
+        L.append("Seconds per sweep, mean over ranks (the nine exclusive categories add up to `sweep`); share = of `sweep`.")
+        L.append("")
         L.append(table(["point", "L", "layout", "scheme", "N_delay req", "config", "n", "category", "s/sweep", "share"], T))
+        L.append("")
+        L.append(table(["point", "L", "layout", "scheme", "N_delay req", "config", "n", "counter", "value", "unit"], C))
+        L.append("")
+        L.append("**flush_unattributed != 0 (timer attribution bug, must be 0): %s**" % ", ".join(flagged) if flagged
+                 else "flush_unattributed = 0 in every run.")
     else:
         L.append("No run has a timers.txt (binary built without -DALF_TIMERS): timing split absent.")
     L.append("")
