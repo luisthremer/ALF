@@ -16,7 +16,8 @@
   eps:1e-12); supersedes the first pre-registration `0e427164`. T0, candidate 1 `08b095b4`, review (a), T1 (PASS) and
   T2 (compare2 INCONCLUSIVE) done, see the record below. Next: review (b) of the decision-28 re-registration, record its
   PREREG_SHA, candidate 2 = the code of `08b095b4` merged onto the new PREREG (code-identical up to `docs/**` and
-  `302b.json`, checked with `git diff`; so review (a) and T1 stand, as for 212's `8022c4b0`), T2 on fresh seeds.
+  `302b.json`, checked with `git diff`; so review (a) and T1 stand, as for 212's `8022c4b0`; T1 of candidate 1 ran the 120 × 30 file, compare2 then PASS),
+  T2 on fresh seeds.
 
 ## Goal
 With `GPU=intel` (ifx 2026.2 OpenMP offload, spir64 JIT, plus the 302a oneMKL backend), the 204 wraps (checkerboard and
@@ -186,7 +187,7 @@ single global timeout.
 | precision (3 runs) | 30 min | 45 min | 90 min |
 | c2_gpu (120 × 60, decision 28: 212's 120 × 30 doubled) | 36 min | 54 min | 108 min |
 | ctests (4) | – | ~5 min | ~8 min |
-| **per tier (T1 or T2)** | **~104 min** | **~170 GPU-min** | **~335 GPU-min** |
+| **per tier (T1 or T2)** | **~122 min** | **~197 GPU-min** | **~389 GPU-min** |
 
 - The nividia part takes ~7 GPU-min per tier (6 CUDA runs: 4 identity runs, the refusal run and its 200-bin 6×6
   control `acc_la_cuda`, ~70 s on the A30) plus CPU builds and ctest (decision 11 budget on nividia).
@@ -209,9 +210,10 @@ single global timeout.
   observable under-resolved iff the last doubling (f = 4 → 8, N = 29 → 14 at 120 bins) grows the error by more than
   1 + 1.5/√26. On synthetic uncorrelated 120-bin series (40000 trials, the shipped `compare2.py`) that happens in 1.2 %
   of runs per observable (2.6 % at lag-1 correlation 0.3), independent of NSweep. With 11 observables in 2 runs a
-  compare2 is INCONCLUSIVE by chance in up to ~24 % of T2s (fewer with correlated observables); the file's earlier
-  "~1 %" was wrong. Decision 28 removes a real autocorrelation of the size seen for `Kin`, not this rate.
-- **Fixed before T2 (decision 28 re-registration):** if compare2 is INCONCLUSIVE again, work stops; no re-run, no
+  compare2 is INCONCLUSIVE by chance in up to ~24 %; with the null control `c_compare2_null` (a third compare2,
+  11 observables × 3 runs in all) a T2 fails by chance in up to ~33 % (fewer with correlated observables). The file's
+  earlier "~1 %" was wrong, and the rate exceeds `false_alarm_budget` 0.04: an owner item before the freeze. Decision 28 removes a real autocorrelation of the size seen for `Kin`, not this rate.
+- **Fixed before T2 (decision 28 re-registration):** if compare2 or `c_compare2_null` is INCONCLUSIVE, work stops; no re-run, no
   further length change by the manager; the manager returns to the owner with the numbers. VERIFICATION.md §6 asks for
   ≥ 30 independent bins while `min_bins` 8 admits 14; information for the owner, unchanged here.
 
