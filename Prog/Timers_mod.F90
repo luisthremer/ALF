@@ -1,4 +1,4 @@
-!  Copyright (C) 2016 - 2022 The ALF Project
+!  Copyright (C) 2026 The ALF project
 !
 !  This file is part of the ALF project.
 !
@@ -14,6 +14,24 @@
 !
 !  You should have received a copy of the GNU General Public License
 !  along with ALF.  If not, see http://www.gnu.org/licenses/.
+!
+!     Under Section 7 of GPL version 3 we require you to fulfill the following additional terms:
+!
+!     - It is our hope that this program makes a contribution to the scientific community. Being
+!       part of that community we feel that it is reasonable to require you to give an attribution
+!       back to the original authors if you have benefitted from this program.
+!       Guidelines for a proper citation can be found on the project's homepage
+!       http://alf.physik.uni-wuerzburg.de .
+!
+!     - We require the preservation of the above copyright notice and this license in all original files.
+!
+!     - We prohibit the misrepresentation of the origin of the original source files. To obtain
+!       the original source files please visit the homepage http://alf.physik.uni-wuerzburg.de .
+!
+!     - If you make substantial changes to the program we require you to either consider contributing
+!       to the ALF project or to mark your material in a reasonable way as different from the original version.
+!
+!  New file of the delayed/submatrix research branch (feature/delayed-submatrix, 2026): benchmark timing split.
 
 !--------------------------------------------------------------------
 !> @brief
