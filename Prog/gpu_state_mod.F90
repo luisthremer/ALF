@@ -110,9 +110,7 @@ Module gpu_state_mod
   Use QMC_runtime_var
   Use Hop_mod
   Use Mat_subroutines
-#if !defined(ALF_LA_ONEMKL)
   Use alf_la_mod, only: la_init, la_finalize
-#endif
 
   Implicit none
 
@@ -221,8 +219,10 @@ Contains
           If (l <= 512) entry(l:l) = c
           If (c == '=' .and. ie == 0) ie = l
        Else
-          ! entry(1:l) is ALF_GPU_<name>=<non-empty value>: never dropped; if it does not fit, the run is refused
-          If (l >= 9 .and. ie > 0 .and. ie < l .and. entry(1:min(l,8)) == 'ALF_GPU_') then
+          ! entry(1:l) is ALF_GPU_<name>=<non-empty value> or ALF_LA_TEST_<name>=<non-empty value> (ticket 302b: the alf_la
+          ! test hooks are debug variables too): never dropped; if it does not fit, the run is refused
+          If (l >= 9 .and. ie > 0 .and. ie < l .and. (entry(1:min(l,8)) == 'ALF_GPU_' .or. &
+               & (l >= 13 .and. entry(1:min(l,12)) == 'ALF_LA_TEST_'))) then
              If (ie >= 2 .and. ie <= 49 .and. env_n < ENV_MAX) then
                 env_n = env_n + 1
                 env_name(env_n) = entry(1:ie-1)
@@ -230,7 +230,7 @@ Contains
              Else
                 bad = entry(1:min(ie-1,48))
                 Call env_fail('GPU debug env refused: '//trim(bad)// &
-                     & ' (name too long or too many ALF_GPU_ variables)')
+                     & ' (name too long or too many ALF_GPU_/ALF_LA_TEST_ variables)')
              Endif
           Endif
           l = 0; ie = 0
@@ -574,9 +574,7 @@ Contains
     nsigma_t = nsigma_in%t
     call alloc_buffers()
     call map_to_device()
-#if !defined(ALF_LA_ONEMKL)
     call la_init()      ! alf_la once, after the OpenMP runtime owns the device (ticket 205; was lazy in gpu_wrap_mod)
-#endif
     gpu_active = .true.
     call system_clock(c1)
     tsetup = real(c1-c0,kind(0.d0))/real(crate,kind(0.d0))
@@ -920,9 +918,7 @@ Contains
     Implicit none
     if (.not. gpu_active) return
     if (upd_cnt(10) > 0) call report_update_counts()
-#if !defined(ALF_LA_ONEMKL)
     call la_finalize()
-#endif
     if (have_tau) then
        !$omp target exit data map(delete: GT0_d, G0T_d, GTT_d)
        deallocate(GT0_d, G0T_d, GTT_d)

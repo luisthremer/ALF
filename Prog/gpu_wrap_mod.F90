@@ -95,11 +95,7 @@ Module gpu_wrap_mod
   Integer, Save :: gpu_vb = 8                 ! columns/rows per thread of the fused Op_V slice kernels
   Complex (Kind=Kind(0.d0)), Parameter :: z1 = (1.d0, 0.d0), z0 = (0.d0, 0.d0)
 
-#if defined(ALF_LA_ONEMKL)
-  Logical, Parameter :: la_available = .false.
-#else
   Logical, Parameter :: la_available = .true.
-#endif
 
 Contains
 

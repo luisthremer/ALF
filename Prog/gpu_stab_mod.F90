@@ -136,10 +136,6 @@ Contains
 
     gpu_stab_on = .false.
     if (.not. gpu_active) return
-#if defined(ALF_LA_ONEMKL)
-    call info_line('GPU stabilization (206): INACTIVE, the alf_la backend of GPU=intel is not implemented yet (ticket 302)')
-    return
-#else
     s_N = Ndim; s_nfe = N_FL_eff; s_nstm = NSTM
     allocate(s_nt(0:NSTM)); s_nt = Stab_nt
     n = s_N
@@ -170,7 +166,6 @@ Contains
     line = trim(line)//' in decompose and CGR (default)'
 #endif
     call info_line(line)
-#endif
   end subroutine gpu_stab_setup
 
   Subroutine gpu_stab_finalize()
