@@ -301,4 +301,10 @@ Command: `testsuite/lowrank/tiers.sh delayed 3` (summaries `runs/tiers_delayed_s
 | 9 | any | Polish without cluster: `files.tex`, `default_parameters_generic.py`, §7 notices | docs build; generator knows the keys |
 
 ## Open questions for the user (collected for the cluster request)
-- (none yet)
+1. Submatrix accuracy guard `K_ND = 8` (Task 5): once a submatrix block holds an accepted non-diagonal update, it is flushed
+   at min(N_delay, 8) pending sites. Without the guard the M-form's forward error reached 5e-10 (> TOL_UNIT 1e-10) in the
+   unit case rep_mixed (k = Ndim = 16, repeated non-diagonal updates); the numpy prototype shows the same loss, so it is a
+   property of the explicit k×k representation, not a bug. Cost: bond models (tV, Kondo-J, Z2 gauge, Spin-Peierls) flush
+   their submatrix blocks every ≤ 8 sites, so delayed will likely be the faster scheme there (D13 measures it). Alternatives
+   if you want fast submatrix for bond models: route non-diagonal blocks to the delayed form, or accept a looser unit
+   tolerance for those cases. I kept the conservative guard.
