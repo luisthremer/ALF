@@ -302,7 +302,10 @@ of [SX-S]; for a repeated site no flush is needed (project 1 flushed). `M̃ G0(S
 
 ### 12.5 Flush and capacity
 `Mw = M (E_S^T − G0(S,:))` (ZGEMM k×k×N), `G0 ← G0 − G0(:,S) Mw` (ZGEMM N×N×k, copy of `G0(:,S)` first).
-`k` counts padded sites.
+`k` counts padded sites. Accuracy guard (spec D15): once a block contains a non-diagonal accept or a non-diagonal
+hook transform, it is flushed at min(N_delay, K_ND = 8) pending sites. Reason: G = G0 − G0(:,S) M (…) cancels when
+|G0||M||G0| ≫ |G|; with many non-commuting updates in one block the forward error grew to 5e-10 in the unit case
+rep_mixed (k = Ndim = 16) — 3.8e-11 with the guard; the prototype `SubmatrixM` shows the same loss on an ill-conditioned G0.
 
 ### 12.6 Rejected alternative: Γ̃^{-1} and Q stored separately
 The first draft (2026-10-31) kept `Γ̃^{-1}` and Q with a bordering path (disjoint) and a Woodbury path (repeated
