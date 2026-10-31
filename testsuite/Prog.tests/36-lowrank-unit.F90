@@ -29,11 +29,11 @@
 ! (type-4 bonds, flip_protocol 2), nd_zero (O = (1 1; 1 1)/2: r = 1 < N_P), asym_rn (flavour 1 V_SUN,
 ! flavour 2 cycles through nd_zero, V_SUN with g = 0 and a diagonal N = 2 operator), gt_bonds (bonds with
 ! g_t), diag_e0 (diagonal N = 3 with one E = 0), bonds_skip (tv_bond with the skip mask), bonds_illcond
-! (tv_bond with the ill-conditioned similarity), rep_mixed (rank-1 and bonds revisiting sites within a
+! (tv_bond's structure at Ndim = 32 with the ill-conditioned similarity S = I + 0.2 R), rep_mixed (rank-1 and bonds revisiting sites within a
 ! slice), padcap (overlapping bonds only), bigop (diagonal N = 9 vertices: ineligible for both schemes).
 ! Between slices: flush, compare, then the same dense similarity G <- S G S^{-1} on every G,
-! S = I + 0.1 R / sqrt(Ndim) (R complex Gaussian). Cases mz_illcond / bonds_illcond use S = I + 0.1 R,
-! which drives cond(1+A) to ~1e8: deliberately hard cases with their own tolerance TOL_ILL.
+! S = I + 0.1 R / sqrt(Ndim) (R complex Gaussian). Cases mz_illcond / bonds_illcond use S = I + 0.1 R /
+! S = I + 0.2 R, which drive cond(1+A) to ~1e8: deliberately hard cases with their own tolerance TOL_ILL.
 !
 ! nsigma is global and shared by all engines: every engine call sees the OLD field, and
 ! the driver sets the field after the decision.
@@ -55,7 +55,7 @@ module lowrank_unit_harness
    use Random_Wrap
    use Lowrank_update_mod, only: Lowrank_init, Lowrank_finalize, Lowrank_propose, Lowrank_accept, &
         &                        Lowrank_wrap_hook, Lowrank_flush, Upgrade_lowrank, Lowrank_eligible, &
-        &                        Lowrank_pending
+        &                        Lowrank_pending, Lowrank_max_pending_cols
    implicit none
 
    integer, parameter :: dp = kind(0.d0)
@@ -69,7 +69,7 @@ module lowrank_unit_harness
 #endif
 
    ! Tolerances (see CLAUDE.md "Tolerances"): TOL_UNIT for the well-conditioned cases,
-   ! TOL_ILL for mz_illcond (cond(1+A) ~ 1e8, errors scale ~ cond * eps).
+   ! TOL_ILL for mz_illcond and bonds_illcond (cond(1+A) ~ 1e8, errors scale ~ cond * eps).
    real(dp), parameter :: TOL_UNIT = 1.0d-10
    real(dp), parameter :: TOL_ILL  = 1.0d-8
 
@@ -112,6 +112,10 @@ module lowrank_unit_harness
    real(dp), parameter :: Q_SCALE = 0.3d0     ! Q = I + Q_SCALE * R / sqrt(Ndim)
    real(dp), parameter :: S_SCALE = 0.1d0     ! S = I + S_SCALE * R / sqrt(Ndim)
                                               ! (mz_illcond: S = I + S_SCALE * R)
+   ! bonds_illcond: tv_bond's structure at Ndim = 32 with S = I + S_SCALE_BONDS_ILL * R. At Ndim = 16 with the
+   ! mz_illcond similarity (0.1) cond(1+A) reached only 7.9e5 (0.2-0.5: <= 2e7); Ndim = 32 with 0.2 gives
+   ! cond(1+A) = 6.8e7 (down) / 2.7e8 (up) at the last slice, the regime of mz_illcond (1.9e8).
+   real(dp), parameter :: S_SCALE_BONDS_ILL = 0.2d0
    ! Rank-N cases: couplings chosen so that cond(1+A) stays <= ~1e8 (the TOL_UNIT regime of the project-1
    ! cases); stronger real couplings on many overlapping bonds drive cond(1+A) to 1e10-1e16 within 3 slices,
    ! where the double-precision reference itself drifts (measured 2026-10-31: padcap with V = 1: 1.2e8,
@@ -130,6 +134,8 @@ module lowrank_unit_harness
    integer  :: n_skipped                       ! vertices wrapped but not proposed (cases repeat_skip, bonds_skip)
    integer  :: n_elig_bad                      ! vertices whose Lowrank_eligible differs from the expectation
    integer  :: n_lowrank_vertices              ! vertices the candidate updates with its low-rank kernel
+   integer  :: n_cap_bad                       ! accepts after which the pending rank exceeded max(N_delay, r)
+   integer  :: max_pend_cols                   ! largest pending rank seen right after an accept
 
    ! ---- candidate state -------------------------------------------------
    integer :: cand_scheme = 0, cand_N_delay = 0
@@ -254,10 +260,20 @@ contains
       complex(dp), intent(inout) :: Gc(:,:,:)
       integer,     intent(in)    :: n_op, nt
       complex(dp), intent(in)    :: HS_new
+      integer :: nf, r_last, p_after
       if (.not. cand_lowrank(n_op)) then
          Gc = std_Gwork
       else
          call Lowrank_accept(Gc, n_op, nt, HS_new)   ! sets nsigma%f(n_op,nt); the driver resets it
+         ! Capacity rule (D5): with the flush before an accept (p > 0 and p + r > N_delay), the pending
+         ! rank right after the append never exceeds max(N_delay, r) (r = this vertex's N_non_zero)
+         r_last = 0
+         do nf = 1, N_FL
+            r_last = max(r_last, Op_V(n_op,nf)%N_non_zero)
+         enddo
+         p_after = Lowrank_max_pending_cols()
+         max_pend_cols = max(max_pend_cols, p_after)
+         if (p_after > max(cand_N_delay, r_last)) n_cap_bad = n_cap_bad + 1
       endif
    end subroutine cand_accept
 
@@ -566,6 +582,9 @@ contains
          Ndim = 16; N_FL = 2; N_SUN = 1; M_ops = 2 * Ndim
       case (CASE_BIGOP)
          Ndim = 12; N_FL = 2; N_SUN = 1; M_ops = Ndim + 3
+      case (CASE_BONDS_ILLCOND)
+         ! larger than tv_bond: the ill-conditioned similarity needs Ndim >= 32 (see S_SCALE_BONDS_ILL)
+         Ndim = 32; N_FL = 2; N_SUN = 1; M_ops = 2 * Ndim
       case default
          Ndim = 16; N_FL = 2; N_SUN = 1; M_ops = 2 * Ndim
       end select
@@ -820,7 +839,7 @@ contains
       endif
 
       ! The configuration depends on the case only (mz_illcond reuses mz's configuration;
-      ! bonds_skip and bonds_illcond reuse tv_bond's).
+      ! bonds_skip reuses tv_bond's; bonds_illcond uses tv_bond's seed at its own Ndim).
       if (case_id == CASE_MZ_ILLCOND) then
          call Ranset([1000 + 17 * CASE_MZ])
       elseif (case_id == CASE_BONDS_SKIP .or. case_id == CASE_BONDS_ILLCOND) then
@@ -843,7 +862,7 @@ contains
 
       call cand_init(scheme, N_delay)
       ! Eligibility as expected for this scheme (standard: no vertex is low-rank)
-      n_elig_bad = 0; n_lowrank_vertices = 0
+      n_elig_bad = 0; n_lowrank_vertices = 0; n_cap_bad = 0; max_pend_cols = 0
       do n = 1, M_ops
          if (cand_lowrank(n)) n_lowrank_vertices = n_lowrank_vertices + 1
          if (cand_lowrank(n) .neqv. expected_eligible(scheme, n)) n_elig_bad = n_elig_bad + 1
@@ -969,8 +988,12 @@ contains
          if (islice < N_SLICES) then
             do j = 1, Ndim
                do i = 1, Ndim
-                  S(i,j) = S_SCALE * crandn()
-                  if (.not. illcond_case(case_id)) S(i,j) = S(i,j) / sqrt(real(Ndim, dp))
+                  if (case_id == CASE_BONDS_ILLCOND) then
+                     S(i,j) = S_SCALE_BONDS_ILL * crandn()
+                  else
+                     S(i,j) = S_SCALE * crandn()
+                     if (.not. illcond_case(case_id)) S(i,j) = S(i,j) / sqrt(real(Ndim, dp))
+                  endif
                enddo
                S(j,j) = S(j,j) + 1.d0
             enddo
@@ -1377,9 +1400,10 @@ program lowrank_unit
         & ' repeat/repeat_skip with N_delay = 2 not asserted)'
    write(6,'(A)') '  skip = vertices wrapped but not proposed; asserted > 0 iff case repeat_skip or bonds_skip'
    write(6,'(A)') '  lrv = vertices updated by the low-rank kernel; Lowrank_eligible asserted per vertex (flag ELG)'
-   write(6,'(A13,1X,A10,1X,A4,1X,A7,1X,A13,1X,A13,1X,A13,1X,A10,1X,A12,1X,A7,1X,A6,1X,A6,1X,A6,1X,A5,1X,A4,1X,A4)') &
+   write(6,'(A)') '  pmax = largest pending rank right after an accept; asserted <= max(N_delay, r) per accept (flag CAP)'
+   write(6,'(A13,1X,A10,1X,A4,1X,A7,1X,A13,1X,A13,1X,A13,1X,A10,1X,A12,1X,A7,1X,A6,1X,A6,1X,A6,1X,A5,1X,A4,1X,A4,1X,A4)') &
         & 'case', 'scheme', 'dir', 'N_delay', 'max_ratio_err', 'max_G_err', 'std_drift', &
-        & 'cond(1+A)', 'std_drift/ce', 'acc', 'condQ', 'condS', 'rflush', 'skip', 'lrv', ''
+        & 'cond(1+A)', 'std_drift/ce', 'acc', 'condQ', 'condS', 'rflush', 'skip', 'lrv', 'pmax', ''
    do ic = 1, N_CASES
       do idir = 1, 2
          do is = 1, N_SCHEMES
@@ -1433,10 +1457,15 @@ program lowrank_unit
                   flag = 'ELG'
                   n_fail = n_fail + 1
                endif
-               write(6,'(A13,1X,A10,1X,A4,1X,I7,1X,ES13.4,1X,ES13.4,1X,ES13.4,1X,ES10.2,1X,ES12.2,1X,F7.3,1X,F6.2,1X,F6.2,1X,I6,1X,I5,1X,I4,1X,A4)') &
+               ! Capacity rule: pending rank after every accept <= max(N_delay, r of that vertex)
+               if (n_cap_bad /= 0) then
+                  flag = 'CAP'
+                  n_fail = n_fail + 1
+               endif
+               write(6,'(A13,1X,A10,1X,A4,1X,I7,1X,ES13.4,1X,ES13.4,1X,ES13.4,1X,ES10.2,1X,ES12.2,1X,F7.3,1X,F6.2,1X,F6.2,1X,I6,1X,I5,1X,I4,1X,I4,1X,A4)') &
                     & case_name(ic), scheme_name(is), dirs(idir), N_DELAY_LIST(id), rerr, gerr, drift, &
                     & cond_1pA_last, drift_rel, real(n_accepted, dp) / real(n_proposals, dp), cond_Q_max, cond_S_max, &
-                    & n_repeat_flush, n_skipped, n_lowrank_vertices, flag
+                    & n_repeat_flush, n_skipped, n_lowrank_vertices, max_pend_cols, flag
             enddo
          enddo
       enddo

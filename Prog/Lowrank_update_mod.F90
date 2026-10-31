@@ -88,6 +88,7 @@ module Lowrank_update_mod
 
    public :: Lowrank_init, Lowrank_finalize, Lowrank_initialised, Lowrank_active, Lowrank_eligible, &
         &    Lowrank_pending, Lowrank_assert_flushed
+   public :: Lowrank_max_pending_cols
    public :: Lowrank_propose, Lowrank_accept, Upgrade_lowrank, Lowrank_wrap_hook, &
         &    Lowrank_flush, Lowrank_current_G
 #ifdef ALF_LOWRANK_DEBUG
@@ -108,6 +109,7 @@ module Lowrank_update_mod
    Integer              :: lr_M = 0, lr_Ndim = 0, lr_N_FL_eff = 0  ! sizes at init, checked in Lowrank_propose
    Logical, allocatable :: eligible(:)          ! eligible(n), n = 1..size(Op_V,1)
    Integer, allocatable :: n_cols(:)            ! used columns per computed flavour
+   Integer              :: last_accept_cols = 0 ! maxval(n_cols) right after the last accept's append (diagnostic)
 
    ! ---- cache of the last Lowrank_propose (consumed by Lowrank_accept) ---
    Logical                                :: prop_valid = .false.
@@ -359,6 +361,7 @@ contains
       lr_N_delay = 0
       N_cols_max = 0
       n_pend     = 0
+      last_accept_cols = 0
       lr_M = 0; lr_Ndim = 0; lr_N_FL_eff = 0
    end subroutine Lowrank_finalize
 
@@ -409,6 +412,18 @@ contains
       Implicit none
       Lowrank_pending = n_pend
    end function Lowrank_pending
+
+!--------------------------------------------------------------------
+!> @brief
+!> Diagnostic (unit tests): the largest pending rank of any computed flavour (delayed: columns of X;
+!> submatrix: pending sites) right after the append of the last Lowrank_accept, before its capacity
+!> flush. With the capacity rule it never exceeds max(N_delay, r) (r = N_non_zero of that vertex).
+!> 0 before the first accept after Lowrank_init.
+!--------------------------------------------------------------------
+   integer function Lowrank_max_pending_cols()
+      Implicit none
+      Lowrank_max_pending_cols = last_accept_cols
+   end function Lowrank_max_pending_cols
 
 !--------------------------------------------------------------------
 !> @brief
@@ -641,8 +656,9 @@ contains
 !>       C  = G0(:,P_a) - X(:,1:j) Y(P_a,1:j)^T          (ZGEMM, Ndim x r)
 !>       Rw = G0(P_a,:) - X(P_a,1:j) Y(:,1:j)^T          (ZGEMM, r x Ndim)
 !>       X(:,j+1:j+r) = C Delta Mat^{-1},  Y(:,j+1:j+r) = (E_P^T - Rw)^T
-!>     with Mat^{-1} from ZGETRF/ZGETRS on a copy of Mat (r = 1: Delta/d), i.e. the Woodbury update
-!>     G' = G - G(:,P_a) Delta Mat^{-1} (E_P^T - G(P_a,:)) on the current G. Capacity (D5): if a
+!>     with Mat^{-1} from ZGETRF/ZGETRS on a copy of Mat, i.e. the Woodbury update
+!>     G' = G - G(:,P_a) Delta Mat^{-1} (E_P^T - G(P_a,:)) on the current G. r = 1 uses project 1's
+!>     in-place sequence (ZCOPY, 2 x ZGEMV, ZSCAL with Delta/d), the same algebra. Capacity (D5): if a
 !>     flavour has p = j > 0 pending columns and p + r > N_delay, G is flushed first.
 !>  *  submatrix (rank 1, p = P(1)): border Gamma~ with the Schur complement s = d; with a from
 !>     Lowrank_propose (Ginv w = -a) and b^T = G0(p,S) Ginv (ZGEMV, q Ginv = -Delta b^T):
@@ -674,8 +690,7 @@ contains
       Complex (Kind=Kind(0.d0)) :: z, b(N_cols_max), rv(N_cols_max)
       Complex (Kind=Kind(0.d0)) :: Mi(N_P_LIM,N_P_LIM), K(N_P_LIM,N_P_LIM)
       Integer                   :: nf, nf_eff, p, j, r, m, info, ncap
-      Integer                   :: ipiv(N_P_LIM)
-      Integer,       allocatable :: r_add(:)
+      Integer                   :: r_add(lr_N_FL_eff), ipiv(N_P_LIM)
 #ifdef ALF_LOWRANK_DEBUG
       Complex (Kind=Kind(0.d0)), allocatable :: Csh(:,:), Rsh(:,:)
       Complex (Kind=Kind(0.d0))              :: Mat_sh(N_P_LIM,N_P_LIM), Ksh(N_P_LIM,N_P_LIM)
@@ -694,7 +709,6 @@ contains
       endif
 
       ! Columns added per computed flavour: r, or none if every Delta_m of the flavour vanishes (D14)
-      allocate (r_add(N_FL_eff))
       Do nf_eff = 1,N_FL_eff
          r_add(nf_eff) = prop_r(nf_eff)
          if (r_add(nf_eff) > 0) then
@@ -788,7 +802,27 @@ contains
                Write(error_unit,'(A,I0)') ' Lowrank_accept: column overflow, N_cols_max = ', N_cols_max
                CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
             endif
-            ! Cd = C = G0(:,P_a),  Y(:,j+m) = - G0(P_m,:)^T
+            if (r == 1) then
+               ! Rank 1: project 1's validated Sherman-Morrison sequence, in place (p = P(1), z = Delta/d)
+               p = Op_V(n_op,nf)%P(1)
+               z = prop_Delta(1,nf_eff)/prop_d(nf_eff)
+               ! X(:,j+1) <- c = G0(:,p) - X(:,1:j) Y(p,1:j)^T
+               call ZCOPY(Ndim, GR(1,p,nf), 1, X(1,j+1,nf_eff), 1)
+               ! Y(:,j+1) <- r = G0(p,:)^T - Y(:,1:j) X(p,1:j)^T   (rows: increment Ndim)
+               call ZCOPY(Ndim, GR(p,1,nf), Ndim, Y(1,j+1,nf_eff), 1)
+               if (j > 0) then
+                  ! (X / Y appear as the matrix and as the output vector: disjoint columns 1:j and j+1)
+                  call ZGEMV('N', Ndim, j, cmone, X(1,1,nf_eff), Ndim, Y(p,1,nf_eff), Ndim, cone, X(1,j+1,nf_eff), 1)
+                  call ZGEMV('N', Ndim, j, cmone, Y(1,1,nf_eff), Ndim, X(p,1,nf_eff), Ndim, cone, Y(1,j+1,nf_eff), 1)
+               endif
+               ! X(:,j+1) = (Delta/d) c,  Y(:,j+1) = e_p - r
+               call ZSCAL(Ndim, z, X(1,j+1,nf_eff), 1)
+               Y(:,j+1,nf_eff) = - Y(:,j+1,nf_eff)
+               Y(p,j+1,nf_eff) = Y(p,j+1,nf_eff) + 1.d0
+               n_cols(nf_eff) = j + 1
+               cycle
+            endif
+            ! Rank r >= 2. Cd = C = G0(:,P_a),  Y(:,j+m) = - G0(P_m,:)^T
             do m = 1, r
                p = Op_V(n_op,nf)%P(m)
                call ZCOPY(Ndim, GR(1,p,nf), 1, Cd(1,m), 1)
@@ -802,6 +836,8 @@ contains
                   Yg(m,1:j) = Y(p,1:j,nf_eff)
                enddo
                ! C = G0(:,P_a) - X(:,1:j) Y(P_a,1:j)^T,  Y(:,j+1:j+r) = - Rw^T = - G0(P_a,:)^T + Y(:,1:j) X(P_a,1:j)^T
+               ! (the second call passes Y as A, columns 1:j, and as C, columns j+1:j+r: disjoint storage, fine
+               ! for the external BLAS, which has no explicit interface)
                call ZGEMM('N', 'T', Ndim, r, j, cmone, X(1,1,nf_eff), Ndim, Yg, N_P_LIM, cone, Cd, Ndim)
                call ZGEMM('N', 'T', Ndim, r, j, cone,  Y(1,1,nf_eff), Ndim, Xg, N_P_LIM, cone, Y(1,j+1,nf_eff), Ndim)
             endif
@@ -811,25 +847,21 @@ contains
                Y(p,j+m,nf_eff) = Y(p,j+m,nf_eff) + 1.d0
             enddo
             ! K = Delta Mat^{-1}
-            if (r == 1) then
-               K(1,1) = prop_Delta(1,nf_eff)/prop_d(nf_eff)
-            else
-               Mi(1:r,1:r) = prop_Mat(1:r,1:r,nf_eff)
-               call ZGETRF(r, r, Mi, N_P_LIM, ipiv, info)
-               K = czero
-               do m = 1, r
-                  K(m,m) = cone
-               enddo
-               if (info == 0) call ZGETRS('N', r, r, Mi, N_P_LIM, ipiv, K, N_P_LIM, info)
-               if (info /= 0) then
-                  Write(error_unit,'(A,I0,A,I0)') ' Lowrank_accept: singular Mat (accepted ratio 0?), n_op = ', &
-                       &                          n_op, ', info = ', info
-                  CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
-               endif
-               do m = 1, r
-                  K(m,1:r) = prop_Delta(m,nf_eff) * K(m,1:r)
-               enddo
+            Mi(1:r,1:r) = prop_Mat(1:r,1:r,nf_eff)
+            call ZGETRF(r, r, Mi, N_P_LIM, ipiv, info)
+            K = czero
+            do m = 1, r
+               K(m,m) = cone
+            enddo
+            if (info == 0) call ZGETRS('N', r, r, Mi, N_P_LIM, ipiv, K, N_P_LIM, info)
+            if (info /= 0) then
+               Write(error_unit,'(A,I0,A,I0)') ' Lowrank_accept: singular Mat (accepted ratio 0?), n_op = ', &
+                    &                          n_op, ', info = ', info
+               CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
             endif
+            do m = 1, r
+               K(m,1:r) = prop_Delta(m,nf_eff) * K(m,1:r)
+            enddo
             ! X(:,j+1:j+r) = C Delta Mat^{-1}
             call ZGEMM('N', 'N', Ndim, r, r, cone, Cd, Ndim, K, N_P_LIM, czero, X(1,j+1,nf_eff), Ndim)
             n_cols(nf_eff) = j + r
@@ -873,6 +905,7 @@ contains
       nsigma%f(n_op,nt) = Hs_new
 
       n_pend = n_pend + 1
+      last_accept_cols = maxval(n_cols)
 #ifdef ALF_LOWRANK_DEBUG
       dbg_last_nop = n_op
       dbg_last_nt  = nt
@@ -1014,11 +1047,13 @@ contains
    subroutine Lowrank_wrap_hook(n_op, nt, HS_field, wkind, dir)
 
       Use Hamiltonian_main, only: Op_V, N_FL_eff, Calc_Fl_map
+      Use Fields_mod
       Implicit none
 
       Integer,                   Intent(In) :: n_op, nt, wkind, dir
       Complex (Kind=Kind(0.d0)), Intent(In) :: HS_field
 
+      Type (Fields)             :: nsigma_single
       Complex (Kind=Kind(0.d0)) :: phi, g_loc, t
       Complex (Kind=Kind(0.d0)) :: L(N_P_LIM,N_P_LIM), Rt(N_P_LIM,N_P_LIM)
       Integer                   :: nf, nf_eff, i, j, q, m, N
@@ -1037,6 +1072,32 @@ contains
          Write(error_unit,'(A,I0)') ' Lowrank_wrap_hook: vertex not eligible, n_op = ', n_op
          CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
       endif
+      ! Submatrix: eligible vertices are diagonal in every flavour, so the type-2 wrap is a no-op
+      if (lr_scheme == SCHEME_SUBMATRIX .and. wkind == 2) return
+
+      ! Is there anything to transform? Delayed: a flavour with pending columns whose wrap is not the
+      ! identity (type 1, or a non-diagonal operator); submatrix: the vertex touches a pending site.
+      need_scale = .false.
+      Do nf_eff = 1,N_FL_eff
+         if (n_cols(nf_eff) == 0) cycle
+         nf = Calc_Fl_map(nf_eff)
+         select case (lr_scheme)
+         case (SCHEME_DELAYED)
+            if (wkind == 1 .or. .not. Op_V(n_op,nf)%diag) need_scale = .true.
+         case (SCHEME_SUBMATRIX)
+            do i = 1,Op_V(n_op,nf)%N
+               if (slot(Op_V(n_op,nf)%P(i),nf_eff) /= 0) need_scale = .true.
+            enddo
+         end select
+      Enddo
+#ifndef ALF_LOWRANK_DEBUG
+      if (.not. need_scale) return
+#endif
+
+      ! One single-field object per hook call: phi = Phi(HS_field) for the field type of each flavour's
+      ! operator (Wrap_phi_g sets the type only: no allocation per flavour)
+      Call nsigma_single%make(1,1)
+      nsigma_single%f(1,1) = HS_field
 
       select case (lr_scheme)
       case (SCHEME_DELAYED)
@@ -1047,7 +1108,7 @@ contains
             N  = Op_V(n_op,nf)%N
             if (Op_V(n_op,nf)%diag) then
                if (wkind == 2) cycle
-               call Wrap_phi_g(n_op, nf, nt, HS_field, phi, g_loc)
+               call Wrap_phi_g(nsigma_single, n_op, nf, nt, phi, g_loc)
                do i = 1,N
                   q = Op_V(n_op,nf)%P(i)
                   t = exp( real(dir, kind(0.d0)) * g_loc * phi * Op_V(n_op,nf)%E(i) )
@@ -1062,7 +1123,8 @@ contains
                   Y(q,1:j,nf_eff) = Y(q,1:j,nf_eff) / t
                enddo
             else
-               call Wrap_LR(n_op, nf, nt, HS_field, wkind, dir, L, Rt)
+               call Wrap_phi_g(nsigma_single, n_op, nf, nt, phi, g_loc)
+               call Wrap_LR(n_op, nf, phi, g_loc, wkind, dir, L, Rt)
                ! X(P,1:j) <- L X(P,1:j),  Y(P,1:j) <- R^T Y(P,1:j)
                do i = 1,N
                   Xg(i,1:j) = X(Op_V(n_op,nf)%P(i),1:j,nf_eff)
@@ -1080,23 +1142,13 @@ contains
          Enddo
 
       case (SCHEME_SUBMATRIX)
-         ! Eligible vertices are diagonal in every flavour: the type-2 wrap is a no-op
-         if (wkind == 2) return
-         ! The factors are needed only if the vertex touches a pending site in some flavour
-         need_scale = .false.
-         Do nf_eff = 1,N_FL_eff
-            if (n_cols(nf_eff) == 0) cycle
-            nf = Calc_Fl_map(nf_eff)
-            do i = 1,Op_V(n_op,nf)%N
-               if (slot(Op_V(n_op,nf)%P(i),nf_eff) /= 0) need_scale = .true.
-            enddo
-         Enddo
+         ! The factors are needed only if the vertex touches a pending site in some flavour (need_scale)
          Do nf_eff = 1,N_FL_eff
             if (.not. need_scale) exit
             j = n_cols(nf_eff)
             if (j == 0) cycle
             nf = Calc_Fl_map(nf_eff)
-            call Wrap_phi_g(n_op, nf, nt, HS_field, phi, g_loc)
+            call Wrap_phi_g(nsigma_single, n_op, nf, nt, phi, g_loc)
             do i = 1,Op_V(n_op,nf)%N
                q = Op_V(n_op,nf)%P(i)
                m = slot(q,nf_eff)
@@ -1124,7 +1176,7 @@ contains
          N  = Op_V(n_op,nf)%N
          if (Op_V(n_op,nf)%diag) then
             if (wkind == 2) cycle
-            call Wrap_phi_g(n_op, nf, nt, HS_field, phi, g_loc)
+            call Wrap_phi_g(nsigma_single, n_op, nf, nt, phi, g_loc)
             do i = 1,N
                q = Op_V(n_op,nf)%P(i)
                t = exp( real(dir, kind(0.d0)) * g_loc * phi * Op_V(n_op,nf)%E(i) )
@@ -1132,12 +1184,14 @@ contains
                Gsh(:,q,nf) = Gsh(:,q,nf) / t
             enddo
          else
-            call Wrap_LR(n_op, nf, nt, HS_field, wkind, dir, L, Rt)
+            call Wrap_phi_g(nsigma_single, n_op, nf, nt, phi, g_loc)
+            call Wrap_LR(n_op, nf, phi, g_loc, wkind, dir, L, Rt)
             Gsh(Op_V(n_op,nf)%P,:,nf) = matmul(L(1:N,1:N), Gsh(Op_V(n_op,nf)%P,:,nf))
             Gsh(:,Op_V(n_op,nf)%P,nf) = matmul(Gsh(:,Op_V(n_op,nf)%P,nf), transpose(Rt(1:N,1:N)))
          endif
       Enddo
 #endif
+      Call nsigma_single%clear()
       ! Debug check: the hook has no GR argument; WRAPGRUP/WRAPGRDO call Lowrank_debug_check
       ! right after each hook (under ALF_LOWRANK_DEBUG).
 
@@ -1146,25 +1200,21 @@ contains
 !--------------------------------------------------------------------
 !> @brief
 !> phi = Phi(HS_field) for the field type of Op_V(n_op,nf) and g_loc = g, or g_t(nt) if allocated:
-!> the factors of the wraps Op_Wrapup / Op_Wrapdo.
+!> the factors of the wraps Op_Wrapup / Op_Wrapdo. nsigma_single (made by the caller, f(1,1) =
+!> HS_field) only gets its type set: no allocation.
 !--------------------------------------------------------------------
-   subroutine Wrap_phi_g(n_op, nf, nt, HS_field, phi, g_loc)
+   subroutine Wrap_phi_g(nsigma_single, n_op, nf, nt, phi, g_loc)
 
       Use Hamiltonian_main, only: Op_V
       Use Fields_mod
       Implicit none
 
-      Integer,                   Intent(In)  :: n_op, nf, nt
-      Complex (Kind=Kind(0.d0)), Intent(In)  :: HS_field
-      Complex (Kind=Kind(0.d0)), Intent(Out) :: phi, g_loc
+      Type (Fields),             Intent(InOut) :: nsigma_single
+      Integer,                   Intent(In)    :: n_op, nf, nt
+      Complex (Kind=Kind(0.d0)), Intent(Out)   :: phi, g_loc
 
-      Type (Fields) :: nsigma_single
-
-      Call nsigma_single%make(1,1)
-      nsigma_single%f(1,1) = HS_field
-      nsigma_single%t(1)   = Op_V(n_op,nf)%type
+      nsigma_single%t(1) = Op_V(n_op,nf)%type
       phi   = nsigma_single%Phi(1,1)
-      Call nsigma_single%clear()
       g_loc = Op_V(n_op,nf)%g
       if (Op_V(n_op,nf)%get_g_t_alloc()) g_loc = Op_V(n_op,nf)%g_t(nt)
 
@@ -1173,26 +1223,26 @@ contains
 !--------------------------------------------------------------------
 !> @brief
 !> Wrap matrices of a non-diagonal flavour (docs/algorithm-notes.md, section 9): the wrap
-!> (wkind, dir) of Op_V(n_op,nf) is G <- L G R on rows / columns P; returns L and Rt = R^T
+!> (wkind, dir) of Op_V(n_op,nf) with phi, g_loc from Wrap_phi_g is G <- L G R on rows / columns P;
+!> returns L and Rt = R^T
 !> (N x N blocks of the N_P_LIM x N_P_LIM arguments). As in Op_Wrapup / Op_Wrapdo, for field
 !> types 1, 2 without g_t the factors of the zero eigenvalues (index > N_non_zero) are exactly 1
 !> (E_Exp in Op_set).
 !--------------------------------------------------------------------
-   subroutine Wrap_LR(n_op, nf, nt, HS_field, wkind, dir, L, Rt)
+   subroutine Wrap_LR(n_op, nf, phi, g_loc, wkind, dir, L, Rt)
 
       Use Hamiltonian_main, only: Op_V
       Implicit none
 
-      Integer,                   Intent(In)  :: n_op, nf, nt, wkind, dir
-      Complex (Kind=Kind(0.d0)), Intent(In)  :: HS_field
+      Integer,                   Intent(In)  :: n_op, nf, wkind, dir
+      Complex (Kind=Kind(0.d0)), Intent(In)  :: phi, g_loc
       Complex (Kind=Kind(0.d0)), Intent(Out) :: L(N_P_LIM,N_P_LIM), Rt(N_P_LIM,N_P_LIM)
 
-      Complex (Kind=Kind(0.d0)) :: phi, g_loc, ep(N_P_LIM), em(N_P_LIM)
+      Complex (Kind=Kind(0.d0)) :: ep(N_P_LIM), em(N_P_LIM)
       Integer                   :: i, k, N
 
       N = Op_V(n_op,nf)%N
       if (wkind == 1) then
-         call Wrap_phi_g(n_op, nf, nt, HS_field, phi, g_loc)
          do i = 1,N
             if (Op_V(n_op,nf)%type < 3 .and. .not. Op_V(n_op,nf)%get_g_t_alloc() .and. &
                  & i > Op_V(n_op,nf)%N_non_zero) then
