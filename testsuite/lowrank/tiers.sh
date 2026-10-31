@@ -15,7 +15,7 @@
 #           standard_s1, and the paired stability ratios (Precision Green/Phase max and mean, SCHEME_sSEED / standard_sSEED;
 #           the standard chain with seed SEED is run as well if it does not exist: same seed => same trajectory).
 #   regress regress_vs_baseline.sh and ctest.
-set -uo pipefail
+set -o pipefail   # no -u: configure.sh references unset variables
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ALFDIR="$(cd "$HERE/../.." && pwd)"
 SCHEME="${1:?scheme}"; SEED="${2:?seed}"; shift 2
