@@ -55,8 +55,11 @@ read as an empty queue). Inside a job, OK runs are skipped.
 A run is FAILED unless the launcher returned 0, `info` has a CPU Time line and, for delayed/submatrix, the
 `Sequential scheme: <NAME>` line; it is INVALID (finished, but excluded) unless the pinning record shows exactly RANKS
 pairwise disjoint domains of THREADS cpus (THREADS x threads-per-core accepted for core binding with SMT): Intel MPI
-`I_MPI_DEBUG>=4` "MPI startup(): <rank> <pid> <node> {cpus}" lines or srun `--cpu-bind=...,verbose` masks
-(`prov_pin_check`; no record = INVALID). The EXIT trap marks an interrupted run `FAILED rc=<rc>` (SIGTERM at the time
+`I_MPI_DEBUG>=4` "MPI startup(): <rank> <pid> <node> <cpus>" lines (cpus as `{0,1}`, `0,1`, `0-11` or mixed, braces
+optional) or srun `--cpu-bind=...,verbose` masks (`prov_pin_check`). Domains are keyed by (node, cpu), so equal cpu
+numbers on different nodes are no overlap. When both records exist (Helma: srun launch with `I_MPI_DEBUG=4`), the Intel
+table is judged, because it is the final pinning after MPI_Init; the srun masks are informational. No record, or an
+Intel table line that cannot be parsed (quoted in the reason), = INVALID. The EXIT trap marks an interrupted run `FAILED rc=<rc>` (SIGTERM at the time
 limit: 143) and the job's remaining runs `NOT_RUN`, except runs that an earlier job left FAILED/INVALID (kept; a note
 goes to `status.history`). Job-level aborts (before any run): binary/build-info mismatch, no MKL_VERBOSE line,
 fakeintel = on without AVX-512 or with a static binary, THREADS > 1 with the `sequential` MKL threading layer.

@@ -1,0 +1,6 @@
+[0] MPI startup(): Intel(R) MPI Library, Version 2021.17  Build 20250815 (id: fixture)
+[0] MPI startup(): Rank    Pid      Node name     Pin cpu
+[0] MPI startup(): 0       201234   i01r01c01s01  0,1,2,3
+[0] MPI startup(): 1       201235   i01r01c01s01  4-7
+[0] MPI startup(): 2       201236   i01r01c01s01  8-9,10,11
+[0] MPI startup(): 3       201237   i01r01c01s01  {12-15}

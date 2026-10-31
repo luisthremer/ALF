@@ -163,55 +163,77 @@ prov_job() {
 }
 
 # prov_pin_check FILE RANKS THREADS [THREADS_PER_CORE]: verify the pinning record of a run.
-# Reads Intel MPI I_MPI_DEBUG>=4 lines "[0] MPI startup(): <rank> <pid> <node> {<cpu list>}" (lists and ranges) and
-# srun --cpu-bind=verbose lines "cpu-bind=MASK - <node>, task <rank> <local> [<pid>]: mask 0x<hex> set" (any width).
-# Requires exactly RANKS ranks, each pinned to THREADS cpus (or THREADS x THREADS_PER_CORE hardware threads when the
-# binding unit is a core with SMT), and pairwise disjoint sets. Prints "OK ..." / "BAD ..."; returns 0 / 1.
+# Sources: Intel MPI I_MPI_DEBUG>=4 table lines "[0] MPI startup(): <rank> <pid> <node> <cpus>" with <cpus> as
+# "{0,1,2}", "0,1,2", "0-11" or a mix of lists and ranges (braces optional), and srun --cpu-bind=verbose lines
+# "cpu-bind=MASK - <node>, task <rank> <local> [<pid>]: mask 0x<hex> set" (masks of any width). When both are present,
+# the Intel table is judged (it is the final pinning, set inside MPI_Init) and the srun masks are informational.
+# Ownership is keyed by (node, cpu): the same cpu numbers on different nodes are no overlap. Requires exactly RANKS
+# ranks, each pinned to THREADS cpus (or THREADS x THREADS_PER_CORE hardware threads for core binding with SMT), and
+# pairwise disjoint sets per node. Prints "OK <source>: ..." / "BAD ..."; returns 0 / 1. Table lines with a rank
+# that cannot be parsed unambiguously are quoted in the BAD reason.
 prov_pin_check() {
     [ -r "$1" ] || { echo "BAD no pinning record file"; return 1; }
     awk -v R="$2" -v T="$3" -v TPC="${4:-1}" '
-        function addcpu(r, c) {
-            if ((r SUBSEP c) in has) return
-            has[r SUBSEP c] = 1; n[r]++
-            if ((c in owner) && owner[c] != r && nov < 5) { ov = ov " cpu" c "(r" owner[c] ",r" r ")"; nov++ }
-            if (!(c in owner)) owner[c] = r
-        }
-        function hexset(r, h,   i, L, d, v, b) {
+        function put(src, r, node, c) { k = ++cnt[src]; er[src, k] = r; en[src, k] = node; ec[src, k] = c }
+        function hexset(src, r, node, h,   i, L, v, b) {
             h = tolower(h); sub(/^0x/, "", h); L = length(h)
             for (i = L; i >= 1; i--) {
                 v = index("0123456789abcdef", substr(h, i, 1)) - 1
-                for (b = 0; b < 4; b++) if (int(v / 2 ^ b) % 2 == 1) addcpu(r, (L - i) * 4 + b)
+                for (b = 0; b < 4; b++) if (int(v / 2 ^ b) % 2 == 1) put(src, r, node, (L - i) * 4 + b)
             }
         }
-        function listset(r, s,   k, a, parts, lh, lo, hi, c) {
+        function listset(src, r, node, s,   k, a, parts, lh, lo, hi, c) {
             gsub(/[{} \t]/, "", s); k = split(s, parts, ",")
             for (a = 1; a <= k; a++) {
                 if (parts[a] == "") continue
                 if (split(parts[a], lh, "-") == 2) { lo = lh[1] + 0; hi = lh[2] + 0 } else { lo = parts[a] + 0; hi = lo }
-                for (c = lo; c <= hi; c++) addcpu(r, c)
+                for (c = lo; c <= hi; c++) put(src, r, node, c)
             }
         }
-        /MPI startup\(\):/ && /\{[0-9,\- ]*\}/ {
-            s = $0; sub(/.*MPI startup\(\):[ \t]*/, "", s); split(s, w, /[ \t]+/)
-            if (w[1] !~ /^[0-9]+$/) next
-            set = s; sub(/^[^{]*/, "", set); sub(/}.*/, "}", set)
-            r = w[1] + 0; ranks[r] = 1; listset(r, set); next
+        /MPI startup\(\):/ {
+            s = $0; sub(/.*MPI startup\(\):[ \t]*/, "", s); nw = split(s, w, /[ \t]+/)
+            if (w[1] !~ /^[0-9]+$/) next                       # header, version and environment lines
+            set = s; for (i = 1; i <= 3; i++) sub(/^[^ \t]+[ \t]+/, "", set); sub(/[ \t]+$/, "", set)
+            if (nw >= 4 && w[2] ~ /^[0-9]+$/ && set ~ /^\{?[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*\}?$/) {
+                listset("I", w[1] + 0, w[3], set)
+            } else if (raw == "") raw = $0
+            next
         }
         /cpu[-_]bind/ && /mask 0x[0-9a-fA-F]+/ && /task[ \t]+[0-9]+/ {
+            node = $0; sub(/^.*cpu[-_]bind[^-]*-[ \t]*/, "", node); sub(/,.*/, "", node)
             s = $0; sub(/.*task[ \t]+/, "", s); r = s + 0
             m = $0; sub(/.*mask[ \t]+/, "", m); sub(/[ \t].*/, "", m)
-            ranks[r] = 1; hexset(r, m)
+            hexset("S", r, node, m)
         }
         END {
-            nr = 0; for (r in ranks) nr++
-            if (nr == 0) { print "BAD no I_MPI_DEBUG pin lines or cpu-bind masks"; exit 1 }
-            if (nr != R) { print "BAD " nr " ranks in the pinning record, expected " R; exit 1 }
-            for (r in ranks) if (n[r] != T && n[r] != T * TPC) {
-                print "BAD rank " r " pinned to " n[r] " cpus, expected " T (TPC > 1 ? " or " T * TPC : ""); exit 1
+            if (cnt["I"] == 0 && raw != "") {   # an Intel table exists but cannot be judged: never fall back to srun
+                print "BAD unparsable I_MPI_DEBUG pin line: " raw; exit 1
             }
-            if (ov != "") { print "BAD overlapping domains:" ov; exit 1 }
+            if (cnt["I"] > 0) { src = "I"; name = "I_MPI_DEBUG pin table" (cnt["S"] > 0 ? " (srun masks informational)" : "") }
+            else if (cnt["S"] > 0) { src = "S"; name = "srun cpu-bind masks" }
+            else {
+                print "BAD no parsable I_MPI_DEBUG pin lines or cpu-bind masks" (raw != "" ? "; unparsed: " raw : "")
+                exit 1
+            }
+            ov = ""; nov = 0
+            for (k = 1; k <= cnt[src]; k++) {
+                r = er[src, k]; node = en[src, k]; c = ec[src, k]
+                ranks[r] = 1
+                if ((r, node, c) in has) continue
+                has[r, node, c] = 1; n[r]++
+                if (((node, c) in owner) && owner[node, c] != r) {
+                    if (nov < 5) ov = ov " " node ":cpu" c "(r" owner[node, c] ",r" r ")"
+                    nov++
+                } else owner[node, c] = r
+            }
+            nr = 0; for (r in ranks) nr++
+            if (nr != R) { print "BAD " nr " ranks in the " name ", expected " R (raw != "" ? "; unparsed: " raw : ""); exit 1 }
+            for (r in ranks) if (n[r] != T && n[r] != T * TPC) {
+                print "BAD rank " r " pinned to " n[r] " cpus, expected " T (TPC > 1 ? " or " T * TPC : "") " (" name ")"; exit 1
+            }
+            if (nov) { print "BAD overlapping domains (" name "):" ov; exit 1 }
             for (r in ranks) { sz = n[r]; break }
-            print "OK " R " ranks x " sz " cpus, disjoint"
+            print "OK " name ": " R " ranks x " sz " cpus, disjoint"
         }' "$1"
 }
 

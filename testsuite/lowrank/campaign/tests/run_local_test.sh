@@ -135,6 +135,8 @@ expect "missing key rc" "$rc" 1; cat "$T/collect_missing_$STAMP.txt"
 echo "max_rss_kb=1" >> "$p"; echo "max_rss_kb=2" >> "$p"
 $COLLECT "$CP" > "$T/collect_dup_$STAMP.txt" 2>&1; rc=$?
 expect "duplicate key rc" "$rc" 1; cat "$T/collect_dup_$STAMP.txt"
+$COLLECT "$C" --strict --allow > /dev/null 2>&1; rc=$?
+expect "trailing --allow without KEY: usage error rc" "$rc" 2
 
 echo "== SIGTERM trap (noMPI binary, 1x1, 2 repetitions; time limit simulated in hub_L8_1x1_r1_standard)"
 export CAMPAIGN_TEST_ID="t3nompi_$STAMP" CAMPAIGN_TEST_BIN="$NOMPI_BIN" CAMPAIGN_TEST_LAYOUTS="1x1"

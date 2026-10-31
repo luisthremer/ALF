@@ -30,6 +30,9 @@ profile_setup() {
     module --force switch gpu-env/2025 cpu-env/2026 || return 1
     module load $RUNTIME_MODULES || return 1
     export I_MPI_PMI_LIBRARY="[[libpmi2.so path for Intel MPI under srun, see doc.nhr.fau.de]]"
+    # I_MPI_DEBUG=4: Intel MPI prints its final pin table after MPI_Init; prov_pin_check judges that table and keeps
+    # the srun cpu-bind masks (launcher masks before MPI_Init) as informational
+    export I_MPI_DEBUG=4
     export OMP_PLACES=cores OMP_PROC_BIND=close
     return 0
 }

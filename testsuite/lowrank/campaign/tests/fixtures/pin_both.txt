@@ -1,0 +1,6 @@
+[0] MPI startup(): Intel(R) MPI Library, Version 2021.17  Build 20250815 (id: fixture)
+[0] MPI startup(): Rank    Pid      Node name     Pin cpu
+[0] MPI startup(): 0       201234   i01r01c01s01  {0,1}
+[0] MPI startup(): 1       201235   i01r01c01s01  {2,3}
+cpu-bind=MASK - i01r01c01s01, task  0  0 [30000]: mask 0xf set
+cpu-bind=MASK - i01r01c01s01, task  1  1 [30001]: mask 0xf set
