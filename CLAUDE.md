@@ -181,5 +181,14 @@ Unit level (`testsuite/Prog.tests/36-lowrank-unit.F90`, ctest `36-lowrank-unit`;
 - Implementation notes: capacity capped at min(N_delay, vertices per slice[, Ndim for submatrix]); flush before
   proposing at a site already pending (any flavour); O(1) slot-invariant check in accept.
 
+## Phase 5 results: benchmarks (verified 2026-10-31, benchmark binary 26b354c7, M1 Pro, 1 thread, Mz Hubbard Beta=2)
+- Speedup vs standard at N_delay=32 (`docs/benchmarks/size_scan.md`): L=12 1.5x, L=18 2.0/2.1x, L=20 2.2/2.3x (delayed/submatrix);
+  L=16 (N=256) is an outlier for the low-rank schemes (speedup dips to 1.5/1.6x; L=18 is not slower than L=16).
+- N_delay scan (`docs/benchmarks/ndelay_scan.md`): optimum 16-64 at both L, 32 best or within noise; N_delay=256 is 33-44 % slower than 32 at
+  L=20. **Default N_delay = 32** (unchanged). Green precision max identical (5.9e-7 / 5.6e-7) for all N_delay and schemes; the submatrix mean grows
+  by up to 4 % towards N_delay=256, +0.1-0.4 % vs standard at 32.
+- Profile at L=20 (`docs/benchmarks/profile.md`): standard 63 % rank-1 ZGERU, 27 % stabilisation; submatrix 60 % stabilisation, 19 % flush ZGEMM, 18 % wraps.
+  THREADS=8 gives no gain. The ~24 s setup at L=20 is `validate_ham_variables` -> `Op_V_is_symmetric` (gfortran matmul).
+
 ## Open questions
 - See the design spec, section "Open questions for Checkpoint 1".

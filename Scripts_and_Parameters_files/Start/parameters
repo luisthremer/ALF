@@ -59,7 +59,7 @@ Leapfrog_steps      = 0     ! Number of leapfrog iterations
 Amplitude           = 1.d0  ! For update of  type=3,4  fields
 
 Sequential_scheme   = "standard"  ! "standard" | "delayed" | "submatrix"
-N_delay             = 32    ! max pending accepted vertices before a flush (delayed/submatrix)
+N_delay             = 32    ! max pending accepted vertices before a flush (delayed/submatrix); 32 from the scan in docs/benchmarks/ndelay_scan.md
 /
 
 &VAR_errors                !! Variables for analysis programs
