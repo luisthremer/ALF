@@ -183,6 +183,8 @@ module upgrade_mod
               Enddo
               Mat(m,m) = myexp + Mat(m,m)
            Enddo
+           ! NOTE (delayed/submatrix branch): Lowrank_propose in Lowrank_update_mod.F90 duplicates this Mat loop and these
+           ! determinant branches (spec D6); keep both in sync when changing either.
            If (op_dim_nf == 0 ) then
               D_mat = 1.0d0
            elseIf (op_dim_nf == 1 ) then
