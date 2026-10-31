@@ -188,3 +188,10 @@ For `delayed`/`submatrix` (each set: candidate seed S, e.g. 1, against the stand
    replicate passes everything (scalars and arrays). An array failure that replicates is a bug and triggers debugging.
 3. The expected false-fail rate of the array rule for a correct scheme is about 2/18 (11 %) per comparison (measured
    above), so a single array failure alone is not evidence of a bug; the replicate is.
+
+### Benchmarks of other models (project 2, Task 6a)
+`testsuite/lowrank/bench.sh SCHEME L N_delay [THREADS] [KEY=VALUE ...]`: extra keys are applied after the Hubbard defaults,
+e.g. `NSWEEP=20 testsuite/lowrank/bench.sh delayed 8 32 1 'ham_name="tV"' 'Model="tV"' ham_V=-1.d0 N_SUN=1` (set `NSWEEP`;
+the per-L table is calibrated for Hubbard). Such lines carry two more fields, `model` (ham_name) and `keys` (the extra
+arguments joined with ','); the run directory gets `_<model>` after the scheme. `bench_report.py` accepts 10, 13 or 15 fields;
+the existing reports regenerate byte-identically.

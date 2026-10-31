@@ -50,10 +50,10 @@ def read_rows(path, check_commit=True):
             t = line.split()
             if not t:
                 continue
-            if len(t) not in (len(RAW_FIELDS), len(RAW_FIELDS) + len(PREC_FIELDS)):
-                sys.exit("bench_report.py: bad line (%d or %d fields expected): %s"
-                         % (len(RAW_FIELDS), len(RAW_FIELDS) + len(PREC_FIELDS), line.strip()))
-            rows.append(dict(zip(RAW_FIELDS + PREC_FIELDS, t)))
+            n0, n1 = len(RAW_FIELDS), len(RAW_FIELDS) + len(PREC_FIELDS)
+            if len(t) not in (n0, n1, n1 + 2):
+                sys.exit("bench_report.py: bad line (%d, %d or %d fields expected): %s" % (n0, n1, n1 + 2, line.strip()))
+            rows.append(dict(zip(RAW_FIELDS + PREC_FIELDS + ["model", "keys"], t)))
     commits = sorted({r["commit"] for r in rows})
     if check_commit and len(commits) != 1:
         sys.exit("bench_report.py: rows come from different commits: " + ", ".join(commits))
