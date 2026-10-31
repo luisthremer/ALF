@@ -96,7 +96,8 @@ Every `GPU=intel` run gets `ONEAPI_DEVICE_SELECTOR=level_zero:0` from `acc_run.s
 provenance env), and every production run must show the B580 device line as an active line (the refusal and
 invalid-value runs stop in `gpu_env_check` before `la_init` and declare their own lines). The UHD 730 has no FP64.
 The device τ pass must stay off (decision 22): `forbidden_lines` holds the 207 ACTIVE line, so a run that prints it is
-an INPUT_ERROR.
+an INPUT_ERROR. The exact string is printed by `Prog/gpu_tau_mod.F90:257` on `gpu-port-207-tau` (c8d1c6f1) when the
+device τ pass runs.
 
 | Gate | Oracle / statistic | Threshold | Control (expect) |
 |---|---|---|---|
@@ -190,12 +191,15 @@ guard only; the driver has a single global timeout.
   (z ≈ 3.32, t ≈ k/√2), a shift of 5 is caught ~59 % of the time, 8 ~99 %.
 
 ### Other open points
-- **Q-NS (owner decision pending, review (b) 2026-10-31, finding 1):** `ALF_GPU_NS=0` exists because of cuSOLVER's Q
+- **Q-NS (decision 24, 2026-10-31: "Pre-register now"):** `ALF_GPU_NS=0` exists because of cuSOLVER's Q
   orthogonality (A30: CPU mean 4.1e-11, with NS 5.4e-11, without NS 9.7e-11, 2.4× the CPU). oneMKL's hybrid QR may give a
   LAPACK-quality Q, so the control may not reach 1.5× on the B580; then the precision gate has no killed control and T2
   cannot close. T0 runs after pre-registration, so "stop before pre-registration" cannot work. The code allowed in 302b
   has no other knob that degrades precision in production (`eps:` acts only under `SELFTEST=3`), and `mutate.py` cannot
   edit the Precision lines; a fallback control needs a harness or code change and the owner's approval.
+  **Stop rule (decision 24):** if T0/T1 shows the NS=0 control not killed, or killed with less than 2× the CPU mean on
+  dev seeds, the implementer stops and reports; the manager brings a replacement control to the owner (re-registration,
+  fresh seeds).
 - 12×12 LOG same-seed on the B580: left out; it belongs to ticket 213 (decision 3b). Adding it would need an owner
   decision naming 302b.
 - Counts: `alf_la_tests_onemkl` 14 (302a's 13 + `t_determinism`) and GNU ctest 53 are confirmed by 302a's
@@ -214,7 +218,8 @@ guard only; the driver has a single global timeout.
   `NEO_CACHE_PERSISTENT=0` (2026-10-30); the old `~/.cache/neo_compiler_cache` waits for the owner.
 - **P5 done.** 302a merged (`890185c0`); counts confirmed. The base is fixed when the harness branch merges.
 - **P6** dpkg record before T1/T2 (decision 13), against `intel:~/alf-gpu/backup/intel_versions_2026-10-30.txt`.
-- **P7 done.** Decisions 20 (budget), 22 (τ), 23 (shift 8).
+- **P7 done.** Decisions 20 (budget), 22 (τ), 23 (shift 8), 24 (pre-register now, NS=0 stop rule), 25 (standing approval
+  for unattended T1/T2 on the B580).
 - **P8 done** (2026-10-31, test-runner, `intel:~/alf-gpu/work/t302b/probe/`): base `GPU=intel` build of `3e23a682`
   (206 INACTIVE, stabilization on the host; 205 updates and cb wraps on the B580) vs the ifx CPU build, Ltau = 1, versions
   equal to the 2026-10-30 record. Not a 302b result.

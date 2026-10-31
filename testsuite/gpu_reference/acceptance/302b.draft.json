@@ -25,6 +25,15 @@
    "covers": [
     "c_compare2_shift"
    ]
+  },
+  {
+   "who": "owner",
+   "decision": "24",
+   "date": "2026-10-31",
+   "quote": "Pre-register now",
+   "covers": [
+    "c_precision_ns0"
+   ]
   }
  ],
  "machine": "intel",
@@ -48,7 +57,7 @@
  "forbidden_lines": [
   "GPU tau pass (207): ACTIVE"
  ],
- "_forbidden_lines_reason": "decision 22: no device tau pass on the B580 until 302c; the 207 branch prints this line when the device tau pass runs (gpu_tau_mod.F90 on gpu-port-207-tau), so if 207 reached the base unguarded every GPU run would be an INPUT_ERROR (needs the forbidden_lines check of the harness branch gpu-port-harness-302b)",
+ "_forbidden_lines_reason": "decision 22: no device tau pass on the B580 until 302c; the 207 branch prints this line when the device tau pass runs (Prog/gpu_tau_mod.F90:257 on gpu-port-207-tau, c8d1c6f1), so if 207 reached the base unguarded every GPU run would be an INPUT_ERROR (needs the forbidden_lines check of the harness branch gpu-port-harness-302b)",
  "_env_reason": "GPU=intel runs get ONEAPI_DEVICE_SELECTOR=level_zero:0 from acc_run.sh itself (harness change H2, branch gpu-port-harness-302b; recorded in provenance env and checked by verdict.py), so no run declares it; the B580 active line checks the device by name",
  "allowed_test_changes": [],
  "gpunone": false,
@@ -1595,7 +1604,7 @@
     ]
    },
    "expect": "FAIL",
-   "_reason": "ALF_GPU_NS=0 once per toolchain (VERIFICATION 5). On cuSOLVER it gave 2.4x (206); whether oneMKL's Q needs the Newton-Schulz step is unknown: T0 must show the ratio above 1.5 on dev seeds, otherwise stop and re-register a different control with the owner"
+   "_reason": "ALF_GPU_NS=0 once per toolchain (VERIFICATION 5). On cuSOLVER it gave 2.4x (206); whether oneMKL's Q needs the Newton-Schulz step is unknown. Decision 24: pre-registered as is; if T0/T1 shows it not killed or below 2x the CPU mean on dev seeds, stop: the owner decides a replacement control (re-registration, fresh seeds)"
   },
   {
    "id": "c_compare2_shift",
@@ -2051,5 +2060,5 @@
   ]
  },
  "_part_nvidia_note": "to be split into testsuite/gpu_reference/acceptance/302b.nvidia.json at pre-registration (the drafting agent was allowed one file)",
- "_approvals_reason": "22: Ltau=1 runs under GPU=intel do TAU_M on the host until 302c, so the same_seed tau datasets and Precision tau compare the host tau pass fed by the device stabilization (206 INTERIM udvst copy). 23: compare2 control shift 8. Budget: decision 20 (no fixed GPU budget on the B580). compare2 length 120 x 30 needs no exception since decision 16"
+ "_approvals_reason": "22: Ltau=1 runs under GPU=intel do TAU_M on the host until 302c, so the same_seed tau datasets and Precision tau compare the host tau pass fed by the device stabilization (206 INTERIM udvst copy). 23: compare2 control shift 8. Budget: decision 20 (no fixed GPU budget on the B580). compare2 length 120 x 30 needs no exception since decision 16. 24: NS=0 control pre-registered without a probe, with the stop rule above. 25: standing approval for unattended T1/T2 on the B580"
 }
