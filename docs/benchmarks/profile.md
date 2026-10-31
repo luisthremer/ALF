@@ -60,6 +60,6 @@ This is outside the timed region and unrelated to the local update, but it domin
 ## Multithreaded comparison
 
 THREADS=8 at L=20, N_delay=32 (see `ndelay_scan.md`, section "Multithreaded comparison"; raw `raw_threads.txt`):
-standard 2.596, delayed 1.185, submatrix 1.121 s/sweep, versus 2.592 / 1.178 / 1.121 with one thread. There is no gain from
+standard 2.596, delayed 1.185, submatrix 1.121 s/sweep, versus 2.592 / 1.172 / 1.112 with one thread (N_delay scan, `raw_ndelay_scan.txt`). There is no gain from
 8 threads for any scheme (the reason was not investigated; the dominant calls are 400 x 400 or smaller BLAS/LAPACK calls, which vecLib may not
 thread), so the speedups at 8 threads are the same as at 1 thread: 2.19 (delayed) and 2.32 (submatrix).
