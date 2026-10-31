@@ -94,7 +94,7 @@ module lowrank_unit_harness
    ! Submatrix expectations: .false. = project 1 (eligible iff diagonal rank-1 in every flavour; the
    ! repeated-site flush in Lowrank_propose is asserted); .true. = rank-N submatrix (Task 5: eligibility
    ! as delayed, no repeated-site flush).
-   logical, parameter :: SUBMATRIX_RANKN = .false.
+   logical, parameter :: SUBMATRIX_RANKN = .true.
    integer, parameter :: N_P_LIM_TEST = 8      ! Lowrank_update_mod's N_P_LIM (support limit)
 
    ! Candidate schemes
@@ -201,7 +201,7 @@ contains
       complex(dp), intent(inout) :: Gc(:,:,:)
       integer,     intent(in)    :: n_op, nt, kind, dir
       complex(dp), intent(in)    :: HS_field
-      if (cand_lowrank(n_op)) call Lowrank_wrap_hook(n_op, nt, HS_field, kind, dir)
+      if (cand_lowrank(n_op)) call Lowrank_wrap_hook(n_op, nt, HS_field, kind, dir, Gc)
    end subroutine cand_hook
 
    ! Expected eligibility of vertex n_op for scheme (see the header)
@@ -248,7 +248,7 @@ contains
          return
       endif
       ! delayed or submatrix. A drop of the pending count = a flush inside Lowrank_propose
-      ! (submatrix: the site is already in the block).
+      ! (project-1 submatrix only: the site is already in the block; never with SUBMATRIX_RANKN).
       pend_before = Lowrank_pending()
       call Lowrank_propose(Gc, n_op, nt, HS_new, ratio)
       if (Lowrank_pending() < pend_before) n_repeat_flush = n_repeat_flush + 1
@@ -1238,7 +1238,7 @@ end module lowrank_eligibility_section
 ! proposals (case mz, mode "Final", S0_ratio = T0_proposal_ratio = 1, proposals drawn once
 ! beforehand) through the real Upgrade2 and through Upgrade_lowrank (delayed and submatrix),
 ! each on its own G copy and its own copy of the global nsigma. The proposals hit random
-! vertices, so sites repeat within a block (submatrix: flush in Lowrank_propose). Asserted: identical toggle sequence and
+! vertices, so sites repeat within a block (rank-N submatrix: no flush, one M-form accept formula). Asserted: identical toggle sequence and
 ! fields, |Delta Phase| <= PHASE_TOL, the same next ranf_wrap() value (same RNG consumption),
 ! and G after the final flush (and Lowrank_current_G before it) within TOL_UNIT.
 module lowrank_kernel_equiv_section
