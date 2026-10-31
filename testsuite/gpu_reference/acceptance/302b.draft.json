@@ -2,8 +2,8 @@
  "schema": "alf-acc/1",
  "ticket": "302b",
  "candidate_sha": "self",
- "base_sha": "TBD-after-302a-merge",
- "_base_reason": "placeholder: gpu-port after the merge of the harness branch gpu-port-harness-302b (H1/H2, needs review (c)); 302a is merged (890185c0), 207 is not in the base, so no tau line and no tau guard here (the guard comes with the 207 merge); filled in at pre-registration",
+ "base_sha": "TBD-at-preregistration",
+ "_base_reason": "placeholder: gpu-port after the merge of the harness branch gpu-port-harness-302b (H1/H2); 302a is merged (890185c0). 207 is not in the base: at pre-registration the manager records here that Prog/gpu_tau_mod.F90 does not exist at base_sha (decision 22: no device tau pass on the B580 until 302c), so no tau line and no tau guard in 302b",
  "created": "2026-10-30",
  "_status": "DRAFT for ticket 302b, Intel part (machine intel, Arc B580, ifx 2026.2 + oneMKL 2026.2, decision 13); updated 2026-10-31 with decisions 20-23; not pre-registered; open points in docs/gpu/tickets/302b-b580-device-paths.md",
  "approvals": [
@@ -29,8 +29,8 @@
  ],
  "machine": "intel",
  "gpu_exclusive": true,
- "timeout_s": 3600,
- "_timeout_reason": "hang guard only (decision 16). Longest run c2_gpu: 1073 s on the A30 (212 T2); B580 estimate 1.5-3x -> 1600-3200 s. The driver has one global timeout, so a hung short run could hold the B580 up to 1 h",
+ "timeout_s": 7200,
+ "_timeout_reason": "hang guard only (decision 16). Longest run c2_gpu: 1073 s on the A30 (212 T2). P8 (2026-10-31): the B580 base build is 0.4-0.5x the A30 per sweep with host stabilization; device stabilization adds an unmeasured oneMKL cost (~0.45 ms per QR call), so the pessimistic estimate 3200 s stays the bound and 7200 s gives > 2x margin. One global timeout: a hung short run could hold the B580 up to 2 h",
  "disk_min_free_GB": 5,
  "cpu_parallel": 2,
  "_cpu_parallel_reason": "CLAUDE.md: <= 8 cores on intel; one GPU run (1 host thread + Level Zero runtime) plus 2 single-threaded CPU oracle runs; CPU-alongside non-interference was measured on nividia only (the determinism pairs run under different load and would show an effect)",
@@ -1255,7 +1255,7 @@
     "ref_la_poison": "refused: ALF_LA_TEST_POISON_INFO ",
     "ref_la_wrongld": "refused: ALF_LA_TEST_WRONG_LD "
    },
-   "_reason": "302a promise: ALF_LA_TEST_* (alf_la test hooks) are refused in production runs like ALF_GPU_* debug variables. NEEDS HARNESS CHANGE H1 (acc_run.sh accepts ALF_LA_TEST_* only with --allow-debug); drop this gate and its control if H1 is not made"
+   "_reason": "302a promise: ALF_LA_TEST_* (alf_la test hooks) are refused in production runs like ALF_GPU_* debug variables (harness H1: acc_run.sh passes them only to declared allow_debug runs). The CUDA side of the same refusal is gated in the nvidia part (refusal_la_test_cuda)"
   },
   {
    "id": "invalid_value",
@@ -1429,7 +1429,7 @@
      ]
     }
    ],
-   "_reason": "la_qrpp (302a's om_qrpp, oneMKL geqrf) bitwise reproducible over 1000 calls incl. exact norm ties on the B580 (212's micro-test, never run under ONEMKL)"
+   "_reason": "la_qrpp (302a's om_qrpp, oneMKL geqrf) bitwise reproducible over 1000 calls incl. exact norm ties on the B580 (212's micro-test; already run under ONEMKL in 302a's re-acceptance, decision 18): regression check on the 302b candidate; ctests run with MKL/OMP threads 1 (acc_ctest.sh, harness H2 round 3); the B580 device line is checked in alf_la_tests_onemkl (same build)"
   }
  ],
  "controls": [
@@ -1600,7 +1600,7 @@
     "a": "c2_gpu_m"
    },
    "expect": "FAIL",
-   "_reason": "shift of 8 standard errors: at m = 11, alpha = 0.01 Sidak (z_crit ~3.32, t ~ k/sqrt(2)) k = 5 is caught ~60 %, k = 8 ~99 %. Deviation from VERIFICATION 5 approved for 212 only (decision 12): NEEDS THE OWNER'S APPROVAL FOR 302b before pre-registration"
+   "_reason": "shift of 8 standard errors: at m = 11, alpha = 0.01 Sidak (z_crit ~3.32, t ~ k/sqrt(2)) k = 5 is caught ~60 %, k = 8 ~99 %. Deviation from VERIFICATION 5 approved for 302b by the owner, decision 23 (2026-10-31)"
   },
   {
    "id": "c_compare2_null",
@@ -1837,6 +1837,33 @@
    "id_none_cand_m": {
     "build": "nv_none",
     "config": "hub6x6_cb_fd"
+   },
+   "ref_la_cuda": {
+    "build": "nv_def",
+    "config": "hub6x6_cb_fd",
+    "env": [
+     "ALF_LA_TEST_POISON_INFO=1"
+    ],
+    "allow_debug": true,
+    "active_lines": [
+     "GPU debug env refused: ALF_LA_TEST_POISON_INFO (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+    ]
+   },
+   "acc_la_cuda": {
+    "build": "nv_def",
+    "config": "hub6x6_cb_fd",
+    "env": [
+     "ALF_GPU_DEBUG=1",
+     "ALF_LA_TEST_POISON_INFO=1"
+    ],
+    "allow_debug": true,
+    "active_lines": [
+     "GPU path (gpu_state): ACTIVE",
+     "GPU update path (ticket 205): ACTIVE",
+     "GPU stabilization (206): ACTIVE",
+     "GPU build: git none backend CUDA",
+     "GPU debug env: ALF_GPU_DEBUG=1, ALF_LA_TEST_POISON_INFO=1"
+    ]
    }
   },
   "mutations": [
@@ -1934,6 +1961,15 @@
      ]
     ],
     "_reason": "GPU=none (HOST) nvfortran CPU build: bit-identical data.h5 base vs candidate"
+   },
+   {
+    "id": "refusal_la_test_cuda",
+    "type": "faults",
+    "fail_regex": "GPU debug env refused: ",
+    "cases": {
+     "ref_la_cuda": "refused: ALF_LA_TEST_POISON_INFO "
+    },
+    "_reason": "the ALF_LA_TEST_* refusal is in the shared env reader for every GPU backend (ticket, manager 2026-10-31); this checks it on CUDA too, so a refusal limited to ALF_LA_ONEMKL fails (review (b) 2026-10-31)"
    }
   ],
   "controls": [
@@ -1996,6 +2032,17 @@
       ]
      ]
     }
+   },
+   {
+    "id": "c_refusal_la_cuda_accepted",
+    "like": "refusal_la_test_cuda",
+    "replace": {
+     "cases": {
+      "acc_la_cuda": "refused: ALF_LA_TEST_POISON_INFO "
+     }
+    },
+    "expect": "FAIL",
+    "_reason": "with ALF_GPU_DEBUG=1 the variable is accepted and listed in the debug-env line (the CUDA backend reads no ALF_LA_TEST_* hook), so the refusal line is missing"
    }
   ]
  },
