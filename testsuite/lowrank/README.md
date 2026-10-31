@@ -88,8 +88,11 @@ same accept/reject decisions. `SET` is one of the `sets.sh` sets (its common key
 checks `Lowrank_current_G` against it after every accept, hook and flush (tolerance 1e-10); the counts and largest errors go to
 `lowrank_debug_summary.txt` in the run directory. Adding `-DLOWRANK_DEBUG_SELFTEST` corrupts the first wrap hook (delayed: skips one
 X-row scaling; submatrix: skips one `Ginv` row scaling) and the run must abort with `Lowrank_debug_check: stale G ...`;
-`-DLOWRANK_DEBUG_SELFTEST_PROPOSE` perturbs a proposal. In Hubbard models the submatrix hook touches pending sites only in the
-down-sweep (the un-wrap acts on the site just added), so the self-test fires there. Rebuild the normal binary afterwards.
+`-DLOWRANK_DEBUG_SELFTEST_PROPOSE` perturbs a proposal. The SELFTEST macros only take effect together with `ALF_LOWRANK_DEBUG`.
+In Hubbard models the submatrix hook touches pending sites only in the
+down-sweep (the un-wrap acts on the site just added), so the self-test fires there. A run whose hook never touches a pending entry
+passes silently, which for Hubbard means the self-test fires only in the down-sweep.
+`LOWRANK_DEBUG_SELFTEST_PROPOSE` has only been exercised for delayed. Rebuild the normal binary afterwards.
 
 ## stat_runs.sh, stat_compare.py (statistical comparison of independent chains)
 
