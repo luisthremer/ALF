@@ -5,7 +5,7 @@
  "base_sha": "71af3e076322",
  "_base_reason": "gpu-port 71af3e076322: 302a merged (890185c0), 212 merged, harness branch gpu-port-harness-302b merged (H1 ALF_LA_TEST_* as debug variables, H2 B580 pinning, forbidden_lines, ctest stamp checks; review (c) approved 2026-10-31). Manager check at pre-registration: Prog/gpu_tau_mod.F90 does not exist at this base (207 not merged), so the device tau pass cannot run (decision 22); forbidden_lines guards it anyway",
  "created": "2026-10-31",
- "_status": "pre-registered for ticket 302b, Intel part (intel, Arc B580, ifx 2026.2 + oneMKL 2026.2, decision 13); decisions 20-28; re-registered after T0 (decisions 26-27: precision controls replaced/added); re-registered after the T2 of candidate 1 (decision 28: compare2 runs 120 x 60, compare2 INCONCLUSIVE at 120 x 30); acceptance seeds are drawn fresh at T2",
+ "_status": "pre-registered for ticket 302b, Intel part (intel, Arc B580, ifx 2026.2 + oneMKL 2026.2, decision 13); decisions 20-29; re-registered after T0 (decisions 26-27: precision controls replaced/added); re-registered after the T2 of candidate 1 (decision 28: compare2 runs 120 x 60, compare2 INCONCLUSIVE at 120 x 30); acceptance seeds are drawn fresh at T2",
  "approvals": [
   {
    "who": "owner",
@@ -54,6 +54,16 @@
     "c_compare2_shift",
     "c_compare2_null"
    ]
+  },
+  {
+   "who": "owner",
+   "decision": "29",
+   "date": "2026-10-31",
+   "quote": "Accept, run T2",
+   "covers": [
+    "compare2",
+    "c_compare2_null"
+   ]
   }
  ],
  "machine": "intel",
@@ -63,8 +73,8 @@
  "disk_min_free_GB": 5,
  "cpu_parallel": 2,
  "_cpu_parallel_reason": "CLAUDE.md: <= 8 cores on intel; one GPU run (1 host thread + Level Zero runtime) plus 2 single-threaded CPU oracle runs; CPU-alongside non-interference was measured on nividia only (the determinism pairs run under different load and would show an effect)",
- "false_alarm_budget": 0.04,
- "_false_alarm_reason": "compare2 (alpha 0.01, Sidak inside) ~1 %; its null control ~1 %; INCONCLUSIVE compare2 outcomes: NOT ~1 % - measured 2026-10-31 with compare2.py on synthetic uncorrelated 120-bin series (40000 trials): an observable is flagged under-resolved in 1.2 % of runs (2.6 % at lag-1 correlation 0.3), independent of NSweep (the test uses the last rebin level, 8-15 bins); 11 observables in 2 runs give up to ~24 % per compare2, and with the null control (a third compare2, c2_cpu_null vs c2_cpu) 11 observables x 3 runs up to ~33 % per T2 if independent, less with the correlations between observables; this exceeds false_alarm_budget 0.04 (open owner item before the freeze); an INCONCLUSIVE of compare2 or c_compare2_null stops the ticket (ticket), it never passes; precision mean ~1 % (not calibrated on oneMKL); all other gates deterministic",
+ "false_alarm_budget": 0.35,
+ "_false_alarm_reason": "compare2 (alpha 0.01, Sidak inside) ~1 %; its null control ~1 %; INCONCLUSIVE compare2 outcomes: NOT ~1 % - measured 2026-10-31 with compare2.py on synthetic uncorrelated 120-bin series (40000 trials): an observable is flagged under-resolved in 1.2 % of runs (2.6 % at lag-1 correlation 0.3), independent of NSweep (the test uses the last rebin level, 8-15 bins); 11 observables in 2 runs give up to ~24 % per compare2, and with the null control (a third compare2, c2_cpu_null vs c2_cpu) 11 observables x 3 runs up to ~33 % per T2 if independent, less with the correlations between observables; owner decision 29 (2026-10-31, \"Accept, run T2\"): compare2's pass condition unchanged, budget raised from 0.04 to 0.35 to state this measured risk (deterministic gates 0, precision mean ~1 %, compare2 shift/null ~1 % each, chance INCONCLUSIVE up to ~33 %); an INCONCLUSIVE of compare2 or c_compare2_null stops the ticket (ticket), it never passes; precision mean ~1 % (not calibrated on oneMKL); all other gates deterministic",
  "active_lines": [
   "GPU path (gpu_state): ACTIVE",
   "GPU update path (ticket 205): ACTIVE",
@@ -1810,5 +1820,5 @@
    "gpu": true
   }
  ],
- "_approvals_reason": "22: Ltau=1 runs under GPU=intel do TAU_M on the host until 302c, so the same_seed tau datasets and Precision tau compare the host tau pass fed by the device stabilization (206 INTERIM udvst copy). 23: compare2 control shift 8. Budget: decision 20 (no fixed GPU budget on the B580). compare2 length 120 x 60 (decision 28) needs no exception since decision 16. 24: NS=0 control pre-registered without a probe, with the stop rule above. 25: standing approval for unattended T1/T2 on the B580. 26: the NS=0 control did not kill the precision gate on the B580 (T0, dev1); replaced by the graded device fault eps:1e-10, calibrated by the rule in the ticket. 24 is procedural (the stop rule that led to 26) and covers no control. 27: second, near-threshold control eps:1e-12. 28: compare2 runs 120 x 60 after the INCONCLUSIVE (Kin under-resolved) in the T2 of candidate 1; alpha, m, observables, min_bins and controls unchanged"
+ "_approvals_reason": "22: Ltau=1 runs under GPU=intel do TAU_M on the host until 302c, so the same_seed tau datasets and Precision tau compare the host tau pass fed by the device stabilization (206 INTERIM udvst copy). 23: compare2 control shift 8. Budget: decision 20 (no fixed GPU budget on the B580). compare2 length 120 x 60 (decision 28) needs no exception since decision 16. 24: NS=0 control pre-registered without a probe, with the stop rule above. 25: standing approval for unattended T1/T2 on the B580. 26: the NS=0 control did not kill the precision gate on the B580 (T0, dev1); replaced by the graded device fault eps:1e-10, calibrated by the rule in the ticket. 24 is procedural (the stop rule that led to 26) and covers no control. 27: second, near-threshold control eps:1e-12. 28: compare2 runs 120 x 60 after the INCONCLUSIVE (Kin under-resolved) in the T2 of candidate 1; alpha, m, observables, min_bins and controls unchanged. 29: false_alarm_budget 0.35 states the measured chance INCONCLUSIVE rate of compare2 and its null control (up to ~33 % per T2); no pass condition changes; an INCONCLUSIVE stops the ticket"
 }

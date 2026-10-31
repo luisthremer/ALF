@@ -10,7 +10,7 @@
 - **Branch:** `gpu-port-302b` (the 2026-10-30 draft branch `gpu-port-302b-b580` is superseded)
 - **Acceptance files:** `testsuite/gpu_reference/acceptance/302b.json` (Intel part, `intel`: 83 runs, 15 gates, 19
   controls) and `302b.nvidia.json` (`nividia` part, `acc_driver.py --part nvidia`: 10 runs, 5 gates, 5 controls).
-- **Status:** RE-REGISTRATION for decision 28 (compare2 120 × 60) pending review (b); until then the last approved
+- **Status:** RE-REGISTRATION for decisions 28 (compare2 120 × 60) and 29 (false-alarm budget 0.35) pending review (b); until then the last approved
   pre-registration is **PREREG_SHA `3e7d1992`** (`3e7d199242a88760cd3b319769a2848020fc0620`, 2026-10-31) on `gpu-port-302b`,
   base `71af3e076322`; decisions 26 (precision control eps:1e-10 replaces NS=0) and 27 (near-threshold control
   eps:1e-12); supersedes the first pre-registration `0e427164`. T0, candidate 1 `08b095b4`, review (a), T1 (PASS) and
@@ -212,7 +212,8 @@ single global timeout.
   of runs per observable (2.6 % at lag-1 correlation 0.3), independent of NSweep. With 11 observables in 2 runs a
   compare2 is INCONCLUSIVE by chance in up to ~24 %; with the null control `c_compare2_null` (a third compare2,
   11 observables × 3 runs in all) a T2 fails by chance in up to ~33 % (fewer with correlated observables). The file's
-  earlier "~1 %" was wrong, and the rate exceeds `false_alarm_budget` 0.04: an owner item before the freeze. Decision 28 removes a real autocorrelation of the size seen for `Kin`, not this rate.
+  earlier "~1 %" was wrong. **Decision 29** (2026-10-31, "Accept, run T2"): pass condition unchanged,
+  `false_alarm_budget` 0.04 → 0.35 to state this risk. Decision 28 removes a real autocorrelation of the size seen for `Kin`, not this rate.
 - **Fixed before T2 (decision 28 re-registration):** if compare2 or `c_compare2_null` is INCONCLUSIVE, work stops; no re-run, no
   further length change by the manager; the manager returns to the owner with the numbers. VERIFICATION.md §6 asks for
   ≥ 30 independent bins while `min_bins` 8 admits 14; information for the owner, unchanged here.
@@ -280,7 +281,7 @@ single global timeout.
 - **P6** dpkg record before T1/T2 (decision 13), against `intel:~/alf-gpu/backup/intel_versions_2026-10-30.txt`.
 - **P7 done.** Decisions 20 (budget), 22 (τ), 23 (shift 8), 24 (pre-register now, NS=0 stop rule), 26–27 (precision
   controls eps:1e-10 and eps:1e-12), 25 (standing approval
-  for unattended T1/T2 on the B580), 28 (compare2 120 × 60).
+  for unattended T1/T2 on the B580), 28 (compare2 120 × 60), 29 (false-alarm budget 0.35).
 - **P8 done** (2026-10-31, test-runner, `intel:~/alf-gpu/work/t302b/probe/`): base `GPU=intel` build of `3e23a682`
   (206 INACTIVE, stabilization on the host; 205 updates and cb wraps on the B580) vs the ifx CPU build, Ltau = 1, versions
   equal to the 2026-10-30 record. Not a 302b result.
@@ -309,7 +310,8 @@ Recorded in `302b.json` `approvals` (owner, manager session, DECISIONS.md):
 - decision 23, 2026-10-31, "Approve shift 8" — covers `c_compare2_shift`;
 - decision 26, 2026-10-31, "Graded device fault" — covers `c_precision_eps` (eps:1e-10);
 - decision 27, 2026-10-31, "Add x = 1e-12" — covers `c_precision_eps12` (near-threshold control);
-- decision 28, 2026-10-31, "120 bins × 60 sweeps" — covers `compare2`, `c_compare2_shift`, `c_compare2_null`.
+- decision 28, 2026-10-31, "120 bins × 60 sweeps" — covers `compare2`, `c_compare2_shift`, `c_compare2_null`;
+- decision 29, 2026-10-31, "Accept, run T2" — covers `compare2`, `c_compare2_null` (false-alarm budget 0.35).
 Decision 24 ("Pre-register now") is procedural: its stop rule fired in T0 and led to decision 26; it covers no control.
 Process approvals without a criterion: decision 20 (no fixed B580 budget), 21 (venv), 25 (unattended T1/T2).
 
