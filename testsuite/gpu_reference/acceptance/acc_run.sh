@@ -3,10 +3,14 @@
 #   usage: acc_run.sh RUNDIR BINARY CONFIGDIR [--allow-debug] [VAR=value ...]
 #     RUNDIR    must not exist (created atomically; evidence is never overwritten);
 #     CONFIGDIR a prepared ALF run directory (parameters, seeds), copied into RUNDIR;
-#     VAR=value extra variables. Every ALF_GPU_* / ALFSH_* variable needs --allow-debug (given by the driver only for
-#               runs the acceptance file declares allow_debug); other variables only from the whitelist below.
+#     VAR=value extra variables. Every ALF_GPU_* / ALFSH_* / ALF_LA_TEST_* variable needs --allow-debug (given by the
+#               driver only for runs the acceptance file declares allow_debug); other variables only from the whitelist
+#               below.
 #   Environment: env -i + the build tool's env file + OMP/BLAS threads = 1 + TMPDIR (inside the run's tmp/) + for
-#   GPU builds OMP_TARGET_OFFLOAD=MANDATORY (no silent host fallback). Timeout ACC_TIMEOUT (default 900 s), then
+#   GPU builds OMP_TARGET_OFFLOAD=MANDATORY (no silent host fallback) + for GPU=intel builds
+#   ONEAPI_DEVICE_SELECTOR=level_zero:0 (the discrete GPU; the iGPU of `intel` has no FP64), set here like
+#   OMP_TARGET_OFFLOAD, so not part of the declared env; for GPU=intel builds ONEAPI_DEVICE_SELECTOR and
+#   ZE_AFFINITY_MASK are refused as extra variables. Timeout ACC_TIMEOUT (default 900 s), then
 #   SIGKILL after 30 s; rc 124 or 137 = timeout. With ACC_GPU_LOCK set, GPU builds run under flock on that file.
 #   Writes RUNDIR/provenance.json.
 # Exit code: the program's exit code; 2 on a usage or setup error (nothing run).
@@ -20,13 +24,20 @@ ls "$CFG" | grep -q -E '^(data\.h5|info|confout|confin)' && { echo "refusing: $C
 ENVX=()
 for kv in "$@"; do
   case "$kv" in
-    ALF_GPU_*=*|ALFSH_*=*) [ $ALLOW = 1 ] || { echo "refusing debug/fault variable without --allow-debug: $kv"; exit 2; }; ENVX+=("$kv");;
+    ALF_GPU_*=*|ALFSH_*=*|ALF_LA_TEST_*=*) [ $ALLOW = 1 ] || { echo "refusing debug/fault variable without --allow-debug: $kv"; exit 2; }; ENVX+=("$kv");;
     CUDA_MPS_PIPE_DIRECTORY=*|CUDA_MPS_LOG_DIRECTORY=*|CUBLAS_WORKSPACE_CONFIG=*|ONEAPI_DEVICE_SELECTOR=*|ZE_AFFINITY_MASK=*) ENVX+=("$kv");;
     *=*) echo "refusing variable outside the whitelist: ${kv%%=*}"; exit 2;;
     *) echo "bad argument $kv"; exit 2;;
   esac
 done
-read -r TOOL GPUB < <(python3 -c "import json,sys; b=json.load(open(sys.argv[1])); print(b['tool'], 1 if ('GPU=nvidia' in b['configure'] or 'GPU=intel' in b['configure']) else 0)" "$BJ") || { echo "bad build record"; exit 2; }
+read -r TOOL GPUB GPUI < <(python3 -c "import json,sys; b=json.load(open(sys.argv[1])); print(b['tool'], 1 if ('GPU=nvidia' in b['configure'] or 'GPU=intel' in b['configure']) else 0, 1 if 'GPU=intel' in b['configure'] else 0)" "$BJ") || { echo "bad build record"; exit 2; }
+SEL=""
+if [ "$GPUI" = 1 ]; then
+  for kv in "${ENVX[@]}"; do
+    case "$kv" in ONEAPI_DEVICE_SELECTOR=*|ZE_AFFINITY_MASK=*) echo "refusing $kv: GPU=intel runs use ONEAPI_DEVICE_SELECTOR=level_zero:0"; exit 2;; esac
+  done
+  SEL="ONEAPI_DEVICE_SELECTOR=level_zero:0"
+fi
 ENVF=$HOME/alf-gpu/env/$TOOL.sh; [ -f "$ENVF" ] || { echo "no env file $ENVF"; exit 2; }
 mkdir -p "$(dirname "$D")" && mkdir "$D" || { echo "refusing: $D exists or cannot be created"; exit 2; }
 cp -r "$CFG/." "$D/" || exit 2
@@ -44,7 +55,7 @@ OFF=""; [ "$GPUB" = 1 ] && OFF="OMP_TARGET_OFFLOAD=MANDATORY"
 T=${ACC_TIMEOUT:-900}
 LOCK=(); [ "$GPUB" = 1 ] && [ -n "${ACC_GPU_LOCK:-}" ] && LOCK=(flock "$ACC_GPU_LOCK")
 date -Is > start.txt
-"${LOCK[@]}" env -i HOME="$HOME" USER="$USER" LANG=C LC_ALL=C PATH=/usr/bin:/bin TMPDIR="$D/tmp" $OFF "${ENVX[@]}" \
+"${LOCK[@]}" env -i HOME="$HOME" USER="$USER" LANG=C LC_ALL=C PATH=/usr/bin:/bin TMPDIR="$D/tmp" $OFF $SEL "${ENVX[@]}" \
   bash --noprofile --norc -c '
   . "$1" > env_file.log 2>&1 || { echo "env file failed: $1" >&2; exit 2; }
   export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
@@ -74,7 +85,7 @@ rc = int(rc)
 p = {"schema": "alf-acc-prov/1", "run_dir": d, "binary": b, "binary_sha256": h(b), "build": json.load(open(bj)),
      "inputs": {"parameters_sha256": h(os.path.join(d, "parameters")), "seeds_sha256": h(os.path.join(d, "seeds"))},
      "extra_env": extra, "allow_debug": allow == "1", "env_file": envf, "env_file_sha256": h(envf),
-     "env": env, "debug_env_present": sorted(k for k in env if k.startswith(("ALF_GPU_", "ALFSH_"))),
+     "env": env, "debug_env_present": sorted(k for k in env if k.startswith(("ALF_GPU_", "ALFSH_", "ALF_LA_TEST_"))),
      "gpu_check_rc": int(ck), "gpu_check_after_rc": int(ck2), "load_ok": loadok == "1",
      "load_before": open(os.path.join(d, "load_before.txt")).read().split(),
      "gpu_before": open(os.path.join(d, "gpu_before.txt")).read().splitlines(),

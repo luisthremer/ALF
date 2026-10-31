@@ -64,7 +64,7 @@ def tmpdir():
 
 
 # ------------------------------------------------------------------ provenance
-DEBUG_PREFIXES = ("ALF_GPU_", "ALFSH_")
+DEBUG_PREFIXES = ("ALF_GPU_", "ALFSH_", "ALF_LA_TEST_")
 
 
 def check_prov(rd, acc, expect_rc=0, gpu_exclusive=None):
@@ -934,7 +934,7 @@ def lint_errors(acc):
                 errs.append(f"gate {g['id']}: uses the mutated copy {x}")
             else:
                 ok_vars = GATE_DEBUG_OK + (SELFTEST_ONLY if g["type"] == "selftest" else ())
-                bad = [kv for kv in runs[x].get("env", []) if kv.split("=")[0].startswith(("ALF_GPU_", "ALFSH_"))
+                bad = [kv for kv in runs[x].get("env", []) if kv.split("=")[0].startswith(DEBUG_PREFIXES)
                        and kv.split("=")[0] not in ok_vars and g["type"] != "faults"]
                 if bad:
                     errs.append(f"gate {g['id']}: run {x} carries fault/numerics variables {bad} (allowed only in controls)")

@@ -20,9 +20,11 @@ sha256, configure line and flags, compiler/CUDA/driver versions, the complete en
 hashes, GPU processes before and after, start/end time, exit code, timeout flag, sha256 of every output file and of
 every `data.h5` dataset. Runs use `env -i` plus the tool's env file plus an explicit whitelist. Debug and fault
 variables (`ALF_GPU_FAULT*`, `_TAUSWAP`, `_TAU_NS`, `_NS`, `_STABCHECK`, `_STABMIX`, `_TAUDIAG*`, `_NOUPDATE`,
-`_SELFTEST`, `_UPDTEST`, `_EXIT`, `_TAUTIME`, `_STABTIME`, `_DISABLE`) are refused unless the acceptance file declares
+`_SELFTEST`, `_UPDTEST`, `_EXIT`, `_TAUTIME`, `_STABTIME`, `_DISABLE`) and the `alf_la` test variables `ALF_LA_TEST_*`
+(since 2026-10-31) are refused unless the acceptance file declares
 the run as a self-test or control run, or as a diagnostic gate run (the 207 paired test needs `ALF_GPU_TAUDIAG`; the
-  file says so in the gate's reason). GPU builds run with `OMP_TARGET_OFFLOAD=MANDATORY`, and every run of a GPU build
+  file says so in the gate's reason). GPU builds run with `OMP_TARGET_OFFLOAD=MANDATORY` (`GPU=intel`
+  builds also with `ONEAPI_DEVICE_SELECTOR=level_zero:0`, set by `acc_run.sh` and not overridable), and every run of a GPU build
   must show the ACTIVE lines of the GPU paths; an INACTIVE line is an input error. A log without a stamp that matches
   the candidate is not evidence.
 
