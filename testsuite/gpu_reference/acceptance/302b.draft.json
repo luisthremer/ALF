@@ -1376,7 +1376,8 @@
      "stamp_file": "onemkl_all/stamp",
      "exit_file": "onemkl_all/ctest.exit",
      "stamp_contains": [
-      "offload MANDATORY"
+      "offload MANDATORY",
+      "selector level_zero:0"
      ],
      "regex": "(\\d+)% tests passed, (\\d+) tests failed out of (\\d+)",
      "equals": [
@@ -1389,7 +1390,8 @@
      "file": "onemkl_all/ctest.log",
      "stamp_file": "onemkl_all/stamp",
      "stamp_contains": [
-      "offload MANDATORY"
+      "offload MANDATORY",
+      "selector level_zero:0"
      ],
      "regex": "^TEST t_gemm  backend=onemkl$",
      "equals": []
@@ -1398,7 +1400,8 @@
      "file": "onemkl_all/ctest.log",
      "stamp_file": "onemkl_all/stamp",
      "stamp_contains": [
-      "offload MANDATORY"
+      "offload MANDATORY",
+      "selector level_zero:0"
      ],
      "regex": "alf_la: ONEMKL device: [^\\n]*B580",
      "equals": []
@@ -1415,7 +1418,8 @@
      "stamp_file": "det_onemkl/stamp",
      "exit_file": "det_onemkl/ctest.exit",
      "stamp_contains": [
-      "offload MANDATORY"
+      "offload MANDATORY",
+      "selector level_zero:0"
      ],
      "regex": "(\\d+)% tests passed, (\\d+) tests failed out of (\\d+)",
      "equals": [
