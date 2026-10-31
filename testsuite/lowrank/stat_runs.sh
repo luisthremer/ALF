@@ -2,7 +2,7 @@
 # One statistical job: parameters from STAT_SETS (sets.sh), run ALF.out, analyse with ana.out.
 #
 # Usage:  testsuite/lowrank/stat_runs.sh SET SCHEME SEED [KEY=VALUE ...]
-#   SET     half | doped | density | tv | kondo | jz | tv_proj   (sets.sh, STAT_SETS)
+#   SET     half | doped | density | tv | kondo | jz | tv_proj | z2 | pv_adiab   (sets.sh, STAT_SETS)
 #   SCHEME  standard | delayed | submatrix    (Sequential_scheme)
 #   SEED    integer, first seed of the seeds file (independent chains need different seeds)
 #   KEY=VALUE ...  extra parameters, applied last (override NSweep=50 NBin=40 Ltau=0 n_skip=5 too)
@@ -48,7 +48,11 @@ fi
 # the observables of the standard list that exist, plus (only when Ener_scal does not exist) every other *_scal file.
 obslist=""
 for obs in Ener_scal Pot_scal Kin_scal Part_scal SpinZ_eq Green_eq; do
-    [ -e "$obs" ] && obslist="$obslist $obs"
+    if [ -e "$obs" ]; then
+        obslist="$obslist $obs"
+    elif [ -e Ener_scal ]; then   # a model with the standard observables must have all six
+        echo "$SET/$SCHEME: standard observable $obs missing in $DIR" >&2; exit 1
+    fi
 done
 if [ ! -e Ener_scal ]; then
     for f in *_scal; do
