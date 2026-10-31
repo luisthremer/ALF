@@ -44,7 +44,18 @@ if [ "$SCHEME" != standard ]; then
     want="Sequential scheme: $(printf '%s' "$SCHEME" | tr '[:lower:]' '[:upper:]')"
     grep -q -F "$want" info || { echo "$SET/$SCHEME: expected line '$want' not found in $DIR/info (scheme not active, stale binary?)" >&2; exit 1; }
 fi
+# Standard observable list; models without Ener/Pot/Kin (Z2_Matter: Part, Flux, X, Q) are analysed on the files they have:
+# the observables of the standard list that exist, plus (only when Ener_scal does not exist) every other *_scal file.
+obslist=""
 for obs in Ener_scal Pot_scal Kin_scal Part_scal SpinZ_eq Green_eq; do
+    [ -e "$obs" ] && obslist="$obslist $obs"
+done
+if [ ! -e Ener_scal ]; then
+    for f in *_scal; do
+        case " $obslist " in *" $f "*) ;; *) obslist="$obslist $f" ;; esac
+    done
+fi
+for obs in $obslist; do
     "$ALFDIR/Analysis/ana.out" "$obs" >"ana_$obs.log" 2>&1 || { echo "ana.out $obs failed in $DIR" >&2; exit 1; }
 done
 echo "done $DIR"

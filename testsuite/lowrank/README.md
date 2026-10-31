@@ -123,7 +123,7 @@ passes silently, which for Hubbard means the self-test fires only in the down-sw
 ## stat_runs.sh, stat_compare.py (statistical comparison of independent chains)
 
 ```bash
-testsuite/lowrank/stat_runs.sh SET SCHEME SEED [KEY=VALUE ...]     # SET = half | doped | density | tv | kondo | jz | tv_proj
+testsuite/lowrank/stat_runs.sh SET SCHEME SEED [KEY=VALUE ...]     # SET = half | doped | density | tv | kondo | jz | tv_proj | z2 | pv_adiab
 python3 -I testsuite/lowrank/stat_compare.py DIR_A DIR_B           # A = reference (standard), B = candidate
 python3 -I testsuite/lowrank/stat_compare.py --selftest
 ```
@@ -133,10 +133,17 @@ python3 -I testsuite/lowrank/stat_compare.py --selftest
   applied last and override), runs `Prog/ALF.out` (`OMP_NUM_THREADS=1`) and `Analysis/ana.out` on `Ener_scal Pot_scal
   Kin_scal Part_scal SpinZ_eq Green_eq`. One job takes 25-55 s on the M1 Pro (6x6, 2000 sweeps), so no reduction of
   NSweep was needed. Start it with `run_in_background` / `&`; keep <= 8 jobs concurrent.
-- Rank-N sets (4x4, standard runs 13-57 s, standard seeds 1/2 give `VERDICT: PASS` for all four): `tv` (N_SUN=1, `ham_V=-1`,
+- Rank-N sets (4x4, standard runs 6-67 s, standard seeds 1/2 give `VERDICT: PASS` for all six): `tv` (N_SUN=1, `ham_V=-1`,
   `ham_chem=-1`, `Beta=2`, `NBin=80`; average sign 0.59(1); at half filling the N_SUN=1 sign is ~0.03), `kondo` (Bilayer 4x4,
   Beta=2), `jz` (`LR_Jz_Test`, `Beta=4 Nwrap=5`), `tv_proj` (projective tV with `N_SUN=2 ham_V=0.5 N_Phi=1 Theta=2 Beta=1
   NBin=80`: the N_SUN=1 projective sets have average sign ~0.05).
+  `z2` (Z2_Matter, `ham_U=1 Beta=2 Symm=.F. Checkerboard=.F.`, no Global_tau, `NSweep=200`; average sign 1) and `pv_adiab`
+  (Hubbard_Plain_Vanilla, `Projector=.T. Adiabatic=.T. Theta=2 Beta=1`, as in SETS; 6 s). Z2_Matter has no Ener/Pot/Kin
+  observables (Part, Flux, X, Q), so `stat_runs.sh` analyses the standard observables that exist and, only when `Ener_scal`
+  does not exist, every other `*_scal` file; `stat_compare.py` compares every `*_scalJ` present. With `NSweep=50` the `z2`
+  errors were underestimated by the gauge-field autocorrelation (standard s1 vs s2: Green_eqJK 4 of 16 entries |z|>2, rms z 1.5,
+  FAIL); with `NSweep=200` (8000 sweeps, 66 s) 5 of the 6 pairs among 4 standard seeds pass (s1/s2 PASS; s3/s4 FAIL on
+  Green_eqJK alone, i.e. within the documented array-rule false-fail rate; the pre-registered replicate protocol applies).
 - Sets: `half` 6x6 U=4 beta=5 mu=0 (Mz); `doped` 6x6 U=4 beta=5 mu=-1.0 (Mz, average sign ~0.59, NBin=80 n_skip=10, ~105 s); `density` `Mz=.F.` 6x6 U=4 beta=4 mu=0.
 - ana.out output layout: `*_scalJ` rows `idx value error` (the last row is the average sign/phase; the observable
   values are jackknife sign-reweighted); `*_eqJK`/`*_eqJR`: a coordinate line, then `orb orb Re errRe Im errIm`.
