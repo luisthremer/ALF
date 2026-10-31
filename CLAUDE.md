@@ -266,6 +266,27 @@ Design/plan approvals are replaced by independent reviewer subagents; every deci
   is covered at the unit tier only, Jz at all tiers via the test model `LR_Jz_Test` (D11); N_delay now bounds the pending
   rank (columns / pending sites), unchanged for rank-1 (D5).
 
+## Phase 3 results: rank-N delayed (verified 2026-10-31, code 5f493935 + 2fed83f6; tiers run at bf1e55a2..)
+Command: `testsuite/lowrank/tiers.sh delayed 3` (summaries `runs/tiers_delayed_summary*.txt`, logs `runs/tiers/delayed/`).
+- Unit (ctest 36; 15 new rank-N cases: jz, sasb_zz, tv_bond, kondo_j, ising1 (type 1), sp_type4 (type 4), nd_zero (r < N_P),
+  asym_rn, gt_bonds (g_t), diag_e0, bonds_skip, bonds_illcond, rep_mixed, padcap, bigop; N_delay {1,2,7,32,1000}):
+  delayed max ratio / G error 2.9e-12 / 2.3e-13 well-conditioned; bonds_illcond (Ndim 32, cond(1+A) 2.7e8 up / 6.8e7 down)
+  7.8e-12 / 9.8e-13 up, 1.0e-11 / 8.4e-12 down (TOL_ILL 1e-8); kernel equivalence 0 toggle mismatches; pending-rank
+  assertion CAP (removing the pre-flush fails 8 rows); mutations: no kind-2 hook → 101 rows fail, R^† instead of R^T → 4 rows.
+- Trajectory: standard vs delayed IDENTICAL for all 14 sets (start, explicit, doped, density, continuous, tv, kondo,
+  pv_adiab, z2gt (N_delay=5), tv_flux, tv_proj, z2, spin_peierls, jz) and tv/kondo/jz at N_delay 2 and 1000.
+- Debug build (shadow G with standard rank-r updates): tv, kondo, z2, spin_peierls, jz, tv_proj, tv_flux: 3.2e5 checks,
+  max relative G error 2.7e-13 (tv_proj), Mat error 1.6e-13; no termination.
+- Statistical (delayed_s3 vs standard_s1, pre-registered rules): tv, kondo, jz, tv_proj, z2, doped: all PASS.
+- Stability (paired, same seed => same trajectory; delayed_s3/standard_s3): Green mean 0.96–1.03, max 0.94–1.35, Phase max
+  0.82–1.61 (kondo); all ≤ 2.
+- Regress 13/13 IDENTICAL; ctest 41/41.
+- Performance (Mac, 1 thread, Mz Hubbard, N_delay 32): the first rank-N version was 7–8 % slower for rank-1 (ZGEMM with
+  n=1, Fields objects per hook); after fix round 1 (project-1 ZGEMV sequence for r = 1, no hot-path allocations) delayed is
+  0.121 s/sweep (L=12) and 1.165 (L=20) vs 0.1227 / 1.178 in Phase 5 (project 1).
+- Reviews: Task 1 (sonnet) approved; Tasks 2+3 (opus) Spec ✅ / approved with one Important (bonds_illcond too mild) and minors,
+  all fixed in round 1 (re-review: all addressed).
+
 ## Work packages (project 2)
 | WP | Phase | Content | Done means |
 |---|---|---|---|
