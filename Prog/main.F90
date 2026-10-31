@@ -130,7 +130,8 @@ Program Main
         Use Global_mod
         Use UDV_State_mod
         Use Wrapgr_mod
-        use Lowrank_update_mod, only: Lowrank_read_point, Lowrank_autotune_finish, Lowrank_report_final
+        use Lowrank_update_mod, only: Lowrank_read_point, Lowrank_autotune_finish, Lowrank_report_final, &
+             &                        Lowrank_current_N_delay
         Use Fields_mod
         Use WaveFunction_mod
         use entanglement_mod
@@ -169,6 +170,7 @@ Program Main
 #ifdef HDF5
         INTEGER(HID_T) :: file_id
         Logical :: file_exists
+        Integer :: nd_buf(1)       ! delayed/submatrix provenance attributes of data.h5
 #endif
          
         !General
@@ -438,6 +440,15 @@ Program Main
             call h5fclose_f(file_id, ierr)
           endif
           call ham%write_parameters_hdf5(file_dat)
+          ! Delayed/submatrix branch provenance: requested scheme and N_delay as attributes of '/'
+          ! (only for a non-standard scheme, so that standard runs keep the baseline data.h5)
+          if (str_to_upper(trim(adjustl(get_Sequential_scheme()))) /= "STANDARD") then
+             CALL h5fopen_f(file_dat, H5F_ACC_RDWR_F, file_id, ierr)
+             call h5ltset_attribute_string_f(file_id, '/', 'Sequential_scheme', trim(adjustl(get_Sequential_scheme())), ierr)
+             nd_buf(1) = get_N_delay()
+             call h5ltset_attribute_int_f(file_id, '/', 'N_delay_requested', nd_buf, int(1,size_t), ierr)
+             call h5fclose_f(file_id, ierr)
+          endif
 
 #if defined(MPI)
         endif
@@ -931,6 +942,21 @@ Program Main
         Enddo
         ! Automatic N_delay: "tuning incomplete" if the run ended before the decision (no-op otherwise)
         Call Lowrank_report_final()
+#if defined(HDF5)
+        ! Delayed/submatrix branch provenance: the N_delay in use at the end of the run (resolved auto value)
+#if defined(MPI)
+        if ( Irank_g == 0 ) then
+#endif
+          if (str_to_upper(trim(adjustl(get_Sequential_scheme()))) /= "STANDARD") then
+             CALL h5fopen_f(file_dat, H5F_ACC_RDWR_F, file_id, ierr)
+             nd_buf(1) = Lowrank_current_N_delay()
+             call h5ltset_attribute_int_f(file_id, '/', 'N_delay_used', nd_buf, int(1,size_t), ierr)
+             call h5fclose_f(file_id, ierr)
+          endif
+#if defined(MPI)
+        endif
+#endif
+#endif
 
         ! Deallocate things
         DO nf_eff = 1, N_FL_eff
