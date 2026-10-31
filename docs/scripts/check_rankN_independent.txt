@@ -1,0 +1,15 @@
+operators (P, diag, r, N_op): [([3], True, 1, 1), ([3, 4], True, 2, 2), ([4, 5], False, 2, 2), ([5, 6, 7], False, 2, 3), ([1, 2], False, 1, 2), ([4, 5], False, 2, 2), ([7, 2, 8, 3], False, 4, 4), ([3], True, 1, 1), ([0, 9], False, 2, 2), ([6, 1], False, 2, 2)]
+vertex visits: 40, accepted: 32
+frame check (tracked A vs product from scratch): after up 5.26e-15, after down 1.16e-14
+scheme                     max|G-G_exact|   max|ratio/exact-1|  final |G-G_scratch|
+std (Upgrade2)                   1.37e-14             7.34e-15             7.38e-15
+dly(nd=5)                        1.30e-14             6.00e-15             7.92e-15  [flushes=10]
+dly(nd=inf)                      1.29e-14             6.89e-15             8.51e-15  [flushes=0]
+sub(kmax=6,nd=8)                 1.41e-14             6.89e-15             8.64e-15  [pads=13, conversions=9, base flushes=5]
+sub(kmax=inf,nd=inf)             1.29e-14             7.33e-15             8.39e-15  [pads=11, conversions=3, base flushes=0]
+sub(flush@hop)                   1.24e-14             6.89e-15             7.88e-15  [pads=11, conversions=3, base flushes=4]
+ALL CHECKS PASSED
+negative controls (max|G-G_exact| of the broken scheme; must be O(1e-3) or larger):
+  Y <- R^dag Y instead of R^T Y      : dly(nd=inf) 1.41e+00
+  no padding on partial overlap      : sub(kmax=inf,nd=inf) 5.91e-01
+  hop: Y^T not multiplied by B^-1    : dly(nd=inf) 1.45e-01
