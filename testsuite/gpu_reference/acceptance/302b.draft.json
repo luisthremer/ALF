@@ -45,6 +45,10 @@
   "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics"
  ],
  "_active_lines_reason": "every production GPU run on the B580 shows the 204-206 ACTIVE lines, the 212 lines with backend ONEMKL, and the SYCL device of la_init (B580, not the UHD 730 without FP64). verdict.py treats any word INACTIVE as GPU-inactive: the tau switch line must not contain it. If 207 is in the base, the tau line (ticket) is added here",
+ "forbidden_lines": [
+  "GPU tau pass (207): ACTIVE"
+ ],
+ "_forbidden_lines_reason": "decision 22: no device tau pass on the B580 until 302c; the 207 branch prints this line when the device tau pass runs (gpu_tau_mod.F90 on gpu-port-207-tau), so if 207 reached the base unguarded every GPU run would be an INPUT_ERROR (needs the forbidden_lines check of the harness branch gpu-port-harness-302b)",
  "_env_reason": "GPU=intel runs get ONEAPI_DEVICE_SELECTOR=level_zero:0 from acc_run.sh itself (harness change H2, branch gpu-port-harness-302b; recorded in provenance env and checked by verdict.py), so no run declares it; the B580 active line checks the device by name",
  "allowed_test_changes": [],
  "gpunone": false,

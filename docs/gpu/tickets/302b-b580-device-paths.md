@@ -21,7 +21,7 @@ gates against the ifx CPU oracle. The 207 τ pass stays off under `GPU=intel` un
 unchanged.
 
 ## Context
-- **Guards in the code at d8cc74f7** (grep `ALF_LA_ONEMKL` in `Prog/`):
+- **Guards in the code at 3e23a682** (unchanged since d8cc74f7; grep `ALF_LA_ONEMKL` in `Prog/`):
   - `Prog/gpu_stab_mod.F90:139–142`, `gpu_stab_setup`: `#if defined(ALF_LA_ONEMKL)` → `GPU stabilization (206): INACTIVE …
     (ticket 302)` + `return` / `#else` … `#endif` (end of the subroutine). PLAN cites 137–140; 212 shifted the lines.
   - `Prog/gpu_state_mod.F90:113–115` (`use alf_la_mod, only: la_init, la_finalize`), `577–579` (`la_init` in
@@ -70,14 +70,17 @@ unchanged.
 - `Prog/gpu_state_mod.F90`: the three ONEMKL guards (113–115, 577–579, 923–925). With the manager's sequencing, also the
   `ALF_LA_TEST_` prefix in the env reader and the allow-list (shared part).
 - `Prog/gpu_wrap_mod.F90`: `la_available` (98–102). The stale "(ticket 302 for GPU=intel)" message text may stay.
-- `Prog/gpu_tau_mod.F90`: the ONEMKL guard in `gpu_tau_setup`, only if 207 is in the base, and with the manager's
-  sequencing.
+- `Prog/gpu_tau_mod.F90`: does not exist in the base (207 not merged); not touched by 302b.
 - `docs/gpu/scripts/intel/t302b_*` (development only).
 - Not allowed:
   - `Libraries/Modules/alf_la_mod.F90`, `alf_la_sycl_shim.cpp`, `configure.sh`, Makefiles, `testsuite/**`;
   - `Prog/main.F90`, `Prog/tau_m_mod.F90`, `Prog/Wrapgr_mod.F90`; any CPU-path file;
   - the CUDA code paths.
-- A defect found in `alf_la` (ONEMKL) is reported, not fixed here: its fix would change this file's expected counts
+- How the file list is enforced: GPU=none identity and CUDA identity cover CPU and CUDA behaviour on 6×6 cb only;
+  `acc_gpunone.sh` skips every `Prog/gpu_*` file. Edits elsewhere in `Prog/gpu_*` (e.g. `gpu_update_mod.F90`, the CUDA
+  dense path, shared self-test code) would not be caught by a gate. So the manager checks the candidate's
+  `changed_files.txt` (written by the driver) against this list before T2, and review (a) checks the diff line by line
+  (review (b) 2026-10-31, finding 5).- A defect found in `alf_la` (ONEMKL) is reported, not fixed here: its fix would change this file's expected counts
   (re-registration). **Manager (2026-10-31): no `alf_la` edits in 302b**; a defect found there gets its own ticket.
 
 ## Acceptance
@@ -90,7 +93,10 @@ The draft is in `302b.draft.json`; `verdict.py` lint passes for both parts in DR
 - 67 GPU runs, 10 CPU runs, 4 ctests, 15 gates, 18 controls.
 
 Every `GPU=intel` run gets `ONEAPI_DEVICE_SELECTOR=level_zero:0` from `acc_run.sh` itself (H2; recorded in the
-provenance env), and every run must show the B580 device line as an active line. The UHD 730 has no FP64.
+provenance env), and every production run must show the B580 device line as an active line (the refusal and
+invalid-value runs stop in `gpu_env_check` before `la_init` and declare their own lines). The UHD 730 has no FP64.
+The device τ pass must stay off (decision 22): `forbidden_lines` holds the 207 ACTIVE line, so a run that prints it is
+an INPUT_ERROR.
 
 | Gate | Oracle / statistic | Threshold | Control (expect) |
 |---|---|---|---|
@@ -108,7 +114,7 @@ provenance env), and every run must show the B580 device line as an active line.
 | `compare2` | `s8_U4_b2_cb_short` 120 × 30, B580 default vs ifx GPU=none, fresh seeds | m = 11, α = 0.01 Šidák, `min_bins` 8 | shift 8 (FAIL; decision 23); CPU-vs-CPU null (PASS) |
 | `ifx_none_identity` | ifx 2026.2 GPU=none, base vs candidate, 6×6 | bit-identical | `scale 1e-12` (FAIL) |
 | `alf_la_tests_onemkl` | ctest `^t_` under ONEMKL on the merged base | 100 % of 14; backend and B580 lines | `ALF_LA_TEST_WRONG_LD` (FAIL), replaces all 3 checks |
-| `t_determinism_onemkl` | 212's micro-test under ONEMKL (never run there) | 1/1 pass | `ALF_LA_TEST_PLANT_ULP=1` (FAIL) |
+| `t_determinism_onemkl` | 212's micro-test under ONEMKL (also run in 302a's re-acceptance; regression check here) | 1/1 pass | `ALF_LA_TEST_PLANT_ULP=1` (FAIL) |
 
 **Machine `nividia`** (`_part_nvidia`):
 
@@ -126,13 +132,14 @@ CUDA "unchanged" is checked at run time, because `acc_gpunone.sh` does not prepr
 - **Reduction order and determinism:**
   - Since 212 the floating-point sums are in fixed order. Only max reductions and integer counts remain, plus the setup
     checksum compared with a tolerance.
-  - The host part of oneMKL's hybrid QR runs with `MKL_NUM_THREADS=1` (`acc_run.sh`).
+  - The host part of oneMKL's hybrid QR runs with `MKL_NUM_THREADS=1` (`acc_run.sh`, and `acc_ctest.sh` since the
+    harness branch `gpu-port-harness-302b`).
   - Covered by `determinism` (both paths, β = 10) and `t_determinism_onemkl`.
   - Not covered: MKL with more than one thread on PVC (conditional numerical reproducibility, CNR) → 304.
 - **Level Zero memory and ordering:**
   - The OpenMP target regions and the shim share one queue. The per-site D→H/H→D `target update`s are covered by
     `selftest_update` + nsig, `same_seed` and the self-tests.
-  - 302a's `t_order` is kept as a regression in `alf_la_tests_onemkl`.
+  - 302a's `t_order` runs once inside `alf_la_tests_onemkl` (one repetition, not 302a's 100-repetition canary).
 - **FP64 on Xe2 and fast math:**
   - `configure.sh` IntelLLVM uses `-fp-model=fast=2 -no-prec-div -xHost`. These flags reach `ALF_FLAGS_PROG`, so device
     code gets them too.
@@ -144,7 +151,8 @@ CUDA "unchanged" is checked at run time, because `acc_gpunone.sh` does not prepr
 - **JIT vs AOT:** 302b stays JIT (`spir64`, what `configure.sh` builds). AOT is a build-path question for PVC (301/303) and
   saves ~1 s per process at most (302a profile).
   - JIT output depends on the IGC/driver version: covered by the dpkg record (decision 13).
-  - The NEO compiler cache (below) means that replay pairs run on cached kernels.
+  - `intel.sh` sets `NEO_CACHE_PERSISTENT=0`, so every process JIT-compiles its kernels afresh; replay pairs therefore
+    also check that two JIT compilations give the same result.
 - **Host fallback:** `OMP_TARGET_OFFLOAD=MANDATORY` (harness).
 
 ### Run lengths, time and budget
@@ -182,9 +190,12 @@ guard only; the driver has a single global timeout.
   (z ≈ 3.32, t ≈ k/√2), a shift of 5 is caught ~59 % of the time, 8 ~99 %.
 
 ### Other open points
-- **Q-NS:** `ALF_GPU_NS=0` exists because of cuSOLVER's Q orthogonality. oneMKL's Q may not need it, so the control may
-  not reach 1.5×. T0 shows the ratio on dev seeds. If it stays ≤ 1.5, stop: a different precision control needs the
-  owner's approval before pre-registration.
+- **Q-NS (owner decision pending, review (b) 2026-10-31, finding 1):** `ALF_GPU_NS=0` exists because of cuSOLVER's Q
+  orthogonality (A30: CPU mean 4.1e-11, with NS 5.4e-11, without NS 9.7e-11, 2.4× the CPU). oneMKL's hybrid QR may give a
+  LAPACK-quality Q, so the control may not reach 1.5× on the B580; then the precision gate has no killed control and T2
+  cannot close. T0 runs after pre-registration, so "stop before pre-registration" cannot work. The code allowed in 302b
+  has no other knob that degrades precision in production (`eps:` acts only under `SELFTEST=3`), and `mutate.py` cannot
+  edit the Precision lines; a fallback control needs a harness or code change and the owner's approval.
 - 12×12 LOG same-seed on the B580: left out; it belongs to ticket 213 (decision 3b). Adding it would need an owner
   decision naming 302b.
 - Counts: `alf_la_tests_onemkl` 14 (302a's 13 + `t_determinism`) and GNU ctest 53 are confirmed by 302a's
