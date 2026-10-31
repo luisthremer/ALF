@@ -63,7 +63,7 @@
 !> submatrix scheme every hook after its padding and transform, flushes afterwards if p >= N_delay.
 !> So the arrays cannot overflow (N_delay = 1: flush after every accept, as for rank 1).
 !> Submatrix accuracy guard (spec Sec. 6, risk "forward error"): in a block that contains an
-!> accepted non-diagonal update the threshold N_delay is replaced by min(N_delay, K_ND), K_ND =
+!> accepted non-diagonal update (or a non-diagonal hook transform of M) the threshold N_delay is replaced by min(N_delay, K_ND), K_ND =
 !> N_P_LIM. The M-form's forward error grows with the number of non-commuting updates per block
 !> (G = G0 - G0(:,S) M (...) cancels when |G0| |M| |G0| >> |G|); measured at the unit tier, case
 !> rep_mixed: 5.0e-10 (> TOL_UNIT) at k = Ndim = 16 without the guard, 3.8e-11 with it.
@@ -251,7 +251,7 @@ contains
       lr_N_FL_eff = N_FL_eff
       ! Capacity (header, D5). Delayed: at most M*N_P_LIM columns can be pending (G is flushed at
       ! every slice end). Submatrix: at most Ndim distinct sites; after an accept k <= max(N_delay, N_P_LIM),
-      ! and a hook pads at most N_P_LIM - 1 sites to k <= N_delay - 1, hence the headroom N_P_LIM.
+      ! and a hook starts from k <= N_delay - 1 and pads at most N_P_LIM - 1 sites, hence the headroom N_P_LIM.
       ! Computed in 64 bit so that a huge N_delay cannot overflow.
       select case (lr_scheme)
       case (SCHEME_DELAYED)
@@ -1267,6 +1267,9 @@ contains
                   Msub(1:j,m,nf_eff) = Msub(1:j,m,nf_eff) / t
                enddo
             else
+               ! A non-diagonal transform mixes pending rows/columns: the block counts as non-diagonal for the
+               ! accuracy guard K_ND, as after a non-diagonal accept (Task 5 review, minor 1)
+               blk_nondiag = .true.
                ! Partial overlap with a non-diagonal wrap: pad P \ S first (zeros only, no G0 read)
                if (nov < N) then
                   do i = 1,N
