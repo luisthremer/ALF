@@ -1022,7 +1022,8 @@ Contains
 !> commute and the result is .true. without any product. Otherwise the products are formed by
 !> block-local column updates M(:,Q) <- M(:,Q) (I + g O_Q), Q = distinct indices of P_n, which
 !> is the same product as the dense matmul with the zeros skipped: O(n_op Ndim N^2) instead of
-!> O(n_op Ndim^3). Tolerance and scale are those of the dense version.
+!> O(n_op Ndim^3). Tolerance and scale are those of the dense version. (With NaN/Inf in the
+!> products the dense version could return .true. through Inf*0 = NaN; this one need not.)
 !>
 !> @param[in] Op_V_arr  Operator array of shape (N_op, N_FL)
 !> @param[in] N_FL_in   Number of flavors
@@ -1076,9 +1077,15 @@ Contains
           call mult_right_local(M_rev, Op_V_arr(n, nf))
        enddo
 
-       ! Compare forward and reverse products
-       diff = maxval(abs(M_fwd - M_rev))
-       scale = max(1.d0, maxval(abs(M_fwd)), maxval(abs(M_rev)))
+       ! Compare forward and reverse products (explicit loop: no Ndim x Ndim temporary)
+       diff  = 0.d0
+       scale = 1.d0
+       do j = 1, NN
+          do i = 1, NN
+             diff  = max(diff,  abs(M_fwd(i,j) - M_rev(i,j)))
+             scale = max(scale, abs(M_fwd(i,j)), abs(M_rev(i,j)))
+          enddo
+       enddo
        if (diff > sym_tol * scale) then
           Op_V_is_symmetric = .false.
           deallocate(M_fwd, M_rev)
@@ -1105,8 +1112,7 @@ Contains
       Complex(Kind=Kind(0.d0)), intent(inout) :: M(:,:)
       Type(Operator), intent(in) :: Op
       Integer :: Q(Op%N), iq(Op%N), nq, a, b, k
-      Complex(Kind=Kind(0.d0)) :: F(Op%N, Op%N)
-      Complex(Kind=Kind(0.d0)), allocatable :: Mq(:,:)   ! heap: Ndim x N can be large
+      Complex(Kind=Kind(0.d0)), allocatable :: F(:,:), Mq(:,:)   ! heap: N x N and Ndim x N can be large
       nq = 0
       do a = 1, Op%N
          iq(a) = 0
@@ -1120,7 +1126,8 @@ Contains
          endif
       enddo
       ! F = I + g O_Q  (nq x nq)
-      F(1:nq, 1:nq) = cmplx(0.d0, 0.d0, kind(0.d0))
+      allocate(F(nq, nq))
+      F = cmplx(0.d0, 0.d0, kind(0.d0))
       do k = 1, nq
          F(k,k) = cmplx(1.d0, 0.d0, kind(0.d0))
       enddo
@@ -1131,8 +1138,8 @@ Contains
       enddo
       allocate(Mq(size(M,1), nq))
       Mq = M(:, Q(1:nq))
-      M(:, Q(1:nq)) = matmul(Mq, F(1:nq, 1:nq))
-      deallocate(Mq)
+      M(:, Q(1:nq)) = matmul(Mq, F)
+      deallocate(Mq, F)
     end subroutine mult_right_local
 
   end function Op_V_is_symmetric

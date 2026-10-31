@@ -1,7 +1,7 @@
 ! Test of the fast Op_V_is_symmetric against the original dense implementation (reference copy below)
 ! and of its cost at large Ndim.
 !  Part A: random operator sets (diagonal, non-diagonal, palindromic, disjoint/commuting, repeated
-!          projector indices, complex g, N_FL = 2), Ndim <= 24: the logical result must equal the
+!          projector indices on diagonal and non-diagonal operators, complex g, N_FL = 2), Ndim <= 24: the logical result must equal the
 !          reference and the value expected for the construction.
 !  Part B: Ndim = 1600 (Hubbard-like, diagonal, N_FL = 2) and Ndim = 600 (non-diagonal bonds,
 !          palindromic): each call must take < 5 s (the dense reference needs hours / minutes).
@@ -21,8 +21,8 @@ Program Test_Op_V_symm_fast
   call random_seed_fixed()
 
   ! ---------------- Part A ----------------
-  do icase = 1, 240
-     kind_case = mod(icase-1, 8) + 1
+  do icase = 1, 270
+     kind_case = mod(icase-1, 9) + 1
      call random_number(r)
      Ndim = 6 + int(r(1)*18.d0)
      N_FL = 1 + mod(icase, 2)
@@ -125,6 +125,37 @@ Program Test_Op_V_symm_fast
         enddo
         ! [g O_1, g O_2] ~ g^2: above 1e-10 for g >= 1e-4, below for g <= 1e-6
         expected = (Op_V(1,1)%g%re < 1.d-5)
+     case (9)   ! non-diagonal 3x3 on P = (s, s, t) (O(1,2) /= 0 although P(1) = P(2)), built so that the
+                ! accumulated embedding is diagonal: O(1,3) = -O(2,3) => E(s,t) = 0. All embedded
+                ! operators then commute (-> true), mixed with diagonal 1x1 operators; a wrong
+                ! accumulation of repeated indices leaves E(s,t) /= 0 and breaks the symmetry.
+        n_op = Ndim
+        allocate (Op_V(n_op, N_FL))
+        do nf = 1, N_FL
+           do n = 1, n_op
+              if (mod(n,3) == 0) then
+                 call make_op(Op_V(n,nf), 1)
+                 Op_V(n,nf)%P(1) = 1 + rnd_int(Ndim)
+                 Op_V(n,nf)%O(1,1) = rnd_real()
+              else
+                 call make_op(Op_V(n,nf), 3)
+                 i = 1 + rnd_int(Ndim)
+                 j = 1 + mod(i + rnd_int(Ndim-1), Ndim)     ! j /= i
+                 Op_V(n,nf)%P = (/ i, i, j /)
+                 Op_V(n,nf)%O(1,1) = rnd_real()
+                 Op_V(n,nf)%O(2,2) = rnd_real()
+                 Op_V(n,nf)%O(3,3) = rnd_real()
+                 Op_V(n,nf)%O(1,2) = cmplx(rnd_real(), rnd_real(), kind(0.d0))
+                 Op_V(n,nf)%O(1,3) = cmplx(rnd_real(), rnd_real(), kind(0.d0))
+                 Op_V(n,nf)%O(2,3) = - Op_V(n,nf)%O(1,3)
+                 Op_V(n,nf)%O(2,1) = conjg(Op_V(n,nf)%O(1,2))
+                 Op_V(n,nf)%O(3,1) = conjg(Op_V(n,nf)%O(1,3))
+                 Op_V(n,nf)%O(3,2) = conjg(Op_V(n,nf)%O(2,3))
+              endif
+              Op_V(n,nf)%g = rnd_cplx()
+           enddo
+        enddo
+        expected = .true.
      end select
 
      res_ref = ref_is_symmetric(Op_V, N_FL, Ndim)
