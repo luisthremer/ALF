@@ -8,8 +8,10 @@
 ! one branch to each of these routines plus its state; the driver stays unchanged.
 !
 ! Per vertex the driver mirrors WRAPGRUP / WRAPGRDO (Prog/Wrapgr_mod.F90):
-!   up  : Op_Wrapup type 1 (old phi) -> hook(+1) -> propose -> decide -> Op_Wrapup type 2
-!   down: Op_Wrapdo type 2 -> propose -> decide -> Op_Wrapdo type 1 (new phi) -> hook(-1)
+!   up  : pre_wrap -> Op_Wrapup type 1 (old phi) -> hook(+1) -> propose -> decide -> Op_Wrapup type 2
+!   down: pre_wrap -> Op_Wrapdo type 2 -> propose -> decide -> Op_Wrapdo type 1 (new phi) -> hook(-1)
+! pre_wrap flushes a low-rank candidate before an ineligible vertex; such a vertex then gets no
+! hook and the standard Upgrade2 on the candidate's G (case mixed: V_SUN bonds between Mz vertices).
 ! Between slices: flush, compare, then the same dense similarity G <- S G S^{-1} on every G,
 ! S = I + 0.1 R / sqrt(Ndim) (R complex Gaussian). Case mz_illcond = mz with S = I + 0.1 R,
 ! which drives cond(1+A) to ~1e8: a deliberately hard case with its own tolerance TOL_ILL.
@@ -33,7 +35,8 @@ module lowrank_unit_harness
    use upgrade_mod
    use Random_Wrap
    use Lowrank_update_mod, only: Lowrank_init, Lowrank_finalize, Lowrank_propose, Lowrank_accept, &
-        &                        Lowrank_wrap_hook, Lowrank_flush, Upgrade_lowrank
+        &                        Lowrank_wrap_hook, Lowrank_flush, Upgrade_lowrank, Lowrank_eligible, &
+        &                        Lowrank_pending
    implicit none
 
    integer, parameter :: dp = kind(0.d0)
@@ -43,16 +46,19 @@ module lowrank_unit_harness
    real(dp), parameter :: TOL_UNIT = 1.0d-10
    real(dp), parameter :: TOL_ILL  = 1.0d-8
 
-   integer, parameter :: N_CASES = 5
+   integer, parameter :: N_CASES = 6
    integer, parameter :: CASE_MZ = 1, CASE_DENSITY = 2, CASE_CONTINUOUS = 3, CASE_REPEAT = 4
    integer, parameter :: CASE_MZ_ILLCOND = 5   ! mz with the unnormalised S = I + 0.1 R
+   integer, parameter :: CASE_MIXED = 6        ! Mz vertices with interleaved ineligible V_SUN bonds
    character(len=10), parameter :: case_name(N_CASES) = &
-        & [character(len=10) :: 'mz', 'density', 'continuous', 'repeat', 'mz_illcond']
+        & [character(len=10) :: 'mz', 'density', 'continuous', 'repeat', 'mz_illcond', 'mixed']
+   integer, parameter :: MIXED_BOND_PERIOD = 9 ! case mixed: vertex n is a bond iff mod(n, 9) == 5
 
-   ! Candidate schemes. Task 11 adds SCHEME_SUBMATRIX here.
-   integer, parameter :: N_SCHEMES = 2
-   integer, parameter :: SCHEME_STANDARD = 1, SCHEME_DELAYED = 2
-   character(len=10), parameter :: scheme_name(N_SCHEMES) = [character(len=10) :: 'standard', 'delayed']
+   ! Candidate schemes
+   integer, parameter :: N_SCHEMES = 3
+   integer, parameter :: SCHEME_STANDARD = 1, SCHEME_DELAYED = 2, SCHEME_SUBMATRIX = 3
+   character(len=10), parameter :: scheme_name(N_SCHEMES) = &
+        & [character(len=10) :: 'standard', 'delayed', 'submatrix']
 
    integer, parameter :: N_NDELAY = 4
    integer, parameter :: N_DELAY_LIST(N_NDELAY) = [1, 7, 32, 1000]
@@ -70,6 +76,7 @@ module lowrank_unit_harness
    integer  :: n_proposals, n_accepted
    real(dp) :: cond_Q_max, cond_S_max
    real(dp) :: cond_1pA_last                   ! max_f cond_2(1+A_f) at the last slice end
+   integer  :: n_repeat_flush                  ! proposals at which Lowrank_propose flushed (pending dropped)
 
    ! ---- candidate state -------------------------------------------------
    integer :: cand_scheme = 0, cand_N_delay = 0
@@ -84,38 +91,57 @@ contains
       integer, intent(in) :: scheme, N_delay
       cand_scheme  = scheme
       cand_N_delay = N_delay
+      ! Every scheme needs the work copy: low-rank schemes use Upgrade2 at ineligible vertices.
+      if (allocated(std_Gwork)) deallocate(std_Gwork)
+      allocate(std_Gwork(Ndim, Ndim, N_FL))
       select case (scheme)
       case (SCHEME_STANDARD)
-         if (allocated(std_Gwork)) deallocate(std_Gwork)
-         allocate(std_Gwork(Ndim, Ndim, N_FL))
       case (SCHEME_DELAYED)
          ! Works on the driver's Gc (= G0 between flushes); prints the scheme info line.
          call Lowrank_init('delayed', N_delay)
+      case (SCHEME_SUBMATRIX)
+         call Lowrank_init('submatrix', N_delay)
       case default
          error stop 'cand_init: unknown scheme'
       end select
    end subroutine cand_init
 
    subroutine cand_finalize()
+      if (allocated(std_Gwork)) deallocate(std_Gwork)
       select case (cand_scheme)
-      case (SCHEME_STANDARD)
-         if (allocated(std_Gwork)) deallocate(std_Gwork)
-      case (SCHEME_DELAYED)
+      case (SCHEME_DELAYED, SCHEME_SUBMATRIX)
          call Lowrank_finalize()
       end select
    end subroutine cand_finalize
+
+   ! True iff the candidate updates vertex n_op with its low-rank kernel (as WRAPGRUP/WRAPGRDO).
+   logical function cand_lowrank(n_op)
+      integer, intent(in) :: n_op
+      select case (cand_scheme)
+      case (SCHEME_DELAYED, SCHEME_SUBMATRIX)
+         cand_lowrank = Lowrank_eligible(n_op)
+      case default
+         cand_lowrank = .false.
+      end select
+   end function cand_lowrank
+
+   ! Called at the start of every vertex, before any wrap: a low-rank candidate is flushed
+   ! before an ineligible vertex (WRAPGRUP/WRAPGRDO: flush, then the standard path).
+   subroutine cand_pre_wrap(Gc, n_op)
+      complex(dp), intent(inout) :: Gc(:,:,:)
+      integer,     intent(in)    :: n_op
+      select case (cand_scheme)
+      case (SCHEME_DELAYED, SCHEME_SUBMATRIX)
+         if (.not. Lowrank_eligible(n_op)) call Lowrank_flush(Gc)
+      end select
+   end subroutine cand_pre_wrap
 
    ! Called after every type-1 wrap of vertex n_op (dir=+1 up, -1 down).
    subroutine cand_hook(Gc, n_op, nt, HS_field, dir)
       complex(dp), intent(inout) :: Gc(:,:,:)
       integer,     intent(in)    :: n_op, nt, dir
       complex(dp), intent(in)    :: HS_field
-      select case (cand_scheme)
-      case (SCHEME_STANDARD)
-         ! no-op
-      case (SCHEME_DELAYED)
-         call Lowrank_wrap_hook(n_op, nt, HS_field, dir)
-      end select
+      if (cand_lowrank(n_op)) call Lowrank_wrap_hook(n_op, nt, HS_field, dir)
    end subroutine cand_hook
 
    ! Returns the full Upgrade2-style ratio. nsigma%f(n_op,nt) holds the OLD field.
@@ -127,16 +153,21 @@ contains
       complex(dp)        :: phase
       logical            :: toggle
       character(len=64)  :: mode
-      select case (cand_scheme)
-      case (SCHEME_STANDARD)
+      integer            :: pend_before
+      if (.not. cand_lowrank(n_op)) then
+         ! standard scheme, or an ineligible vertex of a low-rank scheme (flushed by cand_pre_wrap)
          std_Gwork = Gc
          ratio = cmplx(1.d0, 0.d0, dp)
          phase = cmplx(1.d0, 0.d0, dp)
          mode  = "Intermediate"
          call Upgrade2(std_Gwork, n_op, nt, phase, HS_new, ratio, 1.d0, 1.d0, toggle, mode)
-      case (SCHEME_DELAYED)
-         call Lowrank_propose(Gc, n_op, nt, HS_new, ratio)
-      end select
+         return
+      endif
+      ! delayed or submatrix. A drop of the pending count = a flush inside Lowrank_propose
+      ! (submatrix: the site is already in the block).
+      pend_before = Lowrank_pending()
+      call Lowrank_propose(Gc, n_op, nt, HS_new, ratio)
+      if (Lowrank_pending() < pend_before) n_repeat_flush = n_repeat_flush + 1
    end subroutine cand_propose
 
    ! Called only for accepted proposals, right after cand_propose.
@@ -145,12 +176,11 @@ contains
       complex(dp), intent(inout) :: Gc(:,:,:)
       integer,     intent(in)    :: n_op, nt
       complex(dp), intent(in)    :: HS_new
-      select case (cand_scheme)
-      case (SCHEME_STANDARD)
+      if (.not. cand_lowrank(n_op)) then
          Gc = std_Gwork
-      case (SCHEME_DELAYED)
+      else
          call Lowrank_accept(Gc, n_op, nt, HS_new)   ! sets nsigma%f(n_op,nt); the driver resets it
-      end select
+      endif
    end subroutine cand_accept
 
    ! Called at the end of every slice; afterwards Gc must hold the full G.
@@ -159,7 +189,7 @@ contains
       select case (cand_scheme)
       case (SCHEME_STANDARD)
          ! no-op
-      case (SCHEME_DELAYED)
+      case (SCHEME_DELAYED, SCHEME_SUBMATRIX)
          call Lowrank_flush(Gc)
       end select
    end subroutine cand_flush
@@ -272,10 +302,16 @@ contains
       enddo
    end subroutine random_permutation
 
+   ! Case mixed: vertex n is an ineligible V_SUN bond (rank 2, not diagonal)
+   logical function mixed_bond(case_id, n)
+      integer, intent(in) :: case_id, n
+      mixed_bond = (case_id == CASE_MIXED .and. mod(n, MIXED_BOND_PERIOD) == 5)
+   end function mixed_bond
+
    subroutine setup_case(case_id)
       integer, intent(in) :: case_id
-      integer, allocatable :: sites(:), base(:)
-      integer :: n, nf, nt, k
+      integer, allocatable :: sites(:), base(:), pairs(:)
+      integer :: n, nf, nt, k, i_mz, i_bond
       real(dp), parameter :: disc(4) = [-2.d0, -1.d0, 1.d0, 2.d0]
 
       call clear_case()
@@ -288,6 +324,9 @@ contains
          Ndim = 48; N_FL = 2; N_SUN = 1; M_ops = Ndim
       case (CASE_REPEAT)
          Ndim = 32; N_FL = 2; N_SUN = 1; M_ops = 2 * Ndim
+      case (CASE_MIXED)
+         ! Ndim Mz vertices plus one bond after every 8 of them (n = 5, 14, 23, ...)
+         Ndim = 48; N_FL = 2; N_SUN = 1; M_ops = Ndim + Ndim / (MIXED_BOND_PERIOD - 1)
       case default
          error stop 'setup_case: unknown case'
       end select
@@ -304,15 +343,33 @@ contains
          do n = 1, M_ops
             sites(n) = mod(base(n) - 1, Ndim) + 1
          enddo
+      elseif (case_id == CASE_MIXED) then
+         ! sites(1:Ndim): the Mz vertices; pairs: the bond endpoints
+         call random_permutation(sites(1:Ndim))
+         allocate(pairs(Ndim))
+         call random_permutation(pairs)
       else
          call random_permutation(sites)
       endif
 
       allocate(Op_V(M_ops, N_FL))
+      i_mz = 0; i_bond = 0
       do n = 1, M_ops
+         if (mixed_bond(case_id, n)) then
+            i_bond = i_bond + 1
+            do nf = 1, N_FL
+               call Predefined_Int_V_SUN(Op_V(n,nf), pairs(2*i_bond-1), pairs(2*i_bond), N_SUN, DTAU, 1.d0)
+               if (Op_V(n,nf)%diag .or. Op_V(n,nf)%N_non_zero /= 2) &
+                    & error stop 'setup_case: expected a non-diagonal rank-2 bond'
+            enddo
+            cycle
+         endif
+         i_mz = i_mz + 1
          select case (case_id)
          case (CASE_MZ, CASE_REPEAT, CASE_MZ_ILLCOND)
             call Predefined_Int_U_MZ(Op_V(n,1), Op_V(n,2), sites(n), DTAU, U_HUB)
+         case (CASE_MIXED)
+            call Predefined_Int_U_MZ(Op_V(n,1), Op_V(n,2), sites(i_mz), DTAU, U_HUB)
          case (CASE_DENSITY)
             ! g = sqrt(-DTAU*U/N_SUN) is purely imaginary for U > 0
             call Predefined_Int_U_SUN(Op_V(n,1), sites(n), N_SUN, DTAU, U_HUB)
@@ -324,6 +381,8 @@ contains
                  & error stop 'setup_case: expected diagonal rank-1 vertices'
          enddo
       enddo
+      if (case_id == CASE_MIXED .and. (i_mz /= Ndim .or. i_bond /= M_ops - Ndim)) &
+           & error stop 'setup_case: mixed vertex count'
       if (case_id == CASE_DENSITY) then
          if (abs(aimag(Op_V(1,1)%g)) < 1.d-12) error stop 'setup_case: density g is not complex'
       endif
@@ -346,34 +405,61 @@ contains
    end subroutine setup_case
 
    ! =====================================================================
-   ! Exact tracker (diagonal rank-1 vertices; vertex frame = site frame)
+   ! Exact tracker in the site frame. Diagonal rank-1 vertices (vertex frame = site frame):
+   ! scalar factors on row/column p. Other vertices (case mixed): the N x N block e^{z O}
+   ! (Op_exp) on rows/columns P.
    ! =====================================================================
-   ! A <- T A T^{-1}, T = diag(t at p), t = exp(dir * g * phi * E(1))
+   logical function diag_rank1(Op)
+      type(Operator), intent(in) :: Op
+      diag_rank1 = Op%diag .and. Op%N == 1
+   end function diag_rank1
+
+   ! A <- e^{dir g phi O} A e^{-dir g phi O}; diagonal rank-1: T = diag(t at p), t = exp(dir * g * phi * E(1))
    subroutine exact_wrap(A, n_op, nt, dir)
       complex(dp), intent(inout) :: A(:,:,:)
       integer, intent(in) :: n_op, nt, dir
-      integer :: nf, p
+      integer :: nf, p, nb
       complex(dp) :: t, phi
+      complex(dp), allocatable :: Eb(:,:)
       phi = nsigma%Phi(n_op, nt)
       do nf = 1, N_FL
-         p = Op_V(n_op,nf)%P(1)
-         t = exp(real(dir, dp) * Op_V(n_op,nf)%g * phi * Op_V(n_op,nf)%E(1))
-         A(p,:,nf) = A(p,:,nf) * t
-         A(:,p,nf) = A(:,p,nf) / t
+         if (diag_rank1(Op_V(n_op,nf))) then
+            p = Op_V(n_op,nf)%P(1)
+            t = exp(real(dir, dp) * Op_V(n_op,nf)%g * phi * Op_V(n_op,nf)%E(1))
+            A(p,:,nf) = A(p,:,nf) * t
+            A(:,p,nf) = A(:,p,nf) / t
+         else
+            nb = Op_V(n_op,nf)%N
+            allocate(Eb(nb,nb))
+            call Op_exp(real(dir, dp) * Op_V(n_op,nf)%g * phi, Op_V(n_op,nf), Eb)
+            A(Op_V(n_op,nf)%P,:,nf) = matmul(Eb, A(Op_V(n_op,nf)%P,:,nf))
+            call Op_exp(-real(dir, dp) * Op_V(n_op,nf)%g * phi, Op_V(n_op,nf), Eb)
+            A(:,Op_V(n_op,nf)%P,nf) = matmul(A(:,Op_V(n_op,nf)%P,nf), Eb)
+            deallocate(Eb)
+         endif
       enddo
    end subroutine exact_wrap
 
-   ! Accepted flip: A <- (1 + Delta e_p e_p^T) A
+   ! Accepted flip: A <- e^{g (phi_new - phi_old) O} A; diagonal rank-1: (1 + Delta e_p e_p^T) A
    subroutine exact_flip(A, n_op, phi_old, phi_new)
       complex(dp), intent(inout) :: A(:,:,:)
       integer, intent(in) :: n_op
       complex(dp), intent(in) :: phi_old, phi_new
-      integer :: nf, p
+      integer :: nf, p, nb
       complex(dp) :: delta
+      complex(dp), allocatable :: Eb(:,:)
       do nf = 1, N_FL
-         p = Op_V(n_op,nf)%P(1)
-         delta = exp(Op_V(n_op,nf)%g * (phi_new - phi_old) * Op_V(n_op,nf)%E(1)) - 1.d0
-         A(p,:,nf) = A(p,:,nf) * (1.d0 + delta)
+         if (diag_rank1(Op_V(n_op,nf))) then
+            p = Op_V(n_op,nf)%P(1)
+            delta = exp(Op_V(n_op,nf)%g * (phi_new - phi_old) * Op_V(n_op,nf)%E(1)) - 1.d0
+            A(p,:,nf) = A(p,:,nf) * (1.d0 + delta)
+         else
+            nb = Op_V(n_op,nf)%N
+            allocate(Eb(nb,nb))
+            call Op_exp(Op_V(n_op,nf)%g * (phi_new - phi_old), Op_V(n_op,nf), Eb)
+            A(Op_V(n_op,nf)%P,:,nf) = matmul(Eb, A(Op_V(n_op,nf)%P,:,nf))
+            deallocate(Eb)
+         endif
       enddo
    end subroutine exact_flip
 
@@ -410,7 +496,7 @@ contains
          call Ranset([1000 + 17 * case_id])
       endif
       call setup_case(case_id)
-      n_proposals = 0; n_accepted = 0
+      n_proposals = 0; n_accepted = 0; n_repeat_flush = 0
       cond_Q_max = 0.d0; cond_S_max = 0.d0; cond_1pA_last = 0.d0
 
       allocate(Gref(Ndim,Ndim,N_FL), Gc(Ndim,Ndim,N_FL), Gtmp(Ndim,Ndim,N_FL), Aex(Ndim,Ndim,N_FL))
@@ -440,6 +526,7 @@ contains
             endif
 
             hs_old = nsigma%f(n,nt)
+            call cand_pre_wrap(Gc, n)
             if (dir == 1) then
                do nf = 1, N_FL
                   call Op_Wrapup(Gref(:,:,nf), Op_V(n,nf), hs_old, Ndim, 1, nt)
@@ -675,13 +762,14 @@ contains
       call Lowrank_finalize()
       call elig_check(.not. Lowrank_active(), 'Lowrank_finalize: inactive', n_fail)
 
-      ! Re-init after finalize (re-init path). Lowrank_init('submatrix') terminates until Phase 4 implements the
-      ! scheme (it cannot be tested in-process); Phase 4 must restore a submatrix re-init check here.
-      call Lowrank_init('delayed', 3)
+      ! Re-init after finalize (re-init path), submatrix with a mixed-case name
+      call Lowrank_init('Submatrix', 3)
       call elig_check(Lowrank_active() .and. Lowrank_pending() == 0, &
-           & "Lowrank_init('delayed', 3) after finalize: active, pending = 0", n_fail)
+           & "Lowrank_init('Submatrix', 3) after finalize: active, pending = 0", n_fail)
       call elig_check(Lowrank_eligible(1) .and. Lowrank_eligible(2) .and. .not. Lowrank_eligible(3) &
            & .and. .not. Lowrank_eligible(4), 're-init: same eligibility pattern', n_fail)
+      call elig_check(info_has_line('Sequential scheme: SUBMATRIX, N_delay = 3'), &
+           & "info contains 'Sequential scheme: SUBMATRIX, N_delay = 3'", n_fail)
       call Lowrank_finalize()
 
       ! Standard: nothing active, nothing pending
@@ -703,8 +791,9 @@ end module lowrank_eligibility_section
 
 ! Kernel-equivalence section: from a flushed state with the same RNG state, N_PROP_EQ
 ! proposals (case mz, mode "Final", S0_ratio = T0_proposal_ratio = 1, proposals drawn once
-! beforehand) through the real Upgrade2 and through Upgrade_lowrank (delayed), each on its
-! own G copy and its own copy of the global nsigma. Asserted: identical toggle sequence and
+! beforehand) through the real Upgrade2 and through Upgrade_lowrank (delayed and submatrix),
+! each on its own G copy and its own copy of the global nsigma. The proposals hit random
+! vertices, so sites repeat within a block (submatrix: flush in Lowrank_propose). Asserted: identical toggle sequence and
 ! fields, |Delta Phase| <= PHASE_TOL, the same next ranf_wrap() value (same RNG consumption),
 ! and G after the final flush (and Lowrank_current_G before it) within TOL_UNIT.
 module lowrank_kernel_equiv_section
@@ -731,20 +820,23 @@ contains
       integer     :: n_eq(N_PROP_EQ), nt_eq(N_PROP_EQ)
       complex(dp) :: hs_eq(N_PROP_EQ)
       logical     :: tog_a(N_PROP_EQ), tog_b(N_PROP_EQ)
-      integer     :: id, k, nf, k_seed, n_acc, n_mis, n_pend_end
+      integer     :: id, k, nf, k_seed, n_acc, n_mis, n_pend_end, isch
+      character(len=10), parameter :: eq_scheme(2) = [character(len=10) :: 'delayed', 'submatrix']
       complex(dp) :: phase0, phase_a, phase_b, prev
       real(dp)    :: next_a, next_b, dphase, gerr_cur, gerr, gmax
       character(len=64) :: mode
       character(len=4)  :: flag
       logical     :: same_f
 
-      write(6,'(A,I0,A)') '36-lowrank-unit: kernel equivalence, Upgrade2(Final) vs Upgrade_lowrank (delayed), case mz, ', &
+      write(6,'(A,I0,A)') '36-lowrank-unit: kernel equivalence, Upgrade2(Final) vs Upgrade_lowrank, case mz, ', &
            & N_PROP_EQ, ' proposals'
-      write(6,'(A7,1X,A5,1X,A8,1X,A8,1X,A10,1X,A22,1X,A22,1X,A11,1X,A11,1X,A6,1X,A4)') 'N_delay', 'acc', 'tog_mis', &
-           & 'fld_same', '|dPhase|', 'next ranf (Upgrade2)', 'next ranf (lowrank)', 'G_cur_err', 'G_err', 'n_pend', ''
+      write(6,'(A10,1X,A7,1X,A5,1X,A8,1X,A8,1X,A10,1X,A22,1X,A22,1X,A11,1X,A11,1X,A6,1X,A4)') 'scheme', 'N_delay', &
+           & 'acc', 'tog_mis', 'fld_same', '|dPhase|', 'next ranf (Upgrade2)', 'next ranf (lowrank)', 'G_cur_err', &
+           & 'G_err', 'n_pend', ''
       mode = "Final"
       call Get_seed_Len(k_seed)
       allocate(rng_state(k_seed))
+      do isch = 1, size(eq_scheme)
       do id = 1, N_NDELAY
          call Ranset([1000 + 17 * CASE_MZ])
          call setup_case(CASE_MZ)
@@ -772,10 +864,10 @@ contains
          next_a = ranf_wrap()
          f_a = nsigma%f
 
-         ! ---- pass B: Upgrade_lowrank (delayed), same RNG state and fields ----
+         ! ---- pass B: Upgrade_lowrank, same RNG state and fields ----
          nsigma%f = f_save
          call random_seed(put=rng_state)
-         call Lowrank_init('delayed', N_DELAY_LIST(id))
+         call Lowrank_init(trim(eq_scheme(isch)), N_DELAY_LIST(id))
          Gb = G0
          phase_b = phase0
          do k = 1, N_PROP_EQ
@@ -804,9 +896,11 @@ contains
             flag = 'FAIL'
             n_fail = n_fail + 1
          endif
-         write(6,'(I7,1X,I5,1X,I8,1X,L8,1X,ES10.3,1X,F22.17,1X,F22.17,1X,ES11.4,1X,ES11.4,1X,I6,1X,A4)') &
-              & N_DELAY_LIST(id), n_acc, n_mis, same_f, dphase, next_a, next_b, gerr_cur, gerr, n_pend_end, flag
+         write(6,'(A10,1X,I7,1X,I5,1X,I8,1X,L8,1X,ES10.3,1X,F22.17,1X,F22.17,1X,ES11.4,1X,ES11.4,1X,I6,1X,A4)') &
+              & eq_scheme(isch), N_DELAY_LIST(id), n_acc, n_mis, same_f, dphase, next_a, next_b, gerr_cur, gerr, &
+              & n_pend_end, flag
          deallocate(G0, Ga, Gb, Aex, Gcur)
+      enddo
       enddo
       call clear_case()
    end subroutine run_kernel_equivalence
@@ -835,9 +929,11 @@ program lowrank_unit
    write(6,'(A,ES9.2,A,ES9.2,A)') '36-lowrank-unit: TOL_UNIT = ', TOL_UNIT, ', TOL_ILL = ', TOL_ILL, &
         & ' (mz_illcond; the fixed bound drift <= TOL_UNIT/2 is not asserted there)'
    write(6,'(A)') '  std_drift/ce = std_drift / (cond(1+A) * epsilon(1d0)); asserted <= 10 for every case'
-   write(6,'(A10,1X,A10,1X,A4,1X,A7,1X,A13,1X,A13,1X,A13,1X,A10,1X,A12,1X,A7,1X,A6,1X,A6,1X,A4)') &
+   write(6,'(A)') '  rflush = flushes inside Lowrank_propose (site already pending); asserted > 0 iff submatrix,'// &
+        & ' case repeat, N_delay > 1'
+   write(6,'(A10,1X,A10,1X,A4,1X,A7,1X,A13,1X,A13,1X,A13,1X,A10,1X,A12,1X,A7,1X,A6,1X,A6,1X,A6,1X,A4)') &
         & 'case', 'scheme', 'dir', 'N_delay', 'max_ratio_err', 'max_G_err', 'std_drift', &
-        & 'cond(1+A)', 'std_drift/ce', 'acc', 'condQ', 'condS', ''
+        & 'cond(1+A)', 'std_drift/ce', 'acc', 'condQ', 'condS', 'rflush', ''
    do ic = 1, N_CASES
       do idir = 1, 2
          do is = 1, N_SCHEMES
@@ -866,9 +962,17 @@ program lowrank_unit
                   flag = 'COND'
                   n_fail = n_fail + 1
                endif
-               write(6,'(A10,1X,A10,1X,A4,1X,I7,1X,ES13.4,1X,ES13.4,1X,ES13.4,1X,ES10.2,1X,ES12.2,1X,F7.3,1X,F6.2,1X,F6.2,1X,A4)') &
+               ! Repeated-site flush: only submatrix flushes in Lowrank_propose, and only when a
+               ! site recurs within a block (case repeat; N_delay = 1 never leaves a block open).
+               if ((n_repeat_flush > 0) .neqv. (is == SCHEME_SUBMATRIX .and. ic == CASE_REPEAT &
+                    & .and. N_DELAY_LIST(id) > 1)) then
+                  flag = 'RFL'
+                  n_fail = n_fail + 1
+               endif
+               write(6,'(A10,1X,A10,1X,A4,1X,I7,1X,ES13.4,1X,ES13.4,1X,ES13.4,1X,ES10.2,1X,ES12.2,1X,F7.3,1X,F6.2,1X,F6.2,1X,I6,1X,A4)') &
                     & case_name(ic), scheme_name(is), dirs(idir), N_DELAY_LIST(id), rerr, gerr, drift, &
-                    & cond_1pA_last, drift_rel, real(n_accepted, dp) / real(n_proposals, dp), cond_Q_max, cond_S_max, flag
+                    & cond_1pA_last, drift_rel, real(n_accepted, dp) / real(n_proposals, dp), cond_Q_max, cond_S_max, &
+                    & n_repeat_flush, flag
             enddo
          enddo
       enddo
