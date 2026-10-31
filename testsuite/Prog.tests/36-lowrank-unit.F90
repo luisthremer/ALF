@@ -34,6 +34,12 @@
 ! Between slices: flush, compare, then the same dense similarity G <- S G S^{-1} on every G,
 ! S = I + 0.1 R / sqrt(Ndim) (R complex Gaussian). Cases mz_illcond / bonds_illcond use S = I + 0.1 R /
 ! S = I + 0.2 R, which drive cond(1+A) to ~1e8: deliberately hard cases with their own tolerance TOL_ILL.
+! Cross-slice variant (spec D10, docs/algorithm-notes.md section 12.8; schemes delayed_cs / submat_cs, i.e.
+! delayed / submatrix with Lowrank_init(..., cross_slice=.true.)): at a slice end the pending state is NOT
+! flushed; the current G (Lowrank_current_G) is compared instead, and Lowrank_carry_similarity(Gc, S, S^{-1})
+! carries the pending state through the inter-slice similarity (delayed: X <- S X, Y^T <- Y^T S^{-1}; submatrix:
+! first converted to delayed form) before the driver applies the similarity to Gc = G0. Only the last slice
+! end flushes. The rows of the variant follow the main table (same tolerances and flags).
 !
 ! nsigma is global and shared by all engines: every engine call sees the OLD field, and
 ! the driver sets the field after the decision.
@@ -55,7 +61,8 @@ module lowrank_unit_harness
    use Random_Wrap
    use Lowrank_update_mod, only: Lowrank_init, Lowrank_finalize, Lowrank_propose, Lowrank_accept, &
         &                        Lowrank_wrap_hook, Lowrank_flush, Upgrade_lowrank, Lowrank_eligible, &
-        &                        Lowrank_pending, Lowrank_max_pending_cols
+        &                        Lowrank_pending, Lowrank_max_pending_cols, Lowrank_current_G, &
+        &                        Lowrank_carry_similarity
    implicit none
 
    integer, parameter :: dp = kind(0.d0)
@@ -102,6 +109,9 @@ module lowrank_unit_harness
    integer, parameter :: SCHEME_STANDARD = 1, SCHEME_DELAYED = 2, SCHEME_SUBMATRIX = 3
    character(len=10), parameter :: scheme_name(N_SCHEMES) = &
         & [character(len=10) :: 'standard', 'delayed', 'submatrix']
+   ! Row labels of the cross-slice variant (delayed, submatrix with cross_slice = .true.)
+   character(len=10), parameter :: scheme_name_cs(N_SCHEMES) = &
+        & [character(len=10) :: 'standrd_cs', 'delayed_cs', 'submat_cs']
 
    integer, parameter :: N_NDELAY = 5
    integer, parameter :: N_DELAY_LIST(N_NDELAY) = [1, 2, 7, 32, 1000]
@@ -139,6 +149,7 @@ module lowrank_unit_harness
 
    ! ---- candidate state -------------------------------------------------
    integer :: cand_scheme = 0, cand_N_delay = 0
+   logical :: cand_cross = .false.                  ! cross-slice variant (low-rank schemes only)
    complex(dp), allocatable :: std_Gwork(:,:,:)     ! standard: Upgrade2 on a work copy
 
 contains
@@ -146,10 +157,12 @@ contains
    ! =====================================================================
    ! Candidate interface
    ! =====================================================================
-   subroutine cand_init(scheme, N_delay)
+   subroutine cand_init(scheme, N_delay, cross_slice)
       integer, intent(in) :: scheme, N_delay
+      logical, intent(in) :: cross_slice
       cand_scheme  = scheme
       cand_N_delay = N_delay
+      cand_cross   = cross_slice .and. scheme /= SCHEME_STANDARD
       ! Every scheme needs the work copy: low-rank schemes use Upgrade2 at ineligible vertices.
       if (allocated(std_Gwork)) deallocate(std_Gwork)
       allocate(std_Gwork(Ndim, Ndim, N_FL))
@@ -157,9 +170,9 @@ contains
       case (SCHEME_STANDARD)
       case (SCHEME_DELAYED)
          ! Works on the driver's Gc (= G0 between flushes); prints the scheme info line.
-         call Lowrank_init('delayed', N_delay)
+         call Lowrank_init('delayed', N_delay, cross_slice=cand_cross)
       case (SCHEME_SUBMATRIX)
-         call Lowrank_init('submatrix', N_delay)
+         call Lowrank_init('submatrix', N_delay, cross_slice=cand_cross)
       case default
          error stop 'cand_init: unknown scheme'
       end select
@@ -815,11 +828,12 @@ contains
       illcond_case = (case_id == CASE_MZ_ILLCOND .or. case_id == CASE_BONDS_ILLCOND)
    end function illcond_case
 
-   subroutine run_case(case_id, scheme, N_delay, direction, max_ratio_err, max_G_err, std_drift)
+   subroutine run_case(case_id, scheme, N_delay, direction, max_ratio_err, max_G_err, std_drift, cross_slice)
       integer,          intent(in)  :: case_id, scheme, N_delay
       character(len=*), intent(in)  :: direction
       real(dp),         intent(out) :: max_ratio_err, max_G_err
       real(dp),         intent(out), optional :: std_drift
+      logical,          intent(in),  optional :: cross_slice   ! cross-slice variant (see the header)
 
       complex(dp), allocatable :: Gref(:,:,:), Gc(:,:,:), Gtmp(:,:,:), Aex(:,:,:), Gex(:,:)
       complex(dp), allocatable :: S(:,:), Sinv(:,:)
@@ -829,7 +843,10 @@ contains
       logical :: accept, toggle
       character(len=64) :: mode
       real(dp) :: drift, gmax
+      logical  :: cross
 
+      cross = .false.
+      if (present(cross_slice)) cross = cross_slice
       if (direction == 'up') then
          dir = +1
       elseif (direction == 'down') then
@@ -860,7 +877,7 @@ contains
       call Get_seed_Len(k_seed)
       allocate(rng_state(k_seed))
 
-      call cand_init(scheme, N_delay)
+      call cand_init(scheme, N_delay, cross)
       ! Eligibility as expected for this scheme (standard: no vertex is low-rank)
       n_elig_bad = 0; n_lowrank_vertices = 0; n_cap_bad = 0; max_pend_cols = 0
       do n = 1, M_ops
@@ -964,14 +981,21 @@ contains
             endif
          enddo
 
-         ! ---- slice end: flush, compare ----
-         call cand_flush(Gc)
-#ifdef LOWRANK_UNIT_SELFTEST
-         if (case_id == CASE_MZ .and. dir == 1 .and. N_delay == N_DELAY_LIST(1) .and. islice == 1) &
-              & Gc(1,1,1) = Gc(1,1,1) + 1.0d-8
-#endif
+         ! ---- slice end: flush, compare (cross-slice variant: compare the current G, flush only at the end) ----
          gmax = maxval(abs(Gref))
-         max_G_err = max(max_G_err, maxval(abs(Gc - Gref)) / gmax)
+         if (cand_cross .and. islice < N_SLICES) then
+            do nf = 1, N_FL
+               call Lowrank_current_G(Gc, nf, Gtmp(:,:,nf))
+            enddo
+            max_G_err = max(max_G_err, maxval(abs(Gtmp - Gref)) / gmax)
+         else
+            call cand_flush(Gc)
+#ifdef LOWRANK_UNIT_SELFTEST
+            if (case_id == CASE_MZ .and. dir == 1 .and. N_delay == N_DELAY_LIST(1) .and. islice == 1) &
+                 & Gc(1,1,1) = Gc(1,1,1) + 1.0d-8
+#endif
+            max_G_err = max(max_G_err, maxval(abs(Gc - Gref)) / gmax)
+         endif
          do nf = 1, N_FL
             call exact_G(Aex(:,:,nf), Gex)
             drift = max(drift, maxval(abs(Gref(:,:,nf) - Gex)) / gmax)
@@ -1000,6 +1024,8 @@ contains
             cond_S_max = max(cond_S_max, cond2(S))
             Sinv = S
             call invert(Sinv)
+            ! Cross-slice: carry the pending state through G <- S G S^{-1} (reads Gc = G0 before it is transformed)
+            if (cand_cross) call Lowrank_carry_similarity(Gc, S, Sinv)
             do nf = 1, N_FL
                Gref(:,:,nf) = matmul(S, matmul(Gref(:,:,nf), Sinv))
                Gc(:,:,nf)   = matmul(S, matmul(Gc(:,:,nf),   Sinv))
@@ -1362,7 +1388,8 @@ program lowrank_unit
    use Hamiltonian_main, only: Group_Comm
 #endif
    implicit none
-   integer :: ic, is, id, idir, n_fail
+   integer :: ic, is, id, idir, n_fail, ics, is_first
+   character(len=10) :: row_scheme
    real(dp) :: rerr, gerr, drift, max_drift, tol, drift_rel
    character(len=4), parameter :: dirs(2) = [character(len=4) :: 'up', 'down']
    character(len=4) :: flag
@@ -1404,11 +1431,19 @@ program lowrank_unit
    write(6,'(A13,1X,A10,1X,A4,1X,A7,1X,A13,1X,A13,1X,A13,1X,A10,1X,A12,1X,A7,1X,A6,1X,A6,1X,A6,1X,A5,1X,A4,1X,A4,1X,A4)') &
         & 'case', 'scheme', 'dir', 'N_delay', 'max_ratio_err', 'max_G_err', 'std_drift', &
         & 'cond(1+A)', 'std_drift/ce', 'acc', 'condQ', 'condS', 'rflush', 'skip', 'lrv', 'pmax', ''
+   ! ics = 0: the main table; ics = 1: the cross-slice variant (delayed, submatrix only)
+   do ics = 0, 1
+   if (ics == 1) write(6,'(A)') '36-lowrank-unit: cross-slice variant (pending state carried through the '// &
+        & 'inter-slice similarity by Lowrank_carry_similarity; flushed only at the last slice end)'
+   is_first = 1
+   if (ics == 1) is_first = SCHEME_DELAYED
    do ic = 1, N_CASES
       do idir = 1, 2
-         do is = 1, N_SCHEMES
+         do is = is_first, N_SCHEMES
             do id = 1, N_NDELAY
-               call run_case(ic, is, N_DELAY_LIST(id), trim(dirs(idir)), rerr, gerr, drift)
+               call run_case(ic, is, N_DELAY_LIST(id), trim(dirs(idir)), rerr, gerr, drift, cross_slice=(ics == 1))
+               row_scheme = scheme_name(is)
+               if (ics == 1) row_scheme = scheme_name_cs(is)
                flag = ''
                tol = TOL_UNIT
                if (illcond_case(ic)) tol = TOL_ILL
@@ -1463,13 +1498,14 @@ program lowrank_unit
                   n_fail = n_fail + 1
                endif
                write(6,'(A13,1X,A10,1X,A4,1X,I7,1X,ES13.4,1X,ES13.4,1X,ES13.4,1X,ES10.2,1X,ES12.2,1X,F7.3,1X,F6.2,1X,F6.2,1X,I6,1X,I5,1X,I4,1X,I4,1X,A4)') &
-                    & case_name(ic), scheme_name(is), dirs(idir), N_DELAY_LIST(id), rerr, gerr, drift, &
+                    & case_name(ic), row_scheme, dirs(idir), N_DELAY_LIST(id), rerr, gerr, drift, &
                     & cond_1pA_last, drift_rel, real(n_accepted, dp) / real(n_proposals, dp), cond_Q_max, cond_S_max, &
                     & n_repeat_flush, n_skipped, n_lowrank_vertices, max_pend_cols, flag
             enddo
          enddo
       enddo
    enddo
+   enddo   ! ics
    write(6,'(A,ES10.3)') 'max std_drift_vs_exact (well-conditioned cases) = ', max_drift
    call run_eligibility_section(n_fail)
    call run_kernel_equivalence(n_fail)

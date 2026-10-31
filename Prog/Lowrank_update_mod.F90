@@ -71,6 +71,23 @@
 !> every slice end); submatrix N_cols_max = min(max(N_delay, N_P_LIM), Ndim) + N_P_LIM (headroom for
 !> the hook padding).
 !>
+!> Cross-slice delay (research prototype, opt-in key Lowrank_cross_slice in &VAR_QMC; spec D10,
+!> docs/algorithm-notes.md section 12.8): Lowrank_init(..., cross_slice=.true.) keeps the pending
+!> state across slice ends. WRAPGRUP/WRAPGRDO then skip their slice-end flush and call
+!> Lowrank_hop_up / Lowrank_hop_down right before ALF's hopping wrap of G0, which carry the pending
+!> state through that wrap in delayed form:
+!>   up  (G <- B_T G B_T^{-1}): X <- B_T X (Hop_mod_mmthr), Y^T <- Y^T B_T^{-1} (Hop_mod_mmthl_m1),
+!>   down(G <- B_T^{-1} G B_T): X <- B_T^{-1} X (Hop_mod_mmthr_m1), Y^T <- Y^T B_T (Hop_mod_mmthl),
+!> Y^T held in a j x Ndim buffer (YTbuf; the OpT types act on rectangular operands). The
+!> representation of the pending state is lr_mode: equal to lr_scheme, except that a submatrix block
+!> carried through a hopping wrap is first converted to delayed form,
+!>   X(:,1:k) = G0(:,S) M,  Y(:,m) = e_{S_m} - G0(S_m,:)^T  (so that G = G0 - X Y^T exactly),
+!> and continues as a delayed block (delayed accepts, hooks, capacity, no K_ND guard) until the next
+!> flush, which returns lr_mode to lr_scheme. G must be flushed before anything else reads it: main.F90
+!> calls Lowrank_flush at every read point when the key is on. Refused (terminate) with
+!> N_Global_tau > 0. Lowrank_carry_similarity(GR, Sm, Sminv) is the dense analogue for the unit test.
+!> Without the key nothing of this is allocated or called.
+!>
 !> Debug mode (-DALF_LOWRANK_DEBUG, both schemes): a shadow Gsh(Ndim,Ndim,N_FL) is set to GR at
 !> the first accept after a flush (n_pend 0 -> 1), receives the full rank-r Woodbury update
 !> (docs/algorithm-notes.md, section 10) on every accept and the general wrap G <- L G R of every
@@ -102,6 +119,9 @@ module Lowrank_update_mod
    public :: Lowrank_max_pending_cols
    public :: Lowrank_propose, Lowrank_accept, Upgrade_lowrank, Lowrank_wrap_hook, &
         &    Lowrank_flush, Lowrank_current_G
+   ! Cross-slice delay (spec D10, opt-in)
+   public :: Lowrank_cross_slice_active, Lowrank_hop_up, Lowrank_hop_down, Lowrank_carry_similarity, &
+        &    Lowrank_read_point
 #ifdef ALF_LOWRANK_DEBUG
    public :: Lowrank_debug_check
 #endif
@@ -112,6 +132,10 @@ module Lowrank_update_mod
    ! ---- common state ----------------------------------------------------
    Logical              :: lr_initialised = .false.  ! true after Lowrank_init (any scheme)
    Integer              :: lr_scheme  = SCHEME_STANDARD
+   !> Representation of the pending state: = lr_scheme, except SCHEME_DELAYED for a submatrix block that
+   !> was converted to delayed form at a cross-slice hopping wrap (reset to lr_scheme by every flush)
+   Integer              :: lr_mode    = SCHEME_STANDARD
+   Logical              :: lr_cross   = .false.  ! cross-slice delay on (low-rank scheme only)
    Integer              :: lr_N_delay = 0
    Integer              :: N_cols_max = 0       ! allocated columns per flavour (capacity, see the header)
    Integer              :: n_pend     = 0       ! pending accepted vertices since the last flush
@@ -155,6 +179,10 @@ module Lowrank_update_mod
    Complex (Kind=Kind(0.d0)), allocatable :: Mc(:,:), Tc(:,:), Aw(:,:), Ak(:,:), Bt(:,:)
    Complex (Kind=Kind(0.d0)), allocatable :: Cw(:,:), Rw(:,:), Mw(:,:)  ! flush workspace: G0(:,S), E_S^T-G0(S,:), M Rw
 
+   ! ---- cross-slice delay -------------------------------------------------
+   ! j x Ndim buffer for Y^T (pointer-remapped to a contiguous (1:j,1:Ndim) array for the Hop_mod routines)
+   Complex (Kind=Kind(0.d0)), allocatable, target :: YTbuf(:)
+
 #ifdef ALF_LOWRANK_DEBUG
    ! ---- debug: shadow G with standard rank-1 updates ---------------------
    Real (Kind=Kind(0.d0)), parameter      :: DBG_TOL = 1.d-10     ! TOL_UNIT (CLAUDE.md, Tolerances)
@@ -172,6 +200,8 @@ module Lowrank_update_mod
 #endif
    Integer (Kind=Kind(0_8))               :: dbg_n_pad_acc  = 0   ! submatrix: sites added to S by accepts
    Integer (Kind=Kind(0_8))               :: dbg_n_pad_hook = 0   ! submatrix: sites padded by hooks (P \ S)
+   Integer (Kind=Kind(0_8))               :: dbg_n_carry = 0      ! cross-slice: pending blocks carried through a hopping wrap
+   Integer (Kind=Kind(0_8))               :: dbg_n_conv  = 0      ! cross-slice: submatrix blocks converted to delayed form
 #endif
 
 contains
@@ -199,8 +229,19 @@ contains
 !>  Bound on the pending rank per flavour (delayed: columns of X; submatrix: pending sites k = |S|,
 !>  padded sites included), see the module header. Must be >= 1 for a non-standard scheme; ignored for "standard".
 !> \endverbatim
+!> @param [in] cross_slice
+!> Logical, optional (default .false.)
+!> \verbatim
+!>  Cross-slice delay (spec D10, module header). Ignored for "standard".
+!> \endverbatim
+!> @param [in] N_Global_tau
+!> Integer, optional (default 0)
+!> \verbatim
+!>  Number of Global_tau moves per slice. cross_slice with N_Global_tau > 0 and a low-rank scheme
+!>  terminates (Wrapgr_Random_update reads G at the WRAPGRDO entry and after the slice-end flush).
+!> \endverbatim
 !--------------------------------------------------------------------
-   subroutine Lowrank_init(scheme_name, N_delay)
+   subroutine Lowrank_init(scheme_name, N_delay, cross_slice, N_Global_tau)
 
       Use Hamiltonian_main, only: Op_V, Ndim, N_FL, N_FL_eff
       Use Files_mod, only: str_to_upper
@@ -212,6 +253,8 @@ contains
 
       Character (len=*), Intent(In) :: scheme_name
       Integer,           Intent(In) :: N_delay
+      Logical, optional, Intent(In) :: cross_slice
+      Integer, optional, Intent(In) :: N_Global_tau
 
       Character (len=:), allocatable :: name
       Character (len=256)            :: line, line_inel
@@ -245,12 +288,24 @@ contains
          CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
       endif
       lr_N_delay = N_delay
+      lr_mode    = lr_scheme
+      lr_cross   = .false.
+      if (present(cross_slice)) lr_cross = cross_slice
+      if (lr_cross .and. present(N_Global_tau)) then
+         if (N_Global_tau > 0) then
+            Write(error_unit,'(A,A,A,I0,A)') ' Lowrank_init: Lowrank_cross_slice = .T. with Sequential_scheme = ', name, &
+                 & ' is not supported with Global_tau moves (N_Global_tau = ', N_Global_tau, &
+                 & ' > 0): G must be flushed at every slice end there. Set Lowrank_cross_slice = .F.'
+            CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+         endif
+      endif
       M = size(Op_V, 1)
       lr_M        = M
       lr_Ndim     = Ndim
       lr_N_FL_eff = N_FL_eff
       ! Capacity (header, D5). Delayed: at most M*N_P_LIM columns can be pending (G is flushed at
-      ! every slice end). Submatrix: at most Ndim distinct sites; after an accept k <= max(N_delay, N_P_LIM),
+      ! every slice end; with the cross-slice delay this cap only bounds the pending rank, since
+      ! Lowrank_accept flushes at min(N_delay, N_cols_max)). Submatrix: at most Ndim distinct sites; after an accept k <= max(N_delay, N_P_LIM),
       ! and a hook starts from k <= N_delay - 1 and pads at most N_P_LIM - 1 sites, hence the headroom N_P_LIM.
       ! Computed in 64 bit so that a huge N_delay cannot overflow.
       select case (lr_scheme)
@@ -293,6 +348,7 @@ contains
          allocate (Cd(Ndim, N_P_LIM))
          X = cmplx(0.d0, 0.d0, kind(0.d0))
          Y = cmplx(0.d0, 0.d0, kind(0.d0))
+         if (lr_cross) allocate (YTbuf(int(N_cols_max,8)*int(Ndim,8)))
       case (SCHEME_SUBMATRIX)
          allocate (S(N_cols_max, N_FL_eff), slot(Ndim, N_FL_eff))
          allocate (Msub(N_cols_max, N_cols_max, N_FL_eff))
@@ -304,14 +360,25 @@ contains
          S    = 0
          slot = 0
          Msub = cmplx(0.d0, 0.d0, kind(0.d0))
+         if (lr_cross) then
+            ! A block converted to delayed form at a slice end (k <= N_cols_max columns) continues as delayed
+            allocate (X(Ndim, N_cols_max, N_FL_eff), Y(Ndim, N_cols_max, N_FL_eff))
+            allocate (Yg(N_P_LIM, N_cols_max), Cd(Ndim, N_P_LIM))
+            allocate (YTbuf(int(N_cols_max,8)*int(Ndim,8)))
+            X = cmplx(0.d0, 0.d0, kind(0.d0))
+            Y = cmplx(0.d0, 0.d0, kind(0.d0))
+         endif
       end select
 #ifdef ALF_LOWRANK_DEBUG
       dbg_n_pad_acc  = 0
       dbg_n_pad_hook = 0
+      dbg_n_carry    = 0
+      dbg_n_conv     = 0
 #endif
 
       ! Report (group rank 0 only)
       write(line,'(A,A,A,I0)') 'Sequential scheme: ', name, ', N_delay = ', N_delay
+      if (lr_cross) line = trim(line) // ', cross-slice delay on (Lowrank_cross_slice)'
       if (n_inel > 0) then
          write(line_inel,'(A,A,A,I0,A,I0,A,I0,A,I0,A)') 'Sequential scheme ', name, ': ', n_inel, ' of ', M, &
               & ' vertices have a support larger than ', N_P_LIM, &
@@ -369,6 +436,7 @@ contains
       if (allocated(Cw))       deallocate (Cw)
       if (allocated(Rw))       deallocate (Rw)
       if (allocated(Mw))       deallocate (Mw)
+      if (allocated(YTbuf))    deallocate (YTbuf)
       if (allocated(prop_r))     deallocate (prop_r)
       if (allocated(prop_Delta)) deallocate (prop_Delta)
       if (allocated(prop_Mat))   deallocate (prop_Mat)
@@ -379,6 +447,8 @@ contains
       prop_valid = .false.
       lr_initialised = .false.
       lr_scheme  = SCHEME_STANDARD
+      lr_mode    = SCHEME_STANDARD
+      lr_cross   = .false.
       lr_N_delay = 0
       N_cols_max = 0
       n_pend     = 0
@@ -568,7 +638,7 @@ contains
          j = n_cols(nf_eff)
 
          ! G_PP: the r x r block of the current G on the active sites P(1:r)
-         select case (lr_scheme)
+         select case (lr_mode)
          case (SCHEME_DELAYED)
             ! G_PP = G0(P_a,P_a) - X(P_a,1:j) Y(P_a,1:j)^T  (no complex BLAS functions)
             correct_Gpp = (j > 0)
@@ -768,7 +838,7 @@ contains
          if (r_add(nf_eff) > 0) then
             if (all(prop_Delta(1:r_add(nf_eff),nf_eff) == czero)) r_add(nf_eff) = 0
          endif
-         if (lr_scheme == SCHEME_SUBMATRIX .and. r_add(nf_eff) > 0) then
+         if (lr_mode == SCHEME_SUBMATRIX .and. r_add(nf_eff) > 0) then
             nf = Calc_Fl_map(nf_eff)
             r_add(nf_eff) = count(slot(Op_V(n_op,nf)%P(1:prop_r(nf_eff)), nf_eff) == 0)
          endif
@@ -778,7 +848,7 @@ contains
       ! after a flush k = 0, and the cached W, G0(P_a,S) are not used).
       ncap = min(lr_N_delay, N_cols_max)
       nd_here = .false.
-      if (lr_scheme == SCHEME_SUBMATRIX) then
+      if (lr_mode == SCHEME_SUBMATRIX) then
          ! Accuracy guard: a block with an accepted non-diagonal update is capped at K_ND pending sites
          Do nf_eff = 1,N_FL_eff
             r = prop_r(nf_eff)
@@ -861,7 +931,7 @@ contains
       deallocate (Csh, Rsh)
 #endif
 
-      select case (lr_scheme)
+      select case (lr_mode)
       case (SCHEME_DELAYED)
          Do nf_eff = 1,N_FL_eff
             r = r_add(nf_eff)
@@ -1177,7 +1247,7 @@ contains
       Do nf_eff = 1,N_FL_eff
          if (n_cols(nf_eff) == 0) cycle
          nf = Calc_Fl_map(nf_eff)
-         select case (lr_scheme)
+         select case (lr_mode)
          case (SCHEME_DELAYED)
             if (wkind == 1 .or. .not. Op_V(n_op,nf)%diag) need_scale = .true.
          case (SCHEME_SUBMATRIX)
@@ -1196,7 +1266,7 @@ contains
       Call nsigma_single%make(1,1)
       nsigma_single%f(1,1) = HS_field
 
-      select case (lr_scheme)
+      select case (lr_mode)
       case (SCHEME_DELAYED)
          Do nf_eff = 1,N_FL_eff
             j = n_cols(nf_eff)
@@ -1342,7 +1412,7 @@ contains
       ! ALF_LOWRANK_DEBUG); the shadow is wrapped above, before the capacity flush checks GR against it.
 
       ! Submatrix capacity (D5): flush after the padding and transform if a pending rank reached N_delay
-      if (lr_scheme == SCHEME_SUBMATRIX) then
+      if (lr_mode == SCHEME_SUBMATRIX) then
          if (blk_nondiag) then
             if (maxval(n_cols) >= min(lr_N_delay, K_ND)) call Lowrank_flush(GR)
          else
@@ -1462,7 +1532,7 @@ contains
          j = n_cols(nf_eff)
          if (j == 0) cycle
          nf = Calc_Fl_map(nf_eff)
-         select case (lr_scheme)
+         select case (lr_mode)
          case (SCHEME_DELAYED)
             call ZGEMM('N', 'T', Ndim, Ndim, j, cmone, X(1,1,nf_eff), Ndim, Y(1,1,nf_eff), Ndim, &
                  &     cone, GR(1,1,nf), Ndim)
@@ -1475,6 +1545,7 @@ contains
       Enddo
       n_cols = 0
       blk_nondiag = .false.
+      lr_mode = lr_scheme          ! a converted (cross-slice) submatrix block returns to the submatrix form
 #ifdef ALF_LOWRANK_DEBUG
       ! n_cols = 0 and n_pend > 0: Lowrank_current_G returns GR, which must equal the shadow
       call Lowrank_debug_check(GR, dbg_last_nop, dbg_last_nt, "Lowrank_flush (n_op, nt of last accept)")
@@ -1525,7 +1596,7 @@ contains
       if (nf_e == 0) return
       j = n_cols(nf_e)
       if (j == 0) return
-      select case (lr_scheme)
+      select case (lr_mode)
       case (SCHEME_DELAYED)
          call ZGEMM('N', 'T', Ndim, Ndim, j, cmone, X(1,1,nf_e), Ndim, Y(1,1,nf_e), Ndim, &
               &     cone, Gcur, Ndim)
@@ -1535,6 +1606,262 @@ contains
       end select
 
    end subroutine Lowrank_current_G
+
+!--------------------------------------------------------------------
+!> @brief
+!> Cross-slice delay: called by main.F90 (only when the key Lowrank_cross_slice is on) right before
+!> a read of G (GR). Flushes the pending state, so GR is the full Green function. Under
+!> ALF_LOWRANK_DEBUG it asserts flushed afterwards and, if expect_flushed, also before the flush (read
+!> points at which G must already be flushed, e.g. right after a CGR or at the start of a sweep).
+!> No-op when nothing is pending (also before Lowrank_init and for the standard scheme).
+!> @param [inout] GR(Ndim,Ndim,N_FL)
+!> @param [in] where
+!> Character: name of the read point, reported by the assertion.
+!> @param [in] expect_flushed
+!> Logical: G must already be flushed here (checked under ALF_LOWRANK_DEBUG only).
+!--------------------------------------------------------------------
+   subroutine Lowrank_read_point(GR, where, expect_flushed)
+      Use Hamiltonian_main, only: Ndim, N_FL
+      Implicit none
+      Complex (Kind=Kind(0.d0)), Intent(InOut) :: GR(Ndim,Ndim,N_FL)
+      Character (len=*),         Intent(In)    :: where
+      Logical,                   Intent(In)    :: expect_flushed
+#ifdef ALF_LOWRANK_DEBUG
+      if (expect_flushed) call Lowrank_assert_flushed(where)
+#endif
+      call Lowrank_flush(GR)
+#ifdef ALF_LOWRANK_DEBUG
+      call Lowrank_assert_flushed(where)
+#endif
+   end subroutine Lowrank_read_point
+
+!--------------------------------------------------------------------
+!> @brief
+!> True iff a low-rank scheme is active with the cross-slice delay (Lowrank_init(..., cross_slice=.true.)).
+!--------------------------------------------------------------------
+   logical function Lowrank_cross_slice_active()
+      Implicit none
+      Lowrank_cross_slice_active = lr_cross .and. (lr_scheme /= SCHEME_STANDARD)
+   end function Lowrank_cross_slice_active
+
+!--------------------------------------------------------------------
+!> @brief
+!> Cross-slice only: terminates unless the cross-slice delay is active (X, Y, YTbuf are allocated only then).
+!--------------------------------------------------------------------
+   subroutine Cross_slice_require(where)
+      Implicit none
+      Character (len=*), Intent(In) :: where
+      if (.not. Lowrank_cross_slice_active()) then
+         Write(error_unit,'(A,A,A)') ' ', trim(where), ': requires Lowrank_init(..., cross_slice=.true.) with a low-rank scheme'
+         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      endif
+   end subroutine Cross_slice_require
+
+!--------------------------------------------------------------------
+!> @brief
+!> Cross-slice only (docs/algorithm-notes.md, section 12.8): converts a pending submatrix block to
+!> delayed form, per computed flavour with k = n_cols pending sites,
+!>   X(:,1:k) = G0(:,S) M,   Y(:,m) = e_{S_m} - G0(S_m,:)^T   (m = 1..k),
+!> so that G = G0 - G0(:,S) M (E_S^T - G0(S,:)) = G0 - X Y^T exactly (O(Ndim k^2)). slot is cleared, n_cols
+!> and n_pend are kept, lr_mode becomes SCHEME_DELAYED until the next flush. No-op unless lr_mode is
+!> SCHEME_SUBMATRIX. GR (= G0) is only read.
+!--------------------------------------------------------------------
+   subroutine Lowrank_to_delayed(GR)
+
+      Use Hamiltonian_main, only: Ndim, N_FL, N_FL_eff, Calc_Fl_map
+      Implicit none
+
+      Complex (Kind=Kind(0.d0)), Intent(In) :: GR(Ndim,Ndim,N_FL)
+
+      Integer :: nf, nf_eff, k, m
+
+      if (lr_mode /= SCHEME_SUBMATRIX) return
+      Do nf_eff = 1,N_FL_eff
+         k = n_cols(nf_eff)
+         if (k == 0) cycle
+         nf = Calc_Fl_map(nf_eff)
+         ! Cw = G0(:,S),  X(:,1:k) = Cw M
+         do m = 1, k
+            call ZCOPY(Ndim, GR(1,S(m,nf_eff),nf), 1, Cw(1,m), 1)
+         enddo
+         call ZGEMM('N', 'N', Ndim, k, k, cone, Cw, Ndim, Msub(1,1,nf_eff), N_cols_max, &
+              &     czero, X(1,1,nf_eff), Ndim)
+         ! Y(:,m) = e_{S_m} - G0(S_m,:)^T
+         do m = 1, k
+            Y(:,m,nf_eff) = - GR(S(m,nf_eff),:,nf)
+            Y(S(m,nf_eff),m,nf_eff) = Y(S(m,nf_eff),m,nf_eff) + cone
+         enddo
+         slot(S(1:k,nf_eff),nf_eff) = 0
+      Enddo
+      lr_mode     = SCHEME_DELAYED
+      blk_nondiag = .false.          ! the K_ND guard concerns the M-form only
+#ifdef ALF_LOWRANK_DEBUG
+      dbg_n_conv = dbg_n_conv + 1
+      call Lowrank_debug_check(GR, dbg_last_nop, dbg_last_nt, "Lowrank_to_delayed (n_op, nt of last accept)")
+#endif
+
+   end subroutine Lowrank_to_delayed
+
+!--------------------------------------------------------------------
+!> @author
+!> ALF-project
+!
+!> @brief
+!> Cross-slice delay (spec D10; docs/algorithm-notes.md, section 12.8): carries the pending state
+!> through the hopping wrap of WRAPGRUP, G <- B_T G B_T^{-1} (HOP_MOD_mmthr + HOP_MOD_mmthl_m1 on
+!> time slice nt), instead of flushing it at the slice end.
+!> @details
+!> Call right BEFORE ALF's hopping wrap of G0 (a pending submatrix block is first converted to delayed
+!> form, which reads G0 in the frame of the pending state). Per computed flavour nf_eff (hopping
+!> matrices of the flavour nf = Calc_Fl_map(nf_eff)), j = n_cols:
+!>   X(:,1:j) <- B_T X(:,1:j)        (Hop_mod_mmthr on the Ndim x j block),
+!>   Y^T      <- Y^T B_T^{-1}        (Hop_mod_mmthl_m1 on a j x Ndim buffer holding Y(:,1:j)^T).
+!> Cost O(N_bond j) with the checkerboard decomposition, O(Ndim^2 j) with a dense e^{-Dtau T}.
+!> No-op if nothing is pending. Terminates unless the cross-slice delay is active.
+!> @param [in] GR(Ndim,Ndim,N_FL)
+!> Complex
+!> \verbatim
+!>  G0 before the hopping wrap (only read, by the submatrix -> delayed conversion).
+!> \endverbatim
+!> @param [in] nt
+!> Integer
+!> \verbatim
+!>  Time slice of the hopping wrap (ntau1 in WRAPGRUP).
+!> \endverbatim
+!--------------------------------------------------------------------
+   subroutine Lowrank_hop_up(GR, nt)
+      Use Hamiltonian_main, only: Ndim, N_FL
+      Implicit none
+      Complex (Kind=Kind(0.d0)), Intent(In) :: GR(Ndim,Ndim,N_FL)
+      Integer,                   Intent(In) :: nt
+      call Cross_slice_require("Lowrank_hop_up")
+      call Cross_slice_hop(GR, nt, +1)
+   end subroutine Lowrank_hop_up
+
+!--------------------------------------------------------------------
+!> @brief
+!> Cross-slice delay: as Lowrank_hop_up for the hopping wrap at the end of WRAPGRDO,
+!> G <- B_T^{-1} G B_T (Hop_mod_mmthl + Hop_mod_mmthr_m1 on time slice nt):
+!>   X(:,1:j) <- B_T^{-1} X(:,1:j)   (Hop_mod_mmthr_m1),   Y^T <- Y^T B_T   (Hop_mod_mmthl on the buffer).
+!> Call right BEFORE ALF's hopping wrap of G0. GR is only read (conversion).
+!--------------------------------------------------------------------
+   subroutine Lowrank_hop_down(GR, nt)
+      Use Hamiltonian_main, only: Ndim, N_FL
+      Implicit none
+      Complex (Kind=Kind(0.d0)), Intent(In) :: GR(Ndim,Ndim,N_FL)
+      Integer,                   Intent(In) :: nt
+      call Cross_slice_require("Lowrank_hop_down")
+      call Cross_slice_hop(GR, nt, -1)
+   end subroutine Lowrank_hop_down
+
+!--------------------------------------------------------------------
+!> @brief
+!> Lowrank_hop_up (dir = +1) / Lowrank_hop_down (dir = -1), see there. Under ALF_LOWRANK_DEBUG the
+!> shadow G receives the same hopping wrap (the caller checks it after ALF's wrap of G0).
+!--------------------------------------------------------------------
+   subroutine Cross_slice_hop(GR, nt, dir)
+
+      Use Hamiltonian_main, only: Ndim, N_FL, N_FL_eff, Calc_Fl_map
+      Use Hop_mod, only: Hop_mod_mmthr, Hop_mod_mmthr_m1, Hop_mod_mmthl, Hop_mod_mmthl_m1
+      Implicit none
+
+      Complex (Kind=Kind(0.d0)), Intent(In) :: GR(Ndim,Ndim,N_FL)
+      Integer,                   Intent(In) :: nt, dir
+
+      Complex (Kind=Kind(0.d0)), pointer :: YT(:,:)
+      Integer :: nf, nf_eff, j, m
+
+      prop_valid = .false.
+      if (n_pend == 0) return
+      call Lowrank_to_delayed(GR)
+      Do nf_eff = 1,N_FL_eff
+         j = n_cols(nf_eff)
+         if (j == 0) cycle
+         nf = Calc_Fl_map(nf_eff)
+         ! X <- B_T X (up) or B_T^{-1} X (down): the Ndim x j block, contiguous
+         if (dir == 1) then
+            call Hop_mod_mmthr   (X(:,1:j,nf_eff), nf, nt)
+         else
+            call Hop_mod_mmthr_m1(X(:,1:j,nf_eff), nf, nt)
+         endif
+         ! Y^T <- Y^T B_T^{-1} (up) or Y^T B_T (down), on the contiguous j x Ndim buffer
+         YT(1:j,1:Ndim) => YTbuf(1:int(j,8)*int(Ndim,8))
+         do m = 1, j
+            YT(m,:) = Y(:,m,nf_eff)
+         enddo
+         if (dir == 1) then
+            call Hop_mod_mmthl_m1(YT, nf, nt)
+         else
+            call Hop_mod_mmthl   (YT, nf, nt)
+         endif
+         do m = 1, j
+            Y(:,m,nf_eff) = YT(m,:)
+         enddo
+         nullify (YT)
+      Enddo
+#ifdef ALF_LOWRANK_DEBUG
+      ! Shadow: the same hopping wrap as ALF's on G0 (same calls and order as WRAPGRUP / WRAPGRDO)
+      Do nf_eff = 1,N_FL_eff
+         nf = Calc_Fl_map(nf_eff)
+         if (dir == 1) then
+            call Hop_mod_mmthr   (Gsh(:,:,nf), nf, nt)
+            call Hop_mod_mmthl_m1(Gsh(:,:,nf), nf, nt)
+         else
+            call Hop_mod_mmthl   (Gsh(:,:,nf), nf, nt)
+            call Hop_mod_mmthr_m1(Gsh(:,:,nf), nf, nt)
+         endif
+      Enddo
+      dbg_n_carry = dbg_n_carry + 1
+#endif
+
+   end subroutine Cross_slice_hop
+
+!--------------------------------------------------------------------
+!> @brief
+!> Cross-slice delay, dense analogue of Lowrank_hop_up for tests (unit test 36): carries the pending
+!> state through a similarity G <- Sm G Sminv (Sminv = Sm^{-1}, the same for every computed flavour):
+!> submatrix blocks are converted to delayed form first (reads GR = G0 before the similarity), then
+!>   X(:,1:j) <- Sm X(:,1:j),   Y(:,1:j) <- Sminv^T Y(:,1:j)  (i.e. Y^T <- Y^T Sminv).
+!> The caller applies the similarity to G0 afterwards. No-op if nothing is pending. Terminates unless
+!> the cross-slice delay is active.
+!--------------------------------------------------------------------
+   subroutine Lowrank_carry_similarity(GR, Sm, Sminv)
+
+      Use Hamiltonian_main, only: Ndim, N_FL, N_FL_eff, Calc_Fl_map
+      Implicit none
+
+      Complex (Kind=Kind(0.d0)), Intent(In) :: GR(Ndim,Ndim,N_FL)
+      Complex (Kind=Kind(0.d0)), Intent(In) :: Sm(Ndim,Ndim), Sminv(Ndim,Ndim)
+
+      Complex (Kind=Kind(0.d0)), allocatable :: T(:,:)
+      Integer :: nf_eff, j
+#ifdef ALF_LOWRANK_DEBUG
+      Integer :: nf
+#endif
+
+      call Cross_slice_require("Lowrank_carry_similarity")
+      prop_valid = .false.
+      if (n_pend == 0) return
+      call Lowrank_to_delayed(GR)
+      allocate (T(Ndim, N_cols_max))
+      Do nf_eff = 1,N_FL_eff
+         j = n_cols(nf_eff)
+         if (j == 0) cycle
+         call ZGEMM('N', 'N', Ndim, j, Ndim, cone, Sm, Ndim, X(1,1,nf_eff), Ndim, czero, T, Ndim)
+         X(:,1:j,nf_eff) = T(:,1:j)
+         call ZGEMM('T', 'N', Ndim, j, Ndim, cone, Sminv, Ndim, Y(1,1,nf_eff), Ndim, czero, T, Ndim)
+         Y(:,1:j,nf_eff) = T(:,1:j)
+      Enddo
+      deallocate (T)
+#ifdef ALF_LOWRANK_DEBUG
+      Do nf_eff = 1,N_FL_eff
+         nf = Calc_Fl_map(nf_eff)
+         Gsh(:,:,nf) = matmul(Sm, matmul(Gsh(:,:,nf), Sminv))
+      Enddo
+      dbg_n_carry = dbg_n_carry + 1
+#endif
+
+   end subroutine Lowrank_carry_similarity
 
 !--------------------------------------------------------------------
 !> @brief
@@ -1680,6 +2007,10 @@ contains
       if (lr_scheme == SCHEME_SUBMATRIX) then
          Write(unit_dbg,'(A,I0)')  'padded sites (accepts)  : ', dbg_n_pad_acc
          Write(unit_dbg,'(A,I0)')  'padded sites (hooks)    : ', dbg_n_pad_hook
+      endif
+      if (lr_cross) then
+         Write(unit_dbg,'(A,I0)')  'cross-slice carries     : ', dbg_n_carry
+         Write(unit_dbg,'(A,I0)')  'submatrix -> delayed    : ', dbg_n_conv
       endif
       Close(unit_dbg)
    end subroutine Lowrank_debug_summary

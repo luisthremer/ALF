@@ -54,6 +54,7 @@ Module QMC_runtime_var
         Logical :: Sequential
         Character (len=64) :: Sequential_scheme  !  "standard", "delayed" or "submatrix"; validated in validate_sequential_scheme and Lowrank_init
         Integer :: N_delay                        !  max pending accepted vertices before a flush (delayed/submatrix)
+        Logical :: Lowrank_cross_slice            !  cross-slice delay prototype (delayed/submatrix; spec D10); default .false.
         real (Kind=Kind(0.d0)) ::  Amplitude  !    Needed for  update of  type  3  and  4  fields.
 
         Character (len=64) :: ham_name
@@ -77,7 +78,7 @@ Module QMC_runtime_var
               &               Nt_sequential_start, Nt_sequential_end, N_Global_tau, &
               &               sequential, Langevin, HMC, Delta_t_Langevin_HMC, &
               &               Max_Force, Leapfrog_steps, N_HMC_sweeps, Amplitude, &
-              &               Sequential_scheme, N_delay
+              &               Sequential_scheme, N_delay, Lowrank_cross_slice
        
         NAMELIST /VAR_HAM_NAME/ ham_name
 
@@ -125,6 +126,8 @@ Module QMC_runtime_var
     public :: get_ham_name,          set_ham_name
     public :: get_Sequential_scheme, set_Sequential_scheme
     public :: get_N_delay,           set_N_delay
+    public :: get_Lowrank_cross_slice, set_Lowrank_cross_slice
+    public :: validate_lowrank_cross_slice
     public :: get_mpi_per_parameter_set, set_mpi_per_parameter_set
     public :: get_Tempering_calc_det, set_Tempering_calc_det
 #if defined(TEMPERING)
@@ -154,7 +157,7 @@ Module QMC_runtime_var
             Global_tau_moves = .false.; sequential = .true.; Langevin = .false. ; HMC =.false.
             Delta_t_Langevin_HMC = 0.d0;  Max_Force = 0.d0 ; Leapfrog_steps = 0; N_HMC_sweeps = 1
             Nt_sequential_start = 1 ;  Nt_sequential_end  = 0;  N_Global_tau  = 0;  Amplitude = 1.d0
-            Sequential_scheme = "standard";  N_delay = 32
+            Sequential_scheme = "standard";  N_delay = 32;  Lowrank_cross_slice = .false.
             settings_locked = .false.
 
         end subroutine set_QMC_runtime_default_var
@@ -555,6 +558,16 @@ Module QMC_runtime_var
             call ensure_settings_unlocked("set_N_delay")
             N_delay = val
         end subroutine set_N_delay
+
+        logical function get_Lowrank_cross_slice() result(val)
+            val = Lowrank_cross_slice
+        end function get_Lowrank_cross_slice
+
+        subroutine set_Lowrank_cross_slice(val)
+            logical, intent(in) :: val
+            call ensure_settings_unlocked("set_Lowrank_cross_slice")
+            Lowrank_cross_slice = val
+        end subroutine set_Lowrank_cross_slice
      
 
 !--------------------------------------------------------------------
@@ -600,6 +613,7 @@ Module QMC_runtime_var
             CALL MPI_BCAST(Amplitude            ,1 ,MPI_REAL8    ,0,MPI_COMM_i,ierr)
             CALL MPI_BCAST(Sequential_scheme    ,64,MPI_CHARACTER,0,MPI_COMM_i,ierr)
             CALL MPI_BCAST(N_delay              ,1 ,MPI_INTEGER  ,0,MPI_COMM_i,ierr)
+            CALL MPI_BCAST(Lowrank_cross_slice  ,1 ,MPI_LOGICAL  ,0,MPI_COMM_i,ierr)
 
         end subroutine broadcast_QMC_runtime_var
 #endif           
@@ -719,5 +733,35 @@ Module QMC_runtime_var
           end select
 
         end subroutine validate_sequential_scheme
+
+!--------------------------------------------------------------------
+!> @brief
+!> Cross-slice delay (spec D10): terminates if Lowrank_cross_slice = .T. with a low-rank scheme
+!> (delayed, submatrix) and N_Global_tau > 0 (after the Hamiltonian's override of the Global_tau
+!> parameters). No effect for Sequential_scheme = "standard" or Lowrank_cross_slice = .F.
+!> Lowrank_init repeats the check.
+!--------------------------------------------------------------------
+        subroutine validate_lowrank_cross_slice()
+
+          implicit none
+
+          Character (len=64) :: name
+          Integer :: i, ic
+
+          if (.not. Lowrank_cross_slice) return
+          name = adjustl(Sequential_scheme)
+          do i = 1, len_trim(name)
+             ic = iachar(name(i:i))
+             if (ic >= iachar('a') .and. ic <= iachar('z')) name(i:i) = achar(ic - 32)
+          enddo
+          if (trim(name) == "STANDARD") return
+          if (N_Global_tau > 0) then
+             write(error_unit,'(A,A,A,I0,A)') ' VAR_QMC: Lowrank_cross_slice = .T. with Sequential_scheme = ', &
+                  & trim(name), ' is not supported with Global_tau moves (N_Global_tau = ', N_Global_tau, &
+                  & ' > 0); set Lowrank_cross_slice = .F.'
+             call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+          endif
+
+        end subroutine validate_lowrank_cross_slice
         
 end Module QMC_runtime_var

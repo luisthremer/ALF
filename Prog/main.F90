@@ -130,6 +130,7 @@ Program Main
         Use Global_mod
         Use UDV_State_mod
         Use Wrapgr_mod
+        use Lowrank_update_mod, only: Lowrank_read_point
         Use Fields_mod
         Use WaveFunction_mod
         use entanglement_mod
@@ -390,6 +391,8 @@ Program Main
            call set_Nt_sequential_end(tmp_Nt_sequential_end)
            call set_N_Global_tau(tmp_N_Global_tau)
         endif
+        ! Cross-slice delay (Lowrank_cross_slice, spec D10): refused with Global_tau moves
+        call validate_lowrank_cross_slice()
         
         call nsigma%make(N_op, Ltrot)
         Do n = 1,N_op
@@ -655,14 +658,17 @@ Program Main
 #if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
               IF (MOD(NSW,get_N_Tempering_frequency()) == 0) then
                  !Write(6,*) "Irank, Call tempering", Irank, NSW, get_N_exchange_steps()
+                 If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Exchange_Step", .true.)
                  CALL Exchange_Step(Phase,GR,udvr, udvl,Stab_nt, udvst, get_N_exchange_steps(), get_Tempering_calc_det())
               endif
 #endif
               ! Global updates
+              If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Global_Updates", .true.)
               If ( get_Global_moves() ) Call Global_Updates(Phase, GR, udvr, udvl, Stab_nt, udvst, get_N_Global() )
 
 
               If ( str_to_upper(Langevin_HMC%get_Update_scheme()) == "LANGEVIN" )  then
+                 If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Langevin update", .true.)
                  !  Carry out a Langevin update and calculate equal time observables.
                  Call Langevin_HMC%update(Phase, GR, GR_Tilde, Test, udvr, udvl, Stab_nt, udvst, &
                       &                   get_LOBS_ST(), get_LOBS_EN(), get_Ltau())
@@ -680,6 +686,7 @@ Program Main
               endif
 
               If (  str_to_upper(Langevin_HMC%get_Update_scheme()) == "HMC" )  then
+                 If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "HMC update", .true.)
                  if ( get_sequential() ) call Langevin_HMC%set_L_Forces(.False.)
                  Do n=1, get_N_HMC_sweeps()
                      !  Carry out a Langevin update and calculate equal time observables.
@@ -729,6 +736,7 @@ Program Main
                     CALL WRAPGRUP(GR,NTAU,PHASE,get_Propose_S0(), get_Nt_sequential_start(), get_Nt_sequential_end(), get_N_Global_tau())
                     
                     If (NTAU1 == Stab_nt(NST) ) then
+                       If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "CGR (up sweep)", .false.)
                        NT1 = Stab_nt(NST-1)
                        CALL WRAPUR(NT1, NTAU1, udvr)
                        Phase_array = cmplx(1.d0, 0.d0, kind(0.D0))
@@ -755,6 +763,7 @@ Program Main
                     ENDIF
                     
                     IF (NTAU1.GE. get_LOBS_ST() .AND. NTAU1.LE. get_LOBS_EN() ) THEN
+                       If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Obser (up sweep)", .false.)
                        !Call  Global_tau_mod_Test(Gr,ntau1)
                        !Stop
                        !write(*,*) "GR before obser sum: ",sum(GR(:,:,1))
@@ -772,6 +781,8 @@ Program Main
                        endif
                     ENDIF
                  ENDDO
+                 ! End of the up sweep (NTAU1 = LTROT is a stabilisation point, so G is flushed)
+                 If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "end of the up sweep", .true.)
                  
                  Do nf_eff = 1,N_FL_eff
                     nf=Calc_Fl_map(nf_eff)
@@ -787,6 +798,7 @@ Program Main
                     NTAU1 = NTAU - 1
                     CALL WRAPGRDO(GR,NTAU, PHASE,get_Propose_S0(),get_Nt_sequential_start(), get_Nt_sequential_end(), get_N_Global_tau())
                     IF (NTAU1.GE. get_LOBS_ST() .AND. NTAU1.LE. get_LOBS_EN() ) THEN
+                       If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Obser (down sweep)", .false.)
                        !write(*,*) "GR before obser sum: ",sum(GR(:,:,1))
                        !write(*,*) "Phase before obser : ",phase
                        Mc_step_weight = 1.d0
@@ -802,6 +814,7 @@ Program Main
                        endif
                     ENDIF
                     IF ( Stab_nt(NST) == NTAU1 .AND. NTAU1.NE.0 ) THEN
+                       If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "CGR (down sweep)", .false.)
                        NT1 = Stab_nt(NST+1)
                        !Write(6,*) 'Wrapul : ', NT1, NTAU1
                        CALL WRAPUL(NT1, NTAU1, udvl)
@@ -827,12 +840,15 @@ Program Main
                        Call Control_PrecisionP(Z,Phase)
                        Phase = Z
                        IF( get_Ltau() == 1 .and. Projector .and. Stab_nt(NST)<=THTROT+1 .and. THTROT+1<Stab_nt(NST+1) ) then
+                          If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Tau_p (projector, down sweep)", .true.)
                           Call tau_p ( udvl, udvr, udvst, GR, PHASE, NSTM, STAB_NT, NST,  get_LOBS_ST(), get_LOBS_EN() )
                        endif
                        NST = NST -1
                     ENDIF
                  ENDDO
                  
+                 ! End of the down sweep: the last WRAPGRDO may return a pending state (time slice 0)
+                 If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "CGR (time slice 0, end of the down sweep)", .false.)
                  !Calculate and compare green functions on time slice 0.
                  NT1 = Stab_nt(0)
                  NT  = Stab_nt(1)
@@ -872,6 +888,7 @@ Program Main
                  enddo
                  
                  IF ( get_Ltau() == 1 .and. .not. Projector ) then
+                    If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Tau_m", .true.)
                     Call TAU_M( udvst, GR, PHASE, NSTM, get_Nwrap(), STAB_NT, get_LOBS_ST(), get_LOBS_EN() )
                  endif
                  ! When Nwrap > Thtrot+1, the smallest Stab_nt(1)=Nwrap already exceeds
@@ -882,6 +899,7 @@ Program Main
                  ! udvst(1..Nstm) contains fresh left propagations from the backward
                  ! sweep, so calling tau_p with NST_IN=0 is correct here.
                  IF ( get_LTAU() == 1 .and. Projector .and. Stab_nt(1) > THTROT+1 ) then
+                    If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Tau_p (projector, end of the sweep)", .true.)
                     Call tau_p ( udvl, udvr, udvst, GR, PHASE, NSTM, STAB_NT, 0, get_LOBS_ST(), get_LOBS_EN() )
                  endif
               endif
