@@ -47,9 +47,10 @@ if [[ " $PHASES " == *" traj "* ]]; then
 fi
 
 if [[ " $PHASES " == *" debug "* ]]; then
-  ( build_env && make -C Prog clean >/dev/null 2>&1 && ALF_FLAGS_EXT="-DALF_LOWRANK_DEBUG" make program -j8 >"$LOG/debug_build.log" 2>&1 \
+  # ALF_FLAGS_EXT must be exported before configure.sh is sourced (it is folded into ALF_FLAGS_PROG there)
+  ( export ALF_FLAGS_EXT="-DALF_LOWRANK_DEBUG"; build_env && make -C Prog clean >/dev/null 2>&1 && make program -j8 >"$LOG/debug_build.log" 2>&1 \
       && mkdir -p builds && cp Prog/ALF.out builds/ALF_debug.out ) || echo "debug build FAILED (see $LOG/debug_build.log)"
-  ( build_env && make -C Prog clean >/dev/null 2>&1 && make program -j8 >"$LOG/normal_build.log" 2>&1 ) || echo "normal rebuild FAILED"
+  ( unset ALF_FLAGS_EXT; build_env && make -C Prog clean >/dev/null 2>&1 && make program -j8 >"$LOG/normal_build.log" 2>&1 ) || echo "normal rebuild FAILED"
   for s in tv kondo z2 spin_peierls jz tv_proj tv_flux; do
     keys=""; for e in "${SETS[@]}" "${TRAJ_ONLY_SETS[@]}"; do IFS='|' read -r n common _ <<<"$e"; [ "$n" = "$s" ] && keys="$common"; done
     d="$ALFDIR/runs/tiers/$SCHEME/debug_$s"; /bin/rm -rf "$d"
