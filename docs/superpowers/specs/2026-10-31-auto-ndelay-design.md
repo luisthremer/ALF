@@ -19,7 +19,7 @@ logged in `info`; default (standard) path byte-identical.
   factor 2 off before clamping; with the clamps of A2 the static value is within 5 % of the best on the Mac, so the
   timing is insurance for other machines and caches.
 * G is flushed at every slice end, so a pending rank beyond the pending columns one slice can produce (`M·r̄·acceptance`)
-  is never reached; submatrix bond blocks are capped at K_ND = 8 anyway (D15).
+  is never reached; submatrix blocks with non-diagonal content are flushed at once (K_ND = 1, D15).
 
 ## 3. Decisions
 | # | Decision | Reason |

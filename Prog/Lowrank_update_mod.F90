@@ -73,7 +73,8 @@
 !> Unit tier: rep_mixed 5.0e-10 without any guard. Delayed has no such loss and is the scheme of choice
 !> for models with non-diagonal (bond) vertices.
 !> Allocated: delayed N_cols_max = min(max(N_delay, N_P_LIM), size(Op_V,1)*N_P_LIM) (G is flushed at
-!> every slice end); submatrix N_cols_max = min(max(N_delay, N_P_LIM), Ndim) + N_P_LIM (headroom for
+!> every slice end unless the cross-slice key is on; with the key on, automatic N_delay is still capped by one slice's
+!> max_pend, so the prototype never carries more than one slice's maximal pending rank); submatrix N_cols_max = min(max(N_delay, N_P_LIM), Ndim) + N_P_LIM (headroom for
 !> the hook padding). With automatic N_delay, N_delay here is n0 (N_delay = 0) or the largest timing candidate (-1; see below).
 !>
 !> Automatic N_delay (project 2 Phase 6; docs/superpowers/specs/2026-10-31-auto-ndelay-design.md, A1-A8):
@@ -180,8 +181,6 @@ module Lowrank_update_mod
    ! ---- automatic N_delay (module header) ---------------------------------
    Integer, parameter   :: ND_U_DELAYED = 128, ND_U_SUBMATRIX = 256, ND_L = 16  ! clamp [ND_L, U] of the static rule
    Real (Kind=Kind(0.d0)), parameter :: TUNE_GAIN = 0.95d0  ! a candidate wins only if < 0.95 x n0's time per proposal
-   ! requested: >= 1 fixed, 0 automatic, -1 automatic with timing (not read yet: kept for P6-2, which writes it to data.h5)
-   Integer              :: lr_N_delay_req = 0
    Integer              :: lr_N_delay_cap = 0   ! largest N_delay the arrays are sized for (Lowrank_set_N_delay bound)
    Integer              :: lr_n0 = 0            ! static value (automatic N_delay)
    Logical              :: lr_print_info = .false.   ! this rank writes the info lines (group rank 0)
@@ -217,10 +216,10 @@ module Lowrank_update_mod
    Complex (Kind=Kind(0.d0)), allocatable :: Xg(:,:), Yg(:,:), Tg(:,:), Cd(:,:)
 
    ! ---- submatrix (M-form) ----------------------------------------------
-   !> Submatrix: cap on the pending sites k of a block that contains an accepted non-diagonal update
-   !> (accuracy guard, spec Sec. 6; see the module header)
+   !> Submatrix: cap on the pending sites k of a block that contains non-diagonal content (an accepted
+   !> non-diagonal update or a non-diagonal hook transform of M; accuracy guard, spec D15; module header)
    Integer, parameter :: K_ND = 1   ! spec D15: non-diagonal content is never kept in the M-form
-   Logical            :: blk_nondiag = .false.   ! the current block contains an accepted non-diagonal update
+   Logical            :: blk_nondiag = .false.   ! the current block contains non-diagonal content (accept or hook transform)
    ! S(1:k,nf_eff) pending sites, slot(site,nf_eff) position in S (0 if absent), Msub(1:k,1:k,nf_eff) = M
    ! (docs/algorithm-notes.md, section 12.1); all sized N_cols_max = capS
    Integer,                   allocatable :: S(:,:), slot(:,:)
@@ -238,7 +237,7 @@ module Lowrank_update_mod
    Complex (Kind=Kind(0.d0)), allocatable, target :: YTbuf(:)
 
 #ifdef ALF_LOWRANK_DEBUG
-   ! ---- debug: shadow G with standard rank-1 updates ---------------------
+   ! ---- debug: shadow G with standard rank-r updates ---------------------
    Real (Kind=Kind(0.d0)), parameter      :: DBG_TOL = 1.d-10     ! TOL_UNIT (CLAUDE.md, Tolerances)
    Complex (Kind=Kind(0.d0)), allocatable :: Gsh(:,:,:)
    Real (Kind=Kind(0.d0))                 :: dbg_max_err  = 0.d0
@@ -326,7 +325,7 @@ contains
       Integer, optional, Intent(In) :: Nt_start, Nt_end
 
       Character (len=:), allocatable :: name
-      Character (len=256)            :: line, line_inel, line_tune
+      Character (len=256)            :: line, line2, line_inel, line_tune
       Character (len=64)             :: file_info
       Integer :: n, nf, M, n_inel, n_first, unit_info, nts, nte, rmax, max_pend, k, c
       Logical :: print_info, nd_any
@@ -357,7 +356,6 @@ contains
               & ' must be >= 1 (fixed), 0 (automatic) or -1 (automatic with warm-up timing)'
          CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
       endif
-      lr_N_delay_req = N_delay
       lr_mode    = lr_scheme
       lr_cross   = .false.
       if (present(cross_slice)) lr_cross = cross_slice
@@ -499,7 +497,8 @@ contains
          else
             write(line,'(A,A,A)') 'Sequential scheme: ', name, ', N_delay = auto+tune'
          endif
-         write(line,'(A,A,I0,A,I0,A)') trim(line), ' (static n0 = ', lr_n0, ', Ndim = ', Ndim, ')'
+         write(line2,'(A,I0,A,I0,A)') ' (static n0 = ', lr_n0, ', Ndim = ', Ndim, ')'
+         line = trim(line) // trim(line2)   ! no internal write that reads its own output buffer (portability)
          ! spec A8: with K_ND = 1 (D15) all candidates behave alike for non-diagonal submatrix blocks
          if (lr_scheme == SCHEME_SUBMATRIX .and. nd_any) &
               & line = trim(line) // ' (K_ND = 1: non-diagonal blocks flush immediately)'
@@ -733,6 +732,10 @@ contains
       do k = 1, tune_ncand
          if (tune_cand(k) == lr_n0) i0 = k
       enddo
+      if (i0 == 0) then   ! the static value is always one of the candidates (Static_clamp(n0) = n0)
+         Write(error_unit,'(A,I0)') ' Lowrank_autotune_finish: static N_delay not among the candidates, n0 = ', lr_n0
+         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      endif
       no_prop = any(np(1:tune_ncand) == 0_8)
       ich = i0
       spp = 0.d0
@@ -849,7 +852,6 @@ contains
       n_pend     = 0
       last_accept_cols = 0
       ! automatic N_delay / tuning state
-      lr_N_delay_req = 0
       lr_N_delay_cap = 0
       lr_n0          = 0
       lr_print_info  = .false.
