@@ -5,12 +5,14 @@
 - **Review:** numerics-reviewer (code, acceptance file, scripts) · **Verification:** acceptance-verifier
 - **Depends on:** 302a merged into `gpu-port` (ONEMKL backend of `alf_la`); 212 (env reader, deterministic sums; in
   `gpu-port`); prerequisites P1–P8 below
-- **Base:** `TBD-after-302a-merge` (gpu-port after the 302a merge; after the 207 merge too if 207 lands first)
-- **Branch:** `gpu-port-302b-b580`
+- **Base:** `TBD` = `gpu-port` after the merge of the harness branch `gpu-port-harness-302b` (H1/H2); 302a is merged
+  (`890185c0`), 207 is not in the base
+- **Branch:** `gpu-port-302b` (the 2026-10-30 draft branch `gpu-port-302b-b580` is superseded)
 - **Acceptance files:** `testsuite/gpu_reference/acceptance/302b.json` (Intel part, `intel`) and `302b.nvidia.json`
   (`nividia` part, `acc_driver.py --part nvidia`). Both are drafted together in `302b.draft.json`; the nvidia part sits under
   the key `_part_nvidia` and is split into its own file at pre-registration.
-- **Status:** DRAFT (2026-10-30); not pre-registered; open questions are marked `QUESTION:`
+- **Status:** DRAFT (2026-10-30, updated 2026-10-31 with decisions 20–23 and the manager's answers); not pre-registered.
+  Remaining before pre-registration: review (c) of the harness branch, the P8 timing probe, review (b) of this file
 
 ## Goal
 With `GPU=intel` (ifx 2026.2 OpenMP offload, spir64 JIT, plus the 302a oneMKL backend), the 204 wraps (checkerboard and
@@ -42,11 +44,10 @@ unchanged.
     would become an INPUT_ERROR. If 207 is in the base, this line is added to the `active_lines`.
   - If 207 lands **after** 302b, the same guard must come with the 207 merge (the manager's merge checklist). Otherwise
     the device τ pass turns on under `GPU=intel` untested.
-  - `QUESTION:` (owner) does "τ path refused at setup" mean this (device τ off, host τ on, the run continues), or should
-    a `GPU=intel` run with `Ltau = 1` stop? Stopping would force `Ltau = 0` configs: new parameter hashes, and no τ
-    datasets in the same-seed gate. The draft assumes the host τ fallback.
-  - `QUESTION:` (manager) `gpu_tau_mod.F90` is NVIDIA-lane-owned (PLAN ownership table). A one-line guard there needs
-    your sequencing.
+  - **Decided (owner, decision 22, 2026-10-31): "CPU τ pass".** Device τ off, host `TAU_M` on, the run continues.
+    The same-seed τ datasets and Precision tau therefore check the host τ pass fed by the device stabilization.
+  - **Manager (2026-10-31):** 207 is not in the base, so 302b touches no `gpu_tau_mod.F90`. The guard above is an item
+    of the 207 merge checklist (in the 207 ticket); the NVIDIA lane adds it when 207 merges.
 - **ALF_LA_TEST_\* refusal.** 302a's ticket says that 302b extends the 212 production refusal to `ALF_LA_TEST_*`. The 212
   reader (`gpu_env_read`, `gpu_state_mod.F90` ~200–235) collects only `ALF_GPU_*` entries. 302b extends it to the prefix
   `ALF_LA_TEST_`:
@@ -54,7 +55,9 @@ unchanged.
   - in a debug run: listed in the sorted ` GPU debug env:` line.
   - This touches the shared part of `gpu_state_mod.F90` for every backend (CUDA would refuse these names too), so the
     manager sequences it.
-  - `QUESTION:` (manager) accept this design, or should the refusal stay ONEMKL-only?
+  - **Manager (2026-10-31): all GPU backends.** The reader sits inside `#ifdef ALF_GPU` (`gpu_state_mod.F90:100`), so
+    `GPU=none` is untouched; one rule for every GPU build is simpler to check than a backend-specific one, and
+    `cuda_identity` runs without `ALF_LA_TEST_*`, so it stays bit-identical.
 - **302a findings that matter here.** oneMKL `zgeqrf`/`zungqr`/`zunmqr` are hybrid, with a fixed cost of ~0.45 ms per call.
   STABLOG keeps host ZGEQP3 (`la_geqp3_host`). The BLAS calls run on the GPU. The interop queue is the OpenMP runtime's
   SYCL queue. `la_init` prints ` alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics` (seen in the 302a T2 logs).
@@ -75,8 +78,7 @@ unchanged.
   - `Prog/main.F90`, `Prog/tau_m_mod.F90`, `Prog/Wrapgr_mod.F90`; any CPU-path file;
   - the CUDA code paths.
 - A defect found in `alf_la` (ONEMKL) is reported, not fixed here: its fix would change this file's expected counts
-  (re-registration). `QUESTION:` (manager) should 302b instead be allowed ONEMKL-only edits of `alf_la_mod.F90` and the
-  shim, with the counts of 302a's nvidia part?
+  (re-registration). **Manager (2026-10-31): no `alf_la` edits in 302b**; a defect found there gets its own ticket.
 
 ## Acceptance
 The draft is in `302b.draft.json`; `verdict.py` lint passes for both parts in DRAFT mode. Tolerances are as in 212.
@@ -87,8 +89,8 @@ The draft is in `302b.draft.json`; `verdict.py` lint passes for both parts in DR
   parameters.
 - 67 GPU runs, 10 CPU runs, 4 ctests, 15 gates, 18 controls.
 
-Every GPU run declares `ONEAPI_DEVICE_SELECTOR=level_zero:0`, and every run must show the B580 device line as an active
-line. The UHD 730 has no FP64.
+Every `GPU=intel` run gets `ONEAPI_DEVICE_SELECTOR=level_zero:0` from `acc_run.sh` itself (H2; recorded in the
+provenance env), and every run must show the B580 device line as an active line. The UHD 730 has no FP64.
 
 | Gate | Oracle / statistic | Threshold | Control (expect) |
 |---|---|---|---|
@@ -98,12 +100,12 @@ line. The UHD 730 has no FP64.
 | `faults` | 8 stab faults (perm, phase, nan, eps:1e-9 × 2 builds) + hop, vexp, upd, nsig | rc 1, named FAILED line, armed line | eps:1e-11 armed but undetectable (FAIL) |
 | `faults_mirror` | `SELFTEST=fault\|fault_v\|nan` | rc 1, FAILED naming hopping / Op_V / non-finite | clean st2 run (FAIL) |
 | `refusal` | 15 `ALF_GPU_*` names of 212, production run | exact 212 line, rc 1 | `DEBUG=1` with NS, TL accepted (FAIL) |
-| `refusal_la_test` | `ALF_LA_TEST_BREAK_ORDER`, `_POISON_INFO`, `_WRONG_LD` | same line format, rc 1 | `DEBUG=1` + POISON_INFO accepted (FAIL); **needs harness change H1** |
+| `refusal_la_test` | `ALF_LA_TEST_BREAK_ORDER`, `_POISON_INFO`, `_WRONG_LD` | same line format, rc 1 | `DEBUG=1` + POISON_INFO accepted (FAIL); harness change H1 |
 | `invalid_value` | `FAULT_STAB=xyz`, `FAULT=xyz` | exact line, rc 1 | valid eps:1e-11 (FAIL) |
 | `same_seed` | B580 vs ifx CPU, same seeds: 6×6 LOG / CPU LOG, 6×6 default / CPU `QR_PREPIVOT`, 12×12 default / CPU `QR_PREPIVOT` | no bin > 1e-4; overall and τ ≤ 1e-9; 38 datasets, 5 τ | `scale 1e-3` (FAIL), `nan` (INPUT_ERROR) |
 | `determinism` | same binary twice: 6×6 default, 6×6 LOG, 12×12 β = 10 default, 12×12 β = 10 LOG | bit-identical `data.h5` + Precision lines | `scale 1e-12` (FAIL) |
 | `precision` | 12×12 β = 4, 20 × 20: GPU mean / larger ifx CPU mean, Green and τ | ≤ 1.5 | `ALF_GPU_NS=0` (FAIL; see Q-NS) |
-| `compare2` | `s8_U4_b2_cb_short` 120 × 30, B580 default vs ifx GPU=none, fresh seeds | m = 11, α = 0.01 Šidák, `min_bins` 8 | shift 8 (FAIL; **owner approval needed**); CPU-vs-CPU null (PASS) |
+| `compare2` | `s8_U4_b2_cb_short` 120 × 30, B580 default vs ifx GPU=none, fresh seeds | m = 11, α = 0.01 Šidák, `min_bins` 8 | shift 8 (FAIL; decision 23); CPU-vs-CPU null (PASS) |
 | `ifx_none_identity` | ifx 2026.2 GPU=none, base vs candidate, 6×6 | bit-identical | `scale 1e-12` (FAIL) |
 | `alf_la_tests_onemkl` | ctest `^t_` under ONEMKL on the merged base | 100 % of 14; backend and B580 lines | `ALF_LA_TEST_WRONG_LD` (FAIL), replaces all 3 checks |
 | `t_determinism_onemkl` | 212's micro-test under ONEMKL (never run there) | 1/1 pass | `ALF_LA_TEST_PLANT_ULP=1` (FAIL) |
@@ -113,7 +115,7 @@ line. The UHD 730 has no FP64.
 | Gate | Statistic | Threshold | Control |
 |---|---|---|---|
 | `gpu_none_ppcmp` | `acc_gpunone.sh` counts (only `Prog/gpu_*` changes; excluded from the comparison) | `0 0 0 0 0 0` | plant on `Prog/main.F90` (FAIL) |
-| `gpu_none_ctest` | GNU devel ctest | 100 % of 53 (count to be confirmed on the merged base) | one planted failure (FAIL) |
+| `gpu_none_ctest` | GNU devel ctest | 100 % of 53 (confirmed, decision 18) | one planted failure (FAIL) |
 | `cuda_identity` | CUDA base vs candidate builds, same seeds, default and LOG, 6×6 | bit-identical | `scale 1e-12` (FAIL) |
 | `none_identity` | nvfortran GPU=none base vs candidate | bit-identical | `scale 1e-12` (FAIL) |
 
@@ -171,49 +173,40 @@ guard only; the driver has a single global timeout.
 
 - The nividia part takes ~5 GPU-min per tier (4 CUDA runs) plus CPU builds and ctest.
 - The CPU oracle runs (10) run alongside the GPU runs on `intel` (`cpu_parallel` 2) and add no GPU time.
-- **This exceeds decision 11** (T1 ≈ 90, T2 ≈ 120). Proposal for the owner: T1 ≈ 200 and T2 ≈ 220 GPU-min on the B580.
-  The basis is a timing probe the manager runs **before pre-registration** (P8). If the probe gives f > 2, the manager
-  returns with cuts. The recommended first cut: the β = 10 determinism config at 4 bins × 20 sweeps (saves ~30–60 min).
-  Shorter precision runs are not recommended (their false-alarm rate is not calibrated on oneMKL).
-- `QUESTION:` (owner) approve this budget, or prefer the β = 10 cut now?
+- **Budget: decision 20** (2026-10-31): no fixed GPU budget on the B580. The P8 timing probe still runs before
+  pre-registration, to set `timeout_s` (hang guard) and to plan the T1/T2 slots; no cuts are planned.
 
 ### compare2
 - Same config and length as 212's T2: 120 × 30. With decision 16 the run length needs no exception any more.
-- The positive control plants 8 SEs. Decision 12 approved that for 212 only. At m = 11, α = 0.01 Šidák (z ≈ 3.32,
-  t ≈ k/√2), a shift of 5 is caught ~59 % of the time, so 5 does not make the gate's control reliable.
-- `QUESTION:` (owner) approve shift 8 for 302b (draft) — or keep 5 and accept ~41 % of T2s failing the control?
+- The positive control plants 8 SEs: **decision 23** (2026-10-31, "Approve shift 8"). At m = 11, α = 0.01 Šidák
+  (z ≈ 3.32, t ≈ k/√2), a shift of 5 is caught ~59 % of the time, 8 ~99 %.
 
 ### Other open points
 - **Q-NS:** `ALF_GPU_NS=0` exists because of cuSOLVER's Q orthogonality. oneMKL's Q may not need it, so the control may
   not reach 1.5×. T0 shows the ratio on dev seeds. If it stays ≤ 1.5, stop: a different precision control needs the
   owner's approval before pre-registration.
-- `QUESTION:` (owner) gate 12×12 LOG same-seed on the B580? It is ticket 213's (decision 3b). A `report_only` gate needs a
-  decision naming 302b. The draft leaves it out.
-- `QUESTION:` (manager) the `alf_la_tests_onemkl` count of 14 (302a's 13 + `t_determinism`) depends on how the 302a merge
-  resolves `testsuite/alf_la.tests/CMakeLists.txt`. Confirm it on the merged base. The same holds for GNU ctest 53.
+- 12×12 LOG same-seed on the B580: left out; it belongs to ticket 213 (decision 3b). Adding it would need an owner
+  decision naming 302b.
+- Counts: `alf_la_tests_onemkl` 14 (302a's 13 + `t_determinism`) and GNU ctest 53 are confirmed by 302a's
+  re-acceptance on the 212 base (decision 18); `gpu-port` added no test since.
 
-## Prerequisites (manager)
-- **P1** A venv on `intel` (`~/alf-gpu/venv`). It does not exist today, and system python has neither `h5py` nor
-  `py_alf`. It needs the same pyALF version as nividia (otherwise the parameter hashes refuse), plus numpy, scipy and
-  h5py. The driver must start with the venv python (212's `env -i` PATH issue). It is a user-space install:
-  `QUESTION:` owner OK.
-- **P2** Prebuilt HDF5 for ifx 2026.2 in `~/alf-gpu/hdf5/`. It is being built; assumed present.
-- **P3** Harness change **H1**, with review (c) before pre-registration:
-  - `acc_run.sh` accepts `ALF_LA_TEST_*` only with `--allow-debug`;
-  - `verdict.py` `DEBUG_PREFIXES` adds `ALF_LA_TEST_`;
-  - VERIFICATION §2 lists it.
-  Without H1, drop `refusal_la_test` and its control.
-- **P4** Optional harness changes, `QUESTION:` (manager):
-  - **H2:** `acc_run.sh` sets `ONEAPI_DEVICE_SELECTOR=level_zero:0` for GPU=intel builds, as `acc_ctest.sh` already does.
-    The draft instead declares it in every GPU run.
-  - **H3:** keep the NEO compiler cache inside the run's tmp (`NEO_CACHE_DIR`) or switch it off (`NEO_CACHE_PERSISTENT=0`).
-    Today every GPU process on `intel` writes `~/.cache/neo_compiler_cache` (16 MB on 2026-10-30, 302a included), which is
-    outside `~/alf-gpu/` (confinement).
-- **P5** 302a merged; the 302b base fixed; counts confirmed (above).
-- **P6** dpkg record before T1/T2 (decision 13).
-- **P7** Owner approvals: shift 8, budget, the τ-switch reading.
-- **P8** Timing probe of the base `GPU=intel` build: 1 bin each of 6×6 fd, 12×12 β = 4, 12×12 β = 10, s8. This is not a
-  302b result.
+## Prerequisites (manager) — state 2026-10-31
+- **P1 done.** venv `intel:~/alf-gpu/venv` (decision 21): pyALF 2.6.post42, numpy, scipy, h5py as on `nividia`. The
+  driver starts with the venv python.
+- **P2 done.** Prebuilt HDF5 for ifx 2026.2 in `~/alf-gpu/hdf5/`.
+- **P3 H1 implemented** on branch `gpu-port-harness-302b` (`05e677c4`): `acc_run.sh` accepts `ALF_LA_TEST_*` only with
+  `--allow-debug` and records them as debug env; `verdict.py` `DEBUG_PREFIXES`, the gate lint and the driver's ctest
+  check include the prefix; VERIFICATION §2 lists it. Review (c): changes required (selector evidence check, selfcheck
+  cases); fixes in progress, then a fresh review (c).
+- **P4 H2 implemented** on the same branch: `acc_run.sh` sets `ONEAPI_DEVICE_SELECTOR=level_zero:0` for `GPU=intel`
+  builds and refuses overrides; the draft no longer declares it. **H3 done** outside the harness: `intel.sh` sets
+  `NEO_CACHE_PERSISTENT=0` (2026-10-30); the old `~/.cache/neo_compiler_cache` waits for the owner.
+- **P5 done.** 302a merged (`890185c0`); counts confirmed. The base is fixed when the harness branch merges.
+- **P6** dpkg record before T1/T2 (decision 13), against `intel:~/alf-gpu/backup/intel_versions_2026-10-30.txt`.
+- **P7 done.** Decisions 20 (budget), 22 (τ), 23 (shift 8).
+- **P8 running** (2026-10-31): timing probe of the base `GPU=intel` build (`3e23a682`, stabilization still on the host):
+  hub6x6_cb, hub12x12_cb β = 4 and 10, s8_U4_b2_cb, GPU and ifx CPU, in `intel:~/alf-gpu/work/t302b/probe/`. Not a 302b
+  result.
 
 ## Approvals
 Empty (draft).

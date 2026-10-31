@@ -3,14 +3,29 @@
  "ticket": "302b",
  "candidate_sha": "self",
  "base_sha": "TBD-after-302a-merge",
- "_base_reason": "placeholder: the base is gpu-port after the 302a merge (and after the 207 merge, if 207 lands first: see the ticket, tau switch); filled in at pre-registration",
+ "_base_reason": "placeholder: gpu-port after the merge of the harness branch gpu-port-harness-302b (H1/H2, needs review (c)); 302a is merged (890185c0), 207 is not in the base, so no tau line and no tau guard here (the guard comes with the 207 merge); filled in at pre-registration",
  "created": "2026-10-30",
- "_status": "DRAFT for ticket 302b, Intel part (machine intel, Arc B580, ifx 2026.2 + oneMKL 2026.2, decision 13); not pre-registered; open questions in docs/gpu/tickets/302b-b580-device-paths.md",
- "approvals": [],
- "_approvals_pending": [
-  "c_compare2_shift: shift 8 instead of 5 (decision 12 covered 212 only)",
-  "GPU budget per tier above decision 11 (see the ticket)",
-  "compare2 run length 120 x 30 (decision 14 covered 212 only; ~25-55 min per GPU run on the B580)"
+ "_status": "DRAFT for ticket 302b, Intel part (machine intel, Arc B580, ifx 2026.2 + oneMKL 2026.2, decision 13); updated 2026-10-31 with decisions 20-23; not pre-registered; open points in docs/gpu/tickets/302b-b580-device-paths.md",
+ "approvals": [
+  {
+   "who": "owner",
+   "decision": "22",
+   "date": "2026-10-31",
+   "quote": "CPU τ pass",
+   "covers": [
+    "same_seed",
+    "precision"
+   ]
+  },
+  {
+   "who": "owner",
+   "decision": "23",
+   "date": "2026-10-31",
+   "quote": "Approve shift 8",
+   "covers": [
+    "c_compare2_shift"
+   ]
+  }
  ],
  "machine": "intel",
  "gpu_exclusive": true,
@@ -30,7 +45,7 @@
   "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics"
  ],
  "_active_lines_reason": "every production GPU run on the B580 shows the 204-206 ACTIVE lines, the 212 lines with backend ONEMKL, and the SYCL device of la_init (B580, not the UHD 730 without FP64). verdict.py treats any word INACTIVE as GPU-inactive: the tau switch line must not contain it. If 207 is in the base, the tau line (ticket) is added here",
- "_env_reason": "every GPU run declares ONEAPI_DEVICE_SELECTOR=level_zero:0 (whitelisted in acc_run.sh, which does not set it itself, unlike acc_ctest.sh; intel.sh does not set it); alternative: harness change H2",
+ "_env_reason": "GPU=intel runs get ONEAPI_DEVICE_SELECTOR=level_zero:0 from acc_run.sh itself (harness change H2, branch gpu-port-harness-302b; recorded in provenance env and checked by verdict.py), so no run declares it; the B580 active line checks the device by name",
  "allowed_test_changes": [],
  "gpunone": false,
  "builds": {
@@ -148,8 +163,7 @@
    "config": "hub6x6_cb",
    "env": [
     "ALF_GPU_EXIT=1",
-    "ALF_GPU_SELFTEST=3",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_SELFTEST=3"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -165,8 +179,7 @@
    "config": "hub6x6_dense",
    "env": [
     "ALF_GPU_EXIT=1",
-    "ALF_GPU_SELFTEST=3",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_SELFTEST=3"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -182,8 +195,7 @@
    "config": "hub12x12_cb",
    "env": [
     "ALF_GPU_EXIT=1",
-    "ALF_GPU_SELFTEST=3",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_SELFTEST=3"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -199,8 +211,7 @@
    "config": "hub12x12_cb_b10",
    "env": [
     "ALF_GPU_EXIT=1",
-    "ALF_GPU_SELFTEST=3",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_SELFTEST=3"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -216,8 +227,7 @@
    "config": "hub6x6_cb_flux",
    "env": [
     "ALF_GPU_EXIT=1",
-    "ALF_GPU_SELFTEST=3",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_SELFTEST=3"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -234,8 +244,7 @@
    "env": [
     "ALF_GPU_EXIT=1",
     "ALF_GPU_SELFTEST=3",
-    "ALF_GPU_FAULT_STAB=eps:1e-11",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_FAULT_STAB=eps:1e-11"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -253,8 +262,7 @@
    "env": [
     "ALF_GPU_EXIT=1",
     "ALF_GPU_SELFTEST=3",
-    "ALF_GPU_FAULT_STAB=perm",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_FAULT_STAB=perm"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -272,8 +280,7 @@
    "env": [
     "ALF_GPU_EXIT=1",
     "ALF_GPU_SELFTEST=3",
-    "ALF_GPU_FAULT_STAB=phase",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_FAULT_STAB=phase"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -291,8 +298,7 @@
    "env": [
     "ALF_GPU_EXIT=1",
     "ALF_GPU_SELFTEST=3",
-    "ALF_GPU_FAULT_STAB=nan",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_FAULT_STAB=nan"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -310,8 +316,7 @@
    "env": [
     "ALF_GPU_EXIT=1",
     "ALF_GPU_SELFTEST=3",
-    "ALF_GPU_FAULT_STAB=eps:1e-9",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_FAULT_STAB=eps:1e-9"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -328,8 +333,7 @@
    "config": "hub6x6_cb",
    "env": [
     "ALF_GPU_EXIT=1",
-    "ALF_GPU_SELFTEST=3",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_SELFTEST=3"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -345,8 +349,7 @@
    "config": "hub6x6_dense",
    "env": [
     "ALF_GPU_EXIT=1",
-    "ALF_GPU_SELFTEST=3",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_SELFTEST=3"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -362,8 +365,7 @@
    "config": "hub12x12_cb",
    "env": [
     "ALF_GPU_EXIT=1",
-    "ALF_GPU_SELFTEST=3",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_SELFTEST=3"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -379,8 +381,7 @@
    "config": "hub12x12_cb_b10",
    "env": [
     "ALF_GPU_EXIT=1",
-    "ALF_GPU_SELFTEST=3",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_SELFTEST=3"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -396,8 +397,7 @@
    "config": "hub6x6_cb_flux",
    "env": [
     "ALF_GPU_EXIT=1",
-    "ALF_GPU_SELFTEST=3",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_SELFTEST=3"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -414,8 +414,7 @@
    "env": [
     "ALF_GPU_EXIT=1",
     "ALF_GPU_SELFTEST=3",
-    "ALF_GPU_FAULT_STAB=eps:1e-11",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_FAULT_STAB=eps:1e-11"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -433,8 +432,7 @@
    "env": [
     "ALF_GPU_EXIT=1",
     "ALF_GPU_SELFTEST=3",
-    "ALF_GPU_FAULT_STAB=perm",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_FAULT_STAB=perm"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -452,8 +450,7 @@
    "env": [
     "ALF_GPU_EXIT=1",
     "ALF_GPU_SELFTEST=3",
-    "ALF_GPU_FAULT_STAB=phase",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_FAULT_STAB=phase"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -471,8 +468,7 @@
    "env": [
     "ALF_GPU_EXIT=1",
     "ALF_GPU_SELFTEST=3",
-    "ALF_GPU_FAULT_STAB=nan",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_FAULT_STAB=nan"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -490,8 +486,7 @@
    "env": [
     "ALF_GPU_EXIT=1",
     "ALF_GPU_SELFTEST=3",
-    "ALF_GPU_FAULT_STAB=eps:1e-9",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_FAULT_STAB=eps:1e-9"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -508,8 +503,7 @@
    "config": "hub6x6_cb",
    "env": [
     "ALF_GPU_EXIT=1",
-    "ALF_GPU_SELFTEST=2",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_SELFTEST=2"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -524,8 +518,7 @@
    "config": "hub6x6_dense",
    "env": [
     "ALF_GPU_EXIT=1",
-    "ALF_GPU_SELFTEST=2",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_SELFTEST=2"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -540,8 +533,7 @@
    "config": "hub6x6_cb",
    "env": [
     "ALF_GPU_EXIT=1",
-    "ALF_GPU_UPDTEST=1",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_UPDTEST=1"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -556,8 +548,7 @@
    "config": "hub6x6_cb_flux",
    "env": [
     "ALF_GPU_EXIT=1",
-    "ALF_GPU_UPDTEST=1",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_UPDTEST=1"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -573,8 +564,7 @@
    "env": [
     "ALF_GPU_EXIT=1",
     "ALF_GPU_SELFTEST=2",
-    "ALF_GPU_FAULT=hop",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_FAULT=hop"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -591,8 +581,7 @@
    "env": [
     "ALF_GPU_EXIT=1",
     "ALF_GPU_SELFTEST=2",
-    "ALF_GPU_FAULT=vexp",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_FAULT=vexp"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -609,8 +598,7 @@
    "env": [
     "ALF_GPU_EXIT=1",
     "ALF_GPU_UPDTEST=1",
-    "ALF_GPU_FAULT=upd",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_FAULT=upd"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -627,8 +615,7 @@
    "env": [
     "ALF_GPU_EXIT=1",
     "ALF_GPU_UPDTEST=1",
-    "ALF_GPU_FAULT=nsig",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_FAULT=nsig"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -644,8 +631,7 @@
    "config": "hub6x6_cb",
    "env": [
     "ALF_GPU_EXIT=1",
-    "ALF_GPU_SELFTEST=fault",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_SELFTEST=fault"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -660,8 +646,7 @@
    "config": "hub6x6_cb",
    "env": [
     "ALF_GPU_EXIT=1",
-    "ALF_GPU_SELFTEST=fault_v",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_SELFTEST=fault_v"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -676,8 +661,7 @@
    "config": "hub6x6_cb",
    "env": [
     "ALF_GPU_EXIT=1",
-    "ALF_GPU_SELFTEST=nan",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_SELFTEST=nan"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -691,8 +675,7 @@
    "build": "in_def",
    "config": "hub6x6_cb_fd",
    "env": [
-    "ALF_GPU_FAULT=upd",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_FAULT=upd"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -703,8 +686,7 @@
    "build": "in_def",
    "config": "hub6x6_cb_fd",
    "env": [
-    "ALF_GPU_FAULT_STAB=perm",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_FAULT_STAB=perm"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -715,8 +697,7 @@
    "build": "in_def",
    "config": "hub6x6_cb_fd",
    "env": [
-    "ALF_GPU_NS=0",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_NS=0"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -727,8 +708,7 @@
    "build": "in_def",
    "config": "hub6x6_cb_fd",
    "env": [
-    "ALF_GPU_STABMIX=1",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_STABMIX=1"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -739,8 +719,7 @@
    "build": "in_def",
    "config": "hub6x6_cb_fd",
    "env": [
-    "ALF_GPU_STABCHECK=1",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_STABCHECK=1"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -751,8 +730,7 @@
    "build": "in_def",
    "config": "hub6x6_cb_fd",
    "env": [
-    "ALF_GPU_TL=8",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_TL=8"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -763,8 +741,7 @@
    "build": "in_def",
    "config": "hub6x6_cb_fd",
    "env": [
-    "ALF_GPU_TR=8",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_TR=8"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -775,8 +752,7 @@
    "build": "in_def",
    "config": "hub6x6_cb_fd",
    "env": [
-    "ALF_GPU_VB=4",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_VB=4"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -787,8 +763,7 @@
    "build": "in_def",
    "config": "hub6x6_cb_fd",
    "env": [
-    "ALF_GPU_NOUPDATE=1",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_NOUPDATE=1"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -799,8 +774,7 @@
    "build": "in_def",
    "config": "hub6x6_cb_fd",
    "env": [
-    "ALF_GPU_TRACE=trace.txt",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_TRACE=trace.txt"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -811,8 +785,7 @@
    "build": "in_def",
    "config": "hub6x6_cb_fd",
    "env": [
-    "ALF_GPU_TIMING=1",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_TIMING=1"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -823,8 +796,7 @@
    "build": "in_def",
    "config": "hub6x6_cb_fd",
    "env": [
-    "ALF_GPU_STABTIME=1",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_STABTIME=1"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -835,8 +807,7 @@
    "build": "in_def",
    "config": "hub6x6_cb_fd",
    "env": [
-    "ALF_GPU_EXIT=1",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_EXIT=1"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -847,8 +818,7 @@
    "build": "in_def",
    "config": "hub6x6_cb_fd",
    "env": [
-    "ALF_GPU_TAUSWAP=8",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_TAUSWAP=8"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -859,8 +829,7 @@
    "build": "in_def",
    "config": "hub6x6_cb_fd",
    "env": [
-    "ALF_GPU_NSS=0",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_NSS=0"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -871,8 +840,7 @@
    "build": "in_def",
    "config": "hub6x6_cb_fd",
    "env": [
-    "ALF_LA_TEST_BREAK_ORDER=1",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_LA_TEST_BREAK_ORDER=1"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -883,8 +851,7 @@
    "build": "in_def",
    "config": "hub6x6_cb_fd",
    "env": [
-    "ALF_LA_TEST_POISON_INFO=1",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_LA_TEST_POISON_INFO=1"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -895,8 +862,7 @@
    "build": "in_def",
    "config": "hub6x6_cb_fd",
    "env": [
-    "ALF_LA_TEST_WRONG_LD=1",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_LA_TEST_WRONG_LD=1"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -908,8 +874,7 @@
    "config": "hub6x6_cb_fd",
    "env": [
     "ALF_GPU_NS=0",
-    "ALF_GPU_DEBUG=1",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_DEBUG=1"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -926,8 +891,7 @@
    "config": "hub6x6_cb_fd",
    "env": [
     "ALF_GPU_TL=8",
-    "ALF_GPU_DEBUG=1",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_DEBUG=1"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -944,8 +908,7 @@
    "config": "hub6x6_cb_fd",
    "env": [
     "ALF_GPU_DEBUG=1",
-    "ALF_LA_TEST_POISON_INFO=1",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_LA_TEST_POISON_INFO=1"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -964,8 +927,7 @@
    "env": [
     "ALF_GPU_EXIT=1",
     "ALF_GPU_SELFTEST=3",
-    "ALF_GPU_FAULT_STAB=xyz",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_FAULT_STAB=xyz"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -978,8 +940,7 @@
    "env": [
     "ALF_GPU_EXIT=1",
     "ALF_GPU_SELFTEST=2",
-    "ALF_GPU_FAULT=xyz",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_FAULT=xyz"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -988,10 +949,7 @@
   },
   "ss_log_6": {
    "build": "in_log",
-   "config": "hub6x6_cb_fd",
-   "env": [
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
-   ]
+   "config": "hub6x6_cb_fd"
   },
   "ss_cpu_log_6": {
    "build": "in_none_log",
@@ -999,10 +957,7 @@
   },
   "ss_def_6": {
    "build": "in_def",
-   "config": "hub6x6_cb_fd",
-   "env": [
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
-   ]
+   "config": "hub6x6_cb_fd"
   },
   "ss_cpu_pp_6": {
    "build": "in_none_pp",
@@ -1010,10 +965,7 @@
   },
   "ss_def_12": {
    "build": "in_def",
-   "config": "hub12x12_cb_fd",
-   "env": [
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
-   ]
+   "config": "hub12x12_cb_fd"
   },
   "ss_cpu_pp_12": {
    "build": "in_none_pp",
@@ -1021,60 +973,36 @@
   },
   "det_log_6b": {
    "build": "in_log",
-   "config": "hub6x6_cb_fd",
-   "env": [
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
-   ]
+   "config": "hub6x6_cb_fd"
   },
   "det_def_6b": {
    "build": "in_def",
-   "config": "hub6x6_cb_fd",
-   "env": [
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
-   ]
+   "config": "hub6x6_cb_fd"
   },
   "det_def_b10a": {
    "build": "in_def",
-   "config": "hub12x12_cb_b10_p",
-   "env": [
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
-   ]
+   "config": "hub12x12_cb_b10_p"
   },
   "det_def_b10b": {
    "build": "in_def",
-   "config": "hub12x12_cb_b10_p",
-   "env": [
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
-   ]
+   "config": "hub12x12_cb_b10_p"
   },
   "det_log_b10a": {
    "build": "in_log",
-   "config": "hub12x12_cb_b10_p",
-   "env": [
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
-   ]
+   "config": "hub12x12_cb_b10_p"
   },
   "det_log_b10b": {
    "build": "in_log",
-   "config": "hub12x12_cb_b10_p",
-   "env": [
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
-   ]
+   "config": "hub12x12_cb_b10_p"
   },
   "pr_def_b4": {
    "build": "in_def",
    "config": "hub12x12_cb_p",
-   "env": [
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
-   ],
    "seeds": "acc1"
   },
   "pr_log_b4": {
    "build": "in_log",
    "config": "hub12x12_cb_p",
-   "env": [
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
-   ],
    "seeds": "acc1"
   },
   "pr_none_b4": {
@@ -1097,8 +1025,7 @@
    "config": "hub12x12_cb_p",
    "env": [
     "ALF_GPU_DEBUG=1",
-    "ALF_GPU_NS=0",
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+    "ALF_GPU_NS=0"
    ],
    "seeds": "acc1",
    "allow_debug": true,
@@ -1114,9 +1041,6 @@
   "c2_gpu": {
    "build": "in_def",
    "config": "s8_U4_b2_cb_short",
-   "env": [
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
-   ],
    "seeds": "acc1"
   },
   "c2_cpu": {
@@ -1139,31 +1063,19 @@
   },
   "ss_log_6_m_small": {
    "build": "in_log",
-   "config": "hub6x6_cb_fd",
-   "env": [
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
-   ]
+   "config": "hub6x6_cb_fd"
   },
   "ss_log_6_m_nan": {
    "build": "in_log",
-   "config": "hub6x6_cb_fd",
-   "env": [
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
-   ]
+   "config": "hub6x6_cb_fd"
   },
   "det_def_6b_m": {
    "build": "in_def",
-   "config": "hub6x6_cb_fd",
-   "env": [
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
-   ]
+   "config": "hub6x6_cb_fd"
   },
   "c2_gpu_m": {
    "build": "in_def",
    "config": "s8_U4_b2_cb_short",
-   "env": [
-    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
-   ],
    "seeds": "acc1"
   },
   "id_none_cand_m": {
@@ -1492,7 +1404,7 @@
      "equals": []
     }
    ],
-   "_reason": "regression check of the merged 302a+212 alf_la on the B580 (302a was accepted on a base without 212): the 13 tests of 302a plus t_determinism = 14 (count to be confirmed on the merged base before pre-registration)"
+   "_reason": "regression check of the merged 302a+212 alf_la on the B580 (302a was accepted on a base without 212): the 13 tests of 302a plus t_determinism = 14 (confirmed in 302a's re-acceptance, decision 18)"
   },
   {
    "id": "t_determinism_onemkl",
@@ -1988,7 +1900,7 @@
       ]
      }
     ],
-    "_reason": "GNU devel ctest count of the merged base (52 + 212's t_determinism; to be confirmed on the base before pre-registration)"
+    "_reason": "GNU devel ctest count of the merged base: 52 + 212's t_determinism = 53 (confirmed in 302a's re-acceptance on d8cc74f7, decision 18; no test added since)"
    },
    {
     "id": "cuda_identity",
@@ -2083,5 +1995,6 @@
    }
   ]
  },
- "_part_nvidia_note": "to be split into testsuite/gpu_reference/acceptance/302b.nvidia.json at pre-registration (the drafting agent was allowed one file)"
+ "_part_nvidia_note": "to be split into testsuite/gpu_reference/acceptance/302b.nvidia.json at pre-registration (the drafting agent was allowed one file)",
+ "_approvals_reason": "22: Ltau=1 runs under GPU=intel do TAU_M on the host until 302c, so the same_seed tau datasets and Precision tau compare the host tau pass fed by the device stabilization (206 INTERIM udvst copy). 23: compare2 control shift 8. Budget: decision 20 (no fixed GPU budget on the B580). compare2 length 120 x 30 needs no exception since decision 16"
 }
