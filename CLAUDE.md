@@ -330,7 +330,15 @@ binary with K_ND = 1). Rule: submatrix slower if > 5 % and > 2 × the larger spr
   Harness corrections after run 1 (independent seed for the second tempering reference; replicate judged per replica,
   the other replica still checked for hard failures) are recorded in the ledger; no final verdict depended on them.
 - Review fixes (e6b5569d, b7ade70d): NaN = hard fail, tempering must show accepted exchanges, same-seed omp1/omp4 identity,
-  single provenance (archived HEAD), concurrency budget. The full tier is re-run end to end after the merges (Task 8, Phase 6).
+  single provenance (archived HEAD), concurrency budget.
+- **Full tier on the merged code (HEAD bdf38fa6: rank-N delayed, M-form submatrix with K_ND = 1, cross-slice key, auto N_delay
+  default 0)**, `testsuite/lowrank/parallel_tier.sh --rebuild` (summary `runs/parallel_full_summary.txt`): mpi 18/18 PASS
+  (half and tv; standard/delayed/submatrix; 1, 2, 4 ranks), threads: same-seed omp1 vs omp4 bit-identical for all schemes and
+  independent-seed comparison PASS (standard after its replicate), tempering 3/3 PASS (exchange acceptance 1.2–1.7 %),
+  PARALLEL_PARAMS 3/3 PASS (standard after its replicate). Max scalar |z| 2.05. Wall: mpi 791 s, threads 580 s, tempering
+  297 s, pp 288 s. Tempering with `N_delay=-1` (`runs/parallel_tune_summary.txt`): 3/3 PASS, statistics identical to the
+  static run (N_delay does not change the chain), one `Auto N_delay` decision line per `Temp_<g>/info`, groups decide
+  independently (submatrix: 16 and 8).
 
 ## Work packages (project 2)
 | WP | Phase | Content | Done means |
@@ -344,6 +352,18 @@ binary with K_ND = 1). Rule: submatrix slower if > 5 % and > 2 × the larger spr
 | 6 | 6 | Automatic N_delay (static rule from the papers, clamped; optional warm-up timing, rank 0 decides, broadcast; >5 % rule), fixed N_delay override, logged in `info` | auto value within noise of the best fixed value (Mac); chain identical except near-ties |
 | 7 | after 6 | Cluster request (first stop) | message with evidence, open questions, benchmark matrix with core-hour estimates |
 | 9 | any | Polish without cluster: `files.tex`, `default_parameters_generic.py`, §7 notices | docs build; generator knows the keys |
+
+## Phase 6 results: automatic N_delay (functional part; verified 2026-10-31, code 3ed73f7e + 9ce96c27 + 6914a392)
+- `N_delay = 0` (new default): static rule; `-1`: + warm-up timing (sweeps 2–3, group-rank-0 decision, > 5 % rule); `≥ 1` fixed;
+  `< -1` rejected at the parameter read ("must be >= 1 (fixed), 0 (automatic) or -1 (automatic with warm-up timing)").
+- Unit (ctest 43/43): static-rule table (56 cells + 10 boundary rows), set_N_delay down/up with pending rank reaching the set
+  value, timing state machine and all log variants; two negative tests matched by their exact error messages.
+- Trajectory: N_delay = 0 is byte-identical (traces included) to fixed n0 (start, tv × both schemes); standard vs scheme with
+  N_delay 0 and −1 IDENTICAL for start, tv, kondo, jz, pv_adiab, tv_proj (both schemes); fixed 8 vs −1 IDENTICAL (kondo, jz).
+- Edge cases (`runs/p63_edge`): NSweep 1–2 → "tuning incomplete", n0 kept; decision across a bin boundary; CPU_MAX truncation;
+  Langevin (no low-rank init, no line); projector tV decides; N_delay = −2 rejected. (Nt_sequential_end < start is overridden by
+  the Hamiltonians when Global_tau is off, so it cannot occur.) MPI 2 ranks and tempering 2 groups: see the parallel tier.
+- Mac timing part (auto vs best fixed) pending a quiet machine.
 
 ## Cluster-phase items (prepared locally, to be checked on the clusters)
 - HDF5 provenance (P6-2): non-standard schemes write `Sequential_scheme`, `N_delay_requested` (at the parameter write) and
