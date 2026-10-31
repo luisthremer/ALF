@@ -8,18 +8,32 @@
 ! one branch to each of these routines plus its state; the driver stays unchanged.
 !
 ! Per vertex the driver mirrors WRAPGRUP / WRAPGRDO (Prog/Wrapgr_mod.F90):
-!   up  : pre_wrap -> Op_Wrapup type 1 (old phi) -> hook(+1) -> propose -> decide -> Op_Wrapup type 2
-!   down: pre_wrap -> Op_Wrapdo type 2 -> propose -> decide -> Op_Wrapdo type 1 (new phi) -> hook(-1)
+!   up  : pre_wrap -> Op_Wrapup type 1 (old phi) -> hook(1,+1) -> propose -> decide
+!         -> Op_Wrapup type 2 -> hook(2,+1)
+!   down: pre_wrap -> Op_Wrapdo type 2 -> hook(2,-1) -> propose -> decide
+!         -> Op_Wrapdo type 1 (new phi) -> hook(1,-1)
+! The hook is called after both wraps of every eligible vertex (kind = N_type of the wrap just done).
 ! pre_wrap flushes a low-rank candidate before an ineligible vertex; such a vertex then gets no
-! hook and the standard Upgrade2 on the candidate's G (case mixed: V_SUN bonds between Mz vertices).
+! hook and the standard Upgrade2 on the candidate's G.
+! Eligibility (Lowrank_init): delayed = support max_f Op_V(n,f)%N <= 8; submatrix = diagonal rank-1
+! while SUBMATRIX_RANKN = .false. (project 1), the delayed rule once it is .true.; checked per case.
+! Case mixed: Mz vertices with interleaved V_SUN bonds (eligible for delayed, not for rank-1 submatrix).
 ! Case asym: flavour 2's vertex sites are another permutation than flavour 1's (the per-flavour
 ! pending sets S differ), and every 8th vertex has g = 0 in flavour 2, so Delta = 0 exactly there.
 ! Case repeat_skip = repeat with a deterministic skip mask: some vertices are wrapped (and hooked) but not
 ! proposed (no propose/accept, as when the T0/Propose_S0 proposal is rejected before Upgrade), so the
 ! hook rescale of the pending state stays in use without a following flush.
+! Rank-N cases (Mz on-site vertices interleaved unless stated): jz (Predefined_Int_Jz, diagonal N = 2),
+! sasb_zz (Predefined_Int_SaSb('z','z'), diagonal N = 4, N_FL = 1 spin-orbital layout), tv_bond (V_SUN ring
+! bonds), kondo_j (V_SUN and VJ_SUN between c and f sites), ising1 (Ising_SUN, field type 1), sp_type4
+! (type-4 bonds, flip_protocol 2), nd_zero (O = (1 1; 1 1)/2: r = 1 < N_P), asym_rn (flavour 1 V_SUN,
+! flavour 2 cycles through nd_zero, V_SUN with g = 0 and a diagonal N = 2 operator), gt_bonds (bonds with
+! g_t), diag_e0 (diagonal N = 3 with one E = 0), bonds_skip (tv_bond with the skip mask), bonds_illcond
+! (tv_bond with the ill-conditioned similarity), rep_mixed (rank-1 and bonds revisiting sites within a
+! slice), padcap (overlapping bonds only), bigop (diagonal N = 9 vertices: ineligible for both schemes).
 ! Between slices: flush, compare, then the same dense similarity G <- S G S^{-1} on every G,
-! S = I + 0.1 R / sqrt(Ndim) (R complex Gaussian). Case mz_illcond = mz with S = I + 0.1 R,
-! which drives cond(1+A) to ~1e8: a deliberately hard case with its own tolerance TOL_ILL.
+! S = I + 0.1 R / sqrt(Ndim) (R complex Gaussian). Cases mz_illcond / bonds_illcond use S = I + 0.1 R,
+! which drives cond(1+A) to ~1e8: deliberately hard cases with their own tolerance TOL_ILL.
 !
 ! nsigma is global and shared by all engines: every engine call sees the OLD field, and
 ! the driver sets the field after the decision.
@@ -59,16 +73,29 @@ module lowrank_unit_harness
    real(dp), parameter :: TOL_UNIT = 1.0d-10
    real(dp), parameter :: TOL_ILL  = 1.0d-8
 
-   integer, parameter :: N_CASES = 8
+   integer, parameter :: N_CASES = 23
    integer, parameter :: CASE_MZ = 1, CASE_DENSITY = 2, CASE_CONTINUOUS = 3, CASE_REPEAT = 4
    integer, parameter :: CASE_MZ_ILLCOND = 5   ! mz with the unnormalised S = I + 0.1 R
-   integer, parameter :: CASE_MIXED = 6        ! Mz vertices with interleaved ineligible V_SUN bonds
+   integer, parameter :: CASE_MIXED = 6        ! Mz vertices with interleaved V_SUN bonds
    integer, parameter :: CASE_ASYM = 7         ! flavour-dependent site permutations, Delta = 0 vertices
    integer, parameter :: CASE_REPEAT_SKIP = 8  ! repeat, with unproposed (skipped) vertices
-   character(len=11), parameter :: case_name(N_CASES) = &
-        & [character(len=11) :: 'mz', 'density', 'continuous', 'repeat', 'mz_illcond', 'mixed', 'asym', 'repeat_skip']
+   ! Rank-N cases (see the header)
+   integer, parameter :: CASE_JZ = 9, CASE_SASB_ZZ = 10, CASE_TV_BOND = 11, CASE_KONDO_J = 12
+   integer, parameter :: CASE_ISING1 = 13, CASE_SP_TYPE4 = 14, CASE_ND_ZERO = 15, CASE_ASYM_RN = 16
+   integer, parameter :: CASE_GT_BONDS = 17, CASE_DIAG_E0 = 18, CASE_BONDS_SKIP = 19
+   integer, parameter :: CASE_BONDS_ILLCOND = 20, CASE_REP_MIXED = 21, CASE_PADCAP = 22, CASE_BIGOP = 23
+   character(len=13), parameter :: case_name(N_CASES) = &
+        & [character(len=13) :: 'mz', 'density', 'continuous', 'repeat', 'mz_illcond', 'mixed', 'asym', &
+        &  'repeat_skip', 'jz', 'sasb_zz', 'tv_bond', 'kondo_j', 'ising1', 'sp_type4', 'nd_zero', 'asym_rn', &
+        &  'gt_bonds', 'diag_e0', 'bonds_skip', 'bonds_illcond', 'rep_mixed', 'padcap', 'bigop']
    integer, parameter :: ASYM_ZERO_PERIOD = 8  ! case asym: vertex n has g = 0 in flavour 2 iff mod(n, 8) == 3
    integer, parameter :: MIXED_BOND_PERIOD = 9 ! case mixed: vertex n is a bond iff mod(n, 9) == 5
+
+   ! Submatrix expectations: .false. = project 1 (eligible iff diagonal rank-1 in every flavour; the
+   ! repeated-site flush in Lowrank_propose is asserted); .true. = rank-N submatrix (Task 5: eligibility
+   ! as delayed, no repeated-site flush).
+   logical, parameter :: SUBMATRIX_RANKN = .false.
+   integer, parameter :: N_P_LIM_TEST = 8      ! Lowrank_update_mod's N_P_LIM (support limit)
 
    ! Candidate schemes
    integer, parameter :: N_SCHEMES = 3
@@ -76,8 +103,8 @@ module lowrank_unit_harness
    character(len=10), parameter :: scheme_name(N_SCHEMES) = &
         & [character(len=10) :: 'standard', 'delayed', 'submatrix']
 
-   integer, parameter :: N_NDELAY = 4
-   integer, parameter :: N_DELAY_LIST(N_NDELAY) = [1, 7, 32, 1000]
+   integer, parameter :: N_NDELAY = 5
+   integer, parameter :: N_DELAY_LIST(N_NDELAY) = [1, 2, 7, 32, 1000]
 
    integer, parameter :: N_SLICES = 3
    real(dp), parameter :: DTAU = 0.1d0, U_HUB = 4.d0
@@ -85,6 +112,13 @@ module lowrank_unit_harness
    real(dp), parameter :: Q_SCALE = 0.3d0     ! Q = I + Q_SCALE * R / sqrt(Ndim)
    real(dp), parameter :: S_SCALE = 0.1d0     ! S = I + S_SCALE * R / sqrt(Ndim)
                                               ! (mz_illcond: S = I + S_SCALE * R)
+   ! Rank-N cases: couplings chosen so that cond(1+A) stays <= ~1e8 (the TOL_UNIT regime of the project-1
+   ! cases); stronger real couplings on many overlapping bonds drive cond(1+A) to 1e10-1e16 within 3 slices,
+   ! where the double-precision reference itself drifts (measured 2026-10-31: padcap with V = 1: 1.2e8,
+   ! rep_mixed with V = 1: 9.6e12, nd_zero with g = 0.5: 1.1e10).
+   real(dp), parameter :: V_BOND = 0.25d0     ! V_SUN / VJ_SUN with real coupling g = sqrt(DTAU V)
+   real(dp), parameter :: G_ND   = 0.25d0     ! nd_zero operator (1 1; 1 1)/2
+   real(dp), parameter :: U_REP  = 2.d0       ! rep_mixed: two Mz vertices per site and slice (U = 4: cond 5.6e8)
 
    integer :: M_ops                            ! number of vertices per slice
 
@@ -93,7 +127,9 @@ module lowrank_unit_harness
    real(dp) :: cond_Q_max, cond_S_max
    real(dp) :: cond_1pA_last                   ! max_f cond_2(1+A_f) at the last slice end
    integer  :: n_repeat_flush                  ! proposals at which Lowrank_propose flushed (pending dropped)
-   integer  :: n_skipped                       ! vertices wrapped but not proposed (case repeat_skip)
+   integer  :: n_skipped                       ! vertices wrapped but not proposed (cases repeat_skip, bonds_skip)
+   integer  :: n_elig_bad                      ! vertices whose Lowrank_eligible differs from the expectation
+   integer  :: n_lowrank_vertices              ! vertices the candidate updates with its low-rank kernel
 
    ! ---- candidate state -------------------------------------------------
    integer :: cand_scheme = 0, cand_N_delay = 0
@@ -153,13 +189,38 @@ contains
       end select
    end subroutine cand_pre_wrap
 
-   ! Called after every type-1 wrap of vertex n_op (dir=+1 up, -1 down).
-   subroutine cand_hook(Gc, n_op, nt, HS_field, dir)
+   ! Called after every wrap of vertex n_op: kind = N_type of the wrap just done (1 or 2),
+   ! dir = +1 up, -1 down. Unconditional for an eligible vertex (as WRAPGRUP/WRAPGRDO).
+   subroutine cand_hook(Gc, n_op, nt, HS_field, kind, dir)
       complex(dp), intent(inout) :: Gc(:,:,:)
-      integer,     intent(in)    :: n_op, nt, dir
+      integer,     intent(in)    :: n_op, nt, kind, dir
       complex(dp), intent(in)    :: HS_field
-      if (cand_lowrank(n_op)) call Lowrank_wrap_hook(n_op, nt, HS_field, dir)
+      if (cand_lowrank(n_op)) call Lowrank_wrap_hook(n_op, nt, HS_field, kind, dir)
    end subroutine cand_hook
+
+   ! Expected eligibility of vertex n_op for scheme (see the header)
+   logical function expected_eligible(scheme, n_op)
+      integer, intent(in) :: scheme, n_op
+      integer :: nf
+      logical :: small, diag_rank1_all
+      small = .true.; diag_rank1_all = .true.
+      do nf = 1, N_FL
+         if (Op_V(n_op,nf)%N > N_P_LIM_TEST) small = .false.
+         if (Op_V(n_op,nf)%N_non_zero > 1 .or. .not. Op_V(n_op,nf)%diag) diag_rank1_all = .false.
+      enddo
+      select case (scheme)
+      case (SCHEME_DELAYED)
+         expected_eligible = small
+      case (SCHEME_SUBMATRIX)
+         if (SUBMATRIX_RANKN) then
+            expected_eligible = small
+         else
+            expected_eligible = diag_rank1_all
+         endif
+      case default
+         expected_eligible = .false.
+      end select
+   end function expected_eligible
 
    ! Returns the full Upgrade2-style ratio. nsigma%f(n_op,nt) holds the OLD field.
    subroutine cand_propose(Gc, n_op, nt, HS_new, ratio)
@@ -319,7 +380,7 @@ contains
       enddo
    end subroutine random_permutation
 
-   ! Case mixed: vertex n is an ineligible V_SUN bond (rank 2, not diagonal)
+   ! Case mixed: vertex n is a V_SUN bond (rank 2, not diagonal)
    logical function mixed_bond(case_id, n)
       integer, intent(in) :: case_id, n
       mixed_bond = (case_id == CASE_MIXED .and. mod(n, MIXED_BOND_PERIOD) == 5)
@@ -333,6 +394,9 @@ contains
       real(dp), parameter :: disc(4) = [-2.d0, -1.d0, 1.d0, 2.d0]
 
       call clear_case()
+      if (case_id >= CASE_JZ) then
+         call setup_rankn_vertices(case_id)
+      else
       select case (case_id)
       case (CASE_MZ, CASE_MZ_ILLCOND, CASE_ASYM)
          Ndim = 64; N_FL = 2; N_SUN = 1; M_ops = Ndim
@@ -423,28 +487,240 @@ contains
       if (case_id == CASE_DENSITY) then
          if (abs(aimag(Op_V(1,1)%g)) < 1.d-12) error stop 'setup_case: density g is not complex'
       endif
+      endif   ! project-1 cases
 
+      ! Fields per operator type: 1 (Ising) +-1; 2 {+-1, +-2}; 3 continuous real; 4 discrete real part
+      ! {+-1, +-2} plus a continuous imaginary part (Spin_Peierls), flip_protocol from the operator (2).
+      ! (Op_Wrapup uses E_Exp(nint(real(HS))) for types 1 and 2.)
       call nsigma%make(M_ops, N_SLICES)
       do n = 1, M_ops
          nsigma%t(n) = Op_V(n,1)%type
+         nsigma%flip_protocol(n) = Op_V(n,1)%flip_protocol
       enddo
       do nt = 1, N_SLICES
          do n = 1, M_ops
-            if (nsigma%t(n) == 2) then
+            select case (nsigma%t(n))
+            case (1)
+               if (ranf_wrap() < 0.5d0) then
+                  nsigma%f(n,nt) = cmplx(-1.d0, 0.d0, dp)
+               else
+                  nsigma%f(n,nt) = cmplx( 1.d0, 0.d0, dp)
+               endif
+            case (2)
                k = 1 + int(4.d0 * ranf_wrap())
                if (k > 4) k = 4
                nsigma%f(n,nt) = cmplx(disc(k), 0.d0, dp)
-            else
+            case (4)
+               k = 1 + int(4.d0 * ranf_wrap())
+               if (k > 4) k = 4
+               ! |Im| <= 0.4 initially, one flip (Amplitude 1) moves it by <= 0.5: 1 + Im > 0 (real phi)
+               nsigma%f(n,nt) = cmplx(disc(k), 0.8d0 * ranf_wrap() - 0.4d0, dp)
+            case default
                nsigma%f(n,nt) = cmplx(3.d0 * ranf_wrap() - 1.5d0, 0.d0, dp)
-            endif
+            end select
          enddo
       enddo
    end subroutine setup_case
 
+   ! Hand-built operator on sites P with matrix O, coupling g, field type optype (type 4: flip_protocol 2),
+   ! optional time-dependent coupling g_t (allocated before Op_set, as the Hamiltonians do).
+   subroutine make_op(Op, P, O, g, optype, g_t)
+      type(Operator), intent(inout)        :: Op
+      integer,        intent(in)           :: P(:), optype
+      complex(dp),    intent(in)           :: O(:,:), g
+      complex(dp),    intent(in), optional :: g_t(:)
+      call Op_make(Op, size(P))
+      Op%P     = P
+      Op%O     = O
+      Op%g     = g
+      Op%alpha = cmplx(0.d0, 0.d0, dp)
+      Op%type  = optype
+      if (optype == 4) Op%flip_protocol = 2
+      if (present(g_t)) then
+         allocate(Op%g_t(size(g_t)))
+         Op%g_t = g_t
+      endif
+      call Op_set(Op)
+   end subroutine make_op
+
+   ! Rank-N cases: sizes, Calc_Fl_map and Op_V (fields are set by setup_case). Unless stated otherwise
+   ! the vertex list is, per site s = 1..Ndim: an Mz vertex on site perm(s), then the case's bond on
+   ! (s, s+1) (ring).
+   subroutine setup_rankn_vertices(case_id)
+      integer, intent(in) :: case_id
+      integer, allocatable :: perm(:)
+      integer     :: n, nf, s, s1, s2, Ns, i
+      complex(dp) :: Ooff(2,2), Ond(2,2), Odiag2(2,2), O3(3,3), O9(9,9), gt(N_SLICES)
+      complex(dp), parameter :: c0 = (0.d0, 0.d0)
+
+      select case (case_id)
+      case (CASE_SASB_ZZ)
+         ! spin-orbital layout: up orbitals 1..Ns, down orbitals Ns+1..2Ns; N_FL = 1
+         Ndim = 16; N_FL = 1; N_SUN = 1; M_ops = 3 * (Ndim / 2)
+      case (CASE_KONDO_J)
+         ! c sites 1..Ns, f sites Ns+1..2Ns
+         Ndim = 16; N_FL = 2; N_SUN = 1; M_ops = 3 * (Ndim / 2)
+      case (CASE_REP_MIXED)
+         Ndim = 16; N_FL = 2; N_SUN = 1; M_ops = 4 * Ndim
+      case (CASE_PADCAP)
+         Ndim = 16; N_FL = 2; N_SUN = 1; M_ops = 2 * Ndim
+      case (CASE_BIGOP)
+         Ndim = 12; N_FL = 2; N_SUN = 1; M_ops = Ndim + 3
+      case default
+         Ndim = 16; N_FL = 2; N_SUN = 1; M_ops = 2 * Ndim
+      end select
+      N_FL_eff = N_FL
+      allocate(Calc_Fl_map(N_FL))
+      Calc_Fl_map = [(nf, nf = 1, N_FL)]
+      reconstruction_needed = .false.
+
+      allocate(perm(Ndim))
+      call random_permutation(perm)
+      allocate(Op_V(M_ops, N_FL))
+
+      Ooff = c0; Ooff(1,2) = 1.d0; Ooff(2,1) = 1.d0              ! V_SUN-like bond
+      Ond  = cmplx(0.5d0, 0.d0, dp)                               ! (1 1; 1 1)/2: eigenvalues 1, 0
+      Odiag2 = c0; Odiag2(1,1) = 1.d0; Odiag2(2,2) = -1.d0       ! diagonal N = 2
+      O3 = c0; O3(1,1) = 1.d0; O3(3,3) = -1.d0                    ! diagonal N = 3 with E = 0 in the middle
+      O9 = c0
+      do i = 1, 9
+         O9(i,i) = real(1 - 2 * mod(i, 2), dp) * (1.d0 + 0.1d0 * i)
+      enddo
+
+      select case (case_id)
+      case (CASE_SASB_ZZ)
+         Ns = Ndim / 2
+         do s = 1, Ns
+            s2 = mod(s, Ns) + 1
+            n  = 3 * (s - 1)
+            call Predefined_Int_U_SUN(Op_V(n+1,1), s,      N_SUN, DTAU, U_HUB)
+            call Predefined_Int_U_SUN(Op_V(n+2,1), s + Ns, N_SUN, DTAU, U_HUB)
+            call Predefined_Int_SaSb(Op_V(n+3,1), 'z', 'z', s, s2, s + Ns, s2 + Ns, 1.d0, DTAU, 0.d0)
+            if (.not. Op_V(n+3,1)%diag .or. Op_V(n+3,1)%N_non_zero /= 4) error stop 'setup: SaSb zz not diagonal rank 4'
+         enddo
+      case (CASE_KONDO_J)
+         Ns = Ndim / 2
+         do s = 1, Ns
+            n = 3 * (s - 1)
+            call Predefined_Int_U_MZ(Op_V(n+1,1), Op_V(n+1,2), s + Ns, DTAU, U_HUB)
+            do nf = 1, N_FL
+               call Predefined_Int_V_SUN (Op_V(n+2,nf), s, s + Ns, N_SUN, DTAU, V_BOND)
+               call Predefined_Int_VJ_SUN(Op_V(n+3,nf), s, s + Ns, N_SUN, DTAU, V_BOND)
+            enddo
+         enddo
+      case (CASE_REP_MIXED)
+         ! per s: Mz(s), V_SUN(s, s+1), Jz(s, s+2), Mz(s+1); the next group starts with Mz(s+1) again
+         do s = 1, Ndim
+            s1 = mod(s, Ndim) + 1
+            s2 = mod(s + 1, Ndim) + 1
+            n  = 4 * (s - 1)
+            call Predefined_Int_U_MZ(Op_V(n+1,1), Op_V(n+1,2), s, DTAU, U_REP)
+            do nf = 1, N_FL
+               call Predefined_Int_V_SUN(Op_V(n+2,nf), s, s1, N_SUN, DTAU, V_BOND)
+            enddo
+            call Predefined_Int_Jz(Op_V(n+3,1), Op_V(n+3,2), s, s2, DTAU, 1.d0)
+            call Predefined_Int_U_MZ(Op_V(n+4,1), Op_V(n+4,2), s1, DTAU, U_REP)
+         enddo
+      case (CASE_PADCAP)
+         ! bonds only: (s, s+1) for all s, then (s, s+3): every bond overlaps several earlier ones
+         do s = 1, Ndim
+            s1 = mod(s, Ndim) + 1
+            s2 = mod(s + 2, Ndim) + 1
+            do nf = 1, N_FL
+               call Predefined_Int_V_SUN(Op_V(s,nf),        s, s1, N_SUN, DTAU, V_BOND)
+               call Predefined_Int_V_SUN(Op_V(Ndim + s,nf), s, s2, N_SUN, DTAU, V_BOND)
+            enddo
+         enddo
+      case (CASE_BIGOP)
+         ! Mz on perm(1:4), bigop on sites 1..9, Mz on perm(5:8), V_SUN(2,7), Mz on perm(9:12), bigop on 4..12
+         n = 0
+         do i = 1, Ndim
+            n = n + 1
+            call Predefined_Int_U_MZ(Op_V(n,1), Op_V(n,2), perm(i), DTAU, U_HUB)
+            if (i == 4) then
+               n = n + 1
+               do nf = 1, N_FL
+                  call make_op(Op_V(n,nf), [(s, s = 1, 9)], O9, cmplx(0.2d0 * (3 - 2 * nf), 0.d0, dp), 2)
+               enddo
+            elseif (i == 8) then
+               n = n + 1
+               do nf = 1, N_FL
+                  call Predefined_Int_V_SUN(Op_V(n,nf), 2, 7, N_SUN, DTAU, V_BOND)
+               enddo
+            elseif (i == Ndim) then
+               n = n + 1
+               do nf = 1, N_FL
+                  call make_op(Op_V(n,nf), [(s, s = 4, 12)], O9, cmplx(0.2d0, 0.d0, dp), 2)
+               enddo
+            endif
+         enddo
+         if (n /= M_ops) error stop 'setup: bigop vertex count'
+      case default
+         do s = 1, Ndim
+            s1 = mod(s, Ndim) + 1
+            s2 = mod(s + 1, Ndim) + 1
+            n  = 2 * s
+            call Predefined_Int_U_MZ(Op_V(n-1,1), Op_V(n-1,2), perm(s), DTAU, U_HUB)
+            select case (case_id)
+            case (CASE_JZ)
+               call Predefined_Int_Jz(Op_V(n,1), Op_V(n,2), s, s1, DTAU, 1.d0)
+            case (CASE_TV_BOND, CASE_BONDS_SKIP, CASE_BONDS_ILLCOND)
+               ! V = -1: imaginary coupling g (as the tV model with ham_V = -1)
+               do nf = 1, N_FL
+                  call Predefined_Int_V_SUN(Op_V(n,nf), s, s1, N_SUN, DTAU, -1.d0)
+               enddo
+            case (CASE_ISING1)
+               do nf = 1, N_FL
+                  call Predefined_Int_Ising_SUN(Op_V(n,nf), s, s1, DTAU, 2.d0)
+               enddo
+            case (CASE_SP_TYPE4)
+               do nf = 1, N_FL
+                  call make_op(Op_V(n,nf), [s, s1], Ooff, cmplx(0.5d0 * sqrt(DTAU), 0.d0, dp), 4)
+               enddo
+            case (CASE_ND_ZERO)
+               call make_op(Op_V(n,1), [s, s1], Ond, cmplx( G_ND, 0.d0, dp), 2)
+               call make_op(Op_V(n,2), [s, s1], Ond, cmplx(-G_ND, 0.d0, dp), 2)
+               do nf = 1, N_FL
+                  if (Op_V(n,nf)%diag .or. Op_V(n,nf)%N_non_zero /= 1) error stop 'setup: nd_zero not rank 1'
+               enddo
+            case (CASE_ASYM_RN)
+               ! flavour 1: V_SUN (non-diagonal, r = 2); flavour 2 cycles through nd_zero on the swapped
+               ! pair (r = 1), V_SUN with g = 0 (Delta = 0: no columns) and a diagonal N = 2 operator (r = 2)
+               call Predefined_Int_V_SUN(Op_V(n,1), s, s1, N_SUN, DTAU, V_BOND)
+               select case (mod(s, 3))
+               case (0)
+                  call make_op(Op_V(n,2), [s1, s], Ond, cmplx(G_ND, 0.d0, dp), 2)
+                  if (Op_V(n,2)%diag .or. Op_V(n,2)%N_non_zero /= 1) error stop 'setup: asym_rn nd_zero'
+               case (1)
+                  call Predefined_Int_V_SUN(Op_V(n,2), s, s1, N_SUN, DTAU, 0.d0)
+                  if (abs(Op_V(n,2)%g) /= 0.d0) error stop 'setup: asym_rn g /= 0'
+               case default
+                  call make_op(Op_V(n,2), [s, s1], Odiag2, cmplx(0.2d0, 0.d0, dp), 2)
+                  if (.not. Op_V(n,2)%diag .or. Op_V(n,2)%N_non_zero /= 2) error stop 'setup: asym_rn diag'
+               end select
+            case (CASE_GT_BONDS)
+               do nf = 1, N_FL
+                  gt = [(cmplx((3 - 2 * nf) * sqrt(DTAU * V_BOND) * (0.6d0 + 0.3d0 * i), 0.d0, dp), i = 1, N_SLICES)]
+                  call make_op(Op_V(n,nf), [s, s1], Ooff, gt(1), 2, gt)
+                  if (.not. Op_V(n,nf)%get_g_t_alloc()) error stop 'setup: g_t not allocated'
+               enddo
+            case (CASE_DIAG_E0)
+               call make_op(Op_V(n,1), [s, s1, s2], O3, cmplx( 0.4d0, 0.d0, dp), 2)
+               call make_op(Op_V(n,2), [s, s1, s2], O3, cmplx(-0.4d0, 0.d0, dp), 2)
+               do nf = 1, N_FL
+                  if (.not. Op_V(n,nf)%diag .or. Op_V(n,nf)%N_non_zero /= 3) error stop 'setup: diag_e0 N_non_zero'
+               enddo
+            case default
+               error stop 'setup_rankn_vertices: unknown case'
+            end select
+         enddo
+      end select
+   end subroutine setup_rankn_vertices
+
    ! =====================================================================
    ! Exact tracker in the site frame. Diagonal rank-1 vertices (vertex frame = site frame):
-   ! scalar factors on row/column p. Other vertices (case mixed): the N x N block e^{z O}
-   ! (Op_exp) on rows/columns P.
+   ! scalar factors on row/column p. Other vertices (multi-site, non-diagonal): the N x N block
+   ! e^{z O} = U e^{z E} U^dagger (Op_exp) on rows/columns P, z with g or g_t(nt).
    ! =====================================================================
    logical function diag_rank1(Op)
       type(Operator), intent(in) :: Op
@@ -456,21 +732,23 @@ contains
       complex(dp), intent(inout) :: A(:,:,:)
       integer, intent(in) :: n_op, nt, dir
       integer :: nf, p, nb
-      complex(dp) :: t, phi
+      complex(dp) :: t, phi, g_loc
       complex(dp), allocatable :: Eb(:,:)
       phi = nsigma%Phi(n_op, nt)
       do nf = 1, N_FL
+         g_loc = Op_V(n_op,nf)%g
+         if (Op_V(n_op,nf)%get_g_t_alloc()) g_loc = Op_V(n_op,nf)%g_t(nt)
          if (diag_rank1(Op_V(n_op,nf))) then
             p = Op_V(n_op,nf)%P(1)
-            t = exp(real(dir, dp) * Op_V(n_op,nf)%g * phi * Op_V(n_op,nf)%E(1))
+            t = exp(real(dir, dp) * g_loc * phi * Op_V(n_op,nf)%E(1))
             A(p,:,nf) = A(p,:,nf) * t
             A(:,p,nf) = A(:,p,nf) / t
          else
             nb = Op_V(n_op,nf)%N
             allocate(Eb(nb,nb))
-            call Op_exp(real(dir, dp) * Op_V(n_op,nf)%g * phi, Op_V(n_op,nf), Eb)
+            call Op_exp(real(dir, dp) * g_loc * phi, Op_V(n_op,nf), Eb)
             A(Op_V(n_op,nf)%P,:,nf) = matmul(Eb, A(Op_V(n_op,nf)%P,:,nf))
-            call Op_exp(-real(dir, dp) * Op_V(n_op,nf)%g * phi, Op_V(n_op,nf), Eb)
+            call Op_exp(-real(dir, dp) * g_loc * phi, Op_V(n_op,nf), Eb)
             A(:,Op_V(n_op,nf)%P,nf) = matmul(A(:,Op_V(n_op,nf)%P,nf), Eb)
             deallocate(Eb)
          endif
@@ -478,22 +756,25 @@ contains
    end subroutine exact_wrap
 
    ! Accepted flip: A <- e^{g (phi_new - phi_old) O} A; diagonal rank-1: (1 + Delta e_p e_p^T) A
-   subroutine exact_flip(A, n_op, phi_old, phi_new)
+   ! (g = g_t(nt) if allocated)
+   subroutine exact_flip(A, n_op, nt, phi_old, phi_new)
       complex(dp), intent(inout) :: A(:,:,:)
-      integer, intent(in) :: n_op
+      integer, intent(in) :: n_op, nt
       complex(dp), intent(in) :: phi_old, phi_new
       integer :: nf, p, nb
-      complex(dp) :: delta
+      complex(dp) :: delta, g_loc
       complex(dp), allocatable :: Eb(:,:)
       do nf = 1, N_FL
+         g_loc = Op_V(n_op,nf)%g
+         if (Op_V(n_op,nf)%get_g_t_alloc()) g_loc = Op_V(n_op,nf)%g_t(nt)
          if (diag_rank1(Op_V(n_op,nf))) then
             p = Op_V(n_op,nf)%P(1)
-            delta = exp(Op_V(n_op,nf)%g * (phi_new - phi_old) * Op_V(n_op,nf)%E(1)) - 1.d0
+            delta = exp(g_loc * (phi_new - phi_old) * Op_V(n_op,nf)%E(1)) - 1.d0
             A(p,:,nf) = A(p,:,nf) * (1.d0 + delta)
          else
             nb = Op_V(n_op,nf)%N
             allocate(Eb(nb,nb))
-            call Op_exp(Op_V(n_op,nf)%g * (phi_new - phi_old), Op_V(n_op,nf), Eb)
+            call Op_exp(g_loc * (phi_new - phi_old), Op_V(n_op,nf), Eb)
             A(Op_V(n_op,nf)%P,:,nf) = matmul(Eb, A(Op_V(n_op,nf)%P,:,nf))
             deallocate(Eb)
          endif
@@ -503,11 +784,17 @@ contains
    ! =====================================================================
    ! Driver
    ! =====================================================================
-   ! Deterministic skip mask (case repeat_skip): vertex n at slice nt is wrapped but not proposed
+   ! Deterministic skip mask (cases repeat_skip, bonds_skip): vertex n at slice nt is wrapped but not proposed
    logical function skip_vertex(case_id, n, nt)
       integer, intent(in) :: case_id, n, nt
-      skip_vertex = (case_id == CASE_REPEAT_SKIP .and. mod(n + 2 * nt, 3) == 0)
+      skip_vertex = ((case_id == CASE_REPEAT_SKIP .or. case_id == CASE_BONDS_SKIP) .and. mod(n + 2 * nt, 3) == 0)
    end function skip_vertex
+
+   ! Ill-conditioned inter-slice similarity S = I + 0.1 R (tolerance TOL_ILL)
+   logical function illcond_case(case_id)
+      integer, intent(in) :: case_id
+      illcond_case = (case_id == CASE_MZ_ILLCOND .or. case_id == CASE_BONDS_ILLCOND)
+   end function illcond_case
 
    subroutine run_case(case_id, scheme, N_delay, direction, max_ratio_err, max_G_err, std_drift)
       integer,          intent(in)  :: case_id, scheme, N_delay
@@ -532,9 +819,12 @@ contains
          error stop 'run_case: direction must be up or down'
       endif
 
-      ! The configuration depends on the case only (mz_illcond reuses mz's configuration).
+      ! The configuration depends on the case only (mz_illcond reuses mz's configuration;
+      ! bonds_skip and bonds_illcond reuse tv_bond's).
       if (case_id == CASE_MZ_ILLCOND) then
          call Ranset([1000 + 17 * CASE_MZ])
+      elseif (case_id == CASE_BONDS_SKIP .or. case_id == CASE_BONDS_ILLCOND) then
+         call Ranset([1000 + 17 * CASE_TV_BOND])
       else
          call Ranset([1000 + 17 * case_id])
       endif
@@ -552,6 +842,12 @@ contains
       allocate(rng_state(k_seed))
 
       call cand_init(scheme, N_delay)
+      ! Eligibility as expected for this scheme (standard: no vertex is low-rank)
+      n_elig_bad = 0; n_lowrank_vertices = 0
+      do n = 1, M_ops
+         if (cand_lowrank(n)) n_lowrank_vertices = n_lowrank_vertices + 1
+         if (cand_lowrank(n) .neqv. expected_eligible(scheme, n)) n_elig_bad = n_elig_bad + 1
+      enddo
       mode = "Intermediate"
       max_ratio_err = 0.d0; max_G_err = 0.d0; drift = 0.d0
 
@@ -576,12 +872,13 @@ contains
                   call Op_Wrapup(Gc(:,:,nf),   Op_V(n,nf), hs_old, Ndim, 1, nt)
                enddo
                call exact_wrap(Aex, n, nt, +1)
-               call cand_hook(Gc, n, nt, hs_old, +1)
+               call cand_hook(Gc, n, nt, hs_old, 1, +1)
             else
                do nf = 1, N_FL
                   call Op_Wrapdo(Gref(:,:,nf), Op_V(n,nf), hs_old, Ndim, 2, nt)
                   call Op_Wrapdo(Gc(:,:,nf),   Op_V(n,nf), hs_old, Ndim, 2, nt)
                enddo
+               call cand_hook(Gc, n, nt, hs_old, 2, -1)
             endif
 
             ! ---- skipped vertex: no propose, no accept (nothing between the two wraps) ----
@@ -624,7 +921,7 @@ contains
                phi_old = nsigma%Phi(n,nt)
                nsigma%f(n,nt) = hs_new
                phi_new = nsigma%Phi(n,nt)
-               call exact_flip(Aex, n, phi_old, phi_new)
+               call exact_flip(Aex, n, nt, phi_old, phi_new)
             else
                nsigma%f(n,nt) = hs_old
             endif
@@ -636,6 +933,7 @@ contains
                   call Op_Wrapup(Gref(:,:,nf), Op_V(n,nf), hs_old, Ndim, 2, nt)
                   call Op_Wrapup(Gc(:,:,nf),   Op_V(n,nf), hs_old, Ndim, 2, nt)
                enddo
+               call cand_hook(Gc, n, nt, hs_old, 2, +1)
             else
                hs_new = nsigma%f(n,nt)       ! post-decision field
                do nf = 1, N_FL
@@ -643,7 +941,7 @@ contains
                   call Op_Wrapdo(Gc(:,:,nf),   Op_V(n,nf), hs_new, Ndim, 1, nt)
                enddo
                call exact_wrap(Aex, n, nt, -1)
-               call cand_hook(Gc, n, nt, hs_new, -1)
+               call cand_hook(Gc, n, nt, hs_new, 1, -1)
             endif
          enddo
 
@@ -672,7 +970,7 @@ contains
             do j = 1, Ndim
                do i = 1, Ndim
                   S(i,j) = S_SCALE * crandn()
-                  if (case_id /= CASE_MZ_ILLCOND) S(i,j) = S(i,j) / sqrt(real(Ndim, dp))
+                  if (.not. illcond_case(case_id)) S(i,j) = S(i,j) / sqrt(real(Ndim, dp))
                enddo
                S(j,j) = S(j,j) + 1.d0
             enddo
@@ -694,11 +992,14 @@ contains
 end module lowrank_unit_harness
 
 
-! Eligibility section: Lowrank_init on a mixed vertex list, independent of the
-! candidate-dispatch table above. A vertex is eligible iff, in every flavour,
-! Op_V(n,nf)%N_non_zero <= 1 and Op_V(n,nf)%diag.
+! Eligibility section: Lowrank_init on hand-built vertex lists, independent of the
+! candidate-dispatch table above. Delayed: a vertex is eligible iff its support
+! max_f Op_V(n,f)%N <= 8, whatever its structure. Submatrix: iff Op_V(n,nf)%N_non_zero <= 1 and
+! Op_V(n,nf)%diag in every flavour while SUBMATRIX_RANKN = .false., the delayed rule otherwise.
+! A vertex with support > 8 (bigop: diagonal N = 9) is ineligible for both schemes, and the
+! delayed scheme reports it with exactly one info line.
 module lowrank_eligibility_section
-   use lowrank_unit_harness, only: dp, clear_case, info_path
+   use lowrank_unit_harness, only: dp, clear_case, info_path, SUBMATRIX_RANKN
    use Hamiltonian_main, only: Op_V, Ndim, N_FL, N_FL_eff, Calc_Fl_map
    use Operator_mod
    use Predefined_Int
@@ -748,28 +1049,54 @@ contains
       call Op_set(Op)
    end subroutine make_diag_rank1
 
-   ! True iff the file 'info' contains a line equal (after trimming) to want.
-   logical function info_has_line(want)
+   ! Diagonal operator on the sites P, O = diag(+1, -1, +1, ...): support size(P), N_non_zero = size(P).
+   subroutine make_diag_n(Op, P)
+      type(Operator), intent(inout) :: Op
+      integer,        intent(in)    :: P(:)
+      integer :: i
+      call Op_make(Op, size(P))
+      Op%P = P
+      do i = 1, size(P)
+         Op%O(i,i) = cmplx(real(1 - 2 * mod(i + 1, 2), dp), 0.d0, dp)
+      enddo
+      Op%g     = cmplx(sqrt(ELIG_DTAU), 0.d0, dp)
+      Op%alpha = cmplx(0.d0, 0.d0, dp)
+      Op%type  = 2
+      call Op_set(Op)
+   end subroutine make_diag_n
+
+   ! Number of lines of the file info equal (after trimming) to want.
+   integer function info_count_line(want)
       character(len=*), intent(in) :: want
       character(len=256) :: line
       integer :: u, ios
       logical :: ex
-      info_has_line = .false.
+      info_count_line = 0
       inquire(file=info_path, exist=ex)
       if (.not. ex) return
       open(newunit=u, file=info_path, status='old', action='read')
       do
          read(u, '(A)', iostat=ios) line
          if (ios /= 0) exit
-         if (trim(adjustl(line)) == want) info_has_line = .true.
+         if (trim(adjustl(line)) == want) info_count_line = info_count_line + 1
       enddo
       close(u)
+   end function info_count_line
+
+   ! True iff the file 'info' contains a line equal (after trimming) to want.
+   logical function info_has_line(want)
+      character(len=*), intent(in) :: want
+      info_has_line = (info_count_line(want) > 0)
    end function info_has_line
 
    subroutine run_eligibility_section(n_fail)
       integer, intent(inout) :: n_fail
-      integer :: nf, u
-      logical :: info_existed
+      integer :: nf, u, n, c0
+      logical :: info_existed, all_elig, sub_ok
+      character(len=*), parameter :: big_line = 'Sequential scheme DELAYED: 1 of 4 vertices have a support '// &
+           & 'larger than 8; they use the standard update (first: n=2)'
+      character(len=*), parameter :: big_line_sub = 'Sequential scheme SUBMATRIX: 1 of 4 vertices have a support '// &
+           & 'larger than 8; they use the standard update (first: n=2)'
 
       write(6,'(A)') '36-lowrank-unit: eligibility section'
       call clear_case()
@@ -777,9 +1104,9 @@ contains
       allocate(Calc_Fl_map(N_FL))
       Calc_Fl_map = [1, 2]
 
-      ! Vertices: 1, 2 = Mz (eligible); 3 = V_SUN bond, rank 2 (ineligible);
-      ! 4 = diagonal rank-1 in flavour 1 but non-diagonal rank-1 in flavour 2 (ineligible).
-      allocate(Op_V(4, N_FL))
+      ! Vertices: 1, 2 = Mz (diagonal rank-1); 3 = V_SUN bond (non-diagonal rank 2);
+      ! 4 = diagonal rank-1 in flavour 1 but non-diagonal rank-1 in flavour 2; 5 = Jz (diagonal rank 2).
+      allocate(Op_V(5, N_FL))
       call Predefined_Int_U_MZ(Op_V(1,1), Op_V(1,2), 1, ELIG_DTAU, ELIG_U)
       call Predefined_Int_U_MZ(Op_V(2,1), Op_V(2,2), 2, ELIG_DTAU, ELIG_U)
       do nf = 1, N_FL
@@ -787,6 +1114,7 @@ contains
       enddo
       call make_diag_rank1(Op_V(4,1), 7)
       call make_nondiag_rank1(Op_V(4,2), 5, 6)
+      call Predefined_Int_Jz(Op_V(5,1), Op_V(5,2), 7, 8, ELIG_DTAU, 1.d0)
 
       ! The hand-built operators must have the intended structure.
       call elig_check(Op_V(3,1)%N_non_zero == 2 .and. .not. Op_V(3,1)%diag, &
@@ -795,16 +1123,19 @@ contains
            & 'hand-built diagonal rank-1: N_non_zero = 1, diagonal', n_fail)
       call elig_check(Op_V(4,2)%N_non_zero == 1 .and. .not. Op_V(4,2)%diag, &
            & 'hand-built (1 1;1 1)/2: N_non_zero = 1, not diagonal', n_fail)
+      call elig_check(Op_V(5,1)%N_non_zero == 2 .and. Op_V(5,1)%diag, &
+           & 'Jz bond: N_non_zero = 2, diagonal', n_fail)
 
       inquire(file=info_path, exist=info_existed)
 
-      ! Delayed, mixed-case name
+      ! Delayed, mixed-case name: every vertex has support <= 8
       call Lowrank_init('Delayed', 7)
       call elig_check(Lowrank_active(), "Lowrank_init('Delayed', 7): active", n_fail)
       call elig_check(Lowrank_pending() == 0, "Lowrank_init('Delayed', 7): pending = 0", n_fail)
-      call elig_check(Lowrank_eligible(1) .and. Lowrank_eligible(2), 'Mz vertices 1, 2 eligible', n_fail)
-      call elig_check(.not. Lowrank_eligible(3), 'V_SUN bond vertex 3 ineligible', n_fail)
-      call elig_check(.not. Lowrank_eligible(4), 'vertex 4 (non-diagonal rank-1 in flavour 2) ineligible', n_fail)
+      call elig_check(Lowrank_eligible(1) .and. Lowrank_eligible(2), 'delayed: Mz vertices 1, 2 eligible', n_fail)
+      call elig_check(Lowrank_eligible(3), 'delayed: V_SUN bond vertex 3 eligible', n_fail)
+      call elig_check(Lowrank_eligible(4), 'delayed: vertex 4 (non-diagonal rank-1 in flavour 2) eligible', n_fail)
+      call elig_check(Lowrank_eligible(5), 'delayed: Jz bond vertex 5 eligible', n_fail)
       call elig_check(info_has_line('Sequential scheme: DELAYED, N_delay = 7'), &
            & "info contains 'Sequential scheme: DELAYED, N_delay = 7'", n_fail)
       call Lowrank_finalize()
@@ -814,8 +1145,17 @@ contains
       call Lowrank_init('Submatrix', 3)
       call elig_check(Lowrank_active() .and. Lowrank_pending() == 0, &
            & "Lowrank_init('Submatrix', 3) after finalize: active, pending = 0", n_fail)
-      call elig_check(Lowrank_eligible(1) .and. Lowrank_eligible(2) .and. .not. Lowrank_eligible(3) &
-           & .and. .not. Lowrank_eligible(4), 're-init: same eligibility pattern', n_fail)
+      if (SUBMATRIX_RANKN) then
+         all_elig = .true.
+         do n = 1, 5
+            all_elig = all_elig .and. Lowrank_eligible(n)
+         enddo
+         call elig_check(all_elig, 'submatrix (rank-N): every vertex eligible', n_fail)
+      else
+         call elig_check(Lowrank_eligible(1) .and. Lowrank_eligible(2) .and. .not. Lowrank_eligible(3) &
+              & .and. .not. Lowrank_eligible(4) .and. .not. Lowrank_eligible(5), &
+              & 'submatrix (rank-1): only the diagonal rank-1 vertices 1, 2 eligible', n_fail)
+      endif
       call elig_check(info_has_line('Sequential scheme: SUBMATRIX, N_delay = 3'), &
            & "info contains 'Sequential scheme: SUBMATRIX, N_delay = 3'", n_fail)
       call Lowrank_finalize()
@@ -824,6 +1164,40 @@ contains
       call Lowrank_init('standard', 32)
       call elig_check(.not. Lowrank_active(), "Lowrank_init('standard', 32): not active", n_fail)
       call elig_check(Lowrank_pending() == 0, "Lowrank_init('standard', 32): pending = 0", n_fail)
+      call Lowrank_finalize()
+
+      ! bigop: Ndim = 12; 1 = Mz, 2 = diagonal N = 9 on sites 1..9, 3 = V_SUN bond, 4 = Mz.
+      ! (Its agreement with the reference is checked by the driver, case bigop.)
+      call clear_case()
+      Ndim = 12; N_FL = 2; N_FL_eff = 2
+      allocate(Calc_Fl_map(N_FL))
+      Calc_Fl_map = [1, 2]
+      allocate(Op_V(4, N_FL))
+      call Predefined_Int_U_MZ(Op_V(1,1), Op_V(1,2), 1, ELIG_DTAU, ELIG_U)
+      do nf = 1, N_FL
+         call make_diag_n(Op_V(2,nf), [(n, n = 1, 9)])
+         call Predefined_Int_V_SUN(Op_V(3,nf), 10, 11, 1, ELIG_DTAU, 1.d0)
+      enddo
+      call Predefined_Int_U_MZ(Op_V(4,1), Op_V(4,2), 12, ELIG_DTAU, ELIG_U)
+      call elig_check(Op_V(2,1)%N == 9 .and. Op_V(2,1)%diag .and. Op_V(2,1)%N_non_zero == 9, &
+           & 'bigop: diagonal, N = N_non_zero = 9', n_fail)
+      c0 = info_count_line(big_line)
+      call Lowrank_init('delayed', 5)
+      call elig_check(Lowrank_eligible(1) .and. .not. Lowrank_eligible(2) .and. Lowrank_eligible(3) &
+           & .and. Lowrank_eligible(4), 'delayed: bigop vertex 2 ineligible, vertices 1, 3, 4 eligible', n_fail)
+      call elig_check(info_count_line(big_line) == c0 + 1, &
+           & "info contains '"//big_line//"' exactly once", n_fail)
+      call Lowrank_finalize()
+      c0 = info_count_line(big_line_sub)
+      call Lowrank_init('submatrix', 5)
+      if (SUBMATRIX_RANKN) then
+         sub_ok = Lowrank_eligible(1) .and. .not. Lowrank_eligible(2) .and. Lowrank_eligible(3) &
+              & .and. Lowrank_eligible(4) .and. info_count_line(big_line_sub) == c0 + 1
+      else
+         sub_ok = Lowrank_eligible(1) .and. .not. Lowrank_eligible(2) .and. .not. Lowrank_eligible(3) &
+              & .and. Lowrank_eligible(4)
+      endif
+      call elig_check(sub_ok, 'submatrix: bigop vertex 2 ineligible (rank-N: reported once in info)', n_fail)
       call Lowrank_finalize()
 
       ! Remove the info file if this section created it.
@@ -995,14 +1369,17 @@ program lowrank_unit
    max_drift = 0.d0
 
    write(6,'(A,ES9.2,A,ES9.2,A)') '36-lowrank-unit: TOL_UNIT = ', TOL_UNIT, ', TOL_ILL = ', TOL_ILL, &
-        & ' (mz_illcond; the fixed bound drift <= TOL_UNIT/2 is not asserted there)'
+        & ' (mz_illcond, bonds_illcond; the fixed bound drift <= TOL_UNIT/2 is not asserted there)'
+   write(6,'(A,L1)') '  SUBMATRIX_RANKN = ', SUBMATRIX_RANKN
    write(6,'(A)') '  std_drift/ce = std_drift / (cond(1+A) * epsilon(1d0)); asserted <= 10 for every case'
    write(6,'(A)') '  rflush = flushes inside Lowrank_propose (site already pending); asserted > 0 iff submatrix,'// &
-        & ' case repeat, N_delay > 1'
-   write(6,'(A)') '  skip = vertices wrapped but not proposed; asserted > 0 iff case repeat_skip'
-   write(6,'(A11,1X,A10,1X,A4,1X,A7,1X,A13,1X,A13,1X,A13,1X,A10,1X,A12,1X,A7,1X,A6,1X,A6,1X,A6,1X,A5,1X,A4)') &
+        & ' case repeat, repeat_skip or rep_mixed, N_delay > 1 (only while SUBMATRIX_RANKN = .false.;'// &
+        & ' repeat/repeat_skip with N_delay = 2 not asserted)'
+   write(6,'(A)') '  skip = vertices wrapped but not proposed; asserted > 0 iff case repeat_skip or bonds_skip'
+   write(6,'(A)') '  lrv = vertices updated by the low-rank kernel; Lowrank_eligible asserted per vertex (flag ELG)'
+   write(6,'(A13,1X,A10,1X,A4,1X,A7,1X,A13,1X,A13,1X,A13,1X,A10,1X,A12,1X,A7,1X,A6,1X,A6,1X,A6,1X,A5,1X,A4,1X,A4)') &
         & 'case', 'scheme', 'dir', 'N_delay', 'max_ratio_err', 'max_G_err', 'std_drift', &
-        & 'cond(1+A)', 'std_drift/ce', 'acc', 'condQ', 'condS', 'rflush', 'skip', ''
+        & 'cond(1+A)', 'std_drift/ce', 'acc', 'condQ', 'condS', 'rflush', 'skip', 'lrv', ''
    do ic = 1, N_CASES
       do idir = 1, 2
          do is = 1, N_SCHEMES
@@ -1010,14 +1387,15 @@ program lowrank_unit
                call run_case(ic, is, N_DELAY_LIST(id), trim(dirs(idir)), rerr, gerr, drift)
                flag = ''
                tol = TOL_UNIT
-               if (ic == CASE_MZ_ILLCOND) tol = TOL_ILL
+               if (illcond_case(ic)) tol = TOL_ILL
                if (rerr > tol .or. gerr > tol .or. .not. (rerr == rerr .and. gerr == gerr)) then
                   flag = 'FAIL'
                   n_fail = n_fail + 1
                endif
                ! TOL_UNIT must stay >= 2x the standard path's own drift vs exact. Not asserted
-               ! for mz_illcond: the double-precision "exact" inverse is unreliable at cond ~1e8.
-               if (ic /= CASE_MZ_ILLCOND) then
+               ! for the ill-conditioned cases: the double-precision "exact" inverse is unreliable
+               ! at cond ~1e8. Every rank-N case meets it (no exemption; couplings: V_BOND, G_ND, U_REP).
+               if (.not. illcond_case(ic)) then
                   if (drift > 0.5d0 * TOL_UNIT .or. drift /= drift) then
                      flag = 'DRFT'
                      n_fail = n_fail + 1
@@ -1031,22 +1409,34 @@ program lowrank_unit
                   flag = 'COND'
                   n_fail = n_fail + 1
                endif
-               ! Repeated-site flush: only submatrix flushes in Lowrank_propose, and only when a
-               ! site recurs within a block (case repeat; N_delay = 1 never leaves a block open).
-               if ((n_repeat_flush > 0) .neqv. (is == SCHEME_SUBMATRIX .and. &
-                    & (ic == CASE_REPEAT .or. ic == CASE_REPEAT_SKIP) .and. N_DELAY_LIST(id) > 1)) then
-                  flag = 'RFL'
-                  n_fail = n_fail + 1
+               ! Repeated-site flush (project-1 submatrix only): only submatrix flushes in Lowrank_propose,
+               ! and only when a site recurs within a block: cases repeat, repeat_skip (random order of the
+               ! doubled site list; with N_delay = 2 no site of this configuration recurs within a block of
+               ! two accepts, so N_delay = 2 is not asserted there) and rep_mixed (the last Mz vertex of a
+               ! group and the first of the next share the site, so N_delay >= 2 suffices); N_delay = 1
+               ! never leaves a block open. Not asserted for the rank-N submatrix (SUBMATRIX_RANKN = .true.).
+               if (.not. SUBMATRIX_RANKN .and. .not. (is == SCHEME_SUBMATRIX .and. N_DELAY_LIST(id) == 2 .and. &
+                    & (ic == CASE_REPEAT .or. ic == CASE_REPEAT_SKIP))) then
+                  if ((n_repeat_flush > 0) .neqv. (is == SCHEME_SUBMATRIX .and. N_DELAY_LIST(id) > 1 .and. &
+                       & (ic == CASE_REPEAT .or. ic == CASE_REPEAT_SKIP .or. ic == CASE_REP_MIXED))) then
+                     flag = 'RFL'
+                     n_fail = n_fail + 1
+                  endif
                endif
-               ! The skip mask must act exactly in case repeat_skip
-               if ((n_skipped > 0) .neqv. (ic == CASE_REPEAT_SKIP)) then
+               ! The skip mask must act exactly in cases repeat_skip, bonds_skip
+               if ((n_skipped > 0) .neqv. (ic == CASE_REPEAT_SKIP .or. ic == CASE_BONDS_SKIP)) then
                   flag = 'SKP'
                   n_fail = n_fail + 1
                endif
-               write(6,'(A11,1X,A10,1X,A4,1X,I7,1X,ES13.4,1X,ES13.4,1X,ES13.4,1X,ES10.2,1X,ES12.2,1X,F7.3,1X,F6.2,1X,F6.2,1X,I6,1X,I5,1X,A4)') &
+               ! Lowrank_eligible must match the expected eligibility rule at every vertex
+               if (n_elig_bad /= 0) then
+                  flag = 'ELG'
+                  n_fail = n_fail + 1
+               endif
+               write(6,'(A13,1X,A10,1X,A4,1X,I7,1X,ES13.4,1X,ES13.4,1X,ES13.4,1X,ES10.2,1X,ES12.2,1X,F7.3,1X,F6.2,1X,F6.2,1X,I6,1X,I5,1X,I4,1X,A4)') &
                     & case_name(ic), scheme_name(is), dirs(idir), N_DELAY_LIST(id), rerr, gerr, drift, &
                     & cond_1pA_last, drift_rel, real(n_accepted, dp) / real(n_proposals, dp), cond_Q_max, cond_S_max, &
-                    & n_repeat_flush, n_skipped, flag
+                    & n_repeat_flush, n_skipped, n_lowrank_vertices, flag
             enddo
          enddo
       enddo

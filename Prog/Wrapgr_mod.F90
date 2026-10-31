@@ -131,10 +131,10 @@ Contains
           N_type = 1
           Call Op_Wrapup(Gr(:,:,nf),Op_V(n,nf),HS_Field,Ndim,N_Type,ntau1)
        enddo
-       ! Eligible vertex: carry the pending factors through the type-1 wrap (old field)
-       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_wrap_hook(n, ntau1, HS_Field, +1)
+       ! Eligible vertex: carry the pending state through the type-1 wrap (old field)
+       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_wrap_hook(n, ntau1, HS_Field, 1, +1)
 #ifdef ALF_LOWRANK_DEBUG
-       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_debug_check(GR, n, ntau1, "Lowrank_wrap_hook (up)")
+       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_debug_check(GR, n, ntau1, "Lowrank_wrap_hook (up, 1)")
 #endif
        nf = 1
        T0_proposal       = 1.5D0
@@ -165,6 +165,11 @@ Contains
           N_type =  2
           Call Op_Wrapup(Gr(:,:,nf),Op_V(n,nf),HS_Field,Ndim,N_Type,ntau1)
        enddo
+       ! Eligible vertex: carry the pending state through the type-2 wrap (no-op for diagonal flavours)
+       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_wrap_hook(n, ntau1, HS_Field, 2, +1)
+#ifdef ALF_LOWRANK_DEBUG
+       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_debug_check(GR, n, ntau1, "Lowrank_wrap_hook (up, 2)")
+#endif
     Enddo
     ! G must be the full Green function for the Global_tau moves and on return
     if (Lowrank_active()) call Lowrank_flush(GR)
@@ -235,6 +240,11 @@ Contains
           nf=Calc_Fl_map(nf_eff)
           Call Op_Wrapdo( Gr(:,:,nf), Op_V(n,nf), HS_Field, Ndim, N_Type,ntau)
        enddo
+       ! Eligible vertex: carry the pending state through the type-2 wrap (no-op for diagonal flavours)
+       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_wrap_hook(n, ntau, HS_Field, 2, -1)
+#ifdef ALF_LOWRANK_DEBUG
+       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_debug_check(GR, n, ntau, "Lowrank_wrap_hook (down, 2)")
+#endif
        !Write(6,*) 'Upgrade : ', ntau,n 
        nf = 1
        T0_proposal       = 1.5D0
@@ -269,10 +279,10 @@ Contains
           nf=Calc_Fl_map(nf_eff)
           Call Op_Wrapdo( Gr(:,:,nf), Op_V(n,nf), HS_Field, Ndim, N_Type, ntau )
        enddo
-       ! Eligible vertex: carry the pending factors through the type-1 un-wrap (new field)
-       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_wrap_hook(n, ntau, HS_Field, -1)
+       ! Eligible vertex: carry the pending state through the type-1 un-wrap (new field)
+       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_wrap_hook(n, ntau, HS_Field, 1, -1)
 #ifdef ALF_LOWRANK_DEBUG
-       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_debug_check(GR, n, ntau, "Lowrank_wrap_hook (down)")
+       if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_debug_check(GR, n, ntau, "Lowrank_wrap_hook (down, 1)")
 #endif
     enddo
     ! G must be the full Green function before the hopping propagation and on return
