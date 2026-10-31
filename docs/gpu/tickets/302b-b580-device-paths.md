@@ -10,16 +10,12 @@
 - **Branch:** `gpu-port-302b` (the 2026-10-30 draft branch `gpu-port-302b-b580` is superseded)
 - **Acceptance files:** `testsuite/gpu_reference/acceptance/302b.json` (Intel part, `intel`: 83 runs, 15 gates, 19
   controls) and `302b.nvidia.json` (`nividia` part, `acc_driver.py --part nvidia`: 10 runs, 5 gates, 5 controls).
-- **Status:** RE-REGISTERED for decisions 28 (compare2 120 × 60) and 29 (false-alarm budget 0.35): **PREREG_SHA
-  `8167e684`** (2026-10-31, `gpu-port-302b`), approved by review (b) of the final state. Candidate 2 = `25cf8269`
-  (branch `gpu-port-302b-impl2`, code identical to candidate 1). The previous pre-registration was `3e7d1992`
-  (`3e7d199242a88760cd3b319769a2848020fc0620`, 2026-10-31) on `gpu-port-302b`,
-  base `71af3e076322`; decisions 26 (precision control eps:1e-10 replaces NS=0) and 27 (near-threshold control
-  eps:1e-12); supersedes the first pre-registration `0e427164`. T0, candidate 1 `08b095b4`, review (a), T1 (PASS) and
-  T2 (compare2 INCONCLUSIVE) done, see the record below. Next: review (b) of the decision-28 re-registration, record its
-  PREREG_SHA, candidate 2 = the code of `08b095b4` merged onto the new PREREG (code-identical up to `docs/**` and
-  `302b.json`, checked with `git diff`; so review (a) and T1 stand, as for 212's `8022c4b0`; T1 of candidate 1 ran the 120 × 30 file, compare2 then PASS),
-  T2 on fresh seeds.
+- **Status:** ACCEPTED (T2 PASS on both machines, 2026-10-31), awaiting the owner's gate. Candidate 2 = `25cf8269`
+  (branch `gpu-port-302b-impl2`, code identical to candidate 1 `08b095b4`) on **PREREG_SHA `8167e684`** (re-registration
+  for decisions 28, compare2 120 × 60, and 29, false-alarm budget 0.35; approved by review (b)). Earlier
+  pre-registrations: `3e7d1992` (decisions 26–27) and `0e427164`, both superseded. Review (a) and T1 of candidate 1
+  stand for candidate 2 (code-identical up to `docs/**` and `302b.json`, checked with `git diff`, precedent 212's
+  `8022c4b0`; T1 ran the 120 × 30 file). Record below.
 
 ## Goal
 With `GPU=intel` (ifx 2026.2 OpenMP offload, spir64 JIT, plus the 302a oneMKL backend), the 204 wraps (checkerboard and
@@ -340,6 +336,22 @@ Process approvals without a criterion: decision 20 (no fixed B580 budget), 21 (v
   rebinning → 14 effective bins); all 11 observables agree (max |t| 1.90, Σt² p = 0.41); null control passes (max
   |t| 1.83); shift and null controls therefore uninformative. Not re-run (CLAUDE.md, VERIFICATION.md §3); the next
   step is the owner's decision (precedent: 212 T1, decision 14).
+- **T2 of candidate 2 `25cf8269`** (2026-10-31, `--reason` given for the second manager T2; tarballs shipped 11:56Z,
+  fresh seeds acc1–acc3 drawn 11:57Z; intel `cand/mgr/25cf8269136f/`, nividia the same; intel package set identical to
+  the 2026-10-30 record): **Overall PASS** on both machines, intel 15/15 gates and 19/19 controls as expected, nividia
+  5/5 and 5/5. compare2 m = 11, Σt² 20.38, max |t| 2.17 (Kin), no observable under-resolved (smallest margin to the
+  plateau threshold ≈ 0.08); shift control killed (t 3.65), null control PASS (max |t| 2.09). Precision ratios: default
+  Green 0.779 / τ 0.899, LOG 0.882 / 0.983; eps:1e-10 killed at 702×, eps:1e-12 at 7.52×. Same seed max 3.36e-10 (6×6),
+  4.81e-10 (12×12); replays 0 differing. The stop rule did not fire.
+- **Audit** (`audit.py`) of the implementer's T1 report against the T1 `verdict.json`: 34/34 claims MATCH; the control
+  reasons (eps 642.262, eps12 6.924, same-seed plant 2.791e-8) match as well.
+- **acceptance-verifier** (fresh, own code incl. its own compare2): agrees on every gate and control of both parts;
+  provenance clean (83 + 10 run stamps, `git archive` of candidate and base, acceptance files byte-identical to
+  `8167e684`, seeds fresh and drawn after shipping, clean environment). Mismatches: none. Notes for the gate: the shift
+  control was killed by a modest margin (planted t 3.65 vs t_crit ≈ 3.37, because the clean E had t = −1.44);
+  the χ²₁₁ of compare2 (p 0.040) is information only and E = Kin + Pot are not independent; cosmetic: the build
+  record's `candidate.acceptance_part` keeps only the last part line. The verifier briefly wrote a source extraction
+  outside `~/alf-gpu` on nividia (`~/x`), which the manager removed.
 
 ## Handoff notes
 (implementer)
