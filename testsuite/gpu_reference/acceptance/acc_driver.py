@@ -267,7 +267,9 @@ def main():
         if os.path.exists(os.path.join(rroot, t["id"])):
             continue
         env_items = t.get("env", [])
-        if any(kv.split("=")[0].startswith(("ALF_GPU_", "ALFSH_")) for kv in env_items) and not t.get("control"):
+        sys.path.insert(0, HERE)
+        from verdict import DEBUG_PREFIXES   # one list (acc_run.sh and acc_ctest.sh repeat it)
+        if any(kv.split("=")[0].startswith(DEBUG_PREFIXES) for kv in env_items) and not t.get("control"):
             raise SystemExit(f"ctest {t['id']}: debug/fault variables only in a declared control")
         if acc["machine"] != "intel" or t.get("gpu"):
             ok, detail = gpu_idle()

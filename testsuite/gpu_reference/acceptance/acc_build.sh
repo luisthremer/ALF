@@ -18,6 +18,9 @@ SRC=src; case "$NAME" in base_*) SRC=base_src;; esac
 key=tar_sha256; [ $SRC = base_src ] && key=base_tar_sha256
 want=$(awk -v k=$key '$1==k {print $2}' $C/.alf_candidate); have=$(sha256sum $C/$SRC.tar | cut -d' ' -f1)
 [ -n "$want" ] && [ "$want" = "$have" ] || { echo "TAR HASH MISMATCH for $SRC ($have vs $want)"; exit 2; }
+for __tk in "$@"; do   # configure.sh uppercases its arguments: only the exact GPU= spellings are recognised here
+  case "$(printf %s "$__tk" | tr a-z A-Z)" in GPU=*) case "$__tk" in GPU=none|GPU=nvidia|GPU=intel) ;; *) echo "refusing configure token $__tk (write GPU=none, GPU=nvidia or GPU=intel)"; exit 2;; esac;; esac
+done
 ENVF=$HOME/alf-gpu/env/$TOOL.sh; case $TOOL in gnu|nvhpc|intel) ;; *) echo "bad tool"; exit 2;; esac
 [ -f $ENVF ] || { echo "no env file $ENVF"; exit 2; }
 H5=${ALF_HDF5_DIR:-$HOME/alf-gpu/hdf5}; [ -n "$(ls -A "$H5" 2>/dev/null)" ] || { echo "no prebuilt HDF5 in $H5 (see README)"; exit 2; }
@@ -29,11 +32,13 @@ TARH=$have
 env -i HOME="$HOME" USER="$USER" LANG=C LC_ALL=C PATH=/usr/bin:/bin TMPDIR="$TMPDIR" ALF_HDF5_DIR="$H5" \
     ALF_FLAGS_EXT="${ALF_FLAGS_EXT:-}" LOGC=$C/logs/conf_$NAME.log LOGE=$C/logs/env_$NAME.txt LOGM=$C/logs/make_$NAME.log \
     bash --noprofile --norc -c '
-  . "$1" > /dev/null 2>&1 || { echo "env file failed"; exit 2; }; shift
-  cd "$0" || exit 2
-  . ./configure.sh "$@" NO-INTERACTIVE > "$LOGC" 2>&1 || { echo "configure failed: $LOGC"; exit 3; }
-  env | grep "^ALF_" | sort > "$LOGE"
-  make -j4 program > "$LOGM" 2>&1 || { echo "make failed: $LOGM"; exit 4; }' "$T" "$ENVF" "$@"
+  # readonly copies (an env file may reset the positionals); NO-FALLBACK: never a silent default (CPU) machine
+  readonly __acc_t="$0" __acc_envf="$1" __acc_logc="$LOGC" __acc_loge="$LOGE" __acc_logm="$LOGM"; readonly -a __acc_args=("${@:2}")
+  . "$__acc_envf" > /dev/null 2>&1 || { echo "env file failed"; exit 2; }
+  builtin cd "$__acc_t" || exit 2
+  . ./configure.sh "${__acc_args[@]}" NO-FALLBACK NO-INTERACTIVE > "$__acc_logc" 2>&1 || { echo "configure failed: $__acc_logc"; exit 3; }
+  command env | command grep "^ALF_" | command sort > "$__acc_loge"
+  make -j4 program > "$__acc_logm" 2>&1 || { echo "make failed: $__acc_logm"; exit 4; }' "$T" "$ENVF" "$@"
 rc=$?; [ $rc = 0 ] || exit $rc
 if grep -q -i -E "download|wget|curl" $C/logs/conf_$NAME.log; then echo "configure tried to download (HDF5 for this compiler missing in $H5)"; exit 3; fi
 cp "$T/Prog/ALF.out" "$B" && chmod a-w "$B" || exit 5
@@ -45,7 +50,7 @@ h = lambda p: hashlib.sha256(open(p, "rb").read()).hexdigest()
 alf = dict(l.rstrip("\n").split("=", 1) for l in open(os.path.join(c, "logs", f"env_{name}.txt")) if "=" in l)
 sh = lambda cmd: subprocess.run(["bash", "-c", f". {envf} >/dev/null 2>&1; {cmd}"], capture_output=True, text=True).stdout.strip()
 d = {"schema": "alf-acc-build/1", "name": name, "binary": b, "binary_sha256": h(b), "source": src, "tar_sha256_built": tarh,
-     "candidate": cand, "tool": tool, "configure": conf, "ALF_FLAGS_EXT": os.environ.get("ALF_FLAGS_EXT", ""),
+     "candidate": cand, "tool": tool, "configure": conf, "configure_effective": conf + " NO-FALLBACK NO-INTERACTIVE", "ALF_FLAGS_EXT": os.environ.get("ALF_FLAGS_EXT", ""),
      "ALF_FC": alf.get("ALF_FC", ""), "ALF_FLAGS_PROG": alf.get("ALF_FLAGS_PROG", ""), "ALF_LIB": alf.get("ALF_LIB", ""),
      "env_file_sha256": h(envf), "make_log_sha256": h(os.path.join(c, "logs", f"make_{name}.log")),
      "toolchain": {"nvfortran": sh("nvfortran --version 2>/dev/null | sed -n 2p"), "gfortran": sh("gfortran --version 2>/dev/null | head -1"),

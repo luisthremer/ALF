@@ -8,8 +8,8 @@ Implements [docs/gpu/VERIFICATION.md](../../../docs/gpu/VERIFICATION.md).
 |---|---|---|
 | `acc_ship.sh HOST TICKET WHO CAND BASE PREREG` | laptop | checks the pre-registration (PREREG strict ancestor of CAND; tools unchanged since BASE except the added `TICKET*.json`, and since PREREG at all; existing tests unmodified unless allowed), then `git archive` of CAND and BASE to `~/alf-gpu/work/t<TICKET>/cand/<WHO>/<sha12>/`, hashes checked on both ends, `changed_files.txt`, `.alf_candidate` |
 | `acc_build.sh TICKET WHO SHA12 NAME TOOL ARGS` | machine | extracts the re-hashed tarball, builds under `env -i`, refuses an HDF5 download; `bin/NAME.out` + `NAME.build.json` (with `tar_sha256_built`) |
-| `acc_run.sh RUNDIR BIN CONFIG [--allow-debug] [VAR=v]` | machine | one run under `env -i` + whitelist (`OMP_TARGET_OFFLOAD=MANDATORY` for GPU builds), timeout, GPU and user-load check, `provenance.json` with output hashes |
-| `acc_ctest.sh TICKET WHO SHA12 OUT TOOL [--base] [--regex R] [--repeat N] [--env V=x] -- CONFIGURE` | machine | unit tests from the verified tarball under `env -i`, `ctest -V`, one test at a time, build paths and addresses normalised; GPU configurations with MANDATORY offload under the GPU lock; `ctest.exit` 0 passed, 1 a test failed its own check, 2 invalid (crash, timeout, not run, build failure) |
+| `acc_run.sh RUNDIR BIN CONFIG [--allow-debug] [VAR=v]` | machine | one run under `env -i` + whitelist (`OMP_TARGET_OFFLOAD=MANDATORY` for GPU builds, `ONEAPI_DEVICE_SELECTOR=level_zero:0` for `GPU=intel` builds; `ALF_GPU_*`, `ALFSH_*`, `ALF_LA_TEST_*` only with `--allow-debug`), timeout, GPU and user-load check, `provenance.json` with output hashes |
+| `acc_ctest.sh TICKET WHO SHA12 OUT TOOL [--base] [--regex R] [--repeat N] [--env V=x] -- CONFIGURE` | machine | unit tests from the verified tarball under `env -i`, `ctest -V`, one test at a time, build paths and addresses normalised; GPU configurations with MANDATORY offload under the GPU lock (`GPU=intel`: `ONEAPI_DEVICE_SELECTOR=level_zero:0`, stamp line `selector`, effective env in `env_rep_N.txt`; `--env` refuses the offload/device variables); `ctest.exit` 0 passed, 1 a test failed its own check, 2 invalid (crash, timeout, not run, build failure) |
 | `acc_gpunone.sh TICKET WHO SHA12 OUT [--plant]` | machine | GPU=none: preprocessed changed Fortran (9 macro sets, own headers per side), counts of added/deleted, build and other changed files, ctest; `--plant` is its positive control |
 | `acc_driver.py --ticket N --sha12 S --who mgr\|agent [--part P] [--reason R]` | machine | lint, configs and seeds (fresh `acc*` for mgr, `devN` for agent), builds, runs (GPU one at a time, lock), ctests, mutations, GPU=none, verdict; attempts log |
 | `verdict.py ACC RUNROOT --candidate SHA [--seeds-record F] [--attempts F]` | machine | PASS / FAIL / INPUT_ERROR per gate, controls, BLOCKED items; `--selfcheck`; `--lint ACC` |
@@ -40,13 +40,18 @@ commit. Raw outputs stay until the owner's gate.
 ## Acceptance file (schema `alf-acc/1`)
 - `ticket`, `candidate_sha` (`"self"`), `base_sha`, `created`, `_status`, `approvals` (owner quotes, dated), `machine`
   (`nividia` | `intel`), `gpu_exclusive`, `timeout_s`, `disk_min_free_GB`, `cpu_parallel`, `false_alarm_budget`,
-  `active_lines` (lines every GPU run must print), `blocked` (owner-decided BLOCKED items), `allowed_test_changes`.
-- `builds`: name → `tool`, `configure`, `flags_ext`, `gpu`, optional `active_lines` (replaces the file-wide list,
+  `active_lines` (lines every GPU run must print), `forbidden_lines` (lines no GPU run may print; also per build and
+  per run, all three levels apply together; ignored for CPU runs), `blocked` (owner-decided BLOCKED items),
+  `allowed_test_changes`.
+- `builds`: name → `tool`, `configure`, `flags_ext`, `gpu` (must match a `GPU=` token in `configure`; lint),
+  optional `forbidden_lines`, optional `active_lines` (replaces the file-wide list,
   e.g. for a base build without the new GPU path); names starting with `base_` build the base.
 - `configs`: name → `base` (from `configs.py`/`configs_stat.py`), `overrides`, `parameters_sha256` (required when frozen).
 - `runs`: id → `build`, `config`, `seeds` (`dev`, `accN`), `env`, `allow_debug`, `refcache`, and for debug runs
   only `active_lines` (replaces the build's/file's list, e.g. without the production line "GPU debug env: none").
-- `ctests`: `{id, tool, configure, regex, repeat, env, control, gpu, base}` (acc_ctest.sh); `gpunone`: true.
+- `ctests`: `{id, tool, configure, regex, repeat, env, control, gpu, base}` (acc_ctest.sh; `gpu` must match the
+  `GPU=` token; `env` may not hold offload or device variables); `gpunone`: true. A `log_regex` check on a ctest
+  directory also reads its `ctest.exit` (2 = INVALID) when the check names no `exit_file`.
 - `mutations` (`mutate.py` on run directories) and `log_mutations` (planted failures in harness logs).
 - `gates`: `{id, type, …, _reason}`; types `selftest`, `faults`, `same_seed`, `replay`, `paired`, `precision`,
   `compare2`, `log_regex`, `files_identical`.

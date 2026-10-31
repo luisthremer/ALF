@@ -20,11 +20,16 @@ sha256, configure line and flags, compiler/CUDA/driver versions, the complete en
 hashes, GPU processes before and after, start/end time, exit code, timeout flag, sha256 of every output file and of
 every `data.h5` dataset. Runs use `env -i` plus the tool's env file plus an explicit whitelist. Debug and fault
 variables (`ALF_GPU_FAULT*`, `_TAUSWAP`, `_TAU_NS`, `_NS`, `_STABCHECK`, `_STABMIX`, `_TAUDIAG*`, `_NOUPDATE`,
-`_SELFTEST`, `_UPDTEST`, `_EXIT`, `_TAUTIME`, `_STABTIME`, `_DISABLE`) are refused unless the acceptance file declares
-the run as a self-test or control run, or as a diagnostic gate run (the 207 paired test needs `ALF_GPU_TAUDIAG`; the
-  file says so in the gate's reason). GPU builds run with `OMP_TARGET_OFFLOAD=MANDATORY`, and every run of a GPU build
-  must show the ACTIVE lines of the GPU paths; an INACTIVE line is an input error. A log without a stamp that matches
-  the candidate is not evidence.
+`_SELFTEST`, `_UPDTEST`, `_EXIT`, `_TAUTIME`, `_STABTIME`, `_DISABLE`) and the `alf_la` test variables `ALF_LA_TEST_*`
+(since 2026-10-31) are refused unless the acceptance file declares the run as a self-test or control run, or as a
+diagnostic gate run (the 207 paired test needs `ALF_GPU_TAUDIAG`; the file says so in the gate's reason). GPU builds run
+with `OMP_TARGET_OFFLOAD=MANDATORY`; `GPU=intel` builds also with `ONEAPI_DEVICE_SELECTOR=level_zero:0`. Both are set by
+`acc_run.sh` and `acc_ctest.sh` after the env file and asserted, not overridable; an env file that sets
+`ZE_AFFINITY_MASK` or another device-ordering variable, or tries to change the harness's own variables, stops the run.
+`verdict.py` checks the recorded env of runs, `acc_ctest.sh` the recorded env of each ctest repetition (INVALID
+otherwise). Every run of a GPU build must show the ACTIVE lines of the GPU paths; an INACTIVE line, or a line the
+acceptance file lists in `forbidden_lines`, is an input error. A log without a stamp that matches the candidate is not
+evidence.
 
 ## 3. Pre-registration
 Each ticket has `testsuite/gpu_reference/acceptance/NNN.json`, committed **before** implementation results are seen,

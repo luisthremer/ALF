@@ -64,7 +64,37 @@ def tmpdir():
 
 
 # ------------------------------------------------------------------ provenance
-DEBUG_PREFIXES = ("ALF_GPU_", "ALFSH_")
+DEBUG_PREFIXES = ("ALF_GPU_", "ALFSH_", "ALF_LA_TEST_")
+# variables that change which device level_zero:0 is (acc_run.sh / acc_ctest.sh refuse them for GPU=intel)
+DEVICE_ORDER_VARS = ("ZE_AFFINITY_MASK", "ZE_ENABLE_PCI_ID_DEVICE_ORDER", "ZE_FLAT_DEVICE_HIERARCHY", "SYCL_DEVICE_FILTER",
+                     "LIBOMPTARGET_PLUGIN", "LIBOMPTARGET_DEVICETYPE", "LIBOMPTARGET_DEVICES", "SYCL_DEVICE_ALLOWLIST")
+GPU_TOKENS = ("GPU=none", "GPU=nvidia", "GPU=intel")
+
+
+def bad_gpu_tokens(configure):
+    """configure.sh uppercases its arguments; the harness recognises only the exact spellings"""
+    return [t for t in configure.split() if t.upper().startswith("GPU=") and t not in GPU_TOKENS]
+
+
+def ctest_stamp_check(root, d):
+    """An acc_ctest.sh output directory (stamp with a 'repeat' line) must be complete (ctest.exit and the stamp's 'end'
+    line) and, for a GPU configure line, stamped with MANDATORY offload (and the B580 selector where the stamp records
+    one; stamps before 2026-10-31 have no selector line)."""
+    sp = os.path.join(root, d, "stamp")
+    if not os.path.isfile(sp):
+        return
+    st = {l.split(None, 1)[0]: (l.split(None, 1)[1] if " " in l else "") for l in read(sp).splitlines() if l.strip()}
+    if "repeat" not in st:
+        return
+    if not os.path.isfile(os.path.join(root, d, "ctest.exit")) or "end" not in st:
+        raise InputFail(f"{d}: incomplete ctest output (no ctest.exit or no end line: interrupted run)")
+    conf = st.get("configure", "").split()
+    if bad_gpu_tokens(" ".join(conf)):
+        raise InputFail(f"{d}: configure token {bad_gpu_tokens(' '.join(conf))} not recognised by the harness")
+    if ("GPU=nvidia" in conf or "GPU=intel" in conf) and st.get("offload") != "MANDATORY":
+        raise InputFail(f"{d}: GPU ctest without MANDATORY offload in its stamp")
+    if "GPU=intel" in conf and "selector" in st and st["selector"] != "level_zero:0":
+        raise InputFail(f"{d}: GPU=intel ctest not pinned to level_zero:0")
 
 
 def check_prov(rd, acc, expect_rc=0, gpu_exclusive=None):
@@ -113,7 +143,9 @@ def check_prov(rd, acc, expect_rc=0, gpu_exclusive=None):
     if sorted(p.get("extra_env", [])) != sorted(decl.get("env", [])):
         raise InputFail(f"{rid}: environment {p.get('extra_env')} differs from the declared {decl.get('env', [])}")
     declared = {kv.split("=", 1)[0] for kv in decl.get("env", [])}
-    debug = [k for k in p.get("debug_env_present", []) if k.startswith(DEBUG_PREFIXES)]
+    # from the recorded environment as well, not only acc_run.sh's list (older provenance may lack a prefix)
+    debug = sorted(k for k in set(p.get("debug_env_present", [])) | set(p.get("env", {}))
+                   | {kv.split("=", 1)[0] for kv in p.get("extra_env", [])} if k.startswith(DEBUG_PREFIXES))
     if [k for k in debug if k not in declared]:
         raise InputFail(f"{rid}: undeclared debug variables {sorted(set(debug) - declared)}")
     if debug and not decl.get("allow_debug"):
@@ -139,6 +171,11 @@ def check_prov(rd, acc, expect_rc=0, gpu_exclusive=None):
     if bdecl.get("gpu", True) and not p.get("from_refcache"):
         if p.get("env", {}).get("OMP_TARGET_OFFLOAD") != "MANDATORY":
             raise InputFail(f"{rid}: GPU run without OMP_TARGET_OFFLOAD=MANDATORY (host fallback possible)")
+        if "GPU=intel" in bdecl["configure"].split():  # acc_run.sh pins the discrete GPU (the iGPU has no FP64)
+            env = p.get("env", {})
+            reord = [k for k in DEVICE_ORDER_VARS if k in env]
+            if env.get("ONEAPI_DEVICE_SELECTOR") != "level_zero:0" or reord:
+                raise InputFail(f"{rid}: GPU=intel run without ONEAPI_DEVICE_SELECTOR=level_zero:0 or with {reord}")
         text = read(os.path.join(rd, "run.log"))
         if os.path.isfile(os.path.join(rd, "info")):
             text += read(os.path.join(rd, "info"))
@@ -148,6 +185,11 @@ def check_prov(rd, acc, expect_rc=0, gpu_exclusive=None):
         missing = [l for l in need_l if l not in text]
         if missing or re.search(r"\bINACTIVE\b", text):
             raise InputFail(f"{rid}: GPU path not active (missing {missing[:1]}, or an INACTIVE line)")
+        # lines that must not appear (e.g. a GPU path that a ticket keeps switched off); acceptance, build or run level
+        forbid = acc.get("forbidden_lines", []) + bdecl.get("forbidden_lines", []) + decl.get("forbidden_lines", [])
+        hit = [l for l in forbid if l in text]
+        if hit:
+            raise InputFail(f"{rid}: forbidden line present: {hit[:1]}")
     if p.get("mutated") and not acc.get("_allow_mutated"):
         raise InputFail(f"{rid}: mutated copy ({p['mutated']}) used outside a control")
     return p
@@ -499,12 +541,17 @@ def g_log_regex(g, root, acc):
         for need_s in chk.get("stamp_contains", []):
             if need_s not in stamp:
                 raise InputFail(f"{chk['stamp_file']}: stamp lacks '{need_s}'")
+        for d in {os.path.dirname(chk["stamp_file"]), os.path.dirname(chk["file"])}:
+            ctest_stamp_check(root, d)
         t = read(os.path.join(root, chk["file"]))
         m = re.search(chk["regex"], t, re.M)
         if not m:
             raise InputFail(f"{chk['file']}: no match for {chk['regex']}")
         groups = [int(x) for x in m.groups()]
         res.append({"file": chk["file"], "groups": groups})
+        ce = os.path.join(root, os.path.dirname(chk["file"]), "ctest.exit")   # read even when the check names none
+        if "exit_file" not in chk and os.path.isfile(ce) and read(ce).strip() not in ("0", "1"):
+            raise InputFail(f"{os.path.dirname(chk['file'])}/ctest.exit: exit value {read(ce).strip()} (invalid run)")
         if "exit_file" in chk:
             ev = read(os.path.join(root, chk["exit_file"])).strip()
             if ev not in ("0", "1"):
@@ -527,6 +574,7 @@ def g_files_identical(g, root, acc):
             stamp = read(os.path.join(root, d, "stamp"))
             if acc["candidate_sha"] not in stamp:
                 raise InputFail(f"{d}: not stamped with the candidate")
+            ctest_stamp_check(root, d)
             bl = [l.split()[1] for l in stamp.splitlines() if l.startswith("base_sha ")]
             if not bl or not acc.get("base_sha") or len(acc["base_sha"]) < 12 or not bl[0].startswith(acc["base_sha"]):
                 raise InputFail(f"{d}: base not the acceptance file's base {acc.get('base_sha')}")
@@ -542,7 +590,7 @@ def g_files_identical(g, root, acc):
             texts.append(lines)
         st = [{l.split(None, 1)[0]: l.split(None, 1)[1] if " " in l else "" for l in read(os.path.join(root, d, "stamp")).splitlines()}
               for d in (da, db)]
-        for k in ("tool", "configure", "regex", "repeat", "env", "offload"):
+        for k in ("tool", "configure", "regex", "repeat", "env", "offload", "selector"):
             if st[0].get(k) != st[1].get(k):
                 raise InputFail(f"{da}/{db}: stamps differ in {k} ({st[0].get(k)} vs {st[1].get(k)})")
         if {st[0].get("source"), st[1].get("source")} != {"base_src", "src"}:
@@ -653,14 +701,15 @@ def selfcheck():
     rng = np.random.default_rng(12345)
     CAND = "c0ffee000000" + "0" * 28
     builds = {"gpu": {"tool": "nvhpc", "configure": "PGI noMPI HDF5 GPU=nvidia", "gpu": True},
-              "cpu": {"tool": "nvhpc", "configure": "PGI noMPI HDF5", "gpu": False}}
+              "cpu": {"tool": "nvhpc", "configure": "PGI noMPI HDF5", "gpu": False},
+              "igpu": {"tool": "intel", "configure": "IntelLLVM noMPI HDF5 GPU=intel", "gpu": True}}
     acc = {"candidate_sha": CAND[:12], "gpu_exclusive": True, "builds": builds, "runs": {},
            "active_lines": ["GPU tau pass (207): ACTIVE"]}
     ACT = "GPU tau pass (207): ACTIVE\n"
 
     def mkrun(name, data, info, log=ACT, build="gpu", env=(), allow=False, rc=0, seeds="1 2 3\n", debug=None,
               cand=CAND, binsha="b" * 64, gpu_before=(), timed_out=False, mutated=None, decl=True,
-              tar_built="t" * 64, offload="MANDATORY", params="p"):
+              tar_built="t" * 64, offload="MANDATORY", params="p", sel="level_zero:0", envextra=None):
         d = os.path.join(tmp, name)
         os.makedirs(d)
         with h5py.File(os.path.join(d, "data.h5"), "w") as f:
@@ -672,7 +721,10 @@ def selfcheck():
         b = dict(name=build, configure=builds[build]["configure"], ALF_FLAGS_EXT="", binary_sha256="b" * 64,
                  candidate={"sha": cand, "tar_sha256": "t" * 64}, source="src", tar_sha256_built=tar_built)
         hh = lambda f: hashlib.sha256(open(os.path.join(d, f), "rb").read()).hexdigest()
-        envd = {"OMP_TARGET_OFFLOAD": offload} if (build == "gpu" and offload) else {}
+        envd = {"OMP_TARGET_OFFLOAD": offload} if (builds[build]["gpu"] and offload) else {}
+        if build == "igpu" and sel:
+            envd["ONEAPI_DEVICE_SELECTOR"] = sel
+        envd.update(envextra or {})
         prov = {"schema": "alf-acc-prov/1", "binary_sha256": binsha, "build": b, "exit_code": rc, "timed_out": timed_out,
                 "debug_env_present": list(debug if debug is not None else [kv.split("=")[0] for kv in env]),
                 "extra_env": list(env), "gpu_before": list(gpu_before), "gpu_check_rc": 0, "load_ok": True, "env": envd,
@@ -721,6 +773,20 @@ def selfcheck():
     mkrun("A_nooffload", base, ok_info, offload=None)
     mkrun("B_params", base, ok_info, build="cpu", log="", params="q")
     mkrun("A_tamper", base, ok_info)
+    mkrun("A_in", base, ok_info, build="igpu")
+    mkrun("A_in_nosel", base, ok_info, build="igpu", sel=None)
+    mkrun("A_in_sel1", base, ok_info, build="igpu", sel="level_zero:1")
+    mkrun("A_in_ze", base, ok_info, build="igpu", envextra={"ZE_AFFINITY_MASK": "0"})
+    mkrun("A_laleak", base, ok_info, debug=["ALF_LA_TEST_X"])
+    mkrun("A_ladecl", base, ok_info, env=["ALF_LA_TEST_X=1"])
+    mkrun("A_laenv", base, ok_info, debug=[], envextra={"ALF_LA_TEST_X": "1"})
+    mkrun("A_in_order", base, ok_info, build="igpu", envextra={"ZE_ENABLE_PCI_ID_DEVICE_ORDER": "1"})
+    builds["gpuf"] = dict(builds["gpu"], forbidden_lines=["FORBIDDEN B"])
+    builds["cpuf"] = dict(builds["cpu"], forbidden_lines=["FORBIDDEN B"])
+    mkrun("A_forbid_b", base, ok_info, log=ACT + "FORBIDDEN B\n", build="gpuf")
+    mkrun("B_forbid_cpu", {k: v * (1 + 1e-12) for k, v in base.items()}, ok_info, build="cpuf", log="FORBIDDEN B\n")
+    mkrun("A_forbid", base, ok_info, log=ACT + " GPU tau pass (207): ACTIVE on the device\n")
+    acc["runs"]["A_forbid"]["forbidden_lines"] = ["GPU tau pass (207): ACTIVE on the device"]
     open(os.path.join(tmp, "A_tamper", "run.log"), "a").write("edited later\n")
     nan_info = info(float("nan"), 1e-6, 6e-12, 5e-7)
     assert "NAN" in nan_info.upper()
@@ -754,6 +820,17 @@ def selfcheck():
              ("same_seed no MANDATORY offload", dict(ss, pairs=[["A_nooffload", "B", NB]]), "INPUT_ERROR"),
              ("same_seed parameters differ", dict(ss, pairs=[["A", "B_params", NB]]), "INPUT_ERROR"),
              ("same_seed output edited later", dict(ss, pairs=[["A_tamper", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed GPU=intel pinned", dict(ss, pairs=[["A_in", "B", NB]]), "PASS"),
+             ("same_seed GPU=intel no selector", dict(ss, pairs=[["A_in_nosel", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed GPU=intel other selector", dict(ss, pairs=[["A_in_sel1", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed GPU=intel ZE_AFFINITY_MASK", dict(ss, pairs=[["A_in_ze", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed leaked ALF_LA_TEST_", dict(ss, pairs=[["A_laleak", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed ALF_LA_TEST_ no allow_debug", dict(ss, pairs=[["A_ladecl", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed ALF_LA_TEST_ only in env", dict(ss, pairs=[["A_laenv", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed GPU=intel device reorder var", dict(ss, pairs=[["A_in_order", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed forbidden line", dict(ss, pairs=[["A_forbid", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed forbidden line (build)", dict(ss, pairs=[["A_forbid_b", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed forbidden line, CPU run ignored", dict(ss, pairs=[["A", "B_forbid_cpu", NB]]), "PASS"),
              ("replay identical", dict(rp, pairs=[["A", "A_twin"]]), "PASS"),
              ("replay 1e-12", dict(rp, pairs=[["A", "B"]], gpu_exclusive=False), "FAIL"),
              ("replay Precision Max only", dict(rp, pairs=[["A", mkrun("A_pmax", base, info(5e-11, 1.0000001e-6, 6e-12, 5e-7))]]), "FAIL"),
@@ -845,6 +922,47 @@ def selfcheck():
         v, r, why = run_gate(g, tmp, acc)
         bad += v != exp
         print(f"{'ok ' if v == exp else 'BAD'} {name:36s} expected {exp:11s} got {v:11s} {('(' + why + ')') if why else ''}"[:220])
+    v, r, why = run_gate(dict(ss, pairs=[["A", "B", NB]]), tmp, dict(acc, forbidden_lines=["GPU tau pass (207): ACTIVE"]))
+    bad += v != "INPUT_ERROR"
+    print(f"{'ok ' if v == 'INPUT_ERROR' else 'BAD'} same_seed forbidden line (file level)  expected INPUT_ERROR got {v}")
+    os.makedirs(os.path.join(tmp, "gx"))
+    open(os.path.join(tmp, "gx", "stamp"), "w").write(CAND + "\n")
+    open(os.path.join(tmp, "gx", "ctest.log"), "w").write("100% tests passed, 0 tests failed out of 52\n")
+    open(os.path.join(tmp, "gx", "ctest.exit"), "w").write("2\n")
+    v, r, why = run_gate(dict(lg, checks=[{"file": "gx/ctest.log", "regex": ck["regex"], "stamp_file": "gx/stamp", "equals": [100, 0, 52]}]), tmp, acc)
+    bad += v != "INPUT_ERROR"
+    print(f"{'ok ' if v == 'INPUT_ERROR' else 'BAD'} log_regex INVALID ctest.exit, no exit_file  expected INPUT_ERROR got {v}")
+    CS = CAND + "\nrepeat 1\nconfigure IntelLLVM devel noMPI GPU=intel\n"
+
+    def ctdir(name, stamp, log, ex):
+        os.makedirs(os.path.join(tmp, name))
+        open(os.path.join(tmp, name, "stamp"), "w").write(stamp)
+        open(os.path.join(tmp, name, "ctest.log"), "w").write(log)
+        if ex is not None:
+            open(os.path.join(tmp, name, "ctest.exit"), "w").write(ex + "\n")
+        return {"file": f"{name}/ctest.log", "regex": ck["regex"], "stamp_file": f"{name}/stamp", "equals": [100, 0, 52]}
+    OKL = "100% tests passed, 0 tests failed out of 52\n"
+    more = [("ctest stamp complete, pinned", ctdir("c_ok", CS + "offload MANDATORY\nselector level_zero:0\nend x\n", OKL, "0"), "PASS"),
+            ("ctest exit 1, no exit_file: evaluated", ctdir("c_e1", CS + "offload MANDATORY\nselector level_zero:0\nend x\n", "98% tests passed, 1 tests failed out of 52\n", "1"), "FAIL"),
+            ("ctest no ctest.exit (interrupted)", ctdir("c_noex", CS + "offload MANDATORY\nselector level_zero:0\nend x\n", OKL, None), "INPUT_ERROR"),
+            ("ctest no end line (interrupted)", ctdir("c_noend", CS + "offload MANDATORY\nselector level_zero:0\n", OKL, "0"), "INPUT_ERROR"),
+            ("ctest GPU stamp without MANDATORY", ctdir("c_nooff", CS + "offload none\nselector level_zero:0\nend x\n", OKL, "0"), "INPUT_ERROR"),
+            ("ctest GPU=intel other selector", ctdir("c_sel1", CS + "offload MANDATORY\nselector none\nend x\n", OKL, "0"), "INPUT_ERROR"),
+            ("ctest old stamp without selector line", ctdir("c_old", CS + "offload MANDATORY\nend x\n", OKL, "0"), "PASS"),
+            ("ctest lowercase gpu=intel token", ctdir("c_tok", CAND + "\nrepeat 1\nconfigure IntelLLVM devel noMPI gpu=intel\noffload none\nend x\n", OKL, "0"), "INPUT_ERROR")]
+    for name, chk, exp in more:
+        v, r, why = run_gate(dict(lg, checks=[chk]), tmp, acc)
+        bad += v != exp
+        print(f"{'ok ' if v == exp else 'BAD'} {name:36s} expected {exp:11s} got {v:11s} {('(' + why + ')') if why else ''}"[:220])
+    BS = "b" * 12
+    for nm, src, sel in (("fa", "src", "level_zero:0"), ("fb", "base_src", "none")):
+        os.makedirs(os.path.join(tmp, nm))
+        open(os.path.join(tmp, nm, "stamp"), "w").write(f"{CAND}\nbase_sha {BS}\nsource {src}\ntool intel\nconfigure X\nregex all\nrepeat 1\nenv none\noffload none\nselector {sel}\nend x\n")
+        open(os.path.join(tmp, nm, "ctest.log"), "w").write("same\n")
+        open(os.path.join(tmp, nm, "ctest.exit"), "w").write("0\n")
+    v, r, why = run_gate({"type": "files_identical", "id": "fi", "file": "ctest.log", "pairs": [["fa", "fb"]]}, tmp, dict(acc, base_sha=BS))
+    bad += v != "INPUT_ERROR"
+    print(f"{'ok ' if v == 'INPUT_ERROR' else 'BAD'} files_identical selector mismatch       expected INPUT_ERROR got {v} ({why})"[:220])
     acc2 = dict(acc, gates=[dict(ss, pairs=[["A", "B", NB]])],
                 controls=[{"id": "c_missing", "like": "ss", "replace": {"pairs": [["A_nowhere", "B", NB]]}, "expect": "FAIL"},
                           {"id": "c_real", "like": "ss", "replace": {"pairs": [["A_small", "B_small", NB]]}, "expect": "PASS"}])
@@ -875,6 +993,27 @@ def selfcheck():
     ok_l &= any("not found in docs/gpu/DECISIONS.md" in e for e in lint_errors(base_acc))
     bad += not ok_l
     print(f"{'ok ' if ok_l else 'BAD'} lint: report_only without a real owner decision, unrelated control runs")
+    # lint: ALF_LA_TEST_* is a debug variable (only in faults gates and controls); no declared selector on GPU=intel
+    la_acc = {"ticket": "zz9", "builds": builds, "configs": {"x": {}},
+              "runs": {"q1": {"build": "gpu", "config": "x", "env": ["ALF_LA_TEST_X=1"], "allow_debug": True},
+                       "q2": {"build": "cpu", "config": "x"},
+                       "q3": {"build": "igpu", "config": "x", "env": ["ONEAPI_DEVICE_SELECTOR=level_zero:1"]}},
+              "gates": [dict(ss, pairs=[["q1", "q2", 1]])], "controls": [], "_status": "DRAFT"}
+    le = lint_errors(la_acc)
+    ok_x = any("run q1 carries fault/numerics variables" in e for e in le) and any(e.startswith("run q3:") and "ONEAPI_DEVICE_SELECTOR" in e for e in le)
+    la_acc["gates"] = [{"type": "faults", "id": "ft", "cases": {"q1": "x"}}]
+    ok_x &= not any("carries fault/numerics" in e for e in lint_errors(la_acc))
+    la_acc["builds"] = dict(builds, igpu=dict(builds["igpu"], gpu=False))
+    la_acc["ctests"] = [{"id": "ct1", "tool": "intel", "configure": "IntelLLVM devel noMPI GPU=intel", "env": ["ZE_AFFINITY_MASK=0"], "gpu": True},
+                        {"id": "ct2", "tool": "intel", "configure": "IntelLLVM devel noMPI GPU=intel"},
+                        {"id": "ct3", "tool": "intel", "configure": "IntelLLVM devel noMPI gpu=intel"}]
+    la_acc["forbidden_lines"] = "GPU tau pass (207): ACTIVE"
+    le = lint_errors(la_acc)
+    ok_x &= any(e.startswith("build igpu:") and "does not match" in e for e in le) and any(e.startswith("ctest ct1:") and "declared" in e for e in le)
+    ok_x &= any(e.startswith("ctest ct2:") and "does not match" in e for e in le) and any(e.startswith("ctest ct3:") and "configure token" in e for e in le)
+    ok_x &= any(e.startswith("file: forbidden_lines") for e in le)
+    bad += not ok_x
+    print(f"{'ok ' if ok_x else 'BAD'} lint: ALF_LA_TEST_ in a gate run, faults gate exempt, selector declared on GPU=intel, gpu flag, ctest pin")
     shutil.rmtree(tmp)
     print("selfcheck:", "PASS" if not bad else f"FAIL ({bad} wrong)")
     return 0 if not bad else 1
@@ -898,9 +1037,31 @@ def lint_errors(acc):
             errs.append(f"run {rid}: unknown config {r.get('config')}")
         if "gpu_active" in r:
             errs.append(f"run {rid}: 'gpu_active' is not allowed (every GPU run must show the ACTIVE lines)")
-    for b in builds:
+        if "GPU=intel" in builds.get(r.get("build"), {}).get("configure", "").split():
+            pin = [kv for kv in r.get("env", []) if kv.split("=")[0] in ("ONEAPI_DEVICE_SELECTOR", "ZE_AFFINITY_MASK")]
+            if pin:
+                errs.append(f"run {rid}: {pin} declared for a GPU=intel build (acc_run.sh sets the selector and refuses these)")
+    for b, bv in builds.items():
         if b not in used_builds:
             errs.append(f"build {b}: declared but unused")
+        if bad_gpu_tokens(bv.get("configure", "")):
+            errs.append(f"build {b}: configure token {bad_gpu_tokens(bv.get('configure', ''))} (write GPU=none, GPU=nvidia or GPU=intel)")
+        gtok = any(t.startswith("GPU=") and t != "GPU=none" for t in bv.get("configure", "").split())
+        if bv.get("gpu", True) != gtok:
+            errs.append(f"build {b}: 'gpu' {bv.get('gpu', True)} does not match its configure line (GPU checks would be skipped or misapplied)")
+    for t in acc.get("ctests", []):
+        pin = [kv for kv in t.get("env", []) if kv.split("=")[0] in ("ONEAPI_DEVICE_SELECTOR", "OMP_TARGET_OFFLOAD", "CUDA_VISIBLE_DEVICES") + DEVICE_ORDER_VARS]
+        if pin:
+            errs.append(f"ctest {t['id']}: {pin} declared (acc_ctest.sh sets or refuses these)")
+        if bad_gpu_tokens(t.get("configure", "")):
+            errs.append(f"ctest {t['id']}: configure token {bad_gpu_tokens(t.get('configure', ''))} (write GPU=none, GPU=nvidia or GPU=intel)")
+        gtok = any(x.startswith("GPU=") and x != "GPU=none" for x in t.get("configure", "").split())
+        if bool(t.get("gpu")) != gtok:
+            errs.append(f"ctest {t['id']}: 'gpu' {t.get('gpu')} does not match its configure line (load/lock checks)")
+    for where, obj in [("file", acc)] + [(f"build {k}", v) for k, v in builds.items()] + [(f"run {k}", v) for k, v in runs.items()]:
+        fl = obj.get("forbidden_lines", [])
+        if not isinstance(fl, list) or not all(isinstance(x, str) and x.strip() for x in fl):
+            errs.append(f"{where}: forbidden_lines must be a list of non-empty strings")
     if not draft:
         for c, v in configs.items():
             if "parameters_sha256" not in v:
@@ -934,7 +1095,7 @@ def lint_errors(acc):
                 errs.append(f"gate {g['id']}: uses the mutated copy {x}")
             else:
                 ok_vars = GATE_DEBUG_OK + (SELFTEST_ONLY if g["type"] == "selftest" else ())
-                bad = [kv for kv in runs[x].get("env", []) if kv.split("=")[0].startswith(("ALF_GPU_", "ALFSH_"))
+                bad = [kv for kv in runs[x].get("env", []) if kv.split("=")[0].startswith(DEBUG_PREFIXES)
                        and kv.split("=")[0] not in ok_vars and g["type"] != "faults"]
                 if bad:
                     errs.append(f"gate {g['id']}: run {x} carries fault/numerics variables {bad} (allowed only in controls)")

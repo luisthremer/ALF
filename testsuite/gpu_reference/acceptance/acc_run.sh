@@ -3,10 +3,15 @@
 #   usage: acc_run.sh RUNDIR BINARY CONFIGDIR [--allow-debug] [VAR=value ...]
 #     RUNDIR    must not exist (created atomically; evidence is never overwritten);
 #     CONFIGDIR a prepared ALF run directory (parameters, seeds), copied into RUNDIR;
-#     VAR=value extra variables. Every ALF_GPU_* / ALFSH_* variable needs --allow-debug (given by the driver only for
-#               runs the acceptance file declares allow_debug); other variables only from the whitelist below.
+#     VAR=value extra variables. Every ALF_GPU_* / ALFSH_* / ALF_LA_TEST_* variable needs --allow-debug (given by the
+#               driver only for runs the acceptance file declares allow_debug); other variables only from the whitelist
+#               below.
 #   Environment: env -i + the build tool's env file + OMP/BLAS threads = 1 + TMPDIR (inside the run's tmp/) + for
-#   GPU builds OMP_TARGET_OFFLOAD=MANDATORY (no silent host fallback). Timeout ACC_TIMEOUT (default 900 s), then
+#   GPU builds OMP_TARGET_OFFLOAD=MANDATORY (no silent host fallback) + for GPU=intel builds
+#   ONEAPI_DEVICE_SELECTOR=level_zero:0 (the discrete GPU; the iGPU of `intel` has no FP64), set here like
+#   OMP_TARGET_OFFLOAD, so not part of the declared env, exported after the env file (which must not set
+#   ZE_AFFINITY_MASK, ZE_ENABLE_PCI_ID_DEVICE_ORDER, ZE_FLAT_DEVICE_HIERARCHY or SYCL_DEVICE_FILTER: exit 2); for GPU=intel builds ONEAPI_DEVICE_SELECTOR and ZE_AFFINITY_MASK are refused as extra
+#   variables; verdict.py checks the recorded env; a refusal reason goes to RUNDIR/refused.txt. Timeout ACC_TIMEOUT (default 900 s), then
 #   SIGKILL after 30 s; rc 124 or 137 = timeout. With ACC_GPU_LOCK set, GPU builds run under flock on that file.
 #   Writes RUNDIR/provenance.json.
 # Exit code: the program's exit code; 2 on a usage or setup error (nothing run).
@@ -20,13 +25,20 @@ ls "$CFG" | grep -q -E '^(data\.h5|info|confout|confin)' && { echo "refusing: $C
 ENVX=()
 for kv in "$@"; do
   case "$kv" in
-    ALF_GPU_*=*|ALFSH_*=*) [ $ALLOW = 1 ] || { echo "refusing debug/fault variable without --allow-debug: $kv"; exit 2; }; ENVX+=("$kv");;
+    ALF_GPU_*=*|ALFSH_*=*|ALF_LA_TEST_*=*) [ $ALLOW = 1 ] || { echo "refusing debug/fault variable without --allow-debug: $kv"; exit 2; }; ENVX+=("$kv");;
     CUDA_MPS_PIPE_DIRECTORY=*|CUDA_MPS_LOG_DIRECTORY=*|CUBLAS_WORKSPACE_CONFIG=*|ONEAPI_DEVICE_SELECTOR=*|ZE_AFFINITY_MASK=*) ENVX+=("$kv");;
     *=*) echo "refusing variable outside the whitelist: ${kv%%=*}"; exit 2;;
     *) echo "bad argument $kv"; exit 2;;
   esac
 done
-read -r TOOL GPUB < <(python3 -c "import json,sys; b=json.load(open(sys.argv[1])); print(b['tool'], 1 if ('GPU=nvidia' in b['configure'] or 'GPU=intel' in b['configure']) else 0)" "$BJ") || { echo "bad build record"; exit 2; }
+read -r TOOL GPUB GPUI < <(python3 -c "import json,sys; b=json.load(open(sys.argv[1])); c=b['configure'].split(); bad=[t for t in c if t.upper().startswith('GPU=') and t not in ('GPU=none','GPU=nvidia','GPU=intel')]; assert not bad, bad; print(b['tool'], 1 if ('GPU=nvidia' in c or 'GPU=intel' in c) else 0, 1 if 'GPU=intel' in c else 0)" "$BJ") || { echo "bad build record"; exit 2; }
+SEL=""
+if [ "$GPUI" = 1 ]; then
+  for kv in "${ENVX[@]}"; do
+    case "$kv" in ONEAPI_DEVICE_SELECTOR=*|ZE_AFFINITY_MASK=*) echo "refusing $kv: GPU=intel runs use ONEAPI_DEVICE_SELECTOR=level_zero:0"; exit 2;; esac
+  done
+  SEL="ONEAPI_DEVICE_SELECTOR=level_zero:0"
+fi
 ENVF=$HOME/alf-gpu/env/$TOOL.sh; [ -f "$ENVF" ] || { echo "no env file $ENVF"; exit 2; }
 mkdir -p "$(dirname "$D")" && mkdir "$D" || { echo "refusing: $D exists or cannot be created"; exit 2; }
 cp -r "$CFG/." "$D/" || exit 2
@@ -46,10 +58,26 @@ LOCK=(); [ "$GPUB" = 1 ] && [ -n "${ACC_GPU_LOCK:-}" ] && LOCK=(flock "$ACC_GPU_
 date -Is > start.txt
 "${LOCK[@]}" env -i HOME="$HOME" USER="$USER" LANG=C LC_ALL=C PATH=/usr/bin:/bin TMPDIR="$D/tmp" $OFF "${ENVX[@]}" \
   bash --noprofile --norc -c '
-  . "$1" > env_file.log 2>&1 || { echo "env file failed: $1" >&2; exit 2; }
-  export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
-  env | sort > env.txt
-  exec timeout -k 30 "$2" "$0" > run.log 2>&1' "$BIN" "$ENVF" "$T"
+  # copied into readonly names: an env file may reset the positionals or reuse short variable names; builtin/command
+  # so that functions the env file defines cannot stand in for export, cd, env or grep
+  readonly __acc_bin="$0" __acc_envf="$1" __acc_t="$2" __acc_sel="$3" __acc_dir="$4" __acc_off="$5"
+  __acc_no() { builtin echo "$1" | command tee "$__acc_dir/refused.txt" >&2; builtin exit 2; }
+  readonly -f __acc_no
+  . "$__acc_envf" > "$__acc_dir/env_file.log" 2>&1 || __acc_no "env file failed: $__acc_envf"
+  command grep -q "readonly variable\|readonly function\|cannot unset" "$__acc_dir/env_file.log" && __acc_no "env file tried to change the harness variables: refusing"
+  builtin cd "$__acc_dir" || __acc_no "cannot return to the run directory"
+  if [ -n "$__acc_off" ]; then   # GPU builds: offload MANDATORY after the env file too
+    builtin export "$__acc_off"; [ "$OMP_TARGET_OFFLOAD" = MANDATORY ] || __acc_no "offload not in effect: refusing"
+  fi
+  if [ -n "$__acc_sel" ]; then   # GPU=intel: pin the device after the env file, so the env file cannot override it
+    [ -n "${ZE_AFFINITY_MASK+x}${ZE_ENABLE_PCI_ID_DEVICE_ORDER+x}${ZE_FLAT_DEVICE_HIERARCHY+x}${SYCL_DEVICE_FILTER+x}${LIBOMPTARGET_PLUGIN+x}${LIBOMPTARGET_DEVICETYPE+x}${LIBOMPTARGET_DEVICES+x}${SYCL_DEVICE_ALLOWLIST+x}" ] && \
+      __acc_no "env file sets a device-steering variable (ZE_AFFINITY_MASK, ZE_ENABLE_PCI_ID_DEVICE_ORDER, ZE_FLAT_DEVICE_HIERARCHY, SYCL_DEVICE_FILTER, LIBOMPTARGET_PLUGIN/DEVICETYPE/DEVICES, SYCL_DEVICE_ALLOWLIST): refusing"
+    builtin export "$__acc_sel"
+    [ "$ONEAPI_DEVICE_SELECTOR" = level_zero:0 ] || __acc_no "device selector not in effect: refusing"
+  fi
+  builtin export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+  command env | command sort > env.txt
+  exec timeout -k 30 "$__acc_t" "$__acc_bin" > run.log 2>&1' "$BIN" "$ENVF" "$T" "$SEL" "$D" "$OFF"
 rc=$?
 date -Is > end.txt
 GPUCK2=-1
@@ -74,7 +102,7 @@ rc = int(rc)
 p = {"schema": "alf-acc-prov/1", "run_dir": d, "binary": b, "binary_sha256": h(b), "build": json.load(open(bj)),
      "inputs": {"parameters_sha256": h(os.path.join(d, "parameters")), "seeds_sha256": h(os.path.join(d, "seeds"))},
      "extra_env": extra, "allow_debug": allow == "1", "env_file": envf, "env_file_sha256": h(envf),
-     "env": env, "debug_env_present": sorted(k for k in env if k.startswith(("ALF_GPU_", "ALFSH_"))),
+     "env": env, "debug_env_present": sorted(k for k in env if k.startswith(("ALF_GPU_", "ALFSH_", "ALF_LA_TEST_"))),
      "gpu_check_rc": int(ck), "gpu_check_after_rc": int(ck2), "load_ok": loadok == "1",
      "load_before": open(os.path.join(d, "load_before.txt")).read().split(),
      "gpu_before": open(os.path.join(d, "gpu_before.txt")).read().splitlines(),
