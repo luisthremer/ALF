@@ -62,11 +62,14 @@
 !> active sites not yet in S) flushes first if p > 0 and p + r' > N_delay; every accept, and for the
 !> submatrix scheme every hook after its padding and transform, flushes afterwards if p >= N_delay.
 !> So the arrays cannot overflow (N_delay = 1: flush after every accept, as for rank 1).
-!> Submatrix accuracy guard (spec Sec. 6, risk "forward error"): in a block that contains an
-!> accepted non-diagonal update (or a non-diagonal hook transform of M) the threshold N_delay is replaced by min(N_delay, K_ND), K_ND =
-!> N_P_LIM. The M-form's forward error grows with the number of non-commuting updates per block
-!> (G = G0 - G0(:,S) M (...) cancels when |G0| |M| |G0| >> |G|); measured at the unit tier, case
-!> rep_mixed: 5.0e-10 (> TOL_UNIT) at k = Ndim = 16 without the guard, 3.8e-11 with it.
+!> Submatrix accuracy guard (spec D15): in a block that contains an accepted non-diagonal update or a
+!> non-diagonal hook transform of M, the threshold N_delay is replaced by min(N_delay, K_ND), K_ND = 1,
+!> i.e. such a block is flushed right away: the M-form is used for diagonal content only. Reason: with
+!> non-diagonal content the M-form's forward error per block reached ~1e-11 (G = G0 - G0(:,S) M (...)
+!> cancels), which accumulated in the Kondo statistical run to Precision Green max 2.6e-9 vs 4.0e-11 for
+!> standard (same trajectory); K_ND = 2 or 1 restores 4.9e-11, K_ND = 4 and 8 do not (3.2e-9, 2.6e-9).
+!> Unit tier: rep_mixed 5.0e-10 without any guard. Delayed has no such loss and is the scheme of choice
+!> for models with non-diagonal (bond) vertices.
 !> Allocated: delayed N_cols_max = min(max(N_delay, N_P_LIM), size(Op_V,1)*N_P_LIM) (G is flushed at
 !> every slice end); submatrix N_cols_max = min(max(N_delay, N_P_LIM), Ndim) + N_P_LIM (headroom for
 !> the hook padding).
@@ -141,7 +144,7 @@ module Lowrank_update_mod
    ! ---- submatrix (M-form) ----------------------------------------------
    !> Submatrix: cap on the pending sites k of a block that contains an accepted non-diagonal update
    !> (accuracy guard, spec Sec. 6; see the module header)
-   Integer, parameter :: K_ND = N_P_LIM
+   Integer, parameter :: K_ND = 1   ! spec D15: non-diagonal content is never kept in the M-form
    Logical            :: blk_nondiag = .false.   ! the current block contains an accepted non-diagonal update
    ! S(1:k,nf_eff) pending sites, slot(site,nf_eff) position in S (0 if absent), Msub(1:k,1:k,nf_eff) = M
    ! (docs/algorithm-notes.md, section 12.1); all sized N_cols_max = capS
