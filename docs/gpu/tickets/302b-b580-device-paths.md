@@ -305,6 +305,22 @@ Process approvals without a criterion: decision 20 (no fixed B580 budget), 21 (v
 - Report: diff summary, transfers (the PLAN table is unchanged apart from the backend), s/sweep on the B580 from the run
   walls (information only).
 
+## Review, T1 and T2 record (manager)
+- **Review (a) of candidate 1 `08b095b4`:** approved. Must-fix (docs only): PLAN.md transfer row for the eps control
+  path (done, `gpu-port-302b-docs`). Nits deferred (need a re-freeze): stale comment in `gpu_stab_mod.F90`, armed line
+  "every stabilization" (the initial stabilization is not perturbed).
+- **T1 of candidate 1** (2026-10-31, dev seeds, implementer; intel `cand/agent/08b095b44ec9/`, nividia the same):
+  **Overall PASS** on both machines, 15/15 + 5/5 gates, 19/19 + 5/5 controls as expected (manager re-read both
+  `verdict.json`). Precision controls killed: eps:1e-10 Green mean ratio 642, eps:1e-12 6.92 (decision 27 predicted
+  ≈ 7). Clean precision ratios 0.77–0.99. Same seed max 4.81e-10 (12×12). compare2 m = 11, max |t| 1.26.
+- **T2 of candidate 1** (2026-10-31, fresh seeds acc1–acc3 drawn 11:05 after shipping; intel
+  `cand/mgr/08b095b44ec9/`, nividia the same; intel package versions identical to the 2026-10-30 record):
+  nividia **PASS** (5/5, 5/5). intel **Overall FAIL**: 14/15 gates PASS, all their controls as expected (eps 1e-10 and
+  1e-12 killed); **compare2 INCONCLUSIVE (INPUT_ERROR)**: `Kin` of the GPU run under-resolved (autocorrelation, 8×
+  rebinning → 14 effective bins); all 11 observables agree (max |t| 1.90, Σt² p = 0.41); null control passes (max
+  |t| 1.83); shift and null controls therefore uninformative. Not re-run (CLAUDE.md, VERIFICATION.md §3); the next
+  step is the owner's decision (precedent: 212 T1, decision 14).
+
 ## Handoff notes
 (implementer)
 
