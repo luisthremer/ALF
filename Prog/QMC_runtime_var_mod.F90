@@ -712,13 +712,8 @@ Module QMC_runtime_var
           implicit none
 
           Character (len=64) :: name
-          Integer :: i, ic
 
-          name = adjustl(Sequential_scheme)
-          do i = 1, len_trim(name)
-             ic = iachar(name(i:i))
-             if (ic >= iachar('a') .and. ic <= iachar('z')) name(i:i) = achar(ic - 32)
-          enddo
+          name = scheme_upper()
           select case (trim(name))
           case ("STANDARD")
           case ("DELAYED", "SUBMATRIX")
@@ -746,14 +741,9 @@ Module QMC_runtime_var
           implicit none
 
           Character (len=64) :: name
-          Integer :: i, ic
 
           if (.not. Lowrank_cross_slice) return
-          name = adjustl(Sequential_scheme)
-          do i = 1, len_trim(name)
-             ic = iachar(name(i:i))
-             if (ic >= iachar('a') .and. ic <= iachar('z')) name(i:i) = achar(ic - 32)
-          enddo
+          name = scheme_upper()
           if (trim(name) == "STANDARD") return
           if (N_Global_tau > 0) then
              write(error_unit,'(A,A,A,I0,A)') ' VAR_QMC: Lowrank_cross_slice = .T. with Sequential_scheme = ', &
@@ -763,5 +753,24 @@ Module QMC_runtime_var
           endif
 
         end subroutine validate_lowrank_cross_slice
+
+!--------------------------------------------------------------------
+!> @brief
+!> Sequential_scheme, left-adjusted and in upper case (ASCII), for the validation routines.
+!--------------------------------------------------------------------
+        function scheme_upper() result(name)
+
+          implicit none
+
+          Character (len=64) :: name
+          Integer :: i, ic
+
+          name = adjustl(Sequential_scheme)
+          do i = 1, len_trim(name)
+             ic = iachar(name(i:i))
+             if (ic >= iachar('a') .and. ic <= iachar('z')) name(i:i) = achar(ic - 32)
+          enddo
+
+        end function scheme_upper
         
 end Module QMC_runtime_var

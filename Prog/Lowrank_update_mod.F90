@@ -86,7 +86,10 @@
 !> carried through a hopping wrap is first converted to delayed form,
 !>   X(:,1:k) = G0(:,S) M,  Y(:,m) = e_{S_m} - G0(S_m,:)^T  (so that G = G0 - X Y^T exactly),
 !> and continues as a delayed block (delayed accepts, hooks, capacity, no K_ND guard) until the next
-!> flush, which returns lr_mode to lr_scheme. G must be flushed before anything else reads it: main.F90
+!> flush, which returns lr_mode to lr_scheme. If that flush is the capacity pre-flush of an accept, the
+!> accept is applied in the submatrix form with the submatrix capacity and the K_ND guard (Accept_capacity
+!> is re-evaluated after the mode change; debug builds assert the guard, Dbg_check_nd_guard). Hooks cannot
+!> change the mode mid-way (their only flush is the final capacity flush). G must be flushed before anything else reads it: main.F90
 !> calls Lowrank_flush at every read point when the key is on. Refused (terminate) with
 !> N_Global_tau > 0. Lowrank_carry_similarity(GR, Sm, Sminv) is the dense analogue for the unit test.
 !> Without the key nothing of this is allocated or called.
@@ -204,6 +207,9 @@ module Lowrank_update_mod
    Integer (Kind=Kind(0_8))               :: dbg_n_pad_acc  = 0   ! submatrix: sites added to S by accepts
    Integer (Kind=Kind(0_8))               :: dbg_n_pad_hook = 0   ! submatrix: sites padded by hooks (P \ S)
    Integer (Kind=Kind(0_8))               :: dbg_n_carry = 0      ! cross-slice: pending blocks carried through a hopping wrap
+   ! Submatrix M-form holds non-diagonal content (an accepted non-diagonal update or a non-diagonal hook
+   ! transform), tracked independently of blk_nondiag for the K_ND guard assertion (Dbg_check_nd_guard)
+   Logical                                :: dbg_nd_in_M = .false.
    Integer (Kind=Kind(0_8))               :: dbg_n_conv  = 0      ! cross-slice: submatrix blocks converted to delayed form
 #endif
 
@@ -814,7 +820,7 @@ contains
 
       Complex (Kind=Kind(0.d0)) :: z
       Complex (Kind=Kind(0.d0)) :: Mi(N_P_LIM,N_P_LIM), K(N_P_LIM,N_P_LIM)
-      Integer                   :: nf, nf_eff, p, j, r, m, info, ncap, kp
+      Integer                   :: nf, nf_eff, p, j, r, m, info, ncap, kp, mode_before
       Logical                   :: nd_here
       Integer                   :: r_add(lr_N_FL_eff), ipiv(N_P_LIM)
 #ifdef ALF_LOWRANK_DEBUG
@@ -849,21 +855,25 @@ contains
       ! Capacity (D5): flush first if a flavour with pending rank p > 0 would exceed N_delay (delayed:
       ! or the allocated capacity). The proposal cache stays valid: G itself does not change (submatrix:
       ! after a flush k = 0, and the cached W, G0(P_a,S) are not used).
-      ncap = min(lr_N_delay, N_cols_max)
+      ! nd_here: this accept updates a non-diagonal flavour (computed in every mode, see below)
       nd_here = .false.
-      if (lr_mode == SCHEME_SUBMATRIX) then
-         ! Accuracy guard: a block with an accepted non-diagonal update is capped at K_ND pending sites
-         Do nf_eff = 1,N_FL_eff
-            r = prop_r(nf_eff)
-            if (r == 0) cycle
-            if (all(prop_Delta(1:r,nf_eff) == czero)) cycle      ! D14: no update in this flavour
-            if (.not. Op_V(n_op,Calc_Fl_map(nf_eff))%diag) nd_here = .true.
-         Enddo
-         ncap = lr_N_delay
-         if (nd_here .or. blk_nondiag) ncap = min(lr_N_delay, K_ND)
+      Do nf_eff = 1,N_FL_eff
+         r = prop_r(nf_eff)
+         if (r == 0) cycle
+         if (all(prop_Delta(1:r,nf_eff) == czero)) cycle      ! D14: no update in this flavour
+         if (.not. Op_V(n_op,Calc_Fl_map(nf_eff))%diag) nd_here = .true.
+      Enddo
+      call Accept_capacity(nd_here, ncap)
+      if (any(n_cols > 0 .and. n_cols + r_add > ncap)) then
+         mode_before = lr_mode
+         call Lowrank_flush(GR)
+         ! Cross-slice: the flush may have returned a converted (delayed-form) block to the submatrix form
+         ! (lr_mode = lr_scheme), so this accept now takes the submatrix branch: the capacity, including the
+         ! accuracy guard K_ND (spec D15), must be that of the mode the accept is applied in. Without the
+         ! key lr_mode never changes here and ncap is kept as before.
+         if (lr_mode /= mode_before) call Accept_capacity(nd_here, ncap)
       endif
-      if (any(n_cols > 0 .and. n_cols + r_add > ncap)) call Lowrank_flush(GR)
-      if (nd_here) blk_nondiag = .true.
+      if (nd_here .and. lr_mode == SCHEME_SUBMATRIX) blk_nondiag = .true.
 
 #ifdef ALF_LOWRANK_DEBUG
       ! Shadow: G before the first accept after a flush is G0; then the rank-r Woodbury update
@@ -1016,6 +1026,9 @@ contains
             if (all(prop_Delta(1:r,nf_eff) == czero)) cycle      ! D14: no padding, no change
             nf = Calc_Fl_map(nf_eff)
             j  = n_cols(nf_eff)                                   ! k (0 after a capacity flush)
+#ifdef ALF_LOWRANK_DEBUG
+            if (.not. Op_V(n_op,nf)%diag) dbg_nd_in_M = .true.
+#endif
             ! Pad S with the active sites not yet pending: zero rows / columns of M (exact)
             kp = j
             do m = 1, r
@@ -1080,8 +1093,29 @@ contains
 #endif
       ! Flush when a flavour's pending rank reaches N_delay (delayed: or the capacity)
       if (maxval(n_cols) >= ncap) call Lowrank_flush(GR)
+#ifdef ALF_LOWRANK_DEBUG
+      call Dbg_check_nd_guard(n_op, nt, "Lowrank_accept")
+#endif
 
    end subroutine Lowrank_accept
+
+!--------------------------------------------------------------------
+!> @brief
+!> Capacity (D5) of an accept in the current representation lr_mode: delayed min(N_delay, N_cols_max);
+!> submatrix N_delay, or min(N_delay, K_ND) if this accept (nd_here) or the current block (blk_nondiag)
+!> has non-diagonal content (accuracy guard, spec D15).
+!--------------------------------------------------------------------
+   subroutine Accept_capacity(nd_here, ncap)
+      Implicit none
+      Logical, Intent(In)  :: nd_here
+      Integer, Intent(Out) :: ncap
+      if (lr_mode == SCHEME_SUBMATRIX) then
+         ncap = lr_N_delay
+         if (nd_here .or. blk_nondiag) ncap = min(lr_N_delay, K_ND)
+      else
+         ncap = min(lr_N_delay, N_cols_max)
+      endif
+   end subroutine Accept_capacity
 
 !--------------------------------------------------------------------
 !> @author
@@ -1343,6 +1377,9 @@ contains
                ! A non-diagonal transform mixes pending rows/columns: the block counts as non-diagonal for the
                ! accuracy guard K_ND, as after a non-diagonal accept (Task 5 review, minor 1)
                blk_nondiag = .true.
+#ifdef ALF_LOWRANK_DEBUG
+               dbg_nd_in_M = .true.
+#endif
                ! Partial overlap with a non-diagonal wrap: pad P \ S first (zeros only, no G0 read)
                if (nov < N) then
                   do i = 1,N
@@ -1422,6 +1459,9 @@ contains
             if (maxval(n_cols) >= lr_N_delay) call Lowrank_flush(GR)
          endif
       endif
+#ifdef ALF_LOWRANK_DEBUG
+      call Dbg_check_nd_guard(n_op, nt, "Lowrank_wrap_hook")
+#endif
 
    end subroutine Lowrank_wrap_hook
 
@@ -1549,6 +1589,9 @@ contains
       n_cols = 0
       blk_nondiag = .false.
       lr_mode = lr_scheme          ! a converted (cross-slice) submatrix block returns to the submatrix form
+#ifdef ALF_LOWRANK_DEBUG
+      dbg_nd_in_M = .false.
+#endif
 #ifdef ALF_LOWRANK_DEBUG
       ! n_cols = 0 and n_pend > 0: Lowrank_current_G returns GR, which must equal the shadow
       call Lowrank_debug_check(GR, dbg_last_nop, dbg_last_nt, "Lowrank_flush (n_op, nt of last accept)")
@@ -1698,6 +1741,9 @@ contains
       Enddo
       lr_mode     = SCHEME_DELAYED
       blk_nondiag = .false.          ! the K_ND guard concerns the M-form only
+#ifdef ALF_LOWRANK_DEBUG
+      dbg_nd_in_M = .false.
+#endif
 #ifdef ALF_LOWRANK_DEBUG
       dbg_n_conv = dbg_n_conv + 1
       call Lowrank_debug_check(GR, dbg_last_nop, dbg_last_nt, "Lowrank_to_delayed (n_op, nt of last accept)")
@@ -1999,6 +2045,24 @@ contains
 !> to S by accepts and padded by hooks. Called after every flush, so the file holds the totals of
 !> the run when it ends.
 !--------------------------------------------------------------------
+   subroutine Dbg_check_nd_guard(n_op, nt, where)
+!> Debug builds only: the submatrix accuracy guard (spec D15). After an accept or a hook (after its
+!> capacity flush), a block whose M-form holds non-diagonal content (dbg_nd_in_M, tracked independently of
+!> blk_nondiag) must have been flushed at min(N_delay, K_ND) pending sites, and blk_nondiag must be set.
+!> Terminates otherwise.
+      Implicit none
+      Integer,           Intent(In) :: n_op, nt
+      Character (len=*), Intent(In) :: where
+      if (lr_mode /= SCHEME_SUBMATRIX .or. .not. dbg_nd_in_M) return
+      if (.not. blk_nondiag .or. maxval(n_cols) >= min(lr_N_delay, K_ND)) then
+         Write(error_unit,'(A,A)') ' Lowrank_debug: K_ND guard violated (non-diagonal content kept in the M-form) at ', &
+              &                    trim(where)
+         Write(error_unit,'(A,I0,A,I0,A,I0,A,L1,A,I0)') '   n_op = ', n_op, ', nt = ', nt, ', max pending sites = ', &
+              &   maxval(n_cols), ', blk_nondiag = ', blk_nondiag, ', K_ND = ', K_ND
+         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      endif
+   end subroutine Dbg_check_nd_guard
+
    subroutine Lowrank_debug_summary()
       Implicit none
       Integer :: unit_dbg
