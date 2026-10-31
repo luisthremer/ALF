@@ -44,12 +44,15 @@
 !>
 !> State per computed flavour nf_eff = 1..N_FL_eff (flavour Calc_Fl_map(nf_eff)):
 !>  *  delayed  : G = G0 - X Y^T, X(Ndim, N_cols_max, nf_eff), Y(Ndim, N_cols_max, nf_eff)
-!>  *  submatrix: site list S(N_delay, nf_eff), slot(Ndim, nf_eff) (site -> position, 0 if absent),
-!>                Dvec(N_delay, nf_eff), Ginv(N_delay, N_delay, nf_eff)
+!>  *  submatrix: G = G0 - G0(:,S) Ginv D (E_S^T - G0(S,:)), with the pending sites
+!>                S(1:k, nf_eff), slot(Ndim, nf_eff) (site -> position in S, 0 if absent),
+!>                D = diag(Dvec(1:k, nf_eff)) and Ginv(1:k, 1:k, nf_eff) = Gamma~^{-1},
+!>                Gamma~ = I_k + D (I - G0)_SS; k = n_cols(nf_eff) (docs/algorithm-notes.md, section 4).
+!>                A vertex whose site is already pending flushes G first (Lowrank_propose).
 !> Columns are counted in vectors (n_cols(nf_eff)), N_cols_max = N_delay*N_P_max, so a rank-N_P
 !> extension only changes the column bookkeeping.
 !>
-!> Debug mode (-DALF_LOWRANK_DEBUG, delayed scheme): a shadow Gsh(Ndim,Ndim,N_FL) is set to GR at
+!> Debug mode (-DALF_LOWRANK_DEBUG, both schemes): a shadow Gsh(Ndim,Ndim,N_FL) is set to GR at
 !> the first accept after a flush (n_pend 0 -> 1), receives the standard rank-1 update on every
 !> accept and the diagonal factors of every hook. After every accept and every hook,
 !> max|Lowrank_current_G - Gsh|/max|Gsh| <= TOL_UNIT is checked per computed flavour, and after
@@ -99,6 +102,7 @@ module Lowrank_update_mod
 
    Complex (Kind=Kind(0.d0)), parameter :: cone  = cmplx( 1.d0, 0.d0, kind(0.d0))
    Complex (Kind=Kind(0.d0)), parameter :: cmone = cmplx(-1.d0, 0.d0, kind(0.d0))
+   Complex (Kind=Kind(0.d0)), parameter :: czero = cmplx( 0.d0, 0.d0, kind(0.d0))
 
    ! ---- delayed ---------------------------------------------------------
    Complex (Kind=Kind(0.d0)), allocatable :: X(:,:,:), Y(:,:,:)
@@ -106,6 +110,8 @@ module Lowrank_update_mod
    ! ---- submatrix -------------------------------------------------------
    Integer,                   allocatable :: S(:,:), slot(:,:)
    Complex (Kind=Kind(0.d0)), allocatable :: Dvec(:,:), Ginv(:,:,:)
+   Complex (Kind=Kind(0.d0)), allocatable :: prop_a(:,:)            ! a = Ginv D G0(S,p) of the last proposal
+   Complex (Kind=Kind(0.d0)), allocatable :: Cw(:,:), Rw(:,:), Mw(:,:)  ! flush workspace: G0(:,S), D(E_S^T-G0(S,:)), M
 
 #ifdef ALF_LOWRANK_DEBUG
    ! ---- debug: shadow G with standard rank-1 updates ---------------------
@@ -182,9 +188,7 @@ contains
       case ("DELAYED")
          lr_scheme = SCHEME_DELAYED
       case ("SUBMATRIX")
-         ! Phase 4 will implement the scheme; until then refuse it at init, not at the first eligible proposal.
-         Write(error_unit,*) 'Lowrank_init: Sequential_scheme = submatrix is not implemented yet'
-         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+         lr_scheme = SCHEME_SUBMATRIX
       case default
          Write(error_unit,*) 'Lowrank_init: unknown Sequential_scheme "', trim(scheme_name), &
               &              '" (allowed: standard, delayed, submatrix)'
@@ -227,8 +231,10 @@ contains
          X = cmplx(0.d0, 0.d0, kind(0.d0))
          Y = cmplx(0.d0, 0.d0, kind(0.d0))
       case (SCHEME_SUBMATRIX)
-         allocate (S(N_delay, N_FL_eff), slot(Ndim, N_FL_eff))
-         allocate (Dvec(N_delay, N_FL_eff), Ginv(N_delay, N_delay, N_FL_eff))
+         allocate (S(N_cols_max, N_FL_eff), slot(Ndim, N_FL_eff))
+         allocate (Dvec(N_cols_max, N_FL_eff), Ginv(N_cols_max, N_cols_max, N_FL_eff))
+         allocate (prop_a(N_cols_max, N_FL_eff))
+         allocate (Cw(Ndim, N_cols_max), Rw(N_cols_max, Ndim), Mw(N_cols_max, Ndim))
          S    = 0
          slot = 0
          Dvec = cmplx(0.d0, 0.d0, kind(0.d0))
@@ -278,6 +284,10 @@ contains
       if (allocated(slot))     deallocate (slot)
       if (allocated(Dvec))     deallocate (Dvec)
       if (allocated(Ginv))     deallocate (Ginv)
+      if (allocated(prop_a))   deallocate (prop_a)
+      if (allocated(Cw))       deallocate (Cw)
+      if (allocated(Rw))       deallocate (Rw)
+      if (allocated(Mw))       deallocate (Mw)
       if (allocated(prop_Delta)) deallocate (prop_Delta)
       if (allocated(prop_d))     deallocate (prop_d)
 #ifdef ALF_LOWRANK_DEBUG
@@ -366,15 +376,18 @@ contains
 !> without random numbers and without changing G.
 !> @details
 !> The scalar expressions and their order are those of Upgrade2 (rank-1 branch); the only
-!> difference is that G_pp is the element of the current G = G0 - X Y^T,
-!> G_pp = G0(p,p) - sum_k X(p,k) Y(p,k), p = Op_V(n_op,nf)%P(1). A flavour with
-!> N_non_zero = 0 contributes D_mat = 1. Delta_f = e^{Z1 E_1} - 1 and d_f = D_mat are cached
-!> per computed flavour for Lowrank_accept. See docs/algorithm-notes.md, sections 1 and 3.
-!> @param [in] GR(Ndim,Ndim,N_FL)
+!> difference is that G_pp is the element of the current G, p = Op_V(n_op,nf)%P(1):
+!>  *  delayed  : G_pp = G0(p,p) - sum_j X(p,j) Y(p,j)
+!>  *  submatrix: a = Ginv (D G0(S,p)) (ZGEMV), G_pp = G0(p,p) + G0(p,S) a; a is cached for
+!>                Lowrank_accept. If p is already pending in any flavour (slot(p) /= 0), G is
+!>                flushed first (no random numbers), since the block formula needs distinct sites.
+!> A flavour with N_non_zero = 0 contributes D_mat = 1. Delta_f = e^{Z1 E_1} - 1 and d_f = D_mat
+!> are cached per computed flavour for Lowrank_accept. See docs/algorithm-notes.md, sections 1, 3, 4.
+!> @param [inout] GR(Ndim,Ndim,N_FL)
 !> Complex
 !> \verbatim
-!>  G0, the flushed part of the Green function. Not modified (intent(inout) only to match
-!>  the calling convention of Upgrade2).
+!>  G0, the flushed part of the Green function. Modified only by the repeated-site flush
+!>  (submatrix).
 !> \endverbatim
 !> @param [in] n_op, nt
 !> Integer
@@ -406,15 +419,24 @@ contains
 
       Type (Fields)             :: nsigma_new
       Complex (Kind=Kind(0.d0)) :: Ratio(N_FL), Z1, Z, D_mat, myexp, g_loc, G_pp, Mat11
-      Integer                   :: nf, nf_eff, p, j
+      Complex (Kind=Kind(0.d0)) :: v(N_cols_max)
+      Integer                   :: nf, nf_eff, p, j, m
 
-      if (lr_scheme /= SCHEME_DELAYED) then
-         Write(error_unit,*) 'Lowrank_propose: only the delayed scheme is implemented'
-         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
-      endif
       if (.not. Lowrank_eligible(n_op)) then
          Write(error_unit,'(A,I0)') ' Lowrank_propose: vertex not eligible, n_op = ', n_op
          CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      endif
+
+      ! Submatrix: a site already in the block -> flush before G_pp is read
+      if (lr_scheme == SCHEME_SUBMATRIX .and. n_pend > 0) then
+         Do nf_eff = 1,N_FL_eff
+            nf = Calc_Fl_map(nf_eff)
+            if (Op_V(n_op,nf)%N_non_zero == 0) cycle
+            if (slot(Op_V(n_op,nf)%P(1), nf_eff) /= 0) then
+               call Lowrank_flush(GR)
+               exit
+            endif
+         Enddo
       endif
 
       Call nsigma_new%make(1,1)
@@ -435,21 +457,33 @@ contains
             D_mat = 1.0d0
             prop_Delta(nf_eff) = cmplx(0.d0, 0.d0, kind(0.d0))
          else
-            ! Current element G_pp = G0(p,p) - X(p,1:j) . Y(p,1:j)  (no complex BLAS functions)
             p = Op_V(n_op,nf)%P(1)
             j = n_cols(nf_eff)
             G_pp = GR(p,p,nf)
+            select case (lr_scheme)
+            case (SCHEME_DELAYED)
+               ! Current element G_pp = G0(p,p) - X(p,1:j) . Y(p,1:j)  (no complex BLAS functions)
 #if defined(ALF_LOWRANK_DEBUG) && defined(LOWRANK_DEBUG_SELFTEST_PROPOSE)
-            ! Self-test of the d check: read the stale G0(p,p) (omit the X.Y correction) until a
-            ! perturbed proposal has been accepted
-            if (j > 0 .and. .not. dbg_selftest_prop_done) then
-               dbg_prop_perturbed = .true.
-            else if (j > 0) then
-               G_pp = G_pp - sum( X(p,1:j,nf_eff) * Y(p,1:j,nf_eff) )
-            endif
+               ! Self-test of the d check: read the stale G0(p,p) (omit the X.Y correction) until a
+               ! perturbed proposal has been accepted
+               if (j > 0 .and. .not. dbg_selftest_prop_done) then
+                  dbg_prop_perturbed = .true.
+               else if (j > 0) then
+                  G_pp = G_pp - sum( X(p,1:j,nf_eff) * Y(p,1:j,nf_eff) )
+               endif
 #else
-            if (j > 0) G_pp = G_pp - sum( X(p,1:j,nf_eff) * Y(p,1:j,nf_eff) )
+               if (j > 0) G_pp = G_pp - sum( X(p,1:j,nf_eff) * Y(p,1:j,nf_eff) )
 #endif
+            case (SCHEME_SUBMATRIX)
+               ! a = Ginv (D G0(S,p)),  G_pp = G0(p,p) + G0(p,S) . a   (p not in S)
+               if (j > 0) then
+                  do m = 1, j
+                     v(m) = Dvec(m,nf_eff) * GR(S(m,nf_eff),p,nf)
+                  enddo
+                  call ZGEMV('N', j, j, cone, Ginv(1,1,nf_eff), N_cols_max, v, 1, czero, prop_a(1,nf_eff), 1)
+                  G_pp = G_pp + sum( GR(p,S(1:j,nf_eff),nf) * prop_a(1:j,nf_eff) )
+               endif
+            end select
             myexp = exp( Z1* Op_V(n_op,nf)%E(1) )
             Z = myexp - 1.d0
             Mat11 = - Z * G_pp
@@ -485,9 +519,15 @@ contains
 !> Accepts the proposal evaluated by the preceding Lowrank_propose(GR, n_op, nt, Hs_new, .).
 !> @details
 !> Per computed flavour with N_non_zero = 1 (p = P(1), j = n_cols):
-!>   c = G0(:,p) - X(:,1:j) Y(p,1:j)^T,   r = G0(p,:)^T - Y(:,1:j) X(p,1:j)^T   (ZGEMV)
-!>   X(:,j+1) = (Delta/d) c,              Y(:,j+1) = e_p - r
-!> i.e. Sherman-Morrison on the current G (docs/algorithm-notes.md, sections 2-3).
+!>  *  delayed:
+!>       c = G0(:,p) - X(:,1:j) Y(p,1:j)^T,   r = G0(p,:)^T - Y(:,1:j) X(p,1:j)^T   (ZGEMV)
+!>       X(:,j+1) = (Delta/d) c,              Y(:,j+1) = e_p - r
+!>     i.e. Sherman-Morrison on the current G (docs/algorithm-notes.md, sections 2-3).
+!>  *  submatrix: border Gamma~ with the Schur complement s = d; with a from Lowrank_propose
+!>     (Ginv w = -a) and b^T = G0(p,S) Ginv (ZGEMV, q Ginv = -Delta b^T):
+!>       Ginv(1:j,1:j) += (Delta/d) a b^T (ZGERU),  Ginv(1:j,j+1) = a/d,
+!>       Ginv(j+1,1:j)  = (Delta/d) b^T,             Ginv(j+1,j+1) = 1/d,
+!>     then S(j+1) = p, slot(p) = j+1, Dvec(j+1) = Delta (docs/algorithm-notes.md, section 4).
 !> Then nsigma%f(n_op,nt) = Hs_new; after N_delay pending vertices G is flushed.
 !> @param [inout] GR(Ndim,Ndim,N_FL)
 !> Complex
@@ -508,7 +548,7 @@ contains
       Integer,                   Intent(In)    :: n_op, nt
       Complex (Kind=Kind(0.d0)), Intent(In)    :: Hs_new
 
-      Complex (Kind=Kind(0.d0)) :: z
+      Complex (Kind=Kind(0.d0)) :: z, b(N_cols_max), r(N_cols_max)
       Integer                   :: nf, nf_eff, p, j
 #ifdef ALF_LOWRANK_DEBUG
       Complex (Kind=Kind(0.d0)), allocatable :: c_sh(:), r_sh(:)
@@ -580,19 +620,36 @@ contains
             Write(error_unit,'(A,I0)') ' Lowrank_accept: column overflow, N_cols_max = ', N_cols_max
             CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
          endif
-         ! X(:,j+1) <- c = G0(:,p) - X(:,1:j) Y(p,1:j)^T
-         call ZCOPY(Ndim, GR(1,p,nf), 1, X(1,j+1,nf_eff), 1)
-         ! Y(:,j+1) <- r = G0(p,:)^T - Y(:,1:j) X(p,1:j)^T   (rows: increment Ndim)
-         call ZCOPY(Ndim, GR(p,1,nf), Ndim, Y(1,j+1,nf_eff), 1)
-         if (j > 0) then
-            call ZGEMV('N', Ndim, j, cmone, X(1,1,nf_eff), Ndim, Y(p,1,nf_eff), Ndim, cone, X(1,j+1,nf_eff), 1)
-            call ZGEMV('N', Ndim, j, cmone, Y(1,1,nf_eff), Ndim, X(p,1,nf_eff), Ndim, cone, Y(1,j+1,nf_eff), 1)
-         endif
-         ! X(:,j+1) = (Delta/d) c,  Y(:,j+1) = e_p - r
          z = prop_Delta(nf_eff)/prop_d(nf_eff)
-         call ZSCAL(Ndim, z, X(1,j+1,nf_eff), 1)
-         Y(:,j+1,nf_eff) = - Y(:,j+1,nf_eff)
-         Y(p,j+1,nf_eff) = Y(p,j+1,nf_eff) + 1.d0
+         select case (lr_scheme)
+         case (SCHEME_DELAYED)
+            ! X(:,j+1) <- c = G0(:,p) - X(:,1:j) Y(p,1:j)^T
+            call ZCOPY(Ndim, GR(1,p,nf), 1, X(1,j+1,nf_eff), 1)
+            ! Y(:,j+1) <- r = G0(p,:)^T - Y(:,1:j) X(p,1:j)^T   (rows: increment Ndim)
+            call ZCOPY(Ndim, GR(p,1,nf), Ndim, Y(1,j+1,nf_eff), 1)
+            if (j > 0) then
+               call ZGEMV('N', Ndim, j, cmone, X(1,1,nf_eff), Ndim, Y(p,1,nf_eff), Ndim, cone, X(1,j+1,nf_eff), 1)
+               call ZGEMV('N', Ndim, j, cmone, Y(1,1,nf_eff), Ndim, X(p,1,nf_eff), Ndim, cone, Y(1,j+1,nf_eff), 1)
+            endif
+            ! X(:,j+1) = (Delta/d) c,  Y(:,j+1) = e_p - r
+            call ZSCAL(Ndim, z, X(1,j+1,nf_eff), 1)
+            Y(:,j+1,nf_eff) = - Y(:,j+1,nf_eff)
+            Y(p,j+1,nf_eff) = Y(p,j+1,nf_eff) + 1.d0
+         case (SCHEME_SUBMATRIX)
+            if (j > 0) then
+               ! b = Ginv^T G0(p,S)^T, i.e. b^T = G0(p,S) Ginv
+               r(1:j) = GR(p,S(1:j,nf_eff),nf)
+               call ZGEMV('T', j, j, cone, Ginv(1,1,nf_eff), N_cols_max, r, 1, czero, b, 1)
+               ! Bordered inverse (Schur complement s = d)
+               call ZGERU(j, j, z, prop_a(1,nf_eff), 1, b, 1, Ginv(1,1,nf_eff), N_cols_max)
+               Ginv(1:j,j+1,nf_eff) = prop_a(1:j,nf_eff) / prop_d(nf_eff)
+               Ginv(j+1,1:j,nf_eff) = z * b(1:j)
+            endif
+            Ginv(j+1,j+1,nf_eff) = 1.d0 / prop_d(nf_eff)
+            S(j+1,nf_eff)    = p
+            slot(p,nf_eff)   = j + 1
+            Dvec(j+1,nf_eff) = prop_Delta(nf_eff)
+         end select
          n_cols(nf_eff)  = j + 1
       Enddo
       prop_valid = .false.
@@ -691,15 +748,19 @@ contains
 !> ALF-project
 !
 !> @brief
-!> Carries the pending factors X, Y through the type-1 wrap of an eligible (diagonal) vertex.
+!> Carries the pending state (delayed: X, Y; submatrix: Ginv) through the type-1 wrap of an
+!> eligible (diagonal) vertex.
 !> @details
 !> Call once per vertex, after the flavour loop of the type-1 wrap (the routine loops over the
 !> computed flavours itself): after Op_Wrapup(.,Op_V(n_op,nf),HS_field,.,1,nt) with dir = +1, and
 !> after Op_Wrapdo(.,Op_V(n_op,nf),HS_field,.,1,nt) with dir = -1. Invalidates the cache of
 !> Lowrank_propose (the frame changes). The wrap is
 !> G <- T G T^{-1} with T = diag(t_i) on rows P(i), t_i = exp(dir g_loc phi(HS_field) E(i));
-!> applied to G0 by ALF, to the pending factors here: X(P(i),:) *= t_i, Y(P(i),:) /= t_i
-!> (docs/algorithm-notes.md, section 3). Consumes no random numbers. No-op if nothing is pending.
+!> applied to G0 by ALF, to the pending state here:
+!>  *  delayed  : X(P(i),:) *= t_i, Y(P(i),:) /= t_i  (docs/algorithm-notes.md, section 3)
+!>  *  submatrix: Gamma~ -> T_S Gamma~ T_S^{-1}: for m = slot(P(i)) > 0, Ginv(m,1:k) *= t_i,
+!>                Ginv(1:k,m) /= t_i  (docs/algorithm-notes.md, section 4)
+!> Consumes no random numbers. No-op if nothing is pending.
 !> @param [in] n_op, nt
 !> Integer
 !> @param [in] HS_field
@@ -724,17 +785,13 @@ contains
 
       Type (Fields)             :: nsigma_single
       Complex (Kind=Kind(0.d0)) :: phi, g_loc, t
-      Integer                   :: nf, nf_eff, i, j, q
+      Integer                   :: nf, nf_eff, i, j, q, m
 #if defined(ALF_LOWRANK_DEBUG) && defined(LOWRANK_DEBUG_SELFTEST)
       Logical                   :: skip_x
 #endif
 
       prop_valid = .false.
       if (n_pend == 0) return
-      if (lr_scheme /= SCHEME_DELAYED) then
-         Write(error_unit,*) 'Lowrank_wrap_hook: only the delayed scheme is implemented'
-         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
-      endif
       if (.not. eligible(n_op)) then
          Write(error_unit,'(A,I0)') ' Lowrank_wrap_hook: vertex not eligible, n_op = ', n_op
          CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
@@ -752,16 +809,25 @@ contains
          if (Op_V(n_op,nf)%get_g_t_alloc()) g_loc = Op_V(n_op,nf)%g_t(nt)
          do i = 1,Op_V(n_op,nf)%N
             q = Op_V(n_op,nf)%P(i)
-            t = exp( real(dir, kind(0.d0)) * g_loc * phi * Op_V(n_op,nf)%E(i) )
+            select case (lr_scheme)
+            case (SCHEME_DELAYED)
+               t = exp( real(dir, kind(0.d0)) * g_loc * phi * Op_V(n_op,nf)%E(i) )
 #if defined(ALF_LOWRANK_DEBUG) && defined(LOWRANK_DEBUG_SELFTEST)
-            ! Self-test of the debug check: deliberately skip one X-row scaling (first time only)
-            skip_x = .not. dbg_selftest_done
-            dbg_selftest_done = .true.
-            if (.not. skip_x) X(q,1:j,nf_eff) = X(q,1:j,nf_eff) * t
+               ! Self-test of the debug check: deliberately skip one X-row scaling (first time only)
+               skip_x = .not. dbg_selftest_done
+               dbg_selftest_done = .true.
+               if (.not. skip_x) X(q,1:j,nf_eff) = X(q,1:j,nf_eff) * t
 #else
-            X(q,1:j,nf_eff) = X(q,1:j,nf_eff) * t
+               X(q,1:j,nf_eff) = X(q,1:j,nf_eff) * t
 #endif
-            Y(q,1:j,nf_eff) = Y(q,1:j,nf_eff) / t
+               Y(q,1:j,nf_eff) = Y(q,1:j,nf_eff) / t
+            case (SCHEME_SUBMATRIX)
+               m = slot(q,nf_eff)
+               if (m == 0) cycle
+               t = exp( real(dir, kind(0.d0)) * g_loc * phi * Op_V(n_op,nf)%E(i) )
+               Ginv(m,1:j,nf_eff) = Ginv(m,1:j,nf_eff) * t
+               Ginv(1:j,m,nf_eff) = Ginv(1:j,m,nf_eff) / t
+            end select
          enddo
       Enddo
 #ifdef ALF_LOWRANK_DEBUG
@@ -793,8 +859,12 @@ contains
 !> ALF-project
 !
 !> @brief
-!> Applies the pending updates to G: GR(:,:,nf) <- GR(:,:,nf) - X Y^T (ZGEMM) per computed
-!> flavour, and resets the pending counters. No-op when nothing is pending.
+!> Applies the pending updates to G per computed flavour and resets the pending counters.
+!> No-op when nothing is pending.
+!> @details
+!>  *  delayed  : GR(:,:,nf) <- GR(:,:,nf) - X Y^T (ZGEMM)
+!>  *  submatrix: C = G0(:,S) (copy), M = Ginv D (E_S^T - G0(S,:)) (ZGEMM),
+!>                GR(:,:,nf) <- GR(:,:,nf) - C M (ZGEMM); slot is cleared
 !> @param [inout] GR(Ndim,Ndim,N_FL)
 !> Complex
 !--------------------------------------------------------------------
@@ -808,24 +878,26 @@ contains
       Integer :: nf, nf_eff, j
 
       if (n_pend == 0) return
-      select case (lr_scheme)
-      case (SCHEME_DELAYED)
-         Do nf_eff = 1,N_FL_eff
-            j = n_cols(nf_eff)
-            if (j == 0) cycle
-            nf = Calc_Fl_map(nf_eff)
+      Do nf_eff = 1,N_FL_eff
+         j = n_cols(nf_eff)
+         if (j == 0) cycle
+         nf = Calc_Fl_map(nf_eff)
+         select case (lr_scheme)
+         case (SCHEME_DELAYED)
             call ZGEMM('N', 'T', Ndim, Ndim, j, cmone, X(1,1,nf_eff), Ndim, Y(1,1,nf_eff), Ndim, &
                  &     cone, GR(1,1,nf), Ndim)
-         Enddo
-         n_cols = 0
+         case (SCHEME_SUBMATRIX)
+            ! Cw, Mw from G0 = GR before GR is overwritten
+            call Submatrix_factors(GR, nf, nf_eff)
+            call ZGEMM('N', 'N', Ndim, Ndim, j, cmone, Cw, Ndim, Mw, N_cols_max, cone, GR(1,1,nf), Ndim)
+            slot(S(1:j,nf_eff),nf_eff) = 0
+         end select
+      Enddo
+      n_cols = 0
 #ifdef ALF_LOWRANK_DEBUG
-         ! n_cols = 0 and n_pend > 0: Lowrank_current_G returns GR, which must equal the shadow
-         call Lowrank_debug_check(GR, dbg_last_nop, dbg_last_nt, "Lowrank_flush (n_op, nt of last accept)")
+      ! n_cols = 0 and n_pend > 0: Lowrank_current_G returns GR, which must equal the shadow
+      call Lowrank_debug_check(GR, dbg_last_nop, dbg_last_nt, "Lowrank_flush (n_op, nt of last accept)")
 #endif
-      case default
-         Write(error_unit,*) 'Lowrank_flush: only the delayed scheme is implemented'
-         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
-      end select
       n_pend     = 0
       prop_valid = .false.
 #ifdef ALF_LOWRANK_DEBUG
@@ -839,8 +911,9 @@ contains
 !> ALF-project
 !
 !> @brief
-!> Materialises the current Green function of flavour nf, Gcur = GR(:,:,nf) - X Y^T,
-!> without changing GR or the pending state (tests and debugging).
+!> Materialises the current Green function of flavour nf without changing GR or the pending
+!> state (tests and debugging): delayed Gcur = GR(:,:,nf) - X Y^T, submatrix
+!> Gcur = GR(:,:,nf) - G0(:,S) Ginv D (E_S^T - G0(S,:)) (the algebra of Lowrank_flush).
 !> @param [in] GR(Ndim,Ndim,N_FL)
 !> Complex
 !> @param [in] nf
@@ -864,20 +937,55 @@ contains
 
       Gcur = GR(:,:,nf)
       if (n_pend == 0) return
-      if (lr_scheme /= SCHEME_DELAYED) then
-         Write(error_unit,*) 'Lowrank_current_G: only the delayed scheme is implemented'
-         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
-      endif
       nf_e = 0
       Do nf_eff = 1,N_FL_eff
          if (Calc_Fl_map(nf_eff) == nf) nf_e = nf_eff
       Enddo
       if (nf_e == 0) return
       j = n_cols(nf_e)
-      if (j > 0) call ZGEMM('N', 'T', Ndim, Ndim, j, cmone, X(1,1,nf_e), Ndim, Y(1,1,nf_e), Ndim, &
-           &                cone, Gcur, Ndim)
+      if (j == 0) return
+      select case (lr_scheme)
+      case (SCHEME_DELAYED)
+         call ZGEMM('N', 'T', Ndim, Ndim, j, cmone, X(1,1,nf_e), Ndim, Y(1,1,nf_e), Ndim, &
+              &     cone, Gcur, Ndim)
+      case (SCHEME_SUBMATRIX)
+         call Submatrix_factors(GR, nf, nf_e)
+         call ZGEMM('N', 'N', Ndim, Ndim, j, cmone, Cw, Ndim, Mw, N_cols_max, cone, Gcur, Ndim)
+      end select
 
    end subroutine Lowrank_current_G
+
+!--------------------------------------------------------------------
+!> @brief
+!> Submatrix only: fills the workspaces Cw(:,1:k) = G0(:,S) and
+!> Mw(1:k,:) = Ginv D (E_S^T - G0(S,:)) (via Rw(1:k,:) = D (E_S^T - G0(S,:)), ZGEMM) for
+!> flavour nf (computed index nf_eff, k = n_cols(nf_eff) >= 1), so that G = G0 - Cw Mw.
+!> GR is only read.
+!--------------------------------------------------------------------
+   subroutine Submatrix_factors(GR, nf, nf_eff)
+
+      Use Hamiltonian_main, only: Ndim, N_FL
+      Implicit none
+
+      Complex (Kind=Kind(0.d0)), Intent(In) :: GR(Ndim,Ndim,N_FL)
+      Integer,                   Intent(In) :: nf, nf_eff
+
+      Integer :: k, m, i
+
+      k = n_cols(nf_eff)
+      do m = 1, k
+         call ZCOPY(Ndim, GR(1,S(m,nf_eff),nf), 1, Cw(1,m), 1)
+      enddo
+      do i = 1, Ndim
+         Rw(1:k,i) = - Dvec(1:k,nf_eff) * GR(S(1:k,nf_eff),i,nf)
+      enddo
+      do m = 1, k
+         Rw(m,S(m,nf_eff)) = Rw(m,S(m,nf_eff)) + Dvec(m,nf_eff)
+      enddo
+      call ZGEMM('N', 'N', k, Ndim, k, cone, Ginv(1,1,nf_eff), N_cols_max, Rw, N_cols_max, &
+           &     czero, Mw, N_cols_max)
+
+   end subroutine Submatrix_factors
 
 #ifdef ALF_LOWRANK_DEBUG
 !--------------------------------------------------------------------
@@ -918,7 +1026,7 @@ contains
       Real    (Kind=Kind(0.d0))              :: err, scale
       Integer                                :: nf, nf_eff
 
-      if (n_pend == 0 .or. lr_scheme /= SCHEME_DELAYED) return
+      if (n_pend == 0) return
       if (.not. allocated(Gsh)) then
          Write(error_unit,'(A,A)') ' Lowrank_debug_check: shadow G not allocated at ', trim(where)
          CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
