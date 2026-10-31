@@ -49,8 +49,11 @@
 !>                D = diag(Dvec(1:k, nf_eff)) and Ginv(1:k, 1:k, nf_eff) = Gamma~^{-1},
 !>                Gamma~ = I_k + D (I - G0)_SS; k = n_cols(nf_eff) (docs/algorithm-notes.md, section 4).
 !>                A vertex whose site is already pending flushes G first (Lowrank_propose).
-!> Columns are counted in vectors (n_cols(nf_eff)), N_cols_max = N_delay*N_P_max, so a rank-N_P
-!> extension only changes the column bookkeeping.
+!> Columns are counted in vectors (n_cols(nf_eff)); N_cols_max = N_delay*N_P_max, capped at the number
+!> of columns that can ever be pending (submatrix: Ndim, since the sites are distinct; both schemes:
+!> size(Op_V,1)*N_P_max, the vertices of one slice), so a rank-N_P extension only changes the column
+!> bookkeeping and a huge N_delay does not over-allocate. Lowrank_accept flushes when the effective
+!> capacity is reached (and after N_delay pending vertices), so the columns cannot overflow.
 !>
 !> Debug mode (-DALF_LOWRANK_DEBUG, both schemes): a shadow Gsh(Ndim,Ndim,N_FL) is set to GR at
 !> the first accept after a flush (n_pend 0 -> 1), receives the standard rank-1 update on every
@@ -61,9 +64,11 @@
 !> lowrank_debug_summary.txt in the run directory. On every accept the denominator d of the
 !> proposal (computed from the low-rank G_pp) is also compared with d_sh = 1 + (1 - Gsh(p,p)) Delta
 !> from the shadow, and the shadow update uses d_sh, so a stale G_pp read in Lowrank_propose is
-!> caught. Self-tests (never defined by default): -DLOWRANK_DEBUG_SELFTEST skips the X-row scaling
-!> of the first hook (delayed) or one Ginv row scaling (submatrix); -DLOWRANK_DEBUG_SELFTEST_PROPOSE
-!> omits the X.Y correction of G_pp in Lowrank_propose until a perturbed proposal is accepted. Each must make the debug check fire.
+!> caught. Self-tests (never defined by default; they only take effect together with
+!> ALF_LOWRANK_DEBUG): -DLOWRANK_DEBUG_SELFTEST skips the X-row scaling of the first hook
+!> (delayed) or one Ginv row scaling (submatrix); -DLOWRANK_DEBUG_SELFTEST_PROPOSE omits the
+!> X.Y correction of G_pp in Lowrank_propose until a perturbed proposal is accepted. Each must
+!> make the debug check fire.
 !--------------------------------------------------------------------
 
 module Lowrank_update_mod
@@ -89,7 +94,7 @@ module Lowrank_update_mod
    Logical              :: lr_initialised = .false.  ! true after Lowrank_init (any scheme)
    Integer              :: lr_scheme  = SCHEME_STANDARD
    Integer              :: lr_N_delay = 0
-   Integer              :: N_cols_max = 0       ! N_delay*N_P_max
+   Integer              :: N_cols_max = 0       ! effective capacity in columns: min(N_delay*N_P_max, caps)
    Integer              :: n_pend     = 0       ! pending accepted vertices since the last flush
    Logical, allocatable :: eligible(:)          ! eligible(n), n = 1..size(Op_V,1)
    Integer, allocatable :: n_cols(:)            ! used columns per computed flavour
@@ -199,10 +204,14 @@ contains
          CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
       endif
       lr_N_delay = N_delay
-      N_cols_max = N_delay*N_P_max
+      M = size(Op_V, 1)
+      ! Effective capacity in columns. At most M*N_P_max columns can be pending (G is flushed at
+      ! every slice end); for the submatrix scheme also at most Ndim (distinct sites). Computed
+      ! in 64 bit so that a huge N_delay cannot overflow.
+      N_cols_max = int(min(int(N_delay,8)*N_P_max, int(M,8)*N_P_max))
+      if (lr_scheme == SCHEME_SUBMATRIX) N_cols_max = min(N_cols_max, Ndim)
 
       ! Eligibility: diagonal and rank <= 1 in every flavour
-      M = size(Op_V, 1)
       allocate (eligible(M))
       n_inel  = 0
       n_first = 0
@@ -379,8 +388,9 @@ contains
 !> difference is that G_pp is the element of the current G, p = Op_V(n_op,nf)%P(1):
 !>  *  delayed  : G_pp = G0(p,p) - sum_j X(p,j) Y(p,j)
 !>  *  submatrix: a = Ginv (D G0(S,p)) (ZGEMV), G_pp = G0(p,p) + G0(p,S) a; a is cached for
-!>                Lowrank_accept. If p is already pending in any flavour (slot(p) /= 0), G is
-!>                flushed first (no random numbers), since the block formula needs distinct sites.
+!>                Lowrank_accept. If, in any flavour, that flavour's site P(1) is already pending
+!>                (slot /= 0), G is flushed first (no random numbers), since the block formula needs
+!>                distinct sites.
 !> A flavour with N_non_zero = 0 contributes D_mat = 1. Delta_f = e^{Z1 E_1} - 1 and d_f = D_mat
 !> are cached per computed flavour for Lowrank_accept. See docs/algorithm-notes.md, sections 1, 3, 4.
 !> @param [inout] GR(Ndim,Ndim,N_FL)
@@ -528,7 +538,8 @@ contains
 !>       Ginv(1:j,1:j) += (Delta/d) a b^T (ZGERU),  Ginv(1:j,j+1) = a/d,
 !>       Ginv(j+1,1:j)  = (Delta/d) b^T,             Ginv(j+1,j+1) = 1/d,
 !>     then S(j+1) = p, slot(p) = j+1, Dvec(j+1) = Delta (docs/algorithm-notes.md, section 4).
-!> Then nsigma%f(n_op,nt) = Hs_new; after N_delay pending vertices G is flushed.
+!> Then nsigma%f(n_op,nt) = Hs_new; G is flushed after N_delay pending vertices or when the
+!> effective capacity N_cols_max is reached (so a column overflow cannot occur).
 !> @param [inout] GR(Ndim,Ndim,N_FL)
 !> Complex
 !> \verbatim
@@ -636,6 +647,12 @@ contains
             Y(:,j+1,nf_eff) = - Y(:,j+1,nf_eff)
             Y(p,j+1,nf_eff) = Y(p,j+1,nf_eff) + 1.d0
          case (SCHEME_SUBMATRIX)
+            ! Invariant (O(1)): the block formula needs distinct sites; Lowrank_propose flushes if p is pending
+            if (slot(p,nf_eff) /= 0) then
+               Write(error_unit,'(A,I0,A,I0,A,I0,A,I0)') ' Lowrank_accept: site already pending (slot /= 0): n_op = ', &
+                    &                                    n_op, ', nt = ', nt, ', nf_eff = ', nf_eff, ', site = ', p
+               CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+            endif
             if (j > 0) then
                ! b = Ginv^T G0(p,S)^T, i.e. b^T = G0(p,S) Ginv
                r(1:j) = GR(p,S(1:j,nf_eff),nf)
@@ -663,7 +680,9 @@ contains
       dbg_last_nt  = nt
       call Lowrank_debug_check(GR, n_op, nt, "Lowrank_accept")
 #endif
-      if (n_pend == lr_N_delay) call Lowrank_flush(GR)
+      ! Flush after N_delay pending vertices, or when another vertex could no longer be appended
+      ! (effective capacity N_cols_max reached): overflow is impossible whatever the caller does.
+      if (n_pend >= lr_N_delay .or. maxval(n_cols) + N_P_max > N_cols_max) call Lowrank_flush(GR)
 
    end subroutine Lowrank_accept
 
@@ -786,8 +805,9 @@ contains
       Type (Fields)             :: nsigma_single
       Complex (Kind=Kind(0.d0)) :: phi, g_loc, t
       Integer                   :: nf, nf_eff, i, j, q, m
+      Logical                   :: need_scale
 #if defined(ALF_LOWRANK_DEBUG) && defined(LOWRANK_DEBUG_SELFTEST)
-      Logical                   :: skip_x
+      Logical                   :: skip_scale
 #endif
 
       prop_valid = .false.
@@ -797,8 +817,25 @@ contains
          CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
       endif
 
+      ! Submatrix: the factors are needed only if the vertex touches a pending site in some flavour
+      need_scale = .true.
+      if (lr_scheme == SCHEME_SUBMATRIX) then
+         need_scale = .false.
+         Do nf_eff = 1,N_FL_eff
+            if (n_cols(nf_eff) == 0) cycle
+            nf = Calc_Fl_map(nf_eff)
+            do i = 1,Op_V(n_op,nf)%N
+               if (slot(Op_V(n_op,nf)%P(i),nf_eff) /= 0) need_scale = .true.
+            enddo
+         Enddo
+      endif
+#ifndef ALF_LOWRANK_DEBUG
+      if (.not. need_scale) return
+#endif
+
       Call nsigma_single%make(1,1)
       Do nf_eff = 1,N_FL_eff
+         if (.not. need_scale) exit
          j = n_cols(nf_eff)
          if (j == 0) cycle
          nf = Calc_Fl_map(nf_eff)
@@ -814,9 +851,9 @@ contains
                t = exp( real(dir, kind(0.d0)) * g_loc * phi * Op_V(n_op,nf)%E(i) )
 #if defined(ALF_LOWRANK_DEBUG) && defined(LOWRANK_DEBUG_SELFTEST)
                ! Self-test of the debug check: deliberately skip one X-row scaling (first time only)
-               skip_x = .not. dbg_selftest_done
+               skip_scale = .not. dbg_selftest_done
                dbg_selftest_done = .true.
-               if (.not. skip_x) X(q,1:j,nf_eff) = X(q,1:j,nf_eff) * t
+               if (.not. skip_scale) X(q,1:j,nf_eff) = X(q,1:j,nf_eff) * t
 #else
                X(q,1:j,nf_eff) = X(q,1:j,nf_eff) * t
 #endif
@@ -828,9 +865,9 @@ contains
 #if defined(ALF_LOWRANK_DEBUG) && defined(LOWRANK_DEBUG_SELFTEST)
                ! Self-test of the debug check: deliberately skip one Ginv row scaling (first time a pending
                ! site is touched; in Hubbard models only the down-sweep un-wrap touches the site just added)
-               skip_x = .not. dbg_selftest_done
+               skip_scale = .not. dbg_selftest_done
                dbg_selftest_done = .true.
-               if (.not. skip_x) Ginv(m,1:j,nf_eff) = Ginv(m,1:j,nf_eff) * t
+               if (.not. skip_scale) Ginv(m,1:j,nf_eff) = Ginv(m,1:j,nf_eff) * t
 #else
                Ginv(m,1:j,nf_eff) = Ginv(m,1:j,nf_eff) * t
 #endif

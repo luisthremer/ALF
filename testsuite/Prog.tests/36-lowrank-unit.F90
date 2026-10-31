@@ -12,6 +12,11 @@
 !   down: pre_wrap -> Op_Wrapdo type 2 -> propose -> decide -> Op_Wrapdo type 1 (new phi) -> hook(-1)
 ! pre_wrap flushes a low-rank candidate before an ineligible vertex; such a vertex then gets no
 ! hook and the standard Upgrade2 on the candidate's G (case mixed: V_SUN bonds between Mz vertices).
+! Case asym: flavour 2's vertex sites are another permutation than flavour 1's (the per-flavour
+! pending sets S differ), and every 8th vertex has g = 0 in flavour 2, so Delta = 0 exactly there.
+! Case repeat_skip = repeat with a deterministic skip mask: some vertices are wrapped (and hooked) but not
+! proposed (no propose/accept, as when the T0/Propose_S0 proposal is rejected before Upgrade), so the
+! hook rescale of the pending state stays in use without a following flush.
 ! Between slices: flush, compare, then the same dense similarity G <- S G S^{-1} on every G,
 ! S = I + 0.1 R / sqrt(Ndim) (R complex Gaussian). Case mz_illcond = mz with S = I + 0.1 R,
 ! which drives cond(1+A) to ~1e8: a deliberately hard case with its own tolerance TOL_ILL.
@@ -46,12 +51,15 @@ module lowrank_unit_harness
    real(dp), parameter :: TOL_UNIT = 1.0d-10
    real(dp), parameter :: TOL_ILL  = 1.0d-8
 
-   integer, parameter :: N_CASES = 6
+   integer, parameter :: N_CASES = 8
    integer, parameter :: CASE_MZ = 1, CASE_DENSITY = 2, CASE_CONTINUOUS = 3, CASE_REPEAT = 4
    integer, parameter :: CASE_MZ_ILLCOND = 5   ! mz with the unnormalised S = I + 0.1 R
    integer, parameter :: CASE_MIXED = 6        ! Mz vertices with interleaved ineligible V_SUN bonds
-   character(len=10), parameter :: case_name(N_CASES) = &
-        & [character(len=10) :: 'mz', 'density', 'continuous', 'repeat', 'mz_illcond', 'mixed']
+   integer, parameter :: CASE_ASYM = 7         ! flavour-dependent site permutations, Delta = 0 vertices
+   integer, parameter :: CASE_REPEAT_SKIP = 8  ! repeat, with unproposed (skipped) vertices
+   character(len=11), parameter :: case_name(N_CASES) = &
+        & [character(len=11) :: 'mz', 'density', 'continuous', 'repeat', 'mz_illcond', 'mixed', 'asym', 'repeat_skip']
+   integer, parameter :: ASYM_ZERO_PERIOD = 8  ! case asym: vertex n has g = 0 in flavour 2 iff mod(n, 8) == 3
    integer, parameter :: MIXED_BOND_PERIOD = 9 ! case mixed: vertex n is a bond iff mod(n, 9) == 5
 
    ! Candidate schemes
@@ -77,6 +85,7 @@ module lowrank_unit_harness
    real(dp) :: cond_Q_max, cond_S_max
    real(dp) :: cond_1pA_last                   ! max_f cond_2(1+A_f) at the last slice end
    integer  :: n_repeat_flush                  ! proposals at which Lowrank_propose flushed (pending dropped)
+   integer  :: n_skipped                       ! vertices wrapped but not proposed (case repeat_skip)
 
    ! ---- candidate state -------------------------------------------------
    integer :: cand_scheme = 0, cand_N_delay = 0
@@ -310,19 +319,20 @@ contains
 
    subroutine setup_case(case_id)
       integer, intent(in) :: case_id
-      integer, allocatable :: sites(:), base(:), pairs(:)
+      integer, allocatable :: sites(:), base(:), pairs(:), sites2(:)
+      type(Operator) :: Op_tmp
       integer :: n, nf, nt, k, i_mz, i_bond
       real(dp), parameter :: disc(4) = [-2.d0, -1.d0, 1.d0, 2.d0]
 
       call clear_case()
       select case (case_id)
-      case (CASE_MZ, CASE_MZ_ILLCOND)
+      case (CASE_MZ, CASE_MZ_ILLCOND, CASE_ASYM)
          Ndim = 64; N_FL = 2; N_SUN = 1; M_ops = Ndim
       case (CASE_DENSITY)
          Ndim = 64; N_FL = 1; N_SUN = 2; M_ops = Ndim
       case (CASE_CONTINUOUS)
          Ndim = 48; N_FL = 2; N_SUN = 1; M_ops = Ndim
-      case (CASE_REPEAT)
+      case (CASE_REPEAT, CASE_REPEAT_SKIP)
          Ndim = 32; N_FL = 2; N_SUN = 1; M_ops = 2 * Ndim
       case (CASE_MIXED)
          ! Ndim Mz vertices plus one bond after every 8 of them (n = 5, 14, 23, ...)
@@ -337,7 +347,7 @@ contains
 
       ! Vertex -> site: a fixed random permutation (repeat: of the doubled site list)
       allocate(sites(M_ops))
-      if (case_id == CASE_REPEAT) then
+      if (case_id == CASE_REPEAT .or. case_id == CASE_REPEAT_SKIP) then
          allocate(base(M_ops))
          call random_permutation(base)
          do n = 1, M_ops
@@ -350,6 +360,14 @@ contains
          call random_permutation(pairs)
       else
          call random_permutation(sites)
+      endif
+      if (case_id == CASE_ASYM) then
+         ! flavour 2: another permutation (re-drawn until it differs from flavour 1's at every vertex)
+         allocate(sites2(M_ops))
+         do
+            call random_permutation(sites2)
+            if (all(sites2 /= sites)) exit
+         enddo
       endif
 
       allocate(Op_V(M_ops, N_FL))
@@ -366,8 +384,19 @@ contains
          endif
          i_mz = i_mz + 1
          select case (case_id)
-         case (CASE_MZ, CASE_REPEAT, CASE_MZ_ILLCOND)
+         case (CASE_MZ, CASE_REPEAT, CASE_MZ_ILLCOND, CASE_REPEAT_SKIP)
             call Predefined_Int_U_MZ(Op_V(n,1), Op_V(n,2), sites(n), DTAU, U_HUB)
+         case (CASE_ASYM)
+            ! flavour 1 from site sites(n), flavour 2 from site sites2(n)
+            call Predefined_Int_U_MZ(Op_V(n,1), Op_tmp, sites(n), DTAU, U_HUB)
+            call Op_clear(Op_tmp, Op_tmp%N)
+            ! every 8th vertex: U = 0 gives g = 0 (E_exp is set from g in Op_set), so Delta = 0 exactly in flavour 2
+            if (mod(n, ASYM_ZERO_PERIOD) == 3) then
+               call Predefined_Int_U_MZ(Op_tmp, Op_V(n,2), sites2(n), DTAU, 0.d0)
+            else
+               call Predefined_Int_U_MZ(Op_tmp, Op_V(n,2), sites2(n), DTAU, U_HUB)
+            endif
+            call Op_clear(Op_tmp, Op_tmp%N)
          case (CASE_MIXED)
             call Predefined_Int_U_MZ(Op_V(n,1), Op_V(n,2), sites(i_mz), DTAU, U_HUB)
          case (CASE_DENSITY)
@@ -466,6 +495,12 @@ contains
    ! =====================================================================
    ! Driver
    ! =====================================================================
+   ! Deterministic skip mask (case repeat_skip): vertex n at slice nt is wrapped but not proposed
+   logical function skip_vertex(case_id, n, nt)
+      integer, intent(in) :: case_id, n, nt
+      skip_vertex = (case_id == CASE_REPEAT_SKIP .and. mod(n + 2 * nt, 3) == 0)
+   end function skip_vertex
+
    subroutine run_case(case_id, scheme, N_delay, direction, max_ratio_err, max_G_err, std_drift)
       integer,          intent(in)  :: case_id, scheme, N_delay
       character(len=*), intent(in)  :: direction
@@ -496,7 +531,7 @@ contains
          call Ranset([1000 + 17 * case_id])
       endif
       call setup_case(case_id)
-      n_proposals = 0; n_accepted = 0; n_repeat_flush = 0
+      n_proposals = 0; n_accepted = 0; n_repeat_flush = 0; n_skipped = 0
       cond_Q_max = 0.d0; cond_S_max = 0.d0; cond_1pA_last = 0.d0
 
       allocate(Gref(Ndim,Ndim,N_FL), Gc(Ndim,Ndim,N_FL), Gtmp(Ndim,Ndim,N_FL), Aex(Ndim,Ndim,N_FL))
@@ -541,6 +576,10 @@ contains
                enddo
             endif
 
+            ! ---- skipped vertex: no propose, no accept (nothing between the two wraps) ----
+            if (skip_vertex(case_id, n, nt)) then
+               n_skipped = n_skipped + 1
+            else
             ! ---- proposal (drawn once, shared) and fixed decision ----
             hs_new = nsigma%flip(n,nt)
             accept = ranf_wrap() < ACCEPT_FRACTION
@@ -582,6 +621,7 @@ contains
                nsigma%f(n,nt) = hs_old
             endif
             call random_seed(put=rng_state)
+            endif   ! not skipped
 
             if (dir == 1) then
                do nf = 1, N_FL
@@ -931,9 +971,10 @@ program lowrank_unit
    write(6,'(A)') '  std_drift/ce = std_drift / (cond(1+A) * epsilon(1d0)); asserted <= 10 for every case'
    write(6,'(A)') '  rflush = flushes inside Lowrank_propose (site already pending); asserted > 0 iff submatrix,'// &
         & ' case repeat, N_delay > 1'
-   write(6,'(A10,1X,A10,1X,A4,1X,A7,1X,A13,1X,A13,1X,A13,1X,A10,1X,A12,1X,A7,1X,A6,1X,A6,1X,A6,1X,A4)') &
+   write(6,'(A)') '  skip = vertices wrapped but not proposed; asserted > 0 iff case repeat_skip'
+   write(6,'(A11,1X,A10,1X,A4,1X,A7,1X,A13,1X,A13,1X,A13,1X,A10,1X,A12,1X,A7,1X,A6,1X,A6,1X,A6,1X,A5,1X,A4)') &
         & 'case', 'scheme', 'dir', 'N_delay', 'max_ratio_err', 'max_G_err', 'std_drift', &
-        & 'cond(1+A)', 'std_drift/ce', 'acc', 'condQ', 'condS', 'rflush', ''
+        & 'cond(1+A)', 'std_drift/ce', 'acc', 'condQ', 'condS', 'rflush', 'skip', ''
    do ic = 1, N_CASES
       do idir = 1, 2
          do is = 1, N_SCHEMES
@@ -964,15 +1005,20 @@ program lowrank_unit
                endif
                ! Repeated-site flush: only submatrix flushes in Lowrank_propose, and only when a
                ! site recurs within a block (case repeat; N_delay = 1 never leaves a block open).
-               if ((n_repeat_flush > 0) .neqv. (is == SCHEME_SUBMATRIX .and. ic == CASE_REPEAT &
-                    & .and. N_DELAY_LIST(id) > 1)) then
+               if ((n_repeat_flush > 0) .neqv. (is == SCHEME_SUBMATRIX .and. &
+                    & (ic == CASE_REPEAT .or. ic == CASE_REPEAT_SKIP) .and. N_DELAY_LIST(id) > 1)) then
                   flag = 'RFL'
                   n_fail = n_fail + 1
                endif
-               write(6,'(A10,1X,A10,1X,A4,1X,I7,1X,ES13.4,1X,ES13.4,1X,ES13.4,1X,ES10.2,1X,ES12.2,1X,F7.3,1X,F6.2,1X,F6.2,1X,I6,1X,A4)') &
+               ! The skip mask must act exactly in case repeat_skip
+               if ((n_skipped > 0) .neqv. (ic == CASE_REPEAT_SKIP)) then
+                  flag = 'SKP'
+                  n_fail = n_fail + 1
+               endif
+               write(6,'(A11,1X,A10,1X,A4,1X,I7,1X,ES13.4,1X,ES13.4,1X,ES13.4,1X,ES10.2,1X,ES12.2,1X,F7.3,1X,F6.2,1X,F6.2,1X,I6,1X,I5,1X,A4)') &
                     & case_name(ic), scheme_name(is), dirs(idir), N_DELAY_LIST(id), rerr, gerr, drift, &
                     & cond_1pA_last, drift_rel, real(n_accepted, dp) / real(n_proposals, dp), cond_Q_max, cond_S_max, &
-                    & n_repeat_flush, flag
+                    & n_repeat_flush, n_skipped, flag
             enddo
          enddo
       enddo
