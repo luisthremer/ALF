@@ -24,7 +24,9 @@ variables (`ALF_GPU_FAULT*`, `_TAUSWAP`, `_TAU_NS`, `_NS`, `_STABCHECK`, `_STABM
 (since 2026-10-31) are refused unless the acceptance file declares
 the run as a self-test or control run, or as a diagnostic gate run (the 207 paired test needs `ALF_GPU_TAUDIAG`; the
   file says so in the gate's reason). GPU builds run with `OMP_TARGET_OFFLOAD=MANDATORY` (`GPU=intel`
-  builds also with `ONEAPI_DEVICE_SELECTOR=level_zero:0`, set by `acc_run.sh` and not overridable), and every run of a GPU build
+  builds also with `ONEAPI_DEVICE_SELECTOR=level_zero:0`, set by `acc_run.sh` and `acc_ctest.sh` after the env file and
+  asserted, not overridable; an env file that sets `ZE_AFFINITY_MASK` stops the run; `verdict.py` checks the recorded
+  env), and every run of a GPU build
   must show the ACTIVE lines of the GPU paths; an INACTIVE line is an input error. A log without a stamp that matches
   the candidate is not evidence.
 

@@ -4,14 +4,16 @@
 #     --base     : build the base (base_src.tar) instead of the candidate (for identity comparisons);
 #     TOOL: env file (gnu | nvhpc | intel); CONFIGURE ARGS e.g. "GNU devel noMPI" or "IntelLLVM devel noMPI GPU=intel".
 #     --regex R  : ctest -R R (default: all tests);   --repeat N : run the selected tests N times (e.g. t_order);
-#     --env      : variables for the test runs (e.g. a declared fault mode of a control); ALF_GPU_* need the
-#                  acceptance file to declare the run as a control (the driver passes them only then).
+#     --env      : variables for the test runs (e.g. a declared fault mode of a control); ALF_GPU_* and ALF_LA_TEST_*
+#                  need the acceptance file to declare the run as a control (the driver passes them only then);
+#                  OMP_TARGET_OFFLOAD, ONEAPI_DEVICE_SELECTOR, ZE_AFFINITY_MASK, CUDA_VISIBLE_DEVICES are refused.
 # Writes OUTDIR/{stamp, build.log, ctest.log, ctest.exit, summary}: ctest.exit is 0 (all passed) or 1 (a test failed
 # its own check: "***Failed"); a build/setup failure or any crash, exception, timeout, "Not Run" or abort writes 2
 # (INVALID, never a pass and never a detection). Tests run with ctest -V (their output is in ctest.log).
-# GPU configurations (GPU=nvidia|intel) run with OMP_TARGET_OFFLOAD=MANDATORY (intel: also
-# ONEAPI_DEVICE_SELECTOR=level_zero:0, exported after the env file, which must not set ZE_AFFINITY_MASK; the stamp
-# records "selector level_zero:0"), one test at a time, under flock ~/alf-gpu/gpu.lock; the stamp records it. summary: "<regex>: P of N repetitions
+# GPU configurations (GPU=nvidia|intel) run with OMP_TARGET_OFFLOAD=MANDATORY (GPU=intel, which needs TOOL intel:
+# also ONEAPI_DEVICE_SELECTOR=level_zero:0, exported after the env file and asserted; an env file that sets
+# ZE_AFFINITY_MASK makes the repetition INVALID; the stamp line "selector" records it, env_rep_N.txt the effective
+# environment), one test at a time, under flock ~/alf-gpu/gpu.lock. summary: "<regex>: P of N repetitions
 # passed" and the last "tests failed out of" line. Exit code = the value in ctest.exit.
 set -o pipefail
 export LC_ALL=C
@@ -28,10 +30,12 @@ C=$HOME/alf-gpu/work/t$TICKET/cand/$WHO/$S12; [ -f $C/.alf_candidate ] || { echo
 want=$(awk -v k=$KEY '$1==k {print $2}' $C/.alf_candidate); have=$(sha256sum $C/$SRCT.tar | cut -d' ' -f1)
 [ -n "$want" ] && [ "$want" = "$have" ] || { echo "TAR HASH MISMATCH"; exit 2; }
 ENVF=$HOME/alf-gpu/env/$TOOL.sh; [ -f "$ENVF" ] || { echo "no env file $ENVF"; exit 2; }
+case " $* " in *" GPU=intel "*) [ "$TOOL" = intel ] || { echo "refusing: GPU=intel needs TOOL intel (got $TOOL)"; exit 2; };; esac
 mkdir "$OUT" || { echo "refusing: $OUT exists"; exit 2; }
 GPUENV=(); OFF=none; JOBS=1; LOCK=(); SELV=""   # one test at a time: deterministic output order for identity comparisons
 case " $* " in *" GPU=nvidia "*|*" GPU=intel "*) GPUENV=(OMP_TARGET_OFFLOAD=MANDATORY); OFF=MANDATORY; JOBS=1
-  LOCK=(flock "$HOME/alf-gpu/gpu.lock"); [ "$TOOL" = intel ] && SELV=ONEAPI_DEVICE_SELECTOR=level_zero:0;; esac
+  LOCK=(flock "$HOME/alf-gpu/gpu.lock");; esac
+case " $* " in *" GPU=intel "*) SELV=ONEAPI_DEVICE_SELECTOR=level_zero:0;; esac
 { grep -E '^(sha|who|base_sha) ' $C/.alf_candidate; echo "$KEY $want"; echo "source $SRCT"; echo "offload $OFF"; S2=${SELV#ONEAPI_DEVICE_SELECTOR=}; echo "selector ${S2:-none}"; echo "tool $TOOL"; echo "configure $*"; echo "regex ${RX:-all}"
   echo "repeat $REP"; echo "env ${ENVX[*]:-none}"; echo "start $(date -Is)"; } > "$OUT/stamp"
 export TMPDIR=$HOME/alf-gpu/work/t$TICKET/tmp; mkdir -p $TMPDIR
@@ -45,10 +49,15 @@ if [ $? != 0 ]; then echo 2 > "$OUT/ctest.exit"; echo "BUILD FAILED (INVALID)" >
 pass=0; fails=0; crash=0
 for i in $(seq 1 "$REP"); do
   "${LOCK[@]}" env -i HOME="$HOME" USER="$USER" LANG=C LC_ALL=C PATH=/usr/bin:/bin TMPDIR="$TMPDIR" "${GPUENV[@]}" "${ENVX[@]}" \
-    bash --noprofile --norc -c '. "$1" > /dev/null 2>&1 || exit 2
-      if [ -n "$4" ]; then [ -n "${ZE_AFFINITY_MASK+x}" ] && { echo "env file sets ZE_AFFINITY_MASK: refusing"; exit 2; }; export "$4"; fi
-      cd "$0" && ctest -j "$3" -V ${2:+-R "$2"}' \
-    "$W/testsuite/tests" "$ENVF" "$RX" "$JOBS" "$SELV" > "$OUT/rep_$i.log" 2>&1
+    bash --noprofile --norc -c 'd=$0 rx=$2 j=$3 sel=$4 envout=$5   # copied: an env file may reset the positionals
+      . "$1" > /dev/null 2>&1 || exit 2
+      if [ -n "$sel" ]; then
+        [ -n "${ZE_AFFINITY_MASK+x}" ] && { echo "env file sets ZE_AFFINITY_MASK: refusing"; exit 2; }
+        export "$sel"; [ "$ONEAPI_DEVICE_SELECTOR" = level_zero:0 ] || { echo "device selector not in effect: refusing"; exit 2; }
+      fi
+      env | sort > "$envout"
+      cd "$d" && ctest -j "$j" -V ${rx:+-R "$rx"}' \
+    "$W/testsuite/tests" "$ENVF" "$RX" "$JOBS" "$SELV" "$OUT/env_rep_$i.txt" > "$OUT/rep_$i.log" 2>&1
   rc=$?
   # the temporary build path and backtrace addresses (ASLR, e.g. from the expected-failure tests) differ between runs
   sed -i -E "s#$W#<BUILD>#g; s/0x[0-9a-f]{6,}/0xADDR/g; s/^[0-9]+: //" "$OUT/rep_$i.log"   # also the ctest -V test-index prefix

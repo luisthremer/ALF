@@ -11,7 +11,7 @@
 #   ONEAPI_DEVICE_SELECTOR=level_zero:0 (the discrete GPU; the iGPU of `intel` has no FP64), set here like
 #   OMP_TARGET_OFFLOAD, so not part of the declared env, exported after the env file (which must not set
 #   ZE_AFFINITY_MASK: exit 2); for GPU=intel builds ONEAPI_DEVICE_SELECTOR and ZE_AFFINITY_MASK are refused as extra
-#   variables; verdict.py checks the recorded env. Timeout ACC_TIMEOUT (default 900 s), then
+#   variables; verdict.py checks the recorded env; a refusal reason goes to RUNDIR/refused.txt. Timeout ACC_TIMEOUT (default 900 s), then
 #   SIGKILL after 30 s; rc 124 or 137 = timeout. With ACC_GPU_LOCK set, GPU builds run under flock on that file.
 #   Writes RUNDIR/provenance.json.
 # Exit code: the program's exit code; 2 on a usage or setup error (nothing run).
@@ -31,7 +31,7 @@ for kv in "$@"; do
     *) echo "bad argument $kv"; exit 2;;
   esac
 done
-read -r TOOL GPUB GPUI < <(python3 -c "import json,sys; b=json.load(open(sys.argv[1])); print(b['tool'], 1 if ('GPU=nvidia' in b['configure'] or 'GPU=intel' in b['configure']) else 0, 1 if 'GPU=intel' in b['configure'].split() else 0)" "$BJ") || { echo "bad build record"; exit 2; }
+read -r TOOL GPUB GPUI < <(python3 -c "import json,sys; b=json.load(open(sys.argv[1])); c=b['configure'].split(); print(b['tool'], 1 if ('GPU=nvidia' in c or 'GPU=intel' in c) else 0, 1 if 'GPU=intel' in c else 0)" "$BJ") || { echo "bad build record"; exit 2; }
 SEL=""
 if [ "$GPUI" = 1 ]; then
   for kv in "${ENVX[@]}"; do
@@ -57,15 +57,16 @@ T=${ACC_TIMEOUT:-900}
 LOCK=(); [ "$GPUB" = 1 ] && [ -n "${ACC_GPU_LOCK:-}" ] && LOCK=(flock "$ACC_GPU_LOCK")
 date -Is > start.txt
 "${LOCK[@]}" env -i HOME="$HOME" USER="$USER" LANG=C LC_ALL=C PATH=/usr/bin:/bin TMPDIR="$D/tmp" $OFF "${ENVX[@]}" \
-  bash --noprofile --norc -c '
-  . "$1" > env_file.log 2>&1 || { echo "env file failed: $1" >&2; exit 2; }
-  if [ -n "$3" ]; then   # GPU=intel: pin the device after the env file, so the env file cannot override it
-    [ -n "${ZE_AFFINITY_MASK+x}" ] && { echo "env file sets ZE_AFFINITY_MASK: refusing (device pinning)" >&2; exit 2; }
-    export "$3"
+  bash --noprofile --norc -c 'bin=$0 envf=$1 t=$2 sel=$3   # copied: an env file may reset the positionals
+  . "$envf" > env_file.log 2>&1 || { echo "env file failed: $envf" | tee refused.txt >&2; exit 2; }
+  if [ -n "$sel" ]; then   # GPU=intel: pin the device after the env file, so the env file cannot override it
+    [ -n "${ZE_AFFINITY_MASK+x}" ] && { echo "env file sets ZE_AFFINITY_MASK: refusing (device pinning)" | tee refused.txt >&2; exit 2; }
+    export "$sel"
+    [ "$ONEAPI_DEVICE_SELECTOR" = level_zero:0 ] || { echo "device selector not in effect: refusing" | tee refused.txt >&2; exit 2; }
   fi
   export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
   env | sort > env.txt
-  exec timeout -k 30 "$2" "$0" > run.log 2>&1' "$BIN" "$ENVF" "$T" "$SEL"
+  exec timeout -k 30 "$t" "$bin" > run.log 2>&1' "$BIN" "$ENVF" "$T" "$SEL"
 rc=$?
 date -Is > end.txt
 GPUCK2=-1

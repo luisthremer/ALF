@@ -548,7 +548,7 @@ def g_files_identical(g, root, acc):
             texts.append(lines)
         st = [{l.split(None, 1)[0]: l.split(None, 1)[1] if " " in l else "" for l in read(os.path.join(root, d, "stamp")).splitlines()}
               for d in (da, db)]
-        for k in ("tool", "configure", "regex", "repeat", "env", "offload"):
+        for k in ("tool", "configure", "regex", "repeat", "env", "offload", "selector"):
             if st[0].get(k) != st[1].get(k):
                 raise InputFail(f"{da}/{db}: stamps differ in {k} ({st[0].get(k)} vs {st[1].get(k)})")
         if {st[0].get("source"), st[1].get("source")} != {"base_src", "src"}:
@@ -909,8 +909,12 @@ def selfcheck():
     ok_x = any("run q1 carries fault/numerics variables" in e for e in le) and any(e.startswith("run q3:") and "ONEAPI_DEVICE_SELECTOR" in e for e in le)
     la_acc["gates"] = [{"type": "faults", "id": "ft", "cases": {"q1": "x"}}]
     ok_x &= not any("carries fault/numerics" in e for e in lint_errors(la_acc))
+    la_acc["builds"] = dict(builds, igpu=dict(builds["igpu"], gpu=False))
+    la_acc["ctests"] = [{"id": "ct1", "tool": "intel", "configure": "IntelLLVM devel noMPI GPU=intel", "env": ["ZE_AFFINITY_MASK=0"]}]
+    le = lint_errors(la_acc)
+    ok_x &= any(e.startswith("build igpu:") and "does not match" in e for e in le) and any(e.startswith("ctest ct1:") for e in le)
     bad += not ok_x
-    print(f"{'ok ' if ok_x else 'BAD'} lint: ALF_LA_TEST_ in a gate run, faults gate exempt, selector declared on GPU=intel")
+    print(f"{'ok ' if ok_x else 'BAD'} lint: ALF_LA_TEST_ in a gate run, faults gate exempt, selector declared on GPU=intel, gpu flag, ctest pin")
     shutil.rmtree(tmp)
     print("selfcheck:", "PASS" if not bad else f"FAIL ({bad} wrong)")
     return 0 if not bad else 1
@@ -938,9 +942,16 @@ def lint_errors(acc):
             pin = [kv for kv in r.get("env", []) if kv.split("=")[0] in ("ONEAPI_DEVICE_SELECTOR", "ZE_AFFINITY_MASK")]
             if pin:
                 errs.append(f"run {rid}: {pin} declared for a GPU=intel build (acc_run.sh sets the selector and refuses these)")
-    for b in builds:
+    for b, bv in builds.items():
         if b not in used_builds:
             errs.append(f"build {b}: declared but unused")
+        gtok = any(t.startswith("GPU=") and t != "GPU=none" for t in bv.get("configure", "").split())
+        if bv.get("gpu", True) != gtok:
+            errs.append(f"build {b}: 'gpu' {bv.get('gpu', True)} does not match its configure line (GPU checks would be skipped or misapplied)")
+    for t in acc.get("ctests", []):
+        pin = [kv for kv in t.get("env", []) if kv.split("=")[0] in ("ONEAPI_DEVICE_SELECTOR", "ZE_AFFINITY_MASK", "OMP_TARGET_OFFLOAD", "CUDA_VISIBLE_DEVICES")]
+        if pin:
+            errs.append(f"ctest {t['id']}: {pin} declared (acc_ctest.sh sets or refuses these)")
     if not draft:
         for c, v in configs.items():
             if "parameters_sha256" not in v:
