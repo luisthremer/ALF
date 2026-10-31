@@ -7,14 +7,15 @@
 #   N_delay  max pending accepted vertices (ignored by 'standard' but recorded)
 #   THREADS  OMP_NUM_THREADS = VECLIB_MAXIMUM_THREADS (default 1; omit it or give it before any KEY=VALUE)
 #   KEY=VALUE  extra parameters applied after the Hubbard defaults (make_params.py), e.g. another model:
-#            ham_name=\"tV\" Model=\"tV\" ham_V=-1.d0 N_SUN=1  (set NSWEEP: the per-L table is calibrated for Hubbard only)
+#            ham_name=\"tV\" Model=\"tV\" ham_V=-1.d0 N_SUN=1  (set NSWEEP: the per-L table is calibrated for Hubbard only;
+#            values without spaces or backslashes; write the key as ham_name=, lower case, for the model field)
 # Environment:
 #   BENCH_BIN     ALF binary (default runs/bench/ALF.out, a frozen copy so rebuilds do not change it mid-scan)
 #   NSWEEP        overrides the per-L sweep count (calibration / re-runs; a warning is printed to stderr)
 #   TAG           optional suffix of the run directory name (e.g. TAG=_rep2)
 #   BENCH_COMMIT  optional expected commit; a warning is printed if the binary reports another one
 #   SEED          first seed (default: the one in Start/seeds); identical for all schemes => identical trajectories
-# Run directory: runs/bench/<SCHEME>_L<L>_nd<N_delay>_t<THREADS>_ns<NSweep><TAG>
+# Run directory: runs/bench/<SCHEME>[_<model>]_L<L>_nd<N_delay>_t<THREADS>_ns<NSweep><TAG>  (_<model> only with KEY=VALUE)
 # Output (one line, stdout):  scheme L N N_delay threads sec_per_sweep acceptance nsweep commit date pgreen_mean pgreen_max pphase_max
 #   [model keys]   only with extra KEY=VALUE arguments: model = value of ham_name (quotes stripped), keys = the extra
 #                  arguments joined with ',' (one field). N = L*L lattice sites (not Ndim) for every model.

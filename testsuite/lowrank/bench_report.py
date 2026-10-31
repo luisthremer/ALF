@@ -57,6 +57,9 @@ def read_rows(path, check_commit=True):
     commits = sorted({r["commit"] for r in rows})
     if check_commit and len(commits) != 1:
         sys.exit("bench_report.py: rows come from different commits: " + ", ".join(commits))
+    models = sorted({r.get("model", "Hubbard") for r in rows})
+    if len(models) > 1:   # tables group by (L, N_delay, threads) only: one model per raw file
+        sys.exit("bench_report.py: rows of different models in one file: " + ", ".join(models))
     seen = set()
     for r in rows:
         key = (r["scheme"], r["L"], r["N_delay"], r["threads"])
