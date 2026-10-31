@@ -12,9 +12,11 @@
   controls) and `302b.nvidia.json` (`nividia` part, `acc_driver.py --part nvidia`: 10 runs, 5 gates, 5 controls).
 - **Status:** RE-REGISTRATION for decision 28 (compare2 120 × 60) pending review (b); until then the last approved
   pre-registration is **PREREG_SHA `3e7d1992`** (`3e7d199242a88760cd3b319769a2848020fc0620`, 2026-10-31) on `gpu-port-302b`,
-  base `71af3e076322`; approved by review (b) of the final state. Decisions 26 (precision control eps:1e-10 replaces
-  NS=0) and 27 (near-threshold control eps:1e-12). Supersedes the first pre-registration `0e427164`. T0 (dev trees
-  a1, a2) done; candidate 1 and T1 next.
+  base `71af3e076322`; decisions 26 (precision control eps:1e-10 replaces NS=0) and 27 (near-threshold control
+  eps:1e-12); supersedes the first pre-registration `0e427164`. T0, candidate 1 `08b095b4`, review (a), T1 (PASS) and
+  T2 (compare2 INCONCLUSIVE) done, see the record below. Next: review (b) of the decision-28 re-registration, record its
+  PREREG_SHA, candidate 2 = the code of `08b095b4` merged onto the new PREREG (code-identical up to `docs/**` and
+  `302b.json`, checked with `git diff`; so review (a) and T1 stand, as for 212's `8022c4b0`), T2 on fresh seeds.
 
 ## Goal
 With `GPU=intel` (ifx 2026.2 OpenMP offload, spir64 JIT, plus the 302a oneMKL backend), the 204 wraps (checkerboard and
@@ -161,8 +163,10 @@ CUDA "unchanged" is checked at run time, because `acc_gpunone.sh` does not prepr
 - **Host fallback:** `OMP_TARGET_OFFLOAD=MANDATORY` (harness).
 
 ### Run lengths, time and budget
-Run lengths are those of 212 (statistics, same hashes). No time limit applies (decision 16). `timeout_s` 7200 is a hang
-guard only (pessimistic c2_gpu estimate ~3200 s, > 2× margin); the driver has a single global timeout.
+Run lengths are those of 212 (statistics, same hashes) except compare2: 120 × 60 since decision 28 (hash
+`8f1653b7…`). No time limit applies (decision 16). `timeout_s` 7200 is a hang guard only (measured c2_gpu 513 s at
+120 × 30 → ~1030 s at 120 × 60, > 6× margin; the pessimistic estimate below, doubled, ~6400 s); the driver has a
+single global timeout.
 
 **How the time was estimated:**
 - A30 wall times come from 212's T2 driver log (`nividia:~/alf-gpu/work/t212/cand/mgr/8022c4b0de64/logs/`): 6×6 fd 70 s,
@@ -180,7 +184,7 @@ guard only (pessimistic c2_gpu estimate ~3200 s, > 2× margin); the driver has a
 | ss_def_12 | 7.9 min | 12 min | 24 min |
 | determinism 12×12 β = 10 (4 runs) | 40 min | 60 min | 120 min |
 | precision (3 runs) | 30 min | 45 min | 90 min |
-| c2_gpu | 18 min | 27 min | 54 min |
+| c2_gpu (120 × 60, decision 28: 212's 120 × 30 doubled) | 36 min | 54 min | 108 min |
 | ctests (4) | – | ~5 min | ~8 min |
 | **per tier (T1 or T2)** | **~104 min** | **~170 GPU-min** | **~335 GPU-min** |
 
@@ -201,6 +205,15 @@ guard only (pessimistic c2_gpu estimate ~3200 s, > 2× margin); the driver has a
   B580 (T2 log), so ~17 min at 120 × 60; `timeout_s` 7200 keeps > 6× margin. With decision 16 no exception is needed.
 - The positive control plants 8 SEs: **decision 23** (2026-10-31, "Approve shift 8"). At m = 11, α = 0.01 Šidák
   (z ≈ 3.32, t ≈ k/√2), a shift of 5 is caught ~59 % of the time, 8 ~99 %.
+- **INCONCLUSIVE rate (measured 2026-10-31, review (b) of decision 28):** `compare2.py`'s plateau test flags an
+  observable under-resolved iff the last doubling (f = 4 → 8, N = 29 → 14 at 120 bins) grows the error by more than
+  1 + 1.5/√26. On synthetic uncorrelated 120-bin series (40000 trials, the shipped `compare2.py`) that happens in 1.2 %
+  of runs per observable (2.6 % at lag-1 correlation 0.3), independent of NSweep. With 11 observables in 2 runs a
+  compare2 is INCONCLUSIVE by chance in up to ~24 % of T2s (fewer with correlated observables); the file's earlier
+  "~1 %" was wrong. Decision 28 removes a real autocorrelation of the size seen for `Kin`, not this rate.
+- **Fixed before T2 (decision 28 re-registration):** if compare2 is INCONCLUSIVE again, work stops; no re-run, no
+  further length change by the manager; the manager returns to the owner with the numbers. VERIFICATION.md §6 asks for
+  ≥ 30 independent bins while `min_bins` 8 admits 14; information for the owner, unchanged here.
 
 ### Precision control (decision 26, 2026-10-31)
 - T0 fired the decision-24 stop rule: on the B580 (dev1, `hub12x12_cb_p`) `ALF_GPU_NS=0` gave Green / τ 0.984 / 0.912 of
@@ -265,7 +278,7 @@ guard only (pessimistic c2_gpu estimate ~3200 s, > 2× margin); the driver has a
 - **P6** dpkg record before T1/T2 (decision 13), against `intel:~/alf-gpu/backup/intel_versions_2026-10-30.txt`.
 - **P7 done.** Decisions 20 (budget), 22 (τ), 23 (shift 8), 24 (pre-register now, NS=0 stop rule), 26–27 (precision
   controls eps:1e-10 and eps:1e-12), 25 (standing approval
-  for unattended T1/T2 on the B580).
+  for unattended T1/T2 on the B580), 28 (compare2 120 × 60).
 - **P8 done** (2026-10-31, test-runner, `intel:~/alf-gpu/work/t302b/probe/`): base `GPU=intel` build of `3e23a682`
   (206 INACTIVE, stabilization on the host; 205 updates and cb wraps on the B580) vs the ifx CPU build, Ltau = 1, versions
   equal to the 2026-10-30 record. Not a 302b result.
@@ -281,7 +294,8 @@ guard only (pessimistic c2_gpu estimate ~3200 s, > 2× margin); the driver has a
   - The 2026-10-28 point (0.475 s/sweep at 6×6, ifx 2025.3, old driver) is obsolete: the same path now takes 0.141 s.
   - The time estimate above (f = 1.5–3 vs the A30) is pessimistic for the 204/205 part (measured f ≈ 0.4–0.5 with host
     stabilization). The device stabilization adds an unknown cost (302a: ~0.45 ms fixed per oneMKL QR call), so the
-    estimate table stays as the upper bound; `timeout_s` was raised to 7200 (> 2× the pessimistic c2_gpu estimate).
+    estimate table stays as the upper bound; `timeout_s` was raised to 7200 (> 2× the pessimistic c2_gpu estimate at
+    120 × 30; for 120 × 60 see Run lengths).
   - On the B580 the GPU build is 2–5× slower than one ifx CPU core at these sizes (information; no performance gate).
   - `alf_la: ONEMKL device:` is not printed on the base: `la_init` is skipped under the 302 guard
     (`gpu_state_mod.F90:577–579`). 302b removes that guard, so the active line in the draft is expected from 302b on;
@@ -291,9 +305,9 @@ guard only (pessimistic c2_gpu estimate ~3200 s, > 2× margin); the driver has a
 Recorded in `302b.json` `approvals` (owner, manager session, DECISIONS.md):
 - decision 22, 2026-10-31, "CPU τ pass" — covers `same_seed`, `precision` (host τ pass under GPU=intel until 302c);
 - decision 23, 2026-10-31, "Approve shift 8" — covers `c_compare2_shift`;
-- decision 28, 2026-10-31, "120 bins × 60 sweeps" — covers `compare2`, `c_compare2_shift`, `c_compare2_null`;
 - decision 26, 2026-10-31, "Graded device fault" — covers `c_precision_eps` (eps:1e-10);
-- decision 27, 2026-10-31, "Add x = 1e-12" — covers `c_precision_eps12` (near-threshold control).
+- decision 27, 2026-10-31, "Add x = 1e-12" — covers `c_precision_eps12` (near-threshold control);
+- decision 28, 2026-10-31, "120 bins × 60 sweeps" — covers `compare2`, `c_compare2_shift`, `c_compare2_null`.
 Decision 24 ("Pre-register now") is procedural: its stop rule fired in T0 and led to decision 26; it covers no control.
 Process approvals without a criterion: decision 20 (no fixed B580 budget), 21 (venv), 25 (unattended T1/T2).
 

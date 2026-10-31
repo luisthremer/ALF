@@ -59,12 +59,12 @@
  "machine": "intel",
  "gpu_exclusive": true,
  "timeout_s": 7200,
- "_timeout_reason": "hang guard only (decision 16). Longest run c2_gpu: 1073 s on the A30 (212 T2). P8 (2026-10-31): the B580 base build is 0.4-0.5x the A30 per sweep with host stabilization; device stabilization adds an unmeasured oneMKL cost (~0.45 ms per QR call), so the pessimistic estimate 3200 s stays the bound and 7200 s gives > 2x margin. One global timeout: a hung short run could hold the B580 up to 2 h",
+ "_timeout_reason": "hang guard only (decision 16). Longest run c2_gpu: 1073 s on the A30 (212 T2). P8 (2026-10-31): the B580 base build is 0.4-0.5x the A30 per sweep with host stabilization; device stabilization adds an unmeasured oneMKL cost (~0.45 ms per QR call), so the pessimistic estimate 3200 s (at 120 x 30) was the bound. Decision 28 doubles the compare2 sweeps: measured c2_gpu 513 s at 120 x 30 on the B580 (T2 of candidate 1) gives ~1030 s at 120 x 60, > 6x margin; the old pessimistic estimate doubled (~6400 s) still fits. One global timeout: a hung short run could hold the B580 up to 2 h",
  "disk_min_free_GB": 5,
  "cpu_parallel": 2,
  "_cpu_parallel_reason": "CLAUDE.md: <= 8 cores on intel; one GPU run (1 host thread + Level Zero runtime) plus 2 single-threaded CPU oracle runs; CPU-alongside non-interference was measured on nividia only (the determinism pairs run under different load and would show an effect)",
  "false_alarm_budget": 0.04,
- "_false_alarm_reason": "compare2 (alpha 0.01, Sidak inside) ~1 %; its null control ~1 %; INCONCLUSIVE compare2 outcomes ~1 %; precision mean ~1 % (not calibrated on oneMKL); all other gates deterministic",
+ "_false_alarm_reason": "compare2 (alpha 0.01, Sidak inside) ~1 %; its null control ~1 %; INCONCLUSIVE compare2 outcomes: NOT ~1 % - measured 2026-10-31 with compare2.py on synthetic uncorrelated 120-bin series (40000 trials): an observable is flagged under-resolved in 1.2 % of runs (2.6 % at lag-1 correlation 0.3), independent of NSweep (the test uses the last rebin level, 8-15 bins); 11 observables in 2 runs give up to ~24 % per compare2 if independent, less with the correlations between observables; an INCONCLUSIVE stops the ticket (ticket, decision 28 record), it never passes; precision mean ~1 % (not calibrated on oneMKL); all other gates deterministic",
  "active_lines": [
   "GPU path (gpu_state): ACTIVE",
   "GPU update path (ticket 205): ACTIVE",
@@ -1810,5 +1810,5 @@
    "gpu": true
   }
  ],
- "_approvals_reason": "22: Ltau=1 runs under GPU=intel do TAU_M on the host until 302c, so the same_seed tau datasets and Precision tau compare the host tau pass fed by the device stabilization (206 INTERIM udvst copy). 23: compare2 control shift 8. Budget: decision 20 (no fixed GPU budget on the B580). compare2 length 120 x 30 needs no exception since decision 16. 24: NS=0 control pre-registered without a probe, with the stop rule above. 25: standing approval for unattended T1/T2 on the B580. 26: the NS=0 control did not kill the precision gate on the B580 (T0, dev1); replaced by the graded device fault eps:1e-10, calibrated by the rule in the ticket. 24 is procedural (the stop rule that led to 26) and covers no control. 27: second, near-threshold control eps:1e-12"
+ "_approvals_reason": "22: Ltau=1 runs under GPU=intel do TAU_M on the host until 302c, so the same_seed tau datasets and Precision tau compare the host tau pass fed by the device stabilization (206 INTERIM udvst copy). 23: compare2 control shift 8. Budget: decision 20 (no fixed GPU budget on the B580). compare2 length 120 x 60 (decision 28) needs no exception since decision 16. 24: NS=0 control pre-registered without a probe, with the stop rule above. 25: standing approval for unattended T1/T2 on the B580. 26: the NS=0 control did not kill the precision gate on the B580 (T0, dev1); replaced by the graded device fault eps:1e-10, calibrated by the rule in the ticket. 24 is procedural (the stop rule that led to 26) and covers no control. 27: second, near-threshold control eps:1e-12. 28: compare2 runs 120 x 60 after the INCONCLUSIVE (Kin under-resolved) in the T2 of candidate 1; alpha, m, observables, min_bins and controls unchanged"
 }
