@@ -10,9 +10,10 @@
 - **Branch:** `gpu-port-302b` (the 2026-10-30 draft branch `gpu-port-302b-b580` is superseded)
 - **Acceptance files:** `testsuite/gpu_reference/acceptance/302b.json` (Intel part, `intel`: 83 runs, 15 gates, 19
   controls) and `302b.nvidia.json` (`nividia` part, `acc_driver.py --part nvidia`: 10 runs, 5 gates, 5 controls).
-- **Status:** RE-REGISTRATION pending review (b) (decision 26: precision control replaced after T0). First
-  pre-registration `0e427164` (2026-10-31, base `71af3e076322`) is superseded once the re-registration commit is
-  approved; its sha is then recorded here as the PREREG_SHA for `acc_ship.sh`. T0 (dev trees a1, a2) is done.
+- **Status:** RE-REGISTERED. **PREREG_SHA `3e7d1992`** (`3e7d199242a88760cd3b319769a2848020fc0620`, 2026-10-31) on `gpu-port-302b`,
+  base `71af3e076322`; approved by review (b) of the final state. Decisions 26 (precision control eps:1e-10 replaces
+  NS=0) and 27 (near-threshold control eps:1e-12). Supersedes the first pre-registration `0e427164`. T0 (dev trees
+  a1, a2) done; candidate 1 and T1 next.
 
 ## Goal
 With `GPU=intel` (ifx 2026.2 OpenMP offload, spir64 JIT, plus the 302a oneMKL backend), the 204 wraps (checkerboard and
@@ -228,7 +229,7 @@ guard only (pessimistic c2_gpu estimate ~3200 s, > 2× margin); the driver has a
   New control run `ctl_pr_eps_b4`, control `c_precision_eps` (decision 26).
 - **Near-threshold control (decision 27, after review (b) of the re-registration):** `ctl_pr_eps12_b4` with
   `eps:1e-12`, control `c_precision_eps12`, predicted ≈ 0.77 + 6.4 ≈ 7× Green. Shows the gate is sharp near 1.5× (it
-  catches, for example, a device precision reduction that under-reports by more than ~5×). If it is not killed in T1 or
+  should fire on a device degradation of about 7× the CPU mean; the threshold itself is reached near x ≈ 1e-13). If it is not killed in T1 or
   T2, work stops and the manager returns to the owner.
 
 ### Other open points
@@ -259,7 +260,8 @@ guard only (pessimistic c2_gpu estimate ~3200 s, > 2× margin); the driver has a
   `NEO_CACHE_PERSISTENT=0` (2026-10-30); the old `~/.cache/neo_compiler_cache` waits for the owner.
 - **P5 done.** 302a merged (`890185c0`); counts confirmed; base `71af3e076322`.
 - **P6** dpkg record before T1/T2 (decision 13), against `intel:~/alf-gpu/backup/intel_versions_2026-10-30.txt`.
-- **P7 done.** Decisions 20 (budget), 22 (τ), 23 (shift 8), 24 (pre-register now, NS=0 stop rule), 25 (standing approval
+- **P7 done.** Decisions 20 (budget), 22 (τ), 23 (shift 8), 24 (pre-register now, NS=0 stop rule), 26–27 (precision
+  controls eps:1e-10 and eps:1e-12), 25 (standing approval
   for unattended T1/T2 on the B580).
 - **P8 done** (2026-10-31, test-runner, `intel:~/alf-gpu/work/t302b/probe/`): base `GPU=intel` build of `3e23a682`
   (206 INACTIVE, stabilization on the host; 205 updates and cb wraps on the B580) vs the ifx CPU build, Ltau = 1, versions
