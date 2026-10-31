@@ -21,21 +21,26 @@
 #              (MPI build) against ONE independent noMPI standard chain (different seed family). NSweep/NBin are the
 #              stat_runs.sh values for every rank count: ALF with MPI pools the per-rank bins (every bin is the average
 #              over the ranks of that bin), so the number of bins is the same and the N-rank run has N times the statistics.
-#   threads    noMPI, OMP_NUM_THREADS=4 vs 1 (independent seed), `half`, each scheme.
+#   threads    noMPI, `half`, each scheme: (a) OMP_NUM_THREADS=4 vs 1 with independent seeds (stat_compare rules); (b) same seed, omp1 vs
+#              omp4: confout_0 identical and all bins within rtol 1e-8 (compare_runs.py), a hard failure otherwise.
 #   tempering  TEMPERING build, mpirun -n 2, &VAR_TEMP mpi_per_parameter_set=1 (2 replicas), `half` with ham_U = 3 and 4
 #              (Temp_0, Temp_1), each scheme; each replica vs an independent noMPI standard run of the same parameters
 #              (the ham_U=3 reference has its own seed, reference + 500). N_Tempering_frequency=2 (the template's 10 gives
 #              only ~16 accepted exchanges per run at ham_U 3 vs 4; 2 gives ~100), N_exchange_steps=6.
 #   pp         PARALLEL_PARAMS build, same layout (QMC keys read from Temp_<g>/parameters), same references. No exchange steps
 #              in this build: the replicas are independent chains (replica 1 is bit-identical to the noMPI run with the same seed).
-#   For every non-standard run Temp_<g>/info (info) must contain the line "Sequential scheme: <NAME>" exactly once.
+#   For every non-standard run info (Temp_<g>/info) must contain the line "Sequential scheme: <NAME>" exactly once. TEMPERING: Acceptance
+#   Tempering in Temp_0/info must be > 0 (a vacuous run fails); PARALLEL_PARAMS reports it. Non-finite array data is a hard failure.
+#   mpi: the np1 and np2 runs of a (set, scheme) run concurrently (3 cores), np4 alone.
+# Provenance: binaries, parameter templates, sets.sh, make_params.py, compare_runs.py come from builds/noMPI/src (archived HEAD);
+#   env PT_MAKE_J=<n> sets make -j (default 4).
 # Seeds: rank r of an N-rank run reads line N-r of `seeds` (Set_Random_number_Generator), so the script writes N distinct
 #   seeds per run: base + 7919*i, i = 1..16. Seed family bases: reference 1000, candidate 2000 (+100 delayed, +200 submatrix: a
 #   different chain per scheme), replicate candidate 3000 (+100/+200), replicate reference 4000 (references and candidates never share a seed).
 # Pre-registered protocol (testsuite/lowrank/README.md): a scalar |z| >= 3 is a failure with no replicate. If ONLY an array
 #   rule fails (FAIL-ARRAY), ONE replicate of the whole case is run with fresh seeds (candidate 3000, reference 4000); the
 #   case passes iff the replicate passes everything (tempering/pp: the replicate concerns the replica(s) whose round-1
-#   comparison failed; only those are judged in round 2). Expected false-fail rate of the array rule: ~11 % per comparison.
+#   comparison failed; only those are judged statistically in round 2, the other replica is still checked for hard failures). Expected false-fail rate of the array rule: ~11 % per comparison.
 # Core budget: at most 4 cores busy (MPI up to 4 ranks, threads 4, tempering/PP 2 ranks).
 # No `set -u` (configure.sh uses unset variables).
 
@@ -45,7 +50,7 @@ PAR="$ALFDIR/runs/parallel${PT_TAG:-}"
 BUILDS="$ALFDIR/builds${PT_TAG:-}"
 RETRY_G=""
 SCHEMES=(${PT_SCHEMES:-standard delayed submatrix}); PSETS=(${PT_SETS:-half tv}); NPS=(${PT_NP:-1 2 4})
-REBUILD=0; REPLICATE=1
+REBUILD=0; REPLICATE=1; BUILT_NOW=""
 PHASES=(); EXTRA=()
 for a in "$@"; do
     case "$a" in
@@ -58,22 +63,26 @@ for a in "$@"; do
 done
 [ ${#PHASES[@]} -gt 0 ] || PHASES=(mpi threads tempering pp)
 
-source "$HERE/sets.sh"
 mkdir -p "$PAR"
 SUMMARY="$PAR/summary_$(date +%Y%m%d_%H%M%S).txt"
 : >"$SUMMARY"
 NFAIL=0; NPASS=0
+MAKE_J="${PT_MAKE_J:-4}"
 
 say() { echo "$*" | tee -a "$SUMMARY"; }
 
 # ---------------------------------------------------------------- builds
 variant_mode() { case "$1" in noMPI) echo noMPI ;; MPI) echo MPI ;; TEMPERING) echo Tempering ;; PARALLEL_PARAMS) echo PARALLEL_PARAMS ;; esac; }
-src_stamp() { git -C "$ALFDIR" rev-parse HEAD:Prog HEAD:Libraries HEAD:Analysis HEAD:Makefile HEAD:configure.sh | tr '\n' ' '; }
+# Source state of a build: the trees the binaries and the run inputs (templates, sets.sh, make_params.py, compare_runs.py) come from.
+src_stamp() { git -C "$ALFDIR" rev-parse HEAD:Prog HEAD:Libraries HEAD:Analysis HEAD:Makefile HEAD:configure.sh \
+    HEAD:Scripts_and_Parameters_files HEAD:testsuite/lowrank/sets.sh HEAD:testsuite/lowrank/make_params.py \
+    HEAD:testsuite/lowrank/compare_runs.py | tr '\n' ' '; }
 
 build_variant() {   # build_variant VARIANT: copy of the committed tree, built once per source state
     local v="$1" dir="$BUILDS/$1" mode stamp
     mode="$(variant_mode "$v")"
     stamp="$(src_stamp)"
+    case " $BUILT_NOW " in *" $v "*) return 0 ;; esac   # --rebuild: once per variant per invocation
     if [ $REBUILD = 0 ] && [ -x "$dir/src/Prog/ALF.out" ] && [ "$(cat "$dir/stamp" 2>/dev/null)" = "$stamp" ]; then
         return 0
     fi
@@ -82,29 +91,41 @@ build_variant() {   # build_variant VARIANT: copy of the committed tree, built o
     git -C "$ALFDIR" archive HEAD | tar -x -C "$dir/src"
     (
         cd "$dir/src" || exit 1
+        unset ALF_FLAGS_EXT          # an inherited debug/trace flag must not leak into the tier's binaries
         # shellcheck disable=SC1091
-        source configure.sh GNU "$mode" NO-INTERACTIVE >/dev/null 2>&1 && make all -j4
+        source configure.sh GNU "$mode" NO-INTERACTIVE >/dev/null 2>&1 && make all -j"$MAKE_J"
     ) >"$PAR/build_$v.log" 2>&1
     if [ ! -x "$dir/src/Prog/ALF.out" ] || [ ! -x "$dir/src/Analysis/ana.out" ]; then
         say "ERROR: build of $v failed, see $PAR/build_$v.log"; exit 2
     fi
     echo "$stamp" >"$dir/stamp"
+    BUILT_NOW="$BUILT_NOW $v"
 }
 bin_of() { echo "$BUILDS/$1/src/Prog/ALF.out"; }
 ANA() { echo "$BUILDS/noMPI/src/Analysis/ana.out"; }
+
+# Single provenance: binaries, parameter templates, sets.sh, make_params.py and compare_runs.py all come from the archived HEAD
+# copy builds/noMPI/src (built first); only the two comparison helpers next to this script (stat_compare.py and
+# parallel_compare.py) are taken from the working tree. A tier run on uncommitted tier tooling is flagged.
+build_variant noMPI
+SRC="$BUILDS/noMPI/src"; LR="$SRC/testsuite/lowrank"; TPL="$SRC/Scripts_and_Parameters_files"
+source "$LR/sets.sh"
+if ! git -C "$ALFDIR" diff --quiet HEAD -- testsuite/lowrank 2>/dev/null; then
+    say "WARNING: uncommitted changes in testsuite/lowrank (the helper scripts of this run are not the committed ones)"
+fi
 
 # ---------------------------------------------------------------- runs
 BASEKEYS="NSweep=50 NBin=40 Ltau=0 n_skip=5 N_rebin=1"
 set_keys() { local k=""; for e in "${STAT_SETS[@]}"; do IFS='|' read -r n kk <<<"$e"; [ "$n" = "$1" ] && k="$kk"; done; echo "$k"; }
 
 write_seeds() {     # write_seeds DIR BASE: 16 distinct seeds (the template seeds file otherwise)
-    awk -v b="$2" 'NR<=16{printf "%12d\n", b+7919*NR; next}{print}' "$ALFDIR/Scripts_and_Parameters_files/Start/seeds" >"$1/seeds"
+    awk -v b="$2" 'NR<=16{printf "%12d\n", b+7919*NR; next}{print}' "$TPL/Start/seeds" >"$1/seeds"
 }
 
 mkparams() {        # mkparams DIR SEEDBASE KEY=VALUE ...   (parameters from the Start template, seeds overwritten)
     local dir="$1" sb="$2"; shift 2
     /bin/rm -rf "$dir"; mkdir -p "$dir"
-    python3 -I "$HERE/make_params.py" "$dir" "$@" || return 1
+    python3 -I "$LR/make_params.py" "$dir" "$@" || return 1
     write_seeds "$dir" "$sb"
 }
 
@@ -136,7 +157,7 @@ run_job() {
         ( cd "$dir" && OMP_NUM_THREADS="$omp" mpirun -n "$np" "$(bin_of "$v")" >stdout.log 2>&1 ); rc=$?
     fi
     t1=$(date +%s)
-    echo $((t1 - t0)) >"$dir/wall_seconds"
+    echo $((t1 - t0)) >"$dir/info_wall_seconds"
     return $rc
 }
 
@@ -156,7 +177,7 @@ ensure_ref() {
 # check LABEL DIR_REF DIR_CAND -> prints/records the summary line; returns 0 pass, 1 hard fail, 3 array-only fail, 2 error
 check() {
     local label="$1" a="$2" b="$3" out rc
-    out="$(python3 -I "$HERE/parallel_compare.py" "$a" "$b" "$b/stat_compare.log" "$label")"; rc=$?
+    out="$(python3 -I "$HERE/parallel_compare.py" "$a" "$b" "$b/info_stat_compare.log" "$label")"; rc=$?
     say "$out"
     return $rc
 }
@@ -196,21 +217,40 @@ case_mpi() {   # ROUND SET SCHEME NRANKS
     ensure_ref "${set}_${RTAG}" "$RSEED" $keys || return 2
     dir="$PAR/mpi/$set/${scheme}_np${n}_${RTAG}"
     lab="mpi/$set/$scheme/np$n"
-    mkparams "$dir" "$CSEED" $BASEKEYS $keys Sequential_scheme=\"$scheme\" "${EXTRA[@]}" || return 2
-    run_job "$dir" "$n" MPI 1 || { say "ERROR $lab: run failed, see $dir/stdout.log"; return 2; }
+    if [ "$round" = 1 ] && [ -e "$dir/prerun_rc" ]; then      # already run (concurrently, see prerun_mpi)
+        [ "$(cat "$dir/prerun_rc")" = 0 ] || { say "ERROR $lab: run failed, see $dir/stdout.log"; return 2; }
+    else
+        mkparams "$dir" "$CSEED" $BASEKEYS $keys Sequential_scheme=\"$scheme\" "${EXTRA[@]}" || return 2
+        run_job "$dir" "$n" MPI 1 || { say "ERROR $lab: run failed, see $dir/stdout.log"; return 2; }
+    fi
     analyse "$dir" || { say "ERROR $lab: analysis failed"; return 2; }
-    local rc=0
     if [ "$scheme" != standard ]; then
         if scheme_line_once "$dir/info" "$scheme"; then :; else say "FAIL $lab: info lacks exactly one 'Sequential scheme: $(echo $scheme | tr a-z A-Z)' line"; return 1; fi
     fi
     check "$lab" "$PAR/ref/${set}_${RTAG}" "$dir"
 }
 
+# prerun_mpi SET SCHEME N...: the round-1 runs of the given (small) rank counts, concurrently in the background (1 + 2 ranks = 3 cores)
+prerun_mpi() {
+    local set="$1" scheme="$2" n keys dir; shift 2
+    round_seeds 1 "$scheme"
+    keys="$(set_keys "$set")"
+    ensure_ref "${set}_${RTAG}" "$RSEED" $keys || return 2
+    for n in "$@"; do
+        dir="$PAR/mpi/$set/${scheme}_np${n}_${RTAG}"
+        ( mkparams "$dir" "$CSEED" $BASEKEYS $keys Sequential_scheme=\"$scheme\" "${EXTRA[@]}" \
+              && { run_job "$dir" "$n" MPI 1; echo $? >"$dir/prerun_rc"; } ) &
+    done
+    wait
+}
+
 phase_mpi() {
     build_variant noMPI; build_variant MPI
-    local set scheme n
+    local set scheme n small
     for set in "${PSETS[@]}"; do
         for scheme in "${SCHEMES[@]}"; do
+            small=(); for n in "${NPS[@]}"; do [ "$n" -le 2 ] && small+=("$n"); done
+            [ ${#small[@]} -gt 0 ] && prerun_mpi "$set" "$scheme" "${small[@]}"
             for n in "${NPS[@]}"; do
                 run_case "mpi/$set/$scheme/np$n" case_mpi "$set" "$scheme" "$n"
             done
@@ -220,11 +260,12 @@ phase_mpi() {
 
 # ---------------------------------------------------------------- phase threads
 case_threads() {  # ROUND SCHEME
-    local round="$1" scheme="$2" keys d1 d4 lab rc
+    local round="$1" scheme="$2" keys d1 d4 ds lab rc out
     round_seeds "$round" "$scheme"
     keys="$(set_keys half)"
-    d1="$PAR/threads/${scheme}_omp1_${RTAG}"; d4="$PAR/threads/${scheme}_omp4_${RTAG}"
-    lab="threads/half/$scheme/omp4-vs-omp1"
+    d1="$PAR/threads/${scheme}_omp1_${RTAG}"; d4="$PAR/threads/${scheme}_omp4_${RTAG}"; ds="$PAR/threads/${scheme}_omp1same_${RTAG}"
+    lab="threads/half/$scheme"
+    # (a) statistical: omp4 (candidate seed) vs omp1 (reference seed), the usual rules
     mkparams "$d1" "$RSEED" $BASEKEYS $keys Sequential_scheme=\"$scheme\" "${EXTRA[@]}" || return 2
     mkparams "$d4" "$CSEED" $BASEKEYS $keys Sequential_scheme=\"$scheme\" "${EXTRA[@]}" || return 2
     run_job "$d1" 1 noMPI 1 || { say "ERROR $lab: omp1 run failed, see $d1/stdout.log"; return 2; }
@@ -233,7 +274,20 @@ case_threads() {  # ROUND SCHEME
     if [ "$scheme" != standard ]; then
         scheme_line_once "$d4/info" "$scheme" || { say "FAIL $lab: info lacks exactly one scheme line"; return 1; }
     fi
-    check "$lab" "$d1" "$d4"
+    # (b) same seed, omp1 vs omp4: the thread count must not change the chain (confout_0 identical, every bin within rtol 1e-8
+    # of compare_runs.py). Round 1 only (the replicate is about the statistical comparison).
+    local rcs=()
+    if [ "$round" = 1 ]; then
+        mkparams "$ds" "$CSEED" $BASEKEYS $keys Sequential_scheme=\"$scheme\" "${EXTRA[@]}" || return 2
+        run_job "$ds" 1 noMPI 1 || { say "ERROR $lab: same-seed omp1 run failed, see $ds/stdout.log"; return 2; }
+        analyse "$ds" || { say "ERROR $lab: analysis failed"; return 2; }
+        out="$(python3 -I "$LR/compare_runs.py" "$ds" "$d4" "$scheme" "$scheme")"; rc=$?
+        if [ $rc = 0 ]; then say "PASS $lab/same-seed omp1 vs omp4: $(echo "$out" | tail -1)"
+        else say "FAIL $lab/same-seed omp1 vs omp4: $(echo "$out" | tail -1) (see $ds/info_compare_runs.log)"; rcs+=(1); fi
+        echo "$out" >"$ds/info_compare_runs.log"
+    fi
+    check "$lab/omp4-vs-omp1 (independent seeds)" "$d1" "$d4"; rcs+=($?)
+    return "$(worst "${rcs[@]}")"
 }
 
 phase_threads() {
@@ -253,19 +307,20 @@ case_temper() {   # ROUND VARIANT SCHEME
     tag=tempering; [ "$v" = PARALLEL_PARAMS ] && tag=pp
     dir="$PAR/$tag/${scheme}_${RTAG}"
     lab="$tag/half/$scheme"
-    # Pre-registered replicate = of the comparison that failed: in round 2 only the replicas whose round-1 comparison
-    # failed an array rule are judged (the other replica ran too, but its round-1 verdict stands).
+    # Pre-registered replicate = of the comparison that failed: in round 2 the replicas whose round-1 comparison failed an
+    # array rule are judged fully; the other replica ran too and is still checked (scheme line, scalars, non-finite data):
+    # a hard failure fails the case, an array-only result is ignored (its round-1 verdict stands).
     judge="0 1"; [ "$round" = 2 ] && judge="$RETRY_G"
     local common="$BASEKEYS $keys Sequential_scheme=\"$scheme\" N_Tempering_frequency=2 ${EXTRA[*]}"
-    local tmpl="$ALFDIR/Scripts_and_Parameters_files/Start_Tempering"
+    local tmpl="$TPL/Start_Tempering"
     /bin/rm -rf "$dir"; mkdir -p "$dir"
     # shellcheck disable=SC2086
-    python3 -I "$HERE/make_params.py" --template "$tmpl" "$dir" $common ham_U=4.d0 mpi_per_parameter_set=1 || return 2
+    python3 -I "$LR/make_params.py" --template "$tmpl" "$dir" $common ham_U=4.d0 mpi_per_parameter_set=1 || return 2
     write_seeds "$dir" "$CSEED"
     for g in 0 1; do
         U=$((3 + g))
         # shellcheck disable=SC2086
-        python3 -I "$HERE/make_params.py" --template "$tmpl" "$dir/Temp_$g" $common ham_U=$U.d0 mpi_per_parameter_set=1 || return 2
+        python3 -I "$LR/make_params.py" --template "$tmpl" "$dir/Temp_$g" $common ham_U=$U.d0 mpi_per_parameter_set=1 || return 2
         /bin/rm -f "$dir/Temp_$g/seeds"
     done
     # references: ham_U = 4 is the MPI-phase reference (seed family RSEED); ham_U = 3 gets its own seed (RSEED + 500), so
@@ -274,10 +329,21 @@ case_temper() {   # ROUND VARIANT SCHEME
     ensure_ref "half_U3_${RTAG}" "$((RSEED + 500))" $keys ham_U=3.d0 || return 2
     run_job "$dir" 2 "$v" 1 || { say "ERROR $lab: run failed, see $dir/stdout.log"; return 2; }
     [ "$round" = 1 ] && RETRY_G=""
+    # The exchange steps must really have happened (otherwise the TEMPERING run is vacuous): Acceptance Tempering > 0.
+    local acc
+    acc="$(grep 'Acceptance Tempering' "$dir/Temp_0/info" 2>/dev/null | tail -1 | awk '{print $NF}')"
+    if [ "$v" = TEMPERING ]; then
+        if awk -v a="${acc:-0}" 'BEGIN{exit !(a+0 > 0)}'; then
+            say "PASS $lab/exchange: Acceptance Tempering = $acc (> 0)"
+        else
+            say "FAIL $lab/exchange: Acceptance Tempering = ${acc:-absent} (no exchange accepted: the tempering run is vacuous)"; rcs+=(1)
+        fi
+    else
+        say "INFO $lab/exchange: Acceptance Tempering = ${acc:-absent} (PARALLEL_PARAMS has no exchange steps: expected absent or 0)"
+    fi
     for g in 0 1; do
         U=$((3 + g))
         analyse "$dir/Temp_$g" || { say "ERROR $lab: analysis of Temp_$g failed"; return 2; }
-        case " $judge " in *" $g "*) ;; *) continue ;; esac
         if [ "$scheme" != standard ]; then
             if ! scheme_line_once "$dir/Temp_$g/info" "$scheme"; then
                 say "FAIL $lab/Temp_$g: info lacks exactly one 'Sequential scheme: $(echo $scheme | tr a-z A-Z)' line"; rcs+=(1); continue
@@ -285,8 +351,12 @@ case_temper() {   # ROUND VARIANT SCHEME
         fi
         refname="half_U${U}_${RTAG}"; [ $U = 4 ] && refname="half_${RTAG}"
         check "$lab/Temp_$g(U=$U)" "$PAR/ref/$refname" "$dir/Temp_$g"; rc=$?
+        case " $judge " in
+            *" $g "*) [ "$round" = 1 ] && [ $rc = 3 ] && RETRY_G="$RETRY_G $g" ;;
+            *) # round 2, replica that passed round 1: hard failures count, an array-only result is ignored
+               if [ $rc = 3 ]; then say "  (array-only result of Temp_$g, which passed round 1: ignored in the replicate)"; rc=0; fi ;;
+        esac
         rcs+=($rc)
-        [ "$round" = 1 ] && [ $rc = 3 ] && RETRY_G="$RETRY_G $g"
     done
     return "$(worst "${rcs[@]}")"
 }
