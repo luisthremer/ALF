@@ -76,12 +76,16 @@ Sourced file defining `SETS=("name|common keys|branch-only keys" ...)`, shared b
 ## compare_trajectory.sh, trace_diff.py, compare_runs.py
 
 ```bash
-testsuite/lowrank/compare_trajectory.sh [--rebuild] SET SCHEME_A SCHEME_B [KEY=VALUE ...]
+testsuite/lowrank/compare_trajectory.sh [--rebuild] SET SCHEME_A SCHEME_B [KEY=VALUE ...] [A:KEY=VALUE ...] [B:KEY=VALUE ...]
+testsuite/lowrank/compare_trajectory.sh start delayed delayed A:N_delay=16 B:N_delay=-1   # fixed vs automatic, same scheme
 python3 -I testsuite/lowrank/trace_diff.py --selftest
 ```
 
 Two runs with identical seeds and parameters (`NSweep=3 NBin=2`) that differ only in `Sequential_scheme` must make the
-same accept/reject decisions. `SET` is one of the `sets.sh` sets (its common keys only).
+same accept/reject decisions. `SET` is one of the `sets.sh` sets (its common keys only). Plain `KEY=VALUE` arguments apply to
+both runs; `A:KEY=VALUE` / `B:KEY=VALUE` only to run A / B (after the plain ones, so they override), e.g. a fixed against an
+automatic `N_delay` of the same scheme. Without `N_delay` both runs use the Start template's default `N_delay = 0` (automatic,
+static rule). `MAKE_JOBS=n` sets the parallel make jobs of the trace/normal builds (default 8).
 
 - `Prog/Trace_updates_mod.F90` is compiled in every build; `Upgrade2` calls `Trace_update_write` (FINAL mode, after the
   decision) only under `#ifdef ALF_TRACE_UPDATES`, and stores the `ranf_wrap()` draw in a local there (the `#else`
@@ -132,8 +136,9 @@ python3 -I testsuite/lowrank/stat_compare.py --selftest
 ```
 
 - `stat_runs.sh` builds `runs/stat/<SET>/<SCHEME>_s<SEED>[$STAT_TAG]` from `STAT_SETS` in `sets.sh` plus
-  `NSweep=50 NBin=40 Ltau=0 n_skip=5 N_rebin=1 Sequential_scheme="<SCHEME>" SEED=<SEED>` (extra `KEY=VALUE` args are
-  applied last and override), runs `Prog/ALF.out` (`OMP_NUM_THREADS=1`) and `Analysis/ana.out` on `Ener_scal Pot_scal
+  `NSweep=50 NBin=40 Ltau=0 n_skip=5 N_rebin=1 N_delay=32 Sequential_scheme="<SCHEME>" SEED=<SEED>` (extra `KEY=VALUE` args are
+  applied last and override; `N_delay=32`, the pre-Phase-6 default, is pinned so that the recorded results and the existing
+  chains in `runs/stat` stay comparable now that the template default is `0` = automatic), runs `Prog/ALF.out` (`OMP_NUM_THREADS=1`) and `Analysis/ana.out` on `Ener_scal Pot_scal
   Kin_scal Part_scal SpinZ_eq Green_eq`. One job takes 25-55 s on the M1 Pro (6x6, 2000 sweeps), so no reduction of
   NSweep was needed. Start it with `run_in_background` / `&`; keep <= 8 jobs concurrent.
 - Rank-N sets (4x4, standard runs 6-67 s, standard seeds 1/2 give `VERDICT: PASS` for all six): `tv` (N_SUN=1, `ham_V=-1`,
@@ -253,3 +258,21 @@ e.g. `NSWEEP=20 testsuite/lowrank/bench.sh delayed 8 32 1 'ham_name="tV"' 'Model
 the per-L table is calibrated for Hubbard). Such lines carry two more fields, `model` (ham_name) and `keys` (the extra
 arguments joined with ','); the run directory gets `_<model>` after the scheme. `bench_report.py` accepts 10, 13 or 15 fields;
 the existing reports regenerate byte-identically.
+
+### Automatic N_delay in the harnesses (project 2, Phase 6)
+Since Phase 6 the Start template (and the `&VAR_QMC` default) has `N_delay = 0`: automatic, static rule (deterministic;
+`Prog/Lowrank_update_mod.F90`, header "Automatic N_delay"); `N_delay = -1` adds warm-up timing in sweeps 2-3; `N_delay >= 1`
+is fixed. `info` says `Sequential scheme: <NAME>, N_delay = auto (static n0 = <n0>, Ndim = <Ndim>)` (or `auto+tune`, then
+`Auto N_delay: candidates ... s/proposal, chosen <n>` or `Auto N_delay: tuning skipped (<reason>), N_delay = <n0>`).
+- `bench.sh SCHEME L N_delay`: `N_delay` 0 / -1 are accepted (run directory `nd0` / `ndm1`); the output line then ends with
+  one more field `nd_used=<n>` (the value the run used, from `info`; `na` for standard). `bench_report.py` accepts 10, 13, 14,
+  15 or 16 fields (`nd_used` is required exactly for `N_delay <= 0`), labels those rows `auto` / `tune` (with the value used),
+  keeps them out of the best-fixed and "Default N_delay" computations and, in `--ndelay` mode, lists them against the best
+  fixed value of the same L and scheme. The committed reports regenerate byte-identically.
+- Audit of the old default 32: `compare_trajectory.sh`, `tiers.sh` (traj), `regress_vs_baseline.sh` and `parallel_tier.sh`
+  check pass/fail properties that hold for any N_delay (same decisions as standard, bit-identity of the standard path,
+  statistical agreement, same-seed identity; the static value is the same on every rank and thread count), so they now run
+  the automatic default and exercise it (`tiers.sh` keeps tv/kondo/jz at the fixed 2 and 1000 and z2gt at 5).
+  `stat_runs.sh` and the `debug` phase of `tiers.sh` pin `N_delay=32` (recorded statistical/stability and shadow-error
+  numbers, existing chains in `runs/stat`). `bench.sh` always passes N_delay explicitly; the regression set `explicit` keeps
+  `N_delay=7` with `standard` (ignored there).

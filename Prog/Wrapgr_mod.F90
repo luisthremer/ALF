@@ -54,11 +54,13 @@ Module Wrapgr_mod
   use upgrade_mod
   use Lowrank_update_mod, only: Lowrank_initialised, Lowrank_init, Lowrank_active, Lowrank_eligible, &
        &                        Lowrank_flush, Lowrank_wrap_hook, Upgrade_lowrank, Lowrank_assert_flushed, &
-       &                        Lowrank_cross_slice_active, Lowrank_hop_up, Lowrank_hop_down
+       &                        Lowrank_cross_slice_active, Lowrank_hop_up, Lowrank_hop_down, &
+       &                        Lowrank_autotune_slice_begin, Lowrank_autotune_slice_end
 #ifdef ALF_LOWRANK_DEBUG
   use Lowrank_update_mod, only: Lowrank_debug_check
 #endif
-  use QMC_runtime_var, only: get_Sequential_scheme, get_N_delay, get_Lowrank_cross_slice
+  use QMC_runtime_var, only: get_Sequential_scheme, get_N_delay, get_Lowrank_cross_slice, &
+       &                     get_Nt_sequential_start, get_Nt_sequential_end
 
   Implicit none
 
@@ -114,7 +116,8 @@ Contains
     
     ! Low-rank scheme (Sequential_scheme / N_delay / Lowrank_cross_slice): initialised on the first call
     if (.not. Lowrank_initialised()) call Lowrank_init(get_Sequential_scheme(), get_N_delay(), &
-         &                                             get_Lowrank_cross_slice(), N_Global_tau)
+         &                                             get_Lowrank_cross_slice(), N_Global_tau, &
+         &                                             get_Nt_sequential_start(), get_Nt_sequential_end())
     ! Cross-slice delay (spec D10): the pending state of the previous slice may enter here; it is
     ! carried through the hopping wrap below (X <- B_T X, Y^T <- Y^T B_T^{-1}) instead of being flushed
     if (.not. Lowrank_cross_slice_active()) call Lowrank_assert_flushed("WRAPGRUP entry")
@@ -130,6 +133,10 @@ Contains
 #ifdef ALF_LOWRANK_DEBUG
     if (Lowrank_cross_slice_active()) call Lowrank_debug_check(GR, 0, ntau1, "Lowrank_hop_up")
 #endif
+    ! Automatic N_delay with warm-up timing (N_delay = -1, sweeps 2-3 only; otherwise a no-op): candidate of
+    ! this call, clock started after the hopping wrap; stopped after the slice-end flush (Global_tau excluded),
+    ! so up- and down-calls time the same part (vertices + flushes)
+    call Lowrank_autotune_slice_begin()
     Do n = Nt_sequential_start,Nt_sequential_end
        ! Ineligible vertex: apply the pending low-rank updates before G0 is wrapped
        if (Lowrank_active() .and. .not. Lowrank_eligible(n)) call Lowrank_flush(GR)
@@ -183,6 +190,7 @@ Contains
     ! delay (refused with N_Global_tau > 0) the pending state is returned and main.F90 flushes it
     ! before every read of G
     if (Lowrank_active() .and. .not. Lowrank_cross_slice_active()) call Lowrank_flush(GR)
+    call Lowrank_autotune_slice_end()
 
     If ( N_Global_tau > 0 ) then 
        m         = Nt_sequential_end
@@ -229,7 +237,8 @@ Contains
 
     ! Low-rank scheme (Sequential_scheme / N_delay / Lowrank_cross_slice): initialised on the first call
     if (.not. Lowrank_initialised()) call Lowrank_init(get_Sequential_scheme(), get_N_delay(), &
-         &                                             get_Lowrank_cross_slice(), N_Global_tau)
+         &                                             get_Lowrank_cross_slice(), N_Global_tau, &
+         &                                             get_Nt_sequential_start(), get_Nt_sequential_end())
     ! Cross-slice delay: the pending state of the previous WRAPGRDO (already carried through its
     ! hopping wrap) may enter here
     if (.not. Lowrank_cross_slice_active()) call Lowrank_assert_flushed("WRAPGRDO entry")
@@ -242,6 +251,9 @@ Contains
        Call Wrapgr_Random_update(GR,m,ntau, PHASE, N_Global_tau )
        Call Wrapgr_PlaceGR(GR,m, Nt_sequential_end, ntau)
     Endif
+    ! Automatic N_delay with warm-up timing (no-op otherwise): timed from here (after Global_tau) to the slice-end flush,
+    ! before the hopping wrap
+    call Lowrank_autotune_slice_begin()
 
     
     Do n =  Nt_sequential_end, Nt_sequential_start, -1
@@ -309,6 +321,7 @@ Contains
           call Lowrank_flush(GR)
        endif
     endif
+    call Lowrank_autotune_slice_end()
     DO nf_eff = 1,N_FL_eff
        nf=Calc_Fl_map(nf_eff)
        Call Hop_mod_mmthl   (GR(:,:,nf), nf,ntau)

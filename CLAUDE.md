@@ -47,7 +47,8 @@ cd ALF && testsuite/lowrank/compare_trajectory.sh start standard standard [N_del
 After adding source files under `Prog/`, rerun `cmake ..` in `testsuite/tests` (test 36 globs `Prog/*.o`).
 CTest unit test 36 links whatever `Prog/*.o` the last `make program` produced: a trace build (`ALF_FLAGS_EXT=-DALF_TRACE_UPDATES`) or any
 other flagged build leaves incompatible objects. Always rebuild the normal binary (no `ALF_FLAGS_EXT`) and re-run `cmake ..` before `ctest`.
-ALF test suite (CTest; 39 tests at baseline, 40 with `36-lowrank-unit`, all pass):
+ALF test suite (CTest; 39 tests at baseline, 40 with `36-lowrank-unit`; 43 since Phase 6 with `37-Op-V-symm-fast` and the
+negative entries `36-lowrank-unit-pending` / `-capacity` (Lowrank_set_N_delay must terminate; matched on its error message); all pass):
 ```bash
 cd ALF && source configure.sh GNU noMPI NO-INTERACTIVE >/dev/null 2>&1 && mkdir -p testsuite/tests && cd testsuite/tests && cmake .. && make -j8 && ctest -j8
 ```
@@ -242,6 +243,8 @@ Design/plan approvals are replaced by independent reviewer subagents; every deci
   included; at N=3600 it is the dominant start-up cost (> 40 s, baseline code).
 - `validate_sequential_scheme` (`QMC_runtime_var_mod.F90`) runs right after the namelist read/broadcast on every rank:
   `"delayd"` -> "unknown Sequential_scheme", `Delayed`/`N_delay=0` and `N_delay=-3` -> "must be >= 1", each after 0.01 s at L=40;
+  **superseded by Phase 6 (P6-1):** `N_delay = 0` (new default) is automatic (static rule), `-1` automatic with warm-up timing,
+  `>= 1` fixed; only `N_delay < -1` is rejected (by `validate_sequential_scheme` and `Lowrank_init`);
   `standard` with any N_delay unchanged. Lowrank_init keeps its own check.
 - regress 9/9 IDENTICAL; ctest 41/41. Symmetry warning identical to baseline for all 9 regression sets (none warns).
 - Independent review (Opus subagent): no critical; important "repeated P never on the new path in test 37" fixed (case 9);

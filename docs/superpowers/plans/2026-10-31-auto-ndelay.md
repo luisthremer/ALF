@@ -29,8 +29,9 @@ for `standard`. Revision 2 folds in the plan review (12 findings; ledger).
 - **Timing (A3), only N_delay = −1:** candidates `{n0/2, n0, 2·n0}`, each passed through steps 3–4 of the rule and ≥ 1,
   duplicates dropped; < 2 distinct → no timing ("single candidate"). Sweep 1 untimed; sweeps 2 and 3: the i-th call of
   WRAPGRUP/WRAPGRDO (counted from the start of sweep 2) uses candidate `mod(i-1, ncand)+1`; per call add the wall time
-  (`system_clock` with `integer(8)` counts and rate) of the sequential part (from after the lazy init and entry assert to
-  after the final slice-end flush, **excluding** Global_tau) and the number of `Upgrade_lowrank` calls (counter incremented
+  (`system_clock` with `integer(8)` counts and rate) of the sequential part (from the start of the vertex loop — WRAPGRUP:
+  after its hopping wrap; WRAPGRDO: after its Global_tau moves — to after the final slice-end flush, **excluding**
+  Global_tau and the hopping wraps; fix round 1 of P6-1) and the number of `Upgrade_lowrank` calls (counter incremented
   inside `Upgrade_lowrank`). Decision after sweep 3: under `#ifdef MPI`, `MPI_Allreduce` (sum) of times and counts over
   `Group_Comm`, then group rank 0 picks and `MPI_Bcast`s the chosen index over `Group_Comm`; without MPI decide locally.
   Pick = fastest seconds-per-proposal if it is < 0.95 × n0's, else n0; any candidate with zero proposals → n0.
@@ -63,8 +64,8 @@ for `standard`. Revision 2 folds in the plan review (12 findings; ledger).
 **Interfaces (produced):**
 - `integer function Lowrank_static_N_delay(scheme, Ndim, max_pend)` — public, pure; scheme ∈ {SCHEME_DELAYED, SCHEME_SUBMATRIX}.
 - `Lowrank_init(scheme_name, N_delay, Nt_start, Nt_end)` — the last two optional (default 1..size(Op_V,1)); WRAPGRUP/WRAPGRDO's lazy
-  call passes `get_Nt_sequential_start()`, `get_Nt_sequential_end()`. For N_delay ≤ 0 the arrays are sized for the largest
-  candidate (2·n0 after steps 3–4), so `Lowrank_set_N_delay` never reallocates. `Lowrank_finalize` resets the tuning state.
+  call passes `get_Nt_sequential_start()`, `get_Nt_sequential_end()`. For N_delay = −1 the arrays are sized for the largest
+  candidate (2·n0 after steps 3–4), for N_delay = 0 for n0 (fix round 1 of P6-1), so `Lowrank_set_N_delay` never reallocates. `Lowrank_finalize` resets the tuning state.
 - `subroutine Lowrank_set_N_delay(n)` — requires n_pend = 0 (else Terminate_on_error), 1 ≤ n ≤ allocated capacity.
 - `subroutine Lowrank_autotune_slice_begin()` / `subroutine Lowrank_autotune_slice_end()` — called in WRAPGRUP/WRAPGRDO around
   the sequential part (see Timing); no-ops unless tuning is active.

@@ -130,7 +130,7 @@ Program Main
         Use Global_mod
         Use UDV_State_mod
         Use Wrapgr_mod
-        use Lowrank_update_mod, only: Lowrank_read_point
+        use Lowrank_update_mod, only: Lowrank_read_point, Lowrank_autotune_finish, Lowrank_report_final
         Use Fields_mod
         Use WaveFunction_mod
         use entanglement_mod
@@ -155,6 +155,8 @@ Program Main
         COMPLEX (Kind=Kind(0.d0)), Dimension(:)  , Allocatable   :: Phase_array
        
         Integer :: NBC, NSW
+        ! Completed sweeps across bins, saturating at 4 (automatic N_delay: Lowrank_autotune_finish)
+        Integer (Kind=Kind(0_8)) :: N_sweeps_done
         Integer :: NTAU, NTAU1
         Character (len=64) :: file_seeds, file_info, file_git_info
         Integer :: Seed_in
@@ -642,6 +644,7 @@ Program Main
 
         Call Control_init(Group_Comm)
 
+        N_sweeps_done = 0
         DO  NBC = 1, get_NBin()
            ! Here, you have the green functions on time slice 1.
            ! Set bin observables to zero.
@@ -904,6 +907,10 @@ Program Main
                  endif
               endif
 
+              ! Automatic N_delay (N_delay = -1): on every rank after every sweep; timing starts after sweep 1, the
+              ! decision after sweep 3 contains the only MPI collective (Group_Comm). No-op otherwise.
+              If (N_sweeps_done < 4_8) N_sweeps_done = N_sweeps_done + 1_8
+              Call Lowrank_autotune_finish(N_sweeps_done)
            ENDDO
            Call ham%Pr_obs(get_Ltau())
 #if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
@@ -922,6 +929,8 @@ Program Main
               exit !exit the loop over the bin index, labelled NBC.
            Endif
         Enddo
+        ! Automatic N_delay: "tuning incomplete" if the run ended before the decision (no-op otherwise)
+        Call Lowrank_report_final()
 
         ! Deallocate things
         DO nf_eff = 1, N_FL_eff
