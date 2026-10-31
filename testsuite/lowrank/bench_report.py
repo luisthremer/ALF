@@ -159,13 +159,14 @@ def notes(rows, repeat_rows):
     out.append("Acceptance is identical between the three schemes at every L (same seed, identical Metropolis "
                "trajectories).")
     L0 = Ls[0]
-    nd = by[("standard", L0)]["N_delay"]
-    acc0 = float(by[("standard", L0)]["acceptance"])
-    out.append("N_delay=%s is the maximum, not always the effective delay: the capacity is capped at "
-               "min(N_delay, vertices per slice[, Ndim for submatrix]) and G is flushed at the end of every "
-               "slice, so the effective delay is min(N_delay, accepts per slice); at L=%d (%d vertices per slice, "
-               "about %.0f accepts) N_delay=%s is %s." % (nd, L0, L0 * L0, acc0 * L0 * L0, nd,
-                                                       "never reached" if acc0 * L0 * L0 < int(nd) else "reached"))
+    if ("standard", L0) in by:   # needs a fixed-N_delay standard row at the smallest L
+        nd = by[("standard", L0)]["N_delay"]
+        acc0 = float(by[("standard", L0)]["acceptance"])
+        out.append("N_delay=%s is the maximum, not always the effective delay: the capacity is capped at "
+                   "min(N_delay, vertices per slice[, Ndim for submatrix]) and G is flushed at the end of every "
+                   "slice, so the effective delay is min(N_delay, accepts per slice); at L=%d (%d vertices per slice, "
+                   "about %.0f accepts) N_delay=%s is %s." % (nd, L0, L0 * L0, acc0 * L0 * L0, nd,
+                                                           "never reached" if acc0 * L0 * L0 < int(nd) else "reached"))
     if all(("standard", L) in by and ("delayed", L) in by and ("submatrix", L) in by for L in (14, 16)):
         g = {s: sec(by[(s, 16)]) / sec(by[(s, 14)]) for s in SCHEMES}
         sp = {(s, L): sec(by[("standard", L)]) / sec(by[(s, L)]) for s in ("delayed", "submatrix") for L in Ls}
@@ -216,8 +217,9 @@ def notes(rows, repeat_rows):
     else:
         out.append("Single runs: timing noise is not quantified; differences of a few percent are not significant.")
     last = Ls[-1]
-    nsw = int(by[("standard", last)]["nsweep"])
-    out.append("L=%d has only %d sweeps in total (NSweep=%d, NBin=2)." % (last, 2 * nsw, nsw))
+    if ("standard", last) in by:
+        nsw = int(by[("standard", last)]["nsweep"])
+        out.append("L=%d has only %d sweeps in total (NSweep=%d, NBin=2)." % (last, 2 * nsw, nsw))
     return out
 
 

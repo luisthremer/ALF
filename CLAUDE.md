@@ -48,7 +48,7 @@ After adding source files under `Prog/`, rerun `cmake ..` in `testsuite/tests` (
 CTest unit test 36 links whatever `Prog/*.o` the last `make program` produced: a trace build (`ALF_FLAGS_EXT=-DALF_TRACE_UPDATES`) or any
 other flagged build leaves incompatible objects. Always rebuild the normal binary (no `ALF_FLAGS_EXT`) and re-run `cmake ..` before `ctest`.
 ALF test suite (CTest; 39 tests at baseline, 40 with `36-lowrank-unit`; 43 since Phase 6 with `37-Op-V-symm-fast` and the
-WILL_FAIL entries `36-lowrank-unit-pending` / `-capacity` (Lowrank_set_N_delay must terminate); all pass):
+negative entries `36-lowrank-unit-pending` / `-capacity` (Lowrank_set_N_delay must terminate; matched on its error message); all pass):
 ```bash
 cd ALF && source configure.sh GNU noMPI NO-INTERACTIVE >/dev/null 2>&1 && mkdir -p testsuite/tests && cd testsuite/tests && cmake .. && make -j8 && ctest -j8
 ```

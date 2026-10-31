@@ -155,8 +155,11 @@ add_test(36-lowrank-unit 36-lowrank-unit)
 # Lowrank_set_N_delay must terminate with pending accepts / above the allocated capacity (auto N_delay, Phase 6).
 # Own working directories: Lowrank_init appends to ./info, which 36-lowrank-unit checks and removes.
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/36-pending ${CMAKE_CURRENT_BINARY_DIR}/36-capacity)
+# They pass only on the specific error message (not on any non-zero exit), so a crash elsewhere cannot pass them.
 add_test(NAME 36-lowrank-unit-pending COMMAND 36-lowrank-unit pending WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/36-pending)
-set_tests_properties(36-lowrank-unit-pending PROPERTIES WILL_FAIL TRUE)
+set_tests_properties(36-lowrank-unit-pending PROPERTIES
+  PASS_REGULAR_EXPRESSION "Lowrank_set_N_delay: 1 accepted vertices pending \\(G must be flushed first\\)")
 add_test(NAME 36-lowrank-unit-capacity COMMAND 36-lowrank-unit capacity WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/36-capacity)
-set_tests_properties(36-lowrank-unit-capacity PROPERTIES WILL_FAIL TRUE)
+set_tests_properties(36-lowrank-unit-capacity PROPERTIES
+  PASS_REGULAR_EXPRESSION "Lowrank_set_N_delay: N_delay = 17 outside 1 \\.\\. 16 \\(allocated capacity\\)")
 add_test(37-Op-V-symm-fast 37-Op-V-symm-fast)
