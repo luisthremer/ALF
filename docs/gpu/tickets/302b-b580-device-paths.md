@@ -8,11 +8,12 @@
 - **Base:** `71af3e076322` (`gpu-port`: 212, 302a and the harness branch `gpu-port-harness-302b` merged; 207 not in the
   base, `Prog/gpu_tau_mod.F90` absent)
 - **Branch:** `gpu-port-302b` (the 2026-10-30 draft branch `gpu-port-302b-b580` is superseded)
-- **Acceptance files:** `testsuite/gpu_reference/acceptance/302b.json` (Intel part, `intel`: 82 runs, 15 gates, 18
+- **Acceptance files:** `testsuite/gpu_reference/acceptance/302b.json` (Intel part, `intel`: 83 runs, 15 gates, 19
   controls) and `302b.nvidia.json` (`nividia` part, `acc_driver.py --part nvidia`: 10 runs, 5 gates, 5 controls).
-- **Status:** PRE-REGISTERED. Pre-registration commit `0e427164` (`0e42716439ce3ec82f706f50c78f22e625842b3c`,
-  2026-10-31) on `gpu-port-302b`, base `71af3e076322`; final review (b) approved it (docs-only ticket fixes afterwards).
-  `acc_ship.sh` takes `0e427164` as PREREG_SHA. No implementation had started at that commit.
+- **Status:** RE-REGISTERED. **PREREG_SHA `3e7d1992`** (`3e7d199242a88760cd3b319769a2848020fc0620`, 2026-10-31) on `gpu-port-302b`,
+  base `71af3e076322`; approved by review (b) of the final state. Decisions 26 (precision control eps:1e-10 replaces
+  NS=0) and 27 (near-threshold control eps:1e-12). Supersedes the first pre-registration `0e427164`. T0 (dev trees
+  a1, a2) done; candidate 1 and T1 next.
 
 ## Goal
 With `GPU=intel` (ifx 2026.2 OpenMP offload, spir64 JIT, plus the 302a oneMKL backend), the 204 wraps (checkerboard and
@@ -91,7 +92,7 @@ unchanged.
   `base_in_none` (ifx CPU).
 - 10 configs, identical to 212's, with their parameter hashes. The driver refuses if pyALF on `intel` prepares different
   parameters.
-- 67 GPU + 10 CPU runs executed, plus 5 mutation entries = 82 run ids; 4 ctests, 15 gates, 18 controls.
+- 68 GPU + 10 CPU runs executed, plus 5 mutation entries = 83 run ids; 4 ctests, 15 gates, 19 controls.
 
 Every `GPU=intel` run gets `ONEAPI_DEVICE_SELECTOR=level_zero:0` from `acc_run.sh` itself (H2; recorded in the
 provenance env), and every production run must show the B580 device line as an active line (the refusal and
@@ -112,7 +113,7 @@ device τ pass runs.
 | `invalid_value` | `FAULT_STAB=xyz`, `FAULT=xyz` | exact line, rc 1 | valid eps:1e-11 (FAIL) |
 | `same_seed` | B580 vs ifx CPU, same seeds: 6×6 LOG / CPU LOG, 6×6 default / CPU `QR_PREPIVOT`, 12×12 default / CPU `QR_PREPIVOT` | no bin > 1e-4; overall and τ ≤ 1e-9; 38 datasets, 5 τ | `scale 1e-3` (FAIL), `nan` (INPUT_ERROR) |
 | `determinism` | same binary twice: 6×6 default, 6×6 LOG, 12×12 β = 10 default, 12×12 β = 10 LOG | bit-identical `data.h5` + Precision lines | `scale 1e-12` (FAIL) |
-| `precision` | 12×12 β = 4, 20 × 20: GPU mean / larger ifx CPU mean, Green and τ | ≤ 1.5 | `ALF_GPU_NS=0` (FAIL; see Q-NS) |
+| `precision` | 12×12 β = 4, 20 × 20: GPU mean / larger ifx CPU mean, Green and τ | ≤ 1.5 | graded device fault `eps:1e-10` (FAIL; decision 26, replaced `ALF_GPU_NS=0`) and near-threshold `eps:1e-12` (FAIL, predicted ≈ 7×; decision 27) |
 | `compare2` | `s8_U4_b2_cb_short` 120 × 30, B580 default vs ifx GPU=none, fresh seeds | m = 11, α = 0.01 Šidák, `min_bins` 8 | shift 8 (FAIL; decision 23); CPU-vs-CPU null (PASS) |
 | `ifx_none_identity` | ifx 2026.2 GPU=none, base vs candidate, 6×6 | bit-identical | `scale 1e-12` (FAIL) |
 | `alf_la_tests_onemkl` | ctest `^t_` under ONEMKL on the merged base | 100 % of 14; backend and B580 lines | `ALF_LA_TEST_WRONG_LD` (FAIL), replaces all 3 checks |
@@ -212,9 +213,27 @@ guard only (pessimistic c2_gpu estimate ~3200 s, > 2× margin); the driver has a
   statistic (GPU mean / larger CPU mean, Green and τ, against the existing `pr_none_b4` / `pr_none_pp_b4`). Choose the
   smallest x in the grid whose Green ratio is ≥ 3× (margin over decision 24's 2×). If none reaches 3×, stop and report.
   All three values are reported; the chosen x goes into the re-registered `302b.json` as the control run's env.
+- **Result (implementer 2, T0 tree a2, 2026-10-31):** production action in `gpu_stab_cgr` after the D→H of the new G
+  (perturbed G pushed back to the device, so the precision reduction and the returned G both carry it; extra 16·N² B H→D
+  in control runs only); armed line ` GPU fault armed (production sweep): …`; inactive under `SELFTEST=3`/`STABTIME=1`.
+
+  | x | Green mean | Green ratio | τ mean | τ ratio |
+  |---|---|---|---|---|
+  | 1e-10 | 2.764e-8 | 642 | 8.24e-10 | 125 |
+  | 3e-10 | 8.290e-8 | 1927 | 2.46e-9 | 373 |
+  | 1e-9 | 2.764e-7 | 6422 | 8.19e-9 | 1242 |
+
+  Chosen **x = 1e-10** (smallest grid value ≥ 3×). The ratio is large because the perturbed G propagates through the
+  wraps until the next stabilization; the response is linear (2.76e-8 per 1e-10), so the 1.5× threshold is crossed near
+  x ≈ 1e-13 and 642× is not the gate's sensitivity. `pr_def_b4` is unchanged by the edit (Green 3.317e-11, τ 6.081e-12).
+  New control run `ctl_pr_eps_b4`, control `c_precision_eps` (decision 26).
+- **Near-threshold control (decision 27, after review (b) of the re-registration):** `ctl_pr_eps12_b4` with
+  `eps:1e-12`, control `c_precision_eps12`, predicted ≈ 0.77 + 6.4 ≈ 7× Green. Shows the gate is sharp near 1.5× (it
+  should fire on a device degradation of about 7× the CPU mean; the threshold itself is reached near x ≈ 1e-13). If it is not killed in T1 or
+  T2, work stops and the manager returns to the owner.
 
 ### Other open points
-- **Q-NS (decision 24, 2026-10-31: "Pre-register now"):** `ALF_GPU_NS=0` exists because of cuSOLVER's Q
+- **Q-NS — resolved by decisions 26 and 27 (see "Precision control" above); history:** (decision 24, 2026-10-31: "Pre-register now"): `ALF_GPU_NS=0` exists because of cuSOLVER's Q
   orthogonality (A30: CPU mean 4.1e-11, with NS 5.4e-11, without NS 9.7e-11, 2.4× the CPU). oneMKL's hybrid QR may give a
   LAPACK-quality Q, so the control may not reach 1.5× on the B580; then the precision gate has no killed control and T2
   cannot close. T0 runs after pre-registration, so "stop before pre-registration" cannot work. The code allowed in 302b
@@ -241,7 +260,8 @@ guard only (pessimistic c2_gpu estimate ~3200 s, > 2× margin); the driver has a
   `NEO_CACHE_PERSISTENT=0` (2026-10-30); the old `~/.cache/neo_compiler_cache` waits for the owner.
 - **P5 done.** 302a merged (`890185c0`); counts confirmed; base `71af3e076322`.
 - **P6** dpkg record before T1/T2 (decision 13), against `intel:~/alf-gpu/backup/intel_versions_2026-10-30.txt`.
-- **P7 done.** Decisions 20 (budget), 22 (τ), 23 (shift 8), 24 (pre-register now, NS=0 stop rule), 25 (standing approval
+- **P7 done.** Decisions 20 (budget), 22 (τ), 23 (shift 8), 24 (pre-register now, NS=0 stop rule), 26–27 (precision
+  controls eps:1e-10 and eps:1e-12), 25 (standing approval
   for unattended T1/T2 on the B580).
 - **P8 done** (2026-10-31, test-runner, `intel:~/alf-gpu/work/t302b/probe/`): base `GPU=intel` build of `3e23a682`
   (206 INACTIVE, stabilization on the host; 205 updates and cb wraps on the B580) vs the ifx CPU build, Ltau = 1, versions
@@ -268,7 +288,9 @@ guard only (pessimistic c2_gpu estimate ~3200 s, > 2× margin); the driver has a
 Recorded in `302b.json` `approvals` (owner, manager session, DECISIONS.md):
 - decision 22, 2026-10-31, "CPU τ pass" — covers `same_seed`, `precision` (host τ pass under GPU=intel until 302c);
 - decision 23, 2026-10-31, "Approve shift 8" — covers `c_compare2_shift`;
-- decision 24, 2026-10-31, "Pre-register now" — covers `c_precision_ns0` (with the stop rule above).
+- decision 26, 2026-10-31, "Graded device fault" — covers `c_precision_eps` (eps:1e-10);
+- decision 27, 2026-10-31, "Add x = 1e-12" — covers `c_precision_eps12` (near-threshold control).
+Decision 24 ("Pre-register now") is procedural: its stop rule fired in T0 and led to decision 26; it covers no control.
 Process approvals without a criterion: decision 20 (no fixed B580 budget), 21 (venv), 25 (unattended T1/T2).
 
 ## Evidence

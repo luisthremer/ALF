@@ -5,7 +5,7 @@
  "base_sha": "71af3e076322",
  "_base_reason": "gpu-port 71af3e076322: 302a merged (890185c0), 212 merged, harness branch gpu-port-harness-302b merged (H1 ALF_LA_TEST_* as debug variables, H2 B580 pinning, forbidden_lines, ctest stamp checks; review (c) approved 2026-10-31). Manager check at pre-registration: Prog/gpu_tau_mod.F90 does not exist at this base (207 not merged), so the device tau pass cannot run (decision 22); forbidden_lines guards it anyway",
  "created": "2026-10-31",
- "_status": "pre-registered for ticket 302b, Intel part (intel, Arc B580, ifx 2026.2 + oneMKL 2026.2, decision 13); decisions 20-25; before any implementation result",
+ "_status": "pre-registered for ticket 302b, Intel part (intel, Arc B580, ifx 2026.2 + oneMKL 2026.2, decision 13); decisions 20-27; re-registered after T0 (decisions 26-27: precision controls replaced/added); acceptance seeds are drawn fresh at T2",
  "approvals": [
   {
    "who": "owner",
@@ -28,11 +28,20 @@
   },
   {
    "who": "owner",
-   "decision": "24",
+   "decision": "26",
    "date": "2026-10-31",
-   "quote": "Pre-register now",
+   "quote": "Graded device fault",
    "covers": [
-    "c_precision_ns0"
+    "c_precision_eps"
+   ]
+  },
+  {
+   "who": "owner",
+   "decision": "27",
+   "date": "2026-10-31",
+   "quote": "Add x = 1e-12",
+   "covers": [
+    "c_precision_eps12"
    ]
   }
  ],
@@ -1033,24 +1042,6 @@
    "config": "hub12x12_cb_p",
    "seeds": "acc1"
   },
-  "ctl_pr_ns0_b4": {
-   "build": "in_def",
-   "config": "hub12x12_cb_p",
-   "env": [
-    "ALF_GPU_DEBUG=1",
-    "ALF_GPU_NS=0"
-   ],
-   "seeds": "acc1",
-   "allow_debug": true,
-   "active_lines": [
-    "GPU path (gpu_state): ACTIVE",
-    "GPU update path (ticket 205): ACTIVE",
-    "GPU stabilization (206): ACTIVE",
-    "GPU build: git none backend ONEMKL",
-    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
-    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_NS=0"
-   ]
-  },
   "c2_gpu": {
    "build": "in_def",
    "config": "s8_U4_b2_cb_short",
@@ -1094,6 +1085,46 @@
   "id_none_cand_m": {
    "build": "in_none",
    "config": "hub6x6_cb_fd"
+  },
+  "ctl_pr_eps_b4": {
+   "build": "in_def",
+   "config": "hub12x12_cb_p",
+   "env": [
+    "ALF_GPU_DEBUG=1",
+    "ALF_GPU_FAULT_STAB=eps:1e-10"
+   ],
+   "seeds": "acc1",
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_FAULT_STAB=eps:1e-10",
+    "GPU fault armed: ALF_GPU_FAULT_STAB=eps:1e-10",
+    "GPU fault armed (production sweep): ALF_GPU_FAULT_STAB eps: the element of largest |G| of the device G of every stabilization (precision check and returned G) is multiplied by (1 + x)"
+   ]
+  },
+  "ctl_pr_eps12_b4": {
+   "build": "in_def",
+   "config": "hub12x12_cb_p",
+   "env": [
+    "ALF_GPU_DEBUG=1",
+    "ALF_GPU_FAULT_STAB=eps:1e-12"
+   ],
+   "seeds": "acc1",
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_FAULT_STAB=eps:1e-12",
+    "GPU fault armed: ALF_GPU_FAULT_STAB=eps:1e-12",
+    "GPU fault armed (production sweep): ALF_GPU_FAULT_STAB eps: the element of largest |G| of the device G of every stabilization (precision check and returned G) is multiplied by (1 + x)"
+   ]
   }
  },
  "gates": [
@@ -1590,12 +1621,12 @@
    "expect": "FAIL"
   },
   {
-   "id": "c_precision_ns0",
+   "id": "c_precision_eps",
    "like": "precision",
    "replace": {
     "cases": [
      {
-      "gpu": "ctl_pr_ns0_b4",
+      "gpu": "ctl_pr_eps_b4",
       "cpu": [
        "pr_none_b4",
        "pr_none_pp_b4"
@@ -1604,7 +1635,24 @@
     ]
    },
    "expect": "FAIL",
-   "_reason": "ALF_GPU_NS=0 once per toolchain (VERIFICATION 5). On cuSOLVER it gave 2.4x (206); whether oneMKL's Q needs the Newton-Schulz step is unknown. Decision 24: pre-registered as is; if T0/T1 shows it not killed or below 2x the CPU mean on dev seeds, stop: the owner decides a replacement control (re-registration, fresh seeds)"
+   "_reason": "decision 26 (2026-10-31): graded device fault ALF_GPU_FAULT_STAB=eps:1e-10 in the production sweep (the element of largest |G| of every device stabilization times 1 + x; returned G and precision check). Replaces ALF_GPU_NS=0, which gave 0.98x / 0.91x on the B580 (oneMKL's Q needs no Newton-Schulz step; decision 24 stop rule). x by the rule fixed beforehand: smallest of {1e-10, 3e-10, 1e-9} with Green ratio >= 3x on dev1: 1e-10 gave Green 642x, tau 125x; the threshold is crossed near x ~ 1e-13, so 642x is not the gate's sensitivity (see c_precision_eps12)"
+  },
+  {
+   "id": "c_precision_eps12",
+   "like": "precision",
+   "replace": {
+    "cases": [
+     {
+      "gpu": "ctl_pr_eps12_b4",
+      "cpu": [
+       "pr_none_b4",
+       "pr_none_pp_b4"
+      ]
+     }
+    ]
+   },
+   "expect": "FAIL",
+   "_reason": "decision 27 (2026-10-31): near-threshold graded device fault eps:1e-12, predicted ~7x Green from the linear response measured in T0 (2.76e-8 per 1e-10; the 1.5x threshold is crossed near x ~ 1e-13); shows the gate is sharp near the threshold (e.g. catches a device precision reduction under-reporting by more than ~5x). Not killed in T1/T2 -> stop, owner decides"
   },
   {
    "id": "c_compare2_shift",
@@ -1751,5 +1799,5 @@
    "gpu": true
   }
  ],
- "_approvals_reason": "22: Ltau=1 runs under GPU=intel do TAU_M on the host until 302c, so the same_seed tau datasets and Precision tau compare the host tau pass fed by the device stabilization (206 INTERIM udvst copy). 23: compare2 control shift 8. Budget: decision 20 (no fixed GPU budget on the B580). compare2 length 120 x 30 needs no exception since decision 16. 24: NS=0 control pre-registered without a probe, with the stop rule above. 25: standing approval for unattended T1/T2 on the B580"
+ "_approvals_reason": "22: Ltau=1 runs under GPU=intel do TAU_M on the host until 302c, so the same_seed tau datasets and Precision tau compare the host tau pass fed by the device stabilization (206 INTERIM udvst copy). 23: compare2 control shift 8. Budget: decision 20 (no fixed GPU budget on the B580). compare2 length 120 x 30 needs no exception since decision 16. 24: NS=0 control pre-registered without a probe, with the stop rule above. 25: standing approval for unattended T1/T2 on the B580. 26: the NS=0 control did not kill the precision gate on the B580 (T0, dev1); replaced by the graded device fault eps:1e-10, calibrated by the rule in the ticket. 24 is procedural (the stop rule that led to 26) and covers no control. 27: second, near-threshold control eps:1e-12"
 }

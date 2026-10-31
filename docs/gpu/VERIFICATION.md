@@ -65,7 +65,7 @@ is not a gate.
 | kernel self-test | the `ALF_GPU_FAULT*` classes; a graded fault near 10× the tolerance (hardening ticket) |
 | same-seed vs CPU oracle | `mutate.py scale:<tau dataset>:1e-3` on the smallest entry above 1e-5 of the maximum (FAIL; detection limit ~1e-9 × max\|dataset\|); `nan:`, `drop:` (INPUT_ERROR) |
 | paired same-trajectory | `ALF_GPU_TAUSWAP=8` (LOG), `ALF_GPU_TAU_NS=0` (default); `mutate.py taudiag_inflate/taudiag_bias` |
-| precision mean | `ALF_GPU_NS=0` (once per toolchain); known blind spot: the 207 ZUNMQR defect (+17 % on the τ mean) |
+| precision mean | `ALF_GPU_NS=0` (once per toolchain; on the B580/oneMKL it cannot degrade precision, so 302b uses the graded device fault `ALF_GPU_FAULT_STAB=eps:<x>` instead, decisions 26–27); known blind spot: the 207 ZUNMQR defect (+17 % on the τ mean) |
 | compare2 | `mutate.py shift:<obs>:5` (5 standard errors of the mean, FAIL); `nan:` (INPUT_ERROR) |
 | GPU=none identity | a planted declaration appended to a compared file (`acc_gpunone.sh --plant`); a copy of the ctest log with one failed test; other seeds (`data.h5` identity) |
 | replay / determinism | a 1-ulp-level difference (`mutate.py scale:…:1e-12`) |
