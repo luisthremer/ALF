@@ -189,6 +189,49 @@ For `delayed`/`submatrix` (each set: candidate seed S, e.g. 1, against the stand
 3. The expected false-fail rate of the array rule for a correct scheme is about 2/18 (11 %) per comparison (measured
    above), so a single array failure alone is not evidence of a bug; the replicate is.
 
+## parallel_tier.sh (tier 6: MPI rank count, threads, tempering, PARALLEL_PARAMS)
+
+```bash
+testsuite/lowrank/parallel_tier.sh [--rebuild] [--no-replicate] [mpi] [threads] [tempering] [pp] [KEY=VALUE ...]
+PT_SCHEMES="standard delayed" PT_SETS=half PT_NP="1 4" PT_TAG=_smoke testsuite/lowrank/parallel_tier.sh mpi NSweep=4 NBin=12   # smoke test
+```
+
+- Builds each variant once per source state (tree hashes of `Prog`, `Libraries`, `Analysis`, `Makefile`, `configure.sh` at HEAD) in a copy of
+  the committed tree, `builds/<variant>/src` (`git archive HEAD`; the main tree's `Prog/` is never rebuilt): `noMPI`, `MPI`,
+  `TEMPERING`, `PARALLEL_PARAMS` (`source configure.sh GNU <mode> NO-INTERACTIVE && make all -j4`, log `runs/parallel/build_<variant>.log`).
+  `builds/noMPI/src/Analysis/ana.out` analyses every run. Runs and logs: `runs/parallel/<phase>/...`, independent noMPI reference
+  chains in `runs/parallel/ref/` (cached, keyed by the build stamp and parameters). Summary lines: `runs/parallel/summary_<timestamp>.txt`.
+- One summary line per check, `PASS|FAIL|FAIL-ARRAY <check>: scalars max|z|=.. (obs) sign z=..; Green_eqJK n=.. frac>2=..(lim ..) max|z|=.. rms=..;
+  SpinZ_eqJK ...; wall=..` (`parallel_compare.py` wraps `stat_compare.py`, whose rules are unchanged; full output in `stat_compare.log` of the run directory).
+  Exit 0 iff all cases pass.
+- `mpi`: sets `half` (6x6, U=4, Beta=5: the `start` set) and `tv` (STAT_SETS), each scheme, 1, 2 and 4 ranks (MPI build), against one
+  independent standard noMPI chain (seed family 1000). ALF with MPI runs one chain per rank and averages the per-rank bins
+  (every bin is the mean over the ranks), so every rank count has the same number of bins (`NSweep=50 NBin=40 n_skip=5`, `tv`: `NBin=80`) and the
+  N-rank run has N times the statistics. The rank r of an N-rank run reads line N-r of `seeds`, so the script writes 16 distinct seeds
+  (`base + 7919 i`) per run.
+- `threads`: noMPI, `OMP_NUM_THREADS=4` against `1` (independent seeds), `half`, each scheme.
+- `tempering` / `pp`: 2 replicas (`mpirun -n 2`, `mpi_per_parameter_set=1`) of `half` with `ham_U = 3` (Temp_0) and `4` (Temp_1), each scheme;
+  every replica is compared with an independent noMPI standard run of the same parameters (`ham_U=3`, `4`). TEMPERING reads `&VAR_QMC` and
+  `&VAR_TEMP` from the top-level `parameters` and the model namelists from `Temp_<g>/parameters`; PARALLEL_PARAMS reads `&VAR_QMC`/`&VAR_HAM_NAME`
+  from `Temp_<g>/parameters`; the script writes the same keys into both files (`Start_Tempering` template, `N_exchange_steps=6`,
+  `N_Tempering_frequency=2`). TEMPERING: `ham_U` 3 against 4 on a 6x6 lattice at Beta=5 exchanges rarely (acceptance 1-2 % per attempt;
+  with the template frequency 10 only ~16 exchanges per run, hence frequency 2, ~80). PARALLEL_PARAMS has no exchange steps (`Acceptance
+  Tempering` 0): its replicas are independent chains in one MPI job, and with the same seed a PP replica is bit-identical to the corresponding noMPI/MPI run.
+  The `ham_U=3` and `ham_U=4` references have different seeds (reference seed, reference seed + 500).
+- For every non-standard run, `info` (`Temp_<g>/info`) must contain `Sequential scheme: <NAME>` exactly once.
+- Seeds: reference chains 1000-family, candidates 2000 (+100 delayed, +200 submatrix, so each scheme is its own chain), replicate
+  candidates 3000 (+100/+200), replicate references 4000. A reference and a candidate never share a seed.
+- Pre-registered protocol as above: a scalar failure is a bug; an array-only failure (`FAIL-ARRAY`) triggers ONE replicate of the case with the
+  fresh seeds (`--no-replicate` switches that off), and the case passes iff the replicate passes everything. In `tempering`/`pp` the replicate concerns the comparison (replica) that failed:
+  in round 2 only that replica is judged (both replicas are rerun, one MPI job), the other replica's round-1 verdict stands.
+- Budget (M1 Pro, at most 4 cores busy; a 6x6 run takes ~50 s whatever the rank count, a 4x4 `tv` run 23-38 s). Measured on the first full run: `mpi`
+  1028 s (18 runs plus 3 replicates of the standard cases plus 4 references; ~13 min without replicates, the one phase above the
+  10 min target), `threads` 401 s, `tempering` 254 s, `pp` 249 s (builds not included: ~1.5 min per variant).
+- A single reference chain is shared by all candidates of a phase, so a statistical fluke of the reference fails several cases at once
+  (the replicate protocol uses a second reference chain). In the first run the `half` reference of seed family 1000 had
+  an unusually low SpinZ at (pi,pi) (3.58 +- 0.34 against 4.2-5.0 for the four `runs/stat/half/standard_s*` chains and the candidates): the three
+  standard cases and `pp/half/standard` failed an array rule only and passed their replicates.
+
 ### Benchmarks of other models (project 2, Task 6a)
 `testsuite/lowrank/bench.sh SCHEME L N_delay [THREADS] [KEY=VALUE ...]`: extra keys are applied after the Hubbard defaults,
 e.g. `NSWEEP=20 testsuite/lowrank/bench.sh delayed 8 32 1 'ham_name="tV"' 'Model="tV"' ham_V=-1.d0 N_SUN=1` (set `NSWEEP`;
