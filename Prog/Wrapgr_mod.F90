@@ -65,6 +65,10 @@ Module Wrapgr_mod
 #endif
   use QMC_runtime_var, only: get_Sequential_scheme, get_N_delay, get_Lowrank_cross_slice, &
        &                     get_Nt_sequential_start, get_Nt_sequential_end
+#ifdef ALF_TIMERS
+  use Timers_mod, only: timer_push, timer_pop, timer_switch, timer_count_proposal, timer_flush_reason, &
+       &                T_UPDATE, T_VWRAP, T_HOP, T_GLOBAL, FR_INELIGIBLE, FR_SLICE_END
+#endif
 
   Implicit none
 
@@ -128,12 +132,18 @@ Contains
 
     ! Wrap up, upgrade ntau1.  with B^{1}(tau1) 
     NTAU1 = NTAU + 1
+#ifdef ALF_TIMERS
+    call timer_push(T_HOP)
+#endif
     if (Lowrank_cross_slice_active()) call Lowrank_hop_up(GR, ntau1)
     Do nf_eff = 1,N_FL_eff
        nf=Calc_Fl_map(nf_eff)
        CALL HOP_MOD_mmthr   (GR(:,:,nf), nf, ntau1 )
        CALL HOP_MOD_mmthl_m1(GR(:,:,nf), nf, ntau1 )
     Enddo
+#ifdef ALF_TIMERS
+    call timer_pop(T_HOP)
+#endif
 #ifdef ALF_LOWRANK_DEBUG
     if (Lowrank_cross_slice_active()) call Lowrank_debug_check(GR, 0, ntau1, "Lowrank_hop_up")
 #endif
@@ -141,8 +151,15 @@ Contains
     ! this call, clock started after the hopping wrap; stopped after the slice-end flush (Global_tau excluded),
     ! so up- and down-calls time the same part (vertices + flushes)
     call Lowrank_autotune_slice_begin()
+#ifdef ALF_TIMERS
+    ! Timing split: per vertex T_VWRAP (wraps, hooks) -> T_UPDATE (S0, ranf, upgrade) -> T_VWRAP
+    call timer_push(T_VWRAP)
+#endif
     Do n = Nt_sequential_start,Nt_sequential_end
        ! Ineligible vertex: apply the pending low-rank updates before G0 is wrapped
+#ifdef ALF_TIMERS
+       timer_flush_reason = FR_INELIGIBLE
+#endif
        if (Lowrank_active() .and. .not. Lowrank_eligible(n)) call Lowrank_flush(GR)
        Do nf_eff = 1, N_FL_eff
           nf=Calc_Fl_map(nf_eff)
@@ -154,6 +171,9 @@ Contains
        if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_wrap_hook(n, ntau1, HS_Field, 1, +1, GR)
 #ifdef ALF_LOWRANK_DEBUG
        if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_debug_check(GR, n, ntau1, "Lowrank_wrap_hook (up, 1)")
+#endif
+#ifdef ALF_TIMERS
+       call timer_switch(T_VWRAP, T_UPDATE)
 #endif
        nf = 1
        T0_proposal       = 1.5D0
@@ -175,10 +195,16 @@ Contains
           else
              Call Upgrade2(GR,n,ntau1,PHASE,HS_new, Prev_Ratiotot, S0_ratio,T0_Proposal_ratio, Acc, mode ) 
           endif
+#ifdef ALF_TIMERS
+          call timer_count_proposal(Acc)
+#endif
        else
           toggle1 = .false.
           Call Control_upgrade_eff(toggle1)
        Endif
+#ifdef ALF_TIMERS
+       call timer_switch(T_UPDATE, T_VWRAP)
+#endif
        do nf_eff = 1,N_FL_eff
           nf=Calc_Fl_map(nf_eff)
           N_type =  2
@@ -190,6 +216,10 @@ Contains
        if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_debug_check(GR, n, ntau1, "Lowrank_wrap_hook (up, 2)")
 #endif
     Enddo
+#ifdef ALF_TIMERS
+    call timer_pop(T_VWRAP)
+    timer_flush_reason = FR_SLICE_END
+#endif
     ! G must be the full Green function for the Global_tau moves and on return; with the cross-slice
     ! delay (refused with N_Global_tau > 0) the pending state is returned and main.F90 flushes it
     ! before every read of G
@@ -197,10 +227,16 @@ Contains
     call Lowrank_autotune_slice_end()
 
     If ( N_Global_tau > 0 ) then 
+#ifdef ALF_TIMERS
+       call timer_push(T_GLOBAL)
+#endif
        m         = Nt_sequential_end
        !if ( Nt_sequential_start >  Nt_sequential_end ) m = Nt_sequential_start
        Call Wrapgr_Random_update(GR,m,ntau1, PHASE, N_Global_tau )
        Call Wrapgr_PlaceGR(GR,m, Size(OP_V,1), ntau1)
+#ifdef ALF_TIMERS
+       call timer_pop(T_GLOBAL)
+#endif
     Endif
 
     if (.not. Lowrank_cross_slice_active()) call Lowrank_assert_flushed("WRAPGRUP")
@@ -250,18 +286,31 @@ Contains
     ! G is flushed here when N_Global_tau > 0: the previous WRAPGRUP/WRAPGRDO returned a flushed G (with the
     ! cross-slice key a pending state may enter WRAPGRDO, but the key is refused with N_Global_tau > 0)
     If ( N_Global_tau > 0 ) then 
+#ifdef ALF_TIMERS
+       call timer_push(T_GLOBAL)
+#endif
        m         = Size(OP_V,1)
        !Write(6,*) 'Call Ran_up ', m,ntau
        Call Wrapgr_Random_update(GR,m,ntau, PHASE, N_Global_tau )
        Call Wrapgr_PlaceGR(GR,m, Nt_sequential_end, ntau)
+#ifdef ALF_TIMERS
+       call timer_pop(T_GLOBAL)
+#endif
     Endif
     ! Automatic N_delay with warm-up timing (no-op otherwise): timed from here (after Global_tau) to the slice-end flush,
     ! before the hopping wrap
     call Lowrank_autotune_slice_begin()
 
     
+#ifdef ALF_TIMERS
+    ! Timing split: per vertex T_VWRAP (wraps, hooks) -> T_UPDATE (S0, ranf, upgrade) -> T_VWRAP
+    call timer_push(T_VWRAP)
+#endif
     Do n =  Nt_sequential_end, Nt_sequential_start, -1
        ! Ineligible vertex: apply the pending low-rank updates before G0 is wrapped
+#ifdef ALF_TIMERS
+       timer_flush_reason = FR_INELIGIBLE
+#endif
        if (Lowrank_active() .and. .not. Lowrank_eligible(n)) call Lowrank_flush(GR)
        N_type = 2
        nf = 1
@@ -274,6 +323,9 @@ Contains
        if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_wrap_hook(n, ntau, HS_Field, 2, -1, GR)
 #ifdef ALF_LOWRANK_DEBUG
        if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_debug_check(GR, n, ntau, "Lowrank_wrap_hook (down, 2)")
+#endif
+#ifdef ALF_TIMERS
+       call timer_switch(T_VWRAP, T_UPDATE)
 #endif
        !Write(6,*) 'Upgrade : ', ntau,n 
        nf = 1
@@ -295,10 +347,16 @@ Contains
           else
              Call Upgrade2(GR,n,ntau,PHASE,HS_new, Prev_Ratiotot, S0_ratio,T0_Proposal_ratio, Acc, mode ) 
           endif
+#ifdef ALF_TIMERS
+          call timer_count_proposal(Acc)
+#endif
        else
           toggle1 = .false.
           Call Control_upgrade_eff(toggle1)
        Endif
+#ifdef ALF_TIMERS
+       call timer_switch(T_UPDATE, T_VWRAP)
+#endif
      
        !Call Upgrade(GR,n,ntau,PHASE,Op_V(n,1)%N_non_zero) 
        ! The spin has changed after the upgrade!
@@ -315,6 +373,12 @@ Contains
        if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_debug_check(GR, n, ntau, "Lowrank_wrap_hook (down, 1)")
 #endif
     enddo
+#ifdef ALF_TIMERS
+    call timer_pop(T_VWRAP)
+    ! slice-end flush (or cross-slice hop) and the hopping wrap: T_HOP (the flush itself is T_FLUSH)
+    timer_flush_reason = FR_SLICE_END
+    call timer_push(T_HOP)
+#endif
     ! G must be the full Green function before the hopping propagation and on return. Cross-slice
     ! delay: instead, carry the pending state through the hopping wrap (X <- B_T^{-1} X, Y^T <- Y^T B_T);
     ! main.F90 flushes it before every read of G
@@ -331,6 +395,9 @@ Contains
        Call Hop_mod_mmthl   (GR(:,:,nf), nf,ntau)
        Call Hop_mod_mmthr_m1(GR(:,:,nf), nf,ntau)
     enddo
+#ifdef ALF_TIMERS
+    call timer_pop(T_HOP)
+#endif
 #ifdef ALF_LOWRANK_DEBUG
     if (Lowrank_cross_slice_active()) call Lowrank_debug_check(GR, 0, ntau, "Lowrank_hop_down")
 #endif

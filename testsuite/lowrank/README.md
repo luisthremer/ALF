@@ -113,6 +113,40 @@ static rule). `MAKE_JOBS=n` sets the parallel make jobs of the trace/normal buil
 - `standard delayed` is the trajectory check of the delayed scheme (wired into `WRAPGRUP`/`WRAPGRDO`, Task 8);
   `standard submatrix` is the trajectory check of the submatrix scheme (kernel in Task 11, same routing).
 
+## timers_build.sh (timing split, `-DALF_TIMERS`)
+
+```bash
+testsuite/lowrank/timers_build.sh [--rebuild] [--mpi | --tempering]     # -> builds/ALF_timers.out (_mpi / _tempering)
+BENCH_BIN=$PWD/builds/ALF_timers.out testsuite/lowrank/bench.sh delayed 12 32   # timers.txt in the bench run directory
+```
+
+- Builds ALF with `ALF_FLAGS_EXT=-DALF_TIMERS` (`configure.sh GNU noMPI|MPI|Tempering`, `make program`, `MAKE_JOBS`, default 2) in a
+  copy of the working tree, `builds/timers[_mpi|_tempering]/src` (tracked and untracked non-ignored files, uncommitted changes
+  included), never in `Prog/` (a flagged build there would leave incompatible `Prog/*.o` for test 36 and later incremental builds).
+  The copy lies inside the repository, so `info` carries the commit line (`-dirty` for an uncommitted tree). Reused while newer
+  than every source under `Prog/`, `Libraries/` (as the trace binary); log `runs/build_timers_<mode>.log`.
+- `Prog/Timers_mod.F90` is compiled in every build; without the flag its routines are empty and nothing calls them (every call
+  and every `use Timers_mod` is under `#ifdef ALF_TIMERS`), so the default output is byte-identical.
+- Exclusive stack timers (`system_clock`, int64; `omp_get_wtime` if the rate is < 1e6/s): `timer_push(id)` pauses the top,
+  `timer_pop(id)` asserts that id is the top and resumes the parent, `timer_switch(a, b)` replaces the top (one clock read; used
+  per vertex). Categories: `update` (ham%S0, proposal ranf, Upgrade2/Upgrade_lowrank without nested flushes), `flush`
+  (Lowrank_flush with something pending, every caller), `vwrap` (Op_Wrapup/Op_Wrapdo of the vertices + low-rank hooks), `hop`
+  (hopping wraps incl. cross-slice hops), `stab` (WRAPUR/WRAPUL/CGR, precision control, phase), `meas` (Obser, Hop_mod_Symm,
+  reconstruction, Tau_m/Tau_p), `global` (global moves, Global_tau, tempering exchange), `langevin_hmc` (whole branches),
+  `other` (the rest of the sweep body: loop control, udv resets, read points' bookkeeping, autotune). `sweep` = inclusive body of
+  the `DO NSW` loop = sum of the nine (exact in integer counts, asserted at every bin end); the stack must hold only the sweep
+  frame at every sweep end (asserted). `bin_overhead` = bin wall time (Init_obs .. nsigma%out) minus the sweeps.
+- Counters (sequential updates): `proposals`, `accepts`, flushes with something pending by reason (`flush_capacity`: N_delay /
+  capacity in accept or hook; `flush_slice_end`; `flush_ineligible`; `flush_read_point`: cross-slice read points;
+  `flush_unattributed` must be 0), `flush_total`, `flush_rank_mean` (max over flavours of the pending columns / sites at a flush).
+- Output `timers.txt` (`Temp_<g>/timers.txt` with tempering) next to `info` (which gets `Timing split: see timers.txt
+  (ALF_TIMERS)`), appended by group rank 0 after an `MPI_Reduce` (sum, max) on `Group_Comm` that every rank calls:
+  header `TIMER_RATE <count_rate>`, `TIMER_CLOCK`, `TIMER_RANKS <n>`, `TIMER_TICK <s>` (measured resolution: 1 us for
+  `system_clock` on macOS although the rate is 1e9; per-segment rounding is unbiased), then per bin `TIMER_SWEEPS <bin> <n>`,
+  `TIMER <bin> <id> <rank0> <max> <mean>` (seconds, ES format) and `COUNTER <bin> <name> <rank0> <max> <mean>` (rank0 and max
+  integers, mean ES; `flush_rank_mean` all three ES). Timers reset at every bin start, so bin 1 (setup, Lowrank_init) can be
+  dropped. Sum over bins of `sweep + bin_overhead` matches `CPU Time` of `info` to < 1 % (the rest is the time outside the bins).
+
 ## Debug build and self-tests
 
 `ALF_FLAGS_EXT="-DALF_LOWRANK_DEBUG"` (then `make -C Prog clean; make program`) keeps a shadow G with standard rank-1 updates and
