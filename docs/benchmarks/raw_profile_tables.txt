@@ -1,0 +1,20 @@
+runs/bench/sample_standard_sweep.txt: 12513 samples (main thread)
+| category | samples | fraction |
+|---|---:|---:|
+| rank-1 updates in standard (Upgrade2 -> ZGERU) | 7897 | 63.1 % |
+| stabilisation (QR/UDV, CGR, wrapur/wrapul) | 3341 | 26.7 % |
+| hopping / interaction wraps (Hop_mod, Op_mmult*, Op_wrap*) | 1059 | 8.5 % |
+| ratio / border / propose (incl. Wrapgr self time) | 170 | 1.4 % |
+| measurements | 42 | 0.3 % |
+| other | 4 | 0.0 % |
+
+runs/bench/sample_submatrix_sweep.txt: 12582 samples (main thread)
+| category | samples | fraction |
+|---|---:|---:|
+| stabilisation (QR/UDV, CGR, wrapur/wrapul) | 7482 | 59.5 % |
+| flush ZGEMM (Lowrank_flush / Submatrix_factors) | 2385 | 19.0 % |
+| hopping / interaction wraps (Hop_mod, Op_mmult*, Op_wrap*) | 2331 | 18.5 % |
+| ratio / border / propose (incl. Wrapgr self time) | 283 | 2.2 % |
+| measurements | 84 | 0.7 % |
+| other | 17 | 0.1 % |
+
