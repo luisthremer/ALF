@@ -246,6 +246,7 @@ class SubmatrixM:
         self.npad = 0
         self.npathB = 0
         self.npathW = 0
+        self.post_pad = True   # padding in the post-wrap hook (adopted); False: pre-wrap padding (first draft)
 
     def J(self, Pa):
         Jm = np.zeros((len(self.S), len(Pa)))
@@ -271,6 +272,8 @@ class SubmatrixM:
         self.npad += m
 
     def prewrap(self, P, diag):
+        if self.post_pad:
+            return
         inter = [p for p in P if p in self.S]
         if not diag and inter and len(inter) < len(P):
             self.pad(list(P))
@@ -281,6 +284,10 @@ class SubmatrixM:
         idx = [i for i, p in enumerate(P) if p in self.S]
         if not idx:
             return
+        nondiag = not (np.allclose(Ml, np.diag(np.diag(Ml))) and np.allclose(Mr, np.diag(np.diag(Mr))))
+        if nondiag and len(idx) < len(P) and self.post_pad:
+            self.pad(list(P))          # zeros only, no G0 read: valid after ALF's wrap (D8 revised)
+            idx = list(range(len(P)))
         sl = [self.S.index(P[i]) for i in idx]
         k = len(self.S)
         LS = np.eye(k, dtype=complex)
@@ -288,7 +295,7 @@ class SubmatrixM:
         LS[np.ix_(sl, sl)] = Ml[np.ix_(idx, idx)]
         RS[np.ix_(sl, sl)] = Mr[np.ix_(idx, idx)]
         if len(idx) < len(P):
-            assert np.allclose(Ml, np.diag(np.diag(Ml))) and np.allclose(Mr, np.diag(np.diag(Mr)))
+            assert not nondiag
         self.M = LS @ self.M @ RS
 
     def gpp(self, Pa):
@@ -335,11 +342,11 @@ def run(Ndim, vertices, direction, accept_mask, nd_cap=10**9, cross_slice=False,
     sm = (sub_cls or Submatrix)(G)
     fields = [rng.choice([-1.0, 1.0, -2.0, 2.0]) for _ in vertices]
     nslices = 2 if cross_slice else 1
-    T = rng.normal(size=(Ndim, Ndim)) * 0.1
-    T = (T + T.T) / 2
+    T = (rng.normal(size=(Ndim, Ndim)) + 1j * rng.normal(size=(Ndim, Ndim))) * 0.1
+    T = (T + T.conj().T) / 2          # complex Hermitian hopping (flux): B^T != B
     w, V = np.linalg.eigh(T)
-    B = V @ np.diag(np.exp(-w)) @ V.T
-    Binv = V @ np.diag(np.exp(w)) @ V.T
+    B = V @ np.diag(np.exp(-w)) @ V.conj().T
+    Binv = V @ np.diag(np.exp(w)) @ V.conj().T
     errs = dict(ratio_dl=0.0, ratio_sm=0.0, G_dl=0.0, G_sm=0.0, G_std=0.0, cross=0.0)
     iacc = 0
     for sl in range(nslices):
