@@ -10,9 +10,9 @@
 - **Branch:** `gpu-port-302b` (the 2026-10-30 draft branch `gpu-port-302b-b580` is superseded)
 - **Acceptance files:** `testsuite/gpu_reference/acceptance/302b.json` (Intel part, `intel`: 82 runs, 15 gates, 18
   controls) and `302b.nvidia.json` (`nividia` part, `acc_driver.py --part nvidia`: 10 runs, 5 gates, 5 controls).
-- **Status:** PRE-REGISTERED. Pre-registration commit `0e427164` (`0e42716439ce3ec82f706f50c78f22e625842b3c`,
-  2026-10-31) on `gpu-port-302b`, base `71af3e076322`; final review (b) approved it (docs-only ticket fixes afterwards).
-  `acc_ship.sh` takes `0e427164` as PREREG_SHA. No implementation had started at that commit.
+- **Status:** RE-REGISTRATION pending review (b) (decision 26: precision control replaced after T0). First
+  pre-registration `0e427164` (2026-10-31, base `71af3e076322`) is superseded once the re-registration commit is
+  approved; its sha is then recorded here as the PREREG_SHA for `acc_ship.sh`. T0 (dev trees a1, a2) is done.
 
 ## Goal
 With `GPU=intel` (ifx 2026.2 OpenMP offload, spir64 JIT, plus the 302a oneMKL backend), the 204 wraps (checkerboard and
@@ -112,7 +112,7 @@ device τ pass runs.
 | `invalid_value` | `FAULT_STAB=xyz`, `FAULT=xyz` | exact line, rc 1 | valid eps:1e-11 (FAIL) |
 | `same_seed` | B580 vs ifx CPU, same seeds: 6×6 LOG / CPU LOG, 6×6 default / CPU `QR_PREPIVOT`, 12×12 default / CPU `QR_PREPIVOT` | no bin > 1e-4; overall and τ ≤ 1e-9; 38 datasets, 5 τ | `scale 1e-3` (FAIL), `nan` (INPUT_ERROR) |
 | `determinism` | same binary twice: 6×6 default, 6×6 LOG, 12×12 β = 10 default, 12×12 β = 10 LOG | bit-identical `data.h5` + Precision lines | `scale 1e-12` (FAIL) |
-| `precision` | 12×12 β = 4, 20 × 20: GPU mean / larger ifx CPU mean, Green and τ | ≤ 1.5 | `ALF_GPU_NS=0` (FAIL; see Q-NS) |
+| `precision` | 12×12 β = 4, 20 × 20: GPU mean / larger ifx CPU mean, Green and τ | ≤ 1.5 | graded device fault `eps:1e-10` (FAIL; decision 26, replaced `ALF_GPU_NS=0`) |
 | `compare2` | `s8_U4_b2_cb_short` 120 × 30, B580 default vs ifx GPU=none, fresh seeds | m = 11, α = 0.01 Šidák, `min_bins` 8 | shift 8 (FAIL; decision 23); CPU-vs-CPU null (PASS) |
 | `ifx_none_identity` | ifx 2026.2 GPU=none, base vs candidate, 6×6 | bit-identical | `scale 1e-12` (FAIL) |
 | `alf_la_tests_onemkl` | ctest `^t_` under ONEMKL on the merged base | 100 % of 14; backend and B580 lines | `ALF_LA_TEST_WRONG_LD` (FAIL), replaces all 3 checks |
@@ -212,6 +212,19 @@ guard only (pessimistic c2_gpu estimate ~3200 s, > 2× margin); the driver has a
   statistic (GPU mean / larger CPU mean, Green and τ, against the existing `pr_none_b4` / `pr_none_pp_b4`). Choose the
   smallest x in the grid whose Green ratio is ≥ 3× (margin over decision 24's 2×). If none reaches 3×, stop and report.
   All three values are reported; the chosen x goes into the re-registered `302b.json` as the control run's env.
+- **Result (implementer 2, T0 tree a2, 2026-10-31):** production action in `gpu_stab_cgr` after the D→H of the new G
+  (perturbed G pushed back to the device, so the precision reduction and the returned G both carry it; extra 16·N² B H→D
+  in control runs only); armed line ` GPU fault armed (production sweep): …`; inactive under `SELFTEST=3`/`STABTIME=1`.
+
+  | x | Green mean | Green ratio | τ mean | τ ratio |
+  |---|---|---|---|---|
+  | 1e-10 | 2.764e-8 | 642 | 8.24e-10 | 125 |
+  | 3e-10 | 8.290e-8 | 1927 | 2.46e-9 | 373 |
+  | 1e-9 | 2.764e-7 | 6422 | 8.19e-9 | 1242 |
+
+  Chosen **x = 1e-10** (smallest grid value ≥ 3×). The ratio is large because the perturbed G propagates through the
+  wraps until the next stabilization. `pr_def_b4` is unchanged by the edit (Green 3.317e-11, τ 6.081e-12). New control
+  run `ctl_pr_eps_b4`, control `c_precision_eps` (approvals: decisions 24, 26).
 
 ### Other open points
 - **Q-NS (decision 24, 2026-10-31: "Pre-register now"):** `ALF_GPU_NS=0` exists because of cuSOLVER's Q
