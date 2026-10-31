@@ -43,11 +43,20 @@ def campaign(name, machine, points, layouts, schemes, reps, nd_values=(0,)):
     return dict(name=name, machine=machine, jobs=njobs, node_h=nh, core_h=nh * CORES[machine])
 
 
+def blas(name, machine, n_layout_runs, hours_per_run=0.5):
+    """BLAS microbenchmark: one exclusive node per layout run, ~0.5 h each (N up to 8000 incl. ZGEQP3)."""
+    nh = n_layout_runs * hours_per_run
+    return dict(name=name, machine=machine, jobs=n_layout_runs, node_h=nh, core_h=nh * CORES[machine])
+
+
 def main():
     sq = lambda Ls, ltrot: [(L * L, ltrot) for L in Ls]
     cu = lambda Ls, ltrot: [(L ** 3, ltrot) for L in Ls]
     S = ("standard", "delayed", "submatrix")
     camps = [
+        campaign("C0 SuperMUC pilot + large-N precision: Hubbard U=4 and U=8, Beta=4 (Ltrot 40), L=40, 60, standard + delayed/submatrix auto + fixed 32, 2x24, 1 rep",
+                 "supermuc", sq((40, 60), 40) * 2, [(2, 24)], S + ("delayed", "submatrix"), 1),
+        blas("B-S SuperMUC BLAS ceiling (T2), layouts 1x48 2x24 4x12, N up to 8000", "supermuc", 3),
         campaign("C1 SuperMUC 2D Hubbard U=1 and U=4, Beta=2 (Ltrot 20), L=20..60, 3 schemes, auto N_delay, layouts 1x48 2x24 4x12",
                  "supermuc", sq((20, 30, 40, 50, 60), 20) * 2, [(1, 48), (2, 24), (4, 12)], S, 3),
         campaign("C1b SuperMUC 2D Hubbard U=4, Beta=4 (Ltrot 40), L=40, 60, layout 2x24",
@@ -58,6 +67,9 @@ def main():
                  "supermuc", cu((8, 12, 16, 20), 20), [(1, 48)], S, 3),
         campaign("C4 SuperMUC tV (rank-2 bonds), L=20, 30, 40, standard vs delayed (+submatrix), 2x24",
                  "supermuc", sq((20, 30, 40), 20), [(2, 24)], S, 3),
+        campaign("H0 Helma pilot: Hubbard U=4, Beta=2, L=40, 60, 3 schemes, 8x48, 1 rep",
+                 "helma", sq((40, 60), 20), [(8, 48)], S, 1),
+        blas("B-H Helma BLAS ceiling (T2), layouts 8x48 16x24 2x192, fakeintel on/off, N up to 8000", "helma", 6),
         campaign("H1 Helma 2D Hubbard U=4, Beta=2, L=20..60, 3 schemes, auto, layouts 8x48 16x24 2x192, fakeintel on",
                  "helma", sq((20, 30, 40, 50, 60), 20), [(8, 48), (16, 24), (2, 192)], S, 3),
         campaign("H1b Helma fakeintel off control: L=40, 60, 8x48",
