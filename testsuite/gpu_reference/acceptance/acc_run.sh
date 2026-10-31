@@ -31,7 +31,7 @@ for kv in "$@"; do
     *) echo "bad argument $kv"; exit 2;;
   esac
 done
-read -r TOOL GPUB GPUI < <(python3 -c "import json,sys; b=json.load(open(sys.argv[1])); c=b['configure'].split(); print(b['tool'], 1 if ('GPU=nvidia' in c or 'GPU=intel' in c) else 0, 1 if 'GPU=intel' in c else 0)" "$BJ") || { echo "bad build record"; exit 2; }
+read -r TOOL GPUB GPUI < <(python3 -c "import json,sys; b=json.load(open(sys.argv[1])); c=b['configure'].split(); bad=[t for t in c if t.upper().startswith('GPU=') and t not in ('GPU=none','GPU=nvidia','GPU=intel')]; assert not bad, bad; print(b['tool'], 1 if ('GPU=nvidia' in c or 'GPU=intel' in c) else 0, 1 if 'GPU=intel' in c else 0)" "$BJ") || { echo "bad build record"; exit 2; }
 SEL=""
 if [ "$GPUI" = 1 ]; then
   for kv in "${ENVX[@]}"; do
@@ -66,10 +66,12 @@ date -Is > start.txt
   . "$__acc_envf" > "$__acc_dir/env_file.log" 2>&1 || __acc_no "env file failed: $__acc_envf"
   command grep -q "readonly variable\|readonly function\|cannot unset" "$__acc_dir/env_file.log" && __acc_no "env file tried to change the harness variables: refusing"
   builtin cd "$__acc_dir" || __acc_no "cannot return to the run directory"
-  [ -n "$__acc_off" ] && builtin export "$__acc_off"   # GPU builds: offload MANDATORY after the env file too
+  if [ -n "$__acc_off" ]; then   # GPU builds: offload MANDATORY after the env file too
+    builtin export "$__acc_off"; [ "$OMP_TARGET_OFFLOAD" = MANDATORY ] || __acc_no "offload not in effect: refusing"
+  fi
   if [ -n "$__acc_sel" ]; then   # GPU=intel: pin the device after the env file, so the env file cannot override it
-    [ -n "${ZE_AFFINITY_MASK+x}${ZE_ENABLE_PCI_ID_DEVICE_ORDER+x}${ZE_FLAT_DEVICE_HIERARCHY+x}${SYCL_DEVICE_FILTER+x}" ] && \
-      __acc_no "env file sets ZE_AFFINITY_MASK, ZE_ENABLE_PCI_ID_DEVICE_ORDER, ZE_FLAT_DEVICE_HIERARCHY or SYCL_DEVICE_FILTER: refusing (device pinning)"
+    [ -n "${ZE_AFFINITY_MASK+x}${ZE_ENABLE_PCI_ID_DEVICE_ORDER+x}${ZE_FLAT_DEVICE_HIERARCHY+x}${SYCL_DEVICE_FILTER+x}${LIBOMPTARGET_PLUGIN+x}${LIBOMPTARGET_DEVICETYPE+x}${LIBOMPTARGET_DEVICES+x}${SYCL_DEVICE_ALLOWLIST+x}" ] && \
+      __acc_no "env file sets a device-steering variable (ZE_AFFINITY_MASK, ZE_ENABLE_PCI_ID_DEVICE_ORDER, ZE_FLAT_DEVICE_HIERARCHY, SYCL_DEVICE_FILTER, LIBOMPTARGET_PLUGIN/DEVICETYPE/DEVICES, SYCL_DEVICE_ALLOWLIST): refusing"
     builtin export "$__acc_sel"
     [ "$ONEAPI_DEVICE_SELECTOR" = level_zero:0 ] || __acc_no "device selector not in effect: refusing"
   fi

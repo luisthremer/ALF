@@ -66,7 +66,35 @@ def tmpdir():
 # ------------------------------------------------------------------ provenance
 DEBUG_PREFIXES = ("ALF_GPU_", "ALFSH_", "ALF_LA_TEST_")
 # variables that change which device level_zero:0 is (acc_run.sh / acc_ctest.sh refuse them for GPU=intel)
-DEVICE_ORDER_VARS = ("ZE_AFFINITY_MASK", "ZE_ENABLE_PCI_ID_DEVICE_ORDER", "ZE_FLAT_DEVICE_HIERARCHY", "SYCL_DEVICE_FILTER")
+DEVICE_ORDER_VARS = ("ZE_AFFINITY_MASK", "ZE_ENABLE_PCI_ID_DEVICE_ORDER", "ZE_FLAT_DEVICE_HIERARCHY", "SYCL_DEVICE_FILTER",
+                     "LIBOMPTARGET_PLUGIN", "LIBOMPTARGET_DEVICETYPE", "LIBOMPTARGET_DEVICES", "SYCL_DEVICE_ALLOWLIST")
+GPU_TOKENS = ("GPU=none", "GPU=nvidia", "GPU=intel")
+
+
+def bad_gpu_tokens(configure):
+    """configure.sh uppercases its arguments; the harness recognises only the exact spellings"""
+    return [t for t in configure.split() if t.upper().startswith("GPU=") and t not in GPU_TOKENS]
+
+
+def ctest_stamp_check(root, d):
+    """An acc_ctest.sh output directory (stamp with a 'repeat' line) must be complete (ctest.exit and the stamp's 'end'
+    line) and, for a GPU configure line, stamped with MANDATORY offload (and the B580 selector where the stamp records
+    one; stamps before 2026-10-31 have no selector line)."""
+    sp = os.path.join(root, d, "stamp")
+    if not os.path.isfile(sp):
+        return
+    st = {l.split(None, 1)[0]: (l.split(None, 1)[1] if " " in l else "") for l in read(sp).splitlines() if l.strip()}
+    if "repeat" not in st:
+        return
+    if not os.path.isfile(os.path.join(root, d, "ctest.exit")) or "end" not in st:
+        raise InputFail(f"{d}: incomplete ctest output (no ctest.exit or no end line: interrupted run)")
+    conf = st.get("configure", "").split()
+    if bad_gpu_tokens(" ".join(conf)):
+        raise InputFail(f"{d}: configure token {bad_gpu_tokens(' '.join(conf))} not recognised by the harness")
+    if ("GPU=nvidia" in conf or "GPU=intel" in conf) and st.get("offload") != "MANDATORY":
+        raise InputFail(f"{d}: GPU ctest without MANDATORY offload in its stamp")
+    if "GPU=intel" in conf and "selector" in st and st["selector"] != "level_zero:0":
+        raise InputFail(f"{d}: GPU=intel ctest not pinned to level_zero:0")
 
 
 def check_prov(rd, acc, expect_rc=0, gpu_exclusive=None):
@@ -513,6 +541,8 @@ def g_log_regex(g, root, acc):
         for need_s in chk.get("stamp_contains", []):
             if need_s not in stamp:
                 raise InputFail(f"{chk['stamp_file']}: stamp lacks '{need_s}'")
+        for d in {os.path.dirname(chk["stamp_file"]), os.path.dirname(chk["file"])}:
+            ctest_stamp_check(root, d)
         t = read(os.path.join(root, chk["file"]))
         m = re.search(chk["regex"], t, re.M)
         if not m:
@@ -544,6 +574,7 @@ def g_files_identical(g, root, acc):
             stamp = read(os.path.join(root, d, "stamp"))
             if acc["candidate_sha"] not in stamp:
                 raise InputFail(f"{d}: not stamped with the candidate")
+            ctest_stamp_check(root, d)
             bl = [l.split()[1] for l in stamp.splitlines() if l.startswith("base_sha ")]
             if not bl or not acc.get("base_sha") or len(acc["base_sha"]) < 12 or not bl[0].startswith(acc["base_sha"]):
                 raise InputFail(f"{d}: base not the acceptance file's base {acc.get('base_sha')}")
@@ -901,6 +932,37 @@ def selfcheck():
     v, r, why = run_gate(dict(lg, checks=[{"file": "gx/ctest.log", "regex": ck["regex"], "stamp_file": "gx/stamp", "equals": [100, 0, 52]}]), tmp, acc)
     bad += v != "INPUT_ERROR"
     print(f"{'ok ' if v == 'INPUT_ERROR' else 'BAD'} log_regex INVALID ctest.exit, no exit_file  expected INPUT_ERROR got {v}")
+    CS = CAND + "\nrepeat 1\nconfigure IntelLLVM devel noMPI GPU=intel\n"
+
+    def ctdir(name, stamp, log, ex):
+        os.makedirs(os.path.join(tmp, name))
+        open(os.path.join(tmp, name, "stamp"), "w").write(stamp)
+        open(os.path.join(tmp, name, "ctest.log"), "w").write(log)
+        if ex is not None:
+            open(os.path.join(tmp, name, "ctest.exit"), "w").write(ex + "\n")
+        return {"file": f"{name}/ctest.log", "regex": ck["regex"], "stamp_file": f"{name}/stamp", "equals": [100, 0, 52]}
+    OKL = "100% tests passed, 0 tests failed out of 52\n"
+    more = [("ctest stamp complete, pinned", ctdir("c_ok", CS + "offload MANDATORY\nselector level_zero:0\nend x\n", OKL, "0"), "PASS"),
+            ("ctest exit 1, no exit_file: evaluated", ctdir("c_e1", CS + "offload MANDATORY\nselector level_zero:0\nend x\n", "98% tests passed, 1 tests failed out of 52\n", "1"), "FAIL"),
+            ("ctest no ctest.exit (interrupted)", ctdir("c_noex", CS + "offload MANDATORY\nselector level_zero:0\nend x\n", OKL, None), "INPUT_ERROR"),
+            ("ctest no end line (interrupted)", ctdir("c_noend", CS + "offload MANDATORY\nselector level_zero:0\n", OKL, "0"), "INPUT_ERROR"),
+            ("ctest GPU stamp without MANDATORY", ctdir("c_nooff", CS + "offload none\nselector level_zero:0\nend x\n", OKL, "0"), "INPUT_ERROR"),
+            ("ctest GPU=intel other selector", ctdir("c_sel1", CS + "offload MANDATORY\nselector none\nend x\n", OKL, "0"), "INPUT_ERROR"),
+            ("ctest old stamp without selector line", ctdir("c_old", CS + "offload MANDATORY\nend x\n", OKL, "0"), "PASS"),
+            ("ctest lowercase gpu=intel token", ctdir("c_tok", CAND + "\nrepeat 1\nconfigure IntelLLVM devel noMPI gpu=intel\noffload none\nend x\n", OKL, "0"), "INPUT_ERROR")]
+    for name, chk, exp in more:
+        v, r, why = run_gate(dict(lg, checks=[chk]), tmp, acc)
+        bad += v != exp
+        print(f"{'ok ' if v == exp else 'BAD'} {name:36s} expected {exp:11s} got {v:11s} {('(' + why + ')') if why else ''}"[:220])
+    BS = "b" * 12
+    for nm, src, sel in (("fa", "src", "level_zero:0"), ("fb", "base_src", "none")):
+        os.makedirs(os.path.join(tmp, nm))
+        open(os.path.join(tmp, nm, "stamp"), "w").write(f"{CAND}\nbase_sha {BS}\nsource {src}\ntool intel\nconfigure X\nregex all\nrepeat 1\nenv none\noffload none\nselector {sel}\nend x\n")
+        open(os.path.join(tmp, nm, "ctest.log"), "w").write("same\n")
+        open(os.path.join(tmp, nm, "ctest.exit"), "w").write("0\n")
+    v, r, why = run_gate({"type": "files_identical", "id": "fi", "file": "ctest.log", "pairs": [["fa", "fb"]]}, tmp, dict(acc, base_sha=BS))
+    bad += v != "INPUT_ERROR"
+    print(f"{'ok ' if v == 'INPUT_ERROR' else 'BAD'} files_identical selector mismatch       expected INPUT_ERROR got {v} ({why})"[:220])
     acc2 = dict(acc, gates=[dict(ss, pairs=[["A", "B", NB]])],
                 controls=[{"id": "c_missing", "like": "ss", "replace": {"pairs": [["A_nowhere", "B", NB]]}, "expect": "FAIL"},
                           {"id": "c_real", "like": "ss", "replace": {"pairs": [["A_small", "B_small", NB]]}, "expect": "PASS"}])
@@ -942,9 +1004,14 @@ def selfcheck():
     la_acc["gates"] = [{"type": "faults", "id": "ft", "cases": {"q1": "x"}}]
     ok_x &= not any("carries fault/numerics" in e for e in lint_errors(la_acc))
     la_acc["builds"] = dict(builds, igpu=dict(builds["igpu"], gpu=False))
-    la_acc["ctests"] = [{"id": "ct1", "tool": "intel", "configure": "IntelLLVM devel noMPI GPU=intel", "env": ["ZE_AFFINITY_MASK=0"]}]
+    la_acc["ctests"] = [{"id": "ct1", "tool": "intel", "configure": "IntelLLVM devel noMPI GPU=intel", "env": ["ZE_AFFINITY_MASK=0"], "gpu": True},
+                        {"id": "ct2", "tool": "intel", "configure": "IntelLLVM devel noMPI GPU=intel"},
+                        {"id": "ct3", "tool": "intel", "configure": "IntelLLVM devel noMPI gpu=intel"}]
+    la_acc["forbidden_lines"] = "GPU tau pass (207): ACTIVE"
     le = lint_errors(la_acc)
-    ok_x &= any(e.startswith("build igpu:") and "does not match" in e for e in le) and any(e.startswith("ctest ct1:") for e in le)
+    ok_x &= any(e.startswith("build igpu:") and "does not match" in e for e in le) and any(e.startswith("ctest ct1:") and "declared" in e for e in le)
+    ok_x &= any(e.startswith("ctest ct2:") and "does not match" in e for e in le) and any(e.startswith("ctest ct3:") and "configure token" in e for e in le)
+    ok_x &= any(e.startswith("file: forbidden_lines") for e in le)
     bad += not ok_x
     print(f"{'ok ' if ok_x else 'BAD'} lint: ALF_LA_TEST_ in a gate run, faults gate exempt, selector declared on GPU=intel, gpu flag, ctest pin")
     shutil.rmtree(tmp)
@@ -977,6 +1044,8 @@ def lint_errors(acc):
     for b, bv in builds.items():
         if b not in used_builds:
             errs.append(f"build {b}: declared but unused")
+        if bad_gpu_tokens(bv.get("configure", "")):
+            errs.append(f"build {b}: configure token {bad_gpu_tokens(bv.get('configure', ''))} (write GPU=none, GPU=nvidia or GPU=intel)")
         gtok = any(t.startswith("GPU=") and t != "GPU=none" for t in bv.get("configure", "").split())
         if bv.get("gpu", True) != gtok:
             errs.append(f"build {b}: 'gpu' {bv.get('gpu', True)} does not match its configure line (GPU checks would be skipped or misapplied)")
@@ -984,6 +1053,8 @@ def lint_errors(acc):
         pin = [kv for kv in t.get("env", []) if kv.split("=")[0] in ("ONEAPI_DEVICE_SELECTOR", "OMP_TARGET_OFFLOAD", "CUDA_VISIBLE_DEVICES") + DEVICE_ORDER_VARS]
         if pin:
             errs.append(f"ctest {t['id']}: {pin} declared (acc_ctest.sh sets or refuses these)")
+        if bad_gpu_tokens(t.get("configure", "")):
+            errs.append(f"ctest {t['id']}: configure token {bad_gpu_tokens(t.get('configure', ''))} (write GPU=none, GPU=nvidia or GPU=intel)")
         gtok = any(x.startswith("GPU=") and x != "GPU=none" for x in t.get("configure", "").split())
         if bool(t.get("gpu")) != gtok:
             errs.append(f"ctest {t['id']}: 'gpu' {t.get('gpu')} does not match its configure line (load/lock checks)")

@@ -33,8 +33,13 @@ C=$HOME/alf-gpu/work/t$TICKET/cand/$WHO/$S12; [ -f $C/.alf_candidate ] || { echo
 want=$(awk -v k=$KEY '$1==k {print $2}' $C/.alf_candidate); have=$(sha256sum $C/$SRCT.tar | cut -d' ' -f1)
 [ -n "$want" ] && [ "$want" = "$have" ] || { echo "TAR HASH MISMATCH"; exit 2; }
 ENVF=$HOME/alf-gpu/env/$TOOL.sh; [ -f "$ENVF" ] || { echo "no env file $ENVF"; exit 2; }
+for __tk in "$@"; do   # configure.sh uppercases its arguments: only the exact GPU= spellings are recognised here
+  case "$(printf %s "$__tk" | tr a-z A-Z)" in GPU=*) case "$__tk" in GPU=none|GPU=nvidia|GPU=intel) ;; *) echo "refusing configure token $__tk (write GPU=none, GPU=nvidia or GPU=intel)"; exit 2;; esac;; esac
+done
 case " $* " in *" GPU=intel "*) [ "$TOOL" = intel ] || { echo "refusing: GPU=intel needs TOOL intel (got $TOOL)"; exit 2; };; esac
 mkdir "$OUT" || { echo "refusing: $OUT exists"; exit 2; }
+trap '[ -f "$OUT/ctest.exit" ] || echo 2 > "$OUT/ctest.exit"' EXIT   # an interrupted run is INVALID, never half a pass
+trap 'exit 2' TERM INT HUP                                             # so that a signal also runs the EXIT trap
 GPUENV=(); OFF=none; JOBS=1; LOCK=(); SELV=""   # one test at a time: deterministic output order for identity comparisons
 case " $* " in *" GPU=nvidia "*|*" GPU=intel "*) GPUENV=(OMP_TARGET_OFFLOAD=MANDATORY); OFF=MANDATORY; JOBS=1
   LOCK=(flock "$HOME/alf-gpu/gpu.lock");; esac
@@ -64,7 +69,7 @@ for i in $(seq 1 "$REP"); do
         builtin export "$__acc_off"; [ "$OMP_TARGET_OFFLOAD" = MANDATORY ] || { builtin echo "offload not in effect: refusing"; builtin exit 2; }
       fi
       if [ -n "$__acc_sel" ]; then
-        [ -n "${ZE_AFFINITY_MASK+x}${ZE_ENABLE_PCI_ID_DEVICE_ORDER+x}${ZE_FLAT_DEVICE_HIERARCHY+x}${SYCL_DEVICE_FILTER+x}" ] && { builtin echo "env file sets a device-ordering variable: refusing"; builtin exit 2; }
+        [ -n "${ZE_AFFINITY_MASK+x}${ZE_ENABLE_PCI_ID_DEVICE_ORDER+x}${ZE_FLAT_DEVICE_HIERARCHY+x}${SYCL_DEVICE_FILTER+x}${LIBOMPTARGET_PLUGIN+x}${LIBOMPTARGET_DEVICETYPE+x}${LIBOMPTARGET_DEVICES+x}${SYCL_DEVICE_ALLOWLIST+x}" ] && { builtin echo "env file sets a device-ordering variable: refusing"; builtin exit 2; }
         builtin export "$__acc_sel"; [ "$ONEAPI_DEVICE_SELECTOR" = level_zero:0 ] || { builtin echo "device selector not in effect: refusing"; builtin exit 2; }
       fi
       builtin export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
@@ -78,8 +83,14 @@ for i in $(seq 1 "$REP"); do
   for v in OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1; do [ $envok = 1 ] && { grep -qx "$v" "$E" || envok=0; }; done
   [ $envok = 1 ] && [ "$OFF" = MANDATORY ] && { grep -qx 'OMP_TARGET_OFFLOAD=MANDATORY' "$E" || envok=0; }
   [ $envok = 1 ] && [ -n "$SELV" ] && { grep -qx 'ONEAPI_DEVICE_SELECTOR=level_zero:0' "$E" && \
-    ! grep -q -E '^(ZE_AFFINITY_MASK|ZE_ENABLE_PCI_ID_DEVICE_ORDER|ZE_FLAT_DEVICE_HIERARCHY|SYCL_DEVICE_FILTER)=' "$E" || envok=0; }
-  [ $envok = 1 ] || { crash=1; echo "repetition $i: effective environment not as stamped (offload/selector)" >> "$OUT/env_check.txt"; }
+    ! grep -q -E '^(ZE_AFFINITY_MASK|ZE_ENABLE_PCI_ID_DEVICE_ORDER|ZE_FLAT_DEVICE_HIERARCHY|SYCL_DEVICE_FILTER|LIBOMPTARGET_PLUGIN|LIBOMPTARGET_DEVICETYPE|LIBOMPTARGET_DEVICES|SYCL_DEVICE_ALLOWLIST)=' "$E" || envok=0; }
+  # debug variables only as declared with --env (an env file must not bring any)
+  if [ $envok = 1 ]; then
+    for kv in $(grep -E '^(ALF_GPU_|ALFSH_|ALF_LA_TEST_)' "$E" | cut -d= -f1); do
+      case " ${ENVX[*]%%=*} " in *" $kv "*) ;; *) envok=0;; esac
+    done
+  fi
+  [ $envok = 1 ] || { crash=1; echo "repetition $i: effective environment not as stamped (offload/selector/threads/debug variables)" >> "$OUT/env_check.txt"; }
   # the temporary build path and backtrace addresses (ASLR, e.g. from the expected-failure tests) differ between runs
   sed -i -E "s#$W#<BUILD>#g; s/0x[0-9a-f]{6,}/0xADDR/g; s/^[0-9]+: //" "$OUT/rep_$i.log"   # also the ctest -V test-index prefix
   cat "$OUT/rep_$i.log" >> "$OUT/ctest.log"
