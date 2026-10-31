@@ -9,6 +9,9 @@ each KEY = VALUE in every namelist that contains KEY (case-insensitive match; th
 trailing '! comment' of the line is kept). A KEY found in no namelist (for example
 Sequential_scheme before it exists in the template) is appended to &VAR_QMC.
 SEED=<int> replaces the first seed in 'seeds' instead.
+
+The test-only model LR_Jz_Test has no namelist in the Start template: if a key sets ham_name to it, the namelist
+&VAR_LR_Jz_Test (defaults of Hamiltonian_LR_Jz_Test_smod.F90) is appended to the copied parameters file first.
 """
 import os
 import re
@@ -17,6 +20,20 @@ import sys
 
 START = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                      "..", "..", "Scripts_and_Parameters_files", "Start")
+
+
+EXTRA_NAMELISTS = {
+    "LR_Jz_Test": """
+&VAR_LR_Jz_Test            !! Variables for the test-only model LR_Jz_Test
+ham_T      = 1.d0           ! Hopping parameter
+ham_U      = 4.d0           ! Hubbard interaction (Mz)
+ham_Jz     = 1.d0           ! Ising coupling on nearest-neighbour bonds
+ham_chem   = 0.d0           ! Chemical potential
+Dtau       = 0.1d0          ! Thereby Ltrot=Beta/dtau
+Beta       = 2.d0           ! Inverse temperature
+/
+""",
+}
 
 
 def set_key(lines, key, value):
@@ -56,6 +73,12 @@ def main(argv):
         params = f.readlines()
     with open(os.path.join(out, "seeds")) as f:
         seeds = f.readlines()
+    for arg in argv[2:]:
+        if "=" in arg and arg.split("=", 1)[0].lower() == "ham_name":
+            name = arg.split("=", 1)[1].strip().strip("\"'")
+            nml = EXTRA_NAMELISTS.get(name)
+            if nml and not any(re.match(r"^\s*&VAR_" + name + r"\b", l, re.I) for l in params):
+                params.extend(nml.splitlines(True))
     for arg in argv[2:]:
         if "=" not in arg:
             sys.exit("make_params.py: expected KEY=VALUE, got " + arg)

@@ -2,7 +2,7 @@
 # One statistical job: parameters from STAT_SETS (sets.sh), run ALF.out, analyse with ana.out.
 #
 # Usage:  testsuite/lowrank/stat_runs.sh SET SCHEME SEED [KEY=VALUE ...]
-#   SET     half | doped | density            (sets.sh, STAT_SETS)
+#   SET     half | doped | density | tv | kondo | jz | tv_proj   (sets.sh, STAT_SETS)
 #   SCHEME  standard | delayed | submatrix    (Sequential_scheme)
 #   SEED    integer, first seed of the seeds file (independent chains need different seeds)
 #   KEY=VALUE ...  extra parameters, applied last (override NSweep=50 NBin=40 Ltau=0 n_skip=5 too)

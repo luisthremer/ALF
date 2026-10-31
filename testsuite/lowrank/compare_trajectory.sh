@@ -2,8 +2,9 @@
 # Trajectory comparison of two Sequential_scheme values.
 #
 # Usage:  testsuite/lowrank/compare_trajectory.sh [--rebuild] SET SCHEME_A SCHEME_B [KEY=VALUE ...]
-#   SET                 one of the sets of testsuite/lowrank/sets.sh (start, explicit, doped, density,
-#                       continuous, tv, kondo, pv_adiab, z2gt); only its common keys are used (the scheme is set explicitly).
+#   SET                 one of the sets of testsuite/lowrank/sets.sh: SETS (start, explicit, doped, density,
+#                       continuous, tv, kondo, pv_adiab, z2gt, tv_flux, tv_proj, z2, spin_peierls) or TRAJ_ONLY_SETS
+#                       (jz); only its common keys are used (the scheme is set explicitly).
 #   SCHEME_A, SCHEME_B  standard | delayed | submatrix (any case)
 #   KEY=VALUE ...       extra parameters for both runs (e.g. N_delay=8, SEED=42)
 #   --rebuild           force a rebuild of the trace binary.
@@ -31,13 +32,13 @@ SHORT="NSweep=3 NBin=2"
 
 REBUILD=0
 if [ "${1:-}" = "--rebuild" ]; then REBUILD=1; shift; fi
-if [ $# -lt 3 ]; then sed -n '2,21p' "${BASH_SOURCE[0]}" >&2; exit 2; fi
+if [ $# -lt 3 ]; then sed -n '2,22p' "${BASH_SOURCE[0]}" >&2; exit 2; fi
 SET="$1"; SCHEME_A="$2"; SCHEME_B="$3"; shift 3
 EXTRA=("$@")
 
 source "$HERE/sets.sh"
 common=""; found=0
-for entry in "${SETS[@]}"; do
+for entry in "${SETS[@]}" "${TRAJ_ONLY_SETS[@]}"; do
     IFS='|' read -r name c _ <<<"$entry"
     if [ "$name" = "$SET" ]; then common="$c"; found=1; fi
 done
