@@ -10,7 +10,8 @@
 # its own check: "***Failed"); a build/setup failure or any crash, exception, timeout, "Not Run" or abort writes 2
 # (INVALID, never a pass and never a detection). Tests run with ctest -V (their output is in ctest.log).
 # GPU configurations (GPU=nvidia|intel) run with OMP_TARGET_OFFLOAD=MANDATORY (intel: also
-# ONEAPI_DEVICE_SELECTOR=level_zero:0), one test at a time, under flock ~/alf-gpu/gpu.lock; the stamp records it. summary: "<regex>: P of N repetitions
+# ONEAPI_DEVICE_SELECTOR=level_zero:0, exported after the env file, which must not set ZE_AFFINITY_MASK; the stamp
+# records "selector level_zero:0"), one test at a time, under flock ~/alf-gpu/gpu.lock; the stamp records it. summary: "<regex>: P of N repetitions
 # passed" and the last "tests failed out of" line. Exit code = the value in ctest.exit.
 set -o pipefail
 export LC_ALL=C
@@ -18,7 +19,7 @@ TICKET=$1; WHO=$2; S12=$3; OUT=$4; TOOL=$5; shift 5
 RX=""; REP=1; ENVX=(); SRCT=src; KEY=tar_sha256
 while [ $# -gt 0 ] && [ "$1" != -- ]; do
   case "$1" in --base) SRCT=base_src; KEY=base_tar_sha256; shift;; --regex) RX=$2; shift 2;; --repeat) REP=$2; shift 2;;
-    --env) case "$2" in OMP_TARGET_OFFLOAD=*|ONEAPI_DEVICE_SELECTOR=*|CUDA_VISIBLE_DEVICES=*) echo "refusing to override $2"; exit 2;; esac
+    --env) case "$2" in OMP_TARGET_OFFLOAD=*|ONEAPI_DEVICE_SELECTOR=*|ZE_AFFINITY_MASK=*|CUDA_VISIBLE_DEVICES=*) echo "refusing to override $2"; exit 2;; esac
            ENVX+=("$2"); shift 2;;
     *) echo "bad option $1"; exit 2;; esac
 done
@@ -28,10 +29,10 @@ want=$(awk -v k=$KEY '$1==k {print $2}' $C/.alf_candidate); have=$(sha256sum $C/
 [ -n "$want" ] && [ "$want" = "$have" ] || { echo "TAR HASH MISMATCH"; exit 2; }
 ENVF=$HOME/alf-gpu/env/$TOOL.sh; [ -f "$ENVF" ] || { echo "no env file $ENVF"; exit 2; }
 mkdir "$OUT" || { echo "refusing: $OUT exists"; exit 2; }
-GPUENV=(); OFF=none; JOBS=1; LOCK=()   # one test at a time: deterministic output order for identity comparisons
+GPUENV=(); OFF=none; JOBS=1; LOCK=(); SELV=""   # one test at a time: deterministic output order for identity comparisons
 case " $* " in *" GPU=nvidia "*|*" GPU=intel "*) GPUENV=(OMP_TARGET_OFFLOAD=MANDATORY); OFF=MANDATORY; JOBS=1
-  LOCK=(flock "$HOME/alf-gpu/gpu.lock"); [ "$TOOL" = intel ] && GPUENV+=(ONEAPI_DEVICE_SELECTOR=level_zero:0);; esac
-{ grep -E '^(sha|who|base_sha) ' $C/.alf_candidate; echo "$KEY $want"; echo "source $SRCT"; echo "offload $OFF"; echo "tool $TOOL"; echo "configure $*"; echo "regex ${RX:-all}"
+  LOCK=(flock "$HOME/alf-gpu/gpu.lock"); [ "$TOOL" = intel ] && SELV=ONEAPI_DEVICE_SELECTOR=level_zero:0;; esac
+{ grep -E '^(sha|who|base_sha) ' $C/.alf_candidate; echo "$KEY $want"; echo "source $SRCT"; echo "offload $OFF"; S2=${SELV#ONEAPI_DEVICE_SELECTOR=}; echo "selector ${S2:-none}"; echo "tool $TOOL"; echo "configure $*"; echo "regex ${RX:-all}"
   echo "repeat $REP"; echo "env ${ENVX[*]:-none}"; echo "start $(date -Is)"; } > "$OUT/stamp"
 export TMPDIR=$HOME/alf-gpu/work/t$TICKET/tmp; mkdir -p $TMPDIR
 W=$(mktemp -d $TMPDIR/ctest.XXXXXX) || exit 2
@@ -44,8 +45,10 @@ if [ $? != 0 ]; then echo 2 > "$OUT/ctest.exit"; echo "BUILD FAILED (INVALID)" >
 pass=0; fails=0; crash=0
 for i in $(seq 1 "$REP"); do
   "${LOCK[@]}" env -i HOME="$HOME" USER="$USER" LANG=C LC_ALL=C PATH=/usr/bin:/bin TMPDIR="$TMPDIR" "${GPUENV[@]}" "${ENVX[@]}" \
-    bash --noprofile --norc -c '. "$1" > /dev/null 2>&1 || exit 2; cd "$0" && ctest -j "$3" -V ${2:+-R "$2"}' \
-    "$W/testsuite/tests" "$ENVF" "$RX" "$JOBS" > "$OUT/rep_$i.log" 2>&1
+    bash --noprofile --norc -c '. "$1" > /dev/null 2>&1 || exit 2
+      if [ -n "$4" ]; then [ -n "${ZE_AFFINITY_MASK+x}" ] && { echo "env file sets ZE_AFFINITY_MASK: refusing"; exit 2; }; export "$4"; fi
+      cd "$0" && ctest -j "$3" -V ${2:+-R "$2"}' \
+    "$W/testsuite/tests" "$ENVF" "$RX" "$JOBS" "$SELV" > "$OUT/rep_$i.log" 2>&1
   rc=$?
   # the temporary build path and backtrace addresses (ASLR, e.g. from the expected-failure tests) differ between runs
   sed -i -E "s#$W#<BUILD>#g; s/0x[0-9a-f]{6,}/0xADDR/g; s/^[0-9]+: //" "$OUT/rep_$i.log"   # also the ctest -V test-index prefix

@@ -113,7 +113,9 @@ def check_prov(rd, acc, expect_rc=0, gpu_exclusive=None):
     if sorted(p.get("extra_env", [])) != sorted(decl.get("env", [])):
         raise InputFail(f"{rid}: environment {p.get('extra_env')} differs from the declared {decl.get('env', [])}")
     declared = {kv.split("=", 1)[0] for kv in decl.get("env", [])}
-    debug = [k for k in p.get("debug_env_present", []) if k.startswith(DEBUG_PREFIXES)]
+    # from the recorded environment as well, not only acc_run.sh's list (older provenance may lack a prefix)
+    debug = sorted(k for k in set(p.get("debug_env_present", [])) | set(p.get("env", {}))
+                   | {kv.split("=", 1)[0] for kv in p.get("extra_env", [])} if k.startswith(DEBUG_PREFIXES))
     if [k for k in debug if k not in declared]:
         raise InputFail(f"{rid}: undeclared debug variables {sorted(set(debug) - declared)}")
     if debug and not decl.get("allow_debug"):
@@ -139,6 +141,10 @@ def check_prov(rd, acc, expect_rc=0, gpu_exclusive=None):
     if bdecl.get("gpu", True) and not p.get("from_refcache"):
         if p.get("env", {}).get("OMP_TARGET_OFFLOAD") != "MANDATORY":
             raise InputFail(f"{rid}: GPU run without OMP_TARGET_OFFLOAD=MANDATORY (host fallback possible)")
+        if "GPU=intel" in bdecl["configure"].split():  # acc_run.sh pins the discrete GPU (the iGPU has no FP64)
+            env = p.get("env", {})
+            if env.get("ONEAPI_DEVICE_SELECTOR") != "level_zero:0" or "ZE_AFFINITY_MASK" in env:
+                raise InputFail(f"{rid}: GPU=intel run without ONEAPI_DEVICE_SELECTOR=level_zero:0 or with ZE_AFFINITY_MASK")
         text = read(os.path.join(rd, "run.log"))
         if os.path.isfile(os.path.join(rd, "info")):
             text += read(os.path.join(rd, "info"))
@@ -653,14 +659,15 @@ def selfcheck():
     rng = np.random.default_rng(12345)
     CAND = "c0ffee000000" + "0" * 28
     builds = {"gpu": {"tool": "nvhpc", "configure": "PGI noMPI HDF5 GPU=nvidia", "gpu": True},
-              "cpu": {"tool": "nvhpc", "configure": "PGI noMPI HDF5", "gpu": False}}
+              "cpu": {"tool": "nvhpc", "configure": "PGI noMPI HDF5", "gpu": False},
+              "igpu": {"tool": "intel", "configure": "IntelLLVM noMPI HDF5 GPU=intel", "gpu": True}}
     acc = {"candidate_sha": CAND[:12], "gpu_exclusive": True, "builds": builds, "runs": {},
            "active_lines": ["GPU tau pass (207): ACTIVE"]}
     ACT = "GPU tau pass (207): ACTIVE\n"
 
     def mkrun(name, data, info, log=ACT, build="gpu", env=(), allow=False, rc=0, seeds="1 2 3\n", debug=None,
               cand=CAND, binsha="b" * 64, gpu_before=(), timed_out=False, mutated=None, decl=True,
-              tar_built="t" * 64, offload="MANDATORY", params="p"):
+              tar_built="t" * 64, offload="MANDATORY", params="p", sel="level_zero:0", envextra=None):
         d = os.path.join(tmp, name)
         os.makedirs(d)
         with h5py.File(os.path.join(d, "data.h5"), "w") as f:
@@ -672,7 +679,10 @@ def selfcheck():
         b = dict(name=build, configure=builds[build]["configure"], ALF_FLAGS_EXT="", binary_sha256="b" * 64,
                  candidate={"sha": cand, "tar_sha256": "t" * 64}, source="src", tar_sha256_built=tar_built)
         hh = lambda f: hashlib.sha256(open(os.path.join(d, f), "rb").read()).hexdigest()
-        envd = {"OMP_TARGET_OFFLOAD": offload} if (build == "gpu" and offload) else {}
+        envd = {"OMP_TARGET_OFFLOAD": offload} if (builds[build]["gpu"] and offload) else {}
+        if build == "igpu" and sel:
+            envd["ONEAPI_DEVICE_SELECTOR"] = sel
+        envd.update(envextra or {})
         prov = {"schema": "alf-acc-prov/1", "binary_sha256": binsha, "build": b, "exit_code": rc, "timed_out": timed_out,
                 "debug_env_present": list(debug if debug is not None else [kv.split("=")[0] for kv in env]),
                 "extra_env": list(env), "gpu_before": list(gpu_before), "gpu_check_rc": 0, "load_ok": True, "env": envd,
@@ -721,6 +731,13 @@ def selfcheck():
     mkrun("A_nooffload", base, ok_info, offload=None)
     mkrun("B_params", base, ok_info, build="cpu", log="", params="q")
     mkrun("A_tamper", base, ok_info)
+    mkrun("A_in", base, ok_info, build="igpu")
+    mkrun("A_in_nosel", base, ok_info, build="igpu", sel=None)
+    mkrun("A_in_sel1", base, ok_info, build="igpu", sel="level_zero:1")
+    mkrun("A_in_ze", base, ok_info, build="igpu", envextra={"ZE_AFFINITY_MASK": "0"})
+    mkrun("A_laleak", base, ok_info, debug=["ALF_LA_TEST_X"])
+    mkrun("A_ladecl", base, ok_info, env=["ALF_LA_TEST_X=1"])
+    mkrun("A_laenv", base, ok_info, debug=[], envextra={"ALF_LA_TEST_X": "1"})
     open(os.path.join(tmp, "A_tamper", "run.log"), "a").write("edited later\n")
     nan_info = info(float("nan"), 1e-6, 6e-12, 5e-7)
     assert "NAN" in nan_info.upper()
@@ -754,6 +771,13 @@ def selfcheck():
              ("same_seed no MANDATORY offload", dict(ss, pairs=[["A_nooffload", "B", NB]]), "INPUT_ERROR"),
              ("same_seed parameters differ", dict(ss, pairs=[["A", "B_params", NB]]), "INPUT_ERROR"),
              ("same_seed output edited later", dict(ss, pairs=[["A_tamper", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed GPU=intel pinned", dict(ss, pairs=[["A_in", "B", NB]]), "PASS"),
+             ("same_seed GPU=intel no selector", dict(ss, pairs=[["A_in_nosel", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed GPU=intel other selector", dict(ss, pairs=[["A_in_sel1", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed GPU=intel ZE_AFFINITY_MASK", dict(ss, pairs=[["A_in_ze", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed leaked ALF_LA_TEST_", dict(ss, pairs=[["A_laleak", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed ALF_LA_TEST_ no allow_debug", dict(ss, pairs=[["A_ladecl", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed ALF_LA_TEST_ only in env", dict(ss, pairs=[["A_laenv", "B", NB]]), "INPUT_ERROR"),
              ("replay identical", dict(rp, pairs=[["A", "A_twin"]]), "PASS"),
              ("replay 1e-12", dict(rp, pairs=[["A", "B"]], gpu_exclusive=False), "FAIL"),
              ("replay Precision Max only", dict(rp, pairs=[["A", mkrun("A_pmax", base, info(5e-11, 1.0000001e-6, 6e-12, 5e-7))]]), "FAIL"),
@@ -875,6 +899,18 @@ def selfcheck():
     ok_l &= any("not found in docs/gpu/DECISIONS.md" in e for e in lint_errors(base_acc))
     bad += not ok_l
     print(f"{'ok ' if ok_l else 'BAD'} lint: report_only without a real owner decision, unrelated control runs")
+    # lint: ALF_LA_TEST_* is a debug variable (only in faults gates and controls); no declared selector on GPU=intel
+    la_acc = {"ticket": "zz9", "builds": builds, "configs": {"x": {}},
+              "runs": {"q1": {"build": "gpu", "config": "x", "env": ["ALF_LA_TEST_X=1"], "allow_debug": True},
+                       "q2": {"build": "cpu", "config": "x"},
+                       "q3": {"build": "igpu", "config": "x", "env": ["ONEAPI_DEVICE_SELECTOR=level_zero:1"]}},
+              "gates": [dict(ss, pairs=[["q1", "q2", 1]])], "controls": [], "_status": "DRAFT"}
+    le = lint_errors(la_acc)
+    ok_x = any("run q1 carries fault/numerics variables" in e for e in le) and any(e.startswith("run q3:") and "ONEAPI_DEVICE_SELECTOR" in e for e in le)
+    la_acc["gates"] = [{"type": "faults", "id": "ft", "cases": {"q1": "x"}}]
+    ok_x &= not any("carries fault/numerics" in e for e in lint_errors(la_acc))
+    bad += not ok_x
+    print(f"{'ok ' if ok_x else 'BAD'} lint: ALF_LA_TEST_ in a gate run, faults gate exempt, selector declared on GPU=intel")
     shutil.rmtree(tmp)
     print("selfcheck:", "PASS" if not bad else f"FAIL ({bad} wrong)")
     return 0 if not bad else 1
@@ -898,6 +934,10 @@ def lint_errors(acc):
             errs.append(f"run {rid}: unknown config {r.get('config')}")
         if "gpu_active" in r:
             errs.append(f"run {rid}: 'gpu_active' is not allowed (every GPU run must show the ACTIVE lines)")
+        if "GPU=intel" in builds.get(r.get("build"), {}).get("configure", "").split():
+            pin = [kv for kv in r.get("env", []) if kv.split("=")[0] in ("ONEAPI_DEVICE_SELECTOR", "ZE_AFFINITY_MASK")]
+            if pin:
+                errs.append(f"run {rid}: {pin} declared for a GPU=intel build (acc_run.sh sets the selector and refuses these)")
     for b in builds:
         if b not in used_builds:
             errs.append(f"build {b}: declared but unused")
