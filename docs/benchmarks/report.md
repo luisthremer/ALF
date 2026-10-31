@@ -278,7 +278,23 @@ Paired means same seed, so the same trajectory, and the ratio isolates round-off
 
 ### 3.6 Final verification
 
-This is filled in after the whole-branch review (Task 16 Step 2); see the `CLAUDE.md` section "Final report".
+Re-run after the final whole-branch review and its fix round, on `70176feb` (the last code commit; later commits
+change docs only), on a clean tree and a clean build (2026-10-31):
+
+| check | result |
+|---|---|
+| build (GNU noMPI, normal flags); binary `info` reports commit `70176feb` | ok |
+| ctest, GNU noMPI | 40/40, `36-lowrank-unit` 0 failing rows |
+| ctest, GNU MPI (scratch worktree) | 40/40 |
+| ctest, GNU TEMPERING (scratch worktree) | 40/40 |
+| `regress_vs_baseline.sh` | 9/9 IDENTICAL |
+| trajectory start: std vs delayed, std vs submatrix, delayed vs submatrix | IDENTICAL decisions, 21600 proposals each |
+| trajectory doped std vs submatrix / z2gt std vs submatrix (N_delay=5) / pv_adiab std vs delayed | IDENTICAL, 7680 / 5899 / 9600 proposals |
+
+The final review found that `36-lowrank-unit` aborted in MPI and TEMPERING builds, because the test never started MPI
+and had no `Temp_0/`. This is fixed in `70176feb`. The fix round's implementer also ran PARALLEL_PARAMS: 40/40. The
+statistical runs were not repeated: the only Fortran change since `ab81f3fd` is O(1) guards on non-standard paths, and
+the trajectories above are identical.
 
 ## 4. Performance
 
@@ -520,7 +536,7 @@ python3 -I testsuite/lowrank/bench_report.py --ndelay docs/benchmarks/raw_ndelay
   `python3 -I testsuite/lowrank/profile_samples.py <sample files>`. The exact launch command of the profiled jobs is not
   recorded (profile.md: NSweep=25, sampled from 29 s after launch).
 
-## 8. Commits (`git log --oneline f81b5cbc..93826bc0`)
+## 8. Commits (`git log --oneline f81b5cbc..HEAD`)
 
 Design and plan
 - `f9bb1707` Add design notes for delayed/submatrix local updates
@@ -563,3 +579,8 @@ Phase 5: benchmarks and tuning (Tasks 14–15)
 - `130cc07f` bench: N_delay scan, L=18, profile and threads
 - `2bd85893` perf: set default N_delay from scan (its message says "optimum 16-64"; corrected in `93826bc0`)
 - `93826bc0` docs: correct N_delay scan claims, single generated source
+
+Final report and review (Task 16)
+- `9546d450` docs: final report
+- `70176feb` fix: final review findings (unit test under MPI/TEMPERING, init guards, report)
+- the commit containing this section: docs: final verification results

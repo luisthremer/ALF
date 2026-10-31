@@ -195,6 +195,8 @@ Unit level (`testsuite/Prog.tests/36-lowrank-unit.F90`, ctest `36-lowrank-unit`;
 ## Final report
 - `docs/benchmarks/report.md`: method, validation summary (all five levels, with numbers), benchmarks, recommendation,
   caveats, reproduction commands, commit list.
+- Final verification (2026-10-31, code commit 70176feb): ctest 40/40 in GNU noMPI, MPI and TEMPERING builds; regress 9/9 IDENTICAL;
+  6 trajectory comparisons IDENTICAL (report §3.6).
 
 ## Open questions
 - See the design spec, section "Open questions for Checkpoint 1".
