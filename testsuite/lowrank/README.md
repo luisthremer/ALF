@@ -32,7 +32,7 @@ BRANCH_EXTRA="Sequential_scheme=0" testsuite/lowrank/regress_vs_baseline.sh   # 
 
 Model coverage sets (all run on the baseline binary in seconds):
 - `kondo`: Kondo bilayer 4x4, Beta=2; diagonal rank-1 (U_c, U_f) and non-diagonal bond vertices (V_SUN/VJ_SUN, 16 of 32) mix in
-  one time slice. Since rank-N delayed (5f493935) all are delayed-eligible; for submatrix the bonds stay ineligible until the M-form lands.
+  one time slice. Since rank-N delayed (5f493935) all are delayed-eligible, and since the submatrix M-form (Task 5) all are submatrix-eligible.
 - `pv_adiab`: Hubbard_Plain_Vanilla with `Projector=.T. Adiabatic=.T. Theta=2 Beta=1`: time-dependent couplings `g_t`, and
   particle-hole symmetry gives `N_FL_eff = 1 < N_FL = 2` (flavour reconstruction).
 - `z2gt`: Z2_Matter 4x4, `ham_U=1`, `Global_tau_moves=.T. N_Global_tau=4 Symm=.F. Checkerboard=.F.`: Global_tau moves with
@@ -114,11 +114,13 @@ same accept/reject decisions. `SET` is one of the `sets.sh` sets (its common key
 `ALF_FLAGS_EXT="-DALF_LOWRANK_DEBUG"` (then `make -C Prog clean; make program`) keeps a shadow G with standard rank-1 updates and
 checks `Lowrank_current_G` against it after every accept, hook and flush (tolerance 1e-10); the counts and largest errors go to
 `lowrank_debug_summary.txt` in the run directory. Adding `-DLOWRANK_DEBUG_SELFTEST` corrupts the first wrap hook (delayed: skips one
-X-row scaling; submatrix: skips one `Ginv` row scaling) and the run must abort with `Lowrank_debug_check: stale G ...`;
+X-row scaling; submatrix: skips the first row transform of `M`, a row scaling or the `L` product of a non-diagonal wrap) and the run must abort with `Lowrank_debug_check: stale G ...`;
 `-DLOWRANK_DEBUG_SELFTEST_PROPOSE` perturbs a proposal. The SELFTEST macros only take effect together with `ALF_LOWRANK_DEBUG`.
 In Hubbard models the submatrix hook touches pending sites only in the
 down-sweep (the un-wrap acts on the site just added), so the self-test fires there. A run whose hook never touches a pending entry
-passes silently, which for Hubbard means the self-test fires only in the down-sweep.
+passes silently, which for Hubbard means the self-test fires only in the down-sweep. For submatrix the summary also lists the
+padded sites (`padded sites (accepts)`: active sites added to S by accepts; `padded sites (hooks)`: sites P \ S padded by a
+non-diagonal wrap that partially overlaps S).
 `LOWRANK_DEBUG_SELFTEST_PROPOSE` has only been exercised for delayed. Rebuild the normal binary afterwards.
 
 ## stat_runs.sh, stat_compare.py (statistical comparison of independent chains)
