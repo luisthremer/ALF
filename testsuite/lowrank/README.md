@@ -31,7 +31,8 @@ BRANCH_EXTRA="Sequential_scheme=0" testsuite/lowrank/regress_vs_baseline.sh   # 
 - Sanity check of the harness: `BRANCH_EXTRA=NSweep=6 ...` must report `DIFFERENT` for every set.
 
 Model coverage sets (all run on the baseline binary in seconds):
-- `kondo`: Kondo bilayer 4x4, Beta=2; eligible and ineligible vertices (16 of 32 are not diagonal rank-1) mix in one time slice.
+- `kondo`: Kondo bilayer 4x4, Beta=2; diagonal rank-1 (U_c, U_f) and non-diagonal bond vertices (V_SUN/VJ_SUN, 16 of 32) mix in
+  one time slice. Since rank-N delayed (5f493935) all are delayed-eligible; for submatrix the bonds stay ineligible until the M-form lands.
 - `pv_adiab`: Hubbard_Plain_Vanilla with `Projector=.T. Adiabatic=.T. Theta=2 Beta=1`: time-dependent couplings `g_t`, and
   particle-hole symmetry gives `N_FL_eff = 1 < N_FL = 2` (flavour reconstruction).
 - `z2gt`: Z2_Matter 4x4, `ham_U=1`, `Global_tau_moves=.T. N_Global_tau=4 Symm=.F. Checkerboard=.F.`: Global_tau moves with
