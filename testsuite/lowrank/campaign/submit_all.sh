@@ -6,6 +6,7 @@
 #   - a run with MAX_ATTEMPTS attempts (runs/<id>/a<k>) that is still not OK is given up (listed, never resubmitted);
 #   - a job submitted 2 x MAX_ATTEMPTS times is given up as well (job-level aborts before any run, e.g. the fakeintel
 #     ISA check, create no attempt directory);
+#   - a failing squeue aborts the script (exit 1): it is never taken for an empty queue;
 #   - at most MAX_JOBS_IN_QUEUE jobs of this campaign are queued at any time: without --wait the script stops when the
 #     limit is reached (run it again later); with --wait it polls squeue every SECONDS until everything is submitted.
 # Nothing is ever deleted. Submissions are appended to jobs/<job_name>.submissions.
@@ -21,7 +22,22 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-queued_names() { squeue -h -u "${USER:-$(id -un)}" -o '%j' 2>/dev/null | grep "^${JOB_PREFIX}_" ; }
+case "$PWD/" in
+    "$HOME"/*) echo "WARNING: campaign directory $PWD is under \$HOME; on the clusters use the workspace / \$WORK file system" >&2 ;;
+esac
+
+# refresh_queue: QUEUE = names of this campaign's queued jobs. A failing squeue aborts (never read as an empty queue).
+refresh_queue() {
+    local out rc
+    out="$(squeue -h -u "${USER:-$(id -un)}" -o '%j' 2>&1)"; rc=$?
+    if [ $rc -ne 0 ]; then
+        echo "submit_all.sh: squeue failed (rc=$rc): $out -- stopping (no further submissions)" >&2
+        echo "summary: submitted $n_sub, done $n_done, queued $n_queued, gave up $n_gaveup (aborted: squeue failed)"
+        exit 1
+    fi
+    QUEUE="$(printf '%s\n' "$out" | grep "^${JOB_PREFIX}_")"
+}
+n_in_queue() { printf '%s' "$QUEUE" | grep -c . ; }
 
 n_sub=0; n_done=0; n_queued=0; n_gaveup=0
 while read -r job runs; do
@@ -42,9 +58,11 @@ while read -r job runs; do
     if [ "${nsubm:-0}" -ge $((2 * MAX_ATTEMPTS)) ]; then
         echo "GAVE UP  $job: submitted $nsubm times (job-level aborts? see logs/$job.*.out)"; n_gaveup=$((n_gaveup + 1)); continue
     fi
-    if queued_names | grep -q -x "$job"; then echo "queued   $job"; n_queued=$((n_queued + 1)); continue; fi
+    refresh_queue
+    if printf '%s\n' "$QUEUE" | grep -q -x "$job"; then echo "queued   $job"; n_queued=$((n_queued + 1)); continue; fi
     while :; do
-        inq="$(queued_names | wc -l | tr -d ' ')"
+        refresh_queue
+        inq="$(n_in_queue)"
         [ "$inq" -lt "$MAX_JOBS_IN_QUEUE" ] && break
         if [ "$WAIT" -gt 0 ] 2>/dev/null; then sleep "$WAIT"
         else

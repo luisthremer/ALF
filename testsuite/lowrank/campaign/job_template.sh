@@ -13,8 +13,10 @@
 # One job = one layout x all schemes of one point and repetition, interleaved on the same node. bash 3.2, no python.
 # Submitted from the campaign directory (submit_all.sh), so SLURM_SUBMIT_DIR is the campaign directory.
 # Never deletes anything: each execution of a run gets a fresh attempt directory runs/<run_id>/a<k>.
-# Status per run (runs/<run_id>/status, first word): OK | FAILED rc=... | NOT_RUN ... | RUNNING ...; written by
-# the run loop and, for an interrupted run, by the EXIT trap (time limit: SIGTERM -> FAILED rc=143).
+# Status per run (runs/<run_id>/status, first word): OK | FAILED rc=... | INVALID pinning ... | NOT_RUN ... | RUNNING;
+# written by the run loop and, for an interrupted run, by the EXIT trap (time limit: SIGTERM -> FAILED rc=143); runs the
+# job does not reach become NOT_RUN unless an earlier job left FAILED/INVALID (kept). INVALID = the run finished but the
+# pinning record (I_MPI_DEBUG / srun cpu-bind) does not show RANKS disjoint domains of THREADS cpus.
 
 CAMPAIGN_ID='@@CAMPAIGN_ID@@'
 JOB_NAME='@@JOB_NAME@@'
@@ -62,9 +64,13 @@ on_exit() {
     while read -r rid rest; do
         [ -n "$rid" ] || continue
         case "$DONE_RUNS" in *" $rid "*) continue ;; esac
-        if [ "$(awk '{print $1; exit}' "$C/runs/$rid/status" 2>/dev/null)" != OK ]; then
-            set_status "$C/runs/$rid" "NOT_RUN (job ${SLURM_JOB_ID:-} ended before this run, rc=$rc ${JOB_SIGNAL})"
-        fi
+        case "$(awk '{print $1; exit}' "$C/runs/$rid/status" 2>/dev/null)" in
+            OK) ;;
+            FAILED|INVALID)   # keep the earlier result (the job did not reach this run); history only
+                echo "$(date '+%Y-%m-%dT%H:%M:%S') job=${SLURM_JOB_ID:-} not reached (rc=$rc ${JOB_SIGNAL}), status kept" \
+                    >> "$C/runs/$rid/status.history" ;;
+            *) set_status "$C/runs/$rid" "NOT_RUN (job ${SLURM_JOB_ID:-} ended before this run, rc=$rc ${JOB_SIGNAL})" ;;
+        esac
     done <<EOF
 $RUNS
 EOF
@@ -113,6 +119,9 @@ while IFS= read -r line; do
     esac
 done < "$BUILD_INFO"
 prov_kv "$F" fakeintel "$FAKEINTEL"
+case "$(sed -n 's/^link_type=//p' "$BUILD_INFO")" in
+    static*) [ "$FAKEINTEL" = on ] && job_abort "fakeintel=on but the binary is statically linked (LD_PRELOAD cannot act)" ;;
+esac
 if [ "$FAKEINTEL" = on ]; then
     prov_kv "$F" fakeintel_lib "$FAKEINTEL_LIB"
     prov_kv "$F" fakeintel_lib_sha256 "$(prov_sha256 "$FAKEINTEL_LIB")"
@@ -140,7 +149,9 @@ prov_kv "$F" mkl_isa "$MKL_ISA"
 prov_kv "$F" mkl_threading "$MKL_THREADING"
 prov_kv "$F" fakeintel_maps_probe "$(cat "$P"/rank_probe_*.prov 2>/dev/null | sed -n 's/^fakeintel_maps=//p' | sort -u | tr '\n' ' ')"
 if [ -z "$mline" ] && [ "${MKL_PROBE_REQUIRED:-1}" = 1 ]; then job_abort "MKL probe gave no MKL_VERBOSE version line (rc=$prc)"; fi
+prov_mkl_threads_check "$THREADS" "$MKL_THREADING" || job_abort "THREADS=$THREADS but the MKL threading layer is sequential"
 prov_mkl_check "$FAKEINTEL" "$MKL_ISA" || job_abort "fakeintel=on but MKL took the $MKL_ISA path (need AVX-512): preload ineffective"
+TPC="$(sed -n 's/^threads_per_core=\([0-9][0-9]*\)$/\1/p' "$F")"
 log "MKL: $MKL_VERSION, $MKL_ISA, $MKL_THREADING; fakeintel=$FAKEINTEL"
 
 # ---- runs ----------------------------------------------------------------------------------------------------------------
@@ -193,7 +204,7 @@ while read -r rid scheme nd; do
     prov_kv "$f" max_rss_kb "$rss"
     prov_kv "$f" max_rss_source "$src"
     prov_kv "$f" rank_hosts "$(cat "$A"/rank_alf_*.prov 2>/dev/null | sed -n 's/^host=//p' | sort -u | tr '\n' ' ')"
-    prov_kv "$f" rank_affinity "$(for p in "$A"/rank_alf_*.prov; do [ -r "$p" ] && printf 'r%s:%s ' "$(sed -n 's/^rank=//p' "$p")" "$(sed -n 's/^affinity=//p' "$p")"; done)"
+    prov_kv "$f" rank_affinity_preinit "$(for p in "$A"/rank_alf_*.prov; do [ -r "$p" ] && printf 'r%s:%s ' "$(sed -n 's/^rank=//p' "$p")" "$(sed -n 's/^affinity=//p' "$p")"; done)"
     prov_kv "$f" fakeintel_maps "$(cat "$A"/rank_alf_*.prov 2>/dev/null | sed -n 's/^fakeintel_maps=//p' | sort -u | tr '\n' ' ')"
     prov_kv "$f" ld_preload "$(cat "$A"/rank_alf_*.prov 2>/dev/null | sed -n 's/^ld_preload=//p' | sort -u | tr '\n' ' ')"
     grep -h -E 'MPI startup\(\)|cpu-bind|cpu_bind' "$A/stdout.log" "$A/stderr.log" > "$A/pin_map.txt" 2>/dev/null
@@ -201,6 +212,8 @@ while read -r rid scheme nd; do
     if [ "$n" -gt 0 ]; then v="$n lines in pin_map.txt; first: $(head -1 "$A/pin_map.txt")"
     else v="unavailable(no I_MPI_DEBUG / cpu-bind lines)"; fi
     prov_kv "$f" pin_map "$v"
+    pin="$(prov_pin_check "$A/pin_map.txt" "$RANKS" "$THREADS" "${TPC:-1}")"; pinrc=$?
+    prov_kv "$f" pin_check "$pin"
     cat "$A/stdout.log" "$A/stderr.log" "$A"/rss_*.txt 2>/dev/null | grep '^OMP_AFFINITY' > "$A/omp_affinity.txt"
     n="$(wc -l < "$A/omp_affinity.txt" | tr -d ' ')"
     if [ "$n" -gt 0 ]; then v="$n lines in omp_affinity.txt; first: $(head -1 "$A/omp_affinity.txt")"
@@ -213,7 +226,9 @@ while read -r rid scheme nd; do
     elif [ "$scheme" != standard ] && ! grep -q -F "Sequential scheme: $(printf '%s' "$scheme" | tr '[:lower:]' '[:upper:]')" "$A/info"; then
         reason="info has no 'Sequential scheme: $scheme' line (scheme not active)"
     fi
-    if [ -z "$reason" ]; then status="OK"; else status="FAILED rc=$rc $reason"; JOB_RC=1; fi
+    if [ -n "$reason" ]; then status="FAILED rc=$rc $reason"; JOB_RC=1
+    elif [ "$pinrc" -ne 0 ]; then status="INVALID pinning: $pin"; JOB_RC=1
+    else status="OK"; fi
     prov_kv "$f" status "$status"
     set_status "$R" "$status"
     CURRENT_RUN=""

@@ -17,7 +17,8 @@ every script), campaign.env, jobs.list, jobs/<job>.sbatch, runs/<run_id>/input/{
 (profile.sh, provenance.sh, rank_wrap.sh), submit_all.sh, logs/. One job = one point x L x layout x repetition with all
 schemes (standard once, every other scheme x n_delay), in an order rotated by the repetition index.
 
-Refuses (exit 1): a profile or description containing the placeholder marker '[['; ranks*threads != cores per node
+Refuses (exit 1): a profile containing the placeholder marker '[[' anywhere, or a description with a '[[...]]'
+placeholder in any string value; fewer than 3 repetitions for a non-local profile; ranks*threads != cores per node
 unless partial_node; memory or wall-time estimate above the node / partition limit; an existing campaign directory
 with a different description (re-running with the same description is a no-op; nothing is ever deleted).
 """
@@ -91,14 +92,34 @@ def read_profile(path):
     return prof
 
 
+PLACEHOLDER = re.compile(r"\[\[[^\]]*\]\]")
+
+
+def placeholder_values(obj, where="CAMPAIGN"):
+    """(location, value) of every string value (also dict keys) containing a [[...]] placeholder."""
+    out = []
+    if isinstance(obj, str):
+        if PLACEHOLDER.search(obj):
+            out.append((where, obj))
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            out += placeholder_values(k, where + " key") + placeholder_values(v, "%s[%r]" % (where, k))
+    elif isinstance(obj, (list, tuple)):
+        for i, v in enumerate(obj):
+            out += placeholder_values(v, "%s[%d]" % (where, i))
+    return out
+
+
 def load_description(path):
     with open(path) as f:
         text = f.read()
-    placeholder_check(path, text)
     ns = {}
     exec(compile(text, path, "exec"), ns)
     if "CAMPAIGN" not in ns:
         die("%s defines no CAMPAIGN dict" % path)
+    bad = placeholder_values(ns["CAMPAIGN"])
+    if bad:
+        die("%s still contains placeholders '[[...]]':\n" % path + "\n".join("  %s = %r" % b for b in bad))
     return ns["CAMPAIGN"], text
 
 
@@ -124,6 +145,8 @@ def build(desc, prof, profile_path):
     if fakeintel not in ("on", "off"):
         die("fakeintel must be on or off")
     reps = int(desc["repetitions"])
+    if reps < 3 and prof["name"] != "local":
+        die("repetitions = %d: at least 3 are required for a cluster campaign (median and spread)" % reps)
     seed = int(desc["seed"])
     safety = float(desc.get("wall_safety", 1.5))
     prefix = "c_" + cid

@@ -4,6 +4,7 @@
 # Failure injection for the tests (matched against the working directory, i.e. the run's attempt directory):
 #   SHIM_SRUN_FAIL_MATCH=<substring>  exit 137 without starting CMD (simulates an OOM kill)
 #   SHIM_SRUN_TERM_MATCH=<substring>  send SIGTERM to the batch script (simulates the time limit), exit 143
+#   SHIM_SRUN_PIN_OVERLAP_MATCH=<substring>  print every task with task 0's mask (overlapping domains), then run
 n=1; t=1; verbose=0
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -28,9 +29,11 @@ if [ -n "$SHIM_SRUN_TERM_MATCH" ] && case "$PWD" in *"$SHIM_SRUN_TERM_MATCH"*) t
 fi
 if [ "$verbose" = 1 ]; then
     i=0
+    ov=0
+    if [ -n "$SHIM_SRUN_PIN_OVERLAP_MATCH" ] && case "$PWD" in *"$SHIM_SRUN_PIN_OVERLAP_MATCH"*) true ;; *) false ;; esac; then ov=1; fi
     while [ "$i" -lt "$n" ]; do
         printf 'cpu-bind=MASK - %s, task %2d %2d [%d]: mask 0x%x set (shim, emulated)\n' "$(hostname -s)" "$i" "$i" "$$" \
-            $(( ((1 << t) - 1) << (i * t) )) >&2
+            $(( ((1 << t) - 1) << ((1 - ov) * i * t) )) >&2
         i=$((i + 1))
     done
 fi
