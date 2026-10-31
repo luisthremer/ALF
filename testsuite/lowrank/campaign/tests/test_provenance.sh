@@ -61,9 +61,17 @@ check "pin srun 8x48 good (384-bit masks)" "$(pc srun_good 8 48)" 0
 check "pin srun overlapping masks" "$(pc srun_overlap 2 2)" 1
 check "pin srun 4 cpus per rank for THREADS=2, no SMT" "$(pc srun_wrongsize 2 2 1)" 1
 check "pin srun 4 cpus per rank for THREADS=2, 2 hw threads per core" "$(pc srun_wrongsize 2 2 2)" 0
-check "pin message" "$(prov_pin_check "$HERE/fixtures/pin_srun_overlap.txt" 2 2)" "BAD overlapping domains: cpu1(r0,r1)"
+check "pin message" "$(prov_pin_check "$HERE/fixtures/pin_srun_overlap.txt" 2 2)" "BAD overlapping domains (srun cpu-bind masks): h01c01:cpu1(r0,r1)"
 : > "$TMP/empty_pin.txt"
-check "pin: no record is bad" "$(prov_pin_check "$TMP/empty_pin.txt" 1 1)" "BAD no I_MPI_DEBUG pin lines or cpu-bind masks"
+check "pin: no record is bad" "$(prov_pin_check "$TMP/empty_pin.txt" 1 1)" "BAD no parsable I_MPI_DEBUG pin lines or cpu-bind masks"
+check "pin intel 2 nodes, same cpu sets per node: valid" "$(pc intel_2node_good 4 24)" 0
+check "pin intel same-node overlap" "$(pc intel_samenode_overlap 2 24)" 1
+check "pin srun 2 nodes, same mask per node: valid" "$(pc srun_2node_good 2 2)" 0
+check "pin intel lists/ranges without braces" "$(pc intel_nobrace_good 4 4)" 0
+check "pin intel unparsable line quoted" "$(prov_pin_check "$HERE/fixtures/pin_intel_unparsable.txt" 2 4)" \
+    "BAD unparsable I_MPI_DEBUG pin line: [0] MPI startup(): 0       201234   i01r01c01s01  cpu0-cpu3"
+check "pin both sources: Intel table judged, srun masks informational" "$(prov_pin_check "$HERE/fixtures/pin_both.txt" 2 2)" \
+    "OK I_MPI_DEBUG pin table (srun masks informational): 2 ranks x 2 cpus, disjoint"
 # threading layer
 r=0; prov_mkl_threads_check 2 sequential || r=1;   check "THREADS=2 + sequential MKL fails" "$r" 1
 r=0; prov_mkl_threads_check 1 sequential || r=1;   check "THREADS=1 + sequential MKL passes" "$r" 0

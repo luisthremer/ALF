@@ -308,12 +308,19 @@ def main(argv):
     allow = []
     while "--allow" in argv:
         i = argv.index("--allow")
+        if i + 1 >= len(argv) or argv[i + 1].startswith("--"):
+            sys.stderr.write("collect.py: --allow needs a KEY\n" + __doc__)
+            return 2
         allow.append(argv[i + 1])
         argv = argv[:i] + argv[i + 2:]
     args = [a for a in argv[1:] if not a.startswith("--")]
     out = None
     if "--out" in argv:
-        out = argv[argv.index("--out") + 1]
+        i = argv.index("--out")
+        if i + 1 >= len(argv) or argv[i + 1].startswith("--"):
+            sys.stderr.write("collect.py: --out needs a FILE\n" + __doc__)
+            return 2
+        out = argv[i + 1]
         args.remove(out)
     if len(args) != 1:
         sys.exit(__doc__)
