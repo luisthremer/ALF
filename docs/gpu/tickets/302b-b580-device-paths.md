@@ -10,7 +10,8 @@
 - **Branch:** `gpu-port-302b` (the 2026-10-30 draft branch `gpu-port-302b-b580` is superseded)
 - **Acceptance files:** `testsuite/gpu_reference/acceptance/302b.json` (Intel part, `intel`: 83 runs, 15 gates, 19
   controls) and `302b.nvidia.json` (`nividia` part, `acc_driver.py --part nvidia`: 10 runs, 5 gates, 5 controls).
-- **Status:** RE-REGISTERED. **PREREG_SHA `3e7d1992`** (`3e7d199242a88760cd3b319769a2848020fc0620`, 2026-10-31) on `gpu-port-302b`,
+- **Status:** RE-REGISTRATION for decision 28 (compare2 120 × 60) pending review (b); until then the last approved
+  pre-registration is **PREREG_SHA `3e7d1992`** (`3e7d199242a88760cd3b319769a2848020fc0620`, 2026-10-31) on `gpu-port-302b`,
   base `71af3e076322`; approved by review (b) of the final state. Decisions 26 (precision control eps:1e-10 replaces
   NS=0) and 27 (near-threshold control eps:1e-12). Supersedes the first pre-registration `0e427164`. T0 (dev trees
   a1, a2) done; candidate 1 and T1 next.
@@ -114,7 +115,7 @@ device τ pass runs.
 | `same_seed` | B580 vs ifx CPU, same seeds: 6×6 LOG / CPU LOG, 6×6 default / CPU `QR_PREPIVOT`, 12×12 default / CPU `QR_PREPIVOT` | no bin > 1e-4; overall and τ ≤ 1e-9; 38 datasets, 5 τ | `scale 1e-3` (FAIL), `nan` (INPUT_ERROR) |
 | `determinism` | same binary twice: 6×6 default, 6×6 LOG, 12×12 β = 10 default, 12×12 β = 10 LOG | bit-identical `data.h5` + Precision lines | `scale 1e-12` (FAIL) |
 | `precision` | 12×12 β = 4, 20 × 20: GPU mean / larger ifx CPU mean, Green and τ | ≤ 1.5 | graded device fault `eps:1e-10` (FAIL; decision 26, replaced `ALF_GPU_NS=0`) and near-threshold `eps:1e-12` (FAIL, predicted ≈ 7×; decision 27) |
-| `compare2` | `s8_U4_b2_cb_short` 120 × 30, B580 default vs ifx GPU=none, fresh seeds | m = 11, α = 0.01 Šidák, `min_bins` 8 | shift 8 (FAIL; decision 23); CPU-vs-CPU null (PASS) |
+| `compare2` | `s8_U4_b2_cb_short` 120 × 60 (decision 28), B580 default vs ifx GPU=none, fresh seeds | m = 11, α = 0.01 Šidák, `min_bins` 8 | shift 8 (FAIL; decision 23); CPU-vs-CPU null (PASS) |
 | `ifx_none_identity` | ifx 2026.2 GPU=none, base vs candidate, 6×6 | bit-identical | `scale 1e-12` (FAIL) |
 | `alf_la_tests_onemkl` | ctest `^t_` under ONEMKL on the merged base | 100 % of 14; backend and B580 lines | `ALF_LA_TEST_WRONG_LD` (FAIL), replaces all 3 checks |
 | `t_determinism_onemkl` | 212's micro-test under ONEMKL (also run in 302a's re-acceptance; regression check here) | 1/1 pass | `ALF_LA_TEST_PLANT_ULP=1` (FAIL) |
@@ -195,7 +196,9 @@ guard only (pessimistic c2_gpu estimate ~3200 s, > 2× margin); the driver has a
   pre-registration, to set `timeout_s` (hang guard) and to plan the T1/T2 slots; no cuts are planned.
 
 ### compare2
-- Same config and length as 212's T2: 120 × 30. With decision 16 the run length needs no exception any more.
+- Same config as 212's T2; length 120 × 60 since **decision 28** (2026-10-31, "120 bins × 60 sweeps"): at 212's 120 × 30
+  the T2 of candidate 1 was INCONCLUSIVE (`Kin` of the GPU run under-resolved). c2_gpu took 513 s at 120 × 30 on the
+  B580 (T2 log), so ~17 min at 120 × 60; `timeout_s` 7200 keeps > 6× margin. With decision 16 no exception is needed.
 - The positive control plants 8 SEs: **decision 23** (2026-10-31, "Approve shift 8"). At m = 11, α = 0.01 Šidák
   (z ≈ 3.32, t ≈ k/√2), a shift of 5 is caught ~59 % of the time, 8 ~99 %.
 
@@ -288,6 +291,7 @@ guard only (pessimistic c2_gpu estimate ~3200 s, > 2× margin); the driver has a
 Recorded in `302b.json` `approvals` (owner, manager session, DECISIONS.md):
 - decision 22, 2026-10-31, "CPU τ pass" — covers `same_seed`, `precision` (host τ pass under GPU=intel until 302c);
 - decision 23, 2026-10-31, "Approve shift 8" — covers `c_compare2_shift`;
+- decision 28, 2026-10-31, "120 bins × 60 sweeps" — covers `compare2`, `c_compare2_shift`, `c_compare2_null`;
 - decision 26, 2026-10-31, "Graded device fault" — covers `c_precision_eps` (eps:1e-10);
 - decision 27, 2026-10-31, "Add x = 1e-12" — covers `c_precision_eps12` (near-threshold control).
 Decision 24 ("Pre-register now") is procedural: its stop rule fired in T0 and led to decision 26; it covers no control.

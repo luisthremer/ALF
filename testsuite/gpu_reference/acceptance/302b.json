@@ -5,7 +5,7 @@
  "base_sha": "71af3e076322",
  "_base_reason": "gpu-port 71af3e076322: 302a merged (890185c0), 212 merged, harness branch gpu-port-harness-302b merged (H1 ALF_LA_TEST_* as debug variables, H2 B580 pinning, forbidden_lines, ctest stamp checks; review (c) approved 2026-10-31). Manager check at pre-registration: Prog/gpu_tau_mod.F90 does not exist at this base (207 not merged), so the device tau pass cannot run (decision 22); forbidden_lines guards it anyway",
  "created": "2026-10-31",
- "_status": "pre-registered for ticket 302b, Intel part (intel, Arc B580, ifx 2026.2 + oneMKL 2026.2, decision 13); decisions 20-27; re-registered after T0 (decisions 26-27: precision controls replaced/added); acceptance seeds are drawn fresh at T2",
+ "_status": "pre-registered for ticket 302b, Intel part (intel, Arc B580, ifx 2026.2 + oneMKL 2026.2, decision 13); decisions 20-28; re-registered after T0 (decisions 26-27: precision controls replaced/added); re-registered after the T2 of candidate 1 (decision 28: compare2 runs 120 x 60, compare2 INCONCLUSIVE at 120 x 30); acceptance seeds are drawn fresh at T2",
  "approvals": [
   {
    "who": "owner",
@@ -42,6 +42,17 @@
    "quote": "Add x = 1e-12",
    "covers": [
     "c_precision_eps12"
+   ]
+  },
+  {
+   "who": "owner",
+   "decision": "28",
+   "date": "2026-10-31",
+   "quote": "120 bins × 60 sweeps",
+   "covers": [
+    "compare2",
+    "c_compare2_shift",
+    "c_compare2_null"
    ]
   }
  ],
@@ -173,10 +184,10 @@
   "s8_U4_b2_cb_short": {
    "base": "s8_U4_b2_cb",
    "overrides": {
-    "NSweep": 30,
+    "NSweep": 60,
     "NBin": 120
    },
-   "parameters_sha256": "06c10c72653a64d7c092d2c4d0df5fd45c0e3db40cacefe7dacb55b4752d1fcc"
+   "parameters_sha256": "8f1653b7d3ce0c2f1e5dd189989605127cee7c5763d9d3141b5235e2bcc17063"
   }
  },
  "runs": {
@@ -1396,7 +1407,7 @@
     "Szz(k=(pi,pi),tau=beta/2)",
     "chi_zz(pi,pi)"
    ],
-   "_reason": "observables of the full default B580 path vs ifx GPU=none on fresh seeds; 120 bins x 30 sweeps as 212 T2 (decision 14 for 212: G(k=(pi,0)) resolved there at this length); m, alpha, min_bins, observables as 212"
+   "_reason": "observables of the full default B580 path vs ifx GPU=none on fresh seeds; 120 bins x 60 sweeps (decision 28: at 120 x 30 the T2 of candidate 1 was INCONCLUSIVE, Kin of the GPU run under-resolved at 14 effective bins); m, alpha, min_bins, observables as 212"
   },
   {
    "id": "ifx_none_identity",
