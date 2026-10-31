@@ -12,7 +12,10 @@ complex couplings). Four G's are carried:
   * submatrix: G = G0 - G0[:,S] Ginv Q (E_S^T - G0[S,:]) with dense Q, padding, paths B and W
 and optionally the delayed factors are carried across a hopping wrap between two slices (cross-slice).
 The accept/reject mask is fixed; every scheme must give the same ratios and the same G.
-Usage: python3 -I check_rankN.py   (prints max relative errors, exit 1 on failure)
+Submatrix: the adopted M-form (class SubmatrixM, state S and M = Gamma~^{-1} Q) runs by default; the rejected
+Gamma~^{-1} + Q form with paths B/W (class Submatrix) is compared with --both-forms (it loses accuracy, up to
+~1e-7, in the "mixed" model with many path-W updates; notes Sec. 12).
+Usage: python3 -I check_rankN.py [--both-forms]   (prints max relative errors, exit 1 on failure)
 """
 import sys
 import numpy as np
@@ -233,13 +236,103 @@ class Submatrix:
         return d
 
 
-def run(Ndim, vertices, direction, accept_mask, nd_cap=10**9, cross_slice=False, seed_fields=None):
+class SubmatrixM:
+    """M-form (adopted, D3): G = G0 - G0[:,S] M (E_S^T - G0[S,:]); one accept formula for any overlap."""
+
+    def __init__(self, G0):
+        self.G0 = G0.copy()
+        self.S = []
+        self.M = np.zeros((0, 0), complex)
+        self.npad = 0
+        self.npathB = 0
+        self.npathW = 0
+
+    def J(self, Pa):
+        Jm = np.zeros((len(self.S), len(Pa)))
+        for m, p in enumerate(Pa):
+            Jm[self.S.index(p), m] = 1.0
+        return Jm
+
+    def G(self):
+        if not self.S:
+            return self.G0.copy()
+        E = np.zeros((self.G0.shape[0], len(self.S)))
+        E[self.S, np.arange(len(self.S))] = 1.0
+        return self.G0 - self.G0[:, self.S] @ self.M @ (E.T - self.G0[self.S, :])
+
+    def pad(self, sites):
+        new = [s for s in sites if s not in self.S]
+        if not new:
+            return
+        k, m = len(self.S), len(new)
+        Mn = np.zeros((k + m, k + m), complex)
+        Mn[:k, :k] = self.M
+        self.M, self.S = Mn, self.S + new
+        self.npad += m
+
+    def prewrap(self, P, diag):
+        inter = [p for p in P if p in self.S]
+        if not diag and inter and len(inter) < len(P):
+            self.pad(list(P))
+
+    def wrap(self, P, Ml, Mr):
+        L, R = embed(self.G0.shape[0], P, Ml, Mr)
+        self.G0 = L @ self.G0 @ R
+        idx = [i for i, p in enumerate(P) if p in self.S]
+        if not idx:
+            return
+        sl = [self.S.index(P[i]) for i in idx]
+        k = len(self.S)
+        LS = np.eye(k, dtype=complex)
+        RS = np.eye(k, dtype=complex)
+        LS[np.ix_(sl, sl)] = Ml[np.ix_(idx, idx)]
+        RS[np.ix_(sl, sl)] = Mr[np.ix_(idx, idx)]
+        if len(idx) < len(P):
+            assert np.allclose(Ml, np.diag(np.diag(Ml))) and np.allclose(Mr, np.diag(np.diag(Mr)))
+        self.M = LS @ self.M @ RS
+
+    def gpp(self, Pa):
+        if not self.S:
+            return self.G0[np.ix_(Pa, Pa)].copy()
+        Jm = np.zeros((len(self.S), len(Pa)))
+        for m, p in enumerate(Pa):
+            if p in self.S:
+                Jm[self.S.index(p), m] = 1.0
+        return self.G0[np.ix_(Pa, Pa)] - self.G0[np.ix_(Pa, self.S)] @ self.M @ (Jm - self.G0[np.ix_(self.S, Pa)])
+
+    def accept(self, Pa, Delta, Mat):
+        if any(p in self.S for p in Pa):
+            self.npathW += 1
+        else:
+            self.npathB += 1
+        self.pad(list(Pa))
+        S = self.S
+        Jm = self.J(Pa)
+        a = Jm - self.M @ (Jm - self.G0[np.ix_(S, Pa)])
+        bT = Jm.T + self.G0[np.ix_(Pa, S)] @ self.M
+        self.M = self.M + a @ np.diag(Delta) @ np.linalg.inv(Mat) @ bT
+
+    def flush(self):
+        self.G0 = self.G()
+        self.S, self.M = [], np.zeros((0, 0), complex)
+
+    def to_delayed(self):
+        d = Delayed(self.G0)
+        if self.S:
+            E = np.zeros((self.G0.shape[0], len(self.S)))
+            E[self.S, np.arange(len(self.S))] = 1.0
+            d.X = self.G0[:, self.S] @ self.M
+            d.Y = (E.T - self.G0[self.S, :]).T
+        return d
+
+
+def run(Ndim, vertices, direction, accept_mask, nd_cap=10**9, cross_slice=False, seed_fields=None, sub_cls=None):
     A = rng.normal(size=(Ndim, Ndim)) + 1j * rng.normal(size=(Ndim, Ndim))
     A = 0.6 * A / np.sqrt(Ndim) + np.eye(Ndim) * 0.4
     G = np.linalg.inv(np.eye(Ndim) + A)
     std = G.copy()
     dl = Delayed(G)
-    sm = Submatrix(G)
+    sm = (sub_cls or Submatrix)(G)
     fields = [rng.choice([-1.0, 1.0, -2.0, 2.0]) for _ in vertices]
     nslices = 2 if cross_slice else 1
     T = rng.normal(size=(Ndim, Ndim)) * 0.1
@@ -263,7 +356,7 @@ def run(Ndim, vertices, direction, accept_mask, nd_cap=10**9, cross_slice=False,
             first = 1 if direction == "up" else 2
             second = 2 if direction == "up" else 1
             phi_old = fields[n]
-            if isinstance(sm, Submatrix):
+            if hasattr(sm, 'prewrap'):
                 sm.prewrap(list(P), v["diag"])
             Ml, Mr = wrap_mats(v, phi_old, first, direction)
             L, R = embed(Ndim, P, Ml, Mr)
@@ -297,9 +390,9 @@ def run(Ndim, vertices, direction, accept_mask, nd_cap=10**9, cross_slice=False,
                     fields[n] = phi_new
                     if dl.X.shape[1] >= nd_cap:
                         dl.flush()
-                    if isinstance(sm, Submatrix) and len(sm.S) >= nd_cap:
+                    if hasattr(sm, 'prewrap') and len(sm.S) >= nd_cap:
                         sm.flush()
-            if isinstance(sm, Submatrix):
+            if hasattr(sm, 'prewrap'):
                 sm.prewrap(list(P), v["diag"])
             Ml, Mr = wrap_mats(v, fields[n], second, direction)
             L, R = embed(Ndim, P, Ml, Mr)
@@ -352,17 +445,19 @@ def main():
     Ndim = 10
     fail = False
     masks = {"all": [True], "half": [True, False], "rare": [False, False, True]}
-    print(f"{'model':12s} {'dir':4s} {'mask':5s} {'nd':>5s} {'xs':2s} | ratio_dl  ratio_sm  G_dl      G_sm      G_std     | pad/B/W")
+    print(f"{'model':12s} {'dir':4s} {'mask':5s} {'nd':>5s} {'fx':3s} | ratio_dl  ratio_sm  G_dl      G_sm      G_std     | pad/B/W")
     for kind in ["hubbard", "jz", "sasb_zz", "tv", "tv_families", "kondo", "mixed"]:
         for direction in ["up", "down"]:
             for mname, mask in masks.items():
                 for nd in [10**9, 3]:
+                  for form in (["G", "M"] if "--both-forms" in sys.argv else ["M"]):
                     for xs in [False, True]:
                         V = model(Ndim, kind)
-                        e, info = run(Ndim, V, direction, mask, nd_cap=nd, cross_slice=xs)
+                        e, info = run(Ndim, V, direction, mask, nd_cap=nd, cross_slice=xs,
+                                      sub_cls=(Submatrix if form == "G" else SubmatrixM))
                         bad = max(e.values()) > TOL
                         fail |= bad
-                        print(f"{kind:12s} {direction:4s} {mname:5s} {('inf' if nd > 10**6 else nd):>5} {'x' if xs else '-':2s} | "
+                        print(f"{kind:12s} {direction:4s} {mname:5s} {('inf' if nd > 10**6 else nd):>5} {form}{'x' if xs else '-':2s} | "
                               f"{e['ratio_dl']:.1e}  {e['ratio_sm']:.1e}  {e['G_dl']:.1e}  {e['G_sm']:.1e}  {e['G_std']:.1e}  | "
                               f"{info['npad']}/{info['pathB']}/{info['pathW']}" + ("   FAIL" if bad else ""))
     print("RESULT:", "FAIL" if fail else "PASS", f"(tolerance {TOL})")

@@ -15,8 +15,8 @@ a projector set and a sign-problem/complex-hopping set — for delayed and subma
 |---|---|---|
 | D1 | Eligible = every vertex whose support `max_f Op_V(n,f)%N ≤ N_P_LIM = 8`. Larger supports: flush + `Upgrade2` (fallback, reported once in `info`). | All shipped vertices have N ≤ 4; a vertex with N ~ Ndim would make one accept a dense update anyway. |
 | D2 | Delayed: Sec. 11 (r columns per accept, hooks after every wrap of an eligible vertex, `X(P,:) ← L X(P,:)`, `Y(P,:) ← R^T Y(P,:)`). | Exact; O(N_P² j) per hook. |
-| D3 | Submatrix: general state (S, dense Q with a diagonal flag, Γ̃^{-1}), proposal 12.2, accept path B (disjoint) or W (some site pending, after padding), pre-wrap padding for a non-diagonal wrap that partially overlaps S. **No flush on repeated sites or overlapping bonds.** | Flush-on-repeat would flush at almost every bond of tV/Kondo (consecutive bonds share sites); disjoint families depend on the Hamiltonian's vertex order, which we must not change (chain identity). The general form costs O(k² r) per accept, the same order as the rank-1 bordering. |
-| D4 | Project 1's "flush before a repeated site" is replaced by path W for rank-1 as well. | One code path; Hubbard never takes it within a slice. Trajectory tier re-run for all sets. |
+| D3 | Submatrix: M-form (notes Sec. 12): state S, dense M = Γ̃^{-1}Q; proposal 12.2; one accept formula 12.3 (pad active sites, `M ← M̃ + a Δ Mat^{-1} b^T`); pre-wrap padding for a non-diagonal wrap that partially overlaps S; `M ← L_S M R_S` in the hooks. **No flush on repeated sites or overlapping bonds.** (Revised after the independent derivation: the first draft's Γ̃^{-1}+Q form with two accept paths lost accuracy, up to 1.1e-7, with many repeated-site updates; notes 12.6.) | Flush-on-repeat would flush at almost every bond of tV/Kondo (consecutive bonds share sites); disjoint families depend on the Hamiltonian's vertex order, which we must not change (chain identity). The M-form costs O(k² r) per proposal and accept, like the rank-1 bordering, and needs no G0(S,S) gather. |
+| D4 | Project 1's rank-1 submatrix state (Ginv, Dvec, flush before a repeated site) is replaced by the M-form for rank-1 as well. | One code path; Hubbard never revisits a site within a slice. Trajectory tier re-run for all sets. |
 | D5 | `N_delay` bounds the **pending rank per flavour**: delayed = columns of X; submatrix = k = |S| (padded sites included). Capacity `cap = max(N_delay, N_P_LIM)` (a vertex always fits), delayed also ≤ M·N_P_LIM, submatrix ≤ Ndim. A vertex that would exceed cap flushes first. Rank-1: unchanged semantics. | Matches the papers' `k·n_d = 2^λ` (total pending rank is what sets the BLAS-3 block size). |
 | D6 | Ratio: build `Mat` from the current-G block with Upgrade2's loop order and determinant branches (op_dim 1, 2 with s1/s2, `Det` for > 2), duplicated in `Lowrank_update_mod`. `Upgrade2` itself is **not** touched. | Default path must stay byte-identical; duplication of ~20 lines is the price. |
 | D7 | `Mat^{-1}` / `Σ^{-1}` (r ≤ 8): LAPACK `ZGETRF`/`ZGETRS` on the r×r matrix. | Pivoted, robust; cost negligible. |
@@ -33,7 +33,7 @@ a projector set and a sign-problem/complex-hopping set — for delayed and subma
 | LRC | 1 | yes | 1 | yes (no effect with Global_tau) | yes |
 | Jz (test model) | 2 | yes | 2 | yes | yes |
 | SaSb-zz (unit tier only) | 4 | yes | 4 | yes | yes |
-| V_SUN / VJ_SUN (Kondo J, tV) | 2 | no | 2 | yes | yes (padding, path W) |
+| V_SUN / VJ_SUN (Kondo J, tV) | 2 | no | 2 | yes | yes (padding) |
 | Ising_SUN (Z2 gauge, type 1) | 2 | no | 2 | yes | yes |
 | Spin-Peierls type-4 bonds | 2 | no | 2 | yes | yes |
 | Z2 site-matter (g = 0, N_non_zero = 1, Δ = 0) | 1 | yes | 1 | yes (Δ = 0 → ratio 1) | yes (Q entry 0) |
@@ -42,9 +42,9 @@ Unsupported by design: nothing else. If a formula cannot be validated at the uni
 that vertex class becomes ineligible (fallback) and the case goes to the open questions.
 
 ## 4. Code changes (files and interfaces)
-* `Prog/Lowrank_update_mod.F90`: `N_P_LIM = 8`; eligibility D1; per-flavour state as now plus submatrix `Q(cap,cap,N_FL_eff)`,
-  `qdiag(N_FL_eff)`; new public `Lowrank_prewrap_hook(n_op, nt, HS_field, kind, dir)`; `Lowrank_wrap_hook(n_op, nt,
-  HS_field, kind, dir)` gains `kind` (1 or 2); `Lowrank_propose`/`Lowrank_accept` rank-r; flush general Q;
+* `Prog/Lowrank_update_mod.F90`: `N_P_LIM = 8`; eligibility D1; per-flavour state as now, submatrix `S`, `slot`,
+  `M(cap,cap,N_FL_eff)` replacing `Ginv`/`Dvec`; new public `Lowrank_prewrap_hook(n_op, nt, HS_field, kind, dir)`; `Lowrank_wrap_hook(n_op, nt,
+  HS_field, kind, dir)` gains `kind` (1 or 2); `Lowrank_propose`/`Lowrank_accept` rank-r; flush with dense M;
   cross-slice entry points `Lowrank_hop_up(nf_eff ...)`/`Lowrank_hop_down` (D10). Existing public names keep their meaning.
 * `Prog/Wrapgr_mod.F90`: call the pre-wrap hook before, and the hook after, each wrap of an eligible vertex (type 2
   calls only for non-diagonal ones); slice-end flush skipped when cross-slice is on (then `Lowrank_hop_*`).
@@ -65,8 +65,8 @@ that vertex class becomes ineligible (fallback) and the case goes to the open qu
 Debug build: shadow checks over the trajectory sets.
 
 ## 6. Risks
-* Submatrix explicit Γ̃^{-1} forward error grows with cond(Γ̃) (project 1: up to 2.6e-10 in mz_illcond); dense Q and
-  padding may increase it. Mitigation: unit tier at the ill-conditioned case; if > TOL_ILL, cap k for non-diagonal
+* Submatrix forward error grows with cond(Γ̃) (project 1: up to 2.6e-10 in mz_illcond with the explicit Γ̃^{-1});
+  the M-form's behaviour there is measured at the unit tier. Mitigation: unit tier at the ill-conditioned case; if > TOL_ILL, cap k for non-diagonal
   vertices or route them to delayed form (decision recorded then).
 * Performance of submatrix for tV-like models: padding inflates k (≈ 2–5 sites per accept). Measured in Phase 5;
   if submatrix is slower than delayed there, document it (correctness first).

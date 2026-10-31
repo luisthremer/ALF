@@ -214,7 +214,7 @@ No unresolved mismatches.
 # Part II (project 2): rank-N vertices, general submatrix blocks, cross-slice delay
 
 Status (2026-10-31): derived; checked numerically by `docs/scripts/check_rankN.py` (Sec. 13); compared with an
-independent re-derivation in Sec. 14. Notation as in Sec. 0: per flavour, `r = N_non_zero`, active indices
+independent re-derivation in Sec. 14 (no open mismatches; the submatrix M-form was adopted from it). Notation as in Sec. 0: per flavour, `r = N_non_zero`, active indices
 `P_a = P(1..r)` (non-zero eigenvalues first, `Op_set`), `Δ = diag(Δ_1..Δ_r)`, `Δ_m = e^{g(φ'−φ)E_m} − 1`,
 `E_P` = N×r selector of `P_a`.
 
@@ -260,78 +260,69 @@ branches, and evaluate the scalar chain of Sec. 1 unchanged.
 * Flush: `G0 ← G0 − X Y^T` (ZGEMM). Repeated sites need nothing special (each accept is exact on the current G).
 * Columns: an accept adds `r_f` columns in flavour f; the pending rank per flavour is what N_delay bounds (Sec. 12.6).
 
-## 12. General submatrix update
+## 12. General submatrix update (M-form, adopted)
 
 ### 12.1 State
-Pending sites `S = (s_1..s_k)` (distinct), a dense `Q ∈ C^{k×k}`, and `Γ̃^{-1}` with
+Pending sites `S = (s_1..s_k)` (distinct) and a dense `M ∈ C^{k×k}`:
 
-    G = G0 − G0(:,S) Γ̃^{-1} Q (E_S^T − G0(S,:)),       Γ̃ = I_k + Q (I − G0)_SS.
+    G = G0 − G0(:,S) M (E_S^T − G0(S,:)).
 
-Meaning: `B = (1 + E_S Q E_S^T) B0` in the current frame, i.e. `1 + E_S Q E_S^T` is the product of all pending
-factors `F` (transformed by the wraps since). Then `G = G0 [1 + E_S Q E_S^T (1 − G0)]^{-1}` and Woodbury gives the
-form above. `det(1+B)/det(1+B0) = det Γ̃`. Rank-1 (project 1) is the case `Q = D` diagonal.
-A flag records whether Q is diagonal (then flush and proposal use the vector `diag(Q)`).
+Meaning: `B = (1 + E_S Q E_S^T) B0` (product of all pending factors in the current frame) and `M = Γ̃^{-1} Q`,
+`Γ̃ = I + Q (I − G0)_SS`; M is stored directly (no separate Q or Γ̃^{-1}). Project 1's rank-1 state is
+`M = Ginv · diag(Dvec)`. `J_Q = E_S^T E_Q` is the k×r 0/1 selector of `Q = P_a` inside S (columns zero for
+sites not in S).
 
-### 12.2 Proposal (any `P_a`, overlapping S or not)
+### 12.2 Proposal (any `P_a`)
 
-    G_k(P_a,P_a) = G0(P_a,P_a) − G0(P_a,S) Γ̃^{-1} Q (E_S^T E_P − G0(S,P_a))      (O(k² r))
+    G_k(P_a,P_a) = G0(P_a,P_a) − G0(P_a,S) M (J_Q − G0(S,P_a))          (O(k² r))
 
-`E_S^T E_P` is the k×r 0/1 matrix with a 1 where `P_a(m) = s_l`. Then Mat, det, ratio as in Sec. 10.
+then Mat, det, ratio as in Sec. 10.
 
-### 12.3 Accept, path B (no active site pending: `P_a ∩ S = ∅`)
-With `a = Γ̃^{-1} Q G0(S,P_a)` (k×r, also gives `G_PP = G0_PP + G0(P_a,S) a`), `b^T = G0(P_a,S) Γ̃^{-1}` (r×k) and the
-Schur complement `Σ = I_r + Δ (I_r − G_PP)` (`det Σ = det Mat`):
+### 12.3 Accept (one formula for disjoint, overlapping and repeated sites)
+Pad S with the active sites not yet in S (zero rows/columns of M; exact), call the result `M̃` on `S'`, and with
+`J = J_Q` on `S'`:
 
-    Γ̃^{-1} ← [ Γ̃^{-1} + a Σ^{-1} Δ b^T ,  a Σ^{-1} ]       Q ← blockdiag(Q, Δ),  S ← (S, P_a)
-              [ Σ^{-1} Δ b^T             ,  Σ^{-1}  ]
+    a   = J − M̃ (J − G0(S',P_a))           (k'×r)      so that G(:,P_a)        = G0(:,S') a
+    b^T = J^T + G0(P_a,S') M̃                (r×k')      so that E_Q^T − G(P_a,:) = b^T (E_S'^T − G0(S',:))
+    M   ← M̃ + a Δ Mat^{-1} b^T                          (O(k² r))
 
-(r = 1: `Σ = d`, the project-1 bordering.) Q stays diagonal.
+This is Sec. 10's update written in the S' coordinates. For `P_a ∩ S = ∅` it is the bordered (block-inverse) update
+of [SX-S]; for a repeated site no flush is needed (project 1 flushed). `M̃ G0(S',P_a)` is cached from the proposal.
 
-### 12.4 Accept, path W (some active site pending)
-First pad the missing active sites (12.5), so `P_a ⊆ S`; `sl` = their slots. With `U = E_P Δ`,
-`V = E_P^T (I + Q)(I − G0)_SS` the update is `Q ← Q + E_P Δ E_P^T (I + Q)`, `Γ̃ ← Γ̃ + U V`, and
+### 12.4 Wraps
+`G ← L G R` on `P`; ALF applies it to G0 (G0 entries are always read from the current G0).
+* `P ∩ S = ∅`: nothing to do.
+* `P ⊆ S`, or L, R diagonal: `M ← L_S M R_S` with `L_S`, `R_S` = L, R restricted to the pending part of P,
+  embedded in k×k (O(k N_P)); diagonal L, R: `M(m,:) *= l_m`, `M(:,m) *= r_m`.
+* Partial overlap with a non-diagonal L, R: pad `P \ S` **before** ALF's wrap, then the previous case. Needs a
+  pre-wrap hook. This happens routinely: after an accept with `r < N_P` the inactive sites of P are not in S, and the
+  type-2 wrap of the same vertex is non-diagonal.
 
-    V Γ̃^{-1} = (I − G_k)(P_a,S) =: W       (r×k; identity (I+Q) Z (I+QZ)^{-1} = I − G_k on S, Z = (I−G0)_SS)
-    I + V Γ̃^{-1} U = I + (I − G_PP) Δ = Mat                       (the ratio matrix itself)
-    Γ̃^{-1} ← Γ̃^{-1} − (Γ̃^{-1}(:,sl) Δ) Mat^{-1} W
-    Q(sl,:) ← Q(sl,:) + Δ (E_P^T E_S + Q(sl,:))
+### 12.5 Flush and capacity
+`Mw = M (E_S^T − G0(S,:))` (ZGEMM k×k×N), `G0 ← G0 − G0(:,S) Mw` (ZGEMM N×N×k, copy of `G0(:,S)` first).
+`k` counts padded sites.
 
-`W` needs `G_k(P_a,S) = G0(P_a,S) − [G0(P_a,S) Γ̃^{-1} Q] (I − G0(S,S))`: O(k² r) with a gather of `G0(S,S)`.
-A diagonal Q stays diagonal (`q' = (1+Δ)(1+q) − 1`). This replaces project 1's flush before a repeated site.
+### 12.6 Rejected alternative: Γ̃^{-1} and Q stored separately
+The first draft (2026-10-31) kept `Γ̃^{-1}` and Q with a bordering path (disjoint) and a Woodbury path (repeated
+sites, needs a gather of `G0(S,S)`). It is exact, but in the `mixed` model (many repeated-site updates, no capacity
+flush) its error reached 1.1e-7 (G) / 5.3e-8 (ratio), while the M-form stays ≤ 1e-14 on the same configurations
+(`check_rankN.py --both-forms`). The M-form is also simpler (one formula, no Q flag) and needs no `G0(S,S)` gather.
+Adopted from the independent derivation (Sec. 14).
 
-### 12.5 Padding (adding sites with zero Q rows/columns)
-For new sites `n ∉ S` (Q padded with zeros, G unchanged):
-
-    Γ̃^{-1} ← [ Γ̃^{-1} , Γ̃^{-1} Q G0(S,n) ]        (O(k² m))
-              [ 0      , I_m             ]
-
-### 12.6 Wraps
-`G ← L G R` on `P`; ALF applies it to G0 (entries of G0 are always read from the current G0).
-* `P ∩ S = ∅`: nothing to do (`L E_S = E_S`, `E_S^T R = E_S^T`).
-* `P ⊆ S`, or L, R diagonal: with `L_S`, `R_S` = L, R restricted to the pending part of P, embedded in k×k:
-  `Γ̃^{-1} ← L_S Γ̃^{-1} R_S`, `Q ← L_S Q R_S` (O(k N_P)). (`G − G0 = −G0 E_S Γ̃^{-1}Q E_S^T (1−G0)`; uses `R L = 1`.)
-  Diagonal L, R keep a diagonal Q diagonal.
-* Partial overlap with a non-diagonal L, R: pad `P \ S` (12.5) **before** ALF's wrap (the padding reads G0 in the
-  frame in which the representation holds), then the previous case. Needs a pre-wrap hook in WRAPGRUP/WRAPGRDO.
-
-### 12.7 Flush and capacity
-`K = Γ̃^{-1} Q` (column scaling if Q is diagonal, else ZGEMM k³), `M = K (E_S^T − G0(S,:))` (k×N),
-`G0 ← G0 − G0(:,S) M` (ZGEMM, copy of `G0(:,S)` first). `k` counts padded sites too.
-
-### 12.8 Costs per proposal / accept (k pending sites, r active, N_P support)
-| step | delayed | submatrix |
+### 12.7 Costs per proposal / accept (k pending sites, r active, N_P support)
+| step | delayed | submatrix (M-form) |
 |---|---|---|
-| proposal | O(r² j) | O(k² r) (Q diagonal: O(k r + k² r)) |
-| accept | O(N j r) (ZGEMM N×j×r) | B: O(k² r); W: O(k² r) + gather k² of G0 |
-| wrap hook | O(N_P² j) | O(k N_P); padding O(k² m) |
+| proposal | O(r² j) | O(k² r) |
+| accept | O(N j r) (ZGEMM N×j×r) | O(k² r) |
+| wrap hook | O(N_P² j) | O(k N_P); padding O(k m) (zeros) |
 | flush | O(N² j) | O(N² k) + O(N k²) |
 
-## 12.9 Cross-slice delay (delayed form only)
+### 12.8 Cross-slice delay (delayed form only)
 At a slice end, instead of flushing, carry the factors through the hopping wrap:
 * up (`G ← B_T G B_T^{-1}`, `HOP_MOD_mmthr` + `HOP_MOD_mmthl_m1`): `X ← B_T X`, `Y^T ← Y^T B_T^{-1}`;
 * down (`G ← B_T^{-1} G B_T`, `Hop_mod_mmthl` + `Hop_mod_mmthr_m1`): `X ← B_T^{-1} X`, `Y^T ← Y^T B_T`.
 Cost O(N_bond j) with the checkerboard, O(N² j) with a dense `e^{−ΔτT}` (= a flush, so no gain).
-A submatrix state converts to delayed form: `X = G0(:,S) Γ̃^{-1} Q`, `Y^T = E_S^T − G0(S,:)` (O(N k²)).
+A submatrix state converts to delayed form: `X = G0(:,S) M`, `Y^T = E_S^T − G0(S,:)` (O(N k²)).
 G must be flushed before anything reads it: measurements, stabilisation, global moves, Global_tau, end of the
 sweep direction. Not in the literature.
 
@@ -340,6 +331,23 @@ N = 10; models hubbard (rank-1), jz (diagonal rank-2, overlapping), sasb_zz (dia
 bonds, overlapping), tv_families (disjoint families), kondo (rank-1 + non-diagonal 3-site with a zero eigenvalue),
 mixed (all, repeated sites); up and down; accept masks all/half/rare; capacity ∞ and 3; with and without a hopping
 wrap between two slices (submatrix converted to delayed form there). Exact G = (1+A)^{-1} with A transformed
-alongside. All 336 runs: max relative ratio and G errors ≤ 1e-11 (`RESULT: PASS`, tolerance 1e-10); the largest
-values (9.5e-12 ratio, 5.4e-12 G) occur for submatrix in the `mixed` model (explicit Γ̃^{-1}, cf. Sec. 4).
-Mutations: no Q transform in the hook → error 52; no pre-wrap padding → assertion; delayed Y not transformed → 1.2.
+alongside. All 336 runs (M-form): max relative ratio and G errors ≤ 7.7e-12 (`RESULT: PASS`, tolerance 1e-10).
+Mutations: no M transform in the hook → 6.2; no pre-wrap padding → assertion (partial non-diagonal overlap);
+delayed Y not transformed → 1.2. `--both-forms` adds the rejected Γ̃^{-1}+Q form (Sec. 12.6; 4 FAIL rows).
+
+## 14. Comparison with the independent re-derivation (`docs/independent-derivation-rankN.md`)
+A subagent derived Part II from the papers and the ALF source without these notes; its check
+`docs/scripts/check_rankN_independent.py` (N = 10, two slices, up and down, diagonal/non-diagonal, r < N_P, a 4-site
+operator with unsorted P, repeated sites; output `check_rankN_independent.txt`) gives max |G − G_exact| 1.4e-14 and
+ratio error 7.3e-15; its negative controls (R† instead of R^T, no padding, Y not hopped) fail with O(1) errors.
+
+| Item | These notes | Independent | Status |
+|---|---|---|---|
+| Ratio, rank-r update | Sec. 10 | same; asserts `x_v y_v^T = u Mat^{-1} v^T` for Upgrade2's sequential loop | agree |
+| Wrap matrices L, R | Sec. 9 table | same four pairs (from ZSLGEMM), `R = L^{-1}` | agree |
+| Delayed hooks | `X_P ← L X_P`, `Y_P ← R^T Y_P` (transpose, not dagger) | same | agree |
+| Hook after type-2 wraps | required for non-diagonal operators | flagged as required | agree (project 1 had none; added in Task 3) |
+| Submatrix state | first draft: Γ̃^{-1}, Q, paths B/W | M = Γ̃^{-1}Q, one accept formula | **adopted M-form** (Sec. 12.6) |
+| Partial non-diagonal overlap | pad before the wrap | pad, or convert, or flush | agree (we pad) |
+| Cross-slice | `X ← B X`, `Y^T ← Y^T B^{-1}` up; inverse down | same; conversion `X += G0(:,S) M` | agree |
+| Open points | non-square operands of the Hop_mod routines | not checked | to verify in Task 8 |
