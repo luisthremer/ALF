@@ -30,6 +30,9 @@
 ! 
 !     - If you make substantial changes to the program we require you to either consider contributing
 !       to the ALF project or to mark your material in a reasonable way as different from the original version.
+!
+!  Modified 2026 on the delayed/submatrix research branch (feature/delayed-submatrix):
+!  Op_V_is_symmetric uses block-local products (fast path). See docs/algorithm-notes.md.
 
 !--------------------------------------------------------------------
 !> @author 

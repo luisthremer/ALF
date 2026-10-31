@@ -28,6 +28,8 @@
 !
 !     - If you make substantial changes to the program we require you to either consider contributing
 !       to the ALF project or to mark your material in a reasonable way as different from the original version.
+!
+!  New file of the delayed/submatrix research branch (feature/delayed-submatrix, 2026). See docs/algorithm-notes.md.
 
 !--------------------------------------------------------------------
 !> @author

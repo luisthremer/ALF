@@ -28,6 +28,10 @@
 !
 !     - If you make substantial changes to the program we require you to either consider contributing
 !       to the ALF project or to mark your material in a reasonable way as different from the original version.
+!
+!  Modified 2026 on the delayed/submatrix research branch (feature/delayed-submatrix): low-rank
+!  read points, automatic N_delay tuning calls, and scheme/N_delay provenance in data.h5. See
+!  docs/algorithm-notes.md.
 
 
 !--------------------------------------------------------------------

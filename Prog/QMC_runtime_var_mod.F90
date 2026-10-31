@@ -28,6 +28,10 @@
 ! 
 !     - If you make substantial changes to the program we require you to either consider contributing
 !       to the ALF project or to mark your material in a reasonable way as different from the original version.
+!
+!  Modified 2026 on the delayed/submatrix research branch (feature/delayed-submatrix): VAR_QMC
+!  keys Sequential_scheme, N_delay, Lowrank_cross_slice with their validation. See
+!  docs/algorithm-notes.md.
 
 Module QMC_runtime_var
         

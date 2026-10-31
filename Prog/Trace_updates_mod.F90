@@ -1,4 +1,4 @@
-!  Copyright (C) 2016 - 2022 The ALF Project
+!  Copyright (C) 2026 The ALF project
 !
 !  This file is part of the ALF project.
 !
@@ -14,6 +14,8 @@
 !
 !  You should have received a copy of the GNU General Public License
 !  along with ALF.  If not, see http://www.gnu.org/licenses/.
+!
+!  New file of the delayed/submatrix research branch (feature/delayed-submatrix, 2026). See docs/algorithm-notes.md.
 
 !> @brief
 !> Debug trace of the Metropolis decisions of the sequential local update.

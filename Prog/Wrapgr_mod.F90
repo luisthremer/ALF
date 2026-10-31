@@ -30,6 +30,10 @@
 ! 
 !     - If you make substantial changes to the program we require you to either consider contributing
 !       to the ALF project or to mark your material in a reasonable way as different from the original version.
+!
+!  Modified 2026 on the delayed/submatrix research branch (feature/delayed-submatrix): hooks of
+!  the low-rank (delayed/submatrix) sequential update in the wraps and the local-update loop.
+!  See docs/algorithm-notes.md.
 
 !--------------------------------------------------------------------
 !> @author 
