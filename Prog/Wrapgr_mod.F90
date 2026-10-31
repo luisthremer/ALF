@@ -234,7 +234,8 @@ Contains
     ! hopping wrap) may enter here
     if (.not. Lowrank_cross_slice_active()) call Lowrank_assert_flushed("WRAPGRDO entry")
 
-    ! G is flushed here (the previous WRAPGRUP/WRAPGRDO returned a flushed G)
+    ! G is flushed here when N_Global_tau > 0: the previous WRAPGRUP/WRAPGRDO returned a flushed G (with the
+    ! cross-slice key a pending state may enter WRAPGRDO, but the key is refused with N_Global_tau > 0)
     If ( N_Global_tau > 0 ) then 
        m         = Size(OP_V,1)
        !Write(6,*) 'Call Ran_up ', m,ntau
