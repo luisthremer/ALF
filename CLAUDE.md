@@ -349,7 +349,9 @@ binary with K_ND = 1). Rule: submatrix slower if > 5 % and > 2 × the larger spr
 - HDF5 provenance (P6-2): non-standard schemes write `Sequential_scheme`, `N_delay_requested` (at the parameter write) and
   `N_delay_used` (end of run) as attributes of `/` in `data.h5`; standard runs write nothing new (baseline data.h5 kept).
   Code only preprocessed and compile-checked against stub hdf5/h5lt modules locally (no HDF5 here); on the cluster: build with
-  the HDF5 module, run delayed and standard, check `h5dump -A -g / data.h5`.
+  the HDF5 module, run delayed and standard, check `h5dump -A -g / data.h5`. Semantics: `N_delay_requested` is the
+  parameter (≥ 1 fixed, 0 auto, −1 auto+tune); `N_delay_used` is 0 if no low-rank state was initialised (Langevin, HMC-only);
+  attributes of an earlier non-standard run remain if a standard run later reuses the same data.h5 (review P6-2, approved).
 
 ## Open questions for the user (collected for the cluster request)
 1. Submatrix accuracy guard `K_ND = 8` (Task 5): once a submatrix block holds an accepted non-diagonal update, it is flushed
