@@ -64,6 +64,7 @@ gpu_state module (plain contiguous device arrays, allocated once)
 | 206 **INTERIM** (removed by 207/208): per CGR | D→H, H→D | 16N² B each way (new G, wrapped G) + 32 B | GR is host-authoritative until 208; the precision check reduces on the device (`Control_PrecisionG_vals`) |
 | 206 **INTERIM** (host-update path only, `ALF_GPU_NOUPDATE=1`; skipped with device updates, 205): per WRAPUR/WRAPUL block | H→D | N_op·Nwrap·16 B | HS fields changed by the host updates (`nsigma_d`) |
 | 206 **INTERIM** (removed by 207): per backward stabilization, Ltau = 1 | D→H | 32N² + 16N B per flavour | `TAU_M` (host) reads `udvst` |
+| 302b (control runs only, `ALF_GPU_FAULT_STAB=eps:<x>` in the sweep): per CGR with precision check | H→D | 16N² B | perturbed `st_Gn` back to the device for the precision reduction |
 | end of bin / run | D→H | nsigma (confout), and G only if needed | output |
 
 ## 2. Phases, gates and tickets
