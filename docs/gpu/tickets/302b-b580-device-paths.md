@@ -5,14 +5,13 @@
 - **Review:** numerics-reviewer (code, acceptance file, scripts) · **Verification:** acceptance-verifier
 - **Depends on:** 302a merged into `gpu-port` (ONEMKL backend of `alf_la`); 212 (env reader, deterministic sums; in
   `gpu-port`); prerequisites P1–P8 below
-- **Base:** `TBD` = `gpu-port` after the merge of the harness branch `gpu-port-harness-302b` (H1/H2); 302a is merged
-  (`890185c0`), 207 is not in the base
+- **Base:** `71af3e076322` (`gpu-port`: 212, 302a and the harness branch `gpu-port-harness-302b` merged; 207 not in the
+  base, `Prog/gpu_tau_mod.F90` absent)
 - **Branch:** `gpu-port-302b` (the 2026-10-30 draft branch `gpu-port-302b-b580` is superseded)
-- **Acceptance files:** `testsuite/gpu_reference/acceptance/302b.json` (Intel part, `intel`) and `302b.nvidia.json`
-  (`nividia` part, `acc_driver.py --part nvidia`). Both are drafted together in `302b.draft.json`; the nvidia part sits under
-  the key `_part_nvidia` and is split into its own file at pre-registration.
-- **Status:** DRAFT (2026-10-30, updated 2026-10-31 with decisions 20–23 and the manager's answers); not pre-registered.
-  Remaining before pre-registration: review (c) of the harness branch, the P8 timing probe, review (b) of this file
+- **Acceptance files:** `testsuite/gpu_reference/acceptance/302b.json` (Intel part, `intel`: 82 runs, 15 gates, 18
+  controls) and `302b.nvidia.json` (`nividia` part, `acc_driver.py --part nvidia`: 10 runs, 5 gates, 5 controls).
+- **Status:** pre-registration pending the final review (b) of 2026-10-31; the pre-registration sha is recorded here and
+  in DECISIONS.md once approved. No implementation has started.
 
 ## Goal
 With `GPU=intel` (ifx 2026.2 OpenMP offload, spir64 JIT, plus the 302a oneMKL backend), the 204 wraps (checkerboard and
@@ -84,7 +83,7 @@ unchanged.
   (re-registration). **Manager (2026-10-31): no `alf_la` edits in 302b**; a defect found there gets its own ticket.
 
 ## Acceptance
-The draft is in `302b.draft.json`; `verdict.py` lint passes for both parts in DRAFT mode. Tolerances are as in 212.
+`302b.json` and `302b.nvidia.json`; `verdict.py --lint` passes for both (frozen mode). Tolerances are as in 212.
 **Machine `intel`:**
 - 7 builds: `in_def`, `in_def_pp` (`-DQR_PREPIVOT`), `in_log` (GPU=intel); `in_none`, `in_none_pp`, `in_none_log`,
   `base_in_none` (ifx CPU).

@@ -1,0 +1,309 @@
+{
+ "schema": "alf-acc/1",
+ "ticket": "302b",
+ "candidate_sha": "self",
+ "base_sha": "71af3e076322",
+ "_base_reason": "gpu-port 71af3e076322: 302a merged (890185c0), 212 merged, harness branch gpu-port-harness-302b merged (H1 ALF_LA_TEST_* as debug variables, H2 B580 pinning, forbidden_lines, ctest stamp checks; review (c) approved 2026-10-31). Manager check at pre-registration: Prog/gpu_tau_mod.F90 does not exist at this base (207 not merged), so the device tau pass cannot run (decision 22); forbidden_lines guards it anyway",
+ "created": "2026-10-31",
+ "_status": "pre-registered for ticket 302b, nividia part (GPU=none identity GNU, CUDA and nvfortran GPU=none identity, CUDA refusal of ALF_LA_TEST_*); before any implementation result",
+ "approvals": [],
+ "machine": "nividia",
+ "gpu_exclusive": true,
+ "timeout_s": 900,
+ "disk_min_free_GB": 5,
+ "cpu_parallel": 3,
+ "false_alarm_budget": 0.0,
+ "_false_alarm_reason": "all gates deterministic (identity, counts)",
+ "active_lines": [
+  "GPU path (gpu_state): ACTIVE",
+  "GPU update path (ticket 205): ACTIVE",
+  "GPU stabilization (206): ACTIVE",
+  "GPU debug env: none",
+  "GPU build: git none backend CUDA"
+ ],
+ "_active_lines_reason": "212 lines of the CUDA build; if 207 is in the base add 'GPU tau pass (207): ACTIVE' (base and candidate alike)",
+ "gpunone": true,
+ "allowed_test_changes": [],
+ "builds": {
+  "nv_def": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5 GPU=nvidia",
+   "gpu": true
+  },
+  "nv_log": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5 LOG GPU=nvidia",
+   "gpu": true
+  },
+  "base_nv_def": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5 GPU=nvidia",
+   "gpu": true
+  },
+  "base_nv_log": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5 LOG GPU=nvidia",
+   "gpu": true
+  },
+  "nv_none": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5",
+   "gpu": false
+  },
+  "base_nv_none": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5",
+   "gpu": false
+  }
+ },
+ "configs": {
+  "hub6x6_cb_fd": {
+   "base": "hub6x6_cb",
+   "overrides": {
+    "NSweep": 1,
+    "NBin": 200
+   },
+   "parameters_sha256": "04ae4aa187b9925b984db09d4c2e78eea990c54cbed0f5ef2ec9476162c31d1e"
+  }
+ },
+ "runs": {
+  "id_cuda_def_base": {
+   "build": "base_nv_def",
+   "config": "hub6x6_cb_fd"
+  },
+  "id_cuda_def_cand": {
+   "build": "nv_def",
+   "config": "hub6x6_cb_fd"
+  },
+  "id_cuda_log_base": {
+   "build": "base_nv_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "id_cuda_log_cand": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "id_none_base": {
+   "build": "base_nv_none",
+   "config": "hub6x6_cb_fd"
+  },
+  "id_none_cand": {
+   "build": "nv_none",
+   "config": "hub6x6_cb_fd"
+  },
+  "id_cuda_def_cand_m": {
+   "build": "nv_def",
+   "config": "hub6x6_cb_fd"
+  },
+  "id_none_cand_m": {
+   "build": "nv_none",
+   "config": "hub6x6_cb_fd"
+  },
+  "ref_la_cuda": {
+   "build": "nv_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_LA_TEST_POISON_INFO=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_LA_TEST_POISON_INFO (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "acc_la_cuda": {
+   "build": "nv_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_DEBUG=1",
+    "ALF_LA_TEST_POISON_INFO=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_LA_TEST_POISON_INFO=1"
+   ]
+  }
+ },
+ "mutations": [
+  {
+   "src": "id_cuda_def_cand",
+   "dst": "id_cuda_def_cand_m",
+   "kind": "scale:Den_eq/obser:1e-12"
+  },
+  {
+   "src": "id_none_cand",
+   "dst": "id_none_cand_m",
+   "kind": "scale:Den_eq/obser:1e-12"
+  }
+ ],
+ "log_mutations": [
+  {
+   "src": "gpunone",
+   "dst": "gpunone_m_ctestfail",
+   "file": "ctest.log",
+   "kind": "ctest_one_failure",
+   "exit_file": "ctest.exit"
+  }
+ ],
+ "gates": [
+  {
+   "id": "gpu_none_ppcmp",
+   "type": "log_regex",
+   "checks": [
+    {
+     "file": "gpunone/ppcmp.txt",
+     "stamp_file": "gpunone/stamp",
+     "exit_file": "gpunone/ppcmp.exit",
+     "stamp_contains": [
+      "plant no"
+     ],
+     "regex": "comparisons (\\d+) preprocessor_errors (\\d+) differing_lines (\\d+) added_or_deleted (\\d+) build_files (\\d+) other_files (\\d+)$",
+     "equals": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    }
+   ],
+   "_reason": "302b changes only Prog/gpu_*.F90 (compiled only with ALF_GPU, excluded by acc_gpunone.sh) and docs: no CPU-path Fortran, build or other file; any other changed file is a FAIL (the plant control compares Prog/main.F90)"
+  },
+  {
+   "id": "gpu_none_ctest",
+   "type": "log_regex",
+   "checks": [
+    {
+     "file": "gpunone/ctest.log",
+     "stamp_file": "gpunone/stamp",
+     "exit_file": "gpunone/ctest.exit",
+     "stamp_contains": [
+      "plant no"
+     ],
+     "regex": "(\\d+)% tests passed, (\\d+) tests failed out of (\\d+)",
+     "equals": [
+      100,
+      0,
+      53
+     ]
+    }
+   ],
+   "_reason": "GNU devel ctest count of the merged base: 52 + 212's t_determinism = 53 (confirmed in 302a's re-acceptance on d8cc74f7, decision 18; no test added since)"
+  },
+  {
+   "id": "cuda_identity",
+   "type": "replay",
+   "n_datasets": 38,
+   "pairs": [
+    [
+     "id_cuda_def_base",
+     "id_cuda_def_cand"
+    ],
+    [
+     "id_cuda_log_base",
+     "id_cuda_log_cand"
+    ]
+   ],
+   "_reason": "GPU=nvidia unchanged: base and candidate CUDA builds give bit-identical data.h5 and Precision lines on the same seeds, default and LOG (both paths are run-to-run reproducible since 212). Runtime identity because acc_gpunone.sh does not compare Prog/gpu_* under the CUDA macros"
+  },
+  {
+   "id": "none_identity",
+   "type": "replay",
+   "gpu_exclusive": false,
+   "n_datasets": 38,
+   "pairs": [
+    [
+     "id_none_base",
+     "id_none_cand"
+    ]
+   ],
+   "_reason": "GPU=none (HOST) nvfortran CPU build: bit-identical data.h5 base vs candidate"
+  },
+  {
+   "id": "refusal_la_test_cuda",
+   "type": "faults",
+   "fail_regex": "GPU debug env refused: ",
+   "cases": {
+    "ref_la_cuda": "refused: ALF_LA_TEST_POISON_INFO "
+   },
+   "_reason": "the ALF_LA_TEST_* refusal is in the shared env reader for every GPU backend (ticket, manager 2026-10-31); this checks it on CUDA too, so a refusal limited to ALF_LA_ONEMKL fails (review (b) 2026-10-31)"
+  }
+ ],
+ "controls": [
+  {
+   "id": "c_ppcmp_plant",
+   "like": "gpu_none_ppcmp",
+   "expect": "FAIL",
+   "replace": {
+    "checks": [
+     {
+      "file": "gpunone_plant/ppcmp.txt",
+      "stamp_file": "gpunone_plant/stamp",
+      "exit_file": "gpunone_plant/ppcmp.exit",
+      "stamp_contains": [
+       "plant --plant"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "c_ctest_failure",
+   "like": "gpu_none_ctest",
+   "expect": "FAIL",
+   "replace": {
+    "checks": [
+     {
+      "file": "gpunone_m_ctestfail/ctest.log",
+      "stamp_file": "gpunone_m_ctestfail/stamp",
+      "exit_file": "gpunone_m_ctestfail/ctest.exit",
+      "stamp_contains": [
+       "plant no"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "c_cuda_identity_1e-12",
+   "like": "cuda_identity",
+   "expect": "FAIL",
+   "replace": {
+    "pairs": [
+     [
+      "id_cuda_def_base",
+      "id_cuda_def_cand_m"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "c_none_identity_1e-12",
+   "like": "none_identity",
+   "expect": "FAIL",
+   "replace": {
+    "pairs": [
+     [
+      "id_none_base",
+      "id_none_cand_m"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "c_refusal_la_cuda_accepted",
+   "like": "refusal_la_test_cuda",
+   "replace": {
+    "cases": {
+     "acc_la_cuda": "refused: ALF_LA_TEST_POISON_INFO "
+    }
+   },
+   "expect": "FAIL",
+   "_reason": "with ALF_GPU_DEBUG=1 the variable is accepted and listed in the debug-env line (the CUDA backend reads no ALF_LA_TEST_* hook), so the refusal line is missing"
+  }
+ ]
+}
