@@ -192,5 +192,9 @@ Unit level (`testsuite/Prog.tests/36-lowrank-unit.F90`, ctest `36-lowrank-unit`;
 - Profile at L=20 (`docs/benchmarks/profile.md`): standard 63 % rank-1 ZGERU, 27 % stabilisation; submatrix 60 % stabilisation, 19 % flush ZGEMM, 18 % wraps.
   THREADS=8 gives no gain. The ~24 s setup at L=20 is `validate_ham_variables` -> `Op_V_is_symmetric` (gfortran matmul).
 
+## Final report
+- `docs/benchmarks/report.md`: method, validation summary (all five levels, with numbers), benchmarks, recommendation,
+  caveats, reproduction commands, commit list.
+
 ## Open questions
 - See the design spec, section "Open questions for Checkpoint 1".
