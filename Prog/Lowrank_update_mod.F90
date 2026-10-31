@@ -2038,13 +2038,6 @@ contains
 
    end subroutine Lowrank_debug_check
 
-!--------------------------------------------------------------------
-!> @brief
-!> Debug builds only: (re)writes lowrank_debug_summary.txt in the run directory with the number
-!> of shadow-G checks, the largest relative error so far and (submatrix) the numbers of sites added
-!> to S by accepts and padded by hooks. Called after every flush, so the file holds the totals of
-!> the run when it ends.
-!--------------------------------------------------------------------
    subroutine Dbg_check_nd_guard(n_op, nt, where)
 !> Debug builds only: the submatrix accuracy guard (spec D15). After an accept or a hook (after its
 !> capacity flush), a block whose M-form holds non-diagonal content (dbg_nd_in_M, tracked independently of
@@ -2063,6 +2056,13 @@ contains
       endif
    end subroutine Dbg_check_nd_guard
 
+!--------------------------------------------------------------------
+!> @brief
+!> Debug builds only: (re)writes lowrank_debug_summary.txt in the run directory with the number
+!> of shadow-G checks, the largest relative error so far and (submatrix) the numbers of sites added
+!> to S by accepts and padded by hooks. Called after every flush, so the file holds the totals of
+!> the run when it ends.
+!--------------------------------------------------------------------
    subroutine Lowrank_debug_summary()
       Implicit none
       Integer :: unit_dbg
