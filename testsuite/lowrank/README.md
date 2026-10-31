@@ -82,6 +82,15 @@ same accept/reject decisions. `SET` is one of the `sets.sh` sets (its common key
 - `standard delayed` is the trajectory check of the delayed scheme (wired into `WRAPGRUP`/`WRAPGRDO`, Task 8);
   `standard submatrix` is the trajectory check of the submatrix scheme (kernel in Task 11, same routing).
 
+## Debug build and self-tests
+
+`ALF_FLAGS_EXT="-DALF_LOWRANK_DEBUG"` (then `make -C Prog clean; make program`) keeps a shadow G with standard rank-1 updates and
+checks `Lowrank_current_G` against it after every accept, hook and flush (tolerance 1e-10); the counts and largest errors go to
+`lowrank_debug_summary.txt` in the run directory. Adding `-DLOWRANK_DEBUG_SELFTEST` corrupts the first wrap hook (delayed: skips one
+X-row scaling; submatrix: skips one `Ginv` row scaling) and the run must abort with `Lowrank_debug_check: stale G ...`;
+`-DLOWRANK_DEBUG_SELFTEST_PROPOSE` perturbs a proposal. In Hubbard models the submatrix hook touches pending sites only in the
+down-sweep (the un-wrap acts on the site just added), so the self-test fires there. Rebuild the normal binary afterwards.
+
 ## stat_runs.sh, stat_compare.py (statistical comparison of independent chains)
 
 ```bash
