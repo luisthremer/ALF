@@ -294,9 +294,11 @@ of [SX-S]; for a repeated site no flush is needed (project 1 flushed). `M̃ G0(S
 * `P ∩ S = ∅`: nothing to do.
 * `P ⊆ S`, or L, R diagonal: `M ← L_S M R_S` with `L_S`, `R_S` = L, R restricted to the pending part of P,
   embedded in k×k (O(k N_P)); diagonal L, R: `M(m,:) *= l_m`, `M(:,m) *= r_m`.
-* Partial overlap with a non-diagonal L, R: pad `P \ S` **before** ALF's wrap, then the previous case. Needs a
-  pre-wrap hook. This happens routinely: after an accept with `r < N_P` the inactive sites of P are not in S, and the
-  type-2 wrap of the same vertex is non-diagonal.
+* Partial overlap with a non-diagonal L, R: pad `P \ S` (zero rows/columns of M), then the previous case. Padding
+  reads no G0, so it can be done inside the post-wrap hook (no pre-wrap hook; spec review finding 6, checked in the
+  prototype). This happens routinely: after an accept with `r < N_P` the inactive sites of P are not in S, and the
+  type-2 wrap of the same vertex is non-diagonal. M is allocated with `cap + N_P_LIM` rows so that padding always
+  fits; the hook flushes after the transform if `k ≥ cap`.
 
 ### 12.5 Flush and capacity
 `Mw = M (E_S^T − G0(S,:))` (ZGEMM k×k×N), `G0 ← G0 − G0(:,S) Mw` (ZGEMM N×N×k, copy of `G0(:,S)` first).
@@ -323,17 +325,22 @@ At a slice end, instead of flushing, carry the factors through the hopping wrap:
 * down (`G ← B_T^{-1} G B_T`, `Hop_mod_mmthl` + `Hop_mod_mmthr_m1`): `X ← B_T^{-1} X`, `Y^T ← Y^T B_T`.
 Cost O(N_bond j) with the checkerboard, O(N² j) with a dense `e^{−ΔτT}` (= a flush, so no gain).
 A submatrix state converts to delayed form: `X = G0(:,S) M`, `Y^T = E_S^T − G0(S,:)` (O(N k²)).
-G must be flushed before anything reads it: measurements, stabilisation, global moves, Global_tau, end of the
-sweep direction. Not in the literature.
+G must be flushed before anything reads it. Read points (spec review finding 3): `CGR` at both stabilisations
+(`TEST = GR` first), `ham%Obser`/`Hop_mod_Symm`/`GR_reconstruction` at measured slices, `Tau_m`/`Tau_p` (also the
+projector's `Tau_p` inside the down sweep), Global_tau's `Wrapgr_Random_update` at WRAPGRDO entry, global moves,
+Langevin/HMC, the end of a sweep direction. Cross-slice is therefore refused with `N_Global_tau > 0`, and every read
+point asserts a flushed G. It gains nothing when every slice is measured (finite-T default LOBS window 1..Ltrot).
+Not in the literature.
 
 ## 13. Numerical check (`docs/scripts/check_rankN.py`)
 N = 10; models hubbard (rank-1), jz (diagonal rank-2, overlapping), sasb_zz (diagonal rank-4), tv (non-diagonal
 bonds, overlapping), tv_families (disjoint families), kondo (rank-1 + non-diagonal 3-site with a zero eigenvalue),
 mixed (all, repeated sites); up and down; accept masks all/half/rare; capacity ∞ and 3; with and without a hopping
 wrap between two slices (submatrix converted to delayed form there). Exact G = (1+A)^{-1} with A transformed
-alongside. All 336 runs (M-form): max relative ratio and G errors ≤ 7.7e-12 (`RESULT: PASS`, tolerance 1e-10).
-Mutations: no M transform in the hook → 6.2; no pre-wrap padding → assertion (partial non-diagonal overlap);
-delayed Y not transformed → 1.2. `--both-forms` adds the rejected Γ̃^{-1}+Q form (Sec. 12.6; 4 FAIL rows).
+alongside. All 336 runs (M-form): max relative ratio and G errors ≤ 9.4e-13 (`RESULT: PASS`, tolerance 1e-10).
+Hopping is complex Hermitian (flux), so `B^T ≠ B`. Mutations: no M transform in the hook → 6.2; no padding →
+assertion (partial non-diagonal overlap); delayed Y not transformed → 1.2; cross-slice `Y ← B^{-1} Y` instead of
+`B^{-T} Y` → 29. `--both-forms` adds the rejected Γ̃^{-1}+Q form (Sec. 12.6; 4 FAIL rows).
 
 ## 14. Comparison with the independent re-derivation (`docs/independent-derivation-rankN.md`)
 A subagent derived Part II from the papers and the ALF source without these notes; its check
@@ -350,4 +357,4 @@ ratio error 7.3e-15; its negative controls (R† instead of R^T, no padding, Y n
 | Submatrix state | first draft: Γ̃^{-1}, Q, paths B/W | M = Γ̃^{-1}Q, one accept formula | **adopted M-form** (Sec. 12.6) |
 | Partial non-diagonal overlap | pad before the wrap | pad, or convert, or flush | agree (we pad) |
 | Cross-slice | `X ← B X`, `Y^T ← Y^T B^{-1}` up; inverse down | same; conversion `X += G0(:,S) M` | agree |
-| Open points | non-square operands of the Hop_mod routines | not checked | to verify in Task 8 |
+| Open points | non-square operands of the Hop_mod routines | not checked | settled by the spec review: the OpT types use size(arg,1/2) |

@@ -247,6 +247,25 @@ Design/plan approvals are replaced by independent reviewer subagents; every deci
 - Independent review (Opus subagent): no critical; important "repeated P never on the new path in test 37" fixed (case 9);
   stack temporaries fixed; NaN/Inf note added. Not fixed (cosmetic): under MPI every rank prints the validation error.
 
+## Phase 2: design (2026-10-31; commits 04b7fa8b, d491282a and the review fold-in)
+- Spec `docs/superpowers/specs/2026-10-31-rankN-design.md` (D1–D14), formulas `docs/algorithm-notes.md` Part II, plan
+  `docs/superpowers/plans/2026-10-31-rankN.md` (10 tasks, subagent-driven), ledger `.superpowers/sdd/2026-10-31-rankN/`.
+- Numerical prototype `docs/scripts/check_rankN.py` (7 models incl. tV/Kondo/Jz/SaSb-zz/repeated sites, up/down, capacity,
+  cross-slice with complex hopping): `RESULT: PASS`, max error 9.4e-13; mutations fail (6.2, assertion, 1.2, 29).
+- Independent re-derivation (Opus subagent, no access to the notes; `docs/independent-derivation-rankN.md`, its check
+  `check_rankN_independent.py`: ALL CHECKS PASSED, ≤ 1.4e-14): agrees on ratio, rank-r update, L/R table, delayed hooks
+  (R^T, not R^†), cross-slice; **its submatrix M-form was adopted** (D3) because my first draft (Γ̃^{-1} + Q, two accept
+  paths) lost accuracy (1.1e-7 here, 9.5e-5 in the reviewer's L=12 bond test) with many repeated-site updates.
+- Independent spec review (Opus subagent): approve with changes. Resolved: unconditional hook calls after both wraps (D8);
+  padding moved into the post-wrap hook, no pre-wrap hook (D8); cross-slice refused with Global_tau, flush/assert at every
+  G read point, LOBS constraint (D10); padding-cascade decision rule (D13); Δ = 0 columns (D14); complex hopping in the
+  prototype; extra unit cases (E = 0 diagonal entries, padding past cap) and cross-slice trajectory sets.
+  Not adopted: E_Exp in the hooks (private in the Operator type; roundoff only); keeping project 1's rank-1 submatrix path
+  selectable (git history keeps it; tiers 2–5 are re-run on the M-form).
+- Decisions without the user (recorded here per the prompt): submatrix-T (arXiv:2602.03656) is not implemented (D9); SaSb-zz
+  is covered at the unit tier only, Jz at all tiers via the test model `LR_Jz_Test` (D11); N_delay now bounds the pending
+  rank (columns / pending sites), unchanged for rank-1 (D5).
+
 ## Work packages (project 2)
 | WP | Phase | Content | Done means |
 |---|---|---|---|
