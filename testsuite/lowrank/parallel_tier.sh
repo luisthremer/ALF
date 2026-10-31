@@ -40,7 +40,7 @@
 # Pre-registered protocol (testsuite/lowrank/README.md): a scalar |z| >= 3 is a failure with no replicate. If ONLY an array
 #   rule fails (FAIL-ARRAY), ONE replicate of the whole case is run with fresh seeds (candidate 3000, reference 4000); the
 #   case passes iff the replicate passes everything (tempering/pp: the replicate concerns the replica(s) whose round-1
-#   comparison failed; only those are judged in round 2). Expected false-fail rate of the array rule: ~11 % per comparison.
+#   comparison failed; only those are judged statistically in round 2, the other replica is still checked for hard failures). Expected false-fail rate of the array rule: ~11 % per comparison.
 # Core budget: at most 4 cores busy (MPI up to 4 ranks, threads 4, tempering/PP 2 ranks).
 # No `set -u` (configure.sh uses unset variables).
 
@@ -50,7 +50,7 @@ PAR="$ALFDIR/runs/parallel${PT_TAG:-}"
 BUILDS="$ALFDIR/builds${PT_TAG:-}"
 RETRY_G=""
 SCHEMES=(${PT_SCHEMES:-standard delayed submatrix}); PSETS=(${PT_SETS:-half tv}); NPS=(${PT_NP:-1 2 4})
-REBUILD=0; REPLICATE=1
+REBUILD=0; REPLICATE=1; BUILT_NOW=""
 PHASES=(); EXTRA=()
 for a in "$@"; do
     case "$a" in
@@ -82,6 +82,7 @@ build_variant() {   # build_variant VARIANT: copy of the committed tree, built o
     local v="$1" dir="$BUILDS/$1" mode stamp
     mode="$(variant_mode "$v")"
     stamp="$(src_stamp)"
+    case " $BUILT_NOW " in *" $v "*) return 0 ;; esac   # --rebuild: once per variant per invocation
     if [ $REBUILD = 0 ] && [ -x "$dir/src/Prog/ALF.out" ] && [ "$(cat "$dir/stamp" 2>/dev/null)" = "$stamp" ]; then
         return 0
     fi
@@ -98,6 +99,7 @@ build_variant() {   # build_variant VARIANT: copy of the committed tree, built o
         say "ERROR: build of $v failed, see $PAR/build_$v.log"; exit 2
     fi
     echo "$stamp" >"$dir/stamp"
+    BUILT_NOW="$BUILT_NOW $v"
 }
 bin_of() { echo "$BUILDS/$1/src/Prog/ALF.out"; }
 ANA() { echo "$BUILDS/noMPI/src/Analysis/ana.out"; }
