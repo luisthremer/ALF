@@ -95,6 +95,7 @@ Module QMC_runtime_var
     public :: read_and_broadcast_TEMPERING_var
 #endif
     public :: read_and_broadcast_QMC_var_and_ham_name
+    public :: validate_sequential_scheme
 
     public :: lock_QMC_runtime_settings
 
@@ -682,7 +683,41 @@ Module QMC_runtime_var
            call broadcast_QMC_runtime_var(MPI_COMM_i)
            CALL MPI_BCAST(ham_name,64,MPI_CHARACTER,0,MPI_COMM_i,ierr)
 #endif
+           ! Fail before the (possibly long) Hamiltonian setup, not at the first sweep
+           call validate_sequential_scheme()
 
         end subroutine read_and_broadcast_QMC_var_and_ham_name
+
+!--------------------------------------------------------------------
+!> @brief
+!> Terminates if Sequential_scheme is not "standard", "delayed" or "submatrix" (case-insensitive),
+!> or if N_delay < 1 for a non-standard scheme. Lowrank_init repeats the check.
+!--------------------------------------------------------------------
+        subroutine validate_sequential_scheme()
+
+          implicit none
+
+          Character (len=64) :: name
+          Integer :: i, ic
+
+          name = adjustl(Sequential_scheme)
+          do i = 1, len_trim(name)
+             ic = iachar(name(i:i))
+             if (ic >= iachar('a') .and. ic <= iachar('z')) name(i:i) = achar(ic - 32)
+          enddo
+          select case (trim(name))
+          case ("STANDARD")
+          case ("DELAYED", "SUBMATRIX")
+             if (N_delay < 1) then
+                write(error_unit,'(A,I0,A)') ' VAR_QMC: N_delay = ', N_delay, ' must be >= 1'
+                call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+             endif
+          case default
+             write(error_unit,*) 'VAR_QMC: unknown Sequential_scheme "', trim(Sequential_scheme), &
+                  &              '" (allowed: standard, delayed, submatrix)'
+             call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+          end select
+
+        end subroutine validate_sequential_scheme
         
 end Module QMC_runtime_var
