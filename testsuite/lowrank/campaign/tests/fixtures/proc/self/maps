@@ -1,0 +1,3 @@
+7f2a1c000000-7f2a1c021000 r-xp 00000000 08:01 1234567 /opt/fixture/lib/libfakeintel.so
+7f2a1c221000-7f2a1c222000 r--p 00021000 08:01 1234567 /opt/fixture/lib/libfakeintel.so
+7f2a1d000000-7f2a1d1c5000 r-xp 00000000 08:01 2345678 /usr/lib64/libc.so.6

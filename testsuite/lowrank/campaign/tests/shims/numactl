@@ -1,0 +1,9 @@
+#!/bin/bash
+# Test shim for numactl -H on macOS (one memory node holding all CPUs; real CPU count and memory size).
+ncpu=$(sysctl -n hw.ncpu); mib=$(( $(sysctl -n hw.memsize) / 1048576 ))
+echo "available: 1 nodes (0)"
+echo "node 0 cpus: $(seq -s ' ' 0 $((ncpu - 1)))"
+echo "node 0 size: $mib MB"
+echo "node distances:"
+echo "node   0"
+echo "  0:  10"

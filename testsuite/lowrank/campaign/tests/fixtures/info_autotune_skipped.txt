@@ -1,0 +1,13 @@
+ START TIME: 2026-10-31T07:02:51.807+01:00
+ Beta          :    2.0000000000000000
+ dtau,Ltrot_eff:   0.10000000000000001               20
+ Sweeps                              :           20
+ Bins                                :            3
+ This executable represents commit 26b354c7 of branch feature/delayed-submatrix.
+Sequential scheme: DELAYED, N_delay = auto+tune (static n0 = 24, Ndim = 144)
+Auto N_delay: tuning skipped (cross-slice), N_delay = 24
+  Precision Green  Mean, Max :    1.9009612428683341E-011   5.9076009323311141E-007
+  Precision Phase, Max       :    8.7707618945387367E-015
+  Acceptance                 :   0.43204365079365081
+  CPU Time                   :    1.5000000000000000
+ FIN TIME: 2026-10-31T07:02:54.307+01:00

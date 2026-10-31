@@ -1,0 +1,6 @@
+#!/bin/bash
+# Test shim for the tiny MKL_VERBOSE probe (blas_bench of Task T2 on the clusters): prints the fixture selected by
+# SHIM_MKL_FIXTURE (supermuc | helma_nofakeintel | helma_fakeintel) when MKL_VERBOSE=1.
+d="$(cd "$(dirname "$0")/../fixtures" && pwd)"
+[ "${MKL_VERBOSE:-0}" = 1 ] && cat "$d/mkl_verbose_${SHIM_MKL_FIXTURE:-supermuc}.txt"
+echo "probe: ZGEMM 64x64x64 done (shim)"

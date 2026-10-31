@@ -1,0 +1,5 @@
+#!/bin/bash
+# Test shim for 'scontrol show job ID' (record written by the sbatch shim).
+[ "$1" = show ] && [ "$2" = job ] && [ -r "$SHIM_STATE/jobs/$3" ] && { cat "$SHIM_STATE/jobs/$3"; exit 0; }
+echo "slurm_load_jobs error: Invalid job id specified" >&2
+exit 1

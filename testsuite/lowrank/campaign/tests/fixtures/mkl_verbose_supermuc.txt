@@ -1,0 +1,2 @@
+MKL_VERBOSE oneMKL 2025.0 Update 3 Product build 20251007 for Intel(R) 64 architecture Intel(R) Advanced Vector Extensions 512 (Intel(R) AVX-512) with support of Intel(R) Deep Learning Boost (Intel(R) DL Boost) enabled processors, Lnx 2.70GHz lp64 intel_thread
+MKL_VERBOSE ZGEMM(N,N,64,64,64,0x7ffd1c8,0x2b9c010,64,0x2bdc040,64,0x7ffd1d8,0x2c1c070,64) 1.21ms CNR:OFF Dyn:0 FastMM:1 TID:0  NThr:1

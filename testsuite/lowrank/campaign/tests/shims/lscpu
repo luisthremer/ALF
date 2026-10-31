@@ -1,0 +1,14 @@
+#!/bin/bash
+# Test shim for lscpu on macOS: the real values of this machine from sysctl, in lscpu's format.
+ncpu=$(sysctl -n hw.ncpu); pkgs=$(sysctl -n hw.packages 2>/dev/null || echo 1)
+cat <<X
+Architecture:            $(uname -m)
+CPU(s):                  $ncpu
+Model name:              $(sysctl -n machdep.cpu.brand_string)
+Thread(s) per core:      $(( $(sysctl -n hw.logicalcpu) / $(sysctl -n hw.physicalcpu) ))
+Core(s) per socket:      $(( $(sysctl -n hw.physicalcpu) / pkgs ))
+Socket(s):               $pkgs
+NUMA node(s):            1
+NUMA node0 CPU(s):       0-$((ncpu - 1))
+Flags:                   $(sysctl -n machdep.cpu.features 2>/dev/null | tr 'A-Z' 'a-z' || echo neon)
+X
