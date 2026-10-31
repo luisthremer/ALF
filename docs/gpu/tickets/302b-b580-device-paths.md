@@ -66,7 +66,7 @@ unchanged.
   `intel:~/alf-gpu/backup/intel_versions_2026-10-30.txt`. `intel.sh` does **not** set `ONEAPI_DEVICE_SELECTOR`.
 
 ## Files allowed
-- `Prog/gpu_stab_mod.F90`: remove the ONEMKL guard in `gpu_stab_setup` (5 lines: `#if`, the info line, `return`, `#else`, and the `#endif` at the end of the subroutine). Nothing else.
+- `Prog/gpu_stab_mod.F90`: remove the ONEMKL guard in `gpu_stab_setup` (5 lines: `#if`, the info line, `return`, `#else`, and the `#endif` at the end of the subroutine); and, by decision 26, let `ALF_GPU_FAULT_STAB=eps:<x>` act in the production sweep of a declared control run (see "Precision control" below). Nothing else.
 - `Prog/gpu_state_mod.F90`: the three ONEMKL guards (113–115, 577–579, 923–925). With the manager's sequencing, also the
   `ALF_LA_TEST_` prefix in the env reader and the allow-list (shared part).
 - `Prog/gpu_wrap_mod.F90`: `la_available` (98–102). The stale "(ticket 302 for GPU=intel)" message text may stay.
@@ -197,6 +197,21 @@ guard only (pessimistic c2_gpu estimate ~3200 s, > 2× margin); the driver has a
 - Same config and length as 212's T2: 120 × 30. With decision 16 the run length needs no exception any more.
 - The positive control plants 8 SEs: **decision 23** (2026-10-31, "Approve shift 8"). At m = 11, α = 0.01 Šidák
   (z ≈ 3.32, t ≈ k/√2), a shift of 5 is caught ~59 % of the time, 8 ~99 %.
+
+### Precision control (decision 26, 2026-10-31)
+- T0 fired the decision-24 stop rule: on the B580 (dev1, `hub12x12_cb_p`) `ALF_GPU_NS=0` gave Green / τ 0.984 / 0.912 of
+  the larger CPU mean (with NS 0.771 / 0.922); oneMKL's QR already gives a LAPACK-quality Q. Newton–Schulz stays on.
+- Replacement: `ALF_GPU_FAULT_STAB=eps:<x>` acts in the production sweep (today only inside `SELFTEST=3`): at each
+  device stabilization, the same perturbation as the self-test's graded fault (the element of largest |G| times (1 + x)),
+  applied to the device result that the precision check compares. Constraints: it acts only in a run that sets the
+  variable (a declared control, `allow_debug`; production refuses it as before); the armed line names the production
+  action; no run already declared in `302b.json` changes its behaviour or output (in particular the `SELFTEST=3` fault
+  runs and their controls).
+- **Calibration rule, fixed before any value is seen:** on dev1 seeds, config `hub12x12_cb_p`, build `in_def_pp`... no:
+  build `in_def` (the precision gate's GPU build), run the control for x ∈ {1e-10, 3e-10, 1e-9} and compute the gate's
+  statistic (GPU mean / larger CPU mean, Green and τ, against the existing `pr_none_b4` / `pr_none_pp_b4`). Choose the
+  smallest x in the grid whose Green ratio is ≥ 3× (margin over decision 24's 2×). If none reaches 3×, stop and report.
+  All three values are reported; the chosen x goes into the re-registered `302b.json` as the control run's env.
 
 ### Other open points
 - **Q-NS (decision 24, 2026-10-31: "Pre-register now"):** `ALF_GPU_NS=0` exists because of cuSOLVER's Q
