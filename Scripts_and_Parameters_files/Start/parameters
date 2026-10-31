@@ -60,6 +60,7 @@ Amplitude           = 1.d0  ! For update of  type=3,4  fields
 
 Sequential_scheme   = "standard"  ! "standard" | "delayed" | "submatrix"
 N_delay             = 0     ! delayed/submatrix: pending rank before a flush. 0 = automatic (static rule from Ndim, deterministic), -1 = automatic + warm-up timing (sweeps 2-3), >= 1 = fixed
+Lowrank_cross_slice = .F.   ! research prototype: carry delayed factors across time slices (opt-in; refused with N_Global_tau > 0)
 /
 
 &VAR_errors                !! Variables for analysis programs
