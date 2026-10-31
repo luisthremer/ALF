@@ -13,7 +13,8 @@
 #   BENCH_COMMIT  optional expected commit; a warning is printed if the binary reports another one
 #   SEED          first seed (default: the one in Start/seeds); identical for all schemes => identical trajectories
 # Run directory: runs/bench/<SCHEME>_L<L>_nd<N_delay>_t<THREADS>_ns<NSweep><TAG>
-# Output (one line, stdout):  scheme L N N_delay threads sec_per_sweep acceptance nsweep commit date
+# Output (one line, stdout):  scheme L N N_delay threads sec_per_sweep acceptance nsweep commit date pgreen_mean pgreen_max pphase_max
+#   (the last three are the "Precision Green Mean, Max" and "Precision Phase, Max" lines of info; stability diagnostics)
 #   sec_per_sweep = "CPU Time" in info / (NSweep*NBin). "CPU Time" is WALL time (system_clock) of the sweep
 #   phase only: the timer is restarted after the initial Green function computation (Prog/main.F90 calls
 #   Control_init again before the sweeps, see Prog/control_mod.F90), so setup is excluded.
@@ -28,7 +29,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ALFDIR="$(cd "$HERE/../.." && pwd)"
-[ $# -ge 3 ] || { sed -n 2,24p "${BASH_SOURCE[0]}" >&2; exit 2; }
+[ $# -ge 3 ] || { sed -n 2,25p "${BASH_SOURCE[0]}" >&2; exit 2; }
 SCHEME="$1"; L="$2"; ND="$3"; THREADS="${4:-1}"
 case "$SCHEME" in
     standard|delayed|submatrix) ;;
@@ -44,6 +45,7 @@ nsweep_for() {
         12) echo 140 ;;
         14) echo 66 ;;     # 0.38 s/sweep
         16) echo 35 ;;
+        18) echo 14 ;;     # added in Task 15 (standard ~1.8 s/sweep expected)
         20) echo 12 ;;     # 2.46 s/sweep
         *) echo "no NSweep calibrated for L=$1 (set NSWEEP=...)" >&2; return 1 ;;
     esac
@@ -72,6 +74,9 @@ fi
 cpu="$(awk '/^ *CPU Time *:/ {print $4}' info)"
 acc="$(awk '/^ *Acceptance *:/ {print $3}' info)"
 [ -n "$cpu" ] && [ -n "$acc" ] || { echo "bench $SCHEME L=$L: could not parse info in $DIR" >&2; exit 1; }
+pg="$(awk '/^ *Precision Green *Mean, Max *:/ {print $6, $7}' info)"
+pp="$(awk '/^ *Precision Phase, Max *:/ {print $5}' info)"
+[ -n "$pg" ] && [ -n "$pp" ] || { echo "bench $SCHEME L=$L: no Precision lines in info of $DIR" >&2; exit 1; }
 commit="$(sed -n 's/^ *This executable represents commit \([^ ]*\) .*/\1/p' info)"
 day="$(sed -n 's/^ *START TIME: \([0-9-]*\)T.*/\1/p' info)"
 [ -n "$commit" ] && [ -n "$day" ] || { echo "bench $SCHEME L=$L: no commit/START TIME line in $DIR/info" >&2; exit 1; }
@@ -84,5 +89,5 @@ if [ -f "$LAST" ] && [ "$(cat "$LAST")" != "$commit" ]; then
 fi
 echo "$commit" > "$LAST"
 awk -v s="$SCHEME" -v l="$L" -v nd="$ND" -v t="$THREADS" -v cpu="$cpu" -v acc="$acc" -v ns="$NSW" -v nb="$NBIN" \
-    -v c="$commit" -v d="$day" \
-    'BEGIN { printf "%s %d %d %d %d %.6g %.6f %d %s %s\n", s, l, l*l, nd, t, cpu/(ns*nb), acc, ns, c, d }'
+    -v c="$commit" -v d="$day" -v pg="$pg" -v pp="$pp" \
+    'BEGIN { printf "%s %d %d %d %d %.6g %.6f %d %s %s %s %s\n", s, l, l*l, nd, t, cpu/(ns*nb), acc, ns, c, d, pg, pp }'
