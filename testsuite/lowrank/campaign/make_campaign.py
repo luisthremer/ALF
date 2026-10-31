@@ -6,7 +6,8 @@ Usage: python3 -I make_campaign.py DESCRIPTION.py [--root DIR] [--dry-run]
 DESCRIPTION.py is a python file that defines a dict CAMPAIGN (see README.md and tests/campaign_test.py):
   id, profile (name in profiles/ or a path), partition, binary (path on the target machine), build_info (default
   <binary>.build_info.txt), binary_sha256 (optional), fakeintel (on|off, default: profile), repetitions, seed,
-  max_jobs_in_queue, max_attempts, template (optional parameter template dir), wall_safety, points = [
+  max_jobs_in_queue, max_attempts, template (parameter template dir; default <binary>.start written by build_info.sh,
+  else the current checkout's Start template with a warning), wall_safety, points = [
     {name, model, keys {KEY: VALUE} (make_params.py syntax), L [list], schemes [standard|delayed|submatrix],
      n_delay [ints >= -1; 0 = auto, -1 = auto+tune], nsweep, nbin (int or {L: int}), layouts ["RxT", ...],
      partial_node (allow ranks*threads != cores per node), n_fl, orbitals, sec_per_sweep_est (number or {L: number}),
@@ -262,12 +263,25 @@ def main(argv):
             die("local profile: sha256 of %s does not match %s" % (binary, build_info))
         bin_sha = bin_sha or recorded[0]
 
+    # parameter template: the description's, else <binary>.start (frozen by build_info.sh from the binary's own tree),
+    # else the current checkout's Start template (with a warning: a newer template may carry keys an older binary
+    # cannot read, e.g. Lowrank_cross_slice)
+    template = desc.get("template")
+    if not template and os.path.isdir(binary + ".start"):
+        template = binary + ".start"
+    if not template:
+        sys.stderr.write("make_campaign.py: WARNING: no template given and no %s.start: using the current checkout's "
+                         "Start template; make sure it matches the binary's commit\n" % binary)
+    tparams = os.path.join(template or os.path.join(ALF, "Scripts_and_Parameters_files", "Start"), "parameters")
+    if not os.path.isfile(tparams):
+        die("parameter template %s missing" % tparams)
     scripts = {"make_campaign.py": os.path.abspath(__file__), "job_template.sh": os.path.join(HERE, "job_template.sh"),
                "provenance.sh": os.path.join(HERE, "provenance.sh"), "rank_wrap.sh": os.path.join(HERE, "rank_wrap.sh"),
                "submit_all.sh": os.path.join(HERE, "submit_all.sh"), "profile.sh": profile_path,
-               "make_params.py": MAKE_PARAMS, "description": desc_path}
+               "make_params.py": MAKE_PARAMS, "description": desc_path, "template_parameters": tparams}
     resolved = {"campaign_id": desc["id"], "profile": prof, "partition": desc["partition"], "binary": binary,
-                "build_info": build_info, "binary_sha256": bin_sha, "fakeintel": plan["fakeintel"],
+                "build_info": build_info, "binary_sha256": bin_sha,
+                "template": os.path.dirname(os.path.abspath(tparams)), "fakeintel": plan["fakeintel"],
                 "repetitions": desc["repetitions"], "max_jobs_in_queue": int(desc.get("max_jobs_in_queue", 10)),
                 "max_attempts": int(desc.get("max_attempts", 2)), "job_prefix": plan["prefix"],
                 "script_sha256": {k: sha256(v) for k, v in sorted(scripts.items())},
@@ -322,7 +336,6 @@ def main(argv):
     for f in ("scripts/rank_wrap.sh", "submit_all.sh"):
         os.chmod(os.path.join(C, f), 0o755)
 
-    template = desc.get("template")
     for r in plan["runs"]:
         inp = os.path.join(C, "runs", r["run_id"], "input")
         kv = ["L1=%d" % r["L"], "L2=%d" % r["L"]] + ["%s=%s" % kv for kv in r["keys"].items()]

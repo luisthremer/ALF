@@ -22,19 +22,24 @@ Local side (`make_campaign.py`, `collect.py`, `report.py`): python3, stdlib only
    library, `BLAS_PROBE_CMD` = Task T2's `blas_bench` with tiny arguments, I_MPI_PMI_LIBRARY on Helma). The generator
    refuses a profile that still contains `[[` anywhere (profiles must not use the double-bracket test syntax) and a
    description with a `[[...]]` placeholder (regex `\[\[[^\]]*\]\]`) in any string value.
-3. **Describe the campaign** in a python file defining `CAMPAIGN` (see `tests/campaign_test.py` and the docstring of
+3. **Parameter template.** `build_info.sh` also freezes `Scripts_and_Parameters_files/Start/{parameters,seeds}` of the
+   build tree as `<binary>.start/`; `make_campaign.py` uses it by default when it exists locally (local profile), else
+   the description's `template`, else the current checkout's template with a warning. For a cluster campaign copy the
+   `.start` directory back (or extract it with `git show <commit>:Scripts_and_Parameters_files/Start/parameters`) and set
+   `template`: a newer template can carry keys an older binary cannot read (e.g. `Lowrank_cross_slice`).
+4. **Describe the campaign** in a python file defining `CAMPAIGN` (see `tests/campaign_test.py` and the docstring of
    `make_campaign.py`): profile, partition, binary (absolute path on the target), fakeintel on/off, repetitions, seed,
    `max_jobs_in_queue`, `max_attempts`, points (model keys in `make_params.py` syntax incl. `Beta`/`Dtau`, L list,
    schemes, N_delay list incl. 0 = auto and -1 = auto+tune, NSweep/NBin, layouts `RxT`, `partial_node`, `n_fl`,
    `orbitals`, `sec_per_sweep_est`, `setup_s_est` from pilot runs, optional `mem_gb_per_rank`).
-4. **Generate** locally: `python3 -I testsuite/lowrank/campaign/make_campaign.py DESC.py --root DIR` (`--dry-run` only
+5. **Generate** locally: `python3 -I testsuite/lowrank/campaign/make_campaign.py DESC.py --root DIR` (`--dry-run` only
    prints jobs, runs and the core-hour estimate). Checks: ranks x threads = cores per node unless `partial_node`; memory
    estimate (GR + work matrices + UDV stack per flavour) x ranks <= 90 % of node memory; wall estimate (x `wall_safety`
    + 5 min) <= partition limit; at least 3 repetitions for every non-local profile. Same description again: no-op; a different description under an existing id: refused.
-5. **Copy** `DIR/<id>` to the cluster (rsync) into the **workspace** file system (SuperMUC `$WORK`/`$SCRATCH`
+6. **Copy** `DIR/<id>` to the cluster (rsync) into the **workspace** file system (SuperMUC `$WORK`/`$SCRATCH`
    workspace, Helma `$WORK`/workspace dirs), never under `$HOME` (`submit_all.sh` warns), and **submit** with
    `<id>/submit_all.sh [--dry-run] [--wait SECONDS]`.
-6. **Copy back** and run `collect.py <id> --strict`, then `report.py <id>/collected.json --out report.md`.
+7. **Copy back** and run `collect.py <id> --strict`, then `report.py <id>/collected.json --out report.md`.
 
 ## Generated campaign directory
 
@@ -87,9 +92,15 @@ itself has no OpenMP region, so lines appear only if MKL threads), status.
 From `info` (collect.py): commit, START/FIN TIME, CPU Time, acceptance, Precision Green mean/max and Phase max, beta,
 dtau, sweeps, bins, model (if printed), scheme used, N_delay mode (fixed / auto / auto+tune / auto+tune (skipped:
 reason)), N_delay used, n0, Ndim. Derived: s/sweep = CPU Time / (NSweep x NBin); setup_s = launch wall time - CPU Time
-(start-up, Hamiltonian setup, initial stabilisation, final output). `timers.txt` (T1, `-DALF_TIMERS`) is parsed when
-present, else `timers_present = absent`. Until T1 lands, the timers path (parser, bin-1 drop, TIMER_RATE conversion,
-timing-split table) is tested only on the fixture `tests/fixtures/timers.txt`.
+(start-up, Hamiltonian setup, initial stabilisation, final output). `timers.txt` (T1, `-DALF_TIMERS`, format in `testsuite/lowrank/README.md`) is parsed when present, else
+`timers_present = absent`: `#` comments, header `TIMER_RATE`, `TIMER_CLOCK`, `TIMER_RANKS`, `TIMER_TICK`, per bin
+`TIMER_SWEEPS`, `TIMER <bin> <id> <rank0> <max> <mean>` (seconds) for the nine exclusive categories `update flush vwrap
+hop stab meas global langevin_hmc other`, `sweep` (their sum) and `bin_overhead`, and `COUNTER` lines. A second header in
+the same file (a restart in the same directory) starts a new block: the last block is kept and a warning recorded.
+Warnings (listed by collect.py): sweep != sum of the nine, `flush_unattributed` != 0, sum over bins of
+sweep + bin_overhead off info's CPU Time by more than 1 %. The local test injects real-format fixtures
+(`tests/fixtures/timers*.txt`: a real 2-bin sample from the T1 binary plus a synthetic bin 3, a restart, a non-zero
+flush_unattributed) into a copy of a finished campaign; it runs no flagged binary.
 
 A source the machine cannot provide is written as `unavailable(<reason>)`; `collect.py --strict` fails on any such or
 "unknown" value (only `build_git_commit` may be unavailable: a binary built in a git-archive copy; info's commit is
@@ -105,7 +116,9 @@ whose info contradicts the request (scheme, N_delay mode/value, sweeps/bins, bet
 excluded and listed;
 runs never started are listed as missing. Warnings: build_info commit != info commit, node not exclusive.
 
-`report.py COLLECTED.json [...] [--out FILE.md]`: refuses to mix commits, binaries or machines; groups never pool
+`report.py COLLECTED.json [...] [--out FILE.md]`: timing split = the nine exclusive categories per sweep (mean over ranks,
+bins >= 2), shares of `sweep`; `sweep` of the slowest rank and `bin_overhead` separately; counters per sweep
+(flush_rank_mean averaged over bins); runs with flush_unattributed != 0 are flagged. It refuses to mix commits, binaries or machines; groups never pool
 configurations (key includes campaign, fakeintel, MKL ISA, MKL threading layer: column "config"). Tables: median
 s/sweep, range and spread over repetitions with n_valid (groups with fewer than 3 are flagged `<3!`), speedup vs
 standard of the same config; max RSS (marked `<=` as an upper bound when only the job-level sacct value exists); node throughput (ranks / s per sweep) per layout;

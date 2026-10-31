@@ -2,7 +2,8 @@
 # End-to-end local test of the campaign generator with the 'local' profile and the PATH shims (no cluster).
 # Usage: testsuite/lowrank/campaign/tests/run_local_test.sh MPI_BINARY NOMPI_BINARY
 #   frozen binaries with <binary>.build_info.txt next to them (build_info.sh), e.g.
-#   runs/campaign_test/bin/ALF_mpi.out (2-rank layouts need MPI) and runs/campaign_test/bin/ALF_nompi.out.
+#   runs/campaign_test/bin/ALF_mpi.out (2-rank layouts need MPI) and runs/campaign_test/bin/ALF_nompi.out, each with
+#   its parameter template <binary>.start/ (written by build_info.sh; the current Start template may not match).
 # Output under runs/campaign_test/ (git-excluded); every test uses fresh campaign ids (time stamp), nothing is deleted.
 # Checks: placeholder refusal (supermuc, helma); layout and memory refusal; generator idempotency; mini campaign
 # (Hubbard L=8, standard + delayed N_delay 8, layouts 1x1 and 2x2, 2 repetitions) end to end with collect --strict
@@ -137,6 +138,30 @@ $COLLECT "$CP" > "$T/collect_dup_$STAMP.txt" 2>&1; rc=$?
 expect "duplicate key rc" "$rc" 1; cat "$T/collect_dup_$STAMP.txt"
 $COLLECT "$C" --strict --allow > /dev/null 2>&1; rc=$?
 expect "trailing --allow without KEY: usage error rc" "$rc" 2
+
+echo "== T1 timers.txt (real-format fixtures injected into a copy; no flagged binary is run, to keep CPU use minimal)"
+CT="$T/copy_timers_$STAMP"; cp -R "$C" "$CT"
+cp "$HERE/fixtures/timers.txt" "$CT/runs/hub_L8_1x1_r1_standard/a1/timers.txt"
+cp "$HERE/fixtures/timers.txt" "$CT/runs/hub_L8_1x1_r2_standard/a1/timers.txt"
+cp "$HERE/fixtures/timers_restart.txt" "$CT/runs/hub_L8_1x1_r1_delayed_nd8/a1/timers.txt"
+cp "$HERE/fixtures/timers_unattributed.txt" "$CT/runs/hub_L8_1x1_r2_delayed_nd8/a1/timers.txt"
+$COLLECT "$CT" --strict > "$T/collect_timers_$STAMP.txt" 2>&1; rc=$?
+expect "collect --strict with timers.txt rc" "$rc" 0
+grep 'timers:' "$T/collect_timers_$STAMP.txt" | cut -c1-200
+grep -q 'hub_L8_1x1_r1_delayed_nd8: timers: timers.txt has 2 header blocks' "$T/collect_timers_$STAMP.txt" \
+    && pass "restart block: last kept, warning" || fail "restart warning"
+grep -q 'hub_L8_1x1_r2_delayed_nd8: timers: bin 2: flush_unattributed = 3' "$T/collect_timers_$STAMP.txt" \
+    && pass "flush_unattributed warning" || fail "flush_unattributed warning"
+grep -q 'hub_L8_1x1_r1_standard: timers: sum of sweep + bin_overhead over bins = .* x info.s CPU Time' "$T/collect_timers_$STAMP.txt" \
+    && pass "cross-check vs info CPU Time fires (injected timers belong to another run)" || fail "CPU Time cross-check"
+expect "rows with timers present" "$(python3 -I -c 'import json,sys; print(sum(r["timers_present"] == "present" for r in json.load(open(sys.argv[1]))["rows"]))' "$CT/collected.json")" 4
+$REPORT "$CT/collected.json" --out "$CT/report.md" && pass "report with timing split" || fail "report timers"
+sed -n '/## 3. Timing split/,/## 4/p' "$CT/report.md" | grep -E '1x1 \| standard \|' | head -21
+expect "timing split rows for standard 1x1 (9 categories + sweep + slowest + bin_overhead)" \
+    "$(sed -n '/## 3. Timing split/,/## 4/p' "$CT/report.md" | grep -E '^\| hub \| 8 \| 1x1 \| standard \| n/a \| [^|]* \| 2 \| ' \
+       | grep -c -E '\| (update|flush|vwrap|hop|stab|meas|global|langevin_hmc|other|\*\*sweep\*\* \(sum of the nine\)|sweep, slowest rank|bin_overhead \(outside the sweeps\)) \|')" 12
+grep -q 'flush_unattributed != 0 (timer attribution bug, must be 0): hub_L8_1x1_r2_delayed_nd8' "$CT/report.md" \
+    && pass "report flags flush_unattributed" || fail "report flag"
 
 echo "== SIGTERM trap (noMPI binary, 1x1, 2 repetitions; time limit simulated in hub_L8_1x1_r1_standard)"
 export CAMPAIGN_TEST_ID="t3nompi_$STAMP" CAMPAIGN_TEST_BIN="$NOMPI_BIN" CAMPAIGN_TEST_LAYOUTS="1x1"

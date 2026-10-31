@@ -5,7 +5,10 @@
 #   source configure.sh SUPERMUC-NG MPI NO-INTERACTIVE && make program && testsuite/lowrank/campaign/build_info.sh $WORK/bin/ALF_<tag>.out
 # Copies SOURCE_BINARY (default $ALF_DIR/Prog/ALF.out) to FROZEN_BINARY (refuses to overwrite a different existing file)
 # and writes FROZEN_BINARY.build_info.txt: KEY=VALUE lines (copied into every job's provenance with prefix build_),
-# then raw sections (### ...). Every job verifies the binary's sha256 against binary_sha256 here. bash 3.2, no python.
+# then raw sections (### ...). Every job verifies the binary's sha256 against binary_sha256 here. Also freezes the
+# parameter template of the same tree ($ALF_DIR/Scripts_and_Parameters_files/Start/{parameters,seeds}) as
+# FROZEN_BINARY.start/: make_campaign.py uses it by default, so the generated parameters match the binary's namelists.
+# bash 3.2, no python.
 set -o pipefail
 [ $# -ge 1 ] || { sed -n 2,9p "$0" >&2; exit 2; }
 dst="$1"
@@ -25,6 +28,11 @@ if [ -e "$dst" ]; then
     fi
 else
     cp "$src" "$dst" && chmod a-w "$dst" || exit 1
+fi
+tdir="$dst.start"
+if [ ! -d "$tdir" ]; then
+    mkdir -p "$tdir" && cp "$ALF_DIR/Scripts_and_Parameters_files/Start/parameters" "$ALF_DIR/Scripts_and_Parameters_files/Start/seeds" "$tdir/" \
+        && chmod a-w "$tdir"/* || { echo "build_info.sh: cannot freeze the Start template into $tdir" >&2; exit 1; }
 fi
 out="$dst.build_info.txt"
 [ ! -e "$out" ] || chmod u+w "$out"
@@ -56,6 +64,8 @@ else libs="unavailable(no ldd/otool)"; libtool=none; fi
     echo "alf_lib=$(prov_flat "$ALF_LIB")"
     echo "flags_ext=${ALF_FLAGS_EXT:-none}"
     echo "modules=$(prov_flat "$mods")"
+    echo "template=$tdir"
+    echo "template_parameters_sha256=$(prov_sha256 "$tdir/parameters")"
     echo "libs_tool=$libtool"
     mkl="$(printf '%s\n' "$libs" | grep -o -E 'lib(mkl|iomp|tbb)[A-Za-z0-9_.+-]*' | sort -u | tr '\n' ' ')"
     echo "libs_mkl=${mkl:-none (no dynamically linked libmkl*/libiomp*/libtbb*: static MKL or another BLAS)}"
