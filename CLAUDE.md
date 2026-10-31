@@ -160,5 +160,26 @@ Unit level (`testsuite/Prog.tests/36-lowrank-unit.F90`, ctest `36-lowrank-unit`;
   G is flushed at every slice end, so the effective delay is min(N_delay, accepts per slice); submatrix rejected at
   init until Phase 4.
 
+## Phase 4 results: submatrix (verified 2026-10-31, commit ab81f3fd)
+- Unit (ctest 36), all cases × up/down × N_delay {1,7,32,1000}, max ratio / G err:
+  - submatrix ≤ 3.7e-13 / 7.5e-14 in the well-conditioned cases (mz, density, continuous, repeat, mixed, asym, repeat_skip);
+  - mz_illcond 2.6e-10 / 8.8e-11 (delayed 2.0e-12 / 1.4e-12), within TOL_ILL. This is the forward error of the explicit
+    Γ̃⁻¹ (cond(Γ̃) up to ~1e6 in that case), not an ordering bug (two independent reviews).
+  - Kernel equivalence: 0 toggle mismatches, identical next ranf. Mutations (no Ginv rescale, no repeated-site flush)
+    fail 15–30 rows.
+- Trajectory: IDENTICAL decisions standard vs submatrix for start, doped, density, continuous, kondo, pv_adiab, z2gt
+  (N_delay=5), tv (fallback, byte-identical, message once), start with N_delay=3, Propose_S0=.T. and N_delay=100000
+  (peak RSS 8 MiB). delayed vs submatrix also IDENTICAL (start, doped). The max relative ratio difference of ~5e-8 occurs
+  only at |R| ~ 1e-5 (cancellation in d), the same for delayed; median 3e-15.
+- Statistical (submatrix s4 vs standard s1): half, doped (sign 0.601(10) vs 0.590(10)), density: PASS, all scalar |z| ≤ 2.
+  Same seed gives the same trajectory over the whole stat run: confout_0 of submatrix_s4 == standard_s4 and
+  delayed_s3 == standard_s3 for all three sets.
+- Stability, paired (same trajectory) Precision Green max sub/std: half 0.99, doped 1.03, density 1.92
+  (2.2e-11 vs 1.1e-11); Phase max density 1.9; means 1.03–1.12. Delayed paired: 1.00 / 0.94 / 0.89.
+- Regression: 9 sets bit-identical to baseline; ctest 40/40. Debug shadow max 3e-14; submatrix self-test fires
+  (down-sweep only for Hubbard: the up-sweep hook never touches a pending site).
+- Implementation notes: capacity capped at min(N_delay, vertices per slice[, Ndim for submatrix]); flush before
+  proposing at a site already pending (any flavour); O(1) slot-invariant check in accept.
+
 ## Open questions
 - See the design spec, section "Open questions for Checkpoint 1".
