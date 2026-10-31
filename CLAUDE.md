@@ -345,6 +345,12 @@ binary with K_ND = 1). Rule: submatrix slower if > 5 % and > 2 × the larger spr
 | 7 | after 6 | Cluster request (first stop) | message with evidence, open questions, benchmark matrix with core-hour estimates |
 | 9 | any | Polish without cluster: `files.tex`, `default_parameters_generic.py`, §7 notices | docs build; generator knows the keys |
 
+## Cluster-phase items (prepared locally, to be checked on the clusters)
+- HDF5 provenance (P6-2): non-standard schemes write `Sequential_scheme`, `N_delay_requested` (at the parameter write) and
+  `N_delay_used` (end of run) as attributes of `/` in `data.h5`; standard runs write nothing new (baseline data.h5 kept).
+  Code only preprocessed and compile-checked against stub hdf5/h5lt modules locally (no HDF5 here); on the cluster: build with
+  the HDF5 module, run delayed and standard, check `h5dump -A -g / data.h5`.
+
 ## Open questions for the user (collected for the cluster request)
 1. Submatrix accuracy guard `K_ND = 8` (Task 5): once a submatrix block holds an accepted non-diagonal update, it is flushed
    at min(N_delay, 8) pending sites. Without the guard the M-form's forward error reached 5e-10 (> TOL_UNIT 1e-10) in the
