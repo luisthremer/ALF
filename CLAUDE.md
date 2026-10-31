@@ -198,5 +198,50 @@ Unit level (`testsuite/Prog.tests/36-lowrank-unit.F90`, ctest `36-lowrank-unit`;
 - Final verification (2026-10-31, code commit 70176feb): ctest 40/40 in GNU noMPI, MPI and TEMPERING builds; regress 9/9 IDENTICAL;
   6 trajectory comparisons IDENTICAL (report §3.6).
 
-## Open questions
+## Open questions (project 1)
 - See the design spec, section "Open questions for Checkpoint 1".
+
+# Project 2: full implementation (started 2026-10-31; prompt `../PROMPTS/02-manager-prompt.md`)
+
+Phases 0-6 run locally and autonomously; the first stop is the cluster request after Phase 6, or on **2026-12-01**
+at the latest (deadline guard: SuperMUC-NG Phase 1 ends ~31.12.2026). No cluster access before explicit permission.
+Design/plan approvals are replaced by independent reviewer subagents; every decision is recorded below with its reason.
+
+## Decisions (project 2)
+- (2026-10-31, user) Features first, locally; clusters afterwards as a separately approved phase.
+- (2026-10-31, user) Scope: automatic N_delay; rank-N vertices (diagonal and non-diagonal) for both schemes; real-run
+  validation of MPI, tempering, PARALLEL_PARAMS locally; HDF5 validated on the clusters; projector validation;
+  cross-slice delay as a research prototype.
+- (2026-10-31, user) Large-N setup: fast path in baseline `Op_V_is_symmetric` (all `Op_V` diagonal -> true; otherwise
+  only operators with overlapping supports). Identical result; regression tier byte-identical.
+- (2026-10-31, user) Cluster jobs: built and submitted by me via ssh after permission, inside the workspace dirs only;
+  each benchmark campaign needs approval with a core-hour estimate; builds/validation/smoke on test/short partitions
+  (<= 1 node, <= 30 min) need no further approval.
+- (2026-10-31, user) No local HDF5 build (it would download and compile HDF5).
+- Tolerances of project 1 stay (unit 1e-10 / ill-conditioned 1e-8, pre-registered statistical rules). New tier 6
+  (parallel): observables independent of MPI rank and thread count within errors; tempering/PP runs agree with
+  independent single runs.
+
+## Phase 0: starting state (verified 2026-10-31, HEAD de4f2a4c, code 70176feb)
+- `make all` ok; ctest 100 % of 40; `regress_vs_baseline.sh` 9/9 IDENTICAL; trajectories start standard vs
+  submatrix and standard vs delayed: IDENTICAL decisions over all 21600 proposals.
+- Audit blocking items re-checked locally: B2 (`Op_V_is_symmetric`, `Operator_mod.F90:1025`, two dense N x N matmul per
+  vertex and flavour; called only if `Symm .and. .not. override_symmetric_decomposition_check`; on failure it only
+  warns) confirmed by reading; I4 (scheme validated lazily in `Lowrank_init` at the first WRAPGRUP/WRAPGRDO) confirmed.
+  B3/B4 (Intel toolchain, cluster stacks) cannot be checked locally: `ifx`, `ifort`, `mpiifort` are not installed.
+
+## Work packages (project 2)
+| WP | Phase | Content | Done means |
+|---|---|---|---|
+| 1a | 1 | `Op_V_is_symmetric` fast path: all diagonal -> true; else block-local column updates of the forward/reverse products (O(n_op Ndim N_P^2) instead of O(n_op Ndim^3)) | unit test new == old on random sets; regress IDENTICAL; setup time at N = 3600 recorded |
+| 1b | 1 | Validate `Sequential_scheme`, `N_delay` right after the parameter read | typo aborts before the Hamiltonian setup; regress IDENTICAL |
+| 2 | 2 | Design + plan: rank-N_P diagonal/non-diagonal vertices (delayed, submatrix), multi-site submatrix blocks, projector, cross-slice delay | algorithm notes extended, independent re-derivation agrees, plan reviewed |
+| 3 | 3 | Rank-N delayed | tiers 1-5 for tV, Kondo-J, Z2 or Spin-Peierls, Jz/SaSb-zz, type-1 with Delta != 0, sign-problem set |
+| 4 | 4 | Rank-N submatrix | same tiers; decisions identical to delayed |
+| 5 | 5 | Projector statistical validation; cross-slice prototype (keep/opt-in/remove decided by measurement); MPI rank-count independence; tempering and PP real runs | tier 3 for a projector set; tier 6 locally |
+| 6 | 6 | Automatic N_delay (static rule from the papers, clamped; optional warm-up timing, rank 0 decides, broadcast; >5 % rule), fixed N_delay override, logged in `info` | auto value within noise of the best fixed value (Mac); chain identical except near-ties |
+| 7 | after 6 | Cluster request (first stop) | message with evidence, open questions, benchmark matrix with core-hour estimates |
+| 9 | any | Polish without cluster: `files.tex`, `default_parameters_generic.py`, §7 notices | docs build; generator knows the keys |
+
+## Open questions for the user (collected for the cluster request)
+- (none yet)
