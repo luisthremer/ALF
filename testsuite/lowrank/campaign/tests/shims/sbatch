@@ -1,0 +1,21 @@
+#!/bin/bash
+# Test shim for sbatch: runs the batch script synchronously in the foreground (one job at a time, like a 1-node queue
+# that is always free), with the Slurm variables a batch job sees. State in $SHIM_STATE (job counter, job records).
+script="$1"
+[ -r "$script" ] || { echo "sbatch: cannot read $script" >&2; exit 1; }
+: "${SHIM_STATE:?SHIM_STATE not set}"
+mkdir -p "$SHIM_STATE/jobs"
+id=$(( $(cat "$SHIM_STATE/jobid" 2>/dev/null || echo 1000) + 1 ))
+echo "$id" > "$SHIM_STATE/jobid"
+opt() { sed -n "s/^#SBATCH --$1=\(.*\)/\1/p" "$script" | head -1; }
+name="$(opt job-name)"; out="$(opt output)"; ntasks="$(opt ntasks)"; cpt="$(opt cpus-per-task)"; part="$(opt partition)"
+excl=YES; grep -q '^#SBATCH --exclusive' "$script" && excl=NO
+host="$(hostname -s)"
+printf 'JobId=%s JobName=%s\n   Partition=%s NumNodes=1 NumTasks=%s CPUs/Task=%s\n   OverSubscribe=%s Contiguous=0\n   NodeList=%s BatchHost=%s\n   TimeLimit=%s Requeue=0\n' \
+    "$id" "$name" "${part:-local}" "$ntasks" "$cpt" "$excl" "$host" "$host" "$(opt time)" > "$SHIM_STATE/jobs/$id"
+out="$(printf '%s' "$out" | sed -e "s/%j/$id/g" -e "s/%x/$name/g")"
+echo "Submitted batch job $id"
+SLURM_JOB_ID="$id" SLURM_JOB_NAME="$name" SLURM_CLUSTER_NAME=localshim SLURMD_NODENAME="$host" \
+SLURM_SUBMIT_DIR="$PWD" SLURM_NTASKS="$ntasks" SLURM_CPUS_PER_TASK="$cpt" SLURM_JOB_NODELIST="$host" \
+    /bin/bash "$script" > "${out:-slurm-$id.out}" 2>&1 < /dev/null
+exit 0

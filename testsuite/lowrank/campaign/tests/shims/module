@@ -1,0 +1,6 @@
+#!/bin/bash
+# Test shim for the environment-modules command (macOS has none).
+case "$1" in
+    list) echo "Currently Loaded Modulefiles: (local shim) gcc/16.2.0-homebrew mpich/homebrew" ;;
+    load|switch|purge) exit 0 ;;
+esac

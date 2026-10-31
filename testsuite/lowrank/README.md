@@ -276,3 +276,9 @@ is fixed. `info` says `Sequential scheme: <NAME>, N_delay = auto (static n0 = <n
   `stat_runs.sh` and the `debug` phase of `tiers.sh` pin `N_delay=32` (recorded statistical/stability and shadow-error
   numbers, existing chains in `runs/stat`). `bench.sh` always passes N_delay explicitly; the regression set `explicit` keeps
   `N_delay=7` with `standard` (ignored there).
+
+## campaign/ (Slurm benchmark campaigns with provenance)
+
+Generator for the cluster benchmark campaigns (SuperMUC-NG, Helma; bash-only job scripts, provenance captured on the
+compute node, `collect.py` / `report.py` locally) and its local test with PATH shims: see
+[campaign/README.md](campaign/README.md).

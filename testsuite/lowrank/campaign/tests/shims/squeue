@@ -1,0 +1,4 @@
+#!/bin/bash
+# Test shim for squeue -h -o %j: prints the job names listed in $SHIM_STATE/queue (simulated pending jobs).
+[ -r "${SHIM_STATE:-/nonexistent}/queue" ] && cat "$SHIM_STATE/queue"
+exit 0

@@ -1,0 +1,5 @@
+#!/bin/bash
+# Test shim for free -m on macOS (total from sysctl hw.memsize; used/free not computed).
+mib=$(( $(sysctl -n hw.memsize) / 1048576 ))
+echo "               total        used        free      shared  buff/cache   available"
+echo "Mem:          $mib           -           -           -           -           -"

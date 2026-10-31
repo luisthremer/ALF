@@ -1,0 +1,39 @@
+#!/bin/bash
+# Test shim for srun -n N --cpus-per-task=T --cpu-bind=...,verbose CMD: prints Slurm-style cpu-bind lines (emulated
+# masks: macOS cannot bind) and starts CMD once (N = 1) or via MPICH's mpirun -n N (N > 1; ranks get PMI_RANK).
+# Failure injection for the tests (matched against the working directory, i.e. the run's attempt directory):
+#   SHIM_SRUN_FAIL_MATCH=<substring>  exit 137 without starting CMD (simulates an OOM kill)
+#   SHIM_SRUN_TERM_MATCH=<substring>  send SIGTERM to the batch script (simulates the time limit), exit 143
+n=1; t=1; verbose=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -n) n="$2"; shift ;;
+        --cpus-per-task=*) t="${1#*=}" ;;
+        -c) t="$2"; shift ;;
+        --cpu-bind=*) case "$1" in *verbose*) verbose=1 ;; esac ;;
+        -*) ;;
+        *) break ;;
+    esac
+    shift
+done
+if [ -n "$SHIM_SRUN_FAIL_MATCH" ] && case "$PWD" in *"$SHIM_SRUN_FAIL_MATCH"*) true ;; *) false ;; esac; then
+    echo "srun: error: task 0: Out Of Memory (shim)" >&2
+    exit 137
+fi
+if [ -n "$SHIM_SRUN_TERM_MATCH" ] && case "$PWD" in *"$SHIM_SRUN_TERM_MATCH"*) true ;; *) false ;; esac; then
+    job="$(ps -o ppid= -p "$PPID" | tr -d ' ')"
+    echo "srun: Job step aborted: time limit (shim, SIGTERM to batch script pid $job)" >&2
+    kill -TERM "$job"
+    exit 143
+fi
+if [ "$verbose" = 1 ]; then
+    i=0
+    while [ "$i" -lt "$n" ]; do
+        printf 'cpu-bind=MASK - %s, task %2d %2d [%d]: mask 0x%x set (shim, emulated)\n' "$(hostname -s)" "$i" "$i" "$$" \
+            $(( ((1 << t) - 1) << (i * t) )) >&2
+        i=$((i + 1))
+    done
+fi
+unset SLURM_PROCID
+if [ "$n" -eq 1 ]; then SLURM_PROCID=0 exec "$@"; fi
+exec mpirun -n "$n" "$@"
