@@ -10,8 +10,9 @@
 - **Branch:** `gpu-port-302b` (the 2026-10-30 draft branch `gpu-port-302b-b580` is superseded)
 - **Acceptance files:** `testsuite/gpu_reference/acceptance/302b.json` (Intel part, `intel`: 82 runs, 15 gates, 18
   controls) and `302b.nvidia.json` (`nividia` part, `acc_driver.py --part nvidia`: 10 runs, 5 gates, 5 controls).
-- **Status:** pre-registration pending the final review (b) of 2026-10-31; the pre-registration sha is recorded here and
-  in DECISIONS.md once approved. No implementation has started.
+- **Status:** PRE-REGISTERED. Pre-registration commit `0e427164` (`0e42716439ce3ec82f706f50c78f22e625842b3c`,
+  2026-10-31) on `gpu-port-302b`, base `71af3e076322`; final review (b) approved it (docs-only ticket fixes afterwards).
+  `acc_ship.sh` takes `0e427164` as PREREG_SHA. No implementation had started at that commit.
 
 ## Goal
 With `GPU=intel` (ifx 2026.2 OpenMP offload, spir64 JIT, plus the 302a oneMKL backend), the 204 wraps (checkerboard and
@@ -20,7 +21,7 @@ gates against the ifx CPU oracle. The 207 τ pass stays off under `GPU=intel` un
 unchanged.
 
 ## Context
-- **Guards in the code at 3e23a682** (unchanged since d8cc74f7; grep `ALF_LA_ONEMKL` in `Prog/`):
+- **Guards in the code at the base 71af3e07** (unchanged since d8cc74f7; grep `ALF_LA_ONEMKL` in `Prog/`):
   - `Prog/gpu_stab_mod.F90:139–142`, `gpu_stab_setup`: `#if defined(ALF_LA_ONEMKL)` → `GPU stabilization (206): INACTIVE …
     (ticket 302)` + `return` / `#else` … `#endif` (end of the subroutine). PLAN cites 137–140; 212 shifted the lines.
   - `Prog/gpu_state_mod.F90:113–115` (`use alf_la_mod, only: la_init, la_finalize`), `577–579` (`la_init` in
@@ -65,7 +66,7 @@ unchanged.
   `intel:~/alf-gpu/backup/intel_versions_2026-10-30.txt`. `intel.sh` does **not** set `ONEAPI_DEVICE_SELECTOR`.
 
 ## Files allowed
-- `Prog/gpu_stab_mod.F90`: remove the ONEMKL guard in `gpu_stab_setup` (4 preprocessor/statement lines). Nothing else.
+- `Prog/gpu_stab_mod.F90`: remove the ONEMKL guard in `gpu_stab_setup` (5 lines: `#if`, the info line, `return`, `#else`, and the `#endif` at the end of the subroutine). Nothing else.
 - `Prog/gpu_state_mod.F90`: the three ONEMKL guards (113–115, 577–579, 923–925). With the manager's sequencing, also the
   `ALF_LA_TEST_` prefix in the env reader and the allow-list (shared part).
 - `Prog/gpu_wrap_mod.F90`: `la_available` (98–102). The stale "(ticket 302 for GPU=intel)" message text may stay.
@@ -79,7 +80,8 @@ unchanged.
   `acc_gpunone.sh` skips every `Prog/gpu_*` file. Edits elsewhere in `Prog/gpu_*` (e.g. `gpu_update_mod.F90`, the CUDA
   dense path, shared self-test code) would not be caught by a gate. So the manager checks the candidate's
   `changed_files.txt` (written by the driver) against this list before T2, and review (a) checks the diff line by line
-  (review (b) 2026-10-31, finding 5).- A defect found in `alf_la` (ONEMKL) is reported, not fixed here: its fix would change this file's expected counts
+  (review (b) 2026-10-31, finding 5).
+- A defect found in `alf_la` (ONEMKL) is reported, not fixed here: its fix would change this file's expected counts
   (re-registration). **Manager (2026-10-31): no `alf_la` edits in 302b**; a defect found there gets its own ticket.
 
 ## Acceptance
@@ -89,7 +91,7 @@ unchanged.
   `base_in_none` (ifx CPU).
 - 10 configs, identical to 212's, with their parameter hashes. The driver refuses if pyALF on `intel` prepares different
   parameters.
-- 67 GPU runs, 10 CPU runs, 4 ctests, 15 gates, 18 controls.
+- 67 GPU + 10 CPU runs executed, plus 5 mutation entries = 82 run ids; 4 ctests, 15 gates, 18 controls.
 
 Every `GPU=intel` run gets `ONEAPI_DEVICE_SELECTOR=level_zero:0` from `acc_run.sh` itself (H2; recorded in the
 provenance env), and every production run must show the B580 device line as an active line (the refusal and
@@ -124,6 +126,7 @@ device τ pass runs.
 | `gpu_none_ctest` | GNU devel ctest | 100 % of 53 (confirmed, decision 18) | one planted failure (FAIL) |
 | `cuda_identity` | CUDA base vs candidate builds, same seeds, default and LOG, 6×6 | bit-identical | `scale 1e-12` (FAIL) |
 | `none_identity` | nvfortran GPU=none base vs candidate | bit-identical | `scale 1e-12` (FAIL) |
+| `refusal_la_test_cuda` | production CUDA run with `ALF_LA_TEST_POISON_INFO=1` | refusal line, rc 1 | `ALF_GPU_DEBUG=1` + POISON_INFO accepted (FAIL) |
 
 CUDA "unchanged" is checked at run time, because `acc_gpunone.sh` does not preprocess `Prog/gpu_*` under the CUDA macros.
 "HOST unchanged" is read as GPU=none (the alf_la HOST backend is used only by the tests).
@@ -156,8 +159,8 @@ CUDA "unchanged" is checked at run time, because `acc_gpunone.sh` does not prepr
 - **Host fallback:** `OMP_TARGET_OFFLOAD=MANDATORY` (harness).
 
 ### Run lengths, time and budget
-Run lengths are those of 212 (statistics, same hashes). No time limit applies (decision 16). `timeout_s` 3600 is a hang
-guard only; the driver has a single global timeout.
+Run lengths are those of 212 (statistics, same hashes). No time limit applies (decision 16). `timeout_s` 7200 is a hang
+guard only (pessimistic c2_gpu estimate ~3200 s, > 2× margin); the driver has a single global timeout.
 
 **How the time was estimated:**
 - A30 wall times come from 212's T2 driver log (`nividia:~/alf-gpu/work/t212/cand/mgr/8022c4b0de64/logs/`): 6×6 fd 70 s,
@@ -179,7 +182,13 @@ guard only; the driver has a single global timeout.
 | ctests (4) | – | ~5 min | ~8 min |
 | **per tier (T1 or T2)** | **~104 min** | **~170 GPU-min** | **~335 GPU-min** |
 
-- The nividia part takes ~5 GPU-min per tier (4 CUDA runs) plus CPU builds and ctest.
+- The nividia part takes ~7 GPU-min per tier (6 CUDA runs: 4 identity runs, the refusal run and its 200-bin 6×6
+  control `acc_la_cuda`, ~70 s on the A30) plus CPU builds and ctest (decision 11 budget on nividia).
+- The CPU oracle runs and `ifx_none_identity` run on `intel`, not `nividia` (exception to "CPU-only checks stay on
+  nividia"): they need the pinned ifx 2026.2 of the Intel lane.
+- Not yet measured on `intel`: run-to-run identity of single-threaded MKL (no MKL_CBWR) on the hybrid i5-14400, which
+  `ifx_none_identity` and the determinism pairs rely on. T0 checks it early (second foreseeable cause of a change after
+  pre-registration, after Q-NS).
 - The CPU oracle runs (10) run alongside the GPU runs on `intel` (`cpu_parallel` 2) and add no GPU time.
 - **Budget: decision 20** (2026-10-31): no fixed GPU budget on the B580. The P8 timing probe still runs before
   pre-registration, to set `timeout_s` (hang guard) and to plan the T1/T2 slots; no cuts are planned.
@@ -210,12 +219,12 @@ guard only; the driver has a single global timeout.
 - **P2 done.** Prebuilt HDF5 for ifx 2026.2 in `~/alf-gpu/hdf5/`.
 - **P3 H1 implemented** on branch `gpu-port-harness-302b` (`05e677c4`): `acc_run.sh` accepts `ALF_LA_TEST_*` only with
   `--allow-debug` and records them as debug env; `verdict.py` `DEBUG_PREFIXES`, the gate lint and the driver's ctest
-  check include the prefix; VERIFICATION §2 lists it. Review (c): changes required (selector evidence check, selfcheck
-  cases); fixes in progress, then a fresh review (c).
+  check include the prefix; VERIFICATION §2 lists it. Review (c): approved 2026-10-31 after six rounds (final head
+  `71af3e07`, fast-forwarded into `gpu-port`); recorded 212 and 302a verdicts recompute identically.
 - **P4 H2 implemented** on the same branch: `acc_run.sh` sets `ONEAPI_DEVICE_SELECTOR=level_zero:0` for `GPU=intel`
   builds and refuses overrides; the draft no longer declares it. **H3 done** outside the harness: `intel.sh` sets
   `NEO_CACHE_PERSISTENT=0` (2026-10-30); the old `~/.cache/neo_compiler_cache` waits for the owner.
-- **P5 done.** 302a merged (`890185c0`); counts confirmed. The base is fixed when the harness branch merges.
+- **P5 done.** 302a merged (`890185c0`); counts confirmed; base `71af3e076322`.
 - **P6** dpkg record before T1/T2 (decision 13), against `intel:~/alf-gpu/backup/intel_versions_2026-10-30.txt`.
 - **P7 done.** Decisions 20 (budget), 22 (τ), 23 (shift 8), 24 (pre-register now, NS=0 stop rule), 25 (standing approval
   for unattended T1/T2 on the B580).
@@ -234,14 +243,18 @@ guard only; the driver has a single global timeout.
   - The 2026-10-28 point (0.475 s/sweep at 6×6, ifx 2025.3, old driver) is obsolete: the same path now takes 0.141 s.
   - The time estimate above (f = 1.5–3 vs the A30) is pessimistic for the 204/205 part (measured f ≈ 0.4–0.5 with host
     stabilization). The device stabilization adds an unknown cost (302a: ~0.45 ms fixed per oneMKL QR call), so the
-    estimate table stays as the upper bound; `timeout_s` 3600 stays a generous hang guard.
+    estimate table stays as the upper bound; `timeout_s` was raised to 7200 (> 2× the pessimistic c2_gpu estimate).
   - On the B580 the GPU build is 2–5× slower than one ifx CPU core at these sizes (information; no performance gate).
   - `alf_la: ONEMKL device:` is not printed on the base: `la_init` is skipped under the 302 guard
     (`gpu_state_mod.F90:577–579`). 302b removes that guard, so the active line in the draft is expected from 302b on;
     T0 must show it.
 
 ## Approvals
-Empty (draft).
+Recorded in `302b.json` `approvals` (owner, manager session, DECISIONS.md):
+- decision 22, 2026-10-31, "CPU τ pass" — covers `same_seed`, `precision` (host τ pass under GPU=intel until 302c);
+- decision 23, 2026-10-31, "Approve shift 8" — covers `c_compare2_shift`;
+- decision 24, 2026-10-31, "Pre-register now" — covers `c_precision_ns0` (with the stop rule above).
+Process approvals without a criterion: decision 20 (no fixed B580 budget), 21 (venv), 25 (unattended T1/T2).
 
 ## Evidence
 - `intel:~/alf-gpu/work/t302b/`: T0 in `dev/`; candidates in `cand/agent/<sha12>/` (T1) and `cand/mgr/<sha12>/` (T2).
