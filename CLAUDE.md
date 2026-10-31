@@ -230,6 +230,23 @@ Design/plan approvals are replaced by independent reviewer subagents; every deci
   warns) confirmed by reading; I4 (scheme validated lazily in `Lowrank_init` at the first WRAPGRUP/WRAPGRDO) confirmed.
   B3/B4 (Intel toolchain, cluster stacks) cannot be checked locally: `ifx`, `ifort`, `mpiifort` are not installed.
 
+## Phase 1: large-N enablement (verified 2026-10-31, commits 0cca1d3a, 482bda03)
+- `Op_V_is_symmetric` fast path (`Prog/Operator_mod.F90`): all `O` diagonal (read from `O`, not `Op%diag`) -> `.true.`
+  without products; otherwise block-local column updates `M(:,Q) <- M(:,Q)(I + g O_Q)` (repeated `P` indices accumulate
+  as in the dense embedding), two Ndim^2 heap matrices instead of four, same tolerance/scale.
+  Test 37 (`37-Op-V-symm-fast`): 270 random sets vs a verbatim copy of the dense version (0 mismatches); a last-write-wins
+  mutation of the accumulation fails 30 cases; Ndim = 1600 diagonal < 1 ms, Ndim = 600 palindromic bonds 0.018 s
+  (the dense version did not finish within 120 s: RED run).
+- Setup time (Start template, Mz Hubbard, Symm=.T., time until the first WRAPUL frame, sampled; Mac M1 Pro, 1 thread):
+  L=20 (N=400): baseline 24.5 s -> 0.2 s; **L=60 (N=3600): 1.9 s**. The initial stabilisation (ZGEQP3 in `WRAPUL`) is not
+  included; at N=3600 it is the dominant start-up cost (> 40 s, baseline code).
+- `validate_sequential_scheme` (`QMC_runtime_var_mod.F90`) runs right after the namelist read/broadcast on every rank:
+  `"delayd"` -> "unknown Sequential_scheme", `Delayed`/`N_delay=0` and `N_delay=-3` -> "must be >= 1", each after 0.01 s at L=40;
+  `standard` with any N_delay unchanged. Lowrank_init keeps its own check.
+- regress 9/9 IDENTICAL; ctest 41/41. Symmetry warning identical to baseline for all 9 regression sets (none warns).
+- Independent review (Opus subagent): no critical; important "repeated P never on the new path in test 37" fixed (case 9);
+  stack temporaries fixed; NaN/Inf note added. Not fixed (cosmetic): under MPI every rank prints the validation error.
+
 ## Work packages (project 2)
 | WP | Phase | Content | Done means |
 |---|---|---|---|
