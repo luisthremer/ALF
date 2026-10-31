@@ -318,7 +318,8 @@ binary with K_ND = 1). Rule: submatrix slower if > 5 % and > 2 × the larger spr
 - **Recommendation (D13): delayed for models with non-diagonal (bond) vertices** (tV, Kondo-J; Spin-Peierls either);
   submatrix for diagonal (Hubbard-type) models, where it is 2–5 % faster than delayed (project 1). Cause: K_ND = 1 (D15)
   flushes submatrix blocks at every non-diagonal update, so for bond vertices submatrix costs about as much as standard.
-  The last 6 of 54 runs overlapped short builds of another task (2 cores); the verdicts do not depend on them.
+  Runs 30–54 (repetitions 2–3 of most points) may have overlapped intermittent 2-core builds of another task; the clear
+  verdicts (tV L=12, Kondo: ≥ 21 %) are far above that noise; the Spin-Peierls verdicts are marginal and not relied on.
 
 ## Phase 5 (project 2): local parallel tier (Task 9; script `testsuite/lowrank/parallel_tier.sh`)
 - First run on d374e204 (submatrix still rank-1 there): mpi 18/18 (1/2/4 ranks, half and tv, 3 schemes), threads 3/3,
