@@ -10,7 +10,11 @@
 # and listed; a second submit_all.sh skips finished runs and re-runs only the failed one; MAX_ATTEMPTS gives up;
 # the queue limit stops submission; the SIGTERM trap marks the interrupted run FAILED rc=143 and the rest NOT_RUN;
 # fakeintel=on aborts the job when MKL reports AVX2 and passes with AVX-512; collect refuses a missing or duplicate
-# provenance key; report refuses to mix binaries/commits. Core budget: one job at a time, at most 2 MPI ranks.
+# provenance key; report refuses to mix binaries/commits and keeps fakeintel on/off in separate groups.
+# Fix round 1: description placeholders ([[...]] in string values), < 3 repetitions refused for a cluster profile,
+# a failing squeue aborts submit_all.sh, overlapping pin domains make a run INVALID (excluded, listed), THREADS > 1
+# with a sequential MKL aborts the job, a job-level abort keeps an earlier FAILED status.
+# Core budget: one job at a time, at most 2 MPI ranks.
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CDIR="$(dirname "$HERE")"
 ALF="$(cd "$CDIR/../../.." && pwd)"
@@ -52,6 +56,14 @@ expect "layout refusal (1x1 on a 4-core node without partial_node) rc" "$rc" 1; 
 sed 's/"partial_node": True/"partial_node": True, "mem_gb_per_rank": 9/' "$HERE/campaign_test.py" > "$TMPDESC"
 out="$(CAMPAIGN_TEST_ID=t3refuse_$STAMP $MK "$TMPDESC" --dry-run 2>&1)"; rc=$?
 expect "memory refusal (2 ranks x 9 GB > 90% of 16 GB) rc" "$rc" 1; echo "  $out"
+out="$(CAMPAIGN_TEST_ID=t3refuse_$STAMP CAMPAIGN_TEST_BIN="[[frozen binary path]]" $MK "$HERE/campaign_test.py" --dry-run 2>&1)"; rc=$?
+expect "description placeholder refusal rc" "$rc" 1; echo "  $out"
+FILLED="$T/supermuc_filled_$STAMP.sh"
+sed -e 's/\[\[[^]]*\]\]/filled-for-test/g' -e 's/^NODE_MEM_GB=.*/NODE_MEM_GB=90/' "$CDIR/profiles/supermuc.sh" > "$FILLED"
+out="$(CAMPAIGN_TEST_PROFILE="$FILLED" CAMPAIGN_TEST_REPS=2 $MK "$HERE/campaign_placeholder.py" --dry-run 2>&1)"; rc=$?
+expect "cluster profile with 2 repetitions refused rc" "$rc" 1; echo "  $out"
+out="$(CAMPAIGN_TEST_PROFILE="$FILLED" CAMPAIGN_TEST_REPS=3 $MK "$HERE/campaign_placeholder.py" --dry-run 2>&1)"; rc=$?
+expect "cluster profile (filled copy) with 3 repetitions accepted rc" "$rc" 0; echo "  $out"
 
 echo "== main campaign (MPI binary): generate, idempotency"
 export CAMPAIGN_TEST_ID="t3main_$STAMP"
@@ -71,6 +83,9 @@ out="$("$C/submit_all.sh" 2>&1)"
 printf '%s\n' "$out" | grep -q "queue limit reached" && pass "queue limit stops submission" || fail "queue limit: $out"
 expect "no job submitted while the queue is full" "$(ls "$C/jobs"/*.submissions 2>/dev/null | wc -l | tr -d ' ')" 0
 mv "$SHIM_STATE/queue" "$SHIM_STATE/queue.used"
+out="$(SHIM_SQUEUE_FAIL=1 "$C/submit_all.sh" 2>&1)"; rc=$?
+expect "failing squeue aborts submit_all.sh rc" "$rc" 1; printf '%s\n' "$out" | grep -v WARNING
+expect "nothing submitted after the squeue failure" "$(ls "$C/jobs"/*.submissions 2>/dev/null | wc -l | tr -d ' ')" 0
 
 echo "== main campaign: first submission with an injected failure (OOM-like rc 137 in hub_L8_2x2_r2_delayed_nd8)"
 FAILRUN=hub_L8_2x2_r2_delayed_nd8
@@ -137,22 +152,55 @@ $REPORT "$C2/collected.json" --out "$C2/report.md" && pass "report nompi" || fai
 $REPORT "$C/collected.json" "$C2/collected.json" > "$T/report_mixed_$STAMP.txt" 2>&1; rc=$?
 expect "report refuses to mix binaries/commits rc" "$rc" 2; cat "$T/report_mixed_$STAMP.txt"
 
-echo "== fakeintel=on (noMPI binary, standard only)"
+echo "== fakeintel=on (noMPI binary, standard only): FAILED, then a job-level abort keeps FAILED, then OK"
 lib="$T/fake_$STAMP/libfakeintel.so"; mkdir -p "$(dirname "$lib")"; : > "$lib"
 export CAMPAIGN_TEST_FAKEINTEL=on CAMPAIGN_TEST_SCHEMES=standard CAMPAIGN_TEST_REPS=1 LOCAL_FAKEINTEL_LIB="$lib"
 export LOCAL_PROC_ROOT="$HERE/fixtures"
 export CAMPAIGN_TEST_ID="t3fi_$STAMP"
 C3="$ROOT/$CAMPAIGN_TEST_ID"
 $MK "$HERE/campaign_test.py" --root "$ROOT" || fail "generate fakeintel"
+SHIM_MKL_FIXTURE=helma_fakeintel SHIM_SRUN_FAIL_MATCH="/hub_L8_1x1_r1_standard/" "$C3/submit_all.sh"
+expect "fakeintel campaign: injected failure" "$(st "$C3" hub_L8_1x1_r1_standard)" FAILED
 SHIM_MKL_FIXTURE=helma_nofakeintel "$C3/submit_all.sh"
 grep -h ABORT "$C3"/logs/*.out
 grep -q "ABORT: fakeintel=on but MKL took the AVX2 path" "$C3"/logs/*.out && pass "fakeintel on + AVX2: job aborts" || fail "fakeintel abort"
-expect "fakeintel abort: run not started" "$(st "$C3" hub_L8_1x1_r1_standard)" NOT_RUN
+expect "job-level abort keeps the earlier FAILED status" "$(st "$C3" hub_L8_1x1_r1_standard)" FAILED
+tail -2 "$C3/runs/hub_L8_1x1_r1_standard/status.history"
 SHIM_MKL_FIXTURE=helma_fakeintel "$C3/submit_all.sh"
 expect "fakeintel on + AVX-512: run" "$(st "$C3" hub_L8_1x1_r1_standard)" OK
 $COLLECT "$C3" --strict && pass "fakeintel collect --strict" || fail "fakeintel collect"
 grep -E '^(fakeintel|mkl_isa|fakeintel_lib_sha256|fakeintel_maps_probe)=' "$C3"/jobs/*/job_*/job.prov | tail -4
-grep -E '^(fakeintel_maps|ld_preload)=' "$C3"/runs/hub_L8_1x1_r1_standard/a1/run.prov
+grep -E '^(fakeintel_maps|ld_preload)=' "$C3"/runs/hub_L8_1x1_r1_standard/a2/run.prov
+$REPORT "$C2/collected.json" "$C3/collected.json" --out "$T/report_fi_$STAMP.md" && pass "report nompi + fakeintel" || fail "report fi"
+grep -E '^\| hub \| 8 \| 1x1 \| standard' "$T/report_fi_$STAMP.md"
+expect "fakeintel on/off are separate groups (standard rows)" "$(grep -c -E '^\| hub \| 8 \| 1x1 \| standard' "$T/report_fi_$STAMP.md")" 2
+grep -q 'fi=on' "$T/report_fi_$STAMP.md" && grep -q 'fi=off' "$T/report_fi_$STAMP.md" && pass "config column shows fi=on and fi=off" || fail "config column"
+grep -q '<3!' "$T/report_fi_$STAMP.md" && pass "groups with n_valid < 3 flagged" || fail "n<3 flag"
+unset CAMPAIGN_TEST_FAKEINTEL LOCAL_FAKEINTEL_LIB LOCAL_PROC_ROOT
 
-echo "run_local_test: $([ $fails = 0 ] && echo ALL PASS || echo FAILED) ($fails failures); campaigns: $C $C2 $C3"
+echo "== pinning verification (MPI binary, 2x1, standard): overlapping srun masks -> INVALID"
+export CAMPAIGN_TEST_ID="t3pin_$STAMP" CAMPAIGN_TEST_BIN="$MPI_BIN" CAMPAIGN_TEST_LAYOUTS="2x1" CAMPAIGN_TEST_REPS=1
+C4="$ROOT/$CAMPAIGN_TEST_ID"
+$MK "$HERE/campaign_test.py" --root "$ROOT" || fail "generate pin"
+SHIM_SRUN_PIN_OVERLAP_MATCH="/hub_L8_2x1_r1_standard/" "$C4/submit_all.sh"
+cat "$C4/runs/hub_L8_2x1_r1_standard/status"
+expect "overlapping domains: status" "$(st "$C4" hub_L8_2x1_r1_standard)" INVALID
+$COLLECT "$C4" --strict | tee "$T/collect_pin_$STAMP.txt"
+grep -q "EXCLUDED hub_L8_2x1_r1_standard: INVALID pinning: BAD overlapping domains" "$T/collect_pin_$STAMP.txt" \
+    && pass "INVALID run excluded and listed" || fail "INVALID not listed"
+"$C4/submit_all.sh"
+expect "re-run with disjoint masks" "$(st "$C4" hub_L8_2x1_r1_standard)" OK
+grep '^pin_check=' "$C4"/runs/hub_L8_2x1_r1_standard/a*/run.prov
+
+echo "== THREADS > 1 with a sequential MKL threading layer (noMPI binary, 1x2): job aborts"
+export CAMPAIGN_TEST_ID="t3seq_$STAMP" CAMPAIGN_TEST_BIN="$NOMPI_BIN" CAMPAIGN_TEST_LAYOUTS="1x2"
+C5="$ROOT/$CAMPAIGN_TEST_ID"
+$MK "$HERE/campaign_test.py" --root "$ROOT" || fail "generate seq"
+SHIM_MKL_FIXTURE=supermuc_sequential "$C5/submit_all.sh"
+grep -h ABORT "$C5"/logs/*.out
+grep -q "ABORT: THREADS=2 but the MKL threading layer is sequential" "$C5"/logs/*.out && pass "sequential MKL with 2 threads: abort" \
+    || fail "sequential abort"
+expect "sequential abort: run not started" "$(st "$C5" hub_L8_1x2_r1_standard)" NOT_RUN
+
+echo "run_local_test: $([ $fails = 0 ] && echo ALL PASS || echo FAILED) ($fails failures); campaigns: $C $C2 $C3 $C4 $C5"
 [ $fails = 0 ]

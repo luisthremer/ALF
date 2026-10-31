@@ -161,3 +161,62 @@ prov_job() {
     prov_kv "$f" prov_sysfs_root "${PROV_SYSFS_ROOT:-/ (real)}"
     prov_kv "$f" prov_proc_root "${PROV_PROC_ROOT:-/ (real)}"
 }
+
+# prov_pin_check FILE RANKS THREADS [THREADS_PER_CORE]: verify the pinning record of a run.
+# Reads Intel MPI I_MPI_DEBUG>=4 lines "[0] MPI startup(): <rank> <pid> <node> {<cpu list>}" (lists and ranges) and
+# srun --cpu-bind=verbose lines "cpu-bind=MASK - <node>, task <rank> <local> [<pid>]: mask 0x<hex> set" (any width).
+# Requires exactly RANKS ranks, each pinned to THREADS cpus (or THREADS x THREADS_PER_CORE hardware threads when the
+# binding unit is a core with SMT), and pairwise disjoint sets. Prints "OK ..." / "BAD ..."; returns 0 / 1.
+prov_pin_check() {
+    [ -r "$1" ] || { echo "BAD no pinning record file"; return 1; }
+    awk -v R="$2" -v T="$3" -v TPC="${4:-1}" '
+        function addcpu(r, c) {
+            if ((r SUBSEP c) in has) return
+            has[r SUBSEP c] = 1; n[r]++
+            if ((c in owner) && owner[c] != r && nov < 5) { ov = ov " cpu" c "(r" owner[c] ",r" r ")"; nov++ }
+            if (!(c in owner)) owner[c] = r
+        }
+        function hexset(r, h,   i, L, d, v, b) {
+            h = tolower(h); sub(/^0x/, "", h); L = length(h)
+            for (i = L; i >= 1; i--) {
+                v = index("0123456789abcdef", substr(h, i, 1)) - 1
+                for (b = 0; b < 4; b++) if (int(v / 2 ^ b) % 2 == 1) addcpu(r, (L - i) * 4 + b)
+            }
+        }
+        function listset(r, s,   k, a, parts, lh, lo, hi, c) {
+            gsub(/[{} \t]/, "", s); k = split(s, parts, ",")
+            for (a = 1; a <= k; a++) {
+                if (parts[a] == "") continue
+                if (split(parts[a], lh, "-") == 2) { lo = lh[1] + 0; hi = lh[2] + 0 } else { lo = parts[a] + 0; hi = lo }
+                for (c = lo; c <= hi; c++) addcpu(r, c)
+            }
+        }
+        /MPI startup\(\):/ && /\{[0-9,\- ]*\}/ {
+            s = $0; sub(/.*MPI startup\(\):[ \t]*/, "", s); split(s, w, /[ \t]+/)
+            if (w[1] !~ /^[0-9]+$/) next
+            set = s; sub(/^[^{]*/, "", set); sub(/}.*/, "}", set)
+            r = w[1] + 0; ranks[r] = 1; listset(r, set); next
+        }
+        /cpu[-_]bind/ && /mask 0x[0-9a-fA-F]+/ && /task[ \t]+[0-9]+/ {
+            s = $0; sub(/.*task[ \t]+/, "", s); r = s + 0
+            m = $0; sub(/.*mask[ \t]+/, "", m); sub(/[ \t].*/, "", m)
+            ranks[r] = 1; hexset(r, m)
+        }
+        END {
+            nr = 0; for (r in ranks) nr++
+            if (nr == 0) { print "BAD no I_MPI_DEBUG pin lines or cpu-bind masks"; exit 1 }
+            if (nr != R) { print "BAD " nr " ranks in the pinning record, expected " R; exit 1 }
+            for (r in ranks) if (n[r] != T && n[r] != T * TPC) {
+                print "BAD rank " r " pinned to " n[r] " cpus, expected " T (TPC > 1 ? " or " T * TPC : ""); exit 1
+            }
+            if (ov != "") { print "BAD overlapping domains:" ov; exit 1 }
+            for (r in ranks) { sz = n[r]; break }
+            print "OK " R " ranks x " sz " cpus, disjoint"
+        }' "$1"
+}
+
+# prov_mkl_threads_check THREADS LAYER: non-zero if more than one thread is requested but MKL runs sequentially
+prov_mkl_threads_check() {
+    [ "$1" -le 1 ] && return 0
+    [ "$2" != sequential ]
+}

@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Collect a campaign's runs into one table with full provenance (runs locally, stdlib only).
 
-Usage: python3 -I collect.py CAMPAIGN_DIR [--out FILE.json] [--strict]
+Usage: python3 -I collect.py CAMPAIGN_DIR [--out FILE.json] [--strict [--allow KEY ...]]
 
 One row per run of campaign.json, from the latest attempt runs/<id>/<latest>/: run.prov, the job's job.prov, info
 (CPU Time, Acceptance, Precision, commit, START/FIN TIME, Sequential scheme / N_delay in every format) and timers.txt
 (T1 format; "absent" if the binary was built without -DALF_TIMERS). Exit 1 if an OK run lacks a required key, a .prov
 file repeats a key, a run appears twice, or the job script's sha256 differs from campaign.json. Runs whose status is
-not OK (or whose info contradicts the request) are excluded from the statistics and listed with the reason; runs never
-started are listed as missing. --strict also fails on any required field reading "unknown" or "unavailable(...)".
+not OK (FAILED, INVALID pinning, or info contradicting the request) are excluded from the statistics and listed with the
+reason; runs never started are listed as missing. --strict also fails on any required field reading "unknown" or
+"unavailable(...)", and on cluster profiles (not 'local') on i_mpi_root=unset and on omp_affinity "none printed" with
+THREADS > 1; --allow KEY (repeatable; job./run./info. prefix optional) accepts a field a node legitimately lacks.
 Output: CAMPAIGN_DIR/collected.json (default) and a .tsv next to it.
 """
 import datetime
@@ -32,8 +34,8 @@ REQUIRED_RUN = [
     "run_id", "attempt", "scheme_requested", "n_delay_requested", "job_prov", "mkl_verbose_env", "governor_start",
     "cur_freq_start", "max_freq_start", "boost_start", "run_start", "governor_end", "cur_freq_end", "wall_s",
     "wall_resolution",
-    "launch_rc", "max_rss_kb", "max_rss_source", "rank_hosts", "rank_affinity", "fakeintel_maps", "ld_preload",
-    "pin_map", "omp_affinity", "status"]
+    "launch_rc", "max_rss_kb", "max_rss_source", "rank_hosts", "rank_affinity_preinit", "fakeintel_maps",
+    "ld_preload", "pin_map", "pin_check", "omp_affinity", "status"]
 REQUIRED_INFO = ["commit", "start_time", "fin_time", "cpu_time_s", "acceptance", "pgreen_mean", "pgreen_max",
                  "pphase_max", "beta_info", "dtau_info", "sweeps_info", "bins_info", "scheme_used", "n_delay_mode",
                  "n_delay_used"]
@@ -168,12 +170,29 @@ def parse_timers(path):
     return t
 
 
+def strict_problems(rid, job, run, info, threads, allow=()):
+    """--strict findings for one OK run (list of strings). allow: field names (with or without job./run./info.)."""
+    def allowed(scope, k):
+        return k in ALLOWED_UNAVAILABLE or k in allow or ("%s.%s" % (scope, k)) in allow
+    out = []
+    for scope, keys, d in (("run", REQUIRED_RUN, run), ("job", REQUIRED_JOB, job), ("info", REQUIRED_INFO, info)):
+        for k in keys:
+            if bad_value(d[k]) and not allowed(scope, k):
+                out.append("%s %s.%s=%s" % (rid, scope, k, d[k]))
+    if job.get("profile") != "local":
+        if job.get("i_mpi_root") == "unset" and not allowed("job", "i_mpi_root"):
+            out.append("%s job.i_mpi_root=unset (Intel MPI expected on the cluster)" % rid)
+        if threads > 1 and run.get("omp_affinity", "").startswith("none printed") and not allowed("run", "omp_affinity"):
+            out.append("%s run.omp_affinity=%s with THREADS=%d (no OpenMP affinity record)" % (rid, run["omp_affinity"], threads))
+    return out
+
+
 def bad_value(v):
     s = str(v)
     return s == "" or "unknown" in s.lower() or s.startswith("unavailable")
 
 
-def collect(cdir, strict=False):
+def collect(cdir, strict=False, allow=()):
     cj_path = os.path.join(cdir, "campaign.json")
     camp = json.load(open(cj_path))
     cid = camp["campaign_id"]
@@ -190,12 +209,12 @@ def collect(cdir, strict=False):
         attempts = sorted(d for d in os.listdir(rdir) if re.match(r"^a\d+$", d)) if os.path.isdir(rdir) else []
         base = {"campaign_id": cid, "run_id": rid, "status": status_line or "never started", "attempts": len(attempts)}
         word = status_line.split()[0] if status_line else ""
-        if word not in ("OK", "FAILED"):          # never started, NOT_RUN, RUNNING (node lost)
+        if word not in ("OK", "FAILED", "INVALID"):          # never started, NOT_RUN, RUNNING (node lost)
             missing.append(base)
             continue
         latest = open(os.path.join(rdir, "latest")).read().strip()
         adir = os.path.join(rdir, latest)
-        if word == "FAILED":
+        if word in ("FAILED", "INVALID"):
             base["log"] = os.path.relpath(os.path.join(adir, "stdout.log"), cdir)
             excluded.append(base)
             continue
@@ -227,6 +246,8 @@ def collect(cdir, strict=False):
         # setup = launch wall time (job script, around the launcher) - CPU Time (info: sweep phase only, the timer is
         # restarted after the initial Green function): MPI start-up, Hamiltonian setup, initial stabilisation, output
         row["setup_s"] = round(float(run["wall_s"]) - info["cpu_time_s"], 3)
+        # sacct MaxRSS is job level (all steps so far): only an upper bound for this run
+        row["rss_upper_bound"] = run["max_rss_source"].startswith("sacct")
         row["info_path"] = os.path.relpath(info_path, cdir)
         row["info_sha256"] = sha256(info_path)
         row["stdout_sha256"] = sha256(os.path.join(adir, "stdout.log"))
@@ -267,15 +288,7 @@ def collect(cdir, strict=False):
             excluded.append(base)
             continue
         if strict:
-            for k in REQUIRED_RUN:
-                if bad_value(run[k]) and k not in ALLOWED_UNAVAILABLE:
-                    strict_bad.append("%s run.%s=%s" % (rid, k, run[k]))
-            for k in REQUIRED_JOB:
-                if bad_value(job[k]) and k not in ALLOWED_UNAVAILABLE:
-                    strict_bad.append("%s job.%s=%s" % (rid, k, job[k]))
-            for k in REQUIRED_INFO:
-                if bad_value(info[k]):
-                    strict_bad.append("%s info.%s=%s" % (rid, k, info[k]))
+            strict_bad += strict_problems(rid, job, run, info, req["threads"], allow)
         rows.append(row)
     if strict_bad:
         raise CollectError("--strict: fields without a real value:\n  " + "\n  ".join(strict_bad))
@@ -291,8 +304,13 @@ TSV_COLS = ["run_id", "point", "L", "layout", "scheme", "n_delay_requested", "n_
 
 
 def main(argv):
-    args = [a for a in argv[1:] if not a.startswith("--")]
     strict = "--strict" in argv
+    allow = []
+    while "--allow" in argv:
+        i = argv.index("--allow")
+        allow.append(argv[i + 1])
+        argv = argv[:i] + argv[i + 2:]
+    args = [a for a in argv[1:] if not a.startswith("--")]
     out = None
     if "--out" in argv:
         out = argv[argv.index("--out") + 1]
@@ -301,7 +319,9 @@ def main(argv):
         sys.exit(__doc__)
     cdir = args[0]
     try:
-        res = collect(cdir, strict)
+        res = collect(cdir, strict, set(allow))
+        res["strict"] = strict
+        res["strict_allow"] = sorted(allow)
     except (CollectError, OSError, KeyError) as e:
         sys.stderr.write("collect.py: ERROR: %s\n" % e)
         return 1

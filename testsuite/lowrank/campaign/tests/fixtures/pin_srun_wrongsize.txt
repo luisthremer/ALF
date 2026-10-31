@@ -1,0 +1,2 @@
+cpu-bind=MASK - h01c01, task  0  0 [30000]: mask 0xf set
+cpu-bind=MASK - h01c01, task  1  1 [30001]: mask 0xf0 set

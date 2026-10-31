@@ -57,7 +57,14 @@ else libs="unavailable(no ldd/otool)"; libtool=none; fi
     echo "flags_ext=${ALF_FLAGS_EXT:-none}"
     echo "modules=$(prov_flat "$mods")"
     echo "libs_tool=$libtool"
-    echo "libs_mkl=$(printf '%s\n' "$libs" | grep -i -c mkl) lines mention mkl"
+    mkl="$(printf '%s\n' "$libs" | grep -o -E 'lib(mkl|iomp|tbb)[A-Za-z0-9_.+-]*' | sort -u | tr '\n' ' ')"
+    echo "libs_mkl=${mkl:-none (no dynamically linked libmkl*/libiomp*/libtbb*: static MKL or another BLAS)}"
+    if command -v file >/dev/null 2>&1; then
+        case "$(file -L "$dst")" in
+            *"statically linked"*) echo "link_type=static (LD_PRELOAD, e.g. fakeintel, has no effect)" ;;
+            *) echo "link_type=dynamic" ;;
+        esac
+    else echo "link_type=unavailable(no file command)"; fi
     echo "### $ALF_FC --version"
     $ALF_FC --version 2>&1
     echo "### module list"

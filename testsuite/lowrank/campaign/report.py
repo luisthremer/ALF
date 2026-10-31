@@ -6,8 +6,11 @@ Usage: python3 -I report.py COLLECTED.json [COLLECTED.json ...] [--out FILE.md]
 Numbers come only from collect.py output (which reads the logs written by the job scripts). Refuses (exit 2) to mix
 commits, binaries (sha256) or machines (cluster + CPU model) across the valid rows of all inputs.
 Tables:
-  1. per point x L x layout x scheme x N_delay: n_valid, median s/sweep, range [min, max] over the repetitions, spread,
-     speedup vs the standard scheme (same point, L, layout), N_delay used, median setup time and max RSS;
+  Groups never pool configurations: the key includes campaign, fakeintel, MKL ISA and MKL threading layer ("config").
+  1. per point x L x layout x scheme x N_delay x config: n_valid (flagged "<3!" below three repetitions), median
+     s/sweep, range [min, max] over the repetitions, spread,
+     speedup vs the standard scheme (same point, L, layout, config), N_delay used, median setup time and max RSS (an
+     upper bound, marked "<=", where only the job-level sacct value exists);
   2. layouts: node throughput = ranks / (s per sweep) (sweeps per second per node, all ranks counted) per layout;
   3. timing split (runs with timers.txt): s/sweep per category over bins >= 2 (bin 1 dropped), slowest rank (max column),
      median over repetitions, share of T_SWEEP; counters per sweep (mean over ranks).
@@ -107,36 +110,54 @@ def main(argv):
                                                              sum(len(d["missing"]) for d in data)))
     L.append("")
 
+    # A group never pools configurations: campaign, fakeintel, MKL ISA and MKL threading layer are part of the key
+    # (column "config"); speedups compare with the standard scheme of the same config.
+    def config(r):
+        return "%s fi=%s %s %s" % (r["campaign_id"], r["job.fakeintel"], r["job.mkl_isa"], r["job.mkl_threading"])
+
     groups = OrderedDict()
-    for r in sorted(rows, key=lambda r: (r["point"], r["L"], r["ranks"], r["threads"], r["scheme"] != "standard",
+    for r in sorted(rows, key=lambda r: (r["point"], r["L"], r["ranks"], r["threads"], config(r), r["scheme"] != "standard",
                                          r["scheme"], str(r["n_delay_requested"]), r["repetition"])):
-        groups.setdefault((r["point"], r["L"], r["layout"], r["scheme"], str(r["n_delay_requested"])), []).append(r)
+        groups.setdefault((r["point"], r["L"], r["layout"], r["scheme"], str(r["n_delay_requested"]), config(r)),
+                          []).append(r)
     med = {k: statistics.median(x["sec_per_sweep"] for x in g) for k, g in groups.items()}
+    few = [k for k, g in groups.items() if len(g) < 3]
     T = []
     for k, g in groups.items():
         sps = [x["sec_per_sweep"] for x in g]
-        std = med.get((k[0], k[1], k[2], "standard", "n/a"))
+        std = med.get((k[0], k[1], k[2], "standard", "n/a", k[5]))
         m = med[k]
-        T.append([k[0], k[1], k[2], k[3], k[4], ",".join(sorted(set(str(x["n_delay_used"]) for x in g))),
-                  len(g), m, "[%s, %s]" % (fmt(min(sps)), fmt(max(sps))),
+        rss = statistics.median(float(x["run.max_rss_kb"]) for x in g) / 1024.0
+        upper = any(x.get("rss_upper_bound") for x in g)
+        T.append([k[0], k[1], k[2], k[3], k[4], k[5], ",".join(sorted(set(str(x["n_delay_used"]) for x in g))),
+                  "%d%s" % (len(g), " (<3!)" if len(g) < 3 else ""), m, "[%s, %s]" % (fmt(min(sps)), fmt(max(sps))),
                   "%.1f %%" % (100.0 * (max(sps) - min(sps)) / m) if m else "-",
                   (std / m) if std else None, statistics.median(x["acceptance"] for x in g),
                   statistics.median(x["setup_s"] for x in g),
-                  statistics.median(float(x["run.max_rss_kb"]) for x in g) / 1024.0])
+                  ("<= %s (sacct, job level)" % fmt(rss)) if upper else rss])
     L.append("## 1. Time per sweep (median and range over repetitions)")
     L.append("")
-    L.append(table(["point", "L", "layout", "scheme", "N_delay req", "N_delay used", "n_valid", "median s/sweep",
-                    "range", "spread", "speedup vs std", "acceptance", "setup s", "max RSS MiB"], T))
+    if few:
+        L.append("**%d of %d groups have fewer than 3 valid repetitions (marked `<3!`): median and range are not "
+                 "reliable there.**" % (len(few), len(groups)))
+        L.append("")
+    L.append(table(["point", "L", "layout", "scheme", "N_delay req", "config", "N_delay used", "n_valid",
+                    "median s/sweep", "range", "spread", "speedup vs std", "acceptance", "setup s", "max RSS MiB"], T))
+    L.append("")
+    L.append("config = campaign, fakeintel, MKL ISA, MKL threading layer. max RSS: `/usr/bin/time` per rank (max over "
+             "ranks); values marked `<=` come from the sacct fallback (job-level MaxRSS of all steps so far: an upper "
+             "bound for the run).")
     L.append("")
 
     L.append("## 2. Layouts: node throughput (ranks / s per sweep)")
     L.append("")
     T = []
     for k, g in groups.items():
-        T.append([k[0], k[1], k[3], k[4], k[2], g[0]["ranks"], g[0]["threads"], med[k], g[0]["ranks"] / med[k]])
-    T.sort(key=lambda t: (t[0], t[1], t[2], t[3], t[5]))
-    L.append(table(["point", "L", "scheme", "N_delay req", "layout", "ranks", "threads", "median s/sweep",
-                    "node sweeps/s"], T))
+        T.append([k[0], k[1], k[3], k[4], k[5], k[2], g[0]["ranks"], g[0]["threads"], len(g), med[k],
+                  g[0]["ranks"] / med[k]])
+    T.sort(key=lambda t: (t[0], t[1], t[2], t[3], t[4], t[6]))
+    L.append(table(["point", "L", "scheme", "N_delay req", "config", "layout", "ranks", "threads", "n_valid",
+                    "median s/sweep", "node sweeps/s"], T))
     L.append("")
 
     L.append("## 3. Timing split (bins >= 2, slowest rank, median over repetitions)")
@@ -151,12 +172,12 @@ def main(argv):
         tot = statistics.median(s[0].get("T_SWEEP", 0.0) for s in splits)
         for c in cats:
             v = statistics.median(s[0].get(c, 0.0) for s in splits)
-            T.append([k[0], k[1], k[2], k[3], k[4], len(splits), c, v, "%.1f %%" % (100 * v / tot) if tot else "-"])
+            T.append(list(k) + [len(splits), c, v, "%.1f %%" % (100 * v / tot) if tot else "-"])
         for c in sorted(set(c for s in splits for c in s[1])):
-            T.append([k[0], k[1], k[2], k[3], k[4], len(splits), "counter " + c,
-                      statistics.median(s[1].get(c, 0.0) for s in splits), "per sweep"])
+            T.append(list(k) + [len(splits), "counter " + c, statistics.median(s[1].get(c, 0.0) for s in splits),
+                                "per sweep"])
     if T:
-        L.append(table(["point", "L", "layout", "scheme", "N_delay req", "n", "category", "s/sweep", "share"], T))
+        L.append(table(["point", "L", "layout", "scheme", "N_delay req", "config", "n", "category", "s/sweep", "share"], T))
     else:
         L.append("No run has a timers.txt (binary built without -DALF_TIMERS): timing split absent.")
     L.append("")

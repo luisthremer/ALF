@@ -4,6 +4,8 @@
 #   MODE probe  record rank provenance, then run CMD as is (the MKL_VERBOSE probe)
 # fakeintel: LD_PRELOAD is set HERE only (never in the job environment), so it reaches exactly the rank processes.
 # Writes OUTDIR/rank_<MODE>_<rank>.prov: rank, host, pid, affinity (taskset -cp), ld_preload, fakeintel_maps.
+# The affinity is the mask BEFORE MPI_Init (Intel MPI pins inside MPI_Init): a pre-init record only; the verified
+# pinning comes from the I_MPI_DEBUG / srun cpu-bind lines (prov_pin_check in the job).
 # Exit 90: fakeintel on but the library is missing; 91: library not mapped (/proc/self/maps check).
 mode="$1"
 out="$2"
