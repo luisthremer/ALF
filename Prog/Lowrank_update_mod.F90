@@ -62,8 +62,8 @@
 !> proposal (computed from the low-rank G_pp) is also compared with d_sh = 1 + (1 - Gsh(p,p)) Delta
 !> from the shadow, and the shadow update uses d_sh, so a stale G_pp read in Lowrank_propose is
 !> caught. Self-tests (never defined by default): -DLOWRANK_DEBUG_SELFTEST skips the X-row scaling
-!> of the first hook; -DLOWRANK_DEBUG_SELFTEST_PROPOSE omits the X.Y correction of G_pp in
-!> Lowrank_propose until a perturbed proposal is accepted. Each must make the debug check fire.
+!> of the first hook (delayed) or one Ginv row scaling (submatrix); -DLOWRANK_DEBUG_SELFTEST_PROPOSE
+!> omits the X.Y correction of G_pp in Lowrank_propose until a perturbed proposal is accepted. Each must make the debug check fire.
 !--------------------------------------------------------------------
 
 module Lowrank_update_mod
@@ -825,7 +825,15 @@ contains
                m = slot(q,nf_eff)
                if (m == 0) cycle
                t = exp( real(dir, kind(0.d0)) * g_loc * phi * Op_V(n_op,nf)%E(i) )
+#if defined(ALF_LOWRANK_DEBUG) && defined(LOWRANK_DEBUG_SELFTEST)
+               ! Self-test of the debug check: deliberately skip one Ginv row scaling (first time a pending
+               ! site is touched; in Hubbard models only the down-sweep un-wrap touches the site just added)
+               skip_x = .not. dbg_selftest_done
+               dbg_selftest_done = .true.
+               if (.not. skip_x) Ginv(m,1:j,nf_eff) = Ginv(m,1:j,nf_eff) * t
+#else
                Ginv(m,1:j,nf_eff) = Ginv(m,1:j,nf_eff) * t
+#endif
                Ginv(1:j,m,nf_eff) = Ginv(1:j,m,nf_eff) / t
             end select
          enddo
