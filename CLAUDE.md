@@ -354,6 +354,10 @@ binary with K_ND = 1). Rule: submatrix slower if > 5 % and > 2 × the larger spr
   attributes of an earlier non-standard run remain if a standard run later reuses the same data.h5 (review P6-2, approved).
 
 ## Open questions for the user (collected for the cluster request)
+0. Helma + fakeintel: ALF's `HELMA` preset in configure.sh links with `-static` (INTELLLVMOPTFLAGS); `LD_PRELOAD` cannot act on a
+   static binary, so the fakeintel library cannot take effect. Proposal: build the Helma benchmark binary without `-static`
+   (dynamic MKL) and keep fakeintel; the campaign jobs abort if fakeintel is requested for a static binary. Which do you prefer,
+   and how is fakeintel meant to be loaded on Helma?
 1. Submatrix accuracy guard `K_ND = 8` (Task 5): once a submatrix block holds an accepted non-diagonal update, it is flushed
    at min(N_delay, 8) pending sites. Without the guard the M-form's forward error reached 5e-10 (> TOL_UNIT 1e-10) in the
    unit case rep_mixed (k = Ndim = 16, repeated non-diagonal updates); the numpy prototype shows the same loss, so it is a
