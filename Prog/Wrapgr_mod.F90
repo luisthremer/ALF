@@ -53,11 +53,12 @@ Module Wrapgr_mod
   Use Hop_mod
   use upgrade_mod
   use Lowrank_update_mod, only: Lowrank_initialised, Lowrank_init, Lowrank_active, Lowrank_eligible, &
-       &                        Lowrank_flush, Lowrank_wrap_hook, Upgrade_lowrank, Lowrank_assert_flushed
+       &                        Lowrank_flush, Lowrank_wrap_hook, Upgrade_lowrank, Lowrank_assert_flushed, &
+       &                        Lowrank_cross_slice_active, Lowrank_hop_up, Lowrank_hop_down
 #ifdef ALF_LOWRANK_DEBUG
   use Lowrank_update_mod, only: Lowrank_debug_check
 #endif
-  use QMC_runtime_var, only: get_Sequential_scheme, get_N_delay
+  use QMC_runtime_var, only: get_Sequential_scheme, get_N_delay, get_Lowrank_cross_slice
 
   Implicit none
 
@@ -111,17 +112,24 @@ Contains
     Character (Len=64)        :: Mode
     Logical                   :: Acc, toggle1
     
-    ! Low-rank scheme (Sequential_scheme / N_delay): initialised on the first call
-    if (.not. Lowrank_initialised()) call Lowrank_init(get_Sequential_scheme(), get_N_delay())
-    call Lowrank_assert_flushed("WRAPGRUP entry")
+    ! Low-rank scheme (Sequential_scheme / N_delay / Lowrank_cross_slice): initialised on the first call
+    if (.not. Lowrank_initialised()) call Lowrank_init(get_Sequential_scheme(), get_N_delay(), &
+         &                                             get_Lowrank_cross_slice(), N_Global_tau)
+    ! Cross-slice delay (spec D10): the pending state of the previous slice may enter here; it is
+    ! carried through the hopping wrap below (X <- B_T X, Y^T <- Y^T B_T^{-1}) instead of being flushed
+    if (.not. Lowrank_cross_slice_active()) call Lowrank_assert_flushed("WRAPGRUP entry")
 
     ! Wrap up, upgrade ntau1.  with B^{1}(tau1) 
     NTAU1 = NTAU + 1
+    if (Lowrank_cross_slice_active()) call Lowrank_hop_up(GR, ntau1)
     Do nf_eff = 1,N_FL_eff
        nf=Calc_Fl_map(nf_eff)
        CALL HOP_MOD_mmthr   (GR(:,:,nf), nf, ntau1 )
        CALL HOP_MOD_mmthl_m1(GR(:,:,nf), nf, ntau1 )
     Enddo
+#ifdef ALF_LOWRANK_DEBUG
+    if (Lowrank_cross_slice_active()) call Lowrank_debug_check(GR, 0, ntau1, "Lowrank_hop_up")
+#endif
     Do n = Nt_sequential_start,Nt_sequential_end
        ! Ineligible vertex: apply the pending low-rank updates before G0 is wrapped
        if (Lowrank_active() .and. .not. Lowrank_eligible(n)) call Lowrank_flush(GR)
@@ -171,8 +179,10 @@ Contains
        if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_debug_check(GR, n, ntau1, "Lowrank_wrap_hook (up, 2)")
 #endif
     Enddo
-    ! G must be the full Green function for the Global_tau moves and on return
-    if (Lowrank_active()) call Lowrank_flush(GR)
+    ! G must be the full Green function for the Global_tau moves and on return; with the cross-slice
+    ! delay (refused with N_Global_tau > 0) the pending state is returned and main.F90 flushes it
+    ! before every read of G
+    if (Lowrank_active() .and. .not. Lowrank_cross_slice_active()) call Lowrank_flush(GR)
 
     If ( N_Global_tau > 0 ) then 
        m         = Nt_sequential_end
@@ -181,7 +191,7 @@ Contains
        Call Wrapgr_PlaceGR(GR,m, Size(OP_V,1), ntau1)
     Endif
 
-    call Lowrank_assert_flushed("WRAPGRUP")
+    if (.not. Lowrank_cross_slice_active()) call Lowrank_assert_flushed("WRAPGRUP")
 
   END SUBROUTINE WRAPGRUP
 
@@ -217,9 +227,12 @@ Contains
     Logical                   :: Acc, toggle1
 
 
-    ! Low-rank scheme (Sequential_scheme / N_delay): initialised on the first call
-    if (.not. Lowrank_initialised()) call Lowrank_init(get_Sequential_scheme(), get_N_delay())
-    call Lowrank_assert_flushed("WRAPGRDO entry")
+    ! Low-rank scheme (Sequential_scheme / N_delay / Lowrank_cross_slice): initialised on the first call
+    if (.not. Lowrank_initialised()) call Lowrank_init(get_Sequential_scheme(), get_N_delay(), &
+         &                                             get_Lowrank_cross_slice(), N_Global_tau)
+    ! Cross-slice delay: the pending state of the previous WRAPGRDO (already carried through its
+    ! hopping wrap) may enter here
+    if (.not. Lowrank_cross_slice_active()) call Lowrank_assert_flushed("WRAPGRDO entry")
 
     ! G is flushed here (the previous WRAPGRUP/WRAPGRDO returned a flushed G)
     If ( N_Global_tau > 0 ) then 
@@ -285,15 +298,26 @@ Contains
        if (Lowrank_active() .and. Lowrank_eligible(n)) call Lowrank_debug_check(GR, n, ntau, "Lowrank_wrap_hook (down, 1)")
 #endif
     enddo
-    ! G must be the full Green function before the hopping propagation and on return
-    if (Lowrank_active()) call Lowrank_flush(GR)
+    ! G must be the full Green function before the hopping propagation and on return. Cross-slice
+    ! delay: instead, carry the pending state through the hopping wrap (X <- B_T^{-1} X, Y^T <- Y^T B_T);
+    ! main.F90 flushes it before every read of G
+    if (Lowrank_active()) then
+       if (Lowrank_cross_slice_active()) then
+          call Lowrank_hop_down(GR, ntau)
+       else
+          call Lowrank_flush(GR)
+       endif
+    endif
     DO nf_eff = 1,N_FL_eff
        nf=Calc_Fl_map(nf_eff)
        Call Hop_mod_mmthl   (GR(:,:,nf), nf,ntau)
        Call Hop_mod_mmthr_m1(GR(:,:,nf), nf,ntau)
     enddo
+#ifdef ALF_LOWRANK_DEBUG
+    if (Lowrank_cross_slice_active()) call Lowrank_debug_check(GR, 0, ntau, "Lowrank_hop_down")
+#endif
 
-    call Lowrank_assert_flushed("WRAPGRDO")
+    if (.not. Lowrank_cross_slice_active()) call Lowrank_assert_flushed("WRAPGRDO")
     
   end SUBROUTINE WRAPGRDO
   
