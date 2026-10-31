@@ -314,52 +314,72 @@ is fixed. `info` says `Sequential scheme: <NAME>, N_delay = auto (static n0 = <n
 ## blas_bench.F90, blas_bench.sh (BLAS ceiling microbenchmark)
 
 ```bash
-testsuite/lowrank/blas_bench.sh [--smoke] [--build-only] [LAYOUT=RxT] [N=400,1600,3600] [KS=16,64,256] [KERNELS=..] [REPS=7] [TAG=name]
-testsuite/lowrank/campaign/tests/test_blas_bench.sh        # smoke test, < 30 s (58 checks)
+testsuite/lowrank/blas_bench.sh [--smoke] [--build-only] [--plan] [LAYOUT=RxT] [N=400,1600,3600] [KS=16,64,256] [KERNELS=..] [REPS=7] [TAG=name]
+testsuite/lowrank/campaign/tests/test_blas_bench.sh        # smoke test, ~16 s (143 checks, incl. the MPI 2x1 case)
 builds/blas_bench/blas_bench.out --probe                    # tiny ZGEMM + ZGEQP3, prints "probe ok" (MKL_VERBOSE probe of the campaign)
 ```
 
 What the BLAS gives on the node, for the kernels that bound the low-rank schemes (complex double): ZGEMM N x N x k (k = 16,
-64, 256), ZGEMM N x N x N, ZGERU N x N, ZGEMV N x N, ZGEQP3 N x N; N up to 8000 and beyond (memory 16 N^2 bytes per matrix).
-Warm-up calls, then the median of REPS (default 7, minimum 5 recommended) timed repetitions; a repetition is a batch of calls
-of at least `MINTIME` = 20 ms (one call for ZGEQP3, whose input is restored from a master copy outside the timed region), the
-reported time is per call. The BLAS-2 kernels (ZGERU, ZGEMV) rotate over copies of the matrix covering `CACHE_MB` = 256 MB
-(at least 2), so the matrix does not come from cache; set `CACHE_MB` above the last-level cache on a new machine. GFLOP/s uses the
-median time (`gflops_best`: the minimum time) and the flop model of the header of `blas_bench.F90` (ZGEMM 8 N^2 k, ZGERU/ZGEMV
-8 N^2, ZGEQP3 16/3 N^3); GB/s is the nominal minimum memory traffic over the median time, not a measured bandwidth. The
-timer cost (`TIMERCOST`) is measured with the T1 routines of `Prog/Timers_mod.F90` (a copy compiled with `-DALF_TIMERS`):
-`push_pop` = one `timer_push` + `timer_pop` pair (the cost of one timed region), `switch` = one `timer_switch`, plus the clock
-itself (`system_clock` = the call inside `tnow`, which is private to the module, and `wtime` = `omp_get_wtime`); ns per call,
-median of 7 samples of `TIMER_REPS` calls. Never uses ZDOTU/ZDOTC (Accelerate's f2c return convention).
+64, 256), ZGEMM N x N x N, ZGERU N x N, ZGEMV N x N, ZGEQP3 N x N; N up to 8000 and beyond. ZGEMM is `C := C - A B`
+(alpha = -1, beta = 1, as the flush of `Lowrank_update_mod.F90`; bytes 16 (2 N k + 2 N^2)). Warm-up calls, then the median of REPS
+(default 7, minimum 5 recommended) timed repetitions; a repetition is a batch of calls of at least `MINTIME` = 20 ms (one call
+for ZGEQP3, whose input is restored from a master copy before every call, warm-up included, outside the timed region), the reported
+time is per call. GFLOP/s uses the median time (`gflops_best`: the minimum time) and the flop model of the header of
+`blas_bench.F90` (ZGEMM 8 N^2 k, ZGERU/ZGEMV 8 N^2, ZGEQP3 16/3 N^3); GB/s is the nominal minimum memory traffic over the median
+time, not a measured bandwidth. **Interpretation:** the BLAS-2 kernels (ZGERU, ZGEMV) rotate over copies of the matrix (see
+"Cache"), so their numbers come from memory; ALF's `G` may stay in cache between rank-1 updates at small N (N = 400: 2.6 MB), where
+the memory-bound number is a lower bound, not the relevant ceiling. The buffers are filled in parallel (OpenMP, static schedule),
+so the first touch follows the threads of the kernel. The timer cost (`TIMERCOST`) is measured with the T1 routines of
+`Prog/Timers_mod.F90` (a copy compiled with `-DALF_TIMERS`): `push_pop` = one `timer_push` + `timer_pop` pair (the cost of one
+timed region), `switch` = one `timer_switch`, plus the clocks themselves (`system_clock` = the call inside `tnow`, which is private
+to the module, and `wtime` = `omp_get_wtime` alone); ns per call, median of 7 samples of `TIMER_REPS` calls. Never uses
+ZDOTU/ZDOTC (Accelerate's f2c return convention).
 
-`blas_bench.sh` builds in `builds/blas_bench/` (never in `Prog/`) with `configure.sh <BLAS_BENCH_MACHINE|GNU> noMPI`'s compiler,
-flags and BLAS (`LIB_BLAS_LAPACK`), then runs R = ranks concurrent processes of the layout `RxT` (T threads each,
-`MKL_NUM_THREADS = OMP_NUM_THREADS = VECLIB_MAXIMUM_THREADS = T`), all released at one wall-clock time through a start-time
-file (each process spins until then; `SYNC ... lag_s` shows how late each was released, a `# WARN` line appears above 0.5 s).
-Launcher: `BLAS_BENCH_LAUNCH` unset/`local` = R background processes here; `profile` = the campaign profile's `profile_launch`
-(srun); anything else is a prefix started once with `@RANKS@` / `@THREADS@` substituted, e.g.
+`blas_bench.sh` builds in `builds/blas_bench/` (never in `Prog/`) with the compiler, flags and BLAS of `configure.sh
+<BLAS_BENCH_MACHINE|GNU> noMPI` (`blas_bench.out`) and of `configure.sh ... MPI` (`blas_bench_mpi.out`, `-DBLAS_BENCH_MPI`: the
+program calls `MPI_Init`, so Intel MPI pins the ranks as for ALF, takes the rank from `MPI_Comm_rank`, and calls `MPI_Barrier`).
+It runs R = ranks concurrent processes of the layout `RxT` (T threads each, `MKL_NUM_THREADS = OMP_NUM_THREADS =
+VECLIB_MAXIMUM_THREADS = T`). **All ranks are synchronised before every measurement point** (timer cost, each kernel x N x k): by
+`MPI_Barrier`, or, for the noMPI local launcher, by ready files (a rank that waits for more than 900 s fails the run, a failing
+rank aborts the others); the first point is released at one wall-clock time (start-time file). The log has `SYNC` (release lag of
+each rank, > 0.5 s fails) and the release time of every point (`SUMMARY ... skew_s`, > 1 s fails).
+Launcher: `BLAS_BENCH_LAUNCH` unset/`local` = R background processes here with the noMPI binary; `profile` = the campaign profile's
+`profile_launch` (srun); anything else is a prefix started once with `@RANKS@` / `@THREADS@` substituted, e.g.
 `BLAS_BENCH_LAUNCH='srun -n @RANKS@ --cpus-per-task=@THREADS@ --cpu-bind=cores' testsuite/lowrank/blas_bench.sh LAYOUT=24x4`
-or `BLAS_BENCH_LAUNCH='mpiexec -n @RANKS@'` (the rank comes from `PMI_RANK`/`PMIX_RANK`/`OMPI_COMM_WORLD_RANK`/`SLURM_PROCID`,
-through `campaign/rank_wrap.sh`, so fakeintel's `LD_PRELOAD` reaches exactly the ranks; set `BLAS_BENCH_SYNC_DELAY=20` or more for
-many ranks). The log (`runs/blas_bench/blas_bench_<TAG>.txt`) has the provenance block of `campaign/provenance.sh` (`PROV key=value`:
+or `BLAS_BENCH_LAUNCH='mpiexec -n @RANKS@'`; **these launchers require the MPI binary** (built automatically; the rank comes from
+`PMI_RANK`/`PMIX_RANK`/`OMPI_COMM_WORLD_RANK`/`SLURM_PROCID`, through `campaign/rank_wrap.sh`, so fakeintel's `LD_PRELOAD` reaches
+exactly the ranks; set `BLAS_BENCH_SYNC_DELAY` above the default 30 s for very many ranks; Homebrew `mpiexec` on the Mac needs
+`FI_PROVIDER=tcp`). Pinning: the local launcher on Linux sets `OMP_PLACES={r*T}:T` and `OMP_PROC_BIND=close` per rank; on macOS
+there is no pinning (logged as `pinning=none ...`); with MPI launchers the MPI library / srun pins (the profile's `I_MPI_PIN*`,
+`--cpu-bind`), and the runtime's affinity lines (`OMP_DISPLAY_AFFINITY=TRUE`, stderr) are kept in the log as `# STDERR rank r: ...`.
+The MKL probe runs exactly as `campaign/job_template.sh` does it (through the launcher and `rank_wrap.sh probe`, fakeintel applied).
+
+Sizing, all logged: the BLAS-2 rotating buffers of a rank cover `max(CACHE_MB = 256, 4 x node L3 total / R)` MB (L3 from sysfs, else
+`lscpu`, else `sysctl hw.l3cachesize`, else 0; `BLAS_BENCH_CACHE_MB` overrides; at least one copy), and N values whose per-rank
+peak memory times R exceeds 0.8 x the available memory (`MemAvailable`, or `hw.memsize` on the Mac) are dropped with a
+`SKIP N=<n> reason=memory est_gb=<R x peak> avail_gb=<available>` line (formula in the script header; `--plan` prints it without running).
+The run exits non-zero unless every rank 0..R-1 wrote its own output with the full expected number of `RESULT` lines.
+The log (`runs/blas_bench/blas_bench_<TAG>.txt`) has the provenance block of `campaign/provenance.sh` (`PROV key=value`:
 node, CPU, clock state, MPI, pinning environment, thread variables, plus compiler/flags/BLAS link, binary sha256, commit,
-load average and the busiest processes at start and end, and the `MKL_VERBOSE` probe: MKL version, ISA, threading layer; on the
-Mac the CPU facts that `lscpu` would give are in the `*_sysctl` keys, and a non-MKL BLAS is recorded as `n/a` in the MKL
-fields with the linked libraries in `binary_libs`), then per rank the lines `META`, `SYNC`, `TIMERCOST`, `RESULT rank threads
-kernel N k reps inner t_median_s t_min_s t_max_s gflops gflops_best gbs`, then `SUMMARY layout kernel N k nranks t_median_s
-gflops_med gflops_sum gbs_med gbs_sum` (median over the ranks; the sum is the node throughput) and `TIMERCOST_SUMMARY`.
-Reports may quote only numbers from such logs.
+cache and memory sizing, load average and the busiest processes at start and end, and the `MKL_VERBOSE` probe: MKL version, ISA,
+threading layer; on the Mac the CPU facts that `lscpu` would give are in the `*_sysctl` keys, and a non-MKL BLAS is recorded as `n/a`
+in the MKL fields with the linked libraries in `binary_libs`), then per rank the lines `META`, `SYNC`, `TIMERCOST`, `RESULT rank
+threads kernel N k reps inner t_median_s t_min_s t_max_s gflops gflops_best gbs t_release nbuf`, then `SUMMARY layout kernel N k
+nranks t_median_s gflops_med gflops_sum gbs_med gbs_sum skew_s` (median over the ranks; the sum is the node throughput) and
+`TIMERCOST_SUMMARY`. Reports may quote only numbers from such logs.
 
 Mac numbers (`docs/benchmarks/raw_blas_bench_mac_1x1.txt`, `raw_blas_bench_mac_1x4.txt`; N = 400, 1600, 3600, REPS = 7, KS = 16,64,256;
-layouts 1x1 (613 s) and 1x4 = 1 rank x 4 threads (403 s); full reps also for N = 3600 ZGEQP3, so nothing was reduced):
-**taken while another 4-core job (the precision runs, 4 x `ALF_2f98c1f2.out` at ~100 % CPU, see the `busy_procs_*` and `load_*`
-provenance lines) was running, indicative only**; several medians sit far above their minima (e.g. 1x4 ZGEMM N = 400, k = 256: median 4.1 ms = 79 GFLOP/s, minimum 2.0 ms = 162 GFLOP/s; see `gflops_best`). Medians, GFLOP/s (1 thread / 4 threads):
-ZGEMM N x N x N 147 / 119 (N = 400), 197 / 117 (1600), 140 / 154 (3600); ZGEMM k = 64: 105 / 164 (400), 105 / 47 (1600), 92 / 42 (3600);
-ZGERU 5.0 / 7.5, 4.8 / 13.7, 3.0 / 12.4; ZGEMV 2.6 / 3.0, 3.3 / 3.0, 2.7 / 2.6; ZGEQP3 8.9 / 24.8, 6.6 / 5.9, 4.7 / 10.6.
-Timer cost (both layouts): `timer_push` + `timer_pop` 46-47 ns, `timer_switch` 24 ns, one `system_clock` call 21-22 ns,
-`omp_get_wtime` 48 ns. The Apple Accelerate ZGEMM runs on the AMX matrix units, not on the core's NEON pipes: "1 thread" already
-reaches ~100-200 GFLOP/s, more threads do not scale it, and `VECLIB_MAXIMUM_THREADS` is the only control (no pinning on macOS).
-The clusters (MKL, real cores, `PMI`-launched ranks) will look different; these files only prove the tool.
+layouts 1x1 (227 s) and 1x4 = 1 rank x 4 threads (214 s); the full ZGEQP3 reps at N = 3600, nothing reduced): **taken on a quiet machine**
+(no other 4-core job; the provenance lines `load_*` and `busy_procs_*` show a load average of 4.3 to 4.7, almost all of it the macOS
+background process `mediaanalysisd` at about one core, which cannot be switched off), pinning none (macOS). The earlier first
+version of these files (taken while the precision job ran, ZGEMM beta = 0, `omp_get_wtime` cost mismeasured) is replaced. Medians,
+GFLOP/s (1 thread / 4 threads): ZGEMM N x N x N 243 / 288 (N = 400), 258 / 466 (1600), 252 / 478 (3600); ZGEMM k = 16: 77 / 77,
+55 / 77, 45 / 65; k = 64: 177 / 177, 145 / 224, 129 / 201; k = 256: 248 / 272, 222 / 362, 217 / 422; ZGERU (from memory) 7.6 / 8.7,
+8.7 / 21.0, 8.2 / 16.8; ZGEMV 6.8 / 6.8, 6.0 / 6.0, 5.9 / 5.8; ZGEQP3 24.3 / 24.3, 16.6 / 16.8, 10.5 / 10.6. Timer cost (both
+layouts): `timer_push` + `timer_pop` 42.5 ns, `timer_switch` 22 ns, one `system_clock` call 20 ns, `omp_get_wtime` alone 27 ns.
+The Apple Accelerate ZGEMM runs on the AMX matrix units, not on the core's NEON pipes: "1 thread" already reaches 250 GFLOP/s at
+N >= 400 and `VECLIB_MAXIMUM_THREADS` is the only control. The clusters (MKL, real cores, MPI-launched ranks) will look different;
+these files mainly prove the tool.
 
 ## campaign/ (Slurm benchmark campaigns with provenance)
 

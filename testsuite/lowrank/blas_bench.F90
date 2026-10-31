@@ -39,39 +39,57 @@
 !> measured with the BLAS ALF is linked against. One process = one rank; testsuite/lowrank/blas_bench.sh runs one per
 !> rank of a layout and writes the provenance.
 !
+!> Two builds: noMPI (the local launcher: ranks synchronise through ready files) and -DBLAS_BENCH_MPI (MPI_Init, so Intel MPI
+!> pins the ranks as for ALF; rank from MPI_Comm_rank; MPI_Barrier). The ranks are synchronised before EVERY measurement point
+!> (timer cost, each kernel x N x k), so the ranks measure the same kernel at the same time.
+!
 !> Usage:  blas_bench [KEY=VALUE ...] | --probe | --help
-!>   N=400,1600,3600   matrix sizes (default 400,1600,3600; up to 8000 and beyond: memory 16*N^2 bytes per matrix)
+!>   N=400,1600,3600   matrix sizes (default 400,1600,3600; up to 8000 and beyond: memory 16*N^2 bytes per matrix, the shell
+!>                     script drops the N that do not fit R ranks into the node memory)
 !>   KS=16,64,256      inner dimensions of the ZGEMM N x N x k kernel (default 16,64,256)
 !>   KERNELS=a,b,..    subset of zgemm_k, zgemm_n, zgeru, zgemv, zgeqp3 (default all five)
 !>   REPS=7            timed repetitions per point (>= 5 recommended; the median is reported)
-!>   WARMUP=2          untimed warm-up calls per point (the last one calibrates the batch size)
+!>   WARMUP=2          untimed warm-up calls per point (the last one calibrates the batch size); ZGEQP3: always 1
 !>   MINTIME=0.02      a timed repetition is a batch of calls lasting >= MINTIME seconds (not for zgeqp3: 1 call)
 !>   CACHE_MB=256      the BLAS-2 kernels (zgeru, zgemv) rotate over copies of the matrix covering >= this many MB
-!>                     (>= 2 copies), so that the matrix does not come from cache; set above the last-level cache
+!>                     (>= 1 copy), so that the matrix does not come from cache (blas_bench.sh sets it from the L3 size)
 !>   TIMER_REPS=2000000  push/pop pairs per timer-cost sample (0 = skip the timer-cost measurement)
-!>   RANK=0 THREADS=1  recorded in every line (the shell script passes them; threads come from MKL_NUM_THREADS etc.)
+!>   RANK=0 THREADS=1 NRANKS=1   recorded in every line (the shell script passes them). With MPI, RANK/NRANKS must agree
+!>                     with MPI_COMM_WORLD or the run stops
+!>   READYDIR=DIR READY_TIMEOUT=900   noMPI, NRANKS > 1: the point barrier through files DIR/ready_<point>_<rank>; a rank
+!>                     that waits longer than READY_TIMEOUT seconds stops the run with an error (never silently continues)
 !>   START=FILE        wait until the wall-clock epoch (seconds, in FILE) before the first measurement
 !>   --probe           one 8x8x8 ZGEMM and one 8x8 ZGEQP3, prints "probe ok", exit 0 (MKL_VERBOSE probe of the campaign)
 !> Output (stdout, one line per record, whitespace separated; the header lines start with '#'):
-!>   META key=value ...                     build/run facts (compiler, options, clock, timers compiled in)
+!>   META key=value ...                     build/run facts (compiler, options, clock, MPI, timers compiled in)
 !>   SYNC rank start_epoch release_epoch lag_s      with START: how late the process was released
 !>   TIMERCOST rank threads what calls_per_sample samples t_median_ns t_min_ns t_max_ns
 !>        what = push_pop (timer_push+timer_pop of Prog/Timers_mod.F90 compiled with -DALF_TIMERS; the cost of one
-!>        start/stop pair), switch (one timer_switch), system_clock (one call, the clock of tnow) and wtime (omp_get_wtime)
-!>   RESULT rank threads kernel N k reps inner t_median_s t_min_s t_max_s gflops gflops_best gbs
+!>        start/stop pair), switch (one timer_switch), system_clock (one call, the clock of tnow) and wtime
+!>        (omp_get_wtime alone; = the system_clock cost in a build without OpenMP)
+!>   RESULT rank threads kernel N k reps inner t_median_s t_min_s t_max_s gflops gflops_best gbs t_release nbuf
 !>        times are per call; gflops uses the median, gflops_best the minimum time; gbs = nominal minimum memory
-!>        traffic / median time (not a measured bandwidth)
+!>        traffic / median time (not a measured bandwidth); t_release = wall-clock epoch at which this rank left the point
+!>        barrier (the spread over the ranks is the release skew of the point); nbuf = rotating copies (BLAS-2 kernels)
 !> Flop and byte models (complex double, 16 bytes per element):
-!>   zgemm N x N x k  : 8 N^2 k flops, C := A B (beta = 0), bytes 16 (2 N k + N^2)
+!>   zgemm N x N x k  : 8 N^2 k flops, C := C - A B (alpha = -1, beta = 1, as the flush of Lowrank_update_mod.F90),
+!>                      bytes 16 (2 N k + 2 N^2) (A, B read, C read and written)
 !>   zgeru N x N      : 8 N^2 flops, A := A + alpha x y^T, bytes 16 (2 N^2 + 2 N)
 !>   zgemv N x N      : 8 N^2 flops, y := A x, bytes 16 (N^2 + 2 N)
 !>   zgeqp3 N x N     : (16/3) N^3 flops (4 x the real Householder count 4/3 N^3), bytes 32 N^2 (nominal); the input
-!>                      is restored from a master copy before every call, outside the timed region
+!>                      is restored from a master copy before every call (warm-up included), outside the timed region
+!> The buffers are filled in parallel (OpenMP, static schedule) so that the first touch follows the threads of the kernel.
+!> The BLAS-2 numbers come from memory (rotating buffers); ALF's G may stay in cache at small N (a lower bound there).
 !> Never uses ZDOTU/ZDOTC (Accelerate's f2c return convention).
 program blas_bench
    use iso_fortran_env, only: int64, error_unit, output_unit, compiler_version, compiler_options
    use Timers_mod
-!$ use omp_lib
+#ifdef _OPENMP
+   use omp_lib
+#endif
+#ifdef BLAS_BENCH_MPI
+   use mpi
+#endif
    implicit none
 
    Integer, parameter :: dp = kind(0.d0)
@@ -81,11 +99,14 @@ program blas_bench
 
    Integer  :: ns(MAXLIST) = 0, ks(MAXLIST) = 0, nn = 0, nk = 0
    Logical  :: run_kernel(NKERN) = .true.
-   Integer  :: reps = 7, warmup = 2, rank = 0, threads = 1
+   Integer  :: reps = 7, warmup = 2, rank = 0, threads = 1, nranks = 1
    Integer  :: timer_reps = 2000000
-   Real (Kind=dp) :: mintime = 0.02_dp, cache_mb = 256.0_dp
-   Character (len=1024) :: start_file = ""
+   Real (Kind=dp) :: mintime = 0.02_dp, cache_mb = 256.0_dp, ready_timeout = 900.0_dp
+   Character (len=1024) :: start_file = "", ready_dir = ""
    Logical  :: probe = .false.
+   Integer  :: barrier_seq = 0
+   Real (Kind=dp) :: t_release = 0
+   Integer  :: ierr_mpi = 0
 
    Integer  :: iarg, ik, in, ikern
 
@@ -93,7 +114,7 @@ program blas_bench
    Complex (Kind=dp), allocatable :: a(:,:,:), b(:,:), c(:,:), x(:), y(:), work(:), tau(:)
    Real (Kind=dp), allocatable :: rwork(:)
    Integer, allocatable :: jpvt(:)
-   Complex (Kind=dp), parameter :: one = (1.0_dp, 0.0_dp), zero = (0.0_dp, 0.0_dp)
+   Complex (Kind=dp), parameter :: one = (1.0_dp, 0.0_dp), zero = (0.0_dp, 0.0_dp), mone = (-1.0_dp, 0.0_dp)
    Complex (Kind=dp) :: alpha
    Integer :: cur_kern = 0, cur_n = 0, cur_k = 0, nbuf = 1, ic = 0, lwork = 1
    Character (len=1024) :: arg
@@ -110,10 +131,28 @@ program blas_bench
       call run_probe()
       stop
    endif
+   if (nranks < 1 .or. rank < 0 .or. rank >= nranks) call die("RANK/NRANKS out of range")
+
+#ifdef BLAS_BENCH_MPI
+   call MPI_Init(ierr_mpi)
+   block
+      Integer :: r_mpi, n_mpi
+      call MPI_Comm_rank(MPI_COMM_WORLD, r_mpi, ierr_mpi)
+      call MPI_Comm_size(MPI_COMM_WORLD, n_mpi, ierr_mpi)
+      if (r_mpi /= rank .or. n_mpi /= nranks) then
+         write(error_unit,'(A,4(1X,I0))') 'blas_bench: MPI rank/size /= RANK/NRANKS arguments:', r_mpi, n_mpi, rank, nranks
+         call MPI_Abort(MPI_COMM_WORLD, 2, ierr_mpi)
+         error stop 2
+      endif
+   end block
+#endif
 
    call print_header()
    if (len_trim(start_file) > 0) call wait_for_start(trim(start_file))
-   if (timer_reps > 0) call timer_cost()
+   if (timer_reps > 0) then
+      call point_barrier()
+      call timer_cost()
+   endif
 
    do in = 1, nn
       do ikern = 1, NKERN
@@ -130,6 +169,10 @@ program blas_bench
       enddo
    enddo
    write(output_unit,'(A)') "# done"
+   flush(output_unit)
+#ifdef BLAS_BENCH_MPI
+   call MPI_Finalize(ierr_mpi)
+#endif
 
 contains
 
@@ -137,6 +180,9 @@ contains
    subroutine die(msg)
       Character (len=*), intent(in) :: msg
       write(error_unit,'(A)') 'blas_bench: ' // msg
+#ifdef BLAS_BENCH_MPI
+      if (.not. probe) call MPI_Abort(MPI_COMM_WORLD, 2, ierr_mpi)
+#endif
       error stop 2
    end subroutine die
 
@@ -173,7 +219,8 @@ contains
       endif
       if (a == "--help" .or. a == "-h") then
          write(output_unit,'(A)') "usage: blas_bench [N=400,1600] [KS=16,64,256] [KERNELS=zgemm_k,zgemm_n,zgeru,zgemv,zgeqp3] " // &
-              & "[REPS=7] [WARMUP=2] [MINTIME=0.02] [CACHE_MB=256] [TIMER_REPS=2000000] [RANK=0] [THREADS=1] [START=FILE] | --probe"
+              & "[REPS=7] [WARMUP=2] [MINTIME=0.02] [CACHE_MB=256] [TIMER_REPS=2000000] [RANK=0] [THREADS=1] [NRANKS=1] " // &
+              & "[READYDIR=DIR] [READY_TIMEOUT=900] [START=FILE] | --probe"
          stop
       endif
       eq = index(a, '=')
@@ -193,6 +240,9 @@ contains
       case ("TIMER_REPS"); read(val, *, iostat=ios) timer_reps
       case ("RANK");       read(val, *, iostat=ios) rank
       case ("THREADS");    read(val, *, iostat=ios) threads
+      case ("NRANKS");     read(val, *, iostat=ios) nranks
+      case ("READY_TIMEOUT"); read(val, *, iostat=ios) ready_timeout
+      case ("READYDIR");   ready_dir = val
       case ("START");      start_file = val
       case ("KERNELS")
          run_kernel = .false.
@@ -225,9 +275,12 @@ contains
    !-----------------------------------------------------------------------------------------------------------
    Real (Kind=dp) function wall()
       Integer (Kind=int64) :: c, r
+#ifdef _OPENMP
+      wall = omp_get_wtime()
+#else
       call system_clock(c, r)
       wall = dble(c)/dble(r)
-!$    wall = omp_get_wtime()
+#endif
    end function wall
 
    !> seconds since 1970-01-01 00:00:00 UTC from date_and_time (ms resolution), standard Fortran only
@@ -273,28 +326,88 @@ contains
       flush(output_unit)
    end subroutine wait_for_start
 
+   !> All ranks leave together: MPI_Barrier (MPI build) or the ready files (noMPI, NRANKS > 1; timeout = error).
+   !> Called before the timer cost and before every kernel x N x k point, so that all ranks run the same point.
+   subroutine point_barrier()
+      Integer :: r, u, ios
+      Logical :: ex, all_ready
+      Real (Kind=dp) :: tw
+      Character (len=1200) :: f
+      barrier_seq = barrier_seq + 1
+#ifdef BLAS_BENCH_MPI
+      call MPI_Barrier(MPI_COMM_WORLD, ierr_mpi)
+#else
+      if (nranks > 1) then
+         if (len_trim(ready_dir) == 0) call die("NRANKS > 1 without MPI needs READYDIR (the point barrier)")
+         write(f,'(A,A,I0,A,I0)') trim(ready_dir), '/ready_', barrier_seq, '_', rank
+         open(newunit=u, file=trim(f), status='replace', action='write', iostat=ios)
+         if (ios /= 0) call die("cannot create ready file " // trim(f))
+         write(u,'(A)') 'ready'
+         close(u)
+         tw = wall()
+         do
+            all_ready = .true.
+            do r = 0, nranks - 1
+               write(f,'(A,A,I0,A,I0)') trim(ready_dir), '/ready_', barrier_seq, '_', r
+               inquire(file=trim(f), exist=ex)
+               if (.not. ex) then
+                  all_ready = .false.
+                  exit
+               endif
+            enddo
+            if (all_ready) exit
+            write(f,'(A,A)') trim(ready_dir), '/ABORT'
+            inquire(file=trim(f), exist=ex)
+            if (ex) call die("point barrier: another rank failed (ABORT file)")
+            if (wall() - tw > ready_timeout) then
+               call die("point barrier timeout: not all ranks arrived (a rank died or is far behind)")
+            endif
+            call pause_ms(5.0_dp)
+         enddo
+      endif
+#endif
+      t_release = epoch_now()
+   end subroutine point_barrier
+
+   subroutine pause_ms(ms)
+      Real (Kind=dp), intent(in) :: ms
+      Real (Kind=dp) :: t0
+      t0 = wall()
+      do while ((wall() - t0)*1.d3 < ms)
+      enddo
+   end subroutine pause_ms
+
    !-----------------------------------------------------------------------------------------------------------
    subroutine print_header()
       write(output_unit,'(A)') "# blas_bench: BLAS ceiling microbenchmark (testsuite/lowrank/blas_bench.F90)"
       write(output_unit,'(A)') "# SYNC rank start_epoch release_epoch lag_s"
       write(output_unit,'(A)') "# TIMERCOST rank threads what calls_per_sample samples t_median_ns t_min_ns t_max_ns"
-      write(output_unit,'(A)') "# RESULT rank threads kernel N k reps inner t_median_s t_min_s t_max_s gflops gflops_best gbs"
+      write(output_unit,'(A)') "# RESULT rank threads kernel N k reps inner t_median_s t_min_s t_max_s gflops gflops_best gbs t_release nbuf"
       write(output_unit,'(A)') "META compiler=" // trim(compiler_version())
       write(output_unit,'(A)') "META compiler_options=" // trim(compiler_options())
       write(output_unit,'(A)') "META clock=" // trim(clock_name())
+#ifdef BLAS_BENCH_MPI
+      write(output_unit,'(A)') "META mpi=yes (MPI_Init, MPI_Barrier before every point)"
+#else
+      write(output_unit,'(A)') "META mpi=no (point barrier through ready files, NRANKS > 1)"
+#endif
 #ifdef ALF_TIMERS
       write(output_unit,'(A)') "META timers_compiled=yes (-DALF_TIMERS)"
 #else
       write(output_unit,'(A)') "META timers_compiled=no (timer calls are empty: timer cost is not meaningful)"
 #endif
-      write(output_unit,'(A,5(1X,I0))') "META reps_warmup_rank_threads_timerreps=", reps, warmup, rank, threads, timer_reps
-      write(output_unit,'(A,F8.3,1X,A,F8.1)') "META mintime_s=", mintime, "cache_mb=", cache_mb
+      write(output_unit,'(A,6(1X,I0))') "META reps_warmup_rank_threads_nranks_timerreps=", reps, warmup, rank, threads, &
+           & nranks, timer_reps
+      write(output_unit,'(A,F8.3,1X,A,F10.1)') "META mintime_s=", mintime, "cache_mb=", cache_mb
       flush(output_unit)
    end subroutine print_header
 
    Character (len=40) function clock_name()
+#ifdef _OPENMP
+      clock_name = "omp_get_wtime"
+#else
       clock_name = "system_clock"
-!$    clock_name = "omp_get_wtime"
+#endif
    end function clock_name
 
    !-----------------------------------------------------------------------------------------------------------
@@ -364,9 +477,16 @@ contains
                t1 = wall()
                sink = dble(csum)
             case (4)
+               ! the clock alone (omp_get_wtime; system_clock in a build without OpenMP): the timing calls around the
+               ! loop are two further calls, negligible for nrep >= 1e4
                t0 = wall()
                do j = 1, nrep
-                  sink = sink + wall()
+#ifdef _OPENMP
+                  sink = sink + omp_get_wtime()
+#else
+                  call system_clock(c)
+                  sink = sink + dble(c)
+#endif
                enddo
                t1 = wall()
             end select
@@ -381,31 +501,34 @@ contains
    end subroutine timer_cost
 
    !-----------------------------------------------------------------------------------------------------------
+   !> thread-safe, deterministic fill (xorshift64 per column), parallel with a static schedule: first touch by the threads
    subroutine fill(a)
       Complex (Kind=dp), intent(out) :: a(:,:)
-      Real (Kind=dp), allocatable :: re(:), im(:)
-      Integer :: j
-      allocate(re(size(a,1)), im(size(a,1)))
+      Integer :: i, j
+      Integer (Kind=int64) :: s
+      Real (Kind=dp) :: re, im
+      Real (Kind=dp), parameter :: sc = 1.0_dp/9007199254740992.0_dp
+!$omp parallel do schedule(static) private(i, s, re, im)
       do j = 1, size(a,2)
-         call random_number(re)
-         call random_number(im)
-         a(:,j) = cmplx(re - 0.5_dp, im - 0.5_dp, kind=dp)
+         s = ieor(int(j, int64)*2654435761_int64, 88172645463325252_int64)
+         do i = 1, size(a,1)
+            s = ieor(s, shiftl(s, 13)); s = ieor(s, shiftr(s, 7)); s = ieor(s, shiftl(s, 17))
+            re = dble(shiftr(s, 11))*sc - 0.5_dp
+            s = ieor(s, shiftl(s, 13)); s = ieor(s, shiftr(s, 7)); s = ieor(s, shiftl(s, 17))
+            im = dble(shiftr(s, 11))*sc - 0.5_dp
+            a(i,j) = cmplx(re, im, kind=dp)
+         enddo
       enddo
-      deallocate(re, im)
    end subroutine fill
 
-   subroutine bench_point(ikern, n, k)
-      Integer, intent(in) :: ikern, n, k
-      Complex (Kind=dp), allocatable :: master(:,:)
-      Complex (Kind=dp) :: wq(1)
-      Real (Kind=dp), allocatable :: t(:)
-      Real (Kind=dp) :: flops, bytes, t0, t1, tmed, tmin, tmax, tcal, nrm
-      Integer (Kind=int64) :: matbytes
-      Integer :: ib, inner, i, r, info, ierr
-      Logical :: refresh
+   subroutine fill_vec(v)
+      Complex (Kind=dp), intent(out) :: v(:)
+      Complex (Kind=dp) :: m(size(v), 1)
+      call fill(m)
+      v = m(:,1)
+   end subroutine fill_vec
 
-      if (n < 1) call die("N < 1")
-      cur_kern = ikern; cur_n = n; cur_k = k
+   subroutine free_state()
       if (allocated(a)) deallocate(a)
       if (allocated(b)) deallocate(b)
       if (allocated(c)) deallocate(c)
@@ -415,6 +538,21 @@ contains
       if (allocated(tau)) deallocate(tau)
       if (allocated(rwork)) deallocate(rwork)
       if (allocated(jpvt)) deallocate(jpvt)
+   end subroutine free_state
+
+   subroutine bench_point(ikern, n, k)
+      Integer, intent(in) :: ikern, n, k
+      Complex (Kind=dp), allocatable :: master(:,:)
+      Complex (Kind=dp) :: wq(1)
+      Real (Kind=dp), allocatable :: t(:)
+      Real (Kind=dp) :: flops, bytes, t0, t1, tmed, tmin, tmax, tcal, nrm
+      Integer (Kind=int64) :: matbytes
+      Integer :: ib, inner, i, r, info, ierr, nwarm
+      Logical :: refresh
+
+      if (n < 1) call die("N < 1")
+      cur_kern = ikern; cur_n = n; cur_k = k
+      call free_state()
       allocate(t(reps))
       ic = 0
       nbuf = 1
@@ -423,18 +561,18 @@ contains
       case (1, 2)
          allocate(a(n,k,1), b(k,n), c(n,n), stat=ierr)
          if (ierr /= 0) call die("out of memory for zgemm")
-         call fill(a(:,:,1)); call fill(b); c = zero
+         call fill(a(:,:,1)); call fill(b); call fill(c)
          flops = 8.0_dp*dble(n)*dble(n)*dble(k)
-         bytes = 16.0_dp*(2.0_dp*dble(n)*dble(k) + dble(n)*dble(n))
+         bytes = 16.0_dp*(2.0_dp*dble(n)*dble(k) + 2.0_dp*dble(n)*dble(n))
       case (3, 4)
          matbytes = 16_int64*int(n, int64)*int(n, int64)
-         nbuf = max(2, int(ceiling(cache_mb*1048576.0_dp/dble(matbytes))))
+         nbuf = max(1, int(ceiling(cache_mb*1048576.0_dp/dble(matbytes))))
          allocate(a(n,n,nbuf), x(n), y(n), stat=ierr)
          if (ierr /= 0) call die("out of memory for the rotating buffers of " // trim(kname(ikern)))
          do ib = 1, nbuf
             call fill(a(:,:,ib))
          enddo
-         call random_number_c(x); call random_number_c(y)
+         call fill_vec(x); call fill_vec(y)
          alpha = cmplx(1.0d-6, 0.0d0, kind=dp)
          flops = 8.0_dp*dble(n)*dble(n)
          if (ikern == 3) then
@@ -456,8 +594,13 @@ contains
          refresh = .true.
       end select
 
+      call point_barrier()
+
+      nwarm = warmup + 1
+      if (refresh) nwarm = 1
       tcal = 0
-      do i = 1, warmup + 1                   ! warm-up; the last call calibrates the batch size
+      do i = 1, nwarm                        ! warm-up; the last call calibrates the batch size
+         if (refresh) a(:,:,1) = master
          t0 = wall()
          call one_call()
          t1 = wall()
@@ -486,18 +629,19 @@ contains
       end select
       if (.not. (nrm == nrm) .or. nrm > huge(nrm)) call die("non-finite result in " // trim(kname(ikern)))
 
-      write(output_unit,'(A,2(1X,I0),1X,A,4(1X,I0),3(1X,ES13.6),2(1X,F10.3),1X,F10.3)') "RESULT", rank, threads, &
-           & trim(kname(ikern)), n, k, reps, inner, tmed, tmin, tmax, flops/tmed*1.d-9, flops/tmin*1.d-9, bytes/tmed*1.d-9
+      write(output_unit,'(A,2(1X,I0),1X,A,4(1X,I0),3(1X,ES13.6),2(1X,F10.3),1X,F10.3,1X,F16.3,1X,I0)') "RESULT", rank, &
+           & threads, trim(kname(ikern)), n, k, reps, inner, tmed, tmin, tmax, flops/tmed*1.d-9, flops/tmin*1.d-9, &
+           & bytes/tmed*1.d-9, t_release, nbuf
       flush(output_unit)
       deallocate(t)
-
+      call free_state()
    end subroutine bench_point
 
    subroutine one_call()
       Integer :: info
       select case (cur_kern)
       case (1, 2)
-         call zgemm('N', 'N', cur_n, cur_n, cur_k, one, a(:,:,1), cur_n, b, cur_k, zero, c, cur_n)
+         call zgemm('N', 'N', cur_n, cur_n, cur_k, mone, a(:,:,1), cur_n, b, cur_k, one, c, cur_n)
       case (3)
          ic = ic + 1; if (ic > nbuf) ic = 1
          call zgeru(cur_n, cur_n, alpha, x, 1, y, 1, a(:,:,ic), cur_n)
@@ -511,34 +655,22 @@ contains
       end select
    end subroutine one_call
 
-   subroutine random_number_c(v)
-      Complex (Kind=dp), intent(out) :: v(:)
-      Real (Kind=dp), allocatable :: re(:), im(:)
-      allocate(re(size(v)), im(size(v)))
-      call random_number(re); call random_number(im)
-      v = cmplx(re - 0.5_dp, im - 0.5_dp, kind=dp)
-      deallocate(re, im)
-   end subroutine random_number_c
-
    !-----------------------------------------------------------------------------------------------------------
    !> tiny ZGEMM and ZGEQP3 (the MKL_VERBOSE probe of campaign/job_template.sh): "probe ok", exit 0
    subroutine run_probe()
       Integer, parameter :: m = 8
-      Complex (Kind=dp) :: a(m,m), b(m,m), c(m,m), tau(m), work(4*m), wq(1)
-      Real (Kind=dp) :: rwork(2*m)
-      Integer :: jpvt(m), info, lwork
-      Complex (Kind=dp), parameter :: one = (1.0_dp, 0.0_dp), zero = (0.0_dp, 0.0_dp)
-      call fill(a); call fill(b)
-      c = zero
-      call zgemm('N', 'N', m, m, m, one, a, m, b, m, zero, c, m)
-      if (.not. (sum(abs(c)) > 0.0_dp)) then
+      Complex (Kind=dp) :: aa(m,m), bb(m,m), cc(m,m), tt(m), ww(4*m)
+      Real (Kind=dp) :: rw(2*m)
+      Integer :: jp(m), info
+      call fill(aa); call fill(bb)
+      cc = zero
+      call zgemm('N', 'N', m, m, m, one, aa, m, bb, m, zero, cc, m)
+      if (.not. (sum(abs(cc)) > 0.0_dp)) then
          write(output_unit,'(A)') "probe FAILED (zgemm)"; error stop 1
       endif
-      jpvt = 0
-      call zgeqp3(m, m, a, m, jpvt, tau, wq, -1, rwork, info)
-      lwork = min(4*m, max(1, int(real(wq(1)))))
-      call zgeqp3(m, m, a, m, jpvt, tau, work, 4*m, rwork, info)
-      if (info /= 0 .or. .not. (sum(abs(a)) > 0.0_dp)) then
+      jp = 0
+      call zgeqp3(m, m, aa, m, jp, tt, ww, 4*m, rw, info)
+      if (info /= 0 .or. .not. (sum(abs(aa)) > 0.0_dp)) then
          write(output_unit,'(A)') "probe FAILED (zgeqp3)"; error stop 1
       endif
       write(output_unit,'(A)') "probe ok"

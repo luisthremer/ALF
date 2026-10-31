@@ -1,13 +1,13 @@
-# blas_bench.sh log (testsuite/lowrank/blas_bench.sh): layout 1x4, tag mac_1x4
+# blas_bench.sh log (testsuite/lowrank/blas_bench.sh): layout 1x4, tag quiet_1x4
 # PROV key=value: provenance (campaign/provenance.sh); RESULT/TIMERCOST/SYNC/META per rank; SUMMARY lines at the end
 PROV campaign_id=blas_bench
-PROV job_name=blas_bench_mac_1x4
+PROV job_name=blas_bench_quiet_1x4
 PROV slurm_job_id=unavailable(no SLURM_JOB_ID)
 PROV cluster=unavailable(no SLURM_CLUSTER_NAME)
 PROV node=unavailable(no SLURMD_NODENAME)
 PROV hostname=MacBook-Pro-98.local
 PROV profile=local
-PROV job_start=2026-10-31T17:22:31+0100
+PROV job_start=2026-10-31T17:56:42+0100
 PROV node_list=unavailable(not in scontrol.txt)
 PROV partition=unavailable(not in scontrol.txt)
 PROV exclusive=unavailable(not in scontrol.txt)
@@ -32,48 +32,57 @@ PROV pin_env=OMP_PLACES=cores OMP_PROC_BIND=close
 PROV omp_num_threads=4
 PROV mkl_num_threads=4
 PROV mkl_dynamic=FALSE
-PROV omp_display_affinity=unset
+PROV omp_display_affinity=TRUE
 PROV mkl_verbose_in_runs=unset
 PROV prov_sysfs_root=/ (real)
 PROV prov_proc_root=/ (real)
 PROV layout=1x4
 PROV ranks=1
 PROV threads=4
-PROV blas_bench_args=unavailable(empty)
+PROV blas_bench_args=N=400,1600,3600 KS=16,64,256 KERNELS=zgemm_k,zgemm_n,zgeru,zgemv,zgeqp3 CACHE_MB=256
 PROV launcher=local
-PROV sync_delay_s=3
+PROV mpi_binary=no (noMPI binary, ready-file barrier)
+PROV pinning=none: Darwin has no thread/core pinning that the runtime honours (local launcher)
+PROV cache_mb_used=256 (max(CACHE_MB=256, 4 x L3 0 MB / 1 ranks))
+PROV l3_total_mb=0
+PROV mem_avail_mb=32768
+PROV expected_results_per_rank=21
 PROV fakeintel=off
-PROV blas_bench_sh_sha256=089b39a55a27118688d70067be77ac634159fa589d49bf9233f7067d2332fd35
-PROV blas_bench_f90_sha256=5e4d2fc233d91d7814063085969755a91ad22190262dbbeef6097232cb022921
+PROV blas_bench_sh_sha256=125e69b6c9ac1f729fde3779736fd0c6aff11cf0b7fc56e93c9afeba8ee68fcf
+PROV blas_bench_f90_sha256=9d39fd1929fc951122a6a84e9d3c2b362a9a653a6a4ceba38e4087b2c43ff421
 PROV binary=/Users/luis/Documents/_WORK/Coding/CLAUDE_ALF_DELAYED_SUBMATRIX/ALF/builds/blas_bench/blas_bench.out
-PROV binary_sha256=08044ef65e7d3dab6eb87e09ade4b54c09efc90e6eeb0c56e42ccd8b963d1f18
+PROV binary_sha256=30ffcc92e2d01675e46fc50e12199dee900c73eca0434ca0a1b32861a30c0c52
+PROV build_flavour=noMPI
 PROV build_machine=GNU
 PROV build_compiler=gfortran
 PROV build_compiler_version=GNU Fortran (Homebrew GCC 16.2.0) 16.2.0
 PROV build_flags=-std=f2008 -cpp -O3 -ffree-line-length-none -ffast-math -fopenmp -I/Users/luis/Documents/_WORK/Coding/CLAUDE_ALF_DELAYED_SUBMATRIX/ALF/Libraries/Modules -DALF_TIMERS
 PROV build_blas_link=-llapack -lblas -fopenmp
 PROV build_timers_mod_sha256=dd9047cfd23a93cc35b138f4dc5db4d088139fcfc23a0505edde7e535c8fb8d0
-PROV build_blas_bench_f90_sha256=5e4d2fc233d91d7814063085969755a91ad22190262dbbeef6097232cb022921
-PROV build_built=2026-10-31T17:10:29+0100
-PROV git_commit=be82461e22f73c891d042fd21f74c5123d0db549
-PROV git_dirty=1 modified tracked files
+PROV build_blas_bench_f90_sha256=9d39fd1929fc951122a6a84e9d3c2b362a9a653a6a4ceba38e4087b2c43ff421
+PROV build_built=2026-10-31T17:50:47+0100
+PROV git_commit=0c801588e1726da9a8c43e7404d6b1a55a9d1c0a
+PROV git_dirty=5 modified tracked files
 PROV uname=Darwin MacBook-Pro-98.local 27.2.0 Darwin Kernel Version 27.2.0: Sun Sep 13 20:01:35 PDT 2026; root:xnu-13432.40.162~92/RELEASE_ARM64_T6000 arm64
 PROV cpu_model_sysctl=Apple M1 Pro
 PROV cpus_sysctl=10 logical, 10 physical
 PROV mem_bytes_sysctl=34359738368
 PROV perf_cores_sysctl=8
 PROV binary_libs=/System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libLAPACK.dylib ; /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBLAS.dylib ; /opt/homebrew/opt/gcc/lib/gcc/current/libgfortran.5.dylib ; /opt/homebrew/opt/gcc/lib/gcc/current/libgomp.1.dylib ; /opt/homebrew/opt/gcc/lib/gcc/current/libquadmath.0.dylib ; /usr/lib/libSystem.B.dylib
-PROV load_start=10.53 11.98 13.19
-PROV busy_procs_start=100.0%ALF_2f98c1f2.out 100.0%ALF_2f98c1f2.out 99.6%ALF_2f98c1f2.out 98.5%ALF_2f98c1f2.out 86.7%spotlightknowledged.updater 74.4%XProtectRemediatorAdload
+PROV load_start=4.57 4.17 5.23
+PROV busy_procs_start=85.7%mediaanalysisd 10.4%coreaudiod 9.9%bash 5.4%syspolicyd 3.3%Messages 1.8%Safari
+PROV mkl_probe_rc=0
 PROV mkl_probe_line=none
-PROV mkl_version=n/a (no MKL_VERBOSE line: BLAS is not MKL; see binary_libs)
-PROV mkl_isa=n/a (no MKL_VERBOSE line: BLAS is not MKL; see binary_libs)
-PROV mkl_threading=n/a (no MKL_VERBOSE line: BLAS is not MKL; see binary_libs)
-PROV start_epoch_s=1793463756
-PROV run_wall_s=402.845
+PROV mkl_version=n/a (no MKL_VERBOSE line, probe rc=0: BLAS is not MKL or the probe failed; see binary_libs)
+PROV mkl_isa=n/a (no MKL_VERBOSE line, probe rc=0: BLAS is not MKL or the probe failed; see binary_libs)
+PROV mkl_threading=n/a (no MKL_VERBOSE line, probe rc=0: BLAS is not MKL or the probe failed; see binary_libs)
+PROV fakeintel_maps_probe=n/a (fakeintel off)
+PROV sync_delay_s=3
+PROV start_epoch_s=1793465806
+PROV run_wall_s=214.287
 PROV launch_rc=0
-PROV load_end=5.00 9.33 11.68
-PROV busy_procs_end=95.0%installd 2.4%Messages 2.1%Notes 2.0%launchservicesd 1.4%Safari 0.4%Application
+PROV load_end=4.27 4.28 5.04
+PROV busy_procs_end=99.7%mediaanalysisd 13.4%coreaudiod 3.8%Messages 2.1%Safari 1.6%mdworker_shared 1.3%Application
 PROV rank_hosts=MacBook-Pro-98.local
 PROV rank_affinity_preinit=r0:unavailable(no taskset)
 PROV_END
@@ -81,66 +90,71 @@ PROV_END
 # blas_bench: BLAS ceiling microbenchmark (testsuite/lowrank/blas_bench.F90)
 # SYNC rank start_epoch release_epoch lag_s
 # TIMERCOST rank threads what calls_per_sample samples t_median_ns t_min_ns t_max_ns
-# RESULT rank threads kernel N k reps inner t_median_s t_min_s t_max_s gflops gflops_best gbs
+# RESULT rank threads kernel N k reps inner t_median_s t_min_s t_max_s gflops gflops_best gbs t_release nbuf
 META compiler=GCC version 16.2.0
 META compiler_options=-cpp -I /Users/luis/Documents/_WORK/Coding/CLAUDE_ALF_DELAYED_SUBMATRIX/ALF/Libraries/Modules -iprefix /opt/homebrew/Cellar/gcc/16.2.0/bin/../lib/gcc/current/gcc/aarch64-apple-darwin27/16/ -D__DYNAMIC__ -D ALF_TIMERS -fPIC -mmacosx-version-min=27.0.0 -mcpu=apple-m1 -mlittle-endian -mabi=lp64 -O3 -std=f2008 -ffree-line-length-none -ffast-math -fopenmp
 META clock=omp_get_wtime
+META mpi=no (point barrier through ready files, NRANKS > 1)
 META timers_compiled=yes (-DALF_TIMERS)
-META reps_warmup_rank_threads_timerreps= 7 2 0 4 2000000
-META mintime_s=   0.020 cache_mb=   256.0
-SYNC 0   1793463756.000   1793463756.000     0.000
-TIMERCOST 0 4 push_pop 2000000 7      46.19      45.32      49.53
-TIMERCOST 0 4 switch 2000000 7      24.63      24.02      25.93
-TIMERCOST 0 4 system_clock 2000000 7      22.38      21.71      23.19
-TIMERCOST 0 4 wtime 2000000 7      48.59      48.43      48.94
-RESULT 0 4 zgemm_k 400 16 7 37  6.024324E-04  2.286216E-04  7.345946E-04     33.996     89.580      4.589
-RESULT 0 4 zgemm_k 400 64 7 40  4.983750E-04  4.012500E-04  5.080250E-04    164.374    204.162      6.780
-RESULT 0 4 zgemm_k 400 256 7 11  4.144091E-03  2.018909E-03  4.318636E-03     79.072    162.305      1.408
-RESULT 0 4 zgemm_n 400 400 7 4  4.287750E-03  2.885000E-03  5.514000E-03    119.410    177.470      1.791
-RESULT 0 4 zgeru 400 0 7 114  1.714123E-04  1.420000E-04  1.858070E-04      7.467      9.014     29.944
-RESULT 0 4 zgemv 400 0 7 53  4.296792E-04  3.791132E-04  4.725094E-04      2.979      3.376      5.988
-RESULT 0 4 zgeqp3 400 0 7 1  1.374300E-02  1.369300E-02  2.049400E-02     24.837     24.928      0.373
-RESULT 0 4 zgemm_k 1600 16 7 2  1.873450E-02  1.572000E-02  2.213850E-02     17.491     20.845      2.230
-RESULT 0 4 zgemm_k 1600 64 7 1  2.767600E-02  2.211800E-02  3.433700E-02     47.359     59.260      1.598
-RESULT 0 4 zgemm_k 1600 256 7 1  6.524600E-02  5.105100E-02  8.260900E-02     80.356    102.699      0.829
-RESULT 0 4 zgemm_n 1600 1600 7 1  2.796990E-01  2.223230E-01  4.431510E-01    117.155    147.389      0.439
-RESULT 0 4 zgeru 1600 0 7 18  1.497056E-03  1.386222E-03  1.566722E-03     13.680     14.774     54.755
-RESULT 0 4 zgemv 1600 0 7 4  6.921750E-03  4.995000E-03  7.650000E-03      2.959      4.100      5.925
-RESULT 0 4 zgeqp3 1600 0 7 1  3.671877E+00  3.484441E+00  4.118833E+00      5.949      6.269      0.022
-RESULT 0 4 zgemm_k 3600 16 7 1  6.290900E-02  5.324600E-02  6.811100E-02     26.370     31.155      3.325
-RESULT 0 4 zgemm_k 3600 64 7 1  1.579830E-01  4.379200E-02  1.916500E-01     42.001    151.524      1.359
-RESULT 0 4 zgemm_k 3600 256 7 1  2.688090E-01  2.290240E-01  3.059350E-01     98.740    115.892      0.881
-RESULT 0 4 zgemm_n 3600 3600 7 1  2.419999E+00  1.859121E+00  2.723950E+00    154.235    200.766      0.257
-RESULT 0 4 zgeru 3600 0 7 3  8.337333E-03  7.703667E-03  8.872667E-03     12.436     13.459     49.756
-RESULT 0 4 zgemv 3600 0 7 1  3.974400E-02  2.476200E-02  4.846100E-02      2.609      4.187      5.220
-RESULT 0 4 zgeqp3 3600 0 7 1  2.357648E+01  2.312819E+01  3.393704E+01     10.554     10.759      0.018
+META reps_warmup_rank_threads_nranks_timerreps= 7 2 0 4 1 2000000
+META mintime_s=   0.020 cache_mb=     256.0
+SYNC 0   1793465806.000   1793465806.000     0.000
+TIMERCOST 0 4 push_pop 2000000 7      42.48      42.44      42.74
+TIMERCOST 0 4 switch 2000000 7      21.94      21.93      22.00
+TIMERCOST 0 4 system_clock 2000000 7      20.16      20.11      20.56
+TIMERCOST 0 4 wtime 2000000 7      26.85      26.82      26.86
+RESULT 0 4 zgemm_k 400 16 7 76  2.658289E-04  2.649737E-04  2.665789E-04     77.042     77.291     20.031   1793465808.138 1
+RESULT 0 4 zgemm_k 400 64 7 41  4.621220E-04  4.596829E-04  4.684146E-04    177.269    178.210     12.852   1793465808.281 1
+RESULT 0 4 zgemm_k 400 256 7 16  1.202625E-03  1.144750E-03  1.244563E-03    272.471    286.246      6.982   1793465808.416 1
+RESULT 0 4 zgemm_n 400 400 7 12  1.778750E-03  1.743750E-03  1.804667E-03    287.843    293.620      5.757   1793465808.555 1
+RESULT 0 4 zgeru 400 0 7 170  1.464118E-04  1.405882E-04  1.567588E-04      8.742      9.105     35.057   1793465808.736 105
+RESULT 0 4 zgemv 400 0 7 104  1.877981E-04  1.871250E-04  1.882885E-04      6.816      6.840     13.700   1793465808.932 105
+RESULT 0 4 zgeqp3 400 0 7 1  1.407300E-02  1.404000E-02  1.413700E-02     24.254     24.311      0.364   1793465809.070 1
+RESULT 0 4 zgemm_k 1600 16 7 5  4.237800E-03  4.198000E-03  4.301800E-03     77.323     78.056     19.524   1793465809.187 1
+RESULT 0 4 zgemm_k 1600 64 7 4  5.862000E-03  5.838500E-03  5.883000E-03    223.596    224.496     14.534   1793465809.355 1
+RESULT 0 4 zgemm_k 1600 256 7 2  1.450200E-02  1.395700E-02  1.567950E-02    361.528    375.645      6.553   1793465809.545 1
+RESULT 0 4 zgemm_n 1600 1600 7 1  7.030600E-02  7.005500E-02  7.581000E-02    466.077    467.747      2.330   1793465809.802 1
+RESULT 0 4 zgeru 1600 0 7 20  9.736500E-04  9.390500E-04  1.015150E-03     21.034     21.809     84.190   1793465810.549 7
+RESULT 0 4 zgemv 1600 0 7 6  3.399167E-03  3.332000E-03  3.443667E-03      6.025      6.146     12.065   1793465810.706 7
+RESULT 0 4 zgeqp3 1600 0 7 1  1.301175E+00  1.294582E+00  1.304568E+00     16.789     16.874      0.063   1793465810.863 1
+RESULT 0 4 zgemm_k 3600 16 7 1  2.571600E-02  2.546200E-02  2.604900E-02     64.508     65.151     16.199   1793465821.302 1
+RESULT 0 4 zgemm_k 3600 64 7 1  3.298000E-02  3.281800E-02  3.333500E-02    201.198    202.191     12.798   1793465821.590 1
+RESULT 0 4 zgemm_k 3600 256 7 1  6.287000E-02  6.257900E-02  6.334200E-02    422.174    424.137      7.066   1793465821.952 1
+RESULT 0 4 zgemm_n 3600 3600 7 1  7.811410E-01  7.779330E-01  7.870600E-01    477.824    479.795      1.062   1793465822.654 1
+RESULT 0 4 zgeru 3600 0 7 4  6.162000E-03  6.047500E-03  6.264000E-03     16.826     17.144     67.322   1793465830.613 2
+RESULT 0 4 zgemv 3600 0 7 2  1.773450E-02  1.767250E-02  1.779300E-02      5.846      5.867     11.699   1793465830.830 2
+RESULT 0 4 zgeqp3 3600 0 7 1  2.336849E+01  2.335008E+01  2.338246E+01     10.648     10.657      0.018   1793465831.150 1
 # done
 # STDERR rank 0: 
 # STDERR rank 0: libgomp: Affinity not supported on this configuration
-SUMMARY 1x4 zgemm_k 400 16 1 6.024324E-04 33.996 33.996 4.589 4.589
-SUMMARY 1x4 zgemm_k 400 64 1 4.983750E-04 164.374 164.374 6.780 6.780
-SUMMARY 1x4 zgemm_k 400 256 1 4.144091E-03 79.072 79.072 1.408 1.408
-SUMMARY 1x4 zgemm_n 400 400 1 4.287750E-03 119.410 119.410 1.791 1.791
-SUMMARY 1x4 zgeru 400 0 1 1.714123E-04 7.467 7.467 29.944 29.944
-SUMMARY 1x4 zgemv 400 0 1 4.296792E-04 2.979 2.979 5.988 5.988
-SUMMARY 1x4 zgeqp3 400 0 1 1.374300E-02 24.837 24.837 0.373 0.373
-SUMMARY 1x4 zgemm_k 1600 16 1 1.873450E-02 17.491 17.491 2.230 2.230
-SUMMARY 1x4 zgemm_k 1600 64 1 2.767600E-02 47.359 47.359 1.598 1.598
-SUMMARY 1x4 zgemm_k 1600 256 1 6.524600E-02 80.356 80.356 0.829 0.829
-SUMMARY 1x4 zgemm_n 1600 1600 1 2.796990E-01 117.155 117.155 0.439 0.439
-SUMMARY 1x4 zgeru 1600 0 1 1.497056E-03 13.680 13.680 54.755 54.755
-SUMMARY 1x4 zgemv 1600 0 1 6.921750E-03 2.959 2.959 5.925 5.925
-SUMMARY 1x4 zgeqp3 1600 0 1 3.671877E+00 5.949 5.949 0.022 0.022
-SUMMARY 1x4 zgemm_k 3600 16 1 6.290900E-02 26.370 26.370 3.325 3.325
-SUMMARY 1x4 zgemm_k 3600 64 1 1.579830E-01 42.001 42.001 1.359 1.359
-SUMMARY 1x4 zgemm_k 3600 256 1 2.688090E-01 98.740 98.740 0.881 0.881
-SUMMARY 1x4 zgemm_n 3600 3600 1 2.419999E+00 154.235 154.235 0.257 0.257
-SUMMARY 1x4 zgeru 3600 0 1 8.337333E-03 12.436 12.436 49.756 49.756
-SUMMARY 1x4 zgemv 3600 0 1 3.974400E-02 2.609 2.609 5.220 5.220
-SUMMARY 1x4 zgeqp3 3600 0 1 2.357648E+01 10.554 10.554 0.018 0.018
-TIMERCOST_SUMMARY 1x4 push_pop 1 46.19
-TIMERCOST_SUMMARY 1x4 switch 1 24.63
-TIMERCOST_SUMMARY 1x4 system_clock 1 22.38
-TIMERCOST_SUMMARY 1x4 wtime 1 48.59
+# STDERR rank 0: OMP_AFFINITY host=MacBook-Pro-98.local pid=44854 thread=0 affinity=0-9
+# STDERR rank 0: OMP_AFFINITY host=MacBook-Pro-98.local pid=44854 thread=1 affinity=0-9
+# STDERR rank 0: OMP_AFFINITY host=MacBook-Pro-98.local pid=44854 thread=2 affinity=0-9
+# STDERR rank 0: OMP_AFFINITY host=MacBook-Pro-98.local pid=44854 thread=3 affinity=0-9
+SUMMARY 1x4 zgemm_k 400 16 1 2.658289E-04 77.042 77.042 20.031 20.031 0.000
+SUMMARY 1x4 zgemm_k 400 64 1 4.621220E-04 177.269 177.269 12.852 12.852 0.000
+SUMMARY 1x4 zgemm_k 400 256 1 1.202625E-03 272.471 272.471 6.982 6.982 0.000
+SUMMARY 1x4 zgemm_n 400 400 1 1.778750E-03 287.843 287.843 5.757 5.757 0.000
+SUMMARY 1x4 zgeru 400 0 1 1.464118E-04 8.742 8.742 35.057 35.057 0.000
+SUMMARY 1x4 zgemv 400 0 1 1.877981E-04 6.816 6.816 13.700 13.700 0.000
+SUMMARY 1x4 zgeqp3 400 0 1 1.407300E-02 24.254 24.254 0.364 0.364 0.000
+SUMMARY 1x4 zgemm_k 1600 16 1 4.237800E-03 77.323 77.323 19.524 19.524 0.000
+SUMMARY 1x4 zgemm_k 1600 64 1 5.862000E-03 223.596 223.596 14.534 14.534 0.000
+SUMMARY 1x4 zgemm_k 1600 256 1 1.450200E-02 361.528 361.528 6.553 6.553 0.000
+SUMMARY 1x4 zgemm_n 1600 1600 1 7.030600E-02 466.077 466.077 2.330 2.330 0.000
+SUMMARY 1x4 zgeru 1600 0 1 9.736500E-04 21.034 21.034 84.190 84.190 0.000
+SUMMARY 1x4 zgemv 1600 0 1 3.399167E-03 6.025 6.025 12.065 12.065 0.000
+SUMMARY 1x4 zgeqp3 1600 0 1 1.301175E+00 16.789 16.789 0.063 0.063 0.000
+SUMMARY 1x4 zgemm_k 3600 16 1 2.571600E-02 64.508 64.508 16.199 16.199 0.000
+SUMMARY 1x4 zgemm_k 3600 64 1 3.298000E-02 201.198 201.198 12.798 12.798 0.000
+SUMMARY 1x4 zgemm_k 3600 256 1 6.287000E-02 422.174 422.174 7.066 7.066 0.000
+SUMMARY 1x4 zgemm_n 3600 3600 1 7.811410E-01 477.824 477.824 1.062 1.062 0.000
+SUMMARY 1x4 zgeru 3600 0 1 6.162000E-03 16.826 16.826 67.322 67.322 0.000
+SUMMARY 1x4 zgemv 3600 0 1 1.773450E-02 5.846 5.846 11.699 11.699 0.000
+SUMMARY 1x4 zgeqp3 3600 0 1 2.336849E+01 10.648 10.648 0.018 0.018 0.000
+TIMERCOST_SUMMARY 1x4 push_pop 1 42.48
+TIMERCOST_SUMMARY 1x4 switch 1 21.94
+TIMERCOST_SUMMARY 1x4 system_clock 1 20.16
+TIMERCOST_SUMMARY 1x4 wtime 1 26.85
 SYNC_SUMMARY 1x4 ranks_synced 1 max_lag_s 0.000
-# end: launch rc=0, 21 RESULT lines from 1 ranks
+# end: launch rc=0, 21 RESULT lines from 1 ranks (expected 21), max release skew 0.000 s
