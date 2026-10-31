@@ -5,7 +5,9 @@
 #   SET     half | doped | density | tv | kondo | jz | tv_proj | z2 | pv_adiab   (sets.sh, STAT_SETS)
 #   SCHEME  standard | delayed | submatrix    (Sequential_scheme)
 #   SEED    integer, first seed of the seeds file (independent chains need different seeds)
-#   KEY=VALUE ...  extra parameters, applied last (override NSweep=50 NBin=40 Ltau=0 n_skip=5 too)
+#   KEY=VALUE ...  extra parameters, applied last (override NSweep=50 NBin=40 Ltau=0 n_skip=5 N_delay=32 too)
+#   N_delay=32 is pinned (the Start template's default is 0 = automatic since Phase 6): the recorded statistical and
+#   paired-stability results and the existing chains in runs/stat were made with 32 (the old default).
 #   STAT_TAG=<s>   env: suffix of the run directory (e.g. for a modified-parameter run)
 # Run directory: runs/stat/<SET>/<SCHEME>_s<SEED><STAT_TAG>. Start it with run_in_background for long jobs.
 # Compare two directories with stat_compare.py.
@@ -13,7 +15,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ALFDIR="$(cd "$HERE/../.." && pwd)"
-[ $# -ge 3 ] || { sed -n 2,11p "${BASH_SOURCE[0]}" >&2; exit 2; }
+[ $# -ge 3 ] || { sed -n 2,13p "${BASH_SOURCE[0]}" >&2; exit 2; }
 SET="$1"; SCHEME="$2"; SEED="$3"; shift 3
 EXTRA=("$@")
 
@@ -33,7 +35,7 @@ done
 DIR="$ALFDIR/runs/stat/$SET/${SCHEME}_s${SEED}${STAT_TAG:-}"
 /bin/rm -rf "$DIR"
 mkdir -p "$DIR"
-read -r -a keyarr <<<"NSweep=50 NBin=40 Ltau=0 n_skip=5 N_rebin=1 $keys Sequential_scheme=\"$SCHEME\" SEED=$SEED ${EXTRA[*]:-}"
+read -r -a keyarr <<<"NSweep=50 NBin=40 Ltau=0 n_skip=5 N_rebin=1 N_delay=32 $keys Sequential_scheme=\"$SCHEME\" SEED=$SEED ${EXTRA[*]:-}"
 python3 -I "$HERE/make_params.py" "$DIR" "${keyarr[@]}"
 
 export OMP_NUM_THREADS=1

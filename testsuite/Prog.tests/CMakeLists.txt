@@ -152,4 +152,11 @@ add_test(34-Op-V-symm-pass 34-Op-V-symm-pass)
 add_test(35-Op-V-symm-fail 35-Op-V-symm-fail)
 set_tests_properties(35-Op-V-symm-fail PROPERTIES WILL_FAIL TRUE)
 add_test(36-lowrank-unit 36-lowrank-unit)
+# Lowrank_set_N_delay must terminate with pending accepts / above the allocated capacity (auto N_delay, Phase 6).
+# Own working directories: Lowrank_init appends to ./info, which 36-lowrank-unit checks and removes.
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/36-pending ${CMAKE_CURRENT_BINARY_DIR}/36-capacity)
+add_test(NAME 36-lowrank-unit-pending COMMAND 36-lowrank-unit pending WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/36-pending)
+set_tests_properties(36-lowrank-unit-pending PROPERTIES WILL_FAIL TRUE)
+add_test(NAME 36-lowrank-unit-capacity COMMAND 36-lowrank-unit capacity WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/36-capacity)
+set_tests_properties(36-lowrank-unit-capacity PROPERTIES WILL_FAIL TRUE)
 add_test(37-Op-V-symm-fast 37-Op-V-symm-fast)

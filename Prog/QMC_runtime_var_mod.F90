@@ -53,7 +53,7 @@ Module QMC_runtime_var
         Integer :: N_Global_tau
         Logical :: Sequential
         Character (len=64) :: Sequential_scheme  !  "standard", "delayed" or "submatrix"; validated in validate_sequential_scheme and Lowrank_init
-        Integer :: N_delay                        !  max pending accepted vertices before a flush (delayed/submatrix)
+        Integer :: N_delay                        !  bound on the pending rank before a flush (delayed/submatrix): >= 1 fixed, 0 automatic (default), -1 automatic with warm-up timing
         Logical :: Lowrank_cross_slice            !  cross-slice delay prototype (delayed/submatrix; spec D10); default .false.
         real (Kind=Kind(0.d0)) ::  Amplitude  !    Needed for  update of  type  3  and  4  fields.
 
@@ -157,7 +157,7 @@ Module QMC_runtime_var
             Global_tau_moves = .false.; sequential = .true.; Langevin = .false. ; HMC =.false.
             Delta_t_Langevin_HMC = 0.d0;  Max_Force = 0.d0 ; Leapfrog_steps = 0; N_HMC_sweeps = 1
             Nt_sequential_start = 1 ;  Nt_sequential_end  = 0;  N_Global_tau  = 0;  Amplitude = 1.d0
-            Sequential_scheme = "standard";  N_delay = 32;  Lowrank_cross_slice = .false.
+            Sequential_scheme = "standard";  N_delay = 0;  Lowrank_cross_slice = .false.
             settings_locked = .false.
 
         end subroutine set_QMC_runtime_default_var
@@ -705,7 +705,8 @@ Module QMC_runtime_var
 !--------------------------------------------------------------------
 !> @brief
 !> Terminates if Sequential_scheme is not "standard", "delayed" or "submatrix" (case-insensitive),
-!> or if N_delay < 1 for a non-standard scheme. Lowrank_init repeats the check.
+!> or if N_delay < -1 for a non-standard scheme (>= 1 fixed, 0 automatic, -1 automatic with warm-up
+!> timing; Lowrank_update_mod). Lowrank_init repeats the check.
 !--------------------------------------------------------------------
         subroutine validate_sequential_scheme()
 
@@ -717,8 +718,9 @@ Module QMC_runtime_var
           select case (trim(name))
           case ("STANDARD")
           case ("DELAYED", "SUBMATRIX")
-             if (N_delay < 1) then
-                write(error_unit,'(A,I0,A)') ' VAR_QMC: N_delay = ', N_delay, ' must be >= 1'
+             if (N_delay < -1) then
+                write(error_unit,'(A,I0,A)') ' VAR_QMC: N_delay = ', N_delay, &
+                     & ' must be >= 1 (fixed), 0 (automatic) or -1 (automatic with warm-up timing)'
                 call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
              endif
           case default
