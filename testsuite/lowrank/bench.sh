@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # One benchmark job: Mz Hubbard, square L x L, U=4, Beta=2, Dtau=0.1, Ltau=0, one measurement slice, NBin=2.
 #
-# Usage:  testsuite/lowrank/bench.sh SCHEME L N_delay [THREADS]
+# Usage:  testsuite/lowrank/bench.sh SCHEME L N_delay [THREADS] [KEY=VALUE ...]
 #   SCHEME   standard | delayed | submatrix     (Sequential_scheme)
 #   L        linear lattice size (N = L*L sites)
 #   N_delay  max pending accepted vertices (ignored by 'standard' but recorded)
-#   THREADS  OMP_NUM_THREADS = VECLIB_MAXIMUM_THREADS (default 1)
+#   THREADS  OMP_NUM_THREADS = VECLIB_MAXIMUM_THREADS (default 1; omit it or give it before any KEY=VALUE)
+#   KEY=VALUE  extra parameters applied after the Hubbard defaults (make_params.py), e.g. another model:
+#            ham_name=\"tV\" Model=\"tV\" ham_V=-1.d0 N_SUN=1  (set NSWEEP: the per-L table is calibrated for Hubbard only)
 # Environment:
 #   BENCH_BIN     ALF binary (default runs/bench/ALF.out, a frozen copy so rebuilds do not change it mid-scan)
 #   NSWEEP        overrides the per-L sweep count (calibration / re-runs; a warning is printed to stderr)
@@ -14,6 +16,8 @@
 #   SEED          first seed (default: the one in Start/seeds); identical for all schemes => identical trajectories
 # Run directory: runs/bench/<SCHEME>_L<L>_nd<N_delay>_t<THREADS>_ns<NSweep><TAG>
 # Output (one line, stdout):  scheme L N N_delay threads sec_per_sweep acceptance nsweep commit date pgreen_mean pgreen_max pphase_max
+#   [model keys]   only with extra KEY=VALUE arguments: model = value of ham_name (quotes stripped), keys = the extra
+#                  arguments joined with ',' (one field). N = L*L lattice sites (not Ndim) for every model.
 #   (the last three are the "Precision Green Mean, Max" and "Precision Phase, Max" lines of info; stability diagnostics)
 #   sec_per_sweep = "CPU Time" in info / (NSweep*NBin). "CPU Time" is WALL time (system_clock) of the sweep
 #   phase only: the timer is restarted after the initial Green function computation (Prog/main.F90 calls
@@ -30,7 +34,14 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ALFDIR="$(cd "$HERE/../.." && pwd)"
 [ $# -ge 3 ] || { sed -n 2,25p "${BASH_SOURCE[0]}" >&2; exit 2; }
-SCHEME="$1"; L="$2"; ND="$3"; THREADS="${4:-1}"
+SCHEME="$1"; L="$2"; ND="$3"; shift 3
+THREADS=1
+if [ $# -gt 0 ] && [[ "$1" != *=* ]]; then THREADS="$1"; shift; fi
+EXTRA=("$@")
+MODEL=Hubbard
+for kv in "${EXTRA[@]+"${EXTRA[@]}"}"; do
+    case "$kv" in ham_name=*) MODEL="$(printf '%s' "${kv#ham_name=}" | tr -d "\"'")" ;; esac
+done
 case "$SCHEME" in
     standard|delayed|submatrix) ;;
     *) echo "unknown scheme '$SCHEME' (standard|delayed|submatrix)" >&2; exit 2 ;;
@@ -56,12 +67,14 @@ BIN="${BENCH_BIN:-$ALFDIR/runs/bench/ALF.out}"
 [ -x "$BIN" ] || { echo "binary $BIN not found" >&2; exit 2; }
 
 [ -z "${NSWEEP:-}" ] || echo "bench.sh: NSWEEP=$NSWEEP overrides the calibrated per-L value" >&2
-DIR="$ALFDIR/runs/bench/${SCHEME}_L${L}_nd${ND}_t${THREADS}_ns${NSW}${TAG:-}"
+MTAG=""; [ ${#EXTRA[@]} -eq 0 ] || MTAG="_${MODEL}"
+DIR="$ALFDIR/runs/bench/${SCHEME}${MTAG}_L${L}_nd${ND}_t${THREADS}_ns${NSW}${TAG:-}"
 /bin/rm -rf "$DIR"
 mkdir -p "$DIR"
 KEYS=(L1="$L" L2="$L" ham_U=4.d0 Beta=2.d0 Dtau=0.1d0 Ltau=0 LOBS_ST=1 LOBS_EN=1
       NSweep="$NSW" NBin="$NBIN" Sequential_scheme="\"$SCHEME\"" N_delay="$ND")
 [ -z "${SEED:-}" ] || KEYS+=(SEED="$SEED")
+KEYS+=("${EXTRA[@]+"${EXTRA[@]}"}")
 python3 -I "$HERE/make_params.py" "$DIR" "${KEYS[@]}"
 
 export OMP_NUM_THREADS="$THREADS" VECLIB_MAXIMUM_THREADS="$THREADS"
@@ -90,4 +103,5 @@ fi
 echo "$commit" > "$LAST"
 awk -v s="$SCHEME" -v l="$L" -v nd="$ND" -v t="$THREADS" -v cpu="$cpu" -v acc="$acc" -v ns="$NSW" -v nb="$NBIN" \
     -v c="$commit" -v d="$day" -v pg="$pg" -v pp="$pp" \
-    'BEGIN { printf "%s %d %d %d %d %.6g %.6f %d %s %s %s %s\n", s, l, l*l, nd, t, cpu/(ns*nb), acc, ns, c, d, pg, pp }'
+    -v extra="$( [ ${#EXTRA[@]} -eq 0 ] || { printf ' %s ' "$MODEL"; (IFS=,; printf '%s' "${EXTRA[*]}"); } )" \
+    'BEGIN { printf "%s %d %d %d %d %.6g %.6f %d %s %s %s %s%s\n", s, l, l*l, nd, t, cpu/(ns*nb), acc, ns, c, d, pg, pp, extra }'
