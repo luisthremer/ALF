@@ -20,8 +20,8 @@ BRANCH_EXTRA="Sequential_scheme=0" testsuite/lowrank/regress_vs_baseline.sh   # 
 
 - Creates the worktree `../ALF_baseline` (detached at `f81b5cbc`) if missing and builds it; rebuilds the branch.
 - Each side starts from its own tree's `Start` template (`--template`), since the branch template carries keys the baseline cannot parse.
-- The nine sets are defined in `sets.sh` (sourced by this script and by `compare_trajectory.sh`).
-- Runs nine short sets (`NSweep=5 NBin=2`, `OMP_NUM_THREADS=1`) with identical parameters and seeds:
+- The thirteen sets are defined in `sets.sh` (sourced by this script and by `compare_trajectory.sh`).
+- Runs thirteen short sets (`NSweep=5 NBin=2`, `OMP_NUM_THREADS=1`) with identical parameters and seeds:
   `start`, `explicit` (`start` plus branch-only `sequential_scheme='STANDARD' N_delay=7`: lower-case key name, single-quoted upper-case value, non-default `N_delay`, which must be irrelevant for the standard scheme), `doped` (`ham_chem=-0.5 L1=4 L2=4 Beta=4`), `density` (`Mz=.F.`), `continuous`
   (`Continuous=.T.`), `tv` (see below), `kondo`, `pv_adiab`, `z2gt` (see below). Outputs go to `runs/regress/<set>/{base,branch}`.
 - `cmp`s every output file except `info*` (commit and time stamps) and the inputs `parameters`, `seeds`
@@ -36,6 +36,32 @@ Model coverage sets (all run on the baseline binary in seconds):
   particle-hole symmetry gives `N_FL_eff = 1 < N_FL = 2` (flavour reconstruction).
 - `z2gt`: Z2_Matter 4x4, `ham_U=1`, `Global_tau_moves=.T. N_Global_tau=4 Symm=.F. Checkerboard=.F.`: Global_tau moves with
   low-rank updates pending (run the trajectory check with `N_delay=5`).
+
+Rank-N sets (multi-site, non-diagonal vertices; the validation targets of the rank-N delayed/submatrix work; each runs in
+well under a second with the trajectory harness settings; all four also run on the baseline binary). The multi-site
+vertices of each were verified to be proposed and accepted with the trace build (standard scheme, `NSweep=3 NBin=2`):
+- `tv_flux`: tV 4x4, `ham_V=-1 N_SUN=1 Beta=4 N_Phi=1` (complex hopping; Symm families: 56 bond vertices, all N_P=2;
+  26880 proposals, 10463 accepted).
+- `tv_proj`: tV 4x4, `ham_V=-1 N_SUN=1 Beta=1 Projector=.T. Theta=2` (33600 proposals, 13010 accepted).
+- `z2`: Z2_Matter 4x4, `ham_U=1 Beta=1 Symm=.F. Checkerboard=.F.` without Global_tau moves, so `Nt_sequential_start/end`
+  default to `1 .. n_op` (81 vertices: 16 Hubbard, 32 gauge bonds, 32 matter bonds, 1 dummy site operator with g=0).
+  Gauge bonds: 3840 proposals, 195 accepted; matter bonds: 3840 / 3601.
+- `spin_peierls`: Spin_Peierls 4x4, `Beta=2 N_SUN=2 ham_Jx=ham_Jy=0.4 ham_U=1.5 ham_Lambda=0.1 ham_omega0=0.5`
+  (48 vertices: 16 site, 32 type-4 bonds with `flip_protocol=2`; bonds 7680 proposals, 1507 accepted).
+
+## sets.sh: TRAJ_ONLY_SETS and the test model LR_Jz_Test
+
+`TRAJ_ONLY_SETS=("name|common keys|")` holds sets that only `compare_trajectory.sh` runs (it reads `SETS` and
+`TRAJ_ONLY_SETS`; `regress_vs_baseline.sh` reads `SETS` only), because the baseline binary does not know their model.
+Currently `jz`: the test-only Hamiltonian `LR_Jz_Test` (`Prog/Hamiltonians/Hamiltonian_LR_Jz_Test_smod.F90`, registered in
+`Prog/Hamiltonians.list.d/lowrank_test`; not a production model): square lattice, `N_FL = 2`, `N_SUN = 1`, Mz-Hubbard sites
+(`Predefined_Int_U_MZ`, `ham_U`) plus one `Predefined_Int_Jz` vertex (N_P = 2, `ham_Jz`) per nearest-neighbour bond,
+`Symm = .F.`, one dense hopping operator, no projector. Operator order: `Ndim` site vertices, then per site the x-bond and
+the y-bond. Namelist `&VAR_LR_Jz_Test`: `ham_T, ham_U, ham_Jz, ham_chem, Dtau, Beta` (plus `&VAR_lattice`). The Start
+template has no such namelist: `make_params.py` appends it (`EXTRA_NAMELISTS`) when `ham_name` is set to `LR_Jz_Test`.
+The `jz` set uses `L1=L2=4 ham_U=4 ham_Jz=1 Beta=2 Nwrap=5` (Nwrap=10 gives Precision Green max 1e-5, Nwrap=5 1.5e-9);
+48 vertices per slice, 16 site (1583 of 3840 proposals accepted) and 32 Jz bonds (3029 of 7680).
+Observables: Kin, Pot (U sum n_up n_do plus the Jz bond energy), Part, Ener; Green, SpinZ, SpinXY, SpinT, Den.
 
 The `tv` set does not use the Start default `ham_V=4`: it aborts at baseline (positive V gives an
 imaginary coupling, the run is flagged unstable). It uses `ham_V=-1`, `N_SUN=1`, `L1=L2=4`, `Beta=4`
@@ -97,7 +123,7 @@ passes silently, which for Hubbard means the self-test fires only in the down-sw
 ## stat_runs.sh, stat_compare.py (statistical comparison of independent chains)
 
 ```bash
-testsuite/lowrank/stat_runs.sh SET SCHEME SEED [KEY=VALUE ...]     # SET = half | doped | density
+testsuite/lowrank/stat_runs.sh SET SCHEME SEED [KEY=VALUE ...]     # SET = half | doped | density | tv | kondo | jz | tv_proj
 python3 -I testsuite/lowrank/stat_compare.py DIR_A DIR_B           # A = reference (standard), B = candidate
 python3 -I testsuite/lowrank/stat_compare.py --selftest
 ```
@@ -107,6 +133,10 @@ python3 -I testsuite/lowrank/stat_compare.py --selftest
   applied last and override), runs `Prog/ALF.out` (`OMP_NUM_THREADS=1`) and `Analysis/ana.out` on `Ener_scal Pot_scal
   Kin_scal Part_scal SpinZ_eq Green_eq`. One job takes 25-55 s on the M1 Pro (6x6, 2000 sweeps), so no reduction of
   NSweep was needed. Start it with `run_in_background` / `&`; keep <= 8 jobs concurrent.
+- Rank-N sets (4x4, standard runs 13-57 s, standard seeds 1/2 give `VERDICT: PASS` for all four): `tv` (N_SUN=1, `ham_V=-1`,
+  `ham_chem=-1`, `Beta=2`, `NBin=80`; average sign 0.59(1); at half filling the N_SUN=1 sign is ~0.03), `kondo` (Bilayer 4x4,
+  Beta=2), `jz` (`LR_Jz_Test`, `Beta=4 Nwrap=5`), `tv_proj` (projective tV with `N_SUN=2 ham_V=0.5 N_Phi=1 Theta=2 Beta=1
+  NBin=80`: the N_SUN=1 projective sets have average sign ~0.05).
 - Sets: `half` 6x6 U=4 beta=5 mu=0 (Mz); `doped` 6x6 U=4 beta=5 mu=-1.0 (Mz, average sign ~0.59, NBin=80 n_skip=10, ~105 s); `density` `Mz=.F.` 6x6 U=4 beta=4 mu=0.
 - ana.out output layout: `*_scalJ` rows `idx value error` (the last row is the average sign/phase; the observable
   values are jackknife sign-reweighted); `*_eqJK`/`*_eqJR`: a coordinate line, then `orb orb Re errRe Im errIm`.

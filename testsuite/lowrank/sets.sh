@@ -20,6 +20,24 @@ SETS=(
   # z2gt: Z2 matter with Global_tau moves (global moves while low-rank updates are pending). Run the delayed side
   # with N_delay=5 so that flushes are exercised.
   "z2gt|ham_name=\"Z2_Matter\" Model=\"Z2_Matter\" L1=4 L2=4 Beta=1.d0 ham_U=1.0 Global_tau_moves=.T. N_Global_tau=4 Symm=.F. Checkerboard=.F.|"
+  # Rank-N sets (multi-site vertices; the validation targets of the rank-N delayed/submatrix work).
+  # tv_flux: tV bonds (N_P = 2, non-diagonal) with a complex hopping matrix (one flux quantum).
+  "tv_flux|ham_name=\"tV\" Model=\"tV\" ham_V=-1.d0 N_SUN=1 L1=4 L2=4 Beta=4 N_Phi=1|"
+  # tv_proj: tV bonds in the projective algorithm (Theta=2, trial wave function).
+  "tv_proj|ham_name=\"tV\" Model=\"tV\" ham_V=-1.d0 N_SUN=1 L1=4 L2=4 Beta=1.d0 Projector=.T. Theta=2.d0|"
+  # z2: Z2_Matter with all vertices updated sequentially (no Global_tau moves: then Nt_sequential_start/end default
+  # to 1 .. n_op), so the Ising_SUN gauge bonds and matter bonds (type 1, N_P = 2) are proposed.
+  "z2|ham_name=\"Z2_Matter\" Model=\"Z2_Matter\" L1=4 L2=4 Beta=1.d0 ham_U=1.0 Symm=.F. Checkerboard=.F.|"
+  # spin_peierls: type-4 (continuous, flip_protocol 2) N_P = 2 bond vertices with off-diagonal O.
+  "spin_peierls|ham_name=\"Spin_Peierls\" Model=\"Spin_Peierls\" L1=4 L2=4 Beta=2.d0 N_SUN=2 N_FL=1 ham_Jx=0.4d0 ham_Jy=0.4d0 ham_U=1.5d0 ham_Lambda=0.1d0 ham_omega0=0.5d0|"
+)
+
+# Trajectory-only sets "name|common keys|": the baseline binary does not know the model, so these are not part of
+# the bit-identity regression (regress_vs_baseline.sh), only of compare_trajectory.sh (branch/trace binary).
+# jz: LR_Jz_Test (test-only model, Prog/Hamiltonians/Hamiltonian_LR_Jz_Test_smod.F90): Mz-Hubbard sites plus
+# one Predefined_Int_Jz bond vertex (N_P = 2) per nearest-neighbour bond.
+TRAJ_ONLY_SETS=(
+  "jz|ham_name=\"LR_Jz_Test\" Model=\"LR_Jz_Test\" L1=4 L2=4 ham_U=4.d0 ham_Jz=1.d0 Beta=2.d0 Nwrap=5|"
 )
 
 # Statistical sets for stat_runs.sh (independent long chains compared with stat_compare.py): "name|keys".
@@ -31,4 +49,13 @@ STAT_SETS=(
   "half|L1=6 L2=6 ham_U=4.d0 Beta=5.d0 ham_chem=0.d0"
   "doped|L1=6 L2=6 ham_U=4.d0 Beta=5.d0 ham_chem=-1.0d0 NBin=80 n_skip=10"
   "density|Mz=.F. L1=6 L2=6 ham_U=4.d0 Beta=4.d0 ham_chem=0.d0"
+  # Rank-N statistical sets (4x4, one standard run <= ~3 min; measured 12-55 s): multi-site vertices of tV, Kondo-J, Jz
+  # and the projective tV. tv: N_SUN=1 ham_V=-1 is nearly sign-free only away from half filling: ham_chem=-1, Beta=2 gives
+  # average sign 0.64(2) (at half filling it is ~0.03). tv_proj: the N_SUN=1 sets have average sign ~0.05 in the projective
+  # algorithm, so the statistical set uses N_SUN=2, ham_V=0.5, one flux quantum (complex hopping; sign 1).
+  # jz: Nwrap=5 (Nwrap=10 gives Precision Green max 1e-5, Nwrap=5 1.5e-9).
+  "tv|ham_name=\"tV\" Model=\"tV\" ham_V=-1.d0 N_SUN=1 L1=4 L2=4 Beta=2.d0 ham_chem=-1.d0 NBin=80"
+  "kondo|ham_name=\"Kondo\" Model=\"Kondo\" Lattice_type=\"Bilayer_square\" L1=4 L2=4 Beta=2.d0"
+  "jz|ham_name=\"LR_Jz_Test\" Model=\"LR_Jz_Test\" L1=4 L2=4 ham_U=4.d0 ham_Jz=1.d0 Beta=4.d0 Nwrap=5"
+  "tv_proj|ham_name=\"tV\" Model=\"tV\" ham_V=0.5d0 N_SUN=2 N_Phi=1 L1=4 L2=4 Beta=1.d0 Projector=.T. Theta=2.d0 NBin=80"
 )
