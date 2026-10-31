@@ -80,7 +80,7 @@ same accept/reject decisions. `SET` is one of the `sets.sh` sets (its common key
   `DIVERGED-ROUNDOFF at proposal k (margin ...)`, the trajectories legitimately diverge, so only the `info` line is
   checked, exit 0. BUG -> exit 1. Exit 2: build, run or usage failure.
 - `standard delayed` is the trajectory check of the delayed scheme (wired into `WRAPGRUP`/`WRAPGRDO`, Task 8);
-  `standard submatrix` the one of the submatrix scheme (kernel in Task 11, same routing).
+  `standard submatrix` is the trajectory check of the submatrix scheme (kernel in Task 11, same routing).
 
 ## stat_runs.sh, stat_compare.py (statistical comparison of independent chains)
 
