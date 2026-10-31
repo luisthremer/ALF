@@ -204,9 +204,26 @@ guard only; the driver has a single global timeout.
 - **P5 done.** 302a merged (`890185c0`); counts confirmed. The base is fixed when the harness branch merges.
 - **P6** dpkg record before T1/T2 (decision 13), against `intel:~/alf-gpu/backup/intel_versions_2026-10-30.txt`.
 - **P7 done.** Decisions 20 (budget), 22 (τ), 23 (shift 8).
-- **P8 running** (2026-10-31): timing probe of the base `GPU=intel` build (`3e23a682`, stabilization still on the host):
-  hub6x6_cb, hub12x12_cb β = 4 and 10, s8_U4_b2_cb, GPU and ifx CPU, in `intel:~/alf-gpu/work/t302b/probe/`. Not a 302b
-  result.
+- **P8 done** (2026-10-31, test-runner, `intel:~/alf-gpu/work/t302b/probe/`): base `GPU=intel` build of `3e23a682`
+  (206 INACTIVE, stabilization on the host; 205 updates and cb wraps on the B580) vs the ifx CPU build, Ltau = 1, versions
+  equal to the 2026-10-30 record. Not a 302b result.
+
+  | config (probe length) | B580 build s/sweep | ifx CPU s/sweep | A30 212 s/sweep (device stab.) |
+  |---|---|---|---|
+  | hub6x6_cb β = 4 (3 × 20) | 0.141 | 0.027 | ~0.35 |
+  | hub12x12_cb β = 4 (2 × 20) | 0.688 | 0.340 | ~1.5 |
+  | hub12x12_cb β = 10 (2 × 10) | 1.687 | 0.852 | – |
+  | s8_U4_b2_cb (3 × 30) | 0.127 | 0.035 | – |
+
+  - Wall per sweep, from `date` around the run; info "CPU Time" agrees within ~10 %. GPU mirror setup 0.54 s per run.
+  - The 2026-10-28 point (0.475 s/sweep at 6×6, ifx 2025.3, old driver) is obsolete: the same path now takes 0.141 s.
+  - The time estimate above (f = 1.5–3 vs the A30) is pessimistic for the 204/205 part (measured f ≈ 0.4–0.5 with host
+    stabilization). The device stabilization adds an unknown cost (302a: ~0.45 ms fixed per oneMKL QR call), so the
+    estimate table stays as the upper bound; `timeout_s` 3600 stays a generous hang guard.
+  - On the B580 the GPU build is 2–5× slower than one ifx CPU core at these sizes (information; no performance gate).
+  - `alf_la: ONEMKL device:` is not printed on the base: `la_init` is skipped under the 302 guard
+    (`gpu_state_mod.F90:577–579`). 302b removes that guard, so the active line in the draft is expected from 302b on;
+    T0 must show it.
 
 ## Approvals
 Empty (draft).
