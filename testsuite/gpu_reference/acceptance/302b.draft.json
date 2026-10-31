@@ -1,0 +1,2087 @@
+{
+ "schema": "alf-acc/1",
+ "ticket": "302b",
+ "candidate_sha": "self",
+ "base_sha": "TBD-after-302a-merge",
+ "_base_reason": "placeholder: the base is gpu-port after the 302a merge (and after the 207 merge, if 207 lands first: see the ticket, tau switch); filled in at pre-registration",
+ "created": "2026-10-30",
+ "_status": "DRAFT for ticket 302b, Intel part (machine intel, Arc B580, ifx 2026.2 + oneMKL 2026.2, decision 13); not pre-registered; open questions in docs/gpu/tickets/302b-b580-device-paths.md",
+ "approvals": [],
+ "_approvals_pending": [
+  "c_compare2_shift: shift 8 instead of 5 (decision 12 covered 212 only)",
+  "GPU budget per tier above decision 11 (see the ticket)",
+  "compare2 run length 120 x 30 (decision 14 covered 212 only; ~25-55 min per GPU run on the B580)"
+ ],
+ "machine": "intel",
+ "gpu_exclusive": true,
+ "timeout_s": 3600,
+ "_timeout_reason": "hang guard only (decision 16). Longest run c2_gpu: 1073 s on the A30 (212 T2); B580 estimate 1.5-3x -> 1600-3200 s. The driver has one global timeout, so a hung short run could hold the B580 up to 1 h",
+ "disk_min_free_GB": 5,
+ "cpu_parallel": 2,
+ "_cpu_parallel_reason": "CLAUDE.md: <= 8 cores on intel; one GPU run (1 host thread + Level Zero runtime) plus 2 single-threaded CPU oracle runs; CPU-alongside non-interference was measured on nividia only (the determinism pairs run under different load and would show an effect)",
+ "false_alarm_budget": 0.04,
+ "_false_alarm_reason": "compare2 (alpha 0.01, Sidak inside) ~1 %; its null control ~1 %; INCONCLUSIVE compare2 outcomes ~1 %; precision mean ~1 % (not calibrated on oneMKL); all other gates deterministic",
+ "active_lines": [
+  "GPU path (gpu_state): ACTIVE",
+  "GPU update path (ticket 205): ACTIVE",
+  "GPU stabilization (206): ACTIVE",
+  "GPU debug env: none",
+  "GPU build: git none backend ONEMKL",
+  "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics"
+ ],
+ "_active_lines_reason": "every production GPU run on the B580 shows the 204-206 ACTIVE lines, the 212 lines with backend ONEMKL, and the SYCL device of la_init (B580, not the UHD 730 without FP64). verdict.py treats any word INACTIVE as GPU-inactive: the tau switch line must not contain it. If 207 is in the base, the tau line (ticket) is added here",
+ "_env_reason": "every GPU run declares ONEAPI_DEVICE_SELECTOR=level_zero:0 (whitelisted in acc_run.sh, which does not set it itself, unlike acc_ctest.sh; intel.sh does not set it); alternative: harness change H2",
+ "allowed_test_changes": [],
+ "gpunone": false,
+ "builds": {
+  "in_def": {
+   "tool": "intel",
+   "configure": "IntelLLVM noMPI HDF5 GPU=intel",
+   "gpu": true
+  },
+  "in_def_pp": {
+   "tool": "intel",
+   "configure": "IntelLLVM noMPI HDF5 GPU=intel",
+   "flags_ext": "-DQR_PREPIVOT",
+   "gpu": true
+  },
+  "in_log": {
+   "tool": "intel",
+   "configure": "IntelLLVM noMPI HDF5 LOG GPU=intel",
+   "gpu": true
+  },
+  "in_none": {
+   "tool": "intel",
+   "configure": "IntelLLVM noMPI HDF5",
+   "gpu": false
+  },
+  "in_none_pp": {
+   "tool": "intel",
+   "configure": "IntelLLVM noMPI HDF5",
+   "flags_ext": "-DQR_PREPIVOT",
+   "gpu": false
+  },
+  "in_none_log": {
+   "tool": "intel",
+   "configure": "IntelLLVM noMPI HDF5 LOG",
+   "gpu": false
+  },
+  "base_in_none": {
+   "tool": "intel",
+   "configure": "IntelLLVM noMPI HDF5",
+   "gpu": false
+  }
+ },
+ "configs": {
+  "hub6x6_cb": {
+   "base": "hub6x6_cb",
+   "parameters_sha256": "29f2117541ebbd14b6481c6101b22f0eca364d26fe317e6605956757d64b9915"
+  },
+  "hub6x6_dense": {
+   "base": "hub6x6_dense",
+   "parameters_sha256": "9bdbd7df6e75184196b5deee792f988f742fac2c5b10fe2f28f67287f9329ba0"
+  },
+  "hub12x12_cb": {
+   "base": "hub12x12_cb",
+   "parameters_sha256": "637e5e095e5d3bdb403a9ce9bbd4dd61c094a523843df68c9366b8db106f8d37"
+  },
+  "hub12x12_cb_b10": {
+   "base": "hub12x12_cb",
+   "overrides": {
+    "beta": 10.0
+   },
+   "parameters_sha256": "0ba78a51e7b11625ceb515f720d159e8b42aec9d2d97951cf27106d4f9b85a38"
+  },
+  "hub6x6_cb_flux": {
+   "base": "hub6x6_cb",
+   "overrides": {
+    "N_Phi": 1,
+    "Phi_X": 0.3
+   },
+   "parameters_sha256": "5669e2840154c15330baccc9b112f86c5a1a800984ba78cad86ee69072345d40"
+  },
+  "hub6x6_cb_fd": {
+   "base": "hub6x6_cb",
+   "overrides": {
+    "NSweep": 1,
+    "NBin": 200
+   },
+   "parameters_sha256": "04ae4aa187b9925b984db09d4c2e78eea990c54cbed0f5ef2ec9476162c31d1e"
+  },
+  "hub12x12_cb_fd": {
+   "base": "hub12x12_cb",
+   "overrides": {
+    "NSweep": 1,
+    "NBin": 300
+   },
+   "parameters_sha256": "d4c44e07b153d3fa28e7f1ad0c203ed65b355aba8761ee83d2e5f47ac00a166a"
+  },
+  "hub12x12_cb_p": {
+   "base": "hub12x12_cb",
+   "overrides": {
+    "NSweep": 20,
+    "NBin": 20
+   },
+   "parameters_sha256": "21835ab7c6f5bb077d998a08c54d7b4635d4ae44373ecd64de176a09af22c7c7"
+  },
+  "hub12x12_cb_b10_p": {
+   "base": "hub12x12_cb",
+   "overrides": {
+    "beta": 10.0,
+    "NSweep": 20,
+    "NBin": 8
+   },
+   "parameters_sha256": "eb04a07376afdb930c65b1308d58bae3211077b29284997fbf530bc757d6a466"
+  },
+  "s8_U4_b2_cb_short": {
+   "base": "s8_U4_b2_cb",
+   "overrides": {
+    "NSweep": 30,
+    "NBin": 120
+   },
+   "parameters_sha256": "06c10c72653a64d7c092d2c4d0df5fd45c0e3db40cacefe7dacb55b4752d1fcc"
+  }
+ },
+ "runs": {
+  "st3_in_def_pp_hub6x6_cb": {
+   "build": "in_def_pp",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=3",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=3",
+    "GPU stabilization (206): ACTIVE"
+   ]
+  },
+  "st3_in_def_pp_hub6x6_dense": {
+   "build": "in_def_pp",
+   "config": "hub6x6_dense",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=3",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=3",
+    "GPU stabilization (206): ACTIVE"
+   ]
+  },
+  "st3_in_def_pp_hub12x12_cb": {
+   "build": "in_def_pp",
+   "config": "hub12x12_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=3",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=3",
+    "GPU stabilization (206): ACTIVE"
+   ]
+  },
+  "st3_in_def_pp_hub12x12_cb_b10": {
+   "build": "in_def_pp",
+   "config": "hub12x12_cb_b10",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=3",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=3",
+    "GPU stabilization (206): ACTIVE"
+   ]
+  },
+  "st3_in_def_pp_hub6x6_cb_flux": {
+   "build": "in_def_pp",
+   "config": "hub6x6_cb_flux",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=3",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=3",
+    "GPU stabilization (206): ACTIVE"
+   ]
+  },
+  "eps11_in_def_pp": {
+   "build": "in_def_pp",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_FAULT_STAB=eps:1e-11",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_STAB=eps:1e-11, ALF_GPU_SELFTEST=3",
+    "GPU stabilization (206): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_STAB=eps:1e-11"
+   ]
+  },
+  "fault_in_def_pp_perm": {
+   "build": "in_def_pp",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_FAULT_STAB=perm",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_STAB=perm, ALF_GPU_SELFTEST=3",
+    "GPU stabilization (206): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_STAB=perm"
+   ]
+  },
+  "fault_in_def_pp_phase": {
+   "build": "in_def_pp",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_FAULT_STAB=phase",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_STAB=phase, ALF_GPU_SELFTEST=3",
+    "GPU stabilization (206): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_STAB=phase"
+   ]
+  },
+  "fault_in_def_pp_nan": {
+   "build": "in_def_pp",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_FAULT_STAB=nan",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_STAB=nan, ALF_GPU_SELFTEST=3",
+    "GPU stabilization (206): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_STAB=nan"
+   ]
+  },
+  "fault_in_def_pp_eps1em9": {
+   "build": "in_def_pp",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_FAULT_STAB=eps:1e-9",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_STAB=eps:1e-9, ALF_GPU_SELFTEST=3",
+    "GPU stabilization (206): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_STAB=eps:1e-9"
+   ]
+  },
+  "st3_in_log_hub6x6_cb": {
+   "build": "in_log",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=3",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=3",
+    "GPU stabilization (206): ACTIVE"
+   ]
+  },
+  "st3_in_log_hub6x6_dense": {
+   "build": "in_log",
+   "config": "hub6x6_dense",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=3",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=3",
+    "GPU stabilization (206): ACTIVE"
+   ]
+  },
+  "st3_in_log_hub12x12_cb": {
+   "build": "in_log",
+   "config": "hub12x12_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=3",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=3",
+    "GPU stabilization (206): ACTIVE"
+   ]
+  },
+  "st3_in_log_hub12x12_cb_b10": {
+   "build": "in_log",
+   "config": "hub12x12_cb_b10",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=3",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=3",
+    "GPU stabilization (206): ACTIVE"
+   ]
+  },
+  "st3_in_log_hub6x6_cb_flux": {
+   "build": "in_log",
+   "config": "hub6x6_cb_flux",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=3",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=3",
+    "GPU stabilization (206): ACTIVE"
+   ]
+  },
+  "eps11_in_log": {
+   "build": "in_log",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_FAULT_STAB=eps:1e-11",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_STAB=eps:1e-11, ALF_GPU_SELFTEST=3",
+    "GPU stabilization (206): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_STAB=eps:1e-11"
+   ]
+  },
+  "fault_in_log_perm": {
+   "build": "in_log",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_FAULT_STAB=perm",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_STAB=perm, ALF_GPU_SELFTEST=3",
+    "GPU stabilization (206): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_STAB=perm"
+   ]
+  },
+  "fault_in_log_phase": {
+   "build": "in_log",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_FAULT_STAB=phase",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_STAB=phase, ALF_GPU_SELFTEST=3",
+    "GPU stabilization (206): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_STAB=phase"
+   ]
+  },
+  "fault_in_log_nan": {
+   "build": "in_log",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_FAULT_STAB=nan",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_STAB=nan, ALF_GPU_SELFTEST=3",
+    "GPU stabilization (206): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_STAB=nan"
+   ]
+  },
+  "fault_in_log_eps1em9": {
+   "build": "in_log",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_FAULT_STAB=eps:1e-9",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_STAB=eps:1e-9, ALF_GPU_SELFTEST=3",
+    "GPU stabilization (206): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_STAB=eps:1e-9"
+   ]
+  },
+  "st2_in_def_hub6x6_cb": {
+   "build": "in_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=2",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=2"
+   ]
+  },
+  "st2_in_def_hub6x6_dense": {
+   "build": "in_def",
+   "config": "hub6x6_dense",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=2",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=2"
+   ]
+  },
+  "upd_in_def_hub6x6_cb": {
+   "build": "in_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_UPDTEST=1",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_UPDTEST=1"
+   ]
+  },
+  "upd_in_def_hub6x6_cb_flux": {
+   "build": "in_def",
+   "config": "hub6x6_cb_flux",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_UPDTEST=1",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_UPDTEST=1"
+   ]
+  },
+  "fault_wrap_hop": {
+   "build": "in_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=2",
+    "ALF_GPU_FAULT=hop",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT=hop, ALF_GPU_SELFTEST=2",
+    "GPU fault armed: ALF_GPU_FAULT=hop"
+   ]
+  },
+  "fault_wrap_vexp": {
+   "build": "in_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=2",
+    "ALF_GPU_FAULT=vexp",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT=vexp, ALF_GPU_SELFTEST=2",
+    "GPU fault armed: ALF_GPU_FAULT=vexp"
+   ]
+  },
+  "fault_upd_upd": {
+   "build": "in_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_UPDTEST=1",
+    "ALF_GPU_FAULT=upd",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT=upd, ALF_GPU_UPDTEST=1",
+    "GPU fault armed: ALF_GPU_FAULT=upd"
+   ]
+  },
+  "fault_upd_nsig": {
+   "build": "in_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_UPDTEST=1",
+    "ALF_GPU_FAULT=nsig",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT=nsig, ALF_GPU_UPDTEST=1",
+    "GPU fault armed: ALF_GPU_FAULT=nsig"
+   ]
+  },
+  "mirror_fault": {
+   "build": "in_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=fault",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=fault"
+   ]
+  },
+  "mirror_fault_v": {
+   "build": "in_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=fault_v",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=fault_v"
+   ]
+  },
+  "mirror_nan": {
+   "build": "in_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=nan",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=nan"
+   ]
+  },
+  "ref_fault": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_FAULT=upd",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_FAULT (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_fault_stab": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_FAULT_STAB=perm",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_FAULT_STAB (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_ns": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_NS=0",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_NS (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_stabmix": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_STABMIX=1",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_STABMIX (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_stabcheck": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_STABCHECK=1",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_STABCHECK (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_tl": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_TL=8",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_TL (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_tr": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_TR=8",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_TR (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_vb": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_VB=4",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_VB (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_noupdate": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_NOUPDATE=1",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_NOUPDATE (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_trace": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_TRACE=trace.txt",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_TRACE (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_timing": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_TIMING=1",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_TIMING (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_stabtime": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_STABTIME=1",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_STABTIME (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_exit": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_EXIT (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_tauswap": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_TAUSWAP=8",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_TAUSWAP (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_nss": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_NSS=0",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_NSS (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_la_break": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_LA_TEST_BREAK_ORDER=1",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_LA_TEST_BREAK_ORDER (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_la_poison": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_LA_TEST_POISON_INFO=1",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_LA_TEST_POISON_INFO (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_la_wrongld": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_LA_TEST_WRONG_LD=1",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_LA_TEST_WRONG_LD (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "acc_ns": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_NS=0",
+    "ALF_GPU_DEBUG=1",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_NS=0"
+   ]
+  },
+  "acc_tl": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_TL=8",
+    "ALF_GPU_DEBUG=1",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_TL=8"
+   ]
+  },
+  "acc_la_poison": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_DEBUG=1",
+    "ALF_LA_TEST_POISON_INFO=1",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_LA_TEST_POISON_INFO=1",
+    "alf_la test hook armed: ALF_LA_TEST_POISON_INFO"
+   ]
+  },
+  "inv_fault_stab": {
+   "build": "in_def_pp",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=3",
+    "ALF_GPU_FAULT_STAB=xyz",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU fault value invalid: ALF_GPU_FAULT_STAB=xyz"
+   ]
+  },
+  "inv_fault": {
+   "build": "in_def",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=2",
+    "ALF_GPU_FAULT=xyz",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU fault value invalid: ALF_GPU_FAULT=xyz"
+   ]
+  },
+  "ss_log_6": {
+   "build": "in_log",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ]
+  },
+  "ss_cpu_log_6": {
+   "build": "in_none_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "ss_def_6": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ]
+  },
+  "ss_cpu_pp_6": {
+   "build": "in_none_pp",
+   "config": "hub6x6_cb_fd"
+  },
+  "ss_def_12": {
+   "build": "in_def",
+   "config": "hub12x12_cb_fd",
+   "env": [
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ]
+  },
+  "ss_cpu_pp_12": {
+   "build": "in_none_pp",
+   "config": "hub12x12_cb_fd"
+  },
+  "det_log_6b": {
+   "build": "in_log",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ]
+  },
+  "det_def_6b": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ]
+  },
+  "det_def_b10a": {
+   "build": "in_def",
+   "config": "hub12x12_cb_b10_p",
+   "env": [
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ]
+  },
+  "det_def_b10b": {
+   "build": "in_def",
+   "config": "hub12x12_cb_b10_p",
+   "env": [
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ]
+  },
+  "det_log_b10a": {
+   "build": "in_log",
+   "config": "hub12x12_cb_b10_p",
+   "env": [
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ]
+  },
+  "det_log_b10b": {
+   "build": "in_log",
+   "config": "hub12x12_cb_b10_p",
+   "env": [
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ]
+  },
+  "pr_def_b4": {
+   "build": "in_def",
+   "config": "hub12x12_cb_p",
+   "env": [
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "seeds": "acc1"
+  },
+  "pr_log_b4": {
+   "build": "in_log",
+   "config": "hub12x12_cb_p",
+   "env": [
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "seeds": "acc1"
+  },
+  "pr_none_b4": {
+   "build": "in_none",
+   "config": "hub12x12_cb_p",
+   "seeds": "acc1"
+  },
+  "pr_none_pp_b4": {
+   "build": "in_none_pp",
+   "config": "hub12x12_cb_p",
+   "seeds": "acc1"
+  },
+  "pr_none_log_b4": {
+   "build": "in_none_log",
+   "config": "hub12x12_cb_p",
+   "seeds": "acc1"
+  },
+  "ctl_pr_ns0_b4": {
+   "build": "in_def",
+   "config": "hub12x12_cb_p",
+   "env": [
+    "ALF_GPU_DEBUG=1",
+    "ALF_GPU_NS=0",
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "seeds": "acc1",
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU build: git none backend ONEMKL",
+    "alf_la: ONEMKL device: Intel(R) Arc(TM) B580 Graphics",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_NS=0"
+   ]
+  },
+  "c2_gpu": {
+   "build": "in_def",
+   "config": "s8_U4_b2_cb_short",
+   "env": [
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "seeds": "acc1"
+  },
+  "c2_cpu": {
+   "build": "in_none",
+   "config": "s8_U4_b2_cb_short",
+   "seeds": "acc2"
+  },
+  "c2_cpu_null": {
+   "build": "in_none",
+   "config": "s8_U4_b2_cb_short",
+   "seeds": "acc3"
+  },
+  "id_none_base": {
+   "build": "base_in_none",
+   "config": "hub6x6_cb_fd"
+  },
+  "id_none_cand": {
+   "build": "in_none",
+   "config": "hub6x6_cb_fd"
+  },
+  "ss_log_6_m_small": {
+   "build": "in_log",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ]
+  },
+  "ss_log_6_m_nan": {
+   "build": "in_log",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ]
+  },
+  "det_def_6b_m": {
+   "build": "in_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ]
+  },
+  "c2_gpu_m": {
+   "build": "in_def",
+   "config": "s8_U4_b2_cb_short",
+   "env": [
+    "ONEAPI_DEVICE_SELECTOR=level_zero:0"
+   ],
+   "seeds": "acc1"
+  },
+  "id_none_cand_m": {
+   "build": "in_none",
+   "config": "hub6x6_cb_fd"
+  }
+ },
+ "gates": [
+  {
+   "id": "selftest_wrap",
+   "type": "selftest",
+   "runs": [
+    "st2_in_def_hub6x6_cb",
+    "st2_in_def_hub6x6_dense"
+   ],
+   "require_lines": [
+    "GPU self-test PASSED",
+    "GPU wrap self-test PASSED"
+   ],
+   "_reason": "203 mirror self-test (host flat arrays, device round trip, device kernel checksum) and 204 wrap self-test (1e-10) on the B580, default build; number checks as in 212; first run of the hopping/Op_V kernels and of la_gemm/la_gemm_cr (dense) under ifx",
+   "number_checks": [
+    {
+     "name": "hopping",
+     "line": "GPU wrap self-test hopping ",
+     "after": "dense-left mode 1\\) ",
+     "max": 1e-10,
+     "min_count": 10
+    },
+    {
+     "name": "op_v",
+     "line": "GPU wrap self-test Op_V per operator \\(",
+     "after": "Op_mmultR n ",
+     "max": 1e-10,
+     "min_count": 4
+    },
+    {
+     "name": "fused_slice",
+     "line": "GPU wrap self-test fused slice: ",
+     "after": "rows \\(4 variants\\) ",
+     "max": 1e-10,
+     "min_count": 4
+    }
+   ]
+  },
+  {
+   "id": "selftest_update",
+   "type": "selftest",
+   "runs": [
+    "upd_in_def_hub6x6_cb",
+    "upd_in_def_hub6x6_cb_flux"
+   ],
+   "require_lines": [
+    "GPU update self-test PASSED"
+   ],
+   "_reason": "205 one-slice update self-test on the B580 (tolG 1e-10, tolP 1e-12 as in the code)",
+   "number_checks": [
+    {
+     "name": "G",
+     "line": "GPU update self-test max over trials",
+     "after": "G rel diff up ",
+     "max": 1e-10,
+     "min_count": 2
+    },
+    {
+     "name": "phase",
+     "line": "GPU update self-test max over trials",
+     "after": "Phase diff up ",
+     "max": 1e-12,
+     "min_count": 2
+    }
+   ]
+  },
+  {
+   "id": "selftest_stab",
+   "type": "selftest",
+   "runs": [
+    "st3_in_def_pp_hub6x6_cb",
+    "st3_in_def_pp_hub6x6_dense",
+    "st3_in_def_pp_hub12x12_cb",
+    "st3_in_def_pp_hub12x12_cb_b10",
+    "st3_in_def_pp_hub6x6_cb_flux",
+    "st3_in_log_hub6x6_cb",
+    "st3_in_log_hub6x6_dense",
+    "st3_in_log_hub12x12_cb",
+    "st3_in_log_hub12x12_cb_b10",
+    "st3_in_log_hub6x6_cb_flux"
+   ],
+   "require_lines": [
+    "GPU stab self-test PASSED"
+   ],
+   "number_checks": [
+    {
+     "name": "wrap_decompose",
+     "line": "GPU stab self-test WRAPU[LR]\\+decompose over",
+     "after": "max rel diff U",
+     "max": 1e-10,
+     "min_count": 6
+    },
+    {
+     "name": "cgr",
+     "line": "GPU stab self-test CGR at",
+     "after": "max rel diff G",
+     "max": 1e-10,
+     "min_count": 4
+    },
+    {
+     "name": "precision_reduction",
+     "line": "GPU stab self-test precision reduction vs COMPARE",
+     "after": "rel diff max/mean",
+     "max": 1e-12,
+     "min_count": 3
+    }
+   ],
+   "_reason": "206 stabilization self-test on the B580 (oneMKL hybrid QR, la_qrpp, la_geqp3_host under LOG), default (QR_PREPIVOT oracle) and LOG; numbers 1e-10 / 1e-12 as in 212"
+  },
+  {
+   "id": "faults",
+   "type": "faults",
+   "armed_lines": [
+    "GPU fault armed: ALF_GPU_FAULT"
+   ],
+   "cases": {
+    "fault_in_def_pp_perm": "stab",
+    "fault_in_def_pp_phase": "stab",
+    "fault_in_def_pp_nan": "stab",
+    "fault_in_def_pp_eps1em9": "stab",
+    "fault_in_log_perm": "stab",
+    "fault_in_log_phase": "stab",
+    "fault_in_log_nan": "stab",
+    "fault_in_log_eps1em9": "stab",
+    "fault_wrap_hop": "hopping",
+    "fault_wrap_vexp": "Op_V",
+    "fault_upd_upd": "one-slice update test",
+    "fault_upd_nsig": "one-slice update test"
+   },
+   "_reason": "204/205/206 fault classes and the graded fault eps:1e-9 fail their self-tests on the B580, each with its armed line; beyond 212: vexp (Op_V tables) and nsig (the per-flip H->D field update, the transfer most exposed to Level Zero ordering)"
+  },
+  {
+   "id": "faults_mirror",
+   "type": "faults",
+   "cases": {
+    "mirror_fault": "hopping",
+    "mirror_fault_v": "Op_V",
+    "mirror_nan": "non-finite value in the mirror"
+   },
+   "_reason": "203 mirror self-test negative controls (ALF_GPU_SELFTEST=fault|fault_v|nan; no armed line exists for these values); expected names from gpu_state_mod gpu_selftest (review (b) checks the order of the sub-tests)"
+  },
+  {
+   "id": "refusal",
+   "type": "faults",
+   "fail_regex": "GPU debug env refused: ",
+   "cases": {
+    "ref_fault": "refused: ALF_GPU_FAULT ",
+    "ref_fault_stab": "refused: ALF_GPU_FAULT_STAB ",
+    "ref_ns": "refused: ALF_GPU_NS ",
+    "ref_stabmix": "refused: ALF_GPU_STABMIX ",
+    "ref_stabcheck": "refused: ALF_GPU_STABCHECK ",
+    "ref_tl": "refused: ALF_GPU_TL ",
+    "ref_tr": "refused: ALF_GPU_TR ",
+    "ref_vb": "refused: ALF_GPU_VB ",
+    "ref_noupdate": "refused: ALF_GPU_NOUPDATE ",
+    "ref_trace": "refused: ALF_GPU_TRACE ",
+    "ref_timing": "refused: ALF_GPU_TIMING ",
+    "ref_stabtime": "refused: ALF_GPU_STABTIME ",
+    "ref_exit": "refused: ALF_GPU_EXIT ",
+    "ref_tauswap": "refused: ALF_GPU_TAUSWAP ",
+    "ref_nss": "refused: ALF_GPU_NSS "
+   },
+   "_reason": "212 allow-list on GPU=intel: every listed variable and unknown names refused in a production run (exact line, exit 1)"
+  },
+  {
+   "id": "refusal_la_test",
+   "type": "faults",
+   "fail_regex": "GPU debug env refused: ",
+   "cases": {
+    "ref_la_break": "refused: ALF_LA_TEST_BREAK_ORDER ",
+    "ref_la_poison": "refused: ALF_LA_TEST_POISON_INFO ",
+    "ref_la_wrongld": "refused: ALF_LA_TEST_WRONG_LD "
+   },
+   "_reason": "302a promise: ALF_LA_TEST_* (alf_la test hooks) are refused in production runs like ALF_GPU_* debug variables. NEEDS HARNESS CHANGE H1 (acc_run.sh accepts ALF_LA_TEST_* only with --allow-debug); drop this gate and its control if H1 is not made"
+  },
+  {
+   "id": "invalid_value",
+   "type": "faults",
+   "fail_regex": "GPU fault value invalid: ",
+   "cases": {
+    "inv_fault_stab": "ALF_GPU_FAULT_STAB=xyz",
+    "inv_fault": "ALF_GPU_FAULT=xyz"
+   },
+   "_reason": "an unparsable fault value is an error (exact line, exit code 1), not a warning"
+  },
+  {
+   "id": "same_seed",
+   "type": "same_seed",
+   "pairs": [
+    [
+     "ss_log_6",
+     "ss_cpu_log_6",
+     200
+    ],
+    [
+     "ss_def_6",
+     "ss_cpu_pp_6",
+     200
+    ],
+    [
+     "ss_def_12",
+     "ss_cpu_pp_12",
+     300
+    ]
+   ],
+   "n_datasets": 38,
+   "n_tau_datasets": 5,
+   "no_bin_above": 0.0001,
+   "overall_max": 1e-09,
+   "tau_max": 1e-09,
+   "_reason": "B580 vs the ifx 2026.2 CPU oracle (same compiler, same flags), same seeds: decision 3 (1e-9), VERIFICATION 7; default path against the QR_PREPIVOT CPU build, LOG against CPU LOG; tau datasets come from the host tau pass (device tau pass refused under GPU=intel until 302c); 12x12 LOG is ticket 213's (decision 3b), not gated here"
+  },
+  {
+   "id": "determinism",
+   "type": "replay",
+   "pairs": [
+    [
+     "ss_def_6",
+     "det_def_6b"
+    ],
+    [
+     "ss_log_6",
+     "det_log_6b"
+    ],
+    [
+     "det_def_b10a",
+     "det_def_b10b"
+    ],
+    [
+     "det_log_b10a",
+     "det_log_b10b"
+    ]
+   ],
+   "n_datasets": 38,
+   "_reason": "same binary twice on the B580, bit-identical data.h5 and Precision lines, both paths (VERIFICATION 7: demanded where it holds; the 212 fixed-order sums, MKL_NUM_THREADS=1 from acc_run.sh for the host part of oneMKL's hybrid QR, Level Zero ordering and JIT/cache reuse are new here)"
+  },
+  {
+   "id": "precision",
+   "type": "precision",
+   "mean_ratio_max": 1.5,
+   "cases": [
+    {
+     "gpu": "pr_def_b4",
+     "cpu": [
+      "pr_none_b4",
+      "pr_none_pp_b4"
+     ]
+    },
+    {
+     "gpu": "pr_log_b4",
+     "cpu": [
+      "pr_none_log_b4"
+     ]
+    }
+   ],
+   "_reason": "Green and tau mean within 1.5x of the larger ifx CPU mean (gate decision 5 of 2026-10-29; max information only); 212 T2 on the A30: 1.31 default, 1.19 LOG"
+  },
+  {
+   "id": "compare2",
+   "type": "compare2",
+   "a": "c2_gpu",
+   "b": "c2_cpu",
+   "m": 11,
+   "alpha": 0.01,
+   "min_bins": 8,
+   "expect": [
+    "G(k=(pi,0),tau=beta/2)",
+    "Szz(k=(pi,pi),tau=beta/2)",
+    "chi_zz(pi,pi)"
+   ],
+   "_reason": "observables of the full default B580 path vs ifx GPU=none on fresh seeds; 120 bins x 30 sweeps as 212 T2 (decision 14 for 212: G(k=(pi,0)) resolved there at this length); m, alpha, min_bins, observables as 212"
+  },
+  {
+   "id": "ifx_none_identity",
+   "type": "replay",
+   "gpu_exclusive": false,
+   "n_datasets": 38,
+   "pairs": [
+    [
+     "id_none_base",
+     "id_none_cand"
+    ]
+   ],
+   "_reason": "GPU=none with the pinned ifx 2026.2 on intel: bit-identical data.h5 base vs candidate (single-threaded CPU build, deterministic); 302b changes no CPU-path source, so this guards against an unexpected file in the diff"
+  },
+  {
+   "id": "alf_la_tests_onemkl",
+   "type": "log_regex",
+   "checks": [
+    {
+     "file": "onemkl_all/ctest.log",
+     "stamp_file": "onemkl_all/stamp",
+     "exit_file": "onemkl_all/ctest.exit",
+     "stamp_contains": [
+      "offload MANDATORY"
+     ],
+     "regex": "(\\d+)% tests passed, (\\d+) tests failed out of (\\d+)",
+     "equals": [
+      100,
+      0,
+      14
+     ]
+    },
+    {
+     "file": "onemkl_all/ctest.log",
+     "stamp_file": "onemkl_all/stamp",
+     "stamp_contains": [
+      "offload MANDATORY"
+     ],
+     "regex": "^TEST t_gemm  backend=onemkl$",
+     "equals": []
+    },
+    {
+     "file": "onemkl_all/ctest.log",
+     "stamp_file": "onemkl_all/stamp",
+     "stamp_contains": [
+      "offload MANDATORY"
+     ],
+     "regex": "alf_la: ONEMKL device: [^\\n]*B580",
+     "equals": []
+    }
+   ],
+   "_reason": "regression check of the merged 302a+212 alf_la on the B580 (302a was accepted on a base without 212): the 13 tests of 302a plus t_determinism = 14 (count to be confirmed on the merged base before pre-registration)"
+  },
+  {
+   "id": "t_determinism_onemkl",
+   "type": "log_regex",
+   "checks": [
+    {
+     "file": "det_onemkl/ctest.log",
+     "stamp_file": "det_onemkl/stamp",
+     "exit_file": "det_onemkl/ctest.exit",
+     "stamp_contains": [
+      "offload MANDATORY"
+     ],
+     "regex": "(\\d+)% tests passed, (\\d+) tests failed out of (\\d+)",
+     "equals": [
+      100,
+      0,
+      1
+     ]
+    }
+   ],
+   "_reason": "la_qrpp (302a's om_qrpp, oneMKL geqrf) bitwise reproducible over 1000 calls incl. exact norm ties on the B580 (212's micro-test, never run under ONEMKL)"
+  }
+ ],
+ "controls": [
+  {
+   "id": "c_wrap_on_faulty",
+   "like": "selftest_wrap",
+   "replace": {
+    "runs": [
+     "fault_wrap_hop",
+     "fault_wrap_vexp"
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_update_on_faulty",
+   "like": "selftest_update",
+   "replace": {
+    "runs": [
+     "fault_upd_upd",
+     "fault_upd_nsig"
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_stab_on_faulty",
+   "like": "selftest_stab",
+   "replace": {
+    "runs": [
+     "fault_in_def_pp_perm",
+     "fault_in_log_eps1em9"
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_stab_graded_1e-11",
+   "like": "selftest_stab",
+   "replace": {
+    "runs": [
+     "eps11_in_def_pp",
+     "eps11_in_log"
+    ]
+   },
+   "expect": "PASS",
+   "_reason": "graded fault at 0.1x the tolerance (armed line required) must not fail the self-test; at 1e-9 (faults gate) it must"
+  },
+  {
+   "id": "c_faults_undetectable",
+   "like": "faults",
+   "replace": {
+    "cases": {
+     "eps11_in_def_pp": "stab",
+     "eps11_in_log": "stab"
+    }
+   },
+   "expect": "FAIL",
+   "_reason": "an armed but undetectable fault (rc 0) must not count as detected"
+  },
+  {
+   "id": "c_faults_mirror_clean",
+   "like": "faults_mirror",
+   "replace": {
+    "cases": {
+     "st2_in_def_hub6x6_cb": "hopping"
+    }
+   },
+   "expect": "FAIL",
+   "_reason": "the same setup without a mirror fault (rc 0) must not count as detected"
+  },
+  {
+   "id": "c_refusal_debug_accepted",
+   "like": "refusal",
+   "replace": {
+    "cases": {
+     "acc_ns": "refused: ALF_GPU_NS ",
+     "acc_tl": "refused: ALF_GPU_TL "
+    }
+   },
+   "expect": "FAIL",
+   "_reason": "with ALF_GPU_DEBUG=1 the same variables are accepted (not refused)"
+  },
+  {
+   "id": "c_refusal_la_debug_accepted",
+   "like": "refusal_la_test",
+   "replace": {
+    "cases": {
+     "acc_la_poison": "refused: ALF_LA_TEST_POISON_INFO "
+    }
+   },
+   "expect": "FAIL",
+   "_reason": "with ALF_GPU_DEBUG=1 an ALF_LA_TEST_* hook is accepted, listed in the debug-env line and shown armed by alf_la"
+  },
+  {
+   "id": "c_invalid_value_valid",
+   "like": "invalid_value",
+   "replace": {
+    "cases": {
+     "eps11_in_def_pp": "ALF_GPU_FAULT_STAB=xyz"
+    }
+   },
+   "expect": "FAIL",
+   "_reason": "the same setup with a valid value (eps:1e-11, rc 0) is not an invalid-value error"
+  },
+  {
+   "id": "c_same_seed_small",
+   "like": "same_seed",
+   "replace": {
+    "pairs": [
+     [
+      "ss_log_6_m_small",
+      "ss_cpu_log_6",
+      200
+     ]
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_same_seed_nan",
+   "like": "same_seed",
+   "replace": {
+    "pairs": [
+     [
+      "ss_log_6_m_nan",
+      "ss_cpu_log_6",
+      200
+     ]
+    ]
+   },
+   "expect": "INPUT_ERROR"
+  },
+  {
+   "id": "c_determinism_1e-12",
+   "like": "determinism",
+   "replace": {
+    "pairs": [
+     [
+      "ss_def_6",
+      "det_def_6b_m"
+     ]
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_precision_ns0",
+   "like": "precision",
+   "replace": {
+    "cases": [
+     {
+      "gpu": "ctl_pr_ns0_b4",
+      "cpu": [
+       "pr_none_b4",
+       "pr_none_pp_b4"
+      ]
+     }
+    ]
+   },
+   "expect": "FAIL",
+   "_reason": "ALF_GPU_NS=0 once per toolchain (VERIFICATION 5). On cuSOLVER it gave 2.4x (206); whether oneMKL's Q needs the Newton-Schulz step is unknown: T0 must show the ratio above 1.5 on dev seeds, otherwise stop and re-register a different control with the owner"
+  },
+  {
+   "id": "c_compare2_shift",
+   "like": "compare2",
+   "replace": {
+    "a": "c2_gpu_m"
+   },
+   "expect": "FAIL",
+   "_reason": "shift of 8 standard errors: at m = 11, alpha = 0.01 Sidak (z_crit ~3.32, t ~ k/sqrt(2)) k = 5 is caught ~60 %, k = 8 ~99 %. Deviation from VERIFICATION 5 approved for 212 only (decision 12): NEEDS THE OWNER'S APPROVAL FOR 302b before pre-registration"
+  },
+  {
+   "id": "c_compare2_null",
+   "like": "compare2",
+   "null": true,
+   "replace": {
+    "a": "c2_cpu_null"
+   },
+   "expect": "PASS",
+   "_reason": "null calibration: ifx CPU vs ifx CPU on two fresh seed sets must pass"
+  },
+  {
+   "id": "c_ifx_identity_1e-12",
+   "like": "ifx_none_identity",
+   "replace": {
+    "pairs": [
+     [
+      "id_none_base",
+      "id_none_cand_m"
+     ]
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_onemkl_wrong_ld",
+   "like": "alf_la_tests_onemkl",
+   "expect": "FAIL",
+   "replace": {
+    "checks": [
+     {
+      "file": "ctl_wrong_ld/ctest.log",
+      "stamp_file": "ctl_wrong_ld/stamp",
+      "exit_file": "ctl_wrong_ld/ctest.exit",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
+     },
+     {
+      "file": "ctl_wrong_ld/ctest.log",
+      "stamp_file": "ctl_wrong_ld/stamp",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
+     },
+     {
+      "file": "ctl_wrong_ld/ctest.log",
+      "stamp_file": "ctl_wrong_ld/stamp",
+      "stamp_contains": [
+       "offload MANDATORY"
+      ]
+     }
+    ]
+   },
+   "_reason": "302a's ALF_LA_TEST_WRONG_LD control on the merged base: t_gemm fails its checks"
+  },
+  {
+   "id": "c_t_det_plant",
+   "like": "t_determinism_onemkl",
+   "expect": "FAIL",
+   "replace": {
+    "checks": [
+     {
+      "file": "ctl_det_plant/ctest.log",
+      "stamp_file": "ctl_det_plant/stamp",
+      "exit_file": "ctl_det_plant/ctest.exit"
+     }
+    ]
+   },
+   "_reason": "ALF_LA_TEST_PLANT_ULP=1 changes one input by 1 ulp in one call: the bitwise comparison must fail"
+  }
+ ],
+ "mutations": [
+  {
+   "src": "ss_log_6",
+   "dst": "ss_log_6_m_small",
+   "kind": "scale:Green_tau/obser:1e-3"
+  },
+  {
+   "src": "ss_log_6",
+   "dst": "ss_log_6_m_nan",
+   "kind": "nan:Green_tau/obser"
+  },
+  {
+   "src": "det_def_6b",
+   "dst": "det_def_6b_m",
+   "kind": "scale:Den_eq/obser:1e-12"
+  },
+  {
+   "src": "c2_gpu",
+   "dst": "c2_gpu_m",
+   "kind": "shift:Ener_scal/obser:8"
+  },
+  {
+   "src": "id_none_cand",
+   "dst": "id_none_cand_m",
+   "kind": "scale:Den_eq/obser:1e-12"
+  }
+ ],
+ "ctests": [
+  {
+   "id": "onemkl_all",
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI GPU=intel",
+   "regex": "^t_",
+   "gpu": true
+  },
+  {
+   "id": "det_onemkl",
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI GPU=intel",
+   "regex": "^t_determinism$",
+   "gpu": true
+  },
+  {
+   "id": "ctl_wrong_ld",
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI GPU=intel",
+   "regex": "^t_",
+   "env": [
+    "ALF_LA_TEST_WRONG_LD=1"
+   ],
+   "control": true,
+   "gpu": true
+  },
+  {
+   "id": "ctl_det_plant",
+   "tool": "intel",
+   "configure": "IntelLLVM devel noMPI GPU=intel",
+   "regex": "^t_determinism$",
+   "env": [
+    "ALF_LA_TEST_PLANT_ULP=1"
+   ],
+   "control": true,
+   "gpu": true
+  }
+ ],
+ "_part_nvidia": {
+  "schema": "alf-acc/1",
+  "ticket": "302b",
+  "candidate_sha": "self",
+  "base_sha": "TBD-after-302a-merge",
+  "created": "2026-10-30",
+  "_status": "DRAFT for ticket 302b, nividia part (acc_driver.py --part nvidia): GPU=none and CUDA unchanged; not pre-registered",
+  "approvals": [],
+  "machine": "nividia",
+  "gpu_exclusive": true,
+  "timeout_s": 900,
+  "disk_min_free_GB": 5,
+  "cpu_parallel": 3,
+  "false_alarm_budget": 0.0,
+  "_false_alarm_reason": "all gates deterministic (identity, counts)",
+  "active_lines": [
+   "GPU path (gpu_state): ACTIVE",
+   "GPU update path (ticket 205): ACTIVE",
+   "GPU stabilization (206): ACTIVE",
+   "GPU debug env: none",
+   "GPU build: git none backend CUDA"
+  ],
+  "_active_lines_reason": "212 lines of the CUDA build; if 207 is in the base add 'GPU tau pass (207): ACTIVE' (base and candidate alike)",
+  "gpunone": true,
+  "allowed_test_changes": [],
+  "builds": {
+   "nv_def": {
+    "tool": "nvhpc",
+    "configure": "PGI noMPI HDF5 GPU=nvidia",
+    "gpu": true
+   },
+   "nv_log": {
+    "tool": "nvhpc",
+    "configure": "PGI noMPI HDF5 LOG GPU=nvidia",
+    "gpu": true
+   },
+   "base_nv_def": {
+    "tool": "nvhpc",
+    "configure": "PGI noMPI HDF5 GPU=nvidia",
+    "gpu": true
+   },
+   "base_nv_log": {
+    "tool": "nvhpc",
+    "configure": "PGI noMPI HDF5 LOG GPU=nvidia",
+    "gpu": true
+   },
+   "nv_none": {
+    "tool": "nvhpc",
+    "configure": "PGI noMPI HDF5",
+    "gpu": false
+   },
+   "base_nv_none": {
+    "tool": "nvhpc",
+    "configure": "PGI noMPI HDF5",
+    "gpu": false
+   }
+  },
+  "configs": {
+   "hub6x6_cb_fd": {
+    "base": "hub6x6_cb",
+    "overrides": {
+     "NSweep": 1,
+     "NBin": 200
+    },
+    "parameters_sha256": "04ae4aa187b9925b984db09d4c2e78eea990c54cbed0f5ef2ec9476162c31d1e"
+   }
+  },
+  "runs": {
+   "id_cuda_def_base": {
+    "build": "base_nv_def",
+    "config": "hub6x6_cb_fd"
+   },
+   "id_cuda_def_cand": {
+    "build": "nv_def",
+    "config": "hub6x6_cb_fd"
+   },
+   "id_cuda_log_base": {
+    "build": "base_nv_log",
+    "config": "hub6x6_cb_fd"
+   },
+   "id_cuda_log_cand": {
+    "build": "nv_log",
+    "config": "hub6x6_cb_fd"
+   },
+   "id_none_base": {
+    "build": "base_nv_none",
+    "config": "hub6x6_cb_fd"
+   },
+   "id_none_cand": {
+    "build": "nv_none",
+    "config": "hub6x6_cb_fd"
+   },
+   "id_cuda_def_cand_m": {
+    "build": "nv_def",
+    "config": "hub6x6_cb_fd"
+   },
+   "id_none_cand_m": {
+    "build": "nv_none",
+    "config": "hub6x6_cb_fd"
+   }
+  },
+  "mutations": [
+   {
+    "src": "id_cuda_def_cand",
+    "dst": "id_cuda_def_cand_m",
+    "kind": "scale:Den_eq/obser:1e-12"
+   },
+   {
+    "src": "id_none_cand",
+    "dst": "id_none_cand_m",
+    "kind": "scale:Den_eq/obser:1e-12"
+   }
+  ],
+  "log_mutations": [
+   {
+    "src": "gpunone",
+    "dst": "gpunone_m_ctestfail",
+    "file": "ctest.log",
+    "kind": "ctest_one_failure",
+    "exit_file": "ctest.exit"
+   }
+  ],
+  "gates": [
+   {
+    "id": "gpu_none_ppcmp",
+    "type": "log_regex",
+    "checks": [
+     {
+      "file": "gpunone/ppcmp.txt",
+      "stamp_file": "gpunone/stamp",
+      "exit_file": "gpunone/ppcmp.exit",
+      "stamp_contains": [
+       "plant no"
+      ],
+      "regex": "comparisons (\\d+) preprocessor_errors (\\d+) differing_lines (\\d+) added_or_deleted (\\d+) build_files (\\d+) other_files (\\d+)$",
+      "equals": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ]
+     }
+    ],
+    "_reason": "302b changes only Prog/gpu_*.F90 (compiled only with ALF_GPU, excluded by acc_gpunone.sh) and docs: no CPU-path Fortran, build or other file; any other changed file is a FAIL (the plant control compares Prog/main.F90)"
+   },
+   {
+    "id": "gpu_none_ctest",
+    "type": "log_regex",
+    "checks": [
+     {
+      "file": "gpunone/ctest.log",
+      "stamp_file": "gpunone/stamp",
+      "exit_file": "gpunone/ctest.exit",
+      "stamp_contains": [
+       "plant no"
+      ],
+      "regex": "(\\d+)% tests passed, (\\d+) tests failed out of (\\d+)",
+      "equals": [
+       100,
+       0,
+       53
+      ]
+     }
+    ],
+    "_reason": "GNU devel ctest count of the merged base (52 + 212's t_determinism; to be confirmed on the base before pre-registration)"
+   },
+   {
+    "id": "cuda_identity",
+    "type": "replay",
+    "n_datasets": 38,
+    "pairs": [
+     [
+      "id_cuda_def_base",
+      "id_cuda_def_cand"
+     ],
+     [
+      "id_cuda_log_base",
+      "id_cuda_log_cand"
+     ]
+    ],
+    "_reason": "GPU=nvidia unchanged: base and candidate CUDA builds give bit-identical data.h5 and Precision lines on the same seeds, default and LOG (both paths are run-to-run reproducible since 212). Runtime identity because acc_gpunone.sh does not compare Prog/gpu_* under the CUDA macros"
+   },
+   {
+    "id": "none_identity",
+    "type": "replay",
+    "gpu_exclusive": false,
+    "n_datasets": 38,
+    "pairs": [
+     [
+      "id_none_base",
+      "id_none_cand"
+     ]
+    ],
+    "_reason": "GPU=none (HOST) nvfortran CPU build: bit-identical data.h5 base vs candidate"
+   }
+  ],
+  "controls": [
+   {
+    "id": "c_ppcmp_plant",
+    "like": "gpu_none_ppcmp",
+    "expect": "FAIL",
+    "replace": {
+     "checks": [
+      {
+       "file": "gpunone_plant/ppcmp.txt",
+       "stamp_file": "gpunone_plant/stamp",
+       "exit_file": "gpunone_plant/ppcmp.exit",
+       "stamp_contains": [
+        "plant --plant"
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "id": "c_ctest_failure",
+    "like": "gpu_none_ctest",
+    "expect": "FAIL",
+    "replace": {
+     "checks": [
+      {
+       "file": "gpunone_m_ctestfail/ctest.log",
+       "stamp_file": "gpunone_m_ctestfail/stamp",
+       "exit_file": "gpunone_m_ctestfail/ctest.exit",
+       "stamp_contains": [
+        "plant no"
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "id": "c_cuda_identity_1e-12",
+    "like": "cuda_identity",
+    "expect": "FAIL",
+    "replace": {
+     "pairs": [
+      [
+       "id_cuda_def_base",
+       "id_cuda_def_cand_m"
+      ]
+     ]
+    }
+   },
+   {
+    "id": "c_none_identity_1e-12",
+    "like": "none_identity",
+    "expect": "FAIL",
+    "replace": {
+     "pairs": [
+      [
+       "id_none_base",
+       "id_none_cand_m"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ "_part_nvidia_note": "to be split into testsuite/gpu_reference/acceptance/302b.nvidia.json at pre-registration (the drafting agent was allowed one file)"
+}
