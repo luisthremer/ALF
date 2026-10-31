@@ -360,10 +360,12 @@ Time relative to N_delay=32 (positive = slower):
 
 | threads | standard [s] | delayed [s] | submatrix [s] |
 |---:|---:|---:|---:|
-| 1 | 2.592 | 1.178 | 1.121 |
+| 1 | 2.592 | 1.172 | 1.112 |
 | 8 | 2.596 | 1.185 | 1.121 |
 
-8 threads give no gain for any scheme, so the speedups (2.19x, 2.32x) are unchanged. The reason was not investigated.
+The 1-thread row is the N_delay=32 row of the N_delay scan (`raw_ndelay_scan.txt`), the 8-thread row is from
+`raw_threads.txt`. 8 threads give no gain for any scheme: the speedups are 2.21x, 2.33x at 1 thread and 2.19x, 2.32x at 8.
+The reason was not investigated.
 
 ## 5. Recommendation
 
@@ -395,8 +397,12 @@ Time relative to N_delay=32 (positive = slower):
 - **`N_delay`** is validated (≥ 1) only for the non-standard schemes.
 
 **Coverage gaps**
-- **MPI and tempering** were only compiled; the Phase-3 review built the MPI and Tempering+LOG versions.
-  - No MPI or tempering run was made.
+- **MPI and tempering.** The Phase-3 review built the MPI and Tempering+LOG versions.
+  - The final review ran the Start example (4x4, NSweep=3) with a GNU MPI build on 2 ranks for all three schemes.
+    `confout_0` was identical across the schemes and the scheme line was written once (group rank 0).
+  - The ctest suite (40 tests, including `36-lowrank-unit`) passes in GNU MPI, TEMPERING and PARALLEL_PARAMS builds
+    (40/40 each, after the test was fixed to call `MPI_Init`, set `Group_Comm` and create `Temp_0`).
+  - No tempering run was made.
   - `Lowrank_init` assumes the tempering `Temp_<g>/info` layout.
   - In the debug build, every MPI rank rewrites the same `lowrank_debug_summary.txt`, which is a race.
   - The trace output is single-rank only.
@@ -410,7 +416,8 @@ Time relative to N_delay=32 (positive = slower):
   - The ledger (Task 7) also lists `g_t`, an `N_non_zero = 0` flavour and type-1 Ising fields as untested at unit level.
   - An eligible type-1 vertex with `Propose_S0` and T0 < 1 is not covered. `Propose_S0` was only tested on Hubbard type-2
     fields, where it is a no-op.
-  - Whether kondo or z2gt exercise eligible type-1 vertices is not recorded.
+  - z2gt has one eligible type-1 vertex per slice, with g = 0, so Δ = 0 there (d = 1). Kondo's eligible vertices are the
+    type-2 `U_f` terms. A type-1 vertex with Δ ≠ 0 is therefore not covered by any test.
 - **The capacity-trigger flush** (capacity reached while `n_pend < N_delay`) is not demonstrably covered by a test
   (Task 13).
 - **`LOWRANK_DEBUG_SELFTEST_PROPOSE`** was exercised only for delayed, not for submatrix. The submatrix hook self-test
