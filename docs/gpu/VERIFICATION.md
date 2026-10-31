@@ -25,9 +25,9 @@ variables (`ALF_GPU_FAULT*`, `_TAUSWAP`, `_TAU_NS`, `_NS`, `_STABCHECK`, `_STABM
 the run as a self-test or control run, or as a diagnostic gate run (the 207 paired test needs `ALF_GPU_TAUDIAG`; the
   file says so in the gate's reason). GPU builds run with `OMP_TARGET_OFFLOAD=MANDATORY` (`GPU=intel`
   builds also with `ONEAPI_DEVICE_SELECTOR=level_zero:0`, set by `acc_run.sh` and `acc_ctest.sh` after the env file and
-  asserted, not overridable; an env file that sets `ZE_AFFINITY_MASK` stops the run; `verdict.py` checks the recorded
-  env), and every run of a GPU build
-  must show the ACTIVE lines of the GPU paths; an INACTIVE line is an input error. A log without a stamp that matches
+  asserted, not overridable; an env file that sets `ZE_AFFINITY_MASK` or another device-ordering variable stops the run;
+  `verdict.py` checks the recorded env of runs, `acc_ctest.sh` the recorded env of each ctest repetition), and every run of a GPU build
+  must show the ACTIVE lines of the GPU paths; an INACTIVE line, or a line the acceptance file lists in `forbidden_lines`, is an input error. A log without a stamp that matches
   the candidate is not evidence.
 
 ## 3. Pre-registration

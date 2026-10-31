@@ -12,8 +12,10 @@
 # (INVALID, never a pass and never a detection). Tests run with ctest -V (their output is in ctest.log).
 # GPU configurations (GPU=nvidia|intel) run with OMP_TARGET_OFFLOAD=MANDATORY (GPU=intel, which needs TOOL intel:
 # also ONEAPI_DEVICE_SELECTOR=level_zero:0, exported after the env file and asserted; an env file that sets
-# ZE_AFFINITY_MASK makes the repetition INVALID; the stamp line "selector" records it, env_rep_N.txt the effective
-# environment), one test at a time, under flock ~/alf-gpu/gpu.lock. summary: "<regex>: P of N repetitions
+# ZE_AFFINITY_MASK, ZE_ENABLE_PCI_ID_DEVICE_ORDER, ZE_FLAT_DEVICE_HIERARCHY or SYCL_DEVICE_FILTER makes the repetition
+# INVALID; the stamp line "selector" records it, env_rep_N.txt the effective environment, checked after each
+# repetition: offload and selector as stamped, else INVALID), one test at a time, all tests with OMP/MKL/OpenBLAS
+# threads 1, under flock ~/alf-gpu/gpu.lock. summary: "<regex>: P of N repetitions
 # passed" and the last "tests failed out of" line. Exit code = the value in ctest.exit.
 set -o pipefail
 export LC_ALL=C
@@ -49,16 +51,28 @@ if [ $? != 0 ]; then echo 2 > "$OUT/ctest.exit"; echo "BUILD FAILED (INVALID)" >
 pass=0; fails=0; crash=0
 for i in $(seq 1 "$REP"); do
   "${LOCK[@]}" env -i HOME="$HOME" USER="$USER" LANG=C LC_ALL=C PATH=/usr/bin:/bin TMPDIR="$TMPDIR" "${GPUENV[@]}" "${ENVX[@]}" \
-    bash --noprofile --norc -c 'd=$0 rx=$2 j=$3 sel=$4 envout=$5   # copied: an env file may reset the positionals
-      . "$1" > /dev/null 2>&1 || exit 2
-      if [ -n "$sel" ]; then
-        [ -n "${ZE_AFFINITY_MASK+x}" ] && { echo "env file sets ZE_AFFINITY_MASK: refusing"; exit 2; }
-        export "$sel"; [ "$ONEAPI_DEVICE_SELECTOR" = level_zero:0 ] || { echo "device selector not in effect: refusing"; exit 2; }
+    bash --noprofile --norc -c '
+      # copied into readonly names: an env file may reset the positionals or reuse short variable names
+      readonly __acc_d="$0" __acc_envf="$1" __acc_rx="$2" __acc_j="$3" __acc_sel="$4" __acc_envout="$5"
+      . "$__acc_envf" > /dev/null 2>&1 || exit 2
+      if [ -n "$__acc_sel" ]; then
+        for __acc_v in ZE_AFFINITY_MASK ZE_ENABLE_PCI_ID_DEVICE_ORDER ZE_FLAT_DEVICE_HIERARCHY SYCL_DEVICE_FILTER; do
+          [ -n "${!__acc_v+x}" ] && { echo "env file sets $__acc_v: refusing"; exit 2; }
+        done
+        export "$__acc_sel"; [ "$ONEAPI_DEVICE_SELECTOR" = level_zero:0 ] || { echo "device selector not in effect: refusing"; exit 2; }
       fi
-      env | sort > "$envout"
-      cd "$d" && ctest -j "$j" -V ${rx:+-R "$rx"}' \
+      export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+      env | sort > "$__acc_envout"
+      cd "$__acc_d" && ctest -j "$__acc_j" -V ${__acc_rx:+-R "$__acc_rx"}' \
     "$W/testsuite/tests" "$ENVF" "$RX" "$JOBS" "$SELV" "$OUT/env_rep_$i.txt" > "$OUT/rep_$i.log" 2>&1
   rc=$?
+  # the pinning as it took effect (checked outside the inner shell): a missing or wrong env makes the result INVALID
+  E="$OUT/env_rep_$i.txt"; envok=1
+  [ -f "$E" ] || envok=0
+  [ $envok = 1 ] && [ "$OFF" = MANDATORY ] && { grep -qx 'OMP_TARGET_OFFLOAD=MANDATORY' "$E" || envok=0; }
+  [ $envok = 1 ] && [ -n "$SELV" ] && { grep -qx 'ONEAPI_DEVICE_SELECTOR=level_zero:0' "$E" && \
+    ! grep -q -E '^(ZE_AFFINITY_MASK|ZE_ENABLE_PCI_ID_DEVICE_ORDER|ZE_FLAT_DEVICE_HIERARCHY|SYCL_DEVICE_FILTER)=' "$E" || envok=0; }
+  [ $envok = 1 ] || { crash=1; echo "repetition $i: effective environment not as stamped (offload/selector)" >> "$OUT/env_check.txt"; }
   # the temporary build path and backtrace addresses (ASLR, e.g. from the expected-failure tests) differ between runs
   sed -i -E "s#$W#<BUILD>#g; s/0x[0-9a-f]{6,}/0xADDR/g; s/^[0-9]+: //" "$OUT/rep_$i.log"   # also the ctest -V test-index prefix
   cat "$OUT/rep_$i.log" >> "$OUT/ctest.log"

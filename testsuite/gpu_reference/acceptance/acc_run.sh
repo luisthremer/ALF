@@ -10,7 +10,7 @@
 #   GPU builds OMP_TARGET_OFFLOAD=MANDATORY (no silent host fallback) + for GPU=intel builds
 #   ONEAPI_DEVICE_SELECTOR=level_zero:0 (the discrete GPU; the iGPU of `intel` has no FP64), set here like
 #   OMP_TARGET_OFFLOAD, so not part of the declared env, exported after the env file (which must not set
-#   ZE_AFFINITY_MASK: exit 2); for GPU=intel builds ONEAPI_DEVICE_SELECTOR and ZE_AFFINITY_MASK are refused as extra
+#   ZE_AFFINITY_MASK, ZE_ENABLE_PCI_ID_DEVICE_ORDER, ZE_FLAT_DEVICE_HIERARCHY or SYCL_DEVICE_FILTER: exit 2); for GPU=intel builds ONEAPI_DEVICE_SELECTOR and ZE_AFFINITY_MASK are refused as extra
 #   variables; verdict.py checks the recorded env; a refusal reason goes to RUNDIR/refused.txt. Timeout ACC_TIMEOUT (default 900 s), then
 #   SIGKILL after 30 s; rc 124 or 137 = timeout. With ACC_GPU_LOCK set, GPU builds run under flock on that file.
 #   Writes RUNDIR/provenance.json.
@@ -57,16 +57,22 @@ T=${ACC_TIMEOUT:-900}
 LOCK=(); [ "$GPUB" = 1 ] && [ -n "${ACC_GPU_LOCK:-}" ] && LOCK=(flock "$ACC_GPU_LOCK")
 date -Is > start.txt
 "${LOCK[@]}" env -i HOME="$HOME" USER="$USER" LANG=C LC_ALL=C PATH=/usr/bin:/bin TMPDIR="$D/tmp" $OFF "${ENVX[@]}" \
-  bash --noprofile --norc -c 'bin=$0 envf=$1 t=$2 sel=$3   # copied: an env file may reset the positionals
-  . "$envf" > env_file.log 2>&1 || { echo "env file failed: $envf" | tee refused.txt >&2; exit 2; }
-  if [ -n "$sel" ]; then   # GPU=intel: pin the device after the env file, so the env file cannot override it
-    [ -n "${ZE_AFFINITY_MASK+x}" ] && { echo "env file sets ZE_AFFINITY_MASK: refusing (device pinning)" | tee refused.txt >&2; exit 2; }
-    export "$sel"
-    [ "$ONEAPI_DEVICE_SELECTOR" = level_zero:0 ] || { echo "device selector not in effect: refusing" | tee refused.txt >&2; exit 2; }
+  bash --noprofile --norc -c '
+  # copied into readonly names: an env file may reset the positionals or reuse short variable names
+  readonly __acc_bin="$0" __acc_envf="$1" __acc_t="$2" __acc_sel="$3" __acc_dir="$4"
+  __acc_no() { echo "$1" | tee "$__acc_dir/refused.txt" >&2; exit 2; }
+  . "$__acc_envf" > "$__acc_dir/env_file.log" 2>&1 || __acc_no "env file failed: $__acc_envf"
+  cd "$__acc_dir" || exit 2
+  if [ -n "$__acc_sel" ]; then   # GPU=intel: pin the device after the env file, so the env file cannot override it
+    for __acc_v in ZE_AFFINITY_MASK ZE_ENABLE_PCI_ID_DEVICE_ORDER ZE_FLAT_DEVICE_HIERARCHY SYCL_DEVICE_FILTER; do
+      [ -n "${!__acc_v+x}" ] && __acc_no "env file sets $__acc_v: refusing (device pinning)"
+    done
+    export "$__acc_sel"
+    [ "$ONEAPI_DEVICE_SELECTOR" = level_zero:0 ] || __acc_no "device selector not in effect: refusing"
   fi
   export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
   env | sort > env.txt
-  exec timeout -k 30 "$t" "$bin" > run.log 2>&1' "$BIN" "$ENVF" "$T" "$SEL"
+  exec timeout -k 30 "$__acc_t" "$__acc_bin" > run.log 2>&1' "$BIN" "$ENVF" "$T" "$SEL" "$D"
 rc=$?
 date -Is > end.txt
 GPUCK2=-1

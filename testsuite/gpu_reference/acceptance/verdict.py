@@ -65,6 +65,8 @@ def tmpdir():
 
 # ------------------------------------------------------------------ provenance
 DEBUG_PREFIXES = ("ALF_GPU_", "ALFSH_", "ALF_LA_TEST_")
+# variables that change which device level_zero:0 is (acc_run.sh / acc_ctest.sh refuse them for GPU=intel)
+DEVICE_ORDER_VARS = ("ZE_AFFINITY_MASK", "ZE_ENABLE_PCI_ID_DEVICE_ORDER", "ZE_FLAT_DEVICE_HIERARCHY", "SYCL_DEVICE_FILTER")
 
 
 def check_prov(rd, acc, expect_rc=0, gpu_exclusive=None):
@@ -143,8 +145,9 @@ def check_prov(rd, acc, expect_rc=0, gpu_exclusive=None):
             raise InputFail(f"{rid}: GPU run without OMP_TARGET_OFFLOAD=MANDATORY (host fallback possible)")
         if "GPU=intel" in bdecl["configure"].split():  # acc_run.sh pins the discrete GPU (the iGPU has no FP64)
             env = p.get("env", {})
-            if env.get("ONEAPI_DEVICE_SELECTOR") != "level_zero:0" or "ZE_AFFINITY_MASK" in env:
-                raise InputFail(f"{rid}: GPU=intel run without ONEAPI_DEVICE_SELECTOR=level_zero:0 or with ZE_AFFINITY_MASK")
+            reord = [k for k in DEVICE_ORDER_VARS if k in env]
+            if env.get("ONEAPI_DEVICE_SELECTOR") != "level_zero:0" or reord:
+                raise InputFail(f"{rid}: GPU=intel run without ONEAPI_DEVICE_SELECTOR=level_zero:0 or with {reord}")
         text = read(os.path.join(rd, "run.log"))
         if os.path.isfile(os.path.join(rd, "info")):
             text += read(os.path.join(rd, "info"))
@@ -154,6 +157,11 @@ def check_prov(rd, acc, expect_rc=0, gpu_exclusive=None):
         missing = [l for l in need_l if l not in text]
         if missing or re.search(r"\bINACTIVE\b", text):
             raise InputFail(f"{rid}: GPU path not active (missing {missing[:1]}, or an INACTIVE line)")
+        # lines that must not appear (e.g. a GPU path that a ticket keeps switched off); acceptance, build or run level
+        forbid = acc.get("forbidden_lines", []) + bdecl.get("forbidden_lines", []) + decl.get("forbidden_lines", [])
+        hit = [l for l in forbid if l in text]
+        if hit:
+            raise InputFail(f"{rid}: forbidden line present: {hit[:1]}")
     if p.get("mutated") and not acc.get("_allow_mutated"):
         raise InputFail(f"{rid}: mutated copy ({p['mutated']}) used outside a control")
     return p
@@ -738,6 +746,9 @@ def selfcheck():
     mkrun("A_laleak", base, ok_info, debug=["ALF_LA_TEST_X"])
     mkrun("A_ladecl", base, ok_info, env=["ALF_LA_TEST_X=1"])
     mkrun("A_laenv", base, ok_info, debug=[], envextra={"ALF_LA_TEST_X": "1"})
+    mkrun("A_in_order", base, ok_info, build="igpu", envextra={"ZE_ENABLE_PCI_ID_DEVICE_ORDER": "1"})
+    mkrun("A_forbid", base, ok_info, log=ACT + " GPU tau pass (207): ACTIVE on the device\n")
+    acc["runs"]["A_forbid"]["forbidden_lines"] = ["GPU tau pass (207): ACTIVE on the device"]
     open(os.path.join(tmp, "A_tamper", "run.log"), "a").write("edited later\n")
     nan_info = info(float("nan"), 1e-6, 6e-12, 5e-7)
     assert "NAN" in nan_info.upper()
@@ -778,6 +789,8 @@ def selfcheck():
              ("same_seed leaked ALF_LA_TEST_", dict(ss, pairs=[["A_laleak", "B", NB]]), "INPUT_ERROR"),
              ("same_seed ALF_LA_TEST_ no allow_debug", dict(ss, pairs=[["A_ladecl", "B", NB]]), "INPUT_ERROR"),
              ("same_seed ALF_LA_TEST_ only in env", dict(ss, pairs=[["A_laenv", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed GPU=intel device reorder var", dict(ss, pairs=[["A_in_order", "B", NB]]), "INPUT_ERROR"),
+             ("same_seed forbidden line", dict(ss, pairs=[["A_forbid", "B", NB]]), "INPUT_ERROR"),
              ("replay identical", dict(rp, pairs=[["A", "A_twin"]]), "PASS"),
              ("replay 1e-12", dict(rp, pairs=[["A", "B"]], gpu_exclusive=False), "FAIL"),
              ("replay Precision Max only", dict(rp, pairs=[["A", mkrun("A_pmax", base, info(5e-11, 1.0000001e-6, 6e-12, 5e-7))]]), "FAIL"),
