@@ -287,6 +287,36 @@ Command: `testsuite/lowrank/tiers.sh delayed 3` (summaries `runs/tiers_delayed_s
 - Reviews: Task 1 (sonnet) approved; Tasks 2+3 (opus) Spec ✅ / approved with one Important (bonds_illcond too mild) and minors,
   all fixed in round 1 (re-review: all addressed).
 
+## Phase 4 results: general submatrix, M-form (verified 2026-10-31, code c971a92a + fcc9f5d8 + 9b4eb424)
+Command: `testsuite/lowrank/tiers.sh submatrix 4` (summary `runs/tiers_submatrix_summary2.txt`, logs `runs/tiers/submatrix/`).
+- Unit (ctest 36, all rank-N cases, SUBMATRIX_RANKN = .true.): all rows pass; submatrix mz_illcond 3.6e-10 / bonds_illcond
+  3.6e-11 (TOL_ILL 1e-8); mutation "no M transform in the hook" fails 142 rows (all submatrix).
+- Trajectory: standard vs submatrix and delayed vs submatrix IDENTICAL for all 14 sets, plus tv/kondo/jz at N_delay 2 and 1000
+  (34 comparisons).
+- Debug shadow: 7 sets, ≤ 1.7e-14; padded sites are counted in the summary.
+- **Bug found by the tiers (systematic debugging):** with K_ND = 8 the Kondo statistical run had Precision Green max 2.6e-9 vs
+  4.0e-11 for standard and Phase max 7.7e-10 vs 2.8e-11 — on the identical trajectory (confout equal). Evidence: debug shadow
+  over the full run (5.4e6 checks) max 1.2e-11 per block, no wrong update; N_delay = 2: 5.2e-11; K_ND = 4 / 8: 3.2e-9 / 2.6e-9;
+  K_ND = 2 / 1: 4.9e-11. Root cause: the M-form's forward error with non-diagonal content in a block (cancellation in
+  G0 − G0(:,S) M (…)), accumulating between stabilisations. Fix (9b4eb424, spec D15): K_ND = 1 — non-diagonal content is never
+  kept in the M-form; unit tier passes.
+- Statistical (submatrix_s4 vs standard_s1): tv, jz, tv_proj, z2, doped PASS; kondo FAIL on SpinZ_eqJK only (array rule),
+  identical to standard_s4 vs standard_s1 (a property of the seed-4 chain; submatrix_s4's confout == standard_s4's); the
+  pre-registered replicate (submatrix_s14 vs standard_s2) PASSES — kondo passes.
+- Stability (paired): Green mean 0.99–1.11, max 0.53–1.32, Phase max 0.92–1.54 (all ≤ 2).
+- Regress 13/13 IDENTICAL; ctest 41/41.
+- Projector (Task 7): pv_adiab and tv_proj PASS for delayed (s3) and submatrix (s4); confout == standard with the same seed;
+  pv_adiab Precision Green max 7.36e-8 (submatrix) vs 7.37e-8 (standard).
+- Reviews: Task 5 (opus) Spec ✅ / approved (minors fixed).
+
+## Phase 5 (project 2): local parallel tier (Task 9; script `testsuite/lowrank/parallel_tier.sh`)
+- First run on d374e204 (submatrix still rank-1 there): mpi 18/18 (1/2/4 ranks, half and tv, 3 schemes), threads 3/3,
+  tempering 3/3, pp 3/3 PASS (some after the pre-registered replicate); scheme line once per Temp_<g>/info; max scalar |z| 2.44.
+  Harness corrections after run 1 (independent seed for the second tempering reference; replicate judged per replica,
+  the other replica still checked for hard failures) are recorded in the ledger; no final verdict depended on them.
+- Review fixes (e6b5569d, b7ade70d): NaN = hard fail, tempering must show accepted exchanges, same-seed omp1/omp4 identity,
+  single provenance (archived HEAD), concurrency budget. The full tier is re-run end to end after the merges (Task 8, Phase 6).
+
 ## Work packages (project 2)
 | WP | Phase | Content | Done means |
 |---|---|---|---|

@@ -6,7 +6,7 @@ Usage: python3 -I parallel_compare.py DIR_A DIR_B LOGFILE [LABEL]    (A = refere
 Runs stat_compare.compare (the pre-registered rules, unchanged) on the two analysed run directories, writes the full
 stat_compare output to LOGFILE and prints one summary line:
     PASS|FAIL[-ARRAY]|ERROR LABEL: scalars max|z|=.. (name) sign z=..; <array>: n=.. frac>2=..%(lim ..%) max|z|=..; ...
-Exit codes: 0 PASS; 1 FAIL with a scalar failure (decisive: a bug, no replicate); 3 FAIL of an array rule only
+Exit codes: 0 PASS; 1 FAIL with a scalar failure or non-finite data (decisive: a bug, no replicate); 3 FAIL of an array rule only
 (the pre-registered protocol allows ONE replicate with fresh seeds); 2 unusable input.
 """
 import math
@@ -33,6 +33,7 @@ def main(argv):
         return 2
 
     scal_bad = False
+    nonfin_bad = False
     zmax, zname = 0.0, "-"
     sign_z = None
     arrays = []
@@ -60,22 +61,29 @@ def main(argv):
                 zmax, zname = abs(z), t[0]
         elif section == "array" and t and t[0].endswith(("JK", "JR")) and len(t) >= 10:
             # array unique skip0 nonfin n>2 frac>2 limit max|z| rms z  ok|FAIL|(info)
+            try:
+                if int(t[3]) > 0:         # non-finite entries (NaN/inf in either run, also *_eqJR) are never statistical
+                    nonfin_bad = True
+            except ValueError:
+                nonfin_bad = True
             if t[0].endswith("JK"):
                 arrays.append("%s n=%s frac>2=%s(lim %s) max|z|=%s rms=%s %s" % (
                     t[0], t[1], t[5], t[6], t[7], t[8], "FAIL" if t[-1] == "FAIL" else ""))
     arr_bad = any(a.endswith("FAIL") for a in arrays)
     if rc == 0:
         verdict = "PASS"
-    elif scal_bad or not arrays:
+    elif scal_bad or nonfin_bad or not arrays:
         verdict = "FAIL"
     elif arr_bad:
         verdict = "FAIL-ARRAY"
     else:      # non-finite / other failure not attributable to a JK array rule
         verdict = "FAIL"
     wall = ""
-    p = os.path.join(db, "wall_seconds")
+    p = os.path.join(db, "info_wall_seconds")
     if os.path.exists(p):
         wall = " wall=%ss" % open(p).read().strip()
+    if nonfin_bad:
+        arrays.append("NON-FINITE array entries")
     print("%s %s: scalars max|z|=%.2f (%s) sign z=%s; %s%s" % (
         verdict, label, zmax, zname, "%.2f" % sign_z if sign_z is not None else "-", "; ".join(arrays), wall))
     return {"PASS": 0, "FAIL": 1, "FAIL-ARRAY": 3}[verdict]
