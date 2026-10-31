@@ -4,7 +4,8 @@
 # Usage:  testsuite/lowrank/bench.sh SCHEME L N_delay [THREADS] [KEY=VALUE ...]
 #   SCHEME   standard | delayed | submatrix     (Sequential_scheme)
 #   L        linear lattice size (N = L*L sites)
-#   N_delay  max pending accepted vertices (ignored by 'standard' but recorded)
+#   N_delay  pending-rank bound (ignored by 'standard' but recorded): >= 1 fixed, 0 automatic (static rule),
+#            -1 automatic with warm-up timing (run directory nd0 / ndm1)
 #   THREADS  OMP_NUM_THREADS = VECLIB_MAXIMUM_THREADS (default 1; omit it or give it before any KEY=VALUE)
 #   KEY=VALUE  extra parameters applied after the Hubbard defaults (make_params.py), e.g. another model:
 #            ham_name=\"tV\" Model=\"tV\" ham_V=-1.d0 N_SUN=1  (set NSWEEP: the per-L table is calibrated for Hubbard only;
@@ -15,10 +16,13 @@
 #   TAG           optional suffix of the run directory name (e.g. TAG=_rep2)
 #   BENCH_COMMIT  optional expected commit; a warning is printed if the binary reports another one
 #   SEED          first seed (default: the one in Start/seeds); identical for all schemes => identical trajectories
-# Run directory: runs/bench/<SCHEME>[_<model>]_L<L>_nd<N_delay>_t<THREADS>_ns<NSweep><TAG>  (_<model> only with KEY=VALUE)
+# Run directory: runs/bench/<SCHEME>[_<model>]_L<L>_nd<N_delay>_t<THREADS>_ns<NSweep><TAG>  (_<model> only with KEY=VALUE;
+#   nd0 / ndm1 for N_delay = 0 / -1)
 # Output (one line, stdout):  scheme L N N_delay threads sec_per_sweep acceptance nsweep commit date pgreen_mean pgreen_max pphase_max
 #   [model keys]   only with extra KEY=VALUE arguments: model = value of ham_name (quotes stripped), keys = the extra
 #                  arguments joined with ',' (one field). N = L*L lattice sites (not Ndim) for every model.
+#   [nd_used=<n>]  only for N_delay <= 0, always the last field: the N_delay the run used, from info ("static n0 = <n>"
+#                  for 0; "chosen <n>" or "tuning skipped (...), N_delay = <n>" for -1; "na" for standard).
 #   (the last three are the "Precision Green Mean, Max" and "Precision Phase, Max" lines of info; stability diagnostics)
 #   sec_per_sweep = "CPU Time" in info / (NSweep*NBin). "CPU Time" is WALL time (system_clock) of the sweep
 #   phase only: the timer is restarted after the initial Green function computation (Prog/main.F90 calls
@@ -34,8 +38,10 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ALFDIR="$(cd "$HERE/../.." && pwd)"
-[ $# -ge 3 ] || { sed -n 2,25p "${BASH_SOURCE[0]}" >&2; exit 2; }
+[ $# -ge 3 ] || { sed -n 2,29p "${BASH_SOURCE[0]}" >&2; exit 2; }
 SCHEME="$1"; L="$2"; ND="$3"; shift 3
+[[ "$ND" =~ ^-?[0-9]+$ ]] && [ "$ND" -ge -1 ] || { echo "N_delay must be an integer >= -1, got '$ND'" >&2; exit 2; }
+NDTAG="nd$ND"; [ "$ND" = -1 ] && NDTAG="ndm1"
 THREADS=1
 if [ $# -gt 0 ] && [[ "$1" != *=* ]]; then THREADS="$1"; shift; fi
 EXTRA=("$@")
@@ -69,7 +75,7 @@ BIN="${BENCH_BIN:-$ALFDIR/runs/bench/ALF.out}"
 
 [ -z "${NSWEEP:-}" ] || echo "bench.sh: NSWEEP=$NSWEEP overrides the calibrated per-L value" >&2
 MTAG=""; [ ${#EXTRA[@]} -eq 0 ] || MTAG="_${MODEL}"
-DIR="$ALFDIR/runs/bench/${SCHEME}${MTAG}_L${L}_nd${ND}_t${THREADS}_ns${NSW}${TAG:-}"
+DIR="$ALFDIR/runs/bench/${SCHEME}${MTAG}_L${L}_${NDTAG}_t${THREADS}_ns${NSW}${TAG:-}"
 /bin/rm -rf "$DIR"
 mkdir -p "$DIR"
 KEYS=(L1="$L" L2="$L" ham_U=4.d0 Beta=2.d0 Dtau=0.1d0 Ltau=0 LOBS_ST=1 LOBS_EN=1
@@ -102,7 +108,21 @@ if [ -f "$LAST" ] && [ "$(cat "$LAST")" != "$commit" ]; then
     echo "bench.sh WARNING: commit $commit differs from the previous run's commit $(cat "$LAST")" >&2
 fi
 echo "$commit" > "$LAST"
+# Automatic N_delay: the value the run used (last field nd_used=<n>)
+NDUSED=""
+if [ "$ND" -le 0 ]; then
+    if [ "$SCHEME" = standard ]; then
+        used=na
+    elif [ "$ND" = 0 ]; then
+        used="$(sed -n 's/^ *Sequential scheme: .*, N_delay = auto (static n0 = \([0-9]*\),.*/\1/p' info | tail -1)"
+    else
+        used="$(sed -n -e 's/^ *Auto N_delay: candidates .* s\/proposal, chosen \([0-9]*\)$/\1/p' \
+                       -e 's/^ *Auto N_delay: tuning skipped (.*), N_delay = \([0-9]*\)$/\1/p' info | tail -1)"
+    fi
+    [ -n "$used" ] || { echo "bench $SCHEME L=$L: no automatic N_delay line in $DIR/info" >&2; exit 1; }
+    NDUSED=" nd_used=$used"
+fi
 awk -v s="$SCHEME" -v l="$L" -v nd="$ND" -v t="$THREADS" -v cpu="$cpu" -v acc="$acc" -v ns="$NSW" -v nb="$NBIN" \
-    -v c="$commit" -v d="$day" -v pg="$pg" -v pp="$pp" \
+    -v c="$commit" -v d="$day" -v pg="$pg" -v pp="$pp" -v ndu="$NDUSED" \
     -v extra="$( [ ${#EXTRA[@]} -eq 0 ] || { printf ' %s ' "$MODEL"; (IFS=,; printf '%s' "${EXTRA[*]}"); } )" \
-    'BEGIN { printf "%s %d %d %d %d %.6g %.6f %d %s %s %s %s%s\n", s, l, l*l, nd, t, cpu/(ns*nb), acc, ns, c, d, pg, pp, extra }'
+    'BEGIN { printf "%s %d %d %d %d %.6g %.6f %d %s %s %s %s%s%s\n", s, l, l*l, nd, t, cpu/(ns*nb), acc, ns, c, d, pg, pp, extra, ndu }'

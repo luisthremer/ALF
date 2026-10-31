@@ -10,7 +10,10 @@
 #   traj    compare_trajectory.sh <set> standard SCHEME for every set of SETS and TRAJ_ONLY_SETS, plus tv/kondo/jz at
 #           N_delay=2 and 1000, and for submatrix also delayed vs submatrix for every set.
 #   debug   builds an -DALF_LOWRANK_DEBUG binary into builds/ALF_debug.out (in place, then restores the normal build) and
-#           runs tv kondo z2 spin_peierls jz tv_proj tv_flux with it (NSweep=3 NBin=2); prints the shadow summary.
+#           runs tv kondo z2 spin_peierls jz tv_proj tv_flux with it (NSweep=3 NBin=2 N_delay=32); prints the shadow summary.
+# N_delay (Phase 6: the Start template's default is 0 = automatic): traj runs use the template default (automatic, so the
+# new default is exercised; tv/kondo/jz also at the fixed 2 and 1000, z2gt at 5); debug runs and the stat chains
+# (stat_runs.sh) pin the old default 32, so their recorded error / stability numbers stay comparable.
 #   stat    stat_runs.sh SET SCHEME SEED for tv kondo jz tv_proj z2 doped (4 in parallel), then stat_compare.py vs
 #           standard_s1, and the paired stability ratios (Precision Green/Phase max and mean, SCHEME_sSEED / standard_sSEED;
 #           the standard chain with seed SEED is run as well if it does not exist: same seed => same trajectory).
@@ -54,7 +57,7 @@ if [[ " $PHASES " == *" debug "* ]]; then
   for s in tv kondo z2 spin_peierls jz tv_proj tv_flux; do
     keys=""; for e in "${SETS[@]}" "${TRAJ_ONLY_SETS[@]}"; do IFS='|' read -r n common _ <<<"$e"; [ "$n" = "$s" ] && keys="$common"; done
     d="$ALFDIR/runs/tiers/$SCHEME/debug_$s"; /bin/rm -rf "$d"
-    read -r -a keyarr <<<"NSweep=3 NBin=2 $keys Sequential_scheme=\"$SCHEME\""
+    read -r -a keyarr <<<"NSweep=3 NBin=2 N_delay=32 $keys Sequential_scheme=\"$SCHEME\""
     python3 -I "$HERE/make_params.py" "$d" "${keyarr[@]}" >/dev/null
     r=$(cd "$d" && OMP_NUM_THREADS=1 "$ALFDIR/builds/ALF_debug.out" >stdout.log 2>&1; echo $?)
     echo "debug $s exit=$r $(tr '\n' ' ' < "$d/lowrank_debug_summary.txt" 2>/dev/null)"

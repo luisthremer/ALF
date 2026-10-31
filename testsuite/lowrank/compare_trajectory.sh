@@ -7,8 +7,11 @@
 #                       (jz); only its common keys are used (the scheme is set explicitly).
 #   SCHEME_A, SCHEME_B  standard | delayed | submatrix (any case)
 #   KEY=VALUE ...       extra parameters for both runs (e.g. N_delay=8, SEED=42)
+#   A:KEY=VALUE / B:KEY=VALUE  extra parameters for run A / run B only (applied after the plain ones), e.g.
+#                       `delayed delayed A:N_delay=16 B:N_delay=-1` (fixed vs automatic N_delay, same scheme)
 #   --rebuild           force a rebuild of the trace binary.
 #   ALF_TRACE_BIN=path  (environment, for testing the harness) use that binary instead of building one.
+#   MAKE_JOBS=n         (environment) parallel make jobs of the builds (default 8).
 #
 # Two runs with identical seeds and parameters (NSweep=3 NBin=2, OMP_NUM_THREADS=1) differ only in
 # Sequential_scheme and must make the same accept/reject decisions. The runs use one shared trace binary
@@ -32,7 +35,7 @@ SHORT="NSweep=3 NBin=2"
 
 REBUILD=0
 if [ "${1:-}" = "--rebuild" ]; then REBUILD=1; shift; fi
-if [ $# -lt 3 ]; then sed -n '2,22p' "${BASH_SOURCE[0]}" >&2; exit 2; fi
+if [ $# -lt 3 ]; then sed -n '2,25p' "${BASH_SOURCE[0]}" >&2; exit 2; fi
 SET="$1"; SCHEME_A="$2"; SCHEME_B="$3"; shift 3
 EXTRA=("$@")
 
@@ -50,7 +53,7 @@ build_in_tree() {  # $1 = extra flag or empty; leaves Prog/ALF.out built from sc
     ( set +eu; cd "$ALFDIR"
       if [ -n "$1" ]; then export ALF_FLAGS_EXT="$1"; fi
       source configure.sh GNU noMPI NO-INTERACTIVE >/dev/null 2>&1
-      make -C Prog clean >/dev/null 2>&1 && make program -j8 ) >"$ALFDIR/runs/build_trace.log" 2>&1 \
+      make -C Prog clean >/dev/null 2>&1 && make program -j"${MAKE_JOBS:-8}" ) >"$ALFDIR/runs/build_trace.log" 2>&1 \
         || { echo "build failed, see $ALFDIR/runs/build_trace.log" >&2; return 2; }
 }
 
@@ -97,12 +100,23 @@ fi
 
 export OMP_NUM_THREADS=1
 dirs=()
-for scheme in "$SCHEME_A" "$SCHEME_B"; do
+for run in A B; do
+    if [ $run = A ]; then scheme="$SCHEME_A"; else scheme="$SCHEME_B"; fi
     dir="$OUTROOT/$SET/$scheme"
     [ -d "$dir" ] && [ "${#dirs[@]}" = 1 ] && [ "$dir" = "${dirs[0]}" ] && dir="${dir}_2"
     /bin/rm -rf "$dir"
-    keys="$SHORT $common ${EXTRA[*]:-}"
+    # plain KEY=VALUE for both runs, then A:KEY=VALUE / B:KEY=VALUE for this run only
+    plain=""; own=""
+    for kv in ${EXTRA[@]+"${EXTRA[@]}"}; do
+        case "$kv" in
+            A:*) [ $run = A ] && own="$own ${kv#A:}" ;;
+            B:*) [ $run = B ] && own="$own ${kv#B:}" ;;
+            *)   plain="$plain $kv" ;;
+        esac
+    done
+    keys="$SHORT $common$plain$own"
     read -r -a keyarr <<<"$keys"
+    [ -z "$own" ] || echo "run $run ($scheme): own keys$own"
     python3 -I "$MAKE_PARAMS" "$dir" "${keyarr[@]}" "Sequential_scheme=\"$scheme\""
     (cd "$dir" && "$TRACE_BIN" >stdout.log 2>&1) \
         || { echo "run failed ($scheme), see $dir/stdout.log" >&2; exit 2; }

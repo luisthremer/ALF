@@ -15,7 +15,10 @@ committed raw files must leave git clean.
 
 RAW_FILE holds bench.sh lines:
 "scheme L N N_delay threads sec_per_sweep acceptance nsweep commit date [pgreen_mean pgreen_max pphase_max]"
-(commit and date come from the run's `info`; the three precision fields are optional, old files have none).
+(commit and date come from the run's `info`; the three precision fields are optional, old files have none), optionally
+followed by "model keys" (other models) and, for N_delay <= 0 (automatic; required there), a last field "nd_used=<n>"
+(the N_delay the run used): 10, 13, 14, 15 or 16 fields. Rows with N_delay <= 0 are labelled auto (0) / tune (-1) and
+never enter the best-fixed and "Default N_delay" computations (--ndelay lists them separately against the best fixed value).
 --repeat: a raw file with repeated runs of points of the size scan (same fields; a row may be copied from another raw
 file, then it is a run of the same point); the Notes quantify the noise from it.
 Size-scan mode writes DIR/results.csv (scheme,L,N,N_delay,threads,sec_per_sweep,acceptance,nsweep) and DIR/size_scan.md
@@ -43,6 +46,15 @@ def run(cmd):
     return subprocess.run(["bash", "-c", cmd], cwd=ALFDIR, capture_output=True, text=True).stdout.strip()
 
 
+def fixed(r):
+    """True for a row with a fixed N_delay (>= 1); N_delay <= 0 is automatic (auto / tune)."""
+    return int(r["N_delay"]) > 0
+
+
+def nd_label(nd):
+    return {0: "auto", -1: "tune"}.get(int(nd), str(nd))
+
+
 def read_rows(path, check_commit=True):
     rows = []
     with open(path) as f:
@@ -51,9 +63,18 @@ def read_rows(path, check_commit=True):
             if not t:
                 continue
             n0, n1 = len(RAW_FIELDS), len(RAW_FIELDS) + len(PREC_FIELDS)
-            if len(t) not in (n0, n1, n1 + 2):
-                sys.exit("bench_report.py: bad line (%d, %d or %d fields expected): %s" % (n0, n1, n1 + 2, line.strip()))
-            rows.append(dict(zip(RAW_FIELDS + PREC_FIELDS + ["model", "keys"], t)))
+            nd_used = None
+            if t[-1].startswith("nd_used="):
+                nd_used = t.pop()[len("nd_used="):]
+            if len(t) not in (n0, n1, n1 + 2) or (nd_used is not None and len(t) == n0):
+                sys.exit("bench_report.py: bad line (%d, %d, %d, %d or %d fields expected): %s"
+                         % (n0, n1, n1 + 1, n1 + 2, n1 + 3, line.strip()))
+            r = dict(zip(RAW_FIELDS + PREC_FIELDS + ["model", "keys"], t))
+            if (int(r["N_delay"]) <= 0) != (nd_used is not None):
+                sys.exit("bench_report.py: nd_used=<n> is required exactly for N_delay <= 0: " + line.strip())
+            if nd_used is not None:
+                r["nd_used"] = nd_used
+            rows.append(r)
     commits = sorted({r["commit"] for r in rows})
     if check_commit and len(commits) != 1:
         sys.exit("bench_report.py: rows come from different commits: " + ", ".join(commits))
@@ -114,9 +135,11 @@ def fit_exponent(rows, lmax=14):
 
 def noise_spread(size_rows, repeat_rows):
     """(spread in percent, number of runs, scheme, L) of the most often repeated point, or None."""
-    by = {(r["scheme"], int(r["L"])): sec(r) for r in size_rows if r["threads"] == "1"}
+    by = {(r["scheme"], int(r["L"])): sec(r) for r in size_rows if r["threads"] == "1" and fixed(r)}
     groups = {}
     for r in repeat_rows:
+        if not fixed(r):
+            continue
         groups.setdefault((r["scheme"], int(r["L"])), []).append(sec(r))
     best = None
     for (sc, L), v in groups.items():
@@ -128,8 +151,9 @@ def noise_spread(size_rows, repeat_rows):
 
 
 def notes(rows, repeat_rows):
-    """Notes of size_scan.md, every number computed from the data."""
-    by = {(r["scheme"], int(r["L"])): r for r in rows if r["threads"] == "1"}
+    """Notes of size_scan.md, every number computed from the data (fixed-N_delay rows only)."""
+    by = {(r["scheme"], int(r["L"])): r for r in rows if r["threads"] == "1" and fixed(r)}
+    repeat_rows = [r for r in repeat_rows if fixed(r)]
     Ls = sorted({L for (_, L) in by})
     out = []
     out.append("Acceptance is identical between the three schemes at every L (same seed, identical Metropolis "
@@ -232,16 +256,18 @@ def ndelay_tables(rows):
             "| N_delay | delayed [s/sweep] | speedup | Green max | max / standard | Green mean | Phase max "
             "| submatrix [s/sweep] | speedup | Green max | max / standard | Green mean | Phase max |",
             "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
-        nds = sorted({int(r["N_delay"]) for r in sub if r["scheme"] != "standard"})
+        nds = sorted({int(r["N_delay"]) for r in sub if r["scheme"] != "standard"},
+                     key=lambda nd: (nd <= 0, -nd if nd <= 0 else nd))   # fixed values, then auto (0), tune (-1)
         for nd in nds:
-            cells = ["%d" % nd]
+            cells = [nd_label(nd)]
             for sc in ("delayed", "submatrix"):
                 r = [x for x in sub if x["scheme"] == sc and int(x["N_delay"]) == nd]
                 if not r:
                     cells += ["-"] * 6
                     continue
                 r = r[0]
-                cells += ["%.4g" % sec(r), "%.2f" % (sec(std) / sec(r)), "%.3g" % float(r["pg_max"]),
+                used = (" (N_delay %s)" % r["nd_used"]) if "nd_used" in r else ""
+                cells += ["%.4g%s" % (sec(r), used), "%.2f" % (sec(std) / sec(r)), "%.3g" % float(r["pg_max"]),
                           "%.2f" % (float(r["pg_max"]) / float(std["pg_max"])), "%.3g" % float(r["pg_mean"]),
                           "%.3g" % float(r["pp_max"])]
             out.append("| " + " | ".join(cells) + " |")
@@ -254,8 +280,30 @@ def pct(x):
     return "0.0 %" if abs(v) < 0.05 else "%+.1f %%" % v
 
 
+def auto_section(rows):
+    """Automatic N_delay rows (N_delay <= 0) against the best fixed N_delay of the same L and scheme (empty if none)."""
+    auto = [r for r in rows if not fixed(r) and r["scheme"] != "standard"]
+    if not auto:
+        return []
+    out = ["## Automatic N_delay vs the best fixed value", "",
+           "| L | scheme | N_delay | used | s/sweep | best fixed N_delay | s/sweep | auto / best - 1 |",
+           "|---:|---|---|---:|---:|---:|---:|---:|"]
+    for r in sorted(auto, key=lambda r: (int(r["L"]), SCHEMES.index(r["scheme"]), -int(r["N_delay"]))):
+        fx = [x for x in rows if fixed(x) and x["scheme"] == r["scheme"] and x["L"] == r["L"] and x["threads"] == r["threads"]]
+        if fx:
+            b = min(fx, key=sec)
+            best = ["%s" % b["N_delay"], "%.4g" % sec(b), pct(sec(r) / sec(b) - 1)]
+        else:
+            best = ["-", "-", "-"]
+        out.append("| %s | %s | %s | %s | %.4g | %s |" % (r["L"], r["scheme"], nd_label(r["N_delay"]), r["nd_used"], sec(r),
+                                                         " | ".join(best)))
+    return out + [""]
+
+
 def default_section(rows, noise):
-    """The generated 'Default N_delay' section of ndelay_scan.md. Every number is computed from the rows."""
+    """The generated 'Default N_delay' section of ndelay_scan.md. Every number is computed from the rows
+    (fixed N_delay only: automatic rows never enter it)."""
+    rows = [r for r in rows if fixed(r)]
     Ls = sorted({int(r["L"]) for r in rows})
     by = {(int(r["L"]), r["scheme"], int(r["N_delay"])): r for r in rows}
     nds = sorted({int(r["N_delay"]) for r in rows if r["scheme"] != "standard"})
@@ -381,6 +429,7 @@ def main_ndelay(argv, outdir):
                 "%.2f" % (sec(base[0]) / sec(r)) if base else "-"))
         out.append("")
     out += default_section(rows, noise)
+    out += auto_section(rows)
     out += provenance(rows, thr)
     os.makedirs(outdir, exist_ok=True)
     with open(os.path.join(outdir, "ndelay_scan.md"), "w") as f:
