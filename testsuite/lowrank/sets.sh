@@ -58,4 +58,11 @@ STAT_SETS=(
   "kondo|ham_name=\"Kondo\" Model=\"Kondo\" Lattice_type=\"Bilayer_square\" L1=4 L2=4 Beta=2.d0"
   "jz|ham_name=\"LR_Jz_Test\" Model=\"LR_Jz_Test\" L1=4 L2=4 ham_U=4.d0 ham_Jz=1.d0 Beta=4.d0 Nwrap=5"
   "tv_proj|ham_name=\"tV\" Model=\"tV\" ham_V=0.5d0 N_SUN=2 N_Phi=1 L1=4 L2=4 Beta=1.d0 Projector=.T. Theta=2.d0 NBin=80"
+  # z2: Z2_Matter, all vertices sequential (no Global_tau): Hubbard, gauge-Ising and matter-Ising vertices. No Ener/Pot/Kin
+  # observables (Part, Flux, X, Q): stat_runs.sh analyses the *_scal files the model has. NSweep=200 (bins of 200
+  # sweeps): with NSweep=50 the gauge-field autocorrelation underestimated the errors (standard s1 vs s2: Green_eqJK
+  # 4 of 16 entries |z|>2, rms z 1.5, FAIL); see README.
+  "z2|ham_name=\"Z2_Matter\" Model=\"Z2_Matter\" L1=4 L2=4 Beta=2.d0 ham_U=1.0 Symm=.F. Checkerboard=.F. NSweep=200"
+  # pv_adiab: projective Hubbard with adiabatic switching (time-dependent g_t, N_FL_eff < N_FL), as in SETS.
+  "pv_adiab|ham_name=\"Hubbard_Plain_Vanilla\" Model=\"Hubbard_Plain_Vanilla\" L1=4 L2=4 Projector=.T. Adiabatic=.T. Theta=2.d0 Beta=1.d0"
 )
