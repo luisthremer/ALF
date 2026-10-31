@@ -1,3 +1,7 @@
+#  Modified 2026 on the delayed/submatrix research branch (feature/delayed-submatrix):
+#  Lowrank_update_mod.F90 and Trace_updates_mod.F90 added to the sources.
+#  See docs/algorithm-notes.md.
+
 .PHONY : Compile tidy clean program
 
 # Source files (single source of truth; OBJS and MODS are generated into DEPSFILE)
