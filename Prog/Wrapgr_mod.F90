@@ -121,9 +121,6 @@ Contains
     ! Cross-slice delay (spec D10): the pending state of the previous slice may enter here; it is
     ! carried through the hopping wrap below (X <- B_T X, Y^T <- Y^T B_T^{-1}) instead of being flushed
     if (.not. Lowrank_cross_slice_active()) call Lowrank_assert_flushed("WRAPGRUP entry")
-    ! Automatic N_delay with warm-up timing (N_delay = -1, sweeps 2-3 only; otherwise a no-op): candidate of
-    ! this call, clock started; stopped after the slice-end flush (Global_tau excluded)
-    call Lowrank_autotune_slice_begin()
 
     ! Wrap up, upgrade ntau1.  with B^{1}(tau1) 
     NTAU1 = NTAU + 1
@@ -136,6 +133,10 @@ Contains
 #ifdef ALF_LOWRANK_DEBUG
     if (Lowrank_cross_slice_active()) call Lowrank_debug_check(GR, 0, ntau1, "Lowrank_hop_up")
 #endif
+    ! Automatic N_delay with warm-up timing (N_delay = -1, sweeps 2-3 only; otherwise a no-op): candidate of
+    ! this call, clock started after the hopping wrap; stopped after the slice-end flush (Global_tau excluded),
+    ! so up- and down-calls time the same part (vertices + flushes)
+    call Lowrank_autotune_slice_begin()
     Do n = Nt_sequential_start,Nt_sequential_end
        ! Ineligible vertex: apply the pending low-rank updates before G0 is wrapped
        if (Lowrank_active() .and. .not. Lowrank_eligible(n)) call Lowrank_flush(GR)
@@ -250,7 +251,8 @@ Contains
        Call Wrapgr_Random_update(GR,m,ntau, PHASE, N_Global_tau )
        Call Wrapgr_PlaceGR(GR,m, Nt_sequential_end, ntau)
     Endif
-    ! Automatic N_delay with warm-up timing (no-op otherwise): timed from here (after Global_tau) to the slice-end flush
+    ! Automatic N_delay with warm-up timing (no-op otherwise): timed from here (after Global_tau) to the slice-end flush,
+    ! before the hopping wrap
     call Lowrank_autotune_slice_begin()
 
     

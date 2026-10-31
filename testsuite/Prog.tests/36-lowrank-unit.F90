@@ -1397,7 +1397,8 @@ end module lowrank_kernel_equiv_section
 !    Lowrank_report_final): round-robin candidates, decision line, "no proposals", "single candidate",
 !    "cross-slice", "tuning incomplete".
 ! The pending-state and capacity checks of Lowrank_set_N_delay terminate the program: they run as separate ctest
-! entries (arguments "pending" and "capacity", WILL_FAIL), see lowrank_auto_terminate below.
+! entries (arguments "pending" and "capacity", PASS_REGULAR_EXPRESSION on the error message), see
+! lowrank_auto_terminate below.
 module lowrank_auto_section
    use lowrank_unit_harness, only: dp, TOL_UNIT, CASE_MZ, CASE_MIXED, M_ops, setup_case, random_initial_G, &
         &                          clear_case, run_case, cand_set_nd, n_cap_bad, max_pend_cols, info_path, &
@@ -1543,17 +1544,25 @@ contains
          call auto_check(Lowrank_current_N_delay() == 16, trim(sname(is))//' N_delay = 0 on mz: n0 = 16', n_fail)
          call auto_check(info_has_line('Sequential scheme: '//trim(sname(is))// &
               & ', N_delay = auto (static n0 = 16, Ndim = 64)'), 'info: '//trim(sname(is))//' auto line', n_fail)
+         ! N_delay = 0: capacity n0 = 16 (no timing), so only steps down within it
          call Lowrank_set_N_delay(8)
-         call auto_check(Lowrank_current_N_delay() == 8, trim(sname(is))//' set down to n0/2 = 8', n_fail)
-         call Lowrank_set_N_delay(32)
-         call auto_check(Lowrank_current_N_delay() == 32, trim(sname(is))//' set up to 2 n0 = 32 (capacity)', n_fail)
+         call auto_check(Lowrank_current_N_delay() == 8, trim(sname(is))//' N_delay = 0: set down to n0/2 = 8', n_fail)
          call Lowrank_set_N_delay(16)
-         call auto_check(Lowrank_current_N_delay() == 16, trim(sname(is))//' set back to n0 = 16', n_fail)
+         call auto_check(Lowrank_current_N_delay() == 16, trim(sname(is))//' N_delay = 0: set back to n0 = 16 (capacity)', &
+              & n_fail)
          call Lowrank_finalize()
+         ! N_delay = -1: capacity 2 n0 = 32 (largest candidate)
          call Lowrank_init(trim(sname(is)), -1)
          call auto_check(Lowrank_current_N_delay() == 16, trim(sname(is))//' N_delay = -1 on mz: n0 = 16', n_fail)
          call auto_check(info_has_line('Sequential scheme: '//trim(sname(is))// &
               & ', N_delay = auto+tune (static n0 = 16, Ndim = 64)'), 'info: '//trim(sname(is))//' auto+tune line', n_fail)
+         call Lowrank_set_N_delay(8)
+         call auto_check(Lowrank_current_N_delay() == 8, trim(sname(is))//' N_delay = -1: set down to n0/2 = 8', n_fail)
+         call Lowrank_set_N_delay(32)
+         call auto_check(Lowrank_current_N_delay() == 32, trim(sname(is))//' N_delay = -1: set up to 2 n0 = 32 (capacity)', &
+              & n_fail)
+         call Lowrank_set_N_delay(16)
+         call auto_check(Lowrank_current_N_delay() == 16, trim(sname(is))//' N_delay = -1: set back to n0 = 16', n_fail)
          call Lowrank_finalize()
       enddo
 
@@ -1697,9 +1706,9 @@ contains
       call clear_case()
    end subroutine run_auto_section
 
-   ! Must terminate (ctest WILL_FAIL): "pending" calls Lowrank_set_N_delay with one accepted vertex pending,
-   ! "capacity" asks for more than the allocated capacity (2 n0 = 32 on case mz). Returns only if the call
-   ! did not terminate; the caller then exits with status 0, so the WILL_FAIL test fails.
+   ! Must terminate with Lowrank_set_N_delay's error message (ctest PASS_REGULAR_EXPRESSION): "pending" calls it
+   ! with one accepted vertex pending, "capacity" asks for 17 after an N_delay = 0 init on case mz (capacity n0 = 16).
+   ! Returns only if the call did not terminate (no error message: the test fails).
    subroutine lowrank_auto_terminate(mode)
       use Lowrank_update_mod, only: Lowrank_propose, Lowrank_accept, Lowrank_pending
       character(len=*), intent(in) :: mode
@@ -1724,8 +1733,9 @@ contains
          write(6,'(A)') '36-lowrank-unit pending: Lowrank_set_N_delay(8) with 1 accepted vertex pending (must terminate)'
          call Lowrank_set_N_delay(8)
       case ('capacity')
-         write(6,'(A)') '36-lowrank-unit capacity: Lowrank_set_N_delay(33) above the capacity 32 (must terminate)'
-         call Lowrank_set_N_delay(33)
+         write(6,'(A)') '36-lowrank-unit capacity: Lowrank_set_N_delay(17) above the N_delay = 0 capacity n0 = 16'// &
+              & ' (must terminate)'
+         call Lowrank_set_N_delay(17)
       case default
          write(6,'(A,A)') '36-lowrank-unit: unknown argument ', trim(mode)
          return
@@ -1777,8 +1787,8 @@ program lowrank_unit
    inquire(file=info_path, exist=info_existed)
    max_drift = 0.d0
 
-   ! Argument "pending" / "capacity" (ctest 36-lowrank-unit-pending / -capacity, WILL_FAIL): only the
-   ! Lowrank_set_N_delay call that must terminate. If it returns, exit with status 0 (the test then fails).
+   ! Argument "pending" / "capacity" (ctest 36-lowrank-unit-pending / -capacity, PASS_REGULAR_EXPRESSION on the
+   ! error message): only the Lowrank_set_N_delay call that must terminate. If it returns, no message: the test fails.
    arg1 = ''
    if (command_argument_count() >= 1) call get_command_argument(1, arg1)
    if (len_trim(arg1) > 0) then

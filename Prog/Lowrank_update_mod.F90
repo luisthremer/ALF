@@ -72,23 +72,23 @@
 !> for models with non-diagonal (bond) vertices.
 !> Allocated: delayed N_cols_max = min(max(N_delay, N_P_LIM), size(Op_V,1)*N_P_LIM) (G is flushed at
 !> every slice end); submatrix N_cols_max = min(max(N_delay, N_P_LIM), Ndim) + N_P_LIM (headroom for
-!> the hook padding). With automatic N_delay, N_delay here is the largest timing candidate (see below).
+!> the hook padding). With automatic N_delay, N_delay here is n0 (N_delay = 0) or the largest timing candidate (-1; see below).
 !>
 !> Automatic N_delay (project 2 Phase 6; docs/superpowers/specs/2026-10-31-auto-ndelay-design.md, A1-A8):
 !> N_delay >= 1 is a fixed value; N_delay = 0 (default of &VAR_QMC) chooses the static value
 !> n0 = Lowrank_static_N_delay(scheme, Ndim, max_pend) (deterministic); N_delay = -1 starts from n0 and
 !> times the candidates {n0/2, n0, 2 n0} (each clamped as steps 3-4 of the rule) during sweeps 2 and 3:
 !> Lowrank_autotune_slice_begin / _end (WRAPGRUP/WRAPGRDO) give the i-th call of sweeps 2-3 the candidate
-!> mod(i-1, ncand)+1 and add the wall time of its sequential part and its number of Upgrade_lowrank
-!> proposals; Lowrank_autotune_finish (main.F90, every rank, after every sweep) starts the timing after
+!> mod(i-1, ncand)+1 and add the wall time of its sequential part (the vertex loop and the slice-end flush:
+!> no hopping wrap, no Global_tau) and its number of Upgrade_lowrank proposals; Lowrank_autotune_finish (main.F90, every rank, after every sweep) starts the timing after
 !> sweep 1 and decides after sweep 3 (MPI: sums reduced over Group_Comm, group rank 0 picks, broadcast):
 !> the fastest seconds per proposal if it beats n0's by more than 5 %, else n0 (n0 also if any candidate
 !> has no proposals). N_delay changes only the summation order of the exact update, so the chain is that
 !> of a fixed N_delay up to roundoff near-ties. No timing with the cross-slice delay (the slice-end flush
 !> is skipped there) or with a single distinct candidate. max_pend = sum over the eligible vertices of the
 !> sequential range Nt_start..Nt_end of max_f Op_V(n,f)%N_non_zero (the largest pending rank one slice
-!> can produce; G is flushed at every slice end). Arrays are sized for the largest candidate, so
-!> Lowrank_set_N_delay never reallocates. All lines go to the info file (Temp_<g>/info in tempering
+!> can produce; G is flushed at every slice end). Arrays are sized for n0 (N_delay = 0) or for the largest
+!> candidate (N_delay = -1), so Lowrank_set_N_delay never reallocates. All lines go to the info file (Temp_<g>/info in tempering
 !> builds) and output_unit, written by group rank 0.
 !>
 !> Cross-slice delay (research prototype, opt-in key Lowrank_cross_slice in &VAR_QMC; spec D10,
@@ -174,7 +174,8 @@ module Lowrank_update_mod
    ! ---- automatic N_delay (module header) ---------------------------------
    Integer, parameter   :: ND_U_DELAYED = 128, ND_U_SUBMATRIX = 256, ND_L = 16  ! clamp [ND_L, U] of the static rule
    Real (Kind=Kind(0.d0)), parameter :: TUNE_GAIN = 0.95d0  ! a candidate wins only if < 0.95 x n0's time per proposal
-   Integer              :: lr_N_delay_req = 0   ! requested: >= 1 fixed, 0 automatic, -1 automatic with timing
+   ! requested: >= 1 fixed, 0 automatic, -1 automatic with timing (not read yet: kept for P6-2, which writes it to data.h5)
+   Integer              :: lr_N_delay_req = 0
    Integer              :: lr_N_delay_cap = 0   ! largest N_delay the arrays are sized for (Lowrank_set_N_delay bound)
    Integer              :: lr_n0 = 0            ! static value (automatic N_delay)
    Logical              :: lr_print_info = .false.   ! this rank writes the info lines (group rank 0)
@@ -416,7 +417,12 @@ contains
             tune_ncand = tune_ncand + 1
             tune_cand(tune_ncand) = c
          enddo
-         lr_N_delay_cap = maxval(tune_cand(1:tune_ncand))   ! the arrays hold every candidate (N_delay = 0 too)
+         ! N_delay = -1: the arrays hold every candidate; N_delay = 0 (no timing): sized for n0 only
+         if (N_delay == -1) then
+            lr_N_delay_cap = maxval(tune_cand(1:tune_ncand))
+         else
+            lr_N_delay_cap = lr_n0
+         endif
       endif
 
       ! Capacity (header, D5). Delayed: at most M*N_P_LIM columns can be pending (G is flushed at
@@ -612,8 +618,8 @@ contains
 !--------------------------------------------------------------------
 !> @brief
 !> Sets the N_delay in use. Requires a flushed state (no accepted vertex pending) and
-!> 1 <= n <= the N_delay the arrays were sized for at Lowrank_init (fixed N_delay: itself; automatic:
-!> the largest timing candidate, clamp(2 n0)); terminates otherwise. No reallocation.
+!> 1 <= n <= the N_delay the arrays were sized for at Lowrank_init (fixed N_delay: itself; N_delay = 0:
+!> n0; N_delay = -1: the largest timing candidate, clamp(2 n0)); terminates otherwise. No reallocation.
 !--------------------------------------------------------------------
    subroutine Lowrank_set_N_delay(n)
       Implicit none
@@ -638,7 +644,7 @@ contains
 !--------------------------------------------------------------------
 !> @brief
 !> Warm-up timing (N_delay = -1, sweeps 2-3): start of the sequential part of a WRAPGRUP/WRAPGRDO call
-!> (after the lazy init and the entry assert; WRAPGRDO: after its Global_tau moves). Selects the
+!> (WRAPGRUP: after its hopping wrap; WRAPGRDO: after its Global_tau moves). Selects the
 !> candidate mod(i-1, ncand)+1 of the i-th timed call and starts the clock. No-op unless timing is active.
 !--------------------------------------------------------------------
    subroutine Lowrank_autotune_slice_begin()
@@ -693,7 +699,7 @@ contains
       Character (len=256) :: line
       Character (len=16)  :: buf
 #ifdef MPI
-      Integer :: ierr, irank_g
+      Integer :: ierr
 #endif
       if (.not. lr_initialised) return
       if (.not. tune_requested .or. tune_done) return
@@ -713,7 +719,6 @@ contains
 #ifdef MPI
       call MPI_Allreduce(tune_time,  t,  3, MPI_DOUBLE_PRECISION, MPI_SUM, Group_Comm, ierr)
       call MPI_Allreduce(tune_nprop, np, 3, MPI_INTEGER8,         MPI_SUM, Group_Comm, ierr)
-      call MPI_Comm_rank(Group_Comm, irank_g, ierr)
 #else
       t  = tune_time
       np = tune_nprop
