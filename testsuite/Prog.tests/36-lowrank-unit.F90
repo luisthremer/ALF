@@ -46,6 +46,14 @@ module lowrank_unit_harness
 
    integer, parameter :: dp = kind(0.d0)
 
+   ! File to which Lowrank_init appends its scheme line (Temp_<igroup>/info in tempering builds,
+   ! the test runs as group 0)
+#if defined(MPI) && defined(TEMPERING)
+   character(len=*), parameter :: info_path = 'Temp_0/info'
+#else
+   character(len=*), parameter :: info_path = 'info'
+#endif
+
    ! Tolerances (see CLAUDE.md "Tolerances"): TOL_UNIT for the well-conditioned cases,
    ! TOL_ILL for mz_illcond (cond(1+A) ~ 1e8, errors scale ~ cond * eps).
    real(dp), parameter :: TOL_UNIT = 1.0d-10
@@ -690,7 +698,7 @@ end module lowrank_unit_harness
 ! candidate-dispatch table above. A vertex is eligible iff, in every flavour,
 ! Op_V(n,nf)%N_non_zero <= 1 and Op_V(n,nf)%diag.
 module lowrank_eligibility_section
-   use lowrank_unit_harness, only: dp, clear_case
+   use lowrank_unit_harness, only: dp, clear_case, info_path
    use Hamiltonian_main, only: Op_V, Ndim, N_FL, N_FL_eff, Calc_Fl_map
    use Operator_mod
    use Predefined_Int
@@ -747,9 +755,9 @@ contains
       integer :: u, ios
       logical :: ex
       info_has_line = .false.
-      inquire(file='info', exist=ex)
+      inquire(file=info_path, exist=ex)
       if (.not. ex) return
-      open(newunit=u, file='info', status='old', action='read')
+      open(newunit=u, file=info_path, status='old', action='read')
       do
          read(u, '(A)', iostat=ios) line
          if (ios /= 0) exit
@@ -788,7 +796,7 @@ contains
       call elig_check(Op_V(4,2)%N_non_zero == 1 .and. .not. Op_V(4,2)%diag, &
            & 'hand-built (1 1;1 1)/2: N_non_zero = 1, not diagonal', n_fail)
 
-      inquire(file='info', exist=info_existed)
+      inquire(file=info_path, exist=info_existed)
 
       ! Delayed, mixed-case name
       call Lowrank_init('Delayed', 7)
@@ -820,7 +828,7 @@ contains
 
       ! Remove the info file if this section created it.
       if (.not. info_existed) then
-         open(newunit=u, file='info', status='old')
+         open(newunit=u, file=info_path, status='old')
          close(u, status='delete')
       endif
       call clear_case()
@@ -952,6 +960,10 @@ program lowrank_unit
    use lowrank_unit_harness
    use lowrank_eligibility_section, only: run_eligibility_section
    use lowrank_kernel_equiv_section, only: run_kernel_equivalence
+#ifdef MPI
+   use mpi
+   use Hamiltonian_main, only: Group_Comm
+#endif
    implicit none
    integer :: ic, is, id, idir, n_fail
    real(dp) :: rerr, gerr, drift, max_drift, tol, drift_rel
@@ -959,11 +971,27 @@ program lowrank_unit
    character(len=4) :: flag
    logical :: info_existed
    integer :: u_info
+#ifdef MPI
+   integer :: ierr
+#endif
+#if defined(MPI) && defined(TEMPERING)
+   logical :: temp_dir_existed
+#endif
 
+#ifdef MPI
+   ! Lowrank_init queries the communicators: a single rank, group 0
+   call MPI_Init(ierr)
+   Group_Comm = MPI_COMM_WORLD
+#endif
    call Fields_init(1.d0)
    n_fail = 0
-   ! Lowrank_init (delayed candidate, eligibility section) appends to the file 'info'.
-   inquire(file='info', exist=info_existed)
+#if defined(MPI) && defined(TEMPERING)
+   ! Lowrank_init appends to Temp_0/info
+   inquire(file='Temp_0', exist=temp_dir_existed)
+   if (.not. temp_dir_existed) call execute_command_line('mkdir -p Temp_0')
+#endif
+   ! Lowrank_init (delayed candidate, eligibility section) appends to the file info_path.
+   inquire(file=info_path, exist=info_existed)
    max_drift = 0.d0
 
    write(6,'(A,ES9.2,A,ES9.2,A)') '36-lowrank-unit: TOL_UNIT = ', TOL_UNIT, ', TOL_ILL = ', TOL_ILL, &
@@ -1027,15 +1055,24 @@ program lowrank_unit
    call run_eligibility_section(n_fail)
    call run_kernel_equivalence(n_fail)
    if (.not. info_existed) then
-      inquire(file='info', exist=info_existed)
+      inquire(file=info_path, exist=info_existed)
       if (info_existed) then
-         open(newunit=u_info, file='info', status='old')
+         open(newunit=u_info, file=info_path, status='old')
          close(u_info, status='delete')
       endif
    endif
+#if defined(MPI) && defined(TEMPERING)
+   if (.not. temp_dir_existed) call execute_command_line('rmdir Temp_0')
+#endif
    if (n_fail > 0) then
       write(6,'(A,I0,A)') '36-lowrank-unit: ', n_fail, ' row(s) FAILED'
+#ifdef MPI
+      call MPI_Finalize(ierr)
+#endif
       stop 1
    endif
    write(6,'(A)') '36-lowrank-unit: all rows passed'
+#ifdef MPI
+   call MPI_Finalize(ierr)
+#endif
 end program lowrank_unit

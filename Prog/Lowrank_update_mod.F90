@@ -96,6 +96,7 @@ module Lowrank_update_mod
    Integer              :: lr_N_delay = 0
    Integer              :: N_cols_max = 0       ! effective capacity in columns: min(N_delay*N_P_max, caps)
    Integer              :: n_pend     = 0       ! pending accepted vertices since the last flush
+   Integer              :: lr_M = 0, lr_Ndim = 0, lr_N_FL_eff = 0  ! sizes at init, checked in Lowrank_propose
    Logical, allocatable :: eligible(:)          ! eligible(n), n = 1..size(Op_V,1)
    Integer, allocatable :: n_cols(:)            ! used columns per computed flavour
 
@@ -183,6 +184,8 @@ contains
       Integer :: ierr, irank, irank_g, isize_g, igroup
 #endif
 
+      ! A re-init must not silently drop pending state
+      if (lr_initialised) call Lowrank_assert_flushed("Lowrank_init")
       call Lowrank_finalize()
       lr_initialised = .true.
 
@@ -205,6 +208,9 @@ contains
       endif
       lr_N_delay = N_delay
       M = size(Op_V, 1)
+      lr_M        = M
+      lr_Ndim     = Ndim
+      lr_N_FL_eff = N_FL_eff
       ! Effective capacity in columns. At most M*N_P_max columns can be pending (G is flushed at
       ! every slice end); for the submatrix scheme also at most Ndim (distinct sites). Computed
       ! in 64 bit so that a huge N_delay cannot overflow.
@@ -285,6 +291,7 @@ contains
 !--------------------------------------------------------------------
    subroutine Lowrank_finalize()
       Implicit none
+      if (lr_initialised) call Lowrank_assert_flushed("Lowrank_finalize")
       if (allocated(eligible)) deallocate (eligible)
       if (allocated(n_cols))   deallocate (n_cols)
       if (allocated(X))        deallocate (X)
@@ -308,6 +315,7 @@ contains
       lr_N_delay = 0
       N_cols_max = 0
       n_pend     = 0
+      lr_M = 0; lr_Ndim = 0; lr_N_FL_eff = 0
    end subroutine Lowrank_finalize
 
 !--------------------------------------------------------------------
@@ -431,6 +439,14 @@ contains
       Complex (Kind=Kind(0.d0)) :: Ratio(N_FL), Z1, Z, D_mat, myexp, g_loc, G_pp, Mat11
       Complex (Kind=Kind(0.d0)) :: v(N_cols_max)
       Integer                   :: nf, nf_eff, p, j, m
+
+      ! The state is sized at Lowrank_init; a change of Op_V, Ndim or N_FL_eff needs a re-init
+      if (size(Op_V,1) /= lr_M .or. Ndim /= lr_Ndim .or. N_FL_eff /= lr_N_FL_eff) then
+         Write(error_unit,'(A,3(1X,I0),A,3(1X,I0))') &
+              & ' Lowrank_propose: (size(Op_V,1), Ndim, N_FL_eff) changed since Lowrank_init:', &
+              & size(Op_V,1), Ndim, N_FL_eff, '; at init:', lr_M, lr_Ndim, lr_N_FL_eff
+         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      endif
 
       if (.not. Lowrank_eligible(n_op)) then
          Write(error_unit,'(A,I0)') ' Lowrank_propose: vertex not eligible, n_op = ', n_op
