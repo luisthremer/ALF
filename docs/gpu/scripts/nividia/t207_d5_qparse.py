@@ -48,8 +48,13 @@ from math import gcd
 
 QSELF_MAX = 1e-25          # input check of the proposed criterion (207 dev5): quad vs itself (row-permuted QR input, other branch)
 NUMRE = re.compile(r'^-?[0-9]\.[0-9]{4}E[+-][0-9]{3}$')
-REF_DEF = 'cpu,nvh,n4,n100004,n1,n100001,n2,n1608,n4808,n5,n100005'
-REF_LOG = 'cpu,nvh,n4,n100004,n1,n100001,n2,n5,n100005'
+# The frozen reference lists (decision 33); 'H' stands for the label of the in-run host CGR2_2 member (QHOST=1), which differs per build of the
+# offline program (e.g. nvh for the NVIDIA build, ifh for the Intel build): ref_names(path, host) substitutes it.  No label is hard-coded here.
+REF_DEF = 'cpu,H,n4,n100004,n1,n100001,n2,n1608,n4808,n5,n100005'
+REF_LOG = 'cpu,H,n4,n100004,n1,n100001,n2,n5,n100005'
+# names a host label may not take (they are the names of other members)
+HOST_RESERVED = re.compile(r'^(dev|cpu|H|var[0-9]+|n[0-9]+|u[0-9]+|qself|qbr|din|cpuh|cpuhx)$')
+HOSTNAME = re.compile(r'^[A-Za-z][A-Za-z0-9_]*$')
 DIAG_NAMES = ('qself', 'qbr', 'din', 'cpuh', 'cpuhx')     # members that are not error statistics of a G
 SPEC_VERSION = 3            # 3 (fix round 4): the run part carries binary_sha256 (the ALF binary of provenance.json = stamp.txt)
 DUMP_MAGIC = 20791         # hdr(1) of a dump (Prog/gpu_tau_mod.F90 qref_post; t207_d5_qref.F90 refuses anything else)
@@ -71,6 +76,22 @@ class QError(Exception):
     pass
 
 
+def check_host(host, what='host member label'):
+    if not (isinstance(host, str) and HOSTNAME.match(host)) or HOST_RESERVED.match(host):
+        raise QError('%s %r: a name (letter, then letters, digits, _) that is not the name of another member (%s) expected'
+                     % (what, host, HOST_RESERVED.pattern))
+    return host
+
+
+def ref_names(path, host):
+    """the frozen reference list of path ('def' or 'log') with the host member labelled host"""
+    lst = {'def': REF_DEF, 'log': REF_LOG}.get(path)
+    if lst is None:
+        raise QError('unknown path %r for the frozen reference list' % (path,))
+    check_host(host)
+    return [host if r == 'H' else r for r in lst.split(',')]
+
+
 class Point(object):
     __slots__ = ('hd', 'm', 'names', 'hasb')
 
@@ -79,8 +100,8 @@ class Point(object):
 
 
 class Run(object):
-    def __init__(self, spec, points, dumps, qref_sha256=None, lines=None):
-        self.spec, self.points, self.dumps = spec, points, dumps
+    def __init__(self, spec, points, dumps, qref_sha256=None, lines=None, host=None):
+        self.spec, self.points, self.dumps, self.host = spec, points, dumps, host      # host: the host member label used (None: no QHOST)
         self.qref_sha256, self.lines = qref_sha256, lines          # sha256 of the bytes parsed; the 'QREF file' lines of those bytes
 
     @property
@@ -359,6 +380,9 @@ def derive_run(rundir):
     env_stamp = parse_env_tokens(se[0].split(), 'stamp.txt env')
     if env_info != env_stamp:
         raise QError('env of info %r differs from env of stamp.txt %r' % (env_info, env_stamp))
+    # the provenance env must be ALF_GPU_* tokens only and equal the info line: the run's other variables (ALF_LA_TEST_*, ALFSH_*,
+    # OMP_TARGET_OFFLOAD, ...) are not in these records and invisible to this parser and to the gate; refusing them is the harness's env
+    # check (207-5), see the limits in t207_d5_gate.py
     if parse_env_tokens(prov.get('env', []), 'provenance env') != env_info:
         raise QError('env of provenance.json differs from the env of info')
     qref = env_info.get('ALF_GPU_TAUDIAG_QREF')
@@ -480,13 +504,14 @@ def kept_summary(spec):
                cnt(2, range(1, run['nstm'] + 1)), cnt(4, (1, 2)), cnt(3, range(1, run['nfl'] + 1))))
 
 
-def expected_names(spec, k, hasb, host='nvh'):
+def expected_names(spec, k, hasb, host):
     """the ordered member names of dump number k derived from the run's records and the processing arguments; host: the label the offline
-    program prints for the in-run host CGR2_2 of ALF_GPU_TAUDIAG_QHOST=1 (t207_d5_qref.F90 prints 'nvh'; a gate spec declares it)"""
+    program prints for the in-run host CGR2_2 of ALF_GPU_TAUDIAG_QHOST=1 (it depends on the build of the program; a gate spec declares it
+    as host_member; required when the run has QHOST=1)"""
     a, run = spec['args'], spec['run']
     names = ['dev'] + ['var%d' % m for m in run['qvar']]
     if run['qhost']:
-        names.append(host)
+        names.append(check_host(host))
     names.append('cpu')
     names += ['n%d' % c for c in a['nul']]
     names += ['u1', 'u2']
@@ -548,16 +573,20 @@ def check_ef(e, n, what):
                      'shifted or not from the program; a sanity check only)' % (what, e[4], lo, hi))
 
 
-def load(qref_txt, allow_v1=False, members=None, host='nvh', raw=None):
+def load(qref_txt, allow_v1=False, members=None, host=None, raw=None):
     """members (optional, from a gate spec): the exact ordered list of the run's statistical members (every member except the diagnostic
     ones DIAG_NAMES, whose presence follows from qs and hostin); the list derived from the run's records, with the in-run host member
-    labelled host, must equal it, else QError.  raw (optional): the bytes of qref_txt as the caller read them: these bytes are parsed, the
+    labelled host, must equal it, else QError.  host (required with members): the label of the in-run host member (the spec's
+    host_member).  Without host (the development tools: check, thin, agg) the label is taken from the host position of the first data line
+    (it must be a valid host label, and every line must carry the same; the gate always gives it).  raw (optional): the bytes of qref_txt as the caller read them: these bytes are parsed, the
     file is not read again.  The Run carries the sha256 of the parsed bytes (qref_sha256) and their 'QREF file' lines (lines)."""
     rundir = os.path.dirname(os.path.abspath(qref_txt))
     spec = load_spec(rundir)
     run = spec['run']
     exp = cover_dumps(spec)
     if members is not None:
+        if host is None:
+            raise QError('a member list is given without the host member label')
         derived = [x for x in expected_names(spec, 1, 1, host) if x not in DIAG_NAMES]
         if derived != members:
             raise QError('member list %s (derived from the run records, host member labelled %r) differs from the member list of the spec %s'
@@ -587,6 +616,12 @@ def load(qref_txt, allow_v1=False, members=None, host='nvh', raw=None):
         raise QError('QREFEND %s differs from dumps %d ok %d err 0' % (me.group(0), len(exp), len(exp)))
     if len(body) != len(exp):
         raise QError('%d QREF lines, %d expected' % (len(body), len(exp)))
+    if host is None and run['qhost']:
+        segs0 = body[0].split(' | ')[1:] if body else []
+        hi = 1 + len(run['qvar'])
+        if len(segs0) <= hi or not segs0[hi].split():
+            raise QError('%s: no member at the host position %d of the first data line' % (qref_txt, hi + 1))
+        host = check_host(segs0[hi].split()[0], 'host member label of the first data line')
     points = []
     for (k, p, nst, nfe, br), line in zip(exp, body):
         what = 'dump %d' % k
@@ -633,7 +668,7 @@ def load(qref_txt, allow_v1=False, members=None, host='nvh', raw=None):
             if segs[names.index('n0')].split()[1:] != segs[names.index('cpu')].split()[1:]:
                 raise QError('%s: null code 0 differs from the oracle (cpu)' % what)
         points.append(Point(hd, m, names))
-    return Run(spec, points, exp, qref_sha256=qsha, lines=list(body))
+    return Run(spec, points, exp, qref_sha256=qsha, lines=list(body), host=host if run['qhost'] else None)
 
 
 # ---------------------------------------------------------------- dump directory

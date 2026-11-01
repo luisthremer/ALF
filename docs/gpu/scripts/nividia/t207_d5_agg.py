@@ -8,11 +8,14 @@ of the CGR2_2 output as the next precision check receives it; emax: pointwise ma
                                                                   point; leave-one-out for a member)
 with a bootstrap 95 % interval over points, and the share of bootstrap means above each candidate bound.
 
-usage: t207_d5_agg.py OUT.json MEASURE --ref def|log|LIST [--allow-v1] [--prog-sha SHA256] ROLE:LABEL=path/qref.txt ...
+usage: t207_d5_agg.py OUT.json MEASURE --ref def|log|LIST [--host LABEL] [--allow-v1] [--prog-sha SHA256] ROLE:LABEL=path/qref.txt ...
   ROLE: main (device = 'dev', stand-in control = 'var8') | ctl (production control run: its 'dev' is the defect)
-  --ref: the reference ensemble, an explicit list (ticket 207-2): 'def' = cpu,nvh,n4,n100004,n1,n100001,n2,n1608,n4808,n5,n100005,
-         'log' = cpu,nvh,n4,n100004,n1,n100001,n2,n5,n100005, or a comma list of names cpu, nvh, n<code> (code != 0).  An unknown
-         name, a duplicate, or a listed name missing from any run is an error (no method is ever treated as correct by default).
+  --ref: the reference ensemble, an explicit list (ticket 207-2): 'def' = cpu,H,n4,n100004,n1,n100001,n2,n1608,n4808,n5,n100005,
+         'log' = cpu,H,n4,n100004,n1,n100001,n2,n5,n100005 (H: the host member label), or a comma list of names cpu, the host label,
+         n<code> (code != 0).  An unknown name, a duplicate, or a listed name missing from any run is an error (no method is ever treated
+         as correct by default).
+  --host: the label of the in-run host CGR2_2 member (it depends on the build of the offline program, e.g. nvh NVIDIA, ifh Intel);
+         default: the label the runs carry at the host position (t207_d5_qparse.load), which must be the same in every run.
   ROLE is tied to the run's own env (ticket 207-2, review): a main run has exactly ALF_GPU_{DEBUG=1, TAUDIAG_QREF, TAUDIAG_FROM,
          TAUDIAG_QHOST=1, TAUDIAG_QVAR=8}, a ctl run the same plus TAU_NS=0 (default path) or TAUSWAP=8 (LOG path) (QVAR optional); any
          other ALF_GPU_* variable, or a role that does not match the env, is an error.
@@ -33,16 +36,17 @@ _spec = importlib.util.spec_from_file_location('t207_d5_qparse', os.path.join(os
 QP = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(QP)
 QError = QP.QError
-REFS = {'def': QP.REF_DEF, 'log': QP.REF_LOG}
 
 
-def ref_list(arg):
-    """the explicit reference ensemble: validated names, in the given order"""
-    names = REFS.get(arg, arg).split(',')
+def ref_list(arg, host):
+    """the explicit reference ensemble: validated names, in the given order; 'def' / 'log' are the frozen lists with the host member
+    labelled host (t207_d5_qparse.ref_names)"""
+    QP.check_host(host)
+    names = QP.ref_names(arg, host) if arg in ('def', 'log') else arg.split(',')
     seen = set()
     for n in names:
-        if not (n in ('cpu', 'nvh') or re.match(r'^n[1-9][0-9]*$', n)):
-            raise QError('--ref: %r is not a reference name (allowed: cpu, nvh, n<code> with code != 0)' % n)
+        if not (n in ('cpu', host) or re.match(r'^n[1-9][0-9]*$', n)):
+            raise QError('--ref: %r is not a reference name (allowed: cpu, the host label %s, n<code> with code != 0)' % (n, host))
         if n in seen:
             raise QError('--ref: duplicate name %s' % n)
         seen.add(n)
@@ -169,6 +173,7 @@ def main():
     allow_v1 = False
     progsha = None
     refarg = None
+    host = None
     rest = []
     i = 0
     while i < len(args):
@@ -182,13 +187,16 @@ def main():
             if i + 1 >= len(args):
                 raise QError('--ref needs a value')
             refarg = args[i + 1]; i += 1
+        elif args[i] == '--host':
+            if i + 1 >= len(args):
+                raise QError('--host needs a value')
+            host = QP.check_host(args[i + 1], '--host'); i += 1
         else:
             rest.append(args[i])
         i += 1
     if refarg is None or len(rest) < 3 or rest[1] not in ('pTT', 'pmax', 'emax', 'eF', 'eTT'):
         raise QError('usage: t207_d5_agg.py OUT.json pTT|pmax|emax|eF|eTT --ref def|log|LIST [--allow-v1] ROLE:LABEL=path/qref.txt ...')
     outf, which = rest[0], rest[1]
-    refs = ref_list(refarg)
     runs = []
     seen = set()
     for a in rest[2:]:
@@ -203,6 +211,14 @@ def main():
         role_env = QP.env_role(run.spec['run']['env'], run.spec['run']['variant'])
         if role_env != m.group(1):
             raise QError('run %s: role %s given, but its env is that of a %s run' % (m.group(2), m.group(1), role_env))
+    labels = sorted(set(r[3].host for r in runs if r[3].host is not None))
+    if host is None:
+        if len(labels) != 1:
+            raise QError('host member label: the runs carry %s; one label expected (or give --host)' % (labels or 'none'))
+        host = labels[0]
+    elif labels and labels != [host]:
+        raise QError('host member label: the runs carry %s, --host says %s' % (labels, host))
+    refs = ref_list(refarg, host)
     table = {}
     pooled = {}
     inputs = {}
@@ -235,7 +251,7 @@ def main():
     pool = {m: dict(S_cpu=summ(pool_values(rs, m, 'S_cpu')), S_ens=summ(pool_values(rs, m, 'S_ens'))) for m, rs in pooled.items()}
     # print
     labs = [lab for _, lab, _, _ in runs]
-    order = ['dev', 'var8', 'ctl_dev', 'cpu', 'nvh'] + sorted(m for m in pool if m.startswith('n') and m not in ('nvh', 'n0')) + ['u1', 'u2']
+    order = ['dev', 'var8', 'ctl_dev', 'cpu', host] + sorted(m for m in pool if re.match(r'^n[1-9][0-9]*$', m)) + ['u1', 'u2']
     for ref in ('S_cpu', 'S_ens'):
         print('== measure %s, statistic %s (mean log10 ratio; [95%% bootstrap interval over points])' % (which, ref))
         print('  %-9s' % 'method' + ''.join('%24s' % l for l in labs) + '%24s' % 'pooled')
@@ -274,7 +290,7 @@ def main():
     for m in pool:
         for ref in ('S_cpu', 'S_ens'):
             pool[m][ref].pop('boot')
-    json.dump(dict(measure=which, refs=refs, allow_v1=allow_v1, prog_sha_required=progsha, inputs=inputs, runs=table, pooled=pool), open(outf, 'w'), indent=1)
+    json.dump(dict(measure=which, refs=refs, host_member=host, allow_v1=allow_v1, prog_sha_required=progsha, inputs=inputs, runs=table, pooled=pool), open(outf, 'w'), indent=1)
 
 
 if __name__ == '__main__':

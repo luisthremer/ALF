@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ticket 207-2: accuracy gate against the quad reference, recomputed from the evidence (design 3, fix round 4 after review 207-2d).
+"""Ticket 207-2: accuracy gate against the quad reference, recomputed from the evidence (design 3, fix round 5 after review 207-2e).
 
 usage: t207_d5_gate.py --spec SPEC.json --spec-sha SHA256 --prog QREF_BINARY --report OUT.json RUNDIR [RUNDIR ...]
 
@@ -17,7 +17,9 @@ directory holding the run's records, qref.txt and the processing records of t207
   3. the dump evidence (t207_d5_qparse.verify_dumps): the manifest lists exactly the covered dumps, the kept dumps match it; every kept dump
      is a dump of this run at its place (t207_d5_qparse.check_dump_headers: magic, version 2, file / pass / nst / nfe / br of run.log, N,
      path, QVAR masks, QHOST, TAUDIAG, hasb, exact size as the program checks it; a text file posing as a dump is refused);
-  4. its processing arguments qs, nul, cover are the spec's; its role is the row of the env table that equals its ALF_GPU_* env exactly;
+  4. its processing arguments qs, nul, cover, keep, hostin are the spec's (keep pinned: the share of qref.txt lines that step 9 re-computes
+     is the spec's, not the run producer's choice), and it keeps at least the spec's min_reprocessed dumps for step 9; its role is the row of
+     the env table that equals its ALF_GPU_* env exactly;
   5. qref.txt is loaded by the strict parser (version 1 dumps never accepted, every number checked; the eF invariant is a sanity check
      only) with the spec's member list of the role (exactly those members, in that order);
   6. per gate measure, the per-point log ratios S_ens (and S_cpu, report only) by t207_d5_agg.per_run; the number of points used must equal
@@ -27,14 +29,23 @@ line shared by two runs); the number of runs per role equals the spec's n_runs. 
 binary_sha256 = stamp.txt) is the spec's binary_sha256, its parameters sha256 the spec's parameters_sha256, and the seed sets per role are
 exactly the spec's seeds (set equality; no run chosen out of a larger set, no other seed set).  9. Authenticity: the program (--prog) is run
 on the kept dumps of every run with the run's processing arguments; its output must equal the run's qref.txt lines of those dumps (headers
-except the timing tq exactly, member names and order exactly, every number within +-1 in the last printed digit; the dev5 re-processing
-gave only equal numbers or 1-digit differences of the format change).
+except the timing tq exactly, member names and order exactly, every number exactly, i.e. bit identity of the printed text: the pinned
+program is bit-identical across dump list order, subsets and thread counts (reviewer probe P1 of round 4), every kept dev5 dump re-processed
+to equal numbers, and VERIFICATION section 7 demands bit identity where it holds).
 WHAT THIS GATE DOES NOT PROVE (left to the harness, ticket 207-5): the run directory is under the control of whoever produced it.  The gate
 proves that the numbers of the kept dumps are what the pinned program computes from those dumps, that those dumps are consistent with the
-run's records, and that the records are internally consistent.  It does not prove that the dumps, run.log, provenance.json, qref.txt lines of
-deleted dumps (cover 1, keep 40: 39 of 40 lines are not re-computed), qref_proc.json or the manifest were produced by the stamped run: that
-needs the stamps of the records, of qref.txt, of the processing record and of the manifest in the attempt log outside the run directory
-(207-5), checked against the files the gate reads.  This gate alone is not forgery-proof.
+run's records, and that the records are internally consistent.  It does not prove:
+  - that the dumps, run.log, provenance.json, the qref.txt lines of deleted dumps (only every KEEP-th dump is kept and re-computed, KEEP
+    pinned in the spec; keep 40 is refused at stride 3 by the keep rule; any KEEP > 1 leaves KEEP-1 of KEEP lines not re-computed),
+    qref_proc.json or the manifest were produced by the stamped run: that needs the stamps of the records, of qref.txt, of the processing
+    record and of the manifest in the attempt log outside the run directory (207-5), checked against the files the gate reads;
+  - anything about environment variables other than ALF_GPU_*: the run's env is read from the info line 'GPU debug env', and the provenance
+    env is read as ALF_GPU_ tokens only (t207_d5_qparse.derive_run; the run records carry no other variable).  ALF_LA_TEST_*, ALFSH_*, OMP_TARGET_OFFLOAD (DISABLED
+    would make 'dev' a host result) and every other variable are invisible here and must be refused by the harness's env checks (207-5);
+  - that the ALF binary (binary_sha256) was built from the source the candidate names: the pairing prog_sha <-> src_sha of the offline
+    program (and of the ALF binary with its source) is the spec's claim, not checked here (207-5 task 2: rebuild with provenance); the
+    gate checks prog_sha against the file given and src_sha against the t207_d5_qref.F90 next to this script, each on its own.
+This gate alone is not forgery-proof.
 
 Code-enforced spec content (not left to the spec writer):
   - env_roles.main is exactly {ALF_GPU_DEBUG=1, ALF_GPU_TAUDIAG_QHOST=1, ALF_GPU_TAUDIAG_QVAR=8, ALF_GPU_TAUDIAG_QREF=<int>=1..,
@@ -72,10 +83,13 @@ per-member statistics, every decisive number, the verdict and the exit code.  It
 
 Spec file (JSON object, no duplicate keys, no NaN / Infinity; every key below required unless marked optional, no other key):
   spec_version 1; path 'def' | 'log'; host_member: the label the offline program prints for the in-run host CGR2_2 of QHOST=1
-  (t207_d5_qref.F90 prints 'nvh' whatever the run's compiler); members: {role: [the exact ordered statistical members of that role's runs]}
+  (it depends on the build of the offline program, e.g. the NVIDIA and the Intel builds print different labels; no label is hard-coded in
+  the gate, qparse or agg: the spec's host_member is used everywhere, and FROZEN_REFS hold the placeholder H for it); members: {role: [the exact ordered statistical members of that role's runs]}
   for main and the roles of the run controls; refs: the frozen reference list of the path (another list only with test_only);
   qs: one integer > 0; nul: the null codes of the processing (distinct integers >= 0, with 0 and the codes of refs); cover: 1 (another
-  value only with test_only); test_only (optional): a non-empty reason; expect_points: {measure: integer >= 1} for exactly the measures of
+  value only with test_only); keep: the processing's KEEP (integer >= 0; 0 = no thinning, every covered dump kept), equal in every run;
+  hostin: the processing's HOSTIN (0 or 1), equal in every run; min_reprocessed: integer >= 1, the least number of kept dumps per run
+  that step 9 re-computes (a run with fewer is INPUT_ERROR); test_only (optional): a non-empty reason; expect_points: {measure: integer >= 1} for exactly the measures of
   the gates; prog_sha, src_sha: sha256 of the offline program and of t207_d5_qref.F90 (src_sha = the file next to this script);
   binary_sha256: the ALF binary of every run (provenance.json); parameters_sha256: the parameters file of every run;
   seeds: {role: [seeds_sha256, ...]} for main and exactly the roles of the run controls, distinct across all roles (control seed sets are
@@ -99,8 +113,8 @@ EXIT = {'PASS': 0, 'FAIL': 1, 'INPUT_ERROR': 2, 'DEV-ONLY': 3, 'TEST-ONLY': 4}
 MEASURES = ('pTT', 'emax', 'eF')             # measures of qref.txt the gate accepts (t207_d5_agg.meas); anything else is refused
 STATISTICS = ('S_ens', 'S_ens_q95', 'S_ens_max')     # decision statistics of the per-point S_ens values; S_cpu is reported only
 POOLS = ('pooled', 'each_run', 'by_stratum')
-SPEC_REQUIRED = {'spec_version', 'path', 'host_member', 'members', 'refs', 'qs', 'nul', 'cover', 'expect_points', 'prog_sha', 'src_sha',
-                 'binary_sha256', 'parameters_sha256', 'seeds', 'env_roles', 'n_runs', 'gates', 'controls'}
+SPEC_REQUIRED = {'spec_version', 'path', 'host_member', 'members', 'refs', 'qs', 'nul', 'cover', 'keep', 'hostin', 'min_reprocessed',
+                 'expect_points', 'prog_sha', 'src_sha', 'binary_sha256', 'parameters_sha256', 'seeds', 'env_roles', 'n_runs', 'gates', 'controls'}
 SPEC_OPTIONAL = {'test_only'}
 GATE_KEYS = {'name', 'measure', 'statistic', 'pool', 'bound'}
 NAME = re.compile(r'^[A-Za-z0-9_.-]+$')
@@ -177,9 +191,10 @@ def check_spec(s):
         raise InputError('gate spec: spec_version %r (1 expected)' % (s['spec_version'],))
     if s['path'] not in ('def', 'log'):
         raise InputError('gate spec: path %r (def or log)' % (s['path'],))
-    if not (isinstance(s['host_member'], str) and NAME.match(s['host_member'])):
-        raise InputError('gate spec: host_member %r: the label the offline program prints for the in-run host CGR2_2 (QHOST) expected'
-                         % (s['host_member'],))
+    try:
+        QP.check_host(s['host_member'], 'gate spec: host_member (the label the offline program prints for the in-run host CGR2_2, QHOST)')
+    except QError as e:
+        raise InputError(str(e))
     if 'test_only' in s and not (isinstance(s['test_only'], str) and s['test_only'].strip()):
         raise InputError('gate spec: test_only must be a non-empty reason')
     refs = s['refs']
@@ -206,6 +221,13 @@ def check_spec(s):
     if s['cover'] != 1 and 'test_only' not in s:
         raise InputError('gate spec: cover %d: qref.txt must cover every dump of the run (cover 1); another cover only in a spec marked '
                          'test_only' % s['cover'])
+    if not (isint(s['keep']) and s['keep'] >= 0):
+        raise InputError('gate spec: keep %r: the processing KEEP, an integer >= 0 (0: no thinning) expected' % (s['keep'],))
+    if not (isint(s['hostin']) and s['hostin'] in (0, 1)):
+        raise InputError('gate spec: hostin %r: the processing HOSTIN, 0 or 1 expected' % (s['hostin'],))
+    if not (isint(s['min_reprocessed']) and s['min_reprocessed'] >= 1):
+        raise InputError('gate spec: min_reprocessed %r: an integer >= 1 expected (the least number of kept dumps per run that the gate '
+                         're-computes)' % (s['min_reprocessed'],))
     for k in ('prog_sha', 'src_sha', 'binary_sha256', 'parameters_sha256'):
         if not (isinstance(s[k], str) and HEX64.match(s[k])):
             raise InputError('gate spec: %s %r is not a sha256 (64 lower-case hex digits)' % (k, s[k]))
@@ -281,9 +303,13 @@ def check_spec(s):
         if not (isinstance(mnt, list) and all(x in gnames for x in mnt) and len(set(mnt)) == len(mnt) and c['trips'] not in mnt):
             raise InputError('gate spec: control %s: must_not_trip %r must be a list of distinct gates other than %s' % (c['name'], mnt, c['trips']))
         if kind == 'variant':
-            if c['member'] == 'dev' or c['member'] in refs or c['member'] not in mem['main']:
-                raise InputError('gate spec: control %s: member %r must be a member of main in members, not dev and not a reference member'
-                                 % (c['name'], c['member']))
+            if c['member'] == 'dev':
+                raise InputError('gate spec: control %s: member dev is the device under test, not a control member' % c['name'])
+            if c['member'] in refs:
+                raise InputError('gate spec: control %s: member %r is a reference member (a control member is judged against the references, '
+                                 'it cannot be one of them)' % (c['name'], c['member']))
+            if c['member'] not in mem['main']:
+                raise InputError('gate spec: control %s: member %r must be a member of main in members' % (c['name'], c['member']))
         else:
             if c['role'] not in table or c['role'] == 'main':
                 raise InputError('gate spec: control %s: role %r is not a control role of env_roles %s' % (c['name'], c['role'], sorted(table)))
@@ -360,6 +386,13 @@ def load_run(rundir, s, table):
         if rspec['run']['variant'] != s['path'] or rspec['args']['path'] != s['path']:
             raise InputError('%s: a %s-path run (info), processed as %s; the spec is for the %s path' % (
                 what, rspec['run']['variant'], rspec['args']['path'], s['path']))
+        # the processing arguments are the spec's (fix round 5: keep and hostin pinned too), checked before qref.txt, the manifest and the dumps are read
+        for k in ('qs', 'nul', 'cover', 'keep', 'hostin'):
+            if type(rspec['args'][k]) is not type(s[k]) or rspec['args'][k] != s[k]:
+                raise InputError('%s: processed with %s %r, the spec says %r' % (what, k, rspec['args'][k], s[k]))
+        nkept = len(QP.kept_dumps(rspec))
+        if nkept < s['min_reprocessed']:
+            raise InputError('%s: %d kept dumps to re-process, the spec requires at least min_reprocessed %d' % (what, nkept, s['min_reprocessed']))
         with open(qt, 'rb') as f:
             raw = f.read()                           # the bytes hashed here are the bytes parsed below (qref.txt is not read again)
         qsha = hashlib.sha256(raw).hexdigest()
@@ -367,9 +400,6 @@ def load_run(rundir, s, table):
         pr = QP.proc_record(d, rspec, prog=s['prog_sha'], src=s['src_sha'], qref_sha256=qsha, manifest_sha256=mparsed[1])
         manifest, msha = QP.verify_dumps(d, rspec, parsed=mparsed)
         ndh = QP.check_dump_headers(d, rspec)
-        for k in ('qs', 'nul', 'cover'):
-            if rspec['args'][k] != s[k]:
-                raise InputError('%s: processed with %s %r, the spec says %r' % (what, k, rspec['args'][k], s[k]))
         role = QP.role_of_env(rspec['run']['env'], table)
         run = QP.load(qt, allow_v1=False, members=s['members'][role], host=s['host_member'], raw=raw)
         r = run.spec['run']
@@ -432,52 +462,40 @@ def pins(runs, s):
 
 # ------------------------------------------------------------------------------------------------------------------- authenticity
 
-NUMTOK = re.compile(r'^(-?)([0-9])\.([0-9]{4})E([+-][0-9]{3})$')
-
-
-def last_digit_diff(a, b):
-    """|a - b| in units of the last printed digit (ES12.4E3) of the finer of the two numbers; None if a token is not such a number"""
-    ma, mb = NUMTOK.match(a), NUMTOK.match(b)
-    if not ma or not mb:
-        return None
-    va = (-1 if ma.group(1) else 1) * int(ma.group(2) + ma.group(3))
-    vb = (-1 if mb.group(1) else 1) * int(mb.group(2) + mb.group(3))
-    ea, eb = int(ma.group(4)), int(mb.group(4))
-    e0 = min(ea, eb)
-    if abs(ea - eb) > 2:
-        return float('inf')
-    return abs(va * 10 ** (ea - e0) - vb * 10 ** (eb - e0))
-
-
 def compare_line(old, new, what):
-    """(numbers, equal, one_digit) of the run's qref.txt line old against the re-computed line new; InputError on any other difference"""
+    """(numbers, equal) of the run's qref.txt line old against the re-computed line new: header equal except the timing tq, member names,
+    order and every number token exactly equal (bit identity of the printed text, fix round 5); InputError on any difference"""
     so, sn = old.split(' | '), new.split(' | ')
     ho, hn = so[0].split(), sn[0].split()
     if len(ho) != len(hn) or 'tq' not in ho or ho.index('tq') != len(ho) - 2 or hn.index('tq') != len(hn) - 2 or ho[:-1] != hn[:-1]:
         raise InputError('%s: header %r, re-computed %r (tq aside, they must be equal)' % (what, so[0], sn[0]))
     if len(so) != len(sn):
         raise InputError('%s: %d members in qref.txt, %d re-computed' % (what, len(so) - 1, len(sn) - 1))
-    nnum = neq = n1 = 0
+    nnum = neq = 0
     for a, b in zip(so[1:], sn[1:]):
         ta, tb = a.split(), b.split()
         if not ta or not tb or ta[0] != tb[0] or len(ta) != len(tb):
             raise InputError('%s: member %r in qref.txt where the program prints %r' % (what, a[:40], b[:40]))
         for x, y in zip(ta[1:], tb[1:]):
             nnum += 1
-            if x == y:
-                neq += 1
-                continue
-            dd = last_digit_diff(x, y)
-            if dd is None or dd > 1:
-                raise InputError('%s: member %s: %s in qref.txt, %s re-computed by the program (allowed: +-1 in the last printed digit)'
-                                 % (what, ta[0], x, y))
-            n1 += 1
-    return nnum, neq, n1
+            if x != y:
+                raise InputError('%s: member %s: %s in qref.txt, %s re-computed by the program (exact equality required)' % (what, ta[0], x, y))
+            neq += 1
+    return nnum, neq
 
 
 def program_env():
-    e = dict(os.environ)
-    e.update(OMP_NUM_THREADS='4', OPENBLAS_NUM_THREADS='1')      # as t207_d5_proc.sh (no reduction depends on the thread count)
+    """the minimal environment of the offline program: PATH and HOME of the caller, OMP_NUM_THREADS of the caller if set (else 4, the
+    per-agent core limit on nividia; the output does not depend on it, reviewer probe P1 of round 4), OPENBLAS_NUM_THREADS=1 as in
+    t207_d5_proc.sh (the binary links the system libopenblas).  No LD_LIBRARY_PATH: the binary built by t207_d5_qbuild.sh loads with the
+    system loader alone (ldd under env -i PATH=/usr/bin:/bin on nividia, 2026-11-01: liblapack, libblas, libgfortran, libgomp, libopenblas
+    from /lib/x86_64-linux-gnu).  A caller env with LD_PRELOAD is refused (code injected into every process the gate starts)."""
+    if 'LD_PRELOAD' in os.environ:
+        raise InputError('LD_PRELOAD is set in the environment of the gate (%r): refused (the re-processing would run injected code)'
+                         % os.environ['LD_PRELOAD'][:200])
+    e = {k: os.environ[k] for k in ('PATH', 'HOME') if k in os.environ}
+    e['OMP_NUM_THREADS'] = os.environ.get('OMP_NUM_THREADS', '4')
+    e['OPENBLAS_NUM_THREADS'] = '1'
     return e
 
 
@@ -518,7 +536,7 @@ def authenticate(runs, s, prog):
         bynum = {}
         for ln in x['lines']:
             bynum[int(ln.split()[2])] = ln
-        tot = [0, 0, 0]
+        tot = [0, 0]
         for (k, p, nst, nfe, br), ln in zip(x['kept'], new):
             if not ln.startswith('QREF file %d ' % k):
                 raise InputError('run %s: re-processing line for dump %d is %r' % (x['dir'], k, ln[:60]))
@@ -526,7 +544,7 @@ def authenticate(runs, s, prog):
                 raise InputError('run %s: kept dump %d has no line in qref.txt' % (x['dir'], k))
             c = compare_line(bynum[k], ln, 'run %s dump %d (re-processing check)' % (x['dir'], k))
             tot = [t + v for t, v in zip(tot, c)]
-        out.append(dict(dir=x['dir'], dumps=len(new), numbers=tot[0], equal=tot[1], one_digit=tot[2], source=src))
+        out.append(dict(dir=x['dir'], dumps=len(new), numbers=tot[0], equal=tot[1], source=src))
     return out
 
 
@@ -690,14 +708,19 @@ def run_report(x, s):
     return rr
 
 
-LIMITS = ('This gate re-computes the numbers of the kept dumps with the pinned program and checks the run records for consistency and against '
-          'the pinned binary, parameters and seed sets.  It does not prove that the run directory (dumps, records, qref.txt lines of deleted '
-          'dumps, qref_proc.json, manifest) was produced by the stamped run: that is the harness (207-5: stamps of the records, qref.txt, '
-          'qref_proc.json and qref_manifest.txt in the attempt log outside the run directory).  Not forgery-proof on its own.')
+LIMITS = ('This gate re-computes, with the pinned program and demanding exact equality, the numbers of the kept dumps: every KEEP-th dump '
+          '(KEEP pinned in the spec, at least min_reprocessed per run; keep 40 is refused at stride 3 by the keep rule), and checks the run '
+          'records for consistency and against the pinned binary, parameters and seed sets.  It does not prove that the run directory (dumps, '
+          'records, qref.txt lines of deleted dumps, qref_proc.json, manifest) was produced by the stamped run: that is the harness (207-5: stamps '
+          'of the records, qref.txt, qref_proc.json and qref_manifest.txt in the attempt log outside the run directory).  It sees only the '
+          'ALF_GPU_* variables of a run (info line; the provenance env is read as ALF_GPU_ tokens only): ALF_LA_TEST_*, ALFSH_*, '
+          'OMP_TARGET_OFFLOAD (DISABLED would make dev a host result) and all other variables are invisible to it and must be refused by the '
+          'harness env checks (207-5).  The pairing prog_sha <-> src_sha (a binary built from that source) is the spec\'s claim, not checked here '
+          '(207-5 task 2, rebuild with provenance).  Not forgery-proof on its own.')
 
 
 def main(argv):
-    rep = dict(tool='t207_d5_gate.py (207-2 design 3, fix round 4)', argv=argv, limits=LIMITS,
+    rep = dict(tool='t207_d5_gate.py (207-2 design 3, fix round 5)', argv=argv, limits=LIMITS,
                scripts={f: sha(os.path.join(HERE, f)) for f in ('t207_d5_gate.py', 't207_d5_agg.py', 't207_d5_qparse.py', 't207_d5_qref.F90')})
     report = None
     try:
@@ -731,15 +754,16 @@ def main(argv):
         rep['prog'] = dict(path=prog, sha256=psha)
         if psha != s['prog_sha']:
             raise InputError('program %s: sha256 %s differs from the required prog_sha %s of the spec' % (prog, psha, s['prog_sha']))
+        rep['program_env'] = program_env()          # checked before any run is read (LD_PRELOAD refused); the env the program gets
         runs = [load_run(d, s, table) for d in dirs]
         cross_checks(runs, s)
         pins(runs, s)
         rep['runs'] = [run_report(x, s) for x in runs]
         rep['authenticity'] = authenticate(runs, s, prog)
         for x, au in zip(runs, rep['authenticity']):
-            print('  run %s: role %s, binary %s, %s; re-processing: %d kept dumps, %d numbers, %d equal, %d within 1 in the last digit (%s)' % (
+            print('  run %s: role %s, binary %s, %s; re-processing: %d kept dumps, %d numbers, %d equal (%s)' % (
                 x['dir'], x['role'], x['binary_sha256'][:16], ', '.join('%s %d points' % (m, x['res'][m]['cpu']['n']) for m in sorted(x['res'])),
-                au['dumps'], au['numbers'], au['equal'], au['one_digit'], au['source']))
+                au['dumps'], au['numbers'], au['equal'], au['source']))
         rep['localized'], llines = localized(runs, s)
         verdict, reasons, lines, rep['gates'], rep['controls'] = decide(runs, s)
         for ln in lines + llines:
