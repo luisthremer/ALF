@@ -19,12 +19,56 @@
 !          2 (module q5nul: the null copy of CGR2_2, compiled with the build tree's ALF_FLAGS_PROG like cgr2_2_mod, so that code 0
 !          reproduces the oracle bit for bit), 3 (the program, -O2); linked with cgr2_2_mod / udv_state_mod / QDRP_decompose_mod.
 !   run:   t207_d5_qref.out QS NULCODES HOSTIN < list_of_dump_files     (NULCODES: comma list or '-'; HOSTIN 0|1)
+! Output (ticket 207-2: nothing is dropped silently): per dump either one 'QREF file F pass P nst S nfe E br B hbr H n N ver V hasb Y
+! tq T | name x1..x8 | ...' line (numbers ES12.4E3, 8 per method, 5 for qself/qbr) or one 'QREFERR dump <file> : <reasons>' line
+! (non-finite number in a matrix read from the dump or in a computed number, unreadable / truncated / inconsistent dump), and at
+! the end 'QREFEND dumps D ok K err E'.  The exit status is 3 if any dump failed, non-zero for any other error; the program no
+! longer clamps non-finite errors (earlier versions printed 'huge') and no longer uses MAXVAL (it skips NaN).
 #if Q5_PART == 1
 module q5
   use iso_fortran_env, only: int64
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite, ieee_value, ieee_quiet_nan
   implicit none
   integer, parameter :: dp = kind(0.d0), qp = 16
 contains
+
+  ! .true. if every real and imaginary part of the nn elements (sequence association: any contiguous actual argument) is finite
+  logical function fin_z(A, nn)
+    integer, intent(in) :: nn
+    complex(dp), intent(in) :: A(nn)
+    fin_z = all(ieee_is_finite(real(A))) .and. all(ieee_is_finite(aimag(A)))
+  end function fin_z
+
+  logical function fin_r(A)
+    real(dp), intent(in) :: A(:)
+    fin_r = all(ieee_is_finite(A))
+  end function fin_r
+
+  logical function fin_q(A, nn)
+    integer, intent(in) :: nn
+    complex(qp), intent(in) :: A(nn)
+    fin_q = all(ieee_is_finite(real(A))) .and. all(ieee_is_finite(aimag(A)))
+  end function fin_q
+
+  ! max |A_ij|; NaN if any element is not finite (MAXVAL would skip a NaN)
+  real(dp) function maxabs_z(A)
+    complex(dp), intent(in) :: A(:,:)
+    real(dp) :: a1
+    integer :: i, j
+    maxabs_z = 0.d0
+    do j = 1, size(A,2)
+       do i = 1, size(A,1)
+          if (.not. (ieee_is_finite(real(A(i,j))) .and. ieee_is_finite(aimag(A(i,j))))) then
+             maxabs_z = ieee_value(1.d0, ieee_quiet_nan); return
+          endif
+          a1 = abs(A(i,j))
+          if (.not. ieee_is_finite(a1)) then
+             maxabs_z = ieee_value(1.d0, ieee_quiet_nan); return
+          endif
+          maxabs_z = max(maxabs_z, a1)
+       enddo
+    enddo
+  end function maxabs_z
 
   real(dp) function rnd(s)
     integer(int64), intent(inout) :: s
@@ -315,10 +359,9 @@ contains
           enddo
        enddo
        e(b) = real(md/max(mb, tiny(1.0_qp)), dp)
-       if (.not. (abs(e(b)) <= huge(1.d0))) e(b) = huge(1.d0)
     enddo
     e(5) = real(sqrt(sd/max(sb, tiny(1.0_qp))), dp)
-    if (.not. (abs(e(5)) <= huge(1.d0))) e(5) = huge(1.d0)
+    ! no clamping: a non-finite number stays non-finite and the caller flags the point (checked in put / putqq / putq)
   end subroutine errs
 
   subroutine qdiff(n, Qa, Qb, e)
@@ -532,7 +575,7 @@ contains
          call ZGEQRT(LQ2, LQ2, nb, HLPB1, LQ2, TT, nb, ZW, info)
          deallocate(ZW)
       endif
-      if (info /= 0) stop 'nul_qr info'
+      if (info /= 0) error stop 'nul_qr info'
       do ii = 1, LQ2
          X = ABS(HLPB1(ii, ii))
          D3(ii) = X
@@ -577,7 +620,7 @@ contains
          call ZGEMQRT('L', 'N', LQ2, LQ2, LQ2, nb, HLPB1, LQ2, TT, nb, HLPB2, LQ2, ZW, info)
       endif
       deallocate(ZW)
-      if (info /= 0) stop 'nul_solve info'
+      if (info /= 0) error stop 'nul_solve info'
     end subroutine nul_solve
   end subroutine nul_cgr22
 end module q5nul
@@ -597,8 +640,11 @@ program t207_d5_qref
   logical :: hasb
   integer, allocatable :: masks(:), nul(:)
   character(len=1024) :: fn, arg
-  character(len=8000) :: line
-  complex(dp), allocatable :: M(:,:,:), Dz(:,:)
+  character(len=16000) :: line
+  character(len=1024) :: why
+  logical :: bad
+  integer :: ndump, nok, nerr
+  complex(dp), allocatable :: M(:,:,:), Dz(:,:), Md(:,:,:,:)
   complex(qp), allocatable :: Gq(:,:,:), Gq2(:,:,:), Gqh(:,:,:)
   real(dp), allocatable :: Lr(:,:)
   type(UDV_State) :: st(3), sp
@@ -607,6 +653,7 @@ program t207_d5_qref
   logical :: islog, hasnvh, hasdg
 
   call get_command_argument(1, arg); read(arg,*) qs
+  if (qs < 0) error stop 'QS must be >= 0'
   call get_command_argument(2, arg)
   nnul = 0
   allocate(nul(20))
@@ -615,6 +662,7 @@ program t207_d5_qref
      do
         k = index(arg(i:), ',')
         nnul = nnul + 1
+        if (nnul > size(nul)) error stop 'too many null codes'
         if (k == 0) then
            read(arg(i:),*) nul(nnul); exit
         endif
@@ -623,6 +671,7 @@ program t207_d5_qref
      enddo
   endif
   call get_command_argument(3, arg); read(arg,*) hostin
+  if (hostin /= 0 .and. hostin /= 1) error stop 'HOSTIN must be 0 or 1'
 #if defined(STABLOG)
   islog = .true.
 #else
@@ -632,124 +681,240 @@ program t207_d5_qref
   ! 1 <= nb and without flag 2; otherwise nb = 0 (an invalid code would leave IPVT unset: ZLAPMR does not return)
   do k = 1, nnul
      i = mod(nul(k), 100); ib = mod(nul(k)/100, 1000)
-     if (nul(k) < 0 .or. nul(k) >= 10000000 .or. i > 15) stop 'invalid null code'
+     if (nul(k) < 0 .or. nul(k) >= 10000000 .or. i > 15) error stop 'invalid null code'
      if (iand(i, 8) /= 0) then
-        if (islog .or. iand(i, 2) /= 0 .or. ib < 1) stop 'invalid null code (flag 8: default path only, nb >= 1, not with 2)'
+        if (islog .or. iand(i, 2) /= 0 .or. ib < 1) error stop 'invalid null code (flag 8: default path only, nb >= 1, not with 2)'
      else if (ib /= 0) then
-        stop 'invalid null code (nb without flag 8)'
+        error stop 'invalid null code (nb without flag 8)'
      endif
+     do i = 1, k - 1
+        if (nul(i) == nul(k)) error stop 'duplicate null code'
+     enddo
   enddo
-  nfl = 0
+  nfl = 0; ndump = 0; nok = 0; nerr = 0
+  n = 0
   do
      read(*,'(A)',iostat=ios) fn
-     if (ios /= 0) exit
-     open(newunit=u, file=trim(fn), access='stream', form='unformatted', status='old', action='read')
-     read(u) hdr(1:12)
-     if (hdr(1) /= 20791 .or. (hdr(2) /= 1 .and. hdr(2) /= 2)) stop 'bad dump header'
-     hdr(13) = 0
-     if (hdr(2) == 2) read(u) hdr(13)
-     hasb = hdr(13) == 1
-     if ((hdr(9) == 1) .neqv. islog) stop 'dump path (default/LOG) does not match this build'
-     n = hdr(8); nv = hdr(10); hasnvh = hdr(11) == 1; hasdg = hdr(12) == 1
-     if (allocated(masks)) deallocate(masks)
-     allocate(masks(max(nv,1)))
-     if (nv > 0) read(u) masks(1:nv)
-     if (nfl == 0) then
-        do i = 1, 3
-           call st(i)%alloc(n)
-        enddo
-        call sp%alloc(n)
-        st(1)%side = 'r'; st(2)%side = 'l'; st(3)%side = 'r'; sp%side = 'r'
-        allocate(M(n,n,4), Dz(n,3), Lr(n,3), Gq(n,n,4), Gq2(n,n,4), Gqh(n,n,4), Bm(n,n), Bi(n,n))
-        Dz = (0.d0, 0.d0); Lr = 0.d0
+     if (is_iostat_end(ios)) exit
+     if (ios /= 0) error stop 'cannot read the list of dump files'
+     ndump = ndump + 1
+     bad = .false.; why = ''
+     if (len_trim(fn) == 0) then
+        call fail('blank line in the list of dump files')
+     else
+        call process_dump(trim(fn))
      endif
-     nfl = nfl + 1
-     if (hasb) then                       ! B, Bi are the last 2 n^2 complex numbers of the file
-        inquire(unit=u, pos=p0, size=fsz)
-        read(u, pos=fsz - 32_int64*n*n + 1) Bm, Bi
-        read(u, pos=p0)
+     if (bad) then
+        nerr = nerr + 1
+        if (len_trim(fn) == 0) fn = '(blank)'
+        write(output_unit,'(A)') 'QREFERR dump '//trim(fn)//' : '//trim(why)
+     else
+        nok = nok + 1
+        write(output_unit,'(A)') trim(line)
      endif
-     call rstate(u, st(1), 1); call rstate(u, st(2), 2)
-     ! the branch rule of CGR2_2 on these inputs
-#if defined(STABLOG)
-     nbr = 2; if (st(2)%L(1) > st(1)%L(1)) nbr = 1
-#else
-     nbr = 2; if (dble(st(2)%D(1)) > dble(st(1)%D(1))) nbr = 1
-#endif
-     call system_clock(c0, rate)
-     call qcgr22(n, islog, nbr, st(1)%U, Dz(:,1), Lr(:,1), st(1)%V, st(2)%U, Dz(:,2), Lr(:,2), st(2)%V, 0_int64, Gq)
-     call system_clock(c1); tq = dble(c1 - c0)/dble(rate)
-     write(line,'(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,F7.2)') 'QREF file ', hdr(3), ' pass ', hdr(4), ' nst ', hdr(5), ' nfe ', &
-          & hdr(6), ' br ', hdr(7), ' hbr ', nbr, ' tq ', tq
-     read(u) M
-     call put('dev')
-     do k = 1, nv
-        read(u) M
-        write(arg,'(A,I0)') 'var', masks(k); call put(trim(arg))
-     enddo
-     if (hasnvh) then
-        read(u) M
-        call put('nvh')
-     endif
-     call CGR2_2(M(:,:,2), M(:,:,1), M(:,:,3), M(:,:,4), st(1), st(2), n)
-     call put('cpu')
-     do k = 1, nnul
-        seed = mod(1000003_int64*int(hdr(3), int64) + 7919_int64*int(nul(k), int64) + 2654435_int64, 2147483648_int64)
-        call nul_cgr22(n, M(:,:,2), M(:,:,1), M(:,:,3), M(:,:,4), st(1), st(2), nul(k), seed)
-        write(arg,'(A,I0)') 'n', nul(k); call put(trim(arg))
-     enddo
-     ! 1-ulp perturbed U of the right state (perturb_state of gpu_tau_mod), against the unperturbed Gq: input sensitivity
-     do k = 1, 2
-        seed = mod(20261030_int64 + 104729_int64*int(hdr(3), int64) + 7_int64*k, 2147483648_int64)
-        call pstate(st(1), sp, seed)
-        call CGR2_2(M(:,:,2), M(:,:,1), M(:,:,3), M(:,:,4), sp, st(2), n)
-        write(arg,'(A,I0)') 'u', k; call put(trim(arg))
-     enddo
-     if (qs > 0) then
-        if (mod(hdr(3) - 1, qs) == 0) then
-           call qcgr22(n, islog, nbr, st(1)%U, Dz(:,1), Lr(:,1), st(1)%V, st(2)%U, Dz(:,2), Lr(:,2), st(2)%V, &
-                & int(hdr(3), int64)*7_int64 + 99991_int64, Gq2)
-           call qdiff(n, Gq2, Gq, e)
-           call putq('qself', e)
-           ! the other branch in quad (same matrix, rearranged): mathematically identical
-           call qcgr22(n, islog, 3 - nbr, st(1)%U, Dz(:,1), Lr(:,1), st(1)%V, st(2)%U, Dz(:,2), Lr(:,2), st(2)%V, 0_int64, Gq2)
-           call qdiff(n, Gq2, Gq, e)
-           call putq('qbr', e)
-        endif
-     endif
-     if (hasdg) then
-        call rstate(u, st(3), 3)
-        if (hostin == 1) then
-           call qcgr22(n, islog, nbr, st(3)%U, Dz(:,3), Lr(:,3), st(3)%V, st(2)%U, Dz(:,2), Lr(:,2), st(2)%V, 0_int64, Gqh)
-           call putqq('din', Gq, Gqh)               ! quad G of the device input vs quad G of the host chain's input (input part)
-           call CGR2_2(M(:,:,2), M(:,:,1), M(:,:,3), M(:,:,4), st(3), st(2), n)
-           call putqq('cpuh', cmplx(M, kind=qp), Gqh)   ! host CGR2_2 on the host input against its own quad reference
-           call putqq('cpuhx', cmplx(M, kind=qp), Gq)   ! host CGR2_2 on the host input against the quad G of the device input
-        endif
-     endif
-     close(u)
-     write(output_unit,'(A)') trim(line)
      flush(output_unit)
   enddo
+  write(output_unit,'(A,I0,A,I0,A,I0)') 'QREFEND dumps ', ndump, ' ok ', nok, ' err ', nerr
+  flush(output_unit)
+  if (nerr > 0) stop 3
 
 contains
+
+  subroutine fail(msg)
+    character(len=*), intent(in) :: msg
+    bad = .true.
+    if (len_trim(why) + len(msg) + 3 < len(why)) then
+       if (len_trim(why) > 0) why = trim(why)//'; '
+       why = trim(why)//msg
+    endif
+  end subroutine fail
+
+  subroutine process_dump(fname)
+    character(len=*), intent(in) :: fname
+    integer(int64) :: nn, sb, esz
+    integer :: nvh, ndg, nb2, nm
+    open(newunit=u, file=fname, access='stream', form='unformatted', status='old', action='read', iostat=ios)
+    if (ios /= 0) then
+       call fail('cannot open the dump'); return
+    endif
+    inquire(unit=u, size=fsz)
+    hdr = 0
+    read(u, iostat=ios) hdr(1:12)
+    if (ios /= 0) then
+       call fail('short header'); close(u); return
+    endif
+    if (hdr(1) /= 20791 .or. (hdr(2) /= 1 .and. hdr(2) /= 2)) then
+       call fail('bad dump header'); close(u); return
+    endif
+    if (hdr(2) == 2) then
+       read(u, iostat=ios) hdr(13)
+       if (ios /= 0) then
+          call fail('short header'); close(u); return
+       endif
+    endif
+    hasb = hdr(13) == 1
+    if ((hdr(9) == 1) .neqv. islog) then
+       call fail('dump path (default/LOG) does not match this build'); close(u); return
+    endif
+    n = hdr(8); nv = hdr(10); hasnvh = hdr(11) == 1; hasdg = hdr(12) == 1
+    if (n < 1 .or. n > 4096 .or. nv < 0 .or. nv > 64 .or. (hdr(11) /= 0 .and. hdr(11) /= 1) .or. &
+         & (hdr(12) /= 0 .and. hdr(12) /= 1) .or. (hdr(13) /= 0 .and. hdr(13) /= 1)) then
+       call fail('implausible header values'); close(u); return
+    endif
+    if (nfl > 0) then
+       if (size(M,1) /= n) then
+          call fail('N differs from the first dump'); close(u); return
+       endif
+    endif
+    ! the exact size of the file from its header (a truncated or padded dump is an error)
+    nn = int(n, int64)
+    if (islog) then
+       sb = 32_int64*nn*nn + 8_int64*nn
+    else
+       sb = 32_int64*nn*nn + 16_int64*nn
+    endif
+    nvh = merge(1, 0, hasnvh); ndg = merge(1, 0, hasdg); nb2 = merge(1, 0, hasb)
+    esz = 4_int64*(12 + merge(1, 0, hdr(2) == 2)) + 4_int64*nv + 2_int64*sb + int(1 + nv + nvh, int64)*64_int64*nn*nn &
+         & + int(ndg, int64)*sb + int(nb2, int64)*32_int64*nn*nn
+    if (fsz /= esz) then
+       write(arg,'(A,I0,A,I0)') 'size ', fsz, ' bytes, header implies ', esz
+       call fail(trim(arg)); close(u); return
+    endif
+    if (allocated(masks)) deallocate(masks)
+    allocate(masks(max(nv,1)))
+    if (nv > 0) read(u, iostat=ios) masks(1:nv)
+    if (ios /= 0) then
+       call fail('short read (masks)'); close(u); return
+    endif
+    if (nfl == 0) then
+       do i = 1, 3
+          call st(i)%alloc(n)
+       enddo
+       call sp%alloc(n)
+       st(1)%side = 'r'; st(2)%side = 'l'; st(3)%side = 'r'; sp%side = 'r'
+       allocate(M(n,n,4), Dz(n,3), Lr(n,3), Gq(n,n,4), Gq2(n,n,4), Gqh(n,n,4), Bm(n,n), Bi(n,n))
+       Dz = (0.d0, 0.d0); Lr = 0.d0
+    endif
+    nm = 1 + nv + nvh
+    if (allocated(Md)) deallocate(Md)
+    allocate(Md(n,n,4,nm))
+    nfl = nfl + 1
+    ! phase 1: read everything in the file order and check every matrix for NaN / Infinity
+    if (hasb) then                       ! B, Bi are the last 2 n^2 complex numbers of the file
+       inquire(unit=u, pos=p0)
+       read(u, pos=fsz - 32_int64*n*n + 1, iostat=ios) Bm, Bi
+       if (ios /= 0) call fail('short read (B, Bi)')
+       if (.not. fin_z(Bm, n*n)) call fail('non-finite number in B')
+       if (.not. fin_z(Bi, n*n)) call fail('non-finite number in Bi')
+       read(u, pos=p0)
+    endif
+    call rstate(u, st(1), 1, 'right state'); call rstate(u, st(2), 2, 'left state')
+    read(u, iostat=ios) Md(:,:,:,1)
+    if (ios /= 0) call fail('short read (dev)')
+    if (.not. fin_z(Md(:,:,:,1), 4*n*n)) call fail('non-finite number in the device output (dev)')
+    do k = 1, nv
+       read(u, iostat=ios) Md(:,:,:,1+k)
+       if (ios /= 0) call fail('short read (device variant)')
+       if (.not. fin_z(Md(:,:,:,1+k), 4*n*n)) then
+          write(arg,'(A,I0)') 'non-finite number in the device variant var', masks(k); call fail(trim(arg))
+       endif
+    enddo
+    if (hasnvh) then
+       read(u, iostat=ios) Md(:,:,:,nm)
+       if (ios /= 0) call fail('short read (nvh)')
+       if (.not. fin_z(Md(:,:,:,nm), 4*n*n)) call fail('non-finite number in the nvfortran host output (nvh)')
+    endif
+    if (hasdg) call rstate(u, st(3), 3, 'host chain state')
+    close(u)
+    if (bad) return                      ! every non-finite item above is listed in why; nothing is computed on bad data
+    ! phase 2: the quad reference and all errors
+    ! the branch rule of CGR2_2 on these inputs
+#if defined(STABLOG)
+    nbr = 2; if (st(2)%L(1) > st(1)%L(1)) nbr = 1
+#else
+    nbr = 2; if (dble(st(2)%D(1)) > dble(st(1)%D(1))) nbr = 1
+#endif
+    call system_clock(c0, rate)
+    call qcgr22(n, islog, nbr, st(1)%U, Dz(:,1), Lr(:,1), st(1)%V, st(2)%U, Dz(:,2), Lr(:,2), st(2)%V, 0_int64, Gq)
+    call system_clock(c1); tq = dble(c1 - c0)/dble(rate)
+    if (.not. fin_q(Gq, 4*n*n)) then
+       call fail('non-finite number in the quad reference'); return
+    endif
+    write(line,'(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,F9.2)') 'QREF file ', hdr(3), ' pass ', hdr(4), ' nst ', hdr(5), &
+         & ' nfe ', hdr(6), ' br ', hdr(7), ' hbr ', nbr, ' n ', n, ' ver ', hdr(2), ' hasb ', hdr(13), ' tq ', tq
+    M = Md(:,:,:,1)
+    call put('dev')
+    do k = 1, nv
+       M = Md(:,:,:,1+k)
+       write(arg,'(A,I0)') 'var', masks(k); call put(trim(arg))
+    enddo
+    if (hasnvh) then
+       M = Md(:,:,:,nm)
+       call put('nvh')
+    endif
+    call CGR2_2(M(:,:,2), M(:,:,1), M(:,:,3), M(:,:,4), st(1), st(2), n)
+    call put('cpu')
+    do k = 1, nnul
+       seed = mod(1000003_int64*int(hdr(3), int64) + 7919_int64*int(nul(k), int64) + 2654435_int64, 2147483648_int64)
+       call nul_cgr22(n, M(:,:,2), M(:,:,1), M(:,:,3), M(:,:,4), st(1), st(2), nul(k), seed)
+       write(arg,'(A,I0)') 'n', nul(k); call put(trim(arg))
+    enddo
+    ! 1-ulp perturbed U of the right state (perturb_state of gpu_tau_mod), against the unperturbed Gq: input sensitivity
+    do k = 1, 2
+       seed = mod(20261030_int64 + 104729_int64*int(hdr(3), int64) + 7_int64*k, 2147483648_int64)
+       call pstate(st(1), sp, seed)
+       call CGR2_2(M(:,:,2), M(:,:,1), M(:,:,3), M(:,:,4), sp, st(2), n)
+       write(arg,'(A,I0)') 'u', k; call put(trim(arg))
+    enddo
+    if (qs > 0) then
+       if (mod(hdr(3) - 1, qs) == 0) then
+          call qcgr22(n, islog, nbr, st(1)%U, Dz(:,1), Lr(:,1), st(1)%V, st(2)%U, Dz(:,2), Lr(:,2), st(2)%V, &
+               & int(hdr(3), int64)*7_int64 + 99991_int64, Gq2)
+          if (.not. fin_q(Gq2, 4*n*n)) call fail('non-finite number in the quad reference (qself)')
+          call qdiff(n, Gq2, Gq, e)
+          call putq('qself', e)
+          ! the other branch in quad (same matrix, rearranged): mathematically identical
+          call qcgr22(n, islog, 3 - nbr, st(1)%U, Dz(:,1), Lr(:,1), st(1)%V, st(2)%U, Dz(:,2), Lr(:,2), st(2)%V, 0_int64, Gq2)
+          if (.not. fin_q(Gq2, 4*n*n)) call fail('non-finite number in the quad reference (qbr)')
+          call qdiff(n, Gq2, Gq, e)
+          call putq('qbr', e)
+       endif
+    endif
+    if (hasdg) then
+       if (hostin == 1) then
+          call qcgr22(n, islog, nbr, st(3)%U, Dz(:,3), Lr(:,3), st(3)%V, st(2)%U, Dz(:,2), Lr(:,2), st(2)%V, 0_int64, Gqh)
+          if (.not. fin_q(Gqh, 4*n*n)) call fail('non-finite number in the quad reference of the host chain input')
+          call putqq('din', Gq, Gqh)               ! quad G of the device input vs quad G of the host chain's input (input part)
+          call CGR2_2(M(:,:,2), M(:,:,1), M(:,:,3), M(:,:,4), st(3), st(2), n)
+          if (.not. fin_z(M, 4*n*n)) call fail('non-finite number in the host CGR2_2 on the host chain input')
+          call putqq('cpuh', cmplx(M, kind=qp), Gqh)   ! host CGR2_2 on the host input against its own quad reference
+          call putqq('cpuhx', cmplx(M, kind=qp), Gq)   ! host CGR2_2 on the host input against the quad G of the device input
+       endif
+    endif
+  end subroutine process_dump
 
   subroutine put(name)
     character(len=*), intent(in) :: name
     real(dp) :: ep(3)
     complex(dp), allocatable :: Dd(:,:)
+    if (.not. fin_z(M, 4*n*n)) then
+       call fail('non-finite number in the output of '//name); return
+    endif
     call errs(n, M, Gq, e)
     ep = -1.d0
     if (hasb) then
        allocate(Dd(n,n))
        Dd = cmplx(cmplx(M(:,:,3), kind=qp) - Gq(:,:,3), kind=dp)
-       ep(1) = maxval(abs(matmul(matmul(Bm, Dd), Bi)))
+       ep(1) = maxabs_z(matmul(matmul(Bm, Dd), Bi))
        Dd = cmplx(cmplx(M(:,:,2), kind=qp) - Gq(:,:,2), kind=dp)
-       ep(2) = maxval(abs(matmul(Bm, Dd)))
+       ep(2) = maxabs_z(matmul(Bm, Dd))
        Dd = cmplx(cmplx(M(:,:,4), kind=qp) - Gq(:,:,4), kind=dp)
-       ep(3) = maxval(abs(matmul(Dd, Bi)))
+       ep(3) = maxabs_z(matmul(Dd, Bi))
     endif
-    write(line(len_trim(line)+1:),'(A,A,8(1X,ES10.3))') ' | ', name, e, ep
+    if (.not. (fin_r(e) .and. fin_r(ep))) then
+       call fail('non-finite error number for '//name); return
+    endif
+    write(line(len_trim(line)+1:),'(A,A,8(1X,ES12.4E3))') ' | ', name, e, ep
   end subroutine put
 
   ! as put for a quad A against the quad reference R (errors of A - R; propagated numbers with B, Bi when present)
@@ -763,31 +928,45 @@ contains
     if (hasb) then
        allocate(Dd(n,n))
        Dd = cmplx(A(:,:,3) - R(:,:,3), kind=dp)
-       ep(1) = maxval(abs(matmul(matmul(Bm, Dd), Bi)))
+       ep(1) = maxabs_z(matmul(matmul(Bm, Dd), Bi))
        Dd = cmplx(A(:,:,2) - R(:,:,2), kind=dp)
-       ep(2) = maxval(abs(matmul(Bm, Dd)))
+       ep(2) = maxabs_z(matmul(Bm, Dd))
        Dd = cmplx(A(:,:,4) - R(:,:,4), kind=dp)
-       ep(3) = maxval(abs(matmul(Dd, Bi)))
+       ep(3) = maxabs_z(matmul(Dd, Bi))
     endif
-    write(line(len_trim(line)+1:),'(A,A,8(1X,ES10.3))') ' | ', name, e, ep
+    if (.not. (fin_r(e) .and. fin_r(ep))) then
+       call fail('non-finite error number for '//name); return
+    endif
+    write(line(len_trim(line)+1:),'(A,A,8(1X,ES12.4E3))') ' | ', name, e, ep
   end subroutine putqq
 
   subroutine putq(name, e)
     character(len=*), intent(in) :: name
     real(dp), intent(in) :: e(5)
-    write(line(len_trim(line)+1:),'(A,A,5(1X,ES10.3))') ' | ', name, e
+    if (.not. fin_r(e)) then
+       call fail('non-finite error number for '//name); return
+    endif
+    write(line(len_trim(line)+1:),'(A,A,5(1X,ES12.4E3))') ' | ', name, e
   end subroutine putq
 
-  subroutine rstate(u, s, k)
+  subroutine rstate(u, s, k, what)
     integer, intent(in) :: u, k
     type(UDV_State), intent(inout) :: s
+    character(len=*), intent(in) :: what
+    integer :: ios1
 #if defined(STABLOG)
-    read(u) s%U, s%L, s%V
+    read(u, iostat=ios1) s%U, s%L, s%V
+    if (ios1 /= 0) call fail('short read ('//what//')')
     Lr(:,k) = s%L
+    if (.not. fin_r(s%L)) call fail('non-finite L in the '//what)
 #else
-    read(u) s%U, s%D, s%V
+    read(u, iostat=ios1) s%U, s%D, s%V
+    if (ios1 /= 0) call fail('short read ('//what//')')
     Dz(:,k) = s%D
+    if (.not. fin_z(s%D, size(s%D))) call fail('non-finite D in the '//what)
 #endif
+    if (.not. fin_z(s%U, size(s%U))) call fail('non-finite U in the '//what)
+    if (.not. fin_z(s%V, size(s%V))) call fail('non-finite V in the '//what)
   end subroutine rstate
 
   subroutine pstate(a, p, seed)
