@@ -13,11 +13,17 @@
 change 6, retention of decision 33).
 
 ## Tasks
-1. Run type "QREF diagnostic": allowed debug variables only `ALF_GPU_TAUDIAG_QREF`, `_QHOST`, `_QVAR=8`, `_FROM`
-   (and the 207-3 fault in declared control runs).
+1. Run type "QREF diagnostic": the env allow-list of `t207_d5_qparse.py` (`env_role`): main runs exactly `DEBUG=1`,
+   `TAUDIAG_QREF`, `_QHOST=1`, `_QVAR=8`, `_FROM`; control runs that set plus `TAU_NS=0` / `TAUSWAP=8` / the 207-3 graded
+   fault, in declared control runs only. Stride 3 (decision 35).
 2. Build the offline program and the GNU oracle objects from the candidate's `git archive`, with provenance.
-3. Process each run's dumps before the next run starts (nividia has ~13 GB free; ~1.6 GB per run): verdict inputs
-   computed first, then retention as in 207-2 (manifest, full `qref.txt`, every 40th dump).
+3. Process each run's dumps before the next run starts (nividia has ~11 GB free; ~1.6 GB per run): verdict inputs
+   computed first, then retention as in 207-2 (manifest, full `qref.txt`, kept dumps by the gcd keep rule, KEEP 39).
+   Reuse the 207-2 scripts (`t207_d5_proc.sh`, `t207_d5_qparse.py`, `t207_d5_agg.py`, `t207_d5_gate.py`) rather than
+   re-implementing them; the harness calls them and records their hashes.
+3a. Both machines (decision 36): QREF runs on `intel` (B580, `GPU=intel`, after 302c-1) with the offline program built
+   there (gfortran 15.2 present on `intel`, real(16)); the Intel reference ensemble has an MKL/ifx host member in place
+   of `nvh` (name fixed with 302c-2); keep the member list a parameter of the acceptance file.
 4. Gate type computing S_ens(pTT) and the pointwise statistic from `qref.txt` with the frozen ensemble list from the
    acceptance file; input checks (qself, qbr ≤ 1e-25; n0 identical to cpu; nvh present; device branch = host branch
    at every point; point count) → INPUT_ERROR.
