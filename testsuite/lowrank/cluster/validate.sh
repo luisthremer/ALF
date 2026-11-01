@@ -28,6 +28,9 @@ mkdir -p "$OUT"
 { [ -z "${ALF_ENV_SH:-}" ] || source "$ALF_ENV_SH" || true; }
 command -v git >/dev/null 2>&1 || module load git >/dev/null 2>&1 || true   # compute nodes may lack git (parallel_tier's build stamp)
 export REGRESS_NO_BUILD=1   # nothing is compiled here (compute nodes may lack make): regress uses the built Prog/ALF.out
+# Independent concurrent processes: no thread pinning. SuperMUC's stack modules set KMP_AFFINITY=...compact, which pins every
+# Intel-OpenMP process to core 0 onwards, i.e. all concurrent runs on the same core (validation job 5956034 timed out).
+export KMP_AFFINITY=disabled OMP_PROC_BIND=false
 export OMP_NUM_THREADS=1 I_MPI_HYDRA_BOOTSTRAP="${I_MPI_HYDRA_BOOTSTRAP:-fork}" I_MPI_PIN="${I_MPI_PIN:-0}"
 MPIRUN="${MPIRUN:-mpirun}"
 check() { echo "CHECK $1 $2 ${3:-}" | tee -a "$SUM"; }
