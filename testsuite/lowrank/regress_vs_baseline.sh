@@ -43,7 +43,11 @@ case "$base_head" in
     *) echo "$BASEDIR is at $base_head, expected $BASELINE_COMMIT" >&2; exit 2 ;;
 esac
 [ -x "$BASEDIR/Prog/ALF.out" ] || build "$BASEDIR" "$LOGDIR/build_baseline.log"
-build "$ALFDIR" "$LOGDIR/build_branch.log"
+if [ "${REGRESS_NO_BUILD:-0}" = 1 ]; then   # e.g. on a compute node without make: use the binaries built beforehand
+    [ -x "$ALFDIR/Prog/ALF.out" ] || { echo "REGRESS_NO_BUILD=1 but $ALFDIR/Prog/ALF.out is missing" >&2; exit 2; }
+else
+    build "$ALFDIR" "$LOGDIR/build_branch.log"
+fi
 
 export OMP_NUM_THREADS=1
 /bin/rm -rf "$OUTROOT"

@@ -2,11 +2,12 @@
 # Build every ALF variant the cluster validation (validate.sh) needs, on a login node (compiling only, no runs).
 #
 # Usage:  ALF_MACHINE=SuperMUC-NG ALF_ENV_SH=<workdir>/env_alf.sh testsuite/lowrank/cluster/build_variants.sh [VARIANT ...]
-#   VARIANT  any of: normal trace mpi tempering hdf5 debug timers timers_mpi  (default: all, in this order)
+#   VARIANT  any of: normal trace ctest mpi tempering hdf5 debug timers timers_mpi  (default: all, in this order)
 #   normal      Prog/ALF.out + Analysis/ana.out (configure.sh <machine> noMPI; used by ctest, regress, the trajectory harness)
 #   trace       builds/ALF_trace.out (-DALF_TRACE_UPDATES, built in-tree as compare_trajectory.sh does; the normal build is restored)
 #   mpi tempering hdf5 debug   archived copies of HEAD in builds/cluster/<variant>/src (configure.sh <machine> MPI | Tempering |
 #               noMPI HDF5 | noMPI with ALF_FLAGS_EXT="-DALF_LOWRANK_DEBUG $ALF_DEBUG_EXTRA")
+#   ctest       the CTest tree testsuite/tests (cmake + make against the normal build's Prog/*.o; compute nodes may lack make/cmake)
 #   timers timers_mpi   testsuite/lowrank/timers_build.sh [--mpi]
 # Environment: ALF_MACHINE (default GNU), ALF_ENV_SH (module setup, sourced before configure.sh), MAKE_J (default 4),
 #   ALF_DEBUG_EXTRA (extra flags of the debug build, e.g. -qopt-matmul- for ifort: the debug shadow uses matmul).
@@ -36,8 +37,8 @@ copy_build() {  # copy_build VARIANT FLAGS MODE...: archived HEAD copy, built th
     git -C "$ALFDIR" rev-parse HEAD >"$d/commit"
 }
 status=0
-report() { if [ -x "$2" ]; then echo "$1 OK $2"; else echo "$1 FAILED (log $LOG/$1.log)"; status=1; fi; }
-VARIANTS="${*:-normal trace mpi tempering hdf5 debug timers timers_mpi}"
+report() { if [ -s "$2" ]; then echo "$1 OK $2"; else echo "$1 FAILED (log $LOG/$1.log)"; status=1; fi; }
+VARIANTS="${*:-normal trace ctest mpi tempering hdf5 debug timers timers_mpi}"
 for v in $VARIANTS; do
     case $v in
         normal)     in_tree "" >"$LOG/$v.log" 2>&1; report $v "$ALFDIR/Prog/ALF.out" ;;
@@ -45,6 +46,9 @@ for v in $VARIANTS; do
                     in_tree "-DALF_TRACE_UPDATES" >"$LOG/$v.log" 2>&1 && cp "$ALFDIR/Prog/ALF.out" "$ALFDIR/builds/ALF_trace.out"
                     in_tree "" >>"$LOG/$v.log" 2>&1
                     report $v "$ALFDIR/builds/ALF_trace.out" ;;
+        ctest)      ( cd "$ALFDIR" && cfg "" noMPI && { module load cmake >/dev/null 2>&1 || true; } && mkdir -p testsuite/tests \
+                      && cd testsuite/tests && cmake .. && make -j"$MAKE_J" ) >"$LOG/$v.log" 2>&1
+                    report $v "$ALFDIR/testsuite/tests/CTestTestfile.cmake" ;;
         mpi)        copy_build $v "" MPI >"$LOG/$v.log" 2>&1; report $v "$ALFDIR/builds/cluster/$v/src/Prog/ALF.out" ;;
         tempering)  copy_build $v "" Tempering >"$LOG/$v.log" 2>&1; report $v "$ALFDIR/builds/cluster/$v/src/Prog/ALF.out" ;;
         hdf5)       copy_build $v "" noMPI HDF5 >"$LOG/$v.log" 2>&1; report $v "$ALFDIR/builds/cluster/$v/src/Prog/ALF.out" ;;
