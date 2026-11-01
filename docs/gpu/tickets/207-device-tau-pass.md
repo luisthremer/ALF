@@ -3,7 +3,8 @@
 - **Phase:** 2
 - **Owner agent:** fortran-gpu-dev (review: numerics-reviewer)
 - **Depends on:** 204, 205, 206
-- **Status:** on hold: awaiting owner decision and verification standard (2026-10-29)
+- **Status:** split into 207-1 … 207-7 (decision 34, 2026-11-01); acceptance 3 per decision 33. This file keeps the
+  context and the history; work and status are in the sub-tickets `207-N-*.md` (PLAN.md).
 
 ## Goal
 With `GPU=nvidia`, `Ltau = 1` and the GPU path active, the time-displaced pass `TAU_M` runs on the device:
