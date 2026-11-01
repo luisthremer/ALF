@@ -67,3 +67,8 @@ Self-checks pass, an end-to-end dry run on a dev build passes, review (c) approv
     binary; decide in the second round and say which.
   - `t207_d5_proc.sh` calls `~/alf-gpu/venv/bin/python3` directly: needs a venv on `intel` or a configurable interpreter.
   - `t207_d5_pairs.py` (dev5-only tool) breaks on `agg.ref_list`'s new signature: fix or retire.
+  - From the round-5 review (approved): correct the comments that say NVIDIA and Intel builds print different host
+    labels (`t207_d5_gate.py:164-165`, `t207_d5_qparse.py:51-52`, `t207_d5_agg.py:17`; the program always prints
+    `nvh`; reviewer advises against a label argument, so Intel specs use `nvh` as "in-run host member, label fixed by
+    the program"); add `ctl_dev` to `HOST_RESERVED`; fix or retire `t207_d5_pairs.py`; run processing and gate on the
+    same machine (exact equality depends on the system OpenBLAS); refuse symlinked dumps or re-hash at read time.

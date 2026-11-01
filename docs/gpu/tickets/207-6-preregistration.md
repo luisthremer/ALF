@@ -25,5 +25,10 @@
 - `207.draft.json` retired (the shipping check allows only an added `207*.json` between base and pre-registration).
 - Run time and GPU budget (decision 11) from 207-4's numbers.
 
+- Gate spec (207-2, approved 2026-11-01): `keep` must satisfy the keep rule (40 is refused at stride 3) and
+  `min_reprocessed` ≥ P (number of block/flavour positions) so that every stratum is re-computed at least once per run;
+  the spec pins seed hashes, so it is written after the fresh seeds are drawn; `--spec-sha` goes into the acceptance
+  file.
+
 ## Done when
 Review (b) approves; PREREG_SHA recorded in the ticket.
