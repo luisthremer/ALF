@@ -1,5 +1,7 @@
 # 207 – how it closes under the verification standard (updated with the owner's decisions of 2026-10-29)
 
+**Superseded (2026-11-01):** 207 is split into 207-1 … 207-7 (decision 34; acceptance 3 per decision 33). This file is history.
+
 207 is on hold (ticket 207 on branch `gpu-port-207-wip`). The existing `mgr207*` and agent results are
 **expectations only**, not acceptance. Decided at the gate of 2026-10-29 (DECISIONS.md):
 - acceptance 3: the rewrite approved on 2026-10-29 stays in force, **including the sd condition** (decision 1);

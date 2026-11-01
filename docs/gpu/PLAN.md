@@ -112,9 +112,19 @@ Unsupported inputs are refused at setup (H4).
 | 204 | Device B_T (checkerboard families, dense) and Op_V wraps; kernel tests with fixed fields vs CPU ≤ 1e-10 | 202, 203 |
 | 205 | WRAPGR up/down on the device: ratio, host decision, rank-1 apply; `flush` interface | 204 |
 | 206 | Stabilization on the device: WRAPUR/UL + decompose, CGR (both NVAR), pre-pivoted QR per 104; under STABLOG CGR via `la_geqp3_host` (108); precision checks as reductions | 202, 204 |
-| 207 | τ pass on the device: PROPR/PROPRM1, CGR2_2 (STABLOG: `la_geqp3_host`), `Control_Precision_tau` | 206 |
-| 208 | Measurements: MVP host copy of G; then predefined Hubbard observables (eq + τ) on the device | 205, 207 |
-| 209 | Validation suite: kernel tests, same-compiler trajectory test (NVHPC CPU vs GPU, first-divergence sweep), test_vs_ed on GPU, statistical compare vs references (106), precision numbers | 205–208 |
+| 207 | τ pass on the device: PROPR/PROPRM1, CGR2_2 (STABLOG: `la_geqp3_host`), `Control_Precision_tau`. Split (decision 34) into: | 206 |
+| 207-1 | 207 code on the current `gpu-port` (merge, builds, T0) ([ticket](tickets/207-1-rebase.md)) | – |
+| 207-2 | QREF analysis pipeline: no silent data loss, frozen reference list ([ticket](tickets/207-2-qref-pipeline.md)) | – |
+| 207-3 | Pointwise accuracy gate and graded controls, β = 4 ([ticket](tickets/207-3-gates-controls.md)) | 207-1, 207-2 |
+| 207-4 | β = 10 calibration of the accuracy gates ([ticket](tickets/207-4-beta10.md)) | 207-3 |
+| 207-5 | Harness support for the QREF gates ([ticket](tickets/207-5-harness-qref.md)) | 207-2 |
+| 207-6 | Pre-registration of `207.json` ([ticket](tickets/207-6-preregistration.md)) | 207-1 … 207-5 |
+| 207-7 | Candidate, T1, T2, verification, merge ([ticket](tickets/207-7-acceptance.md)) | 207-6 |
+| 208 | Measurements on the device. Split (decision 34; ticket files when each starts; each sub-ticket that changes production code has its own pre-registered acceptance): | 205, 207 |
+| 208-1 | G device-authoritative: remove the 206 interim per-CGR G round trip; host copy of G only where a host reader needs it | 207 |
+| 208-2 | Equal-time Hubbard observables (`Obser`) on the device | 208-1 |
+| 208-3 | τ-resolved observables (`OBSERT`) on the device; removes 207's per-slice interim copies | 208-2 |
+| 209 | Validation suite (split: 209-1 test_vs_ed on the GPU; 209-2 same-compiler trajectory test, first-divergence sweep; 209-3 one runnable suite collecting kernel tests, statistics vs references and precision numbers): kernel tests, same-compiler trajectory test (NVHPC CPU vs GPU, first-divergence sweep), test_vs_ed on GPU, statistical compare vs references (106), precision numbers | 205–208 |
 | 210 | BENCHMARKS.md: s/sweep CPU (16 cores, nividia) vs GPU for N = 64…1024, ±Ltau, per-kernel breakdown (incl. rank-1 share), crossover. Development numbers; the official CPU baseline is decided in Phase 3 | 209 |
 | 211 | CPU regression gate: unit tests, `test_branch_parameters.json` / `compare_dirs.py`, GNU + ifx s/sweep within noise | 201–208 |
 | 213 | STABLOG same-seed excess above 1e-9 at 12×12 (206 code; first bin 184, max 1.214e-9): cause, fix or a pre-registered calibrated criterion ([draft](tickets/213-log-same-seed-excess.md)) | 212 |
@@ -160,9 +170,11 @@ ifx 2026.2 + MKL 2026.2, see MACHINES.md), the owner's approval of the process d
 | 301 | `SUPERMUC-NG-PVC` profile: ifx, `-fiopenmp -fopenmp-targets=spir64_gen -Xs "-device pvc"`, oneMKL, `mpiifx`, HDF5. Flags checked against current LRZ/Intel docs and the owner's `module avail` | owner's `module avail` |
 | 302a | ONEMKL backend of `alf_la` + `alf_la.tests` routine tests and `t_order` on the B580; per routine measured GPU / host / hybrid; STABLOG keeps host ZGEQP3; interop queue question (ADR-002 §1) ([draft](tickets/302a-onemkl-backend.md)); acceptance in two parts: B580 tests on `intel`, GPU=none and CUDA identity on `nividia` | 202 (interface), consistent oneAPI (owner, decision 6), harness |
 | 302b | 204–206 device paths on the B580 with the 206 gates (self-tests, same-seed vs CPU, precision); τ path still refused | 302a |
-| 302c | τ path (207) on the B580 | 302b, 207 committed |
-| 303 | ifx build of the full GPU path on `intel` (B580, `spir64` JIT and AOT), 209 suite on the B580 (correctness; not PVC performance) | 302c, 209 |
-| 304 | Slurm scripts (`test` partition, one rank per tile by default, CCS mode as an option, `I_MPI_OFFLOAD_CELL=tile`, `OMP_TARGET_OFFLOAD=MANDATORY`) + validation recipe with expected values and tolerances | 301, 303 |
+| 302c | τ path (207) on the B580. Split (decision 34): | 302b, 207 committed |
+| 302c-1 | τ switch under `GPU=intel` opened; oneMKL pieces of the device CGR2_2; self-tests and same-seed on the B580 | 302b, 207 |
+| 302c-2 | Accuracy gates of 207 on the B580, with an MKL host CGR2_2 in the reference ensemble; acceptance | 302c-1 |
+| 303 | (split: 303-1 AOT build for the B580 next to the `spir64` JIT build; 303-2 the 209 suite on the B580) ifx build of the full GPU path on `intel` (B580, `spir64` JIT and AOT), 209 suite on the B580 (correctness; not PVC performance) | 302c, 209 |
+| 304 | (split: 304-1 Slurm scripts; 304-2 validation recipe with expected values and tolerances) Slurm scripts (`test` partition, one rank per tile by default, CCS mode as an option, `I_MPI_OFFLOAD_CELL=tile`, `OMP_TARGET_OFFLOAD=MANDATORY`) + validation recipe with expected values and tolerances | 301, 303 |
 | 305 | Evaluate the owner's results; BENCHMARKS.md PVC column; fixes | 304 |
 | 306 | Small dense linear algebra on PVC, host vs device per routine and size (planned 2026-10-30, owner): on the B580, oneMKL `zgeqrf` costs a fixed ~0.45 ms per call at any size, and host MKL with copies was faster at every size measured (8 to 400: 0.02–2.3 ms host vs 0.6–7.8 ms oneMKL; 302a, implementer 3). Measure the same on PVC (QR family, `la_qrpp`, LU, trsm; N = 36…1024; including the H↔D copies) and decide per routine whether a size threshold "small → host, large → device" pays off on the GPU node; the threshold is a measured, documented constant, not a guess | 304, 302a |
 
