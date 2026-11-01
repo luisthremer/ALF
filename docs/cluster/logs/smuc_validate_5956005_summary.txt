@@ -1,0 +1,70 @@
+# SuperMUC-NG validation job 5956005 (node i01r01c01s01, commit 9b763ba1; validate.sh all groups), summary.txt as printed by the job watcher
+# validate.sh 2026-11-01T09:00:52Z host i01r01c01s01 commit  groups: core traj extras ptier
+CHECK regress FAIL rc=127 /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/testsuite/lowrank/regress_vs_baseline.sh: line 40: git: command not found 
+CHECK ctest FAIL 
+CHECK ptier:mpi_half FAIL rc=2 ERROR: build of noMPI failed, see /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/runs/parallel_cl_mpi_half/build_noMPI.log 
+CHECK ptier:mpi_tv FAIL rc=2 ERROR: build of noMPI failed, see /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/runs/parallel_cl_mpi_tv/build_noMPI.log 
+CHECK ptier:threads FAIL rc=2 ERROR: build of noMPI failed, see /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/runs/parallel_cl_threads/build_noMPI.log 
+CHECK ptier:tempering FAIL rc=2 ERROR: build of noMPI failed, see /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/runs/parallel_cl_tempering/build_noMPI.log 
+CHECK ptier:pp FAIL rc=2 ERROR: build of noMPI failed, see /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/runs/parallel_cl_pp/build_noMPI.log 
+CHECK traj:kondo:standard-delayed PASS RESULT: IDENTICAL decisions over all 7680 proposals
+CHECK hdf5_attributes PASS delayed/submatrix: Sequential_scheme N_delay_requested N_delay_used; standard: none
+CHECK traj:pv_adiab:standard-delayed PASS RESULT: IDENTICAL decisions over all 9600 proposals
+CHECK traj:z2gt:standard-delayed PASS RESULT: IDENTICAL decisions over all 5884 proposals
+CHECK mpi4_identity:delayed PASS ok   17 bin files within tolerance (rtol=1e-08 + 1e-12*file max; worst |difference|/allowed = 1.81e-02 in Green_eq, <= 1 passes)
+CHECK traj:z2:standard-delayed PASS RESULT: IDENTICAL decisions over all 9720 proposals
+CHECK mpi4_identity:submatrix PASS ok   17 bin files within tolerance (rtol=1e-08 + 1e-12*file max; worst |difference|/allowed = 2.38e-02 in Green_eq, <= 1 passes)
+CHECK mpi4_identity:delayed_xs PASS ok   17 bin files within tolerance (rtol=1e-08 + 1e-12*file max; worst |difference|/allowed = 3.51e-02 in Green_eq, <= 1 passes)
+CHECK mpi4_identity:submatrix_xs PASS ok   17 bin files within tolerance (rtol=1e-08 + 1e-12*file max; worst |difference|/allowed = 2.79e-02 in Green_eq, <= 1 passes)
+CHECK traj:jz:standard-delayed PASS RESULT: IDENTICAL decisions over all 11520 proposals
+CHECK traj:spin_peierls:standard-delayed PASS RESULT: IDENTICAL decisions over all 11520 proposals
+CHECK debug:tv:delayed PASS shadow-G checks : 58081 max relative error of G : 7.1530E-15 
+CHECK debug:tv:submatrix PASS shadow-G checks : 20596 max relative error of G : 1.0515E-15 
+CHECK debug:kondo:delayed PASS shadow-G checks : 17029 max relative error of G : 1.3292E-14 
+CHECK debug:kondo:submatrix PASS shadow-G checks : 11695 max relative error of G : 8.2593E-15 
+CHECK debug:jz:delayed PASS shadow-G checks : 52250 max relative error of G : 6.0867E-15 
+CHECK debug:jz:submatrix PASS shadow-G checks : 53678 max relative error of G : 2.4919E-14 
+CHECK debug:z2:delayed PASS shadow-G checks : 22869 max relative error of G : 1.3529E-15 
+CHECK debug:z2:submatrix PASS shadow-G checks : 12578 max relative error of G : 6.2437E-16 
+CHECK debug:spin_peierls:delayed PASS shadow-G checks : 23756 max relative error of G : 1.6597E-14 
+CHECK debug:spin_peierls:submatrix PASS shadow-G checks : 11527 max relative error of G : 1.9572E-13 
+CHECK traj:kondo:standard-submatrix PASS RESULT: IDENTICAL decisions over all 7680 proposals
+CHECK traj:pv_adiab:standard-submatrix PASS RESULT: IDENTICAL decisions over all 9600 proposals
+CHECK timers PASS 49 lines in timers.txt
+CHECK traj:z2gt:standard-submatrix PASS RESULT: IDENTICAL decisions over all 5884 proposals
+CHECK traj:z2:standard-submatrix PASS RESULT: IDENTICAL decisions over all 9720 proposals
+CHECK traj:start:standard-delayed PASS RESULT: IDENTICAL decisions over all 21600 proposals
+CHECK traj:jz:standard-submatrix PASS RESULT: IDENTICAL decisions over all 11520 proposals
+CHECK traj:spin_peierls:standard-submatrix PASS RESULT: IDENTICAL decisions over all 11520 proposals
+CHECK traj:kondo:standard-delayed:N_delay=-1 PASS RESULT: IDENTICAL decisions over all 7680 proposals
+CHECK traj:continuous:standard-delayed:HMC=.T. Leapfrog_steps=10 Delta_t_Langevin_HMC=0.05 PASS RESULT: IDENTICAL decisions over all 21600 proposals HMC acceptance 1.00000000000000
+CHECK traj:tv_flux:standard-delayed PASS RESULT: IDENTICAL decisions over all 26880 proposals
+CHECK traj:tv:standard-delayed PASS RESULT: IDENTICAL decisions over all 26880 proposals
+CHECK traj:pv_adiab:standard-delayed:N_delay=-1 PASS RESULT: IDENTICAL decisions over all 9600 proposals
+CHECK traj:z2gt:standard-delayed:N_delay=-1 PASS RESULT: IDENTICAL decisions over all 5884 proposals
+CHECK traj:z2:standard-delayed:N_delay=-1 PASS RESULT: IDENTICAL decisions over all 9720 proposals
+CHECK traj:kondo:standard-submatrix:N_delay=-1 PASS RESULT: IDENTICAL decisions over all 7680 proposals
+CHECK traj:tv_proj:standard-delayed PASS RESULT: IDENTICAL decisions over all 33600 proposals
+CHECK traj:jz:standard-delayed:N_delay=-1 PASS RESULT: IDENTICAL decisions over all 11520 proposals
+CHECK traj:spin_peierls:standard-delayed:N_delay=-1 PASS RESULT: IDENTICAL decisions over all 11520 proposals
+CHECK traj:pv_adiab:standard-submatrix:N_delay=-1 PASS RESULT: IDENTICAL decisions over all 9600 proposals
+CHECK traj:z2gt:standard-submatrix:N_delay=-1 PASS RESULT: IDENTICAL decisions over all 5884 proposals
+CHECK traj:z2:standard-submatrix:N_delay=-1 PASS RESULT: IDENTICAL decisions over all 9720 proposals
+CHECK traj:start:standard-submatrix PASS RESULT: IDENTICAL decisions over all 21600 proposals
+CHECK traj:jz:standard-submatrix:N_delay=-1 PASS RESULT: IDENTICAL decisions over all 11520 proposals
+CHECK traj:spin_peierls:standard-submatrix:N_delay=-1 PASS RESULT: IDENTICAL decisions over all 11520 proposals
+CHECK traj:continuous:standard-submatrix:HMC=.T. Leapfrog_steps=10 Delta_t_Langevin_HMC=0.05 PASS RESULT: IDENTICAL decisions over all 21600 proposals HMC acceptance 1.00000000000000
+CHECK traj:tv_flux:standard-submatrix PASS RESULT: IDENTICAL decisions over all 26880 proposals
+CHECK traj:tv:standard-submatrix PASS RESULT: IDENTICAL decisions over all 26880 proposals
+CHECK traj:tv_proj:standard-submatrix PASS RESULT: IDENTICAL decisions over all 33600 proposals
+CHECK traj:start:standard-delayed:N_delay=-1 PASS RESULT: IDENTICAL decisions over all 21600 proposals
+CHECK traj:tv_flux:standard-delayed:N_delay=-1 PASS RESULT: IDENTICAL decisions over all 26880 proposals
+CHECK traj:tv:standard-delayed:N_delay=-1 PASS RESULT: IDENTICAL decisions over all 26880 proposals
+CHECK traj:continuous:standard-delayed:N_delay=-1 HMC=.T. Leapfrog_steps=10 Delta_t_Langevin_HMC=0.05 PASS RESULT: IDENTICAL decisions over all 21600 proposals HMC acceptance 1.00000000000000
+CHECK traj:start:standard-submatrix:N_delay=-1 PASS RESULT: IDENTICAL decisions over all 21600 proposals
+CHECK traj:tv_proj:standard-delayed:N_delay=-1 PASS RESULT: IDENTICAL decisions over all 33600 proposals
+CHECK traj:tv_flux:standard-submatrix:N_delay=-1 PASS RESULT: IDENTICAL decisions over all 26880 proposals
+CHECK traj:tv:standard-submatrix:N_delay=-1 PASS RESULT: IDENTICAL decisions over all 26880 proposals
+CHECK traj:continuous:standard-submatrix:N_delay=-1 HMC=.T. Leapfrog_steps=10 Delta_t_Langevin_HMC=0.05 PASS RESULT: IDENTICAL decisions over all 21600 proposals HMC acceptance 1.00000000000000
+CHECK traj:tv_proj:standard-submatrix:N_delay=-1 PASS RESULT: IDENTICAL decisions over all 33600 proposals
+# done 2026-11-01T09:16:55Z: 60 PASS, 7 FAIL

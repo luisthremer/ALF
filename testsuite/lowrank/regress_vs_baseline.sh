@@ -14,7 +14,7 @@ set -euo pipefail
 BASELINE_COMMIT=f81b5cbc
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ALFDIR="$(cd "$HERE/../.." && pwd)"
-BASEDIR="$ALFDIR/../ALF_baseline"
+BASEDIR="${REGRESS_BASEDIR:-$ALFDIR/../ALF_baseline}"   # REGRESS_BASEDIR: another baseline tree (e.g. other flags)
 MAKE_PARAMS="$HERE/make_params.py"
 LOGDIR="$ALFDIR/runs"
 OUTROOT="$LOGDIR/regress"
