@@ -24,7 +24,11 @@ within one process, so the spec variations do not re-run the program); the basel
 planted defect is an edit of qref.txt numbers (the decision logic) run in-process with the gate's authenticate step replaced by the self-test
 (marked 'reprocessing replaced' in the detail; the report records it); each of them has a companion with the real step, which must
 end in INPUT_ERROR because the edited numbers are not what the program computes.
-  reproc     the gate's re-processing check on every kept dev5 dump of every repro run (all must be equal or within 1 in the last digit)
+  reproc     the gate's re-processing check on every kept dev5 dump of every repro run (every number exactly equal)
+Fix round 5 (review 207-2e): the spec pins keep, hostin and min_reprocessed (M1); the re-processed numbers must be exactly equal (N1: a
+one-digit difference is now INPUT_ERROR, test F1g changed); end-to-end device FAIL through the real processing (N2, dump mode, test
+N2_*); control member that is a reference (N3); minimal program env, LD_PRELOAD refused (N4); test S4 renamed (N7).  Manager items: X1 the host member label from the spec (no hard-coded label in gate / qparse / agg; tests X1_*),
+X2 t207_d5_proc.sh sources ~/alf-gpu/env/gnu.sh only if it exists.
 """
 import contextlib, hashlib, importlib.util, io, json, math, os, re, shutil, struct, subprocess, sys
 sys.dont_write_bytecode = True
@@ -540,7 +544,7 @@ def gspec(**kw):
     """the gate spec for the kept dev5 subset (every 40th dump): marked test_only, since the subset has cover 40.  Bound 0.15 = the proposed
     criterion of 207 dev5 (the self-test is not a calibration).  A genuine cover-1 stride-3 run set does not exist yet (207-3)."""
     s = dict(spec_version=1, path='def', host_member='nvh', members={'main': mlist(NUL_DEF), 'ctl_tau_ns0': mlist(NUL_DEF, var=False)},
-             refs=QP.REF_DEF.split(','), qs=20, nul=list(NUL_DEF), cover=40,
+             refs=QP.ref_names('def', 'nvh'), qs=20, nul=list(NUL_DEF), cover=40, keep=0, hostin=0, min_reprocessed=7,
              test_only='207-2 self-test on the kept dev5 subset (cover 40, 7 points with B per run): tests the gate logic only; '
                        'a genuine cover-1 stride-3 run set is pending (207-3)',
              expect_points={'pTT': 7}, prog_sha=prog_of_runs(), src_sha=sha_file(os.path.join(HERE, 't207_d5_qref.F90')),
@@ -781,7 +785,7 @@ def gate_inproc(argv, noauth=False):
     buf = io.StringIO()
     saved = GATE.authenticate
     if noauth:
-        GATE.authenticate = lambda runs, s, prog: [dict(dir=x['dir'], dumps=0, numbers=0, equal=0, one_digit=0, source=NOAUTH_TAG) for x in runs]
+        GATE.authenticate = lambda runs, s, prog: [dict(dir=x['dir'], dumps=0, numbers=0, equal=0, source=NOAUTH_TAG) for x in runs]
     try:
         with contextlib.redirect_stdout(buf):
             rc = GATE.main(list(argv))
@@ -859,11 +863,11 @@ def gate_tests():
         sp_ok = rep['spec_sha256'] == sha_file(os.path.join(gdir(), 'spec_baseline_gate_test_only_kept_subset.json'))
         bin_ok = all(r['binary_sha256'] == prov_of('m_def_dev2', 'binary_sha256') for r in rep['runs'])
         au = rep['authenticity']
-        au_ok = len(au) == 4 and all(a['dumps'] == 7 and a['numbers'] > 0 and a['equal'] + a['one_digit'] == a['numbers'] and a['source'] == 'program' for a in au)
+        au_ok = len(au) == 4 and all(a['dumps'] == 7 and a['numbers'] > 0 and a['equal'] == a['numbers'] and a['source'] == 'program' for a in au)
         ok = ok and sp_ok and bin_ok and au_ok
         return ok, 'device %+.4f, var8 %+.4f, tau_ns0 %+.4f; max |gate - agg| %.1e; script hashes %s; spec sha %s, binary %s; re-processed %s' % (
             g['device_value'], c['var8']['value'], c['tau_ns0']['value'], dmax, 'ok' if hashes else 'WRONG', 'ok' if sp_ok else 'WRONG',
-            'ok' if bin_ok else 'WRONG', ' '.join('%d/%d/%d' % (a['numbers'], a['equal'], a['one_digit']) for a in au))
+            'ok' if bin_ok else 'WRONG', ' '.join('%d/%d' % (a['numbers'], a['equal']) for a in au))
     rc, o, rep0 = gate('baseline_gate_test_only_kept_subset', B, gspec(), 4, 'GATE TEST-ONLY', check=same_as_agg, cli=True)
     # the same through pool each_run: the expected outcome is derived from agg's per-run numbers (independent of the gate's flow)
     dev_max = max(A['runs'][t]['dev']['S_ens']['mean'] for t in GSET[:3])
@@ -879,7 +883,7 @@ def gate_tests():
     rcl, msgl = py('t207_d5_agg.py', outl, 'pTT', '--ref', 'log', *(['main:%s=%s' % (t, Q(d)) for t, d in zip(LS[:3], L[:3])] + ['ctl:c1=' + Q(L[3])]))
     record('baseline_agg_gate_set_log', 'ok', rcl == 0, 'agg accepted log dev2-4 and the control run' if rcl == 0 else last(msgl))
     AL = json.load(open(outl))
-    lspec = gspec(path='log', refs=QP.REF_LOG.split(','), nul=list(NUL_LOG), prog_sha=prog_of('m_log_dev2'), binary_sha256=prov_of('m_log_dev2', 'binary_sha256'),
+    lspec = gspec(path='log', refs=QP.ref_names('log', 'nvh'), nul=list(NUL_LOG), prog_sha=prog_of('m_log_dev2'), binary_sha256=prov_of('m_log_dev2', 'binary_sha256'),
                   seeds={'main': [seeds_of(t) for t in LS[:3]], 'ctl_tauswap8': [seeds_of(LS[3])]},
                   env_roles={'main': gspec()['env_roles']['main'], 'ctl_tauswap8': {'extra_env': {'ALF_GPU_TAUSWAP': '8'}, 'omit_env': ['ALF_GPU_TAUDIAG_QVAR']}},
                   n_runs={'main': 3, 'ctl_tauswap8': 1}, members={'main': mlist(NUL_LOG), 'ctl_tauswap8': mlist(NUL_LOG, var=False)},
@@ -891,9 +895,9 @@ def gate_tests():
         c = {x['name']: x['checks'][0]['value'] for x in rep['controls']}
         dmax = max(abs(a - b) for a, b in zip((rep['gates'][0]['device_value'], c['var8'], c['tauswap8']), lv))
         au = rep.get('authenticity', [])
-        au_ok = len(au) == 4 and all(a['dumps'] == 7 and a['equal'] + a['one_digit'] == a['numbers'] > 0 for a in au)
+        au_ok = len(au) == 4 and all(a['dumps'] == 7 and a['equal'] == a['numbers'] > 0 for a in au)
         return dmax <= 1e-12 and au_ok, 'device %+.4f, var8 %+.4f, tauswap8 %+.4f; max |gate - agg| %.1e; re-processed %s' % (
-            lv + (dmax, ' '.join('%d/%d/%d' % (a['numbers'], a['equal'], a['one_digit']) for a in au)))
+            lv + (dmax, ' '.join('%d/%d' % (a['numbers'], a['equal']) for a in au)))
     gate('baseline_gate_test_only_kept_subset_log', L, lspec, expl, GW[expl], check=same_as_agg_log, cli=True)
     # ---- modes: cover, test_only, controls
     gate('gate_kept_dev5_subset_cover1_spec', B, smut(lambda s: s.pop('test_only'), cover=1), 2, 'processed with cover 40')
@@ -1001,6 +1005,21 @@ def gate_tests():
         ('gate_refs_duplicate', lambda s: s['refs'].append('n4'), 'duplicate name'),
         ('gate_refs_empty', lambda s: s.__setitem__('refs', []), 'at least two names'),
         ('gate_cover_zero', lambda s: s.__setitem__('cover', 0), 'cover 0: an integer >= 1'),
+        # fix round 5 (M1): keep, hostin, min_reprocessed are required spec keys with exact integer values
+        ('M1_spec_no_keep', lambda s: s.pop('keep'), "missing keys ['keep']"),
+        ('M1_spec_no_hostin', lambda s: s.pop('hostin'), "missing keys ['hostin']"),
+        ('M1_spec_no_min_reprocessed', lambda s: s.pop('min_reprocessed'), "missing keys ['min_reprocessed']"),
+        ('M1_spec_keep_float', lambda s: s.__setitem__('keep', 0.0), 'keep 0.0: the processing KEEP'),
+        ('M1_spec_keep_true', lambda s: s.__setitem__('keep', True), 'keep True: the processing KEEP'),
+        ('M1_spec_keep_negative', lambda s: s.__setitem__('keep', -1), 'keep -1: the processing KEEP'),
+        ('M1_spec_hostin_2', lambda s: s.__setitem__('hostin', 2), 'hostin 2: the processing HOSTIN'),
+        ('M1_spec_hostin_string', lambda s: s.__setitem__('hostin', '0'), "hostin '0': the processing HOSTIN"),
+        ('M1_spec_min_reprocessed_zero', lambda s: s.__setitem__('min_reprocessed', 0), 'min_reprocessed 0: an integer >= 1'),
+        ('M1_spec_min_reprocessed_float', lambda s: s.__setitem__('min_reprocessed', 7.0), 'min_reprocessed 7.0: an integer >= 1'),
+        # the processing arguments of every run must be the spec's: keep, hostin (consistent runs, other spec value)
+        ('M1_spec_keep_differs_from_runs', lambda s: s.__setitem__('keep', 3), 'processed with keep 0, the spec says 3'),
+        ('M1_spec_hostin_differs_from_runs', lambda s: s.__setitem__('hostin', 1), 'processed with hostin 0, the spec says 1'),
+        ('M1_runs_fewer_dumps_than_min_reprocessed', lambda s: s.__setitem__('min_reprocessed', 8), 'the spec requires at least min_reprocessed 8'),
         ('gate_cover_float', lambda s: s.__setitem__('cover', 40.0), 'cover 40.0: an integer >= 1'),
         # program identity
         ('gate_prog_sha_mismatch', lambda s: s.__setitem__('prog_sha', '0' * 64), 'differs from the required'),
@@ -1034,18 +1053,20 @@ def gate_tests():
         ('gate_control_kind_unknown', lambda s: s['controls'][0].__setitem__('kind', 'foo'), 'kind variant'),
         ('P4b_control_statistic_key', lambda s: s['controls'][1].__setitem__('statistic', 'S_cpu'), 'kind variant'),
         ('gate_control_member_var16', lambda s: s['controls'][0].__setitem__('member', 'var16'), 'must be a member of main'),
-        ('gate_control_member_dev', lambda s: s['controls'][0].__setitem__('member', 'dev'), 'must be a member of main'),
+        ('gate_control_member_dev', lambda s: s['controls'][0].__setitem__('member', 'dev'), 'member dev is the device under test'),
+        # fix round 5 (N3): the branch 'control member is a reference' (unreachable via var8 since var<m> are never references)
+        ('N3_control_member_is_reference_n4', lambda s: s['controls'][0].__setitem__('member', 'n4'), "member 'n4' is a reference member"),
         ('gate_control_trips_unknown_gate', lambda s: s['controls'][0].__setitem__('trips', 'nope'), 'is not a gate of the spec'),
         ('gate_control_must_not_trip_its_own', lambda s: s['controls'][0].__setitem__('must_not_trip', ['acc_pTT']), 'list of distinct gates other than'),
         ('gate_control_run_role_main', lambda s: s['controls'][1].__setitem__('role', 'main'), 'is not a control role'),
         ('gate_control_run_role_unknown', lambda s: s['controls'][1].__setitem__('role', 'ghost'), 'is not a control role'),
         ('gate_control_names_duplicate', lambda s: s['controls'][1].__setitem__('name', 'var8'), 'is not a unique name'),
         # P1 / P1b: the default-path runs judged as LOG
-        ('P1_def_runs_spec_says_log', lambda s: s.update(path='log', refs=QP.REF_LOG.split(','), prog_sha=prog_of('m_log_dev2'),
+        ('P1_def_runs_spec_says_log', lambda s: s.update(path='log', refs=QP.ref_names('log', 'nvh'), prog_sha=prog_of('m_log_dev2'),
                                                           env_roles=dict(s['env_roles'], ctl_tau_ns0={'extra_env': {'ALF_GPU_TAUSWAP': '8'}, 'omit_env': ['ALF_GPU_TAUDIAG_QVAR']})),
          'a def-path run (info)'),
         # fix round 4: the control role gets the LOG fault as in P1 (TAU_NS=0 is a default-path fault; on a LOG spec it is refused first)
-        ('P1b_def_runs_spec_says_log_def_codes_removed', lambda s: s.update(path='log', refs=QP.REF_LOG.split(','), nul=list(NUL_LOG), prog_sha=prog_of('m_log_dev2'),
+        ('P1b_def_runs_spec_says_log_def_codes_removed', lambda s: s.update(path='log', refs=QP.ref_names('log', 'nvh'), nul=list(NUL_LOG), prog_sha=prog_of('m_log_dev2'),
                                                                             env_roles=dict(s['env_roles'], ctl_tau_ns0={'extra_env': {'ALF_GPU_TAUSWAP': '8'}, 'omit_env': ['ALF_GPU_TAUDIAG_QVAR']})),
          'a def-path run (info)'),
     ]
@@ -1053,9 +1074,9 @@ def gate_tests():
         gate(name, B, smut(fn), 2, substr)
     # ---- the reference list is the spec's (manager note 2026-11-01: names come from the spec, no frozen list in the scripts): another list
     # is accepted and judged with it; the expected outcome and numbers come from agg's CLI with the same --ref list
-    for name, refs in (('gate_refs_member_dropped', [r for r in QP.REF_DEF.split(',') if r != 'n1608']),
-                       ('gate_refs_reordered', QP.REF_DEF.split(',')[::-1]),
-                       ('gate_refs_other_path_list', QP.REF_LOG.split(','))):
+    for name, refs in (('gate_refs_member_dropped', [r for r in QP.ref_names('def', 'nvh') if r != 'n1608']),
+                       ('gate_refs_reordered', QP.ref_names('def', 'nvh')[::-1]),
+                       ('gate_refs_other_path_list', QP.ref_names('log', 'nvh'))):
         oa = os.path.join(ST, 'agg_%s.json' % name)
         rcr, msgr = py('t207_d5_agg.py', oa, 'pTT', '--ref', ','.join(refs), *(['main:%s=%s' % (t, Q(d)) for t, d in zip(GSET[:3], M3)] + ['ctl:c1=' + Q(B[3])]))
         Ar = json.load(open(oa)) if rcr == 0 else None
@@ -1074,13 +1095,35 @@ def gate_tests():
     # spec declares that label; the numbers are those of the baseline
     ren = e_qref(lambda t: t.replace(' | nvh ', ' | hostx '))
     hs = gspec(host_member='hostx', members={r: ['hostx' if x == 'nvh' else x for x in l] for r, l in gspec()['members'].items()},
-               refs=['hostx' if x == 'nvh' else x for x in QP.REF_DEF.split(',')])
+               refs=['hostx' if x == 'nvh' else x for x in QP.ref_names('def', 'nvh')])
     hx = gcopy('hostx', edits={t: ren for t in GSET})
     gate('gate_host_member_relabelled_accepted', hx, hs, 4, 'GATE TEST-ONLY', noauth=True,
          check=lambda r, o: (abs(r['gates'][0]['device_value'] - rep0['gates'][0]['device_value']) <= 1e-12, 'device %+.4f as the baseline' % r['gates'][0]['device_value']))
     # fix round 4: the program prints 'nvh'; a relabelled qref.txt is not its output (the label is the spec's only for a program that prints it)
     gate('gate_host_member_relabelled_caught_by_reprocessing', hx, hs, 2, "member 'hostx ")
     gate('gate_host_member_relabelled_spec_says_nvh', gcopy('hostx2', edits={t: ren for t in GSET}), gspec(), 2, "member 'hostx' where 'nvh' was expected")
+    # fix round 5, manager item X1 (Intel calibration): the host label comes from the spec's host_member only.  The NVIDIA records relabelled
+    # consistently to the Intel label ifh (every qref.txt line, qref_sha256 following), spec host_member ifh with the frozen list
+    # (refs = FROZEN_REFS with H = ifh, no test_only needed for the list): the same verdict and numbers as the baseline (reprocessing replaced:
+    # the NVIDIA build of the program prints its own label, so the real step must refuse the relabelled lines, companion test); and agg's
+    # CLI on the same files (--ref def, host label taken from the runs) gives the baseline numbers
+    ren_i = e_qref(lambda t: t.replace(' | nvh ', ' | ifh '))
+    hi_ = gspec(host_member='ifh', members={r: ['ifh' if x == 'nvh' else x for x in l] for r, l in gspec()['members'].items()},
+                refs=QP.ref_names('def', 'ifh'))
+    hxi = gcopy('host_ifh', edits={t: ren_i for t in GSET})
+    gate('X1_host_member_ifh_relabelled_same_verdict', hxi, hi_, rep0['exit_code'], GW[rep0['exit_code']], noauth=True,
+         check=lambda r, o: (r['verdict'] == rep0['verdict'] and max(abs(a['checks'][0]['value'] - b['checks'][0]['value']) for a, b in zip(r['controls'], rep0['controls'])) <= 1e-12
+                             and abs(r['gates'][0]['device_value'] - rep0['gates'][0]['device_value']) <= 1e-12,
+                             'verdict %s as the baseline, device %+.4f, controls %s' % (r['verdict'], r['gates'][0]['device_value'],
+                                                                                         ' '.join('%+.4f' % c['checks'][0]['value'] for c in r['controls']))))
+    gate('X1_host_member_ifh_relabelled_caught_by_reprocessing', hxi, hi_, 2, "member 'ifh ")
+    oi = os.path.join(ST, 'agg_gate_ifh.json')
+    rci, msgi = py('t207_d5_agg.py', oi, 'pTT', '--ref', 'def', *(['main:%s=%s' % (t, Q(d)) for t, d in zip(GSET[:3], hxi[:3])] + ['ctl:c1=' + Q(hxi[3])]))
+    Ai = json.load(open(oi)) if rci == 0 else None
+    dmi = None if Ai is None else max(abs(Ai['pooled'][m]['S_ens']['mean'] - A['pooled'][m if m != 'ifh' else 'nvh']['S_ens']['mean']) for m in Ai['pooled'])
+    record('X1_agg_host_label_ifh_from_runs', 'agg ok, numbers = baseline', Ai is not None and Ai['host_member'] == 'ifh' and 'ifh' in Ai['refs'] and dmi <= 1e-12,
+           last(msgi) if Ai is None else 'host %s, refs %s, max |agg ifh - agg nvh| %.1e' % (Ai['host_member'], ','.join(Ai['refs']), dmi))
+    gate('X1_spec_host_member_reserved_name', B, gspec(host_member='cpu'), 2, "host_member")
     # ---- command line (fix round 4: --spec-sha and --prog are required; every case below names them, so that only the defect named fails)
     sp0 = os.path.join(gdir(), 'spec_baseline_gate_test_only_kept_subset.json')
     hs0 = sha_file(sp0)
@@ -1119,7 +1162,9 @@ def gate_tests():
         ('R_E_hostin_true', {D3: e_args(hostin=True)}, None, 'must be integers'),
         ('R_E_keep_negative', {D3: e_args(keep=-5)}, None, 'bad processing arguments'),
         ('keep_rule_refused_by_gate', {D3: e_args(keep=1)}, None, 'keep rule'),
-        ('gate_cover_2', {D3: e_args(cover=2)}, None, 'covered dumps'),
+        # fix round 5: the processing arguments are checked before the manifest; a run with cover 2 among cover-40 runs is refused there
+        # (gate_cover_2 itself, which tests the manifest check behind it, runs below with a cover-2 spec on that run alone)
+        ('M1_one_run_cover_2_args_check', {D3: e_args(cover=2)}, None, 'processed with cover 2, the spec says 40'),
         ('gate_run_records_edited', {D3: e_file(lambda d: open(os.path.join(d, 'run.log'), 'a').write(' extra\n'))}, None, 'does not match the record run.log'),
         # fix round 4: manifest_sha256 of the processing record follows the edit (consistent), so that the dump hash check behind it is reached
         ('gate_run_manifest_hash_edited', {D3: chain(e_file(lambda d: rewrite(os.path.join(d, 'qref_manifest.txt'),
@@ -1159,6 +1204,8 @@ def gate_tests():
         else:
             dirs = gcopy(name, edits=edits)
         gate(name, dirs, gspec(), 2, substr)
+    # the manifest check behind the arguments: run processed with cover 2 (args edited consistently, its manifest is the cover-40 one), spec cover 2
+    gate('gate_cover_2', gcopy('gate_cover_2', tags=[D3], edits={D3: e_args(cover=2)}), gspec(cover=2), 2, 'covered dumps')
     gate('gate_runs_different_parameters', gcopy('gate_runs_different_parameters', edits={D3: chain(
         e_file(lambda d: open(os.path.join(d, 'parameters'), 'a').write('! a comment line: other parameters file\n')), e_file(fix_records))}),
         gspec(), 2, 'different parameters')
@@ -1256,8 +1303,24 @@ def gate_tests():
                              'pooled unchanged %+.4f, run means %s' % (r['gates'][0]['device_value'], ' '.join('%+.2f' % v for v in r['gates'][0]['device_run_means']))))
     gate('P3c_evidence_up_down_each_run', dd, smut(lambda s: s['gates'][0].__setitem__('pool', 'each_run')), 1, 'gate acc_pTT: device', noauth=True)
     gate('P3c_evidence_up_down_caught_by_reprocessing', dd, gspec(), 2, RP)
-    # hostin 1 is a valid processing argument (no din members without ALF_GPU_TAUDIAG): accepted (the re-processing runs with hostin 1)
-    gate('R_E_hostin_1_ok', gcopy('hostin1', edits={D3: e_args(hostin=1)}), gspec(), 4, 'GATE TEST-ONLY')
+    # fix round 5 (M1): hostin is pinned by the spec.  One run processed with hostin 1 among hostin-0 runs: refused (was R_E_hostin_1_ok,
+    # rc 4, before hostin was a spec key).  hostin 1 stays a valid argument (no din members without ALF_GPU_TAUDIAG): every run with
+    # hostin 1 and a spec with hostin 1 is accepted, the re-processing runs with hostin 1
+    gate('M1_one_run_hostin_1_spec_hostin_0', gcopy('hostin1', edits={D3: e_args(hostin=1)}), gspec(), 2, 'processed with hostin 1, the spec says 0')
+    gate('R_E_hostin_1_all_runs_spec_hostin_1_ok', gcopy('hostin1all', edits={t: e_args(hostin=1) for t in GSET}), gspec(hostin=1), 4, 'GATE TEST-ONLY',
+         check=lambda r, o: (all(a['source'] == 'program' and a['equal'] == a['numbers'] > 0 for a in r['authenticity']), 're-processed with hostin 1, all equal'))
+    # fix round 5 (N4): the program runs in a minimal env; LD_PRELOAD in the gate's env is refused (CLI, the variable set for that call only)
+    sp0 = os.path.join(gdir(), 'spec_baseline_gate_test_only_kept_subset.json')
+    rp = os.path.join(gdir(), 'rep_N4_ld_preload_refused.json')
+    rc, o = sh([PY, '-I', os.path.join(HERE, 't207_d5_gate.py'), '--spec', sp0, '--spec-sha', sha_file(sp0), '--prog', qbin('def'), '--report', rp] + B,
+               env=dict(os.environ, LD_PRELOAD='/nonexistent/libx.so'))
+    rj = json.load(open(rp)) if os.path.exists(rp) else {}
+    record('N4_ld_preload_refused', 'rc 2: LD_PRELOAD is set', rc == 2 and 'LD_PRELOAD is set' in o and rj.get('exit_code') == 2 and 'GATE FAIL' not in o, ' '.join([l for l in o.split('\n') if l.startswith('GATE ')][-1:]))
+    pe = GATE.program_env()
+    allowed = {'PATH', 'HOME', 'OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS'}
+    LAST['rc'] = None
+    record('N4_program_env_minimal', 'only PATH HOME OMP OPENBLAS', set(pe) <= allowed and 'LD_LIBRARY_PATH' not in pe and pe['OPENBLAS_NUM_THREADS'] == '1',
+           'program env keys %s' % sorted(pe))
     fix4_tests(B, A, rep0)
 
 
@@ -1313,7 +1376,7 @@ def lines_where(fn, pred):
 def indep_points(dirs, member='dev', refs=None):
     """INDEPENDENT of the gate and of t207_d5_agg.py (read from the qref.txt text here): per point with B (run index, (nst, nfe, br), S_ens of
     member for pTT = log10 pTT(member) - mean over the references other than member of log10 pTT(ref))"""
-    refs = refs or QP.REF_DEF.split(',')
+    refs = refs or QP.ref_names('def', 'nvh')
     out = []
     for i, d in enumerate(dirs):
         for ln in open(os.path.join(d, 'qref.txt')).read().split('\n'):
@@ -1374,7 +1437,7 @@ def fabricate_cover1(d, ri):
         src = tseg[k % len(tseg)]
         f = 1 + 1e-3 * (k + 1000 * ri)
         sg = []
-        for nm in QP.expected_names(sp, k, hasb):
+        for nm in QP.expected_names(sp, k, hasb, 'nvh'):
             if nm in ('qself', 'qbr'):
                 sg.append(src[nm])
                 continue
@@ -1415,7 +1478,7 @@ def fix4_tests(B, A, rep0):
     gate('S2_x1.38_cherry_pick_two_runs', [S[0], S[2], S[3]], gspec(n_runs={'main': 2, 'ctl_tau_ns0': 1}), 2, 'the spec requires exactly', cli=True)
     sd = gspec()['seeds']
     gate('S3_spec_seed_set_replaced', B, gspec(seeds={'main': sd['main'][:2] + ['a' * 64], 'ctl_tau_ns0': sd['ctl_tau_ns0']}), 2, 'the spec requires exactly')
-    gate('S4_dev_seed_set_of_dev1_as_main', B, gspec(seeds={'main': sd['main'][:2] + [seeds_of('m_def_dev1')], 'ctl_tau_ns0': sd['ctl_tau_ns0']}), 2,
+    gate('S4_spec_main_seed_set_shared_with_dev1_ctl_run', B, gspec(seeds={'main': sd['main'][:2] + [seeds_of('m_def_dev1')], 'ctl_tau_ns0': sd['ctl_tau_ns0']}), 2,
          'is listed for role')
     gate('S5_ctl_seed_equals_main_seed_in_spec', B, gspec(seeds={'main': sd['main'], 'ctl_tau_ns0': [sd['main'][0]]}), 2, 'is listed for role')
     gate('S6_seeds_role_missing', B, gspec(seeds={'main': sd['main']}), 2, 'must be a dictionary with exactly the roles')
@@ -1442,7 +1505,7 @@ def fix4_tests(B, A, rep0):
     gate('E6_ctl_TAUSWAP_255', B, ce({'ALF_GPU_TAUSWAP': '255'}), 2, 'is not a fault of the fixed list')
     gate('E7_ctl_TAU_NS_1', B, ce({'ALF_GPU_TAU_NS': '1'}), 2, 'is not a fault of the fixed list')
     gate('E8_ctl_TAUSWAP_8_on_def_path', B, ce({'ALF_GPU_TAUSWAP': '8'}), 2, 'is not a fault of the fixed list for the def path')
-    gate('E9_ctl_TAU_NS_0_on_log_path', B, ce({'ALF_GPU_TAU_NS': '0'}, path='log', refs=QP.REF_LOG.split(','), nul=list(NUL_LOG), prog_sha=prog_of('m_log_dev2'),
+    gate('E9_ctl_TAU_NS_0_on_log_path', B, ce({'ALF_GPU_TAU_NS': '0'}, path='log', refs=QP.ref_names('log', 'nvh'), nul=list(NUL_LOG), prog_sha=prog_of('m_log_dev2'),
                                                members={'main': mlist(NUL_LOG), 'ctl_tau_ns0': mlist(NUL_LOG, var=False)}), 2, 'is not a fault of the fixed list for the log path')
     gate('E10_ctl_omits_QHOST', B, ce({'ALF_GPU_TAU_NS': '0'}, omit=('ALF_GPU_TAUDIAG_QVAR', 'ALF_GPU_TAUDIAG_QHOST')), 2, 'a control may omit only')
     gate('E11_ctl_adds_no_fault', B, ce({}), 2, 'adds no fault')
@@ -1465,7 +1528,7 @@ def fix4_tests(B, A, rep0):
     gate('D2_refs_plus_u1_u2', B, smut(lambda s: s['refs'].extend(['u1', 'u2'])), 2, "refs: 'u1' is not a reference member")
     gate('H2_refs_plus_var8', B, smut(lambda s: (nov8(s), s['refs'].append('var8'))), 2, "refs: 'var8' is not a reference member")
     gate('D6_refs_reordered_without_test_only', B, smut(lambda s: (s.pop('test_only'), s.__setitem__('refs', s['refs'][::-1]))), 2, 'differ from the frozen reference list')
-    gate('D7_refs_log_list_on_def_without_test_only', B, smut(lambda s: (s.pop('test_only'), s.__setitem__('refs', QP.REF_LOG.split(',')))), 2,
+    gate('D7_refs_log_list_on_def_without_test_only', B, smut(lambda s: (s.pop('test_only'), s.__setitem__('refs', QP.ref_names('log', 'nvh')))), 2,
          'differ from the frozen reference list')
     gate('D8_frozen_refs_silent_without_test_only', B, smut(lambda s: s.pop('test_only')), 2, 'must cover every dump',
          check=lambda r, o: ('frozen' not in o, 'frozen list accepted; refused only for cover 40'))
@@ -1506,13 +1569,13 @@ def fix4_tests(B, A, rep0):
         replace_dump(d, kept[2], bytes(b))
     gate('F1e_dump_dev_output_changed_qref_kept', gcopy('F1e', edits={D3: e_file(dev_changed)}), gspec(), 2, '(re-processing check)')
     gate('F1f_qref_number_2_digits_off', gcopy('F1f', edits={D3: e_qref(lines_all(bump_num('u1', 0, 2), only=3))}), gspec(), 2,
-         'allowed: +-1 in the last printed digit', cli=True)
+         'exact equality required', cli=True)
     gate('F1f2_qref_number_2_digits_down', gcopy('F1f2', edits={D3: e_qref(lines_all(bump_num('dev', 5, -2), only=5))}), gspec(), 2,
-         'allowed: +-1 in the last printed digit')
-    n1_0 = sum(a['one_digit'] for a in rep0['authenticity'])
-    gate('F1g_qref_number_1_digit_off_silent', gcopy('F1g', edits={D3: e_qref(lines_all(bump_num('u1', 0, 1), only=3))}), gspec(), 4, 'GATE TEST-ONLY',
-         check=lambda r, o: (sum(a['one_digit'] for a in r['authenticity']) == n1_0 + 1, 'one-digit differences %d (baseline %d)' % (
-             sum(a['one_digit'] for a in r['authenticity']), n1_0)))
+         'exact equality required')
+    # fix round 5 (N1): exact equality.  CHANGED ASSERTION: was F1g_qref_number_1_digit_off_silent (rc 4, a one-digit difference allowed);
+    # the pinned program is bit-identical (reviewer probe P1), so a one-digit difference is now INPUT_ERROR
+    gate('F1g_qref_number_1_digit_off', gcopy('F1g', edits={D3: e_qref(lines_all(bump_num('u1', 0, 1), only=3))}), gspec(), 2, 'exact equality required')
+    gate('F1g2_qref_number_1_digit_down_dev', gcopy('F1g2', edits={D3: e_qref(lines_all(bump_num('dev', 5, -1), only=5))}), gspec(), 2, 'exact equality required')
     gate('F1h_qref_tq_changed_silent', gcopy('F1h', edits={D3: e_qref(lines_all(lambda l: re.sub(r' tq +[0-9.]+ \|', ' tq 99.99 |', l), only=2))}), gspec(), 4,
          'GATE TEST-ONLY')
     gate('F1i_prog_other_binary', B, gspec(), 2, 'differs from the required prog_sha', prog=qbin('log'))
@@ -1654,7 +1717,7 @@ def statistics_mean(v):
 
 def reproc_tests():
     """the gate's re-processing check (GATE.authenticate, the function the gate runs) on every kept dev5 dump of every repro run directory:
-    every number of the re-computed lines equal to qref.txt or within 1 in the last printed digit"""
+    every number of the re-computed lines exactly equal to qref.txt (fix round 5)"""
     for tag in sorted(os.listdir(os.path.join(W, 'runs'))):
         d = base(tag)
         if not os.path.isfile(os.path.join(d, 'qref.txt')):
@@ -1669,12 +1732,12 @@ def reproc_tests():
             nh = QP.check_dump_headers(d, rspec, allow_v1=v1)
             x = dict(dir=d, run=run, lines=run.lines, kept=QP.kept_dumps(rspec), manifest=man)
             au = GATE.authenticate([x], {'prog_sha': sha_file(prog)}, prog)[0]
-            ok = au['dumps'] == len(x['kept']) == nh and au['numbers'] > 0 and au['equal'] + au['one_digit'] == au['numbers']
-            det = '%d dumps (headers checked %d), %d numbers, %d equal, %d within 1 in the last digit' % (au['dumps'], nh, au['numbers'], au['equal'], au['one_digit'])
+            ok = au['dumps'] == len(x['kept']) == nh and au['numbers'] > 0 and au['equal'] == au['numbers']
+            det = '%d dumps (headers checked %d), %d numbers, %d equal' % (au['dumps'], nh, au['numbers'], au['equal'])
         except Exception as e:
             ok, det = False, '%s: %s' % (type(e).__name__, str(e)[:200])
         LAST['rc'] = 0 if ok else 2
-        record('reproc_' + tag, 'equal or +-1 last digit', ok, det)
+        record('reproc_' + tag, 'all numbers equal', ok, det)
 
 
 # ---------------------------------------------------------------- dump mutations
@@ -1780,6 +1843,17 @@ def dump_tests():
     dd = d
     rc, out = sproc(dd, 'def', 3)
     record('dump_reprocess_refused', 'rc 1: exists', rc == 1 and 'exists' in out, out.strip().split('\n')[-1][:100])
+    # fix round 5 (M1), the reviewer's probe in small: a thinned run (s_def, cover 1, KEEP 3: 6 of 16 dumps kept for re-processing) against a
+    # spec that pins keep and min_reprocessed.  Refused for keep (spec 0) and for too few kept dumps (spec keep 3, min_reprocessed 7); both
+    # checks come before the version 1 refusal, which ends the silent case (spec keep 3, min_reprocessed 6)
+    os.makedirs(gdir(), exist_ok=True)
+    v1env = dict(gspec()['env_roles']['main'], ALF_GPU_TAUDIAG_QREF='1', ALF_GPU_TAUDIAG_FROM='399')
+    sv1 = lambda **kw: gspec(qs=1, cover=1, env_roles={'main': v1env}, n_runs={'main': 1}, controls=[], members={'main': mlist(NUL_DEF)},     # noqa: E731
+                             seeds={'main': [seeds_of('s_def')]}, binary_sha256=prov_of('s_def', 'binary_sha256'), **kw)
+    gate('M1_thinned_run_keep_3_spec_keep_0', [dd], sv1(keep=0, min_reprocessed=6), 2, 'processed with keep 3, the spec says 0')
+    gate('M1_thinned_run_6_kept_min_reprocessed_7', [dd], sv1(keep=3, min_reprocessed=7), 2, '6 kept dumps to re-process, the spec requires at least min_reprocessed 7')
+    gate('M1_thinned_run_6_kept_min_reprocessed_6_silent', [dd], sv1(keep=3, min_reprocessed=6), 2, 'only with allow_v1',
+         check=lambda r, o: ('min_reprocessed' not in o and 'processed with' not in o, 'keep and min_reprocessed accepted; refused later as version 1'))
     # the keep rule at the processing: KEEP 8 (gcd(8, 8) = 8) is refused before anything runs
     d, files = mkdumpdir('keep_rule_refused', 'def', src_tag='s_def', ndump=16)
     rc, out = sproc(d, 'def', 8)
@@ -1929,6 +2003,33 @@ def dump_tests():
     rc, out = sh(['bash', os.path.join(HERE, 't207_d5_proc.sh'), d, 'def', '0', NU, '0', '0'], env=env)
     record('dump_src_sha256_not_this_source', 'rc 1: refusing, nothing written', rc == 1 and 'built from this source' in out and not os.path.exists(os.path.join(d, 'qref.txt'))
            and not os.path.exists(os.path.join(d, 'qref_spec.json')), out.strip().split('\n')[-1][:100])
+    # fix round 5 (N2): end-to-end device FAIL through the real processing.  The device output (every entry of the dev block) of every kept
+    # dump of the three main runs scaled by (1 + 1e-6), t207_d5_proc.sh run on the copies with the arguments of the repro runs (qs 20, the
+    # default null codes, hostin 0, cover 40, keep 0), the gate CLI on them plus the unchanged control run: FAIL (device above the bound)
+    # with the real re-processing step (which agrees with the new qref.txt)
+    n2dirs = []
+    n2ok = True
+    for tag in GSET[:3]:
+        d, files = mkdumpdir('N2_' + tag, 'def', src_tag=tag)
+        for f in files:
+            fp = os.path.join(d, 'qref', f)
+            h, n, off = dump_layout(fp, False)
+            with open(fp, 'r+b') as g:
+                g.seek(off['dev'])
+                blk = g.read(64 * n * n)
+                v = struct.unpack('<%dd' % (8 * n * n), blk)
+                g.seek(off['dev'])
+                g.write(struct.pack('<%dd' % (8 * n * n), *[x * (1 + 1e-6) for x in v]))
+        rc, out = proc(d, 'def', 0, qs='20', nul=','.join(str(c) for c in NUL_DEF))
+        n2ok = n2ok and rc == 0
+        n2dirs.append(d)
+    record('N2_proc_on_scaled_device_dumps', 'rc 0 for the 3 runs', n2ok, 'processing of the scaled dumps: %s' % ('ok' if n2ok else last(out)))
+    os.makedirs(gdir(), exist_ok=True)
+    gate('N2_device_scaled_1e-6_every_kept_dump_end_to_end_FAIL', n2dirs + [base('c_def_dev1_q20')], gspec(), 1, 'gate acc_pTT: device', cli=True,
+         check=lambda r, o: (all(a['source'] == 'program' and a['equal'] == a['numbers'] > 0 for a in r['authenticity']) and r['gates'][0]['device_value'] > BOUND,
+                             'device %+.4f > %.2f, re-processing all equal' % (r['gates'][0]['device_value'], BOUND)))
+    for d in n2dirs:
+        shutil.rmtree(os.path.join(d, 'qref'))          # own dump copies (21 x 6 MB); the records of the test stay
     # the LOG path baseline (one run through the program with the LOG build); its proc record carries the program hash
     d, files = mkdumpdir('log_baseline', 'log')
     rc, out = proc(d, 'log', 0)

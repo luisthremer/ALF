@@ -23,9 +23,14 @@
 #   These records sit in the run directory and can be rewritten together with what they describe: they detect accidents, not forgery.  The
 #   gate re-runs the program on the kept dumps (authenticity of the numbers of those dumps); binding qref.txt, qref_proc.json and the manifest
 #   to the run beyond that is the harness's job (207-5: stamps of all of them in the attempt log outside the run directory).
-#   The gate (t207_d5_gate.py) refuses a run processed with DUMP_COVER != 1 (unless its spec is marked test_only) or ALLOW_V1 (always).
+#   The gate (t207_d5_gate.py) refuses a run processed with DUMP_COVER != 1 (unless its spec is marked test_only) or ALLOW_V1 (always),
+#   and (fix round 5) a run whose QS, NULCODES, HOSTIN or KEEP differ from its spec or that keeps fewer dumps than the spec's min_reprocessed;
+#   it re-computes the kept dumps and demands the qref.txt lines of them exactly (timing tq aside).
 #   4 OpenMP threads, OpenBLAS 1 thread.
-W=${D5W:-$HOME/alf-gpu/work/t207/dev5}; export TMPDIR=$W/tmp; . ~/alf-gpu/env/gnu.sh > /dev/null
+#   Environment: ~/alf-gpu/env/gnu.sh is sourced only if it exists (it does on nividia; the intel machine has no such file, there the
+#   caller's environment is used as it is; the program binary itself needs no LD_LIBRARY_PATH on nividia, see program_env in the gate).
+W=${D5W:-$HOME/alf-gpu/work/t207/dev5}; export TMPDIR=$W/tmp
+if [ -f ~/alf-gpu/env/gnu.sh ]; then . ~/alf-gpu/env/gnu.sh > /dev/null; fi
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 R=$1; P=$2; QS=$3; NUL=$4; HI=$5; KEEP=$6; COVER=${DUMP_COVER:-1}; V1=""; [ -n "$ALLOW_V1" ] && V1=--allow-v1
 PY=~/alf-gpu/venv/bin/python3
