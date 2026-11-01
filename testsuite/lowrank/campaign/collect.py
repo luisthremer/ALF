@@ -9,7 +9,9 @@ One row per run of campaign.json, from the latest attempt runs/<id>/<latest>/: r
 sweep != sum of the nine categories, flush_unattributed != 0, or sweep + bin_overhead off info's CPU Time by > 1 %). Exit 1 if an OK run lacks a required key, a .prov
 file repeats a key, a run appears twice, or the job script's sha256 differs from campaign.json. Runs whose status is
 not OK (FAILED, INVALID pinning, or info contradicting the request) are excluded from the statistics and listed with the
-reason; runs never started are listed as missing. --strict also fails on any required field reading "unknown" or
+reason; runs never started are listed as missing. A run truncated by CPU_MAX (description key cpu_max_h: info has "Prog will
+stop after hours" and "Effective number of bins", no "Bins" line) is valid: seconds per sweep = CPU Time / (NSweep x bins
+written), rows carry truncated / bins_done / sweeps_done; the campaign's "pilot" flag is copied to collected.json. --strict also fails on any required field reading "unknown" or
 "unavailable(...)", and on cluster profiles (not 'local') on i_mpi_root=unset and on omp_affinity "none printed" with
 THREADS > 1; --allow KEY (repeatable; job./run./info. prefix optional) accepts a field a node legitimately lacks.
 Output: CAMPAIGN_DIR/collected.json (default) and a .tsv next to it.
@@ -133,8 +135,16 @@ def parse_info(path):
         "dtau_info": one(r"^\s*dtau,Ltrot_eff\s*:\s*(\S+)", _num),
         "sweeps_info": one(r"^\s*Sweeps\s*:\s*(\d+)", int),
         "bins_info": one(r"^\s*Bins\s*:\s*(\d+)", int),
+        # CPU_MAX > 0 (description key cpu_max_h): ALF sets NBin = 10^7, prints no "Bins" line, "Prog will stop after
+        # hours: <CPU_MAX>" at the start and " Effective number of bins : <n>" at the end (bins written)
+        "cpu_max_info": one(r"^\s*Prog will stop after hours:\s*(\S+)", _num),
+        "bins_effective": one(r"^\s*Effective number of bins\s*:\s*(\d+)", int),
         "model_info": one(r"^\s*Model is\s*:\s*(\S+)") or "n/a (not printed by this model)",
     }
+    d["truncated"] = d["cpu_max_info"] is not None
+    if d["truncated"]:
+        # a truncated run: the bins actually written (Effective number of bins) replace the requested NBin everywhere
+        d["bins_info"] = d["bins_effective"]
     s, mode, used, n0, ndim = parse_ndelay(text)
     d.update(scheme_used=s, n_delay_mode=mode, n_delay_used=used, n_delay_n0=n0, n_delay_ndim=ndim)
     if d["start_time"] and d["fin_time"] and d["cpu_time_s"] is not None:
@@ -291,7 +301,10 @@ def collect(cdir, strict=False, allow=()):
         row.update({"job." + k: v for k, v in job.items()})
         row.update({"run." + k: v for k, v in run.items()})
         row.update(info)
-        row["sec_per_sweep"] = info["cpu_time_s"] / (req["nsweep"] * req["nbin"])
+        # sweeps actually done: NSweep x bins written (= NBin unless the run was truncated by CPU_MAX)
+        row["bins_done"] = info["bins_info"]
+        row["sweeps_done"] = req["nsweep"] * info["bins_info"]
+        row["sec_per_sweep"] = info["cpu_time_s"] / row["sweeps_done"]
         # setup = launch wall time (job script, around the launcher) - CPU Time (info: sweep phase only, the timer is
         # restarted after the initial Green function): MPI start-up, Hamiltonian setup, initial stabilisation, output
         row["setup_s"] = round(float(run["wall_s"]) - info["cpu_time_s"], 3)
@@ -307,6 +320,9 @@ def collect(cdir, strict=False, allow=()):
         if row["timers"]:
             for w in row["timers"]["warnings"]:
                 warnings.append("%s: timers: %s" % (rid, w))
+            if info["truncated"] and len(row["timers"]["sweeps"]) != info["bins_info"]:
+                warnings.append("%s: timers: timers.txt has %d bins, info's effective number of bins is %s"
+                                % (rid, len(row["timers"]["sweeps"]), info["bins_info"]))
             tsum = sum(e[TIMER_TOTAL]["rank0"] + e["bin_overhead"]["rank0"] for e in row["timers"]["timers"].values())
             row["timers_vs_cpu_time"] = tsum / info["cpu_time_s"] if info["cpu_time_s"] else None
             if row["timers_vs_cpu_time"] is not None and abs(row["timers_vs_cpu_time"] - 1.0) > 0.01:
@@ -321,7 +337,16 @@ def collect(cdir, strict=False, allow=()):
             want = {0: "auto", -1: "auto+tune"}.get(nd, "fixed")
             if not info["n_delay_mode"].startswith(want) or (want == "fixed" and info["n_delay_used"] != nd):
                 problems.append("N_delay %s/%s in info, requested %s" % (info["n_delay_mode"], info["n_delay_used"], nd))
-        if info["sweeps_info"] != req["nsweep"] or info["bins_info"] != req["nbin"]:
+        if req.get("cpu_max_h") is not None or info["truncated"]:
+            # truncated run (CPU_MAX): the number of bins is whatever fitted into the budget (>= 1)
+            if req.get("cpu_max_h") is None or not info["truncated"]:
+                problems.append("CPU_MAX %s in info, requested cpu_max_h %s" % (info["cpu_max_info"], req.get("cpu_max_h")))
+            elif abs(info["cpu_max_info"] - req["cpu_max_h"]) > 6e-5:      # info prints F8.4
+                problems.append("CPU_MAX %s in info, requested %s" % (info["cpu_max_info"], req["cpu_max_h"]))
+            if info["sweeps_info"] != req["nsweep"] or not info["bins_info"] or info["bins_info"] < 1:
+                problems.append("sweeps/effective bins %s/%s in info, requested %s sweeps per bin"
+                                % (info["sweeps_info"], info["bins_info"], req["nsweep"]))
+        elif info["sweeps_info"] != req["nsweep"] or info["bins_info"] != req["nbin"]:
             problems.append("sweeps/bins %s/%s in info, requested %s/%s"
                             % (info["sweeps_info"], info["bins_info"], req["nsweep"], req["nbin"]))
         if abs(info["beta_info"] - req["beta"]) > 1e-9 or abs(info["dtau_info"] - req["dtau"]) > 1e-9:
@@ -349,7 +374,7 @@ def collect(cdir, strict=False, allow=()):
         rows.append(row)
     if strict_bad:
         raise CollectError("--strict: fields without a real value:\n  " + "\n  ".join(strict_bad))
-    return {"campaign_id": cid, "campaign_dir": os.path.abspath(cdir), "campaign_json_sha256": sha256(cj_path),
+    return {"campaign_id": cid, "pilot": bool(camp.get("pilot", False)), "campaign_dir": os.path.abspath(cdir), "campaign_json_sha256": sha256(cj_path),
             "collector_sha256": sha256(os.path.abspath(__file__)),
             "collected_at": datetime.datetime.now().isoformat(timespec="seconds"),
             "rows": rows, "excluded": excluded, "missing": missing, "warnings": warnings}
@@ -357,7 +382,7 @@ def collect(cdir, strict=False, allow=()):
 
 TSV_COLS = ["run_id", "point", "L", "layout", "scheme", "n_delay_requested", "n_delay_mode", "n_delay_used",
             "repetition", "sec_per_sweep", "acceptance", "setup_s", "run.max_rss_kb", "commit", "job.node",
-            "job.cpu_model", "job.mkl_isa", "job.fakeintel", "timers_present", "info_sha256"]
+            "job.cpu_model", "job.mkl_isa", "job.fakeintel", "timers_present", "info_sha256", "truncated", "bins_done"]
 
 
 def main(argv):

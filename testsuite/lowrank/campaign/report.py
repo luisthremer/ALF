@@ -16,6 +16,9 @@ Tables:
      mean over ranks, median over repetitions, share of `sweep` (their sum); `sweep` of the slowest rank and
      `bin_overhead` shown separately (not categories); counters per sweep; flush_unattributed != 0 flagged.
 Excluded (FAILED / INVALID) and missing runs are listed with their status.
+Pilot campaigns (description key pilot, 1 repetition): every table heading carries "pilot (1 repetition, no spread)" (and
+the campaign ids if only some inputs are pilots). Runs truncated by CPU_MAX (cpu_max_h) are marked in table 1: their
+s/sweep uses the sweeps actually done (bins written x NSweep).
 """
 import hashlib
 import json
@@ -99,6 +102,10 @@ def main(argv):
     for r in rows:
         r["machine"] = "%s / %s" % (r["job.cluster"], r["job.cpu_model"])
     machine = single(rows, "machine", "machines")
+    pilot_ids = sorted(d["campaign_id"] for d in data if d.get("pilot"))
+    PILOT = ""
+    if pilot_ids:
+        PILOT = " - pilot (1 repetition, no spread)" + ("" if len(pilot_ids) == len(data) else ": " + ", ".join(pilot_ids))
     L = []
     L.append("# Benchmark campaign report: %s" % ", ".join(sorted(set(d["campaign_id"] for d in data))))
     L.append("")
@@ -113,6 +120,13 @@ def main(argv):
                        ("job.fakeintel", "fakeintel"), ("job.mpi_version", "MPI"), ("job.ear", "EAR"),
                        ("job.governor_job_start", "Governor")):
         L.append("- %s: %s" % (label, "; ".join(sorted(set(str(r.get(key)) for r in rows)))))
+    if pilot_ids:
+        L.append("- **Pilot campaign (1 repetition, no spread)%s: medians are single measurements, ranges and spreads are "
+                 "meaningless.**" % ("" if len(pilot_ids) == len(data) else ": " + ", ".join(pilot_ids)))
+    trunc_rows = [r for r in rows if r.get("truncated")]
+    if trunc_rows:
+        L.append("- **%d run(s) truncated by CPU_MAX (graceful stop after a bin): s/sweep uses the sweeps actually done.**"
+                 % len(trunc_rows))
     L.append("- Runs: %d valid, %d excluded, %d missing" % (len(rows), sum(len(d["excluded"]) for d in data),
                                                              sum(len(d["missing"]) for d in data)))
     L.append("")
@@ -137,12 +151,15 @@ def main(argv):
         rss = statistics.median(float(x["run.max_rss_kb"]) for x in g) / 1024.0
         upper = any(x.get("rss_upper_bound") for x in g)
         T.append([k[0], k[1], k[2], k[3], k[4], k[5], ",".join(sorted(set(str(x["n_delay_used"]) for x in g))),
-                  "%d%s" % (len(g), " (<3!)" if len(g) < 3 else ""), m, "[%s, %s]" % (fmt(min(sps)), fmt(max(sps))),
+                  "%d%s%s" % (len(g), " (<3!)" if len(g) < 3 else "",
+                              " (%d truncated, %s bins)" % (sum(1 for x in g if x.get("truncated")),
+                                                           "/".join(str(x["bins_done"]) for x in g if x.get("truncated")))
+                              if any(x.get("truncated") for x in g) else ""), m, "[%s, %s]" % (fmt(min(sps)), fmt(max(sps))),
                   "%.1f %%" % (100.0 * (max(sps) - min(sps)) / m) if m else "-",
                   (std / m) if std else None, statistics.median(x["acceptance"] for x in g),
                   statistics.median(x["setup_s"] for x in g),
                   ("<= %s (sacct, job level)" % fmt(rss)) if upper else rss])
-    L.append("## 1. Time per sweep (median and range over repetitions)")
+    L.append("## 1. Time per sweep (median and range over repetitions)" + PILOT)
     L.append("")
     if few:
         L.append("**%d of %d groups have fewer than 3 valid repetitions (marked `<3!`): median and range are not "
@@ -156,7 +173,7 @@ def main(argv):
              "bound for the run).")
     L.append("")
 
-    L.append("## 2. Layouts: node throughput (ranks / s per sweep)")
+    L.append("## 2. Layouts: node throughput (ranks / s per sweep)" + PILOT)
     L.append("")
     T = []
     for k, g in groups.items():
@@ -167,7 +184,7 @@ def main(argv):
                     "median s/sweep", "node sweeps/s"], T))
     L.append("")
 
-    L.append("## 3. Timing split (T1 timers.txt; bins >= 2; median over repetitions)")
+    L.append("## 3. Timing split (T1 timers.txt; bins >= 2; median over repetitions)" + PILOT)
     L.append("")
     T, C, flagged = [], [], []
     for k, g in groups.items():
@@ -202,7 +219,7 @@ def main(argv):
         L.append("No run has a timers.txt (binary built without -DALF_TIMERS): timing split absent.")
     L.append("")
 
-    L.append("## 4. Excluded and missing runs")
+    L.append("## 4. Excluded and missing runs" + PILOT)
     L.append("")
     T = [[d["campaign_id"], e["run_id"], e["status"], e["attempts"], e.get("log", "-")] for d in data for e in d["excluded"]]
     T += [[d["campaign_id"], m["run_id"], "missing: " + m["status"], m["attempts"], "-"] for d in data for m in d["missing"]]
