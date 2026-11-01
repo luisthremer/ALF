@@ -7,7 +7,8 @@ DESCRIPTION.py is a python file that defines a dict CAMPAIGN (see README.md and 
   id, profile (name in profiles/ or a path), partition, binary (path on the target machine), build_info (default
   <binary>.build_info.txt), binary_sha256 (optional), fakeintel (on|off, default: profile), repetitions, seed,
   max_jobs_in_queue, max_attempts, template (parameter template dir; default <binary>.start written by build_info.sh,
-  else the current checkout's Start template with a warning), wall_safety, points = [
+  else the current checkout's Start template with a warning), wall_safety, pack_nodes (int >= 1, default 1; see
+  below), points = [
     {name, model, keys {KEY: VALUE} (make_params.py syntax), L [list], schemes [standard|delayed|submatrix],
      n_delay [ints >= -1; 0 = auto, -1 = auto+tune], nsweep, nbin (int or {L: int}), layouts ["RxT", ...],
      partial_node (allow ranks*threads != cores per node), n_fl, orbitals, sec_per_sweep_est (number or {L: number}),
@@ -17,6 +18,14 @@ Writes <root>/<id>/ (default root: <ALF>/runs/campaigns): campaign.json (resolve
 every script), campaign.env, jobs.list, jobs/<job>.sbatch, runs/<run_id>/input/{parameters,seeds}, scripts/
 (profile.sh, provenance.sh, rank_wrap.sh), submit_all.sh, logs/. One job = one point x L x layout x repetition with all
 schemes (standard once, every other scheme x n_delay), in an order rotated by the repetition index.
+
+Packed jobs (pack_nodes > 1, for partitions with a node limit and a short wall limit, e.g. the SuperMUC-NG test
+partition): the unit of scheduling is the RUN. Per layout (ranks x threads) all runs of the campaign are assigned to node
+slots by a deterministic first-fit-decreasing rule (runs sorted by estimated time, then run id; a slot takes a run if the
+slot's summed estimate, with wall_safety, setup and the 5 min margin, still fits the partition limit); the slots, in
+creation order, are cut into jobs of at most min(pack_nodes, PARTITION_MAX_NODES of the profile) slots. A job has
+--nodes = its slots, every slot runs its runs one after the other on its own host, all slots concurrently
+(job_template_packed.sh). A single run that alone exceeds the limit is refused. --dry-run prints the packing.
 
 Refuses (exit 1): a profile containing the placeholder marker '[[' anywhere, or a description with a '[[...]]'
 placeholder in any string value; fewer than 3 repetitions for a non-local profile; ranks*threads != cores per node
@@ -37,7 +46,8 @@ ALF = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 MAKE_PARAMS = os.path.join(HERE, "..", "make_params.py")
 SCHEMES = ("standard", "delayed", "submatrix")
 PROFILE_VARS = ("PROFILE_NAME", "CORES_PER_NODE", "NODE_MEM_GB", "PARTITIONS", "ACCOUNT", "SBATCH_EXTRA",
-                "FAKEINTEL_DEFAULT")
+                "FAKEINTEL_DEFAULT", "PARTITION_MAX_NODES")
+SLOT_MARGIN_S = 120.0       # job start-up per slot (binary checks, node provenance, MKL probe), as in the one-node jobs
 
 
 def die(msg):
@@ -86,10 +96,13 @@ def read_profile(path):
     prof = {"name": vals["PROFILE_NAME"], "cores_per_node": int(vals["CORES_PER_NODE"]),
             "node_mem_gb": float(vals["NODE_MEM_GB"]), "account": vals["ACCOUNT"],
             "sbatch_extra": [l.strip() for l in vals["SBATCH_EXTRA"].splitlines() if l.strip()],
-            "fakeintel_default": vals["FAKEINTEL_DEFAULT"] or "off", "partitions": {}}
+            "fakeintel_default": vals["FAKEINTEL_DEFAULT"] or "off", "partitions": {}, "partition_max_nodes": {}}
     for item in vals["PARTITIONS"].split():
         name, minutes = item.split(":")
         prof["partitions"][name] = int(minutes)
+    for item in vals["PARTITION_MAX_NODES"].split():
+        name, nodes = item.split(":")
+        prof["partition_max_nodes"][name] = int(nodes)
     return prof
 
 
@@ -134,6 +147,29 @@ def nd_tag(nd):
     return "ndm%d" % (-nd) if nd < 0 else "nd%d" % nd
 
 
+def slot_wall_min(sum_s, safety):
+    """Wall minutes of a slot whose runs sum to sum_s seconds (as the one-node jobs: + start-up, x safety, + 5 min)."""
+    return int(math.ceil((sum_s + SLOT_MARGIN_S) * safety / 60.0)) + 5
+
+
+def pack_layout(items, max_wall_min, safety, max_slots):
+    """First-fit-decreasing assignment of runs to node slots, then slots -> jobs. items: dicts with run (the run record),
+    est (s), order (sort key inside a slot). Returns a list of jobs, each a list of slots {sum_s, items}."""
+    slots = []
+    for it in sorted(items, key=lambda x: (-x["est"], x["run"]["run_id"])):
+        for sl in slots:
+            if slot_wall_min(sl["sum_s"] + it["est"], safety) <= max_wall_min:
+                break
+        else:
+            sl = {"sum_s": 0.0, "items": []}
+            slots.append(sl)
+        sl["sum_s"] += it["est"]
+        sl["items"].append(it)
+    for sl in slots:
+        sl["items"].sort(key=lambda x: x["order"])
+    return [slots[i:i + max_slots] for i in range(0, len(slots), max_slots)]
+
+
 def build(desc, prof, profile_path):
     cid = desc["id"]
     if not re.match(r"^[A-Za-z0-9][A-Za-z0-9_-]*$", cid):
@@ -151,8 +187,18 @@ def build(desc, prof, profile_path):
     seed = int(desc["seed"])
     safety = float(desc.get("wall_safety", 1.5))
     prefix = "c_" + cid
+    pack = desc.get("pack_nodes", 1)
+    if isinstance(pack, bool) or not isinstance(pack, int) or pack < 1:
+        die("pack_nodes must be an integer >= 1 (got %r)" % (pack,))
+    node_limit = prof["partition_max_nodes"].get(part)
+    max_slots = pack
+    if pack > 1 and node_limit is not None and pack > node_limit:
+        sys.stderr.write("make_campaign.py: WARNING: pack_nodes = %d exceeds the %d nodes of partition %s: jobs are cut "
+                         "at %d nodes\n" % (pack, node_limit, part, node_limit))
+        max_slots = node_limit
     jobs, runs = [], []
-    for p in desc["points"]:
+    groups = {}             # packed mode: (ranks, threads, layout) -> run items
+    for pidx, p in enumerate(desc["points"]):
         name = p["name"]
         if not re.match(r"^[A-Za-z0-9]+$", name):
             die("point name %r: letters and digits only" % name)
@@ -198,6 +244,26 @@ def build(desc, prof, profile_path):
                 if ranks * mem > 0.9 * prof["node_mem_gb"]:
                     die("point %s L=%d layout %s: memory estimate %d x %.2f GB > 90%% of %.0f GB node memory"
                         % (name, L, lay, ranks, mem, prof["node_mem_gb"]))
+                if pack > 1:
+                    run_est = setup + nsweep * nbin * sps
+                    if slot_wall_min(run_est, safety) > max_wall_min:
+                        die("point %s L=%d layout %s: a single run (setup + %d sweeps x %d bins) needs a wall estimate "
+                            "of %d min > %d min of partition %s: it cannot be packed (reduce nsweep/nbin or L, or use "
+                            "a partition with a longer limit)" % (name, L, lay, nsweep, nbin,
+                                                                 slot_wall_min(run_est, safety), max_wall_min, part))
+                    for rep in range(1, reps + 1):
+                        for pos, (s, nd) in enumerate(entries):
+                            rid = "%s_L%d_%s_r%d_%s" % (name, L, lay, rep, s) + ("" if s == "standard" else "_" + nd_tag(nd))
+                            rec = {"run_id": rid, "job": None, "point": name, "model": p.get("model", "?"),
+                                   "L": L, "ndim": ndim, "beta": beta, "dtau": dtau, "scheme": s,
+                                   "n_delay_requested": nd, "layout": lay, "ranks": ranks, "threads": threads,
+                                   "repetition": rep, "seed": seed + rep - 1, "nsweep": nsweep, "nbin": nbin,
+                                   "keys": keys}
+                            # order inside a slot: by point, L, repetition, then the scheme order rotated by the repetition
+                            order = (pidx, L, rep, (pos - (rep - 1)) % len(entries))
+                            groups.setdefault((ranks, threads, lay), []).append(
+                                {"run": rec, "est": run_est, "order": order, "mem": mem})
+                    continue
                 est_s = len(entries) * (setup + nsweep * nbin * sps) + 120.0
                 wall_min = int(math.ceil(est_s * safety / 60.0)) + 5
                 if wall_min > max_wall_min:
@@ -219,10 +285,44 @@ def build(desc, prof, profile_path):
                     jobs.append({"job": jname, "point": name, "L": L, "layout": lay, "ranks": ranks,
                                  "threads": threads, "repetition": rep, "runs": jruns, "wall_min": wall_min,
                                  "est_s": est_s, "mem_gb_per_rank": mem})
+    for (ranks, threads, lay), items in groups.items():
+        for jn, jslots in enumerate(pack_layout(items, max_wall_min, safety, max_slots), 1):
+            jname = "%s_pack_%s_%02d" % (prefix, lay, jn)
+            slot_info = []
+            for si, sl in enumerate(jslots):
+                for it in sl["items"]:
+                    it["run"]["job"] = jname
+                    it["run"]["slot"] = si
+                    runs.append(it["run"])
+                slot_info.append({"runs": [it["run"]["run_id"] for it in sl["items"]], "est_s": sl["sum_s"] + SLOT_MARGIN_S,
+                                  "wall_min": slot_wall_min(sl["sum_s"], safety)})
+            jobs.append({"job": jname, "layout": lay, "ranks": ranks, "threads": threads, "packed": True,
+                         "nodes": len(jslots), "slots": slot_info,
+                         "runs": [r for si in slot_info for r in si["runs"]],
+                         "wall_min": max(si["wall_min"] for si in slot_info),
+                         "est_s": max(si["est_s"] for si in slot_info), "node_s": sum(si["est_s"] for si in slot_info),
+                         "mem_gb_per_rank": max(it["mem"] for sl in jslots for it in sl["items"])})
     ids = [r["run_id"] for r in runs]
     if len(set(ids)) != len(ids):
         die("duplicate run ids (repeated L, layout or n_delay in a point?)")
-    return {"prefix": prefix, "fakeintel": fakeintel, "max_wall_min": max_wall_min, "jobs": jobs, "runs": runs}
+    return {"prefix": prefix, "fakeintel": fakeintel, "max_wall_min": max_wall_min, "jobs": jobs, "runs": runs,
+            "pack": pack, "max_slots": max_slots}
+
+
+def byid_runs(plan):
+    return {r["run_id"]: r for r in plan["runs"]}
+
+
+def print_packing(plan, byid):
+    """--dry-run of a packed campaign: per job its nodes and wall, per slot its runs and estimated wall."""
+    for j in plan["jobs"]:
+        print("job %s: layout %s, nodes=%d (one run queue per node), --time %s, %d runs" % (j["job"], j["layout"], j["nodes"],
+                                                                         hhmm(j["wall_min"]), len(j["runs"])))
+        for i, sl in enumerate(j["slots"]):
+            print("  slot %2d: %3d runs, estimated wall %5.1f min (%d min with safety and margin; limit %d)"
+                  % (i, len(sl["runs"]), sl["est_s"] / 60.0, sl["wall_min"], plan["max_wall_min"]))
+            for rid in sl["runs"]:
+                print("            %s" % rid)
 
 
 def hhmm(minutes):
@@ -279,6 +379,10 @@ def main(argv):
                "provenance.sh": os.path.join(HERE, "provenance.sh"), "rank_wrap.sh": os.path.join(HERE, "rank_wrap.sh"),
                "submit_all.sh": os.path.join(HERE, "submit_all.sh"), "profile.sh": profile_path,
                "make_params.py": MAKE_PARAMS, "description": desc_path, "template_parameters": tparams}
+    packed = plan["pack"] > 1
+    if packed:
+        scripts["job_template_packed.sh"] = os.path.join(HERE, "job_template_packed.sh")
+        scripts["node_prov.sh"] = os.path.join(HERE, "node_prov.sh")
     resolved = {"campaign_id": desc["id"], "profile": prof, "partition": desc["partition"], "binary": binary,
                 "build_info": build_info, "binary_sha256": bin_sha,
                 "template": os.path.dirname(os.path.abspath(tparams)), "fakeintel": plan["fakeintel"],
@@ -286,17 +390,25 @@ def main(argv):
                 "max_attempts": int(desc.get("max_attempts", 2)), "job_prefix": plan["prefix"],
                 "script_sha256": {k: sha256(v) for k, v in sorted(scripts.items())},
                 "description_text": desc_text, "jobs": plan["jobs"], "runs": plan["runs"]}
-    core_h = sum(j["est_s"] for j in plan["jobs"]) * prof["cores_per_node"] / 3600.0
-    core_h_lim = sum(j["wall_min"] for j in plan["jobs"]) * prof["cores_per_node"] / 60.0
+    if packed:
+        resolved["pack_nodes"] = plan["pack"]
+        resolved["pack_max_slots_per_job"] = plan["max_slots"]
+    core_h = sum(j.get("node_s", j["est_s"]) for j in plan["jobs"]) * prof["cores_per_node"] / 3600.0
+    core_h_lim = sum(j.get("nodes", 1) * j["wall_min"] for j in plan["jobs"]) * prof["cores_per_node"] / 60.0
     summary = ("campaign %s: %d jobs, %d runs, profile %s, partition %s; estimate %.1f core-h (wall limits: %.1f core-h, "
                "whole nodes of %d cores)" % (desc["id"], len(plan["jobs"]), len(plan["runs"]), prof["name"],
                                              desc["partition"], core_h, core_h_lim, prof["cores_per_node"]))
+    if packed:
+        summary += "; packed: pack_nodes = %d, at most %d slots per job, %d nodes in total" % (
+            plan["pack"], plan["max_slots"], sum(j["nodes"] for j in plan["jobs"]))
     if dry:
         print(summary)
+        if packed:
+            print_packing(plan, byid_runs(plan))
         return 0
 
     # job scripts (in memory first: their sha256 is part of campaign.json, which decides idempotency)
-    with open(os.path.join(HERE, "job_template.sh")) as f:
+    with open(os.path.join(HERE, "job_template_packed.sh" if packed else "job_template.sh")) as f:
         tmpl = f.read()
     sbatch_lines = ["#SBATCH --partition=%s" % desc["partition"]] if prof["name"] != "local" else []
     if prof["account"]:
@@ -305,11 +417,17 @@ def main(argv):
     byid = {r["run_id"]: r for r in plan["runs"]}
     job_text = {}
     for j in plan["jobs"]:
-        runlines = "\n".join("%s %s %s" % (rid, byid[rid]["scheme"], byid[rid]["n_delay_requested"]) for rid in j["runs"])
+        if packed:
+            runlines = "\n".join("%d %s %s %s" % (si, rid, byid[rid]["scheme"], byid[rid]["n_delay_requested"])
+                                 for si, sl in enumerate(j["slots"]) for rid in sl["runs"])
+        else:
+            runlines = "\n".join("%s %s %s" % (rid, byid[rid]["scheme"], byid[rid]["n_delay_requested"]) for rid in j["runs"])
         subst = {"JOB_NAME": j["job"], "RANKS": str(j["ranks"]), "THREADS": str(j["threads"]),
                  "WALL": hhmm(j["wall_min"]), "CAMPAIGN_ID": desc["id"],
                  "FAKEINTEL": plan["fakeintel"], "BINARY": binary, "BINARY_SHA256": bin_sha, "BUILD_INFO": build_info,
                  "MAX_ATTEMPTS": str(resolved["max_attempts"]), "RUNS": runlines}
+        if packed:
+            subst["NODES"] = str(j["nodes"])
         text = tmpl.replace("@@SBATCH_LINES@@\n", "".join(l + "\n" for l in sbatch_lines))
         for k, v in subst.items():
             text = text.replace("@@%s@@" % k, v)
@@ -329,11 +447,11 @@ def main(argv):
     for d in ("jobs", "runs", "scripts", "logs"):
         os.makedirs(os.path.join(C, d))
     for name, src in (("provenance.sh", scripts["provenance.sh"]), ("rank_wrap.sh", scripts["rank_wrap.sh"]),
-                      ("profile.sh", profile_path)):
+                      ("profile.sh", profile_path)) + ((("node_prov.sh", scripts["node_prov.sh"]),) if packed else ()):
         shutil.copyfile(src, os.path.join(C, "scripts", name))
     shutil.copyfile(scripts["submit_all.sh"], os.path.join(C, "submit_all.sh"))
     shutil.copyfile(desc_path, os.path.join(C, "description.py"))
-    for f in ("scripts/rank_wrap.sh", "submit_all.sh"):
+    for f in ("scripts/rank_wrap.sh", "submit_all.sh") + (("scripts/node_prov.sh",) if packed else ()):
         os.chmod(os.path.join(C, f), 0o755)
 
     for r in plan["runs"]:

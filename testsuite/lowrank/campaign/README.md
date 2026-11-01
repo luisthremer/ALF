@@ -22,6 +22,10 @@ Local side (`make_campaign.py`, `collect.py`, `report.py`): python3, stdlib only
    library, `BLAS_PROBE_CMD` = Task T2's `blas_bench` with tiny arguments, I_MPI_PMI_LIBRARY on Helma). The generator
    refuses a profile that still contains `[[` anywhere (profiles must not use the double-bracket test syntax) and a
    description with a `[[...]]` placeholder (regex `\[\[[^\]]*\]\]`) in any string value.
+   The SuperMUC profile is filled (account `pn73xu`, `PARTITIONS="test:30"`, `PARTITION_MAX_NODES="test:16"`, `--ear=off`,
+   `RUNTIME_ENV_SH` = the env file that `profile_setup` sources before `module load slurm_setup`, `BLAS_PROBE_CMD`); the controller
+   verifies once that sbatch accepts `--ear=off`. New profile items: `PARTITION_MAX_NODES` (`partition:nodes`), `NODE_HOST_CHECK`,
+   `profile_launch_on` (packed jobs). `job.prov` records `runtime_env_sh` and its sha256.
 3. **Parameter template.** `build_info.sh` also freezes `Scripts_and_Parameters_files/Start/{parameters,seeds}` of the
    build tree as `<binary>.start/`; `make_campaign.py` uses it by default when it exists locally (local profile), else
    the description's `template`, else the current checkout's template with a warning. For a cluster campaign copy the
@@ -41,13 +45,64 @@ Local side (`make_campaign.py`, `collect.py`, `report.py`): python3, stdlib only
    `<id>/submit_all.sh [--dry-run] [--wait SECONDS]`.
 7. **Copy back** and run `collect.py <id> --strict`, then `report.py <id>/collected.json --out report.md`.
 
+## Packed jobs (pack_nodes)
+
+Why: the SuperMUC-NG allocation may use only the `test` partition: at most 16 nodes x 48 cores and 30 min per job, **only one
+test job runs at a time and at most 3 may be submitted (queued)**. One exclusive 1-node job per (point x L x layout x
+repetition) would need ~90 sequential half-hour jobs, and at large N the schemes of one job do not fit 30 min together. A
+packed job has up to 16 nodes, every node runs its own queue of runs, all nodes concurrently.
+
+`pack_nodes` (optional top-level key of the description, int >= 1, default 1). **`pack_nodes = 1` is the one-node job
+described above, unchanged** (job scripts, run inputs, `jobs.list`, `campaign.env`, `submit_all.sh` are byte-identical to
+the generator before this key existed; `campaign.json` only gains the profile's `partition_max_nodes` and the new script
+hashes). With `pack_nodes > 1` the generator packs RUNS, not jobs:
+
+- **Unit of scheduling**: one run = point x L x scheme x N_delay x layout x repetition. Estimate per run =
+  `setup_s_est + nsweep x nbin x sec_per_sweep_est`; a slot's wall = `ceil((sum of its runs + 120 s) x wall_safety / 60) + 5`
+  min (the one-node formula, the 120 s start-up and the 5 min margin once per slot, because the slots start concurrently).
+- **Slots**: per layout (ranks x threads; jobs never mix layouts) all runs are sorted by estimate (descending, then run id)
+  and put into the first slot where the slot's wall still fits the partition limit (first-fit-decreasing, deterministic);
+  a new slot is opened otherwise. A single run that alone exceeds the limit is refused ("a single run ... cannot be packed").
+- **Jobs**: the slots, in creation order, are cut into jobs of at most `min(pack_nodes, PARTITION_MAX_NODES[partition])` slots
+  (a larger `pack_nodes` is cut with a warning). `#SBATCH --nodes=<slots> --ntasks-per-node=RANKS --cpus-per-task=THREADS
+  --exclusive --no-requeue`, `--time` = the longest slot. Job names `c_<id>_pack_<layout>_<NN>`. Runs of one slot are ordered by
+  point, L, repetition and then the scheme order rotated by the repetition (as in the one-node jobs). All runs of one
+  (point, L, repetition) are not forced onto different nodes.
+- `make_campaign.py --dry-run` prints the packing: per job its nodes and `--time`, per slot its runs and the estimated wall.
+- **Inside the job** (`job_template_packed.sh`): job-level checks and provenance once (binary / build info, `profile_setup`,
+  Slurm job, MPI, modules, environment; `job.prov`); host list from `scontrol show hostnames "$SLURM_JOB_NODELIST"`; slot i
+  (a background subshell) runs on host i through the profile function `profile_launch_on HOST RANKS THREADS CMD ...`
+  (SuperMUC: `mpiexec -hosts "$host" -n "$np" -ppn "$np" "$@"`; local profile: HOST ignored; Helma: `srun --nodelist`, untested).
+  The job waits for all slots and prints one status line per slot (also in `job.status`): `slot 1 host=H rc=R runs=N ok=.. failed=..
+  invalid=.. not_run=..`. A failing run does not stop its slot (as before); a slot that cannot start stops only itself
+  (its runs become `NOT_RUN`, earlier FAILED/INVALID are kept); the others continue. The job's rc is 0 only if every slot's is.
+  SIGTERM (time limit) is forwarded to the slots: each marks its running run `FAILED rc=143` and its remaining runs `NOT_RUN`,
+  and kills its launcher's process tree.
+- **Node-level provenance** (`lscpu`, `numactl`, `free`, cpufreq state, hostname) is taken ON each host by `scripts/node_prov.sh`,
+  started through the same launcher (`profile_launch_on HOST 1 1 ...`; chosen over `srun -w HOST` so that one mechanism, the
+  profile's launcher, is used and tested for everything, and no `srun` is needed on SuperMUC where the launcher is `mpiexec`).
+  The slot compares the hostname it ran on with the requested host (`NODE_HOST_CHECK=1` in the cluster profiles) and aborts
+  if the launcher ignored `-hosts`. The MKL probe runs once per host with the slot's launcher and per-rank wrapper; a
+  failing probe aborts that slot. Layout: `jobs/<job>/job_<id>/job.prov` (job level, once), `slot_<i>/{node.prov, lscpu.txt, numactl.txt,
+  free.txt, mkl_probe/, node_prov.out, job.prov, slot.rc, abort_reason.txt}`; the slot's `job.prov` = job part + node part, and
+  each run's `run.prov` has `job_prov = jobs/<job>/job_<id>/slot_<i>/job.prov` plus `slot` and `slot_host`. The run directories,
+  attempts and status files are unchanged, so `collect.py` / `report.py` read packed campaigns without change (`job.node`,
+  `job.cpu_model`, ... are those of the run's node).
+- **Resubmission** (`submit_all.sh`, unchanged): a job with pending runs is submitted again as a whole (same `--nodes`); OK runs are
+  skipped inside the slots, so slots without pending runs finish at once, but their nodes stay allocated until the job ends.
+- **SuperMUC-NG test partition** (profile `supermuc.sh`: `PARTITIONS="test:30"`, `PARTITION_MAX_NODES="test:16"`): use
+  `pack_nodes = 16` and **`max_jobs_in_queue = 3`**. `submit_all.sh` then keeps at most 3 jobs queued; the queue serialises the test
+  jobs (one runs at a time), so a campaign of J packed jobs takes about J x 30 min wall. Run `submit_all.sh --wait 300` (or call it
+  again later) until all jobs are done. A slot's estimated wall must stay <= 30 min, so the number of runs per slot is small at
+  large N; the dry-run shows the slots.
+
 ## Generated campaign directory
 
 | path | content |
 |---|---|
 | `campaign.json` | resolved description, profile values, run list (requested model, L, beta, dtau, scheme, N_delay, layout, repetition, seed, NSweep, NBin), sha256 of every script and job script |
 | `jobs/<job>.sbatch` | one job = one point x L x layout x repetition with all schemes (standard once, each other scheme x N_delay), order rotated by the repetition; `--exclusive --no-requeue`; submitted from the campaign dir |
-| `jobs/<job>/job_<slurmid>/` | `job.prov` (job provenance), raw dumps (`lscpu.txt`, `numactl.txt`, `free.txt`, `scontrol.txt`, `modules.txt`, `env.txt`, `mpi_version.txt`), `mkl_probe/`, `job.status` |
+| `jobs/<job>/job_<slurmid>/` | `job.prov` (job provenance), raw dumps (`lscpu.txt`, `numactl.txt`, `free.txt`, `scontrol.txt`, `modules.txt`, `env.txt`, `mpi_version.txt`), `mkl_probe/`, `job.status` (packed jobs: per-slot subdirectories, see "Packed jobs") |
 | `runs/<run>/input/` | `parameters`, `seeds` (made locally by `make_params.py`; the cluster needs no python) |
 | `runs/<run>/a<k>/` | attempt k: ALF output, `run.prov`, `rank_alf_<r>.prov`, `rss_<r>.txt`, `pin_map.txt`, `omp_affinity.txt`, `stdout.log`, `stderr.log` |
 | `runs/<run>/status` | `OK` / `FAILED rc=... reason` / `INVALID pinning: ...` / `NOT_RUN ...` / `RUNNING ...` (history in `status.history`), `latest` names the attempt |
@@ -129,7 +184,12 @@ with TIMER_RATE); excluded and missing runs.
 
 ```bash
 testsuite/lowrank/campaign/tests/run_local_test.sh runs/campaign_test/bin/ALF_mpi.out runs/campaign_test/bin/ALF_nompi.out
+testsuite/lowrank/campaign/tests/run_pack_test.sh   runs/campaign_test/bin/ALF_mpi.out runs/campaign_test/bin/ALF_nompi.out
 ```
+`run_pack_test.sh` (about 35 s, at most 3 processes) tests packed jobs with `tests/campaign_pack_test.py`: `pack_nodes = 1`
+unchanged, refusals, `--dry-run` packing, the slot assignment against an independent first-fit-decreasing, the job script,
+concurrent slots on fake hosts `shimnode1..3` (sbatch shim `--nodes=N`, `scontrol show hostnames` shim, srun shim host log,
+`SHIM_PROBE_FAIL_HOST`), a failing run, a failing slot, collect/report, resubmission, SIGTERM, the host check.
 Uses the `local` profile with the PATH shims in `tests/shims` (`sbatch` runs the job synchronously, `srun` launches via
 MPICH `mpirun` for > 1 rank and prints emulated cpu-bind masks, `squeue`, `scontrol`, `lscpu`, `numactl`, `free`,
 `taskset`, `module`, `blas_probe`; failure knobs `SHIM_SRUN_FAIL_MATCH`, `SHIM_SRUN_TERM_MATCH`,

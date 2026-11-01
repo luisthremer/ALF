@@ -4,6 +4,8 @@
 # Failure injection for the tests (matched against the working directory, i.e. the run's attempt directory):
 #   SHIM_SRUN_FAIL_MATCH=<substring>  exit 137 without starting CMD (simulates an OOM kill)
 #   SHIM_SRUN_TERM_MATCH=<substring>  send SIGTERM to the batch script (simulates the time limit), exit 143
+#     (the batch script's pid is SHIM_BATCH_PID, set by the sbatch shim; else the grandparent)
+# SHIM_LAUNCH_HOST (set by the local profile's profile_launch_on): "<cwd> <host>" is appended to $SHIM_STATE/launch_hosts
 #   SHIM_SRUN_PIN_OVERLAP_MATCH=<substring>  print every task with task 0's mask (overlapping domains), then run
 n=1; t=1; verbose=0
 while [ $# -gt 0 ]; do
@@ -17,12 +19,13 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
+[ -n "$SHIM_LAUNCH_HOST" ] && [ -n "$SHIM_STATE" ] && echo "$PWD $SHIM_LAUNCH_HOST" >> "$SHIM_STATE/launch_hosts"
 if [ -n "$SHIM_SRUN_FAIL_MATCH" ] && case "$PWD" in *"$SHIM_SRUN_FAIL_MATCH"*) true ;; *) false ;; esac; then
     echo "srun: error: task 0: Out Of Memory (shim)" >&2
     exit 137
 fi
 if [ -n "$SHIM_SRUN_TERM_MATCH" ] && case "$PWD" in *"$SHIM_SRUN_TERM_MATCH"*) true ;; *) false ;; esac; then
-    job="$(ps -o ppid= -p "$PPID" | tr -d ' ')"
+    job="${SHIM_BATCH_PID:-$(ps -o ppid= -p "$PPID" | tr -d ' ')}"
     echo "srun: Job step aborted: time limit (shim, SIGTERM to batch script pid $job)" >&2
     kill -TERM "$job"
     exit 143

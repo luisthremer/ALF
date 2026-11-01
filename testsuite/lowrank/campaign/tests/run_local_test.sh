@@ -5,7 +5,7 @@
 #   runs/campaign_test/bin/ALF_mpi.out (2-rank layouts need MPI) and runs/campaign_test/bin/ALF_nompi.out, each with
 #   its parameter template <binary>.start/ (written by build_info.sh; the current Start template may not match).
 # Output under runs/campaign_test/ (git-excluded); every test uses fresh campaign ids (time stamp), nothing is deleted.
-# Checks: placeholder refusal (supermuc, helma); layout and memory refusal; generator idempotency; mini campaign
+# Checks: placeholder refusal (helma; the filled supermuc profile must pass); layout and memory refusal; generator idempotency; mini campaign
 # (Hubbard L=8, standard + delayed N_delay 8, layouts 1x1 and 2x2, 2 repetitions) end to end with collect --strict
 # (every provenance field filled from shims/fixtures, none unknown/unavailable); an injected FAILED run is excluded
 # and listed; a second submit_all.sh skips finished runs and re-runs only the failed one; MAX_ATTEMPTS gives up;
@@ -42,7 +42,11 @@ python3 -I "$HERE/test_collect.py" | tail -1 | grep -q 'ALL PASS' && pass "test_
 "$HERE/test_provenance.sh" "$T/unit_$STAMP" | tail -1 | grep -q 'ALL PASS' && pass "test_provenance.sh" || fail "test_provenance.sh"
 
 echo "== generator refusals"
-for p in supermuc helma; do
+# (the SuperMUC profile was filled in Task T4 and is no longer refused: it must pass the placeholder check, below)
+out="$(CAMPAIGN_TEST_PROFILE=supermuc $MK "$HERE/campaign_placeholder.py" --dry-run 2>&1)"; rc=$?
+expect "supermuc profile has no placeholders left (dry-run accepted) rc" "$rc" 0
+printf '%s\n' "$out" | grep -q "still contains placeholders" && fail "supermuc profile still has placeholders" || pass "supermuc: no placeholder message"
+for p in helma; do
     out="$(CAMPAIGN_TEST_PROFILE=$p $MK "$HERE/campaign_placeholder.py" --root "$ROOT" 2>&1)"; rc=$?
     expect "placeholder refusal $p rc" "$rc" 1
     printf '%s\n' "$out" | grep -q "still contains placeholders" && pass "placeholder message $p ($(printf '%s\n' "$out" | grep -c 'line '))" \
