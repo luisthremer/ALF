@@ -1344,7 +1344,7 @@ contains
             Rsh(m,:) = - Gsh(p,:,nf)
             Rsh(m,p) = Rsh(m,p) + 1.d0
          enddo
-         Rsh(1:r,:) = matmul(Ksh(1:r,1:r), Rsh(1:r,:))
+         Rsh(1:r,:) = dbg_mm(Ksh(1:r,1:r), Rsh(1:r,:))
          call ZGEMM('N', 'N', Ndim, Ndim, r, cmone, Csh, Ndim, Rsh, N_P_LIM, cone, Gsh(1,1,nf), Ndim)
       Enddo
       deallocate (Csh, Rsh)
@@ -1852,8 +1852,8 @@ contains
          else
             call Wrap_phi_g(nsigma_single, n_op, nf, nt, phi, g_loc)
             call Wrap_LR(n_op, nf, phi, g_loc, wkind, dir, L, Rt)
-            Gsh(Op_V(n_op,nf)%P,:,nf) = matmul(L(1:N,1:N), Gsh(Op_V(n_op,nf)%P,:,nf))
-            Gsh(:,Op_V(n_op,nf)%P,nf) = matmul(Gsh(:,Op_V(n_op,nf)%P,nf), transpose(Rt(1:N,1:N)))
+            Gsh(Op_V(n_op,nf)%P,:,nf) = dbg_mm(L(1:N,1:N), Gsh(Op_V(n_op,nf)%P,:,nf))
+            Gsh(:,Op_V(n_op,nf)%P,nf) = dbg_mm(Gsh(:,Op_V(n_op,nf)%P,nf), transpose(Rt(1:N,1:N)))
          endif
       Enddo
 #endif
@@ -2333,7 +2333,7 @@ contains
 #ifdef ALF_LOWRANK_DEBUG
       Do nf_eff = 1,N_FL_eff
          nf = Calc_Fl_map(nf_eff)
-         Gsh(:,:,nf) = matmul(Sm, matmul(Gsh(:,:,nf), Sminv))
+         Gsh(:,:,nf) = dbg_mm(Sm, dbg_mm(Gsh(:,:,nf), Sminv))
       Enddo
       dbg_n_carry = dbg_n_carry + 1
 #endif
@@ -2509,6 +2509,16 @@ contains
       endif
       Close(unit_dbg)
    end subroutine Lowrank_debug_summary
+
+!> Dense product A B for the debug shadow (ZGEMM: ifort -O3 -parallel -ipo turns matmul into matmul_mkl_c128, which the ALF
+!> link line does not provide, and -qopt-matmul- does not reach the link-time code generation).
+   function dbg_mm(A, B) result(C)
+      Implicit none
+      Complex (Kind=Kind(0.d0)), intent(in) :: A(:,:), B(:,:)
+      Complex (Kind=Kind(0.d0)) :: C(size(A,1), size(B,2))
+      call ZGEMM('N', 'N', size(A,1), size(B,2), size(A,2), cmplx(1.d0, 0.d0, kind(0.d0)), A, size(A,1), B, size(B,1), &
+           &     cmplx(0.d0, 0.d0, kind(0.d0)), C, size(A,1))
+   end function dbg_mm
 #endif
 
 end module Lowrank_update_mod
