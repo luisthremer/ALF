@@ -165,7 +165,7 @@ prov_job_env() {
     if [ -n "${RUNTIME_ENV_SH:-}" ]; then prov_kv "$f" runtime_env_sh_sha256 "$(prov_sha256 "$RUNTIME_ENV_SH")"
     else prov_kv "$f" runtime_env_sh_sha256 "n/a (profile sources none)"; fi
     env | LC_ALL=C sort > "$d/env.txt"
-    prov_kv "$f" pin_env "$(env | LC_ALL=C sort | grep -E '^(I_MPI_PIN|I_MPI_DEBUG|KMP_|OMP_PLACES|OMP_PROC_BIND|SLURM_CPU_BIND)' | tr '\n' ' ')"
+    prov_kv "$f" pin_env "$(env | LC_ALL=C sort | grep -E '^(I_MPI_PIN|I_MPI_DEBUG|I_MPI_JOB_RESPECT_PROCESS_PLACEMENT|KMP_|OMP_PLACES|OMP_PROC_BIND|SLURM_CPU_BIND)' | tr '\n' ' ')"
     prov_kv "$f" omp_num_threads "${OMP_NUM_THREADS:-unset}"
     prov_kv "$f" mkl_num_threads "${MKL_NUM_THREADS:-unset}"
     prov_kv "$f" mkl_dynamic "${MKL_DYNAMIC:-unset}"

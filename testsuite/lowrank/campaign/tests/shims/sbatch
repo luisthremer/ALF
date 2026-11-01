@@ -2,7 +2,7 @@
 # Test shim for sbatch: runs the batch script synchronously in the foreground (one job at a time, like a 1-node queue
 # that is always free), with the Slurm variables a batch job sees. State in $SHIM_STATE (job counter, job records).
 # --nodes=N > 1 (packed jobs): SLURM_JOB_NODELIST = shimnode[1-N] (fake host names, expanded by the scontrol shim),
-# SLURM_JOB_NUM_NODES = N; SHIM_BATCH_PID (the batch script's pid) lets the srun shim simulate the time limit.
+# SLURM_JOB_NUM_NODES = N (SHIM_NODELIST_REAL=1: the real host name N times); SHIM_BATCH_PID (the batch script's pid) lets the srun shim simulate the time limit.
 script="$1"
 [ -r "$script" ] || { echo "sbatch: cannot read $script" >&2; exit 1; }
 : "${SHIM_STATE:?SHIM_STATE not set}"
@@ -15,6 +15,8 @@ name="$(opt job-name)"; out="$(opt output)"; ntasks="$(opt ntasks)"; cpt="$(opt 
 excl=YES; grep -q '^#SBATCH --exclusive' "$script" && excl=NO
 host="$(hostname -s)"
 nodelist="$host"; [ "$nodes" -gt 1 ] && nodelist="shimnode[1-$nodes]"
+# SHIM_NODELIST_REAL=1: every node of the job is called like this machine (so the hostname checks of a packed job can pass)
+if [ "${SHIM_NODELIST_REAL:-0}" = 1 ]; then nodelist="$host"; i=1; while [ "$i" -lt "$nodes" ]; do nodelist="$nodelist,$host"; i=$((i + 1)); done; fi
 printf 'JobId=%s JobName=%s\n   Partition=%s NumNodes=%s NumTasks=%s CPUs/Task=%s\n   OverSubscribe=%s Contiguous=0\n   NodeList=%s BatchHost=%s\n   TimeLimit=%s Requeue=0\n' \
     "$id" "$name" "${part:-local}" "$nodes" "$ntasks" "$cpt" "$excl" "$nodelist" "$host" "$(opt time)" > "$SHIM_STATE/jobs/$id"
 out="$(printf '%s' "$out" | sed -e "s/%j/$id/g" -e "s/%x/$name/g")"

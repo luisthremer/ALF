@@ -23,8 +23,7 @@ Local side (`make_campaign.py`, `collect.py`, `report.py`): python3, stdlib only
    refuses a profile that still contains `[[` anywhere (profiles must not use the double-bracket test syntax) and a
    description with a `[[...]]` placeholder (regex `\[\[[^\]]*\]\]`) in any string value.
    The SuperMUC profile is filled (account `pn73xu`, `PARTITIONS="test:30"`, `PARTITION_MAX_NODES="test:16"`, `--ear=off`,
-   `RUNTIME_ENV_SH` = the env file that `profile_setup` sources before `module load slurm_setup`, `BLAS_PROBE_CMD`); the controller
-   verifies once that sbatch accepts `--ear=off`. New profile items: `PARTITION_MAX_NODES` (`partition:nodes`), `NODE_HOST_CHECK`,
+   `RUNTIME_ENV_SH` = the env file that `profile_setup` sources before `module load slurm_setup`, `BLAS_PROBE_CMD`); `sbatch --ear=off` was accepted on SuperMUC (job 5956005). New profile items: `PARTITION_MAX_NODES` (`partition:nodes`), `NODE_HOST_CHECK`,
    `profile_launch_on` (packed jobs). `job.prov` records `runtime_env_sh` and its sha256.
 3. **Parameter template.** `build_info.sh` also freezes `Scripts_and_Parameters_files/Start/{parameters,seeds}` of the
    build tree as `<binary>.start/`; `make_campaign.py` uses it by default when it exists locally (local profile), else
@@ -54,7 +53,9 @@ Local side (`make_campaign.py`, `collect.py`, `report.py`): python3, stdlib only
   until the budget is used and stops gracefully after the bin in which the limit is reached (the CPU_MAX clock starts after the
   Hamiltonian setup). So the run uses its whole budget regardless of `nbin`: **the run's wall estimate is `cpu_max_h*3600 +
   setup_s_est`** (in the one-node jobs and in the slot packing; `nbin` and `sec_per_sweep_est` may then be omitted). The generator's
-  3 x safety formula still applies on top.
+  wall formula (`wall_safety`, 120 s start-up, 5 min margin) still applies on top. If `sec_per_sweep_est` is given and one bin
+  (`NSweep x sec_per_sweep_est`) is longer than the budget, a warning is printed and the run is estimated at setup + one bin (ALF always
+  finishes the bin it is in).
 - info of such a run has "Prog will stop after hours: <CPU_MAX>" and, at the end, "Effective number of bins: <n>" instead of a "Bins"
   line. collect.py takes the bins written from there: `sec_per_sweep = CPU Time / (NSweep x bins written)` (not NSweep x NBin);
   rows carry `truncated`, `bins_done`, `sweeps_done`; a run whose info disagrees with the request (CPU_MAX missing or different,
@@ -104,9 +105,23 @@ hashes). With `pack_nodes > 1` the generator packs RUNS, not jobs:
   each run's `run.prov` has `job_prov = jobs/<job>/job_<id>/slot_<i>/job.prov` plus `slot` and `slot_host`. The run directories,
   attempts and status files are unchanged, so `collect.py` / `report.py` read packed campaigns without change (`job.node`,
   `job.cpu_model`, ... are those of the run's node).
+- **Frequency provenance and placement are node-local.** The clock state of every run (`governor_`, `freq_driver_`, `cur_freq_`,
+  `max_freq_`, `boost_` x `start`/`end`, plus `freq_host_start/end`) is read ON the slot's host (`node_prov.sh --freq` through
+  `profile_launch_on`, one extra 1-rank launch before and after the run), not on the batch host. After every run the generated
+  job compares the `rank_hosts` of the run with the slot's host (short names; `NODE_HOST_CHECK=1`): a mismatch makes the run
+  `INVALID placement: ranks ran on ..., expected ...` (never OK) and `run.prov` has `placement_check`. The SuperMUC profile sets
+  `I_MPI_JOB_RESPECT_PROCESS_PLACEMENT=0` so that `mpiexec -hosts H -n N -ppn N` is authoritative under Slurm (otherwise Intel MPI takes the
+  per-node counts from the allocation and may ignore `-hosts`), and keeps the `I_MPI_PIN*` settings; it also `unset FORT_BLOCKSIZE`
+  (as configure.sh does at build time). The hdf5 module of the build is not needed at run time (benchmark binaries have no HDF5).
+- **Cost estimate** (`--dry-run`, and the number a campaign approval uses): Slurm charges `nodes x` the job's elapsed time, every node
+  stays allocated until the longest slot ends, so the estimate of a packed job is `nodes x (longest slot estimate)`; also printed: the
+  upper bound `nodes x --time` and the busy time of the slots (utilisation). Per job the dry-run lists the node-h.
+- **Node limit**: a profile without a `PARTITION_MAX_NODES` entry for the partition caps packed jobs at 1 node (warning), never unbounded.
+- Slot 0 shares the batch host (host 0) with the other slots' `mpiexec` / `srun` clients and the bash slot loops (`batch_host` is in
+  `job.prov`); this perturbs slot 0 slightly.
 - **Resubmission** (`submit_all.sh`, unchanged): a job with pending runs is submitted again as a whole (same `--nodes`); OK runs are
   skipped inside the slots, so slots without pending runs finish at once, but their nodes stay allocated until the job ends.
-- **SuperMUC-NG test partition** (profile `supermuc.sh`: `PARTITIONS="test:30"`, `PARTITION_MAX_NODES="test:16"`): use
+- **SuperMUC-NG test partition** (profile `supermuc.sh`: `PARTITIONS="test:30"`, `PARTITION_MAX_NODES="test:16"`; `sbatch --ear=off` was accepted on SuperMUC, job 5956005): use
   `pack_nodes = 16` and **`max_jobs_in_queue = 3`**. `submit_all.sh` then keeps at most 3 jobs queued; the queue serialises the test
   jobs (one runs at a time), so a campaign of J packed jobs takes about J x 30 min wall. Run `submit_all.sh --wait 300` (or call it
   again later) until all jobs are done. A slot's estimated wall must stay <= 30 min, so the number of runs per slot is small at

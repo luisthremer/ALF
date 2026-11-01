@@ -1,0 +1,7 @@
+#!/bin/bash
+# Test shim for hostname: the real one, except SHIM_FAKE_HOSTNAME_MATCH=<substring> makes it print "fakehost.shim" when the working
+# directory contains the substring (a rank of that run then reports another host than its slot: placement check test).
+if [ -n "$SHIM_FAKE_HOSTNAME_MATCH" ]; then
+    case "$PWD" in *"$SHIM_FAKE_HOSTNAME_MATCH"*) echo "fakehost.shim"; exit 0 ;; esac
+fi
+exec /bin/hostname "$@"

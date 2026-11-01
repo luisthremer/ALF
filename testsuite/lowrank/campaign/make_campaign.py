@@ -205,7 +205,11 @@ def build(desc, prof, profile_path):
         die("pack_nodes must be an integer >= 1 (got %r)" % (pack,))
     node_limit = prof["partition_max_nodes"].get(part)
     max_slots = pack
-    if pack > 1 and node_limit is not None and pack > node_limit:
+    if pack > 1 and node_limit is None:
+        sys.stderr.write("make_campaign.py: WARNING: profile %s has no PARTITION_MAX_NODES entry for partition %s: packed jobs "
+                         "are capped at 1 node (add 'partition:nodes' to PARTITION_MAX_NODES)\n" % (prof["name"], part))
+        max_slots = 1
+    elif pack > 1 and pack > node_limit:
         sys.stderr.write("make_campaign.py: WARNING: pack_nodes = %d exceeds the %d nodes of partition %s: jobs are cut "
                          "at %d nodes\n" % (pack, node_limit, part, node_limit))
         max_slots = node_limit
@@ -245,6 +249,12 @@ def build(desc, prof, profile_path):
             # estimated time of one run: the nominal NSweep x NBin, or, with CPU_MAX, the whole budget + setup (the run
             # uses all of it: Control_init starts the CPU_MAX clock after the Hamiltonian setup)
             run_cost = setup + nsweep * nbin * sps if cpu_max_h is None else setup + cpu_max_h * 3600.0
+            if cpu_max_h is not None and "sec_per_sweep_est" in p and nsweep * sps > cpu_max_h * 3600.0:
+                # ALF always completes the bin it is in: the run lasts at least one bin
+                sys.stderr.write("make_campaign.py: WARNING: point %s L=%d: cpu_max_h = %g h (%.0f s) is shorter than one bin "
+                                 "(NSweep x sec_per_sweep_est = %.0f s): ALF finishes the first bin, the run is estimated at "
+                                 "one bin\n" % (name, L, cpu_max_h, cpu_max_h * 3600.0, nsweep * sps))
+                run_cost = setup + nsweep * sps
             ndim = L * L * int(p.get("orbitals", 1))
             n_fl = int(p.get("n_fl", 2))
             mem = float(p["mem_gb_per_rank"]) if "mem_gb_per_rank" in p else mem_estimate_gb(ndim, n_fl, beta, dtau, nwrap)
@@ -334,15 +344,13 @@ def build(desc, prof, profile_path):
             "pack": pack, "max_slots": max_slots}
 
 
-def byid_runs(plan):
-    return {r["run_id"]: r for r in plan["runs"]}
-
-
-def print_packing(plan, byid):
+def print_packing(plan):
     """--dry-run of a packed campaign: per job its nodes and wall, per slot its runs and estimated wall."""
     for j in plan["jobs"]:
-        print("job %s: layout %s, nodes=%d (one run queue per node), --time %s, %d runs" % (j["job"], j["layout"], j["nodes"],
-                                                                         hhmm(j["wall_min"]), len(j["runs"])))
+        print("job %s: layout %s, nodes=%d (one run queue per node), --time %s, %d runs; allocation estimate %.2f node-h "
+              "(nodes x longest slot), upper bound %.2f node-h (nodes x --time)"
+              % (j["job"], j["layout"], j["nodes"], hhmm(j["wall_min"]), len(j["runs"]), j["nodes"] * j["est_s"] / 3600.0,
+                 j["nodes"] * j["wall_min"] / 60.0))
         for i, sl in enumerate(j["slots"]):
             print("  slot %2d: %3d runs, estimated wall %5.1f min (%d min with safety and margin; limit %d)"
                   % (i, len(sl["runs"]), sl["est_s"] / 60.0, sl["wall_min"], plan["max_wall_min"]))
@@ -420,18 +428,27 @@ def main(argv):
     if packed:
         resolved["pack_nodes"] = plan["pack"]
         resolved["pack_max_slots_per_job"] = plan["max_slots"]
-    core_h = sum(j.get("node_s", j["est_s"]) for j in plan["jobs"]) * prof["cores_per_node"] / 3600.0
-    core_h_lim = sum(j.get("nodes", 1) * j["wall_min"] for j in plan["jobs"]) * prof["cores_per_node"] / 60.0
+    cpn = prof["cores_per_node"]
+    core_h_lim = sum(j.get("nodes", 1) * j["wall_min"] for j in plan["jobs"]) * cpn / 60.0
+    if packed:
+        # Slurm charges nodes x the job's elapsed time: every node stays allocated until the longest slot ends
+        core_h = sum(j["nodes"] * j["est_s"] for j in plan["jobs"]) * cpn / 3600.0
+        core_h_busy = sum(j["node_s"] for j in plan["jobs"]) * cpn / 3600.0
+    else:
+        core_h = sum(j["est_s"] for j in plan["jobs"]) * cpn / 3600.0
     summary = ("campaign %s: %d jobs, %d runs, profile %s, partition %s; estimate %.1f core-h (wall limits: %.1f core-h, "
                "whole nodes of %d cores)" % (desc["id"], len(plan["jobs"]), len(plan["runs"]), prof["name"],
                                              desc["partition"], core_h, core_h_lim, prof["cores_per_node"]))
     if packed:
-        summary += "; packed: pack_nodes = %d, at most %d slots per job, %d nodes in total" % (
-            plan["pack"], plan["max_slots"], sum(j["nodes"] for j in plan["jobs"]))
+        summary += ("; packed: pack_nodes = %d, at most %d slots per job, %d nodes in total; allocation estimate (nodes x "
+                    "longest slot, what Slurm charges) %.1f core-h = %.1f node-h, upper bound (nodes x --time) %.1f core-h, "
+                    "busy time of the slots %.1f core-h (utilisation %.0f %%)"
+                    % (plan["pack"], plan["max_slots"], sum(j["nodes"] for j in plan["jobs"]), core_h, core_h / cpn,
+                       core_h_lim, core_h_busy, 100.0 * core_h_busy / core_h if core_h else 0.0))
     if dry:
         print(summary)
         if packed:
-            print_packing(plan, byid_runs(plan))
+            print_packing(plan)
         return 0
 
     # job scripts (in memory first: their sha256 is part of campaign.json, which decides idempotency)
