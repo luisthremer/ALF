@@ -61,3 +61,9 @@ Self-checks pass, an end-to-end dry run on a dev build passes, review (c) approv
     re-run the gate self-test and get a fresh review of that diff.
   - **Spec after seeds:** the spec pins seed hashes per role, so it is written after the fresh acceptance seeds are
     drawn (207-6).
+  - **Intel host label** (207-2 round 5): gate, qparse and agg take the host member's name from the spec, but
+    `t207_d5_qref.F90` prints `nvh` itself. For Intel either the offline program takes the label as an argument (change
+    in `t207_d5_qref.F90`, then re-review) or Intel specs use the label `nvh` for the in-run host member of the ifx
+    binary; decide in the second round and say which.
+  - `t207_d5_proc.sh` calls `~/alf-gpu/venv/bin/python3` directly: needs a venv on `intel` or a configurable interpreter.
+  - `t207_d5_pairs.py` (dev5-only tool) breaks on `agg.ref_list`'s new signature: fix or retire.
