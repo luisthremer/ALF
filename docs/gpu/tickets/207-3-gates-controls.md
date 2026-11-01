@@ -14,6 +14,9 @@ Calibrated, on dev seeds at β = 4, the two accuracy gates of decision 33 and co
   variant +0.04…+0.07 / +0.06…+0.10). The existing controls do not move it, so it needs its own planted control.
 
 ## Tasks
+0. All QREF runs use stride 3 (decision 35: both spin flavours, all blocks and branches), lengthened to ~210 points
+   with B. The dev5 numbers above are flavour-1-only; recalibrate everything (S_ens(pTT) bound included) on stride-3 runs
+   and report whether flavour 2 behaves differently.
 1. A graded fault on the device CGR2_2 output (`ALF_GPU_FAULT_TAU=eps:<x>`, refused in production runs as in 212,
    declared control runs only), and its predicted response.
 2. Calibrate on dev seeds: device, correct variants, NS=0 / TAUSWAP=8, graded fault at a far and a near-threshold x
