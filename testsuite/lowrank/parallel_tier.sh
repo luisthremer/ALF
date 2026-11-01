@@ -10,6 +10,7 @@
 #   KEY=VALUE       extra ALF parameters applied last to every run (e.g. NSweep=10 NBin=20 for a smoke test)
 #   env PT_SCHEMES="standard delayed", PT_SETS="half", PT_NP="1 4"  restrict the schemes / MPI-phase sets / MPI-phase rank counts
 #   env PT_TAG=<s>  suffix of the output tree runs/parallel<s> (smoke tests, so the real results are kept)
+#   env PT_BUILDS=<dir>  variant trees (default builds<PT_TAG>); e.g. concurrent tagged runs sharing one --build-only
 #
 # Builds (once per source state, in a COPY of the committed tree: git archive HEAD; the main tree is never touched):
 #   builds/<variant>/src  for variant noMPI | MPI | TEMPERING | PARALLEL_PARAMS
@@ -49,7 +50,7 @@
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ALFDIR="$(cd "$HERE/../.." && pwd)"
 PAR="$ALFDIR/runs/parallel${PT_TAG:-}"
-BUILDS="$ALFDIR/builds${PT_TAG:-}"
+BUILDS="${PT_BUILDS:-$ALFDIR/builds${PT_TAG:-}}"   # PT_BUILDS: share prebuilt variant trees between tagged runs
 RETRY_G=""
 SCHEMES=(${PT_SCHEMES:-standard delayed submatrix}); PSETS=(${PT_SETS:-half tv}); NPS=(${PT_NP:-1 2 4})
 REBUILD=0; REPLICATE=1; BUILT_NOW=""; BUILD_ONLY=0
@@ -89,7 +90,7 @@ build_variant() {   # build_variant VARIANT: copy of the committed tree, built o
     if [ $REBUILD = 0 ] && [ -x "$dir/src/Prog/ALF.out" ] && [ "$(cat "$dir/stamp" 2>/dev/null)" = "$stamp" ]; then
         return 0
     fi
-    say "build $v (configure.sh GNU $mode, copy of HEAD $(git -C "$ALFDIR" rev-parse --short HEAD)) ..."
+    say "build $v (configure.sh ${ALF_MACHINE:-GNU} $mode, copy of HEAD $(git -C "$ALFDIR" rev-parse --short HEAD)) ..."
     /bin/rm -rf "$dir"; mkdir -p "$dir/src"
     git -C "$ALFDIR" archive HEAD | tar -x -C "$dir/src"
     (

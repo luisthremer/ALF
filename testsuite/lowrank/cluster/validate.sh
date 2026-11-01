@@ -11,6 +11,7 @@
 #   extras   HDF5 attributes (h5dump -A, delayed vs standard); debug shadow runs (tv kondo jz z2 spin_peierls x delayed/submatrix);
 #            timers build (timers.txt); MPI trajectory identity (4 ranks: delayed, submatrix, both with Lowrank_cross_slice=.T., vs
 #            standard; confout_0 and bins, compare_runs.py)
+#   noipo    regress between -no-ipo builds of branch and baseline (../ALF_noipo, ../ALF_baseline_noipo; not in the default set)
 #   ptier    parallel_tier.sh phases concurrently, each in its own output tree: mpi (half and tv separately), threads, tempering, pp
 # Environment: ALF_MACHINE, ALF_ENV_SH (module setup), HDF5_MODULE (module providing h5dump, default hdf5/1.10.7-intel21),
 #   VAL_JOBS (concurrent trajectory sets, default 11; e.g. 4 on a laptop),
@@ -37,7 +38,8 @@ g_core() {  # regress first (its incremental `make program` must not race the ct
     "$LR/regress_vs_baseline.sh" >"$d/regress.log" 2>&1; rc=$?
     n=$(grep -c " IDENTICAL" "$d/regress.log")
     if [ $rc = 0 ]; then check regress PASS "$n IDENTICAL"; else check regress FAIL "rc=$rc $(grep -v IDENTICAL "$d/regress.log" | tail -3 | tr '\n' ' ')"; fi
-    if [ -f "$ALFDIR/testsuite/tests/CTestTestfile.cmake" ]; then ( cd "$ALFDIR/testsuite/tests" && ctest -j8 >"$d/ctest.log" 2>&1 )
+    if [ -f "$ALFDIR/testsuite/tests/CTestTestfile.cmake" ]; then
+        ( command -v ctest >/dev/null 2>&1 || module load cmake >/dev/null 2>&1; cd "$ALFDIR/testsuite/tests" && ctest -j8 >"$d/ctest.log" 2>&1 )
     else echo "ctest tree missing: run build_variants.sh ctest on the login node" >"$d/ctest.log"; fi
     if grep -q "100% tests passed" "$d/ctest.log"; then check ctest PASS "$(grep 'tests passed' "$d/ctest.log")"
     else check ctest FAIL "$(grep -E 'tests passed|Failed|\*\*\*' "$d/ctest.log" | head -5 | tr '\n' ' ')"; fi
@@ -133,6 +135,7 @@ g_extras() {
 g_ptier() {  # exit code of parallel_tier.sh = verdict (0 iff every case passed, after the pre-registered replicate protocol)
     local d="$OUT/ptier" pids=() t
     mkdir -p "$d"
+    export PT_BUILDS="$ALFDIR/builds"   # the trees of `parallel_tier.sh --build-only` (no make on compute nodes)
     ( PT_SETS=half PT_TAG=_cl_mpi_half "$LR/parallel_tier.sh" mpi >"$d/mpi_half.log" 2>&1; echo $? >"$d/mpi_half.rc" ) & pids+=($!)
     ( PT_SETS=tv   PT_TAG=_cl_mpi_tv   "$LR/parallel_tier.sh" mpi >"$d/mpi_tv.log" 2>&1; echo $? >"$d/mpi_tv.rc" ) & pids+=($!)
     for t in threads tempering pp; do
@@ -143,6 +146,14 @@ g_ptier() {  # exit code of parallel_tier.sh = verdict (0 iff every case passed,
         if [ "$(cat "$d/$t.rc")" = 0 ]; then check "ptier:$t" PASS "$(grep 'parallel tier:' "$d/$t.log" | tail -1)"
         else check "ptier:$t" FAIL "rc=$(cat "$d/$t.rc") $(grep -E 'FAIL|ERROR|parallel tier:' "$d/$t.log" | head -3 | tr '\n' ' ')"; fi
     done
+}
+
+g_noipo() {  # regress of two -no-ipo builds (worktrees ../ALF_noipo at HEAD, ../ALF_baseline_noipo at the baseline commit), if present
+    local d="$OUT/noipo" rc nb="$ALFDIR/../ALF_noipo" bb="$ALFDIR/../ALF_baseline_noipo"; mkdir -p "$d"
+    if [ ! -x "$nb/Prog/ALF.out" ] || [ ! -x "$bb/Prog/ALF.out" ]; then check regress_noipo FAIL "missing $nb or $bb build"; return; fi
+    REGRESS_BASEDIR="$bb" "$nb/testsuite/lowrank/regress_vs_baseline.sh" >"$d/regress.log" 2>&1; rc=$?
+    if [ $rc = 0 ]; then check regress_noipo PASS "$(grep -c ' IDENTICAL' "$d/regress.log") IDENTICAL (both built with -no-ipo)"
+    else check regress_noipo FAIL "rc=$rc $(grep -c ' IDENTICAL' "$d/regress.log") IDENTICAL; $(grep 'differs' "$d/regress.log" | sort | uniq -c | head -4 | tr '\n' ' ')"; fi
 }
 
 echo "# validate.sh $(date -u +%FT%TZ) host $(hostname) commit $(git -C "$ALFDIR" rev-parse --short HEAD) groups: $GROUPS_RUN" | tee -a "$SUM"
