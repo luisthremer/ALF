@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Local parallel tier (tier 6): MPI rank count, OpenMP threads, parallel tempering, PARALLEL_PARAMS.
 #
-# Usage:  testsuite/lowrank/parallel_tier.sh [--rebuild] [--no-replicate] [PHASE ...] [KEY=VALUE ...]
+# Usage:  testsuite/lowrank/parallel_tier.sh [--rebuild] [--no-replicate] [--build-only] [PHASE ...] [KEY=VALUE ...]
 #   PHASE  mpi | threads | tempering | pp     (default: all four, in this order)
 #   --rebuild       rebuild the variant trees even if the sources did not change
 #   --no-replicate  do not run the pre-registered replicate after an array-only failure
+#   --build-only    build the four variant trees (noMPI, MPI, TEMPERING, PARALLEL_PARAMS) and exit (e.g. on a cluster login node,
+#                   so that concurrent phase jobs reuse them instead of building in parallel)
 #   KEY=VALUE       extra ALF parameters applied last to every run (e.g. NSweep=10 NBin=20 for a smoke test)
 #   env PT_SCHEMES="standard delayed", PT_SETS="half", PT_NP="1 4"  restrict the schemes / MPI-phase sets / MPI-phase rank counts
 #   env PT_TAG=<s>  suffix of the output tree runs/parallel<s> (smoke tests, so the real results are kept)
@@ -50,12 +52,13 @@ PAR="$ALFDIR/runs/parallel${PT_TAG:-}"
 BUILDS="$ALFDIR/builds${PT_TAG:-}"
 RETRY_G=""
 SCHEMES=(${PT_SCHEMES:-standard delayed submatrix}); PSETS=(${PT_SETS:-half tv}); NPS=(${PT_NP:-1 2 4})
-REBUILD=0; REPLICATE=1; BUILT_NOW=""
+REBUILD=0; REPLICATE=1; BUILT_NOW=""; BUILD_ONLY=0
 PHASES=(); EXTRA=()
 for a in "$@"; do
     case "$a" in
         --rebuild) REBUILD=1 ;;
         --no-replicate) REPLICATE=0 ;;
+        --build-only) BUILD_ONLY=1 ;;
         mpi|threads|tempering|pp) PHASES+=("$a") ;;
         *=*) EXTRA+=("$a") ;;
         *) echo "unknown argument '$a'" >&2; sed -n 2,9p "${BASH_SOURCE[0]}" >&2; exit 2 ;;
@@ -108,6 +111,10 @@ ANA() { echo "$BUILDS/noMPI/src/Analysis/ana.out"; }
 # copy builds/noMPI/src (built first); only the two comparison helpers next to this script (stat_compare.py and
 # parallel_compare.py) are taken from the working tree. A tier run on uncommitted tier tooling is flagged.
 build_variant noMPI
+if [ $BUILD_ONLY = 1 ]; then
+    build_variant MPI; build_variant TEMPERING; build_variant PARALLEL_PARAMS
+    say "build-only: noMPI MPI TEMPERING PARALLEL_PARAMS built in $BUILDS"; exit 0
+fi
 SRC="$BUILDS/noMPI/src"; LR="$SRC/testsuite/lowrank"; TPL="$SRC/Scripts_and_Parameters_files"
 source "$LR/sets.sh"
 if ! git -C "$ALFDIR" diff --quiet HEAD -- testsuite/lowrank 2>/dev/null; then

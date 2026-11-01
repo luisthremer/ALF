@@ -393,6 +393,18 @@ binary with K_ND = 1). Rule: submatrix slower if > 5 % and > 2 × the larger spr
   `BLAS_BENCH_READY_TIMEOUT=3600` for N = 8000 jobs.
 - Cluster request (first stop): `docs/cluster/2026-10-31-cluster-request.md`.
 
+## SuperMUC-NG access (user, 2026-11-01; cluster phase approved incl. pilot C0 + B-S; Helma in maintenance)
+- Login: `supermuc` (expect script, opens the ControlMaster); further sessions `ssh supermuc` (reuses it). Copy: `luis_to_smuc <local> <remote>`,
+  `smuc_to_luis <remote> <local>`. **Never change the user's shell rc files on SuperMUC.**
+- Workdir (only place to read/write): `/hppfs/work/pn73xu/di38zuw/CLAUDE` (clone `ALF/`, baseline worktree `ALF_baseline/`); account `pn73xu`.
+- Partition **test only**: ≤ 16 nodes × 48 cores, 30 min; **only one test job runs at a time, at most 3 submitted**. Use PARALLEL_PARAMS
+  and multi-node jobs (srun steps per node) to pack work.
+- Modules: `source <workdir>/env_alf.sh` (= `module purge; module unload stack; module load stack/22.2.1`: stack/24.5.0 is sticky and
+  conflicts) before `source configure.sh SuperMUC-NG <mode>` → ifort 2021.4, Intel MPI 2019, MKL 2020.4, hdf5/1.10.7-intel21.
+  Scripts: `ALF_MACHINE=SuperMUC-NG ALF_ENV_SH=<workdir>/env_alf.sh`. Code goes over as git bundles (identical hashes).
+- Found: ifort -O3 -parallel mapped a `matmul` in the Op_V_is_symmetric fast path to `matmul_mkl_c128` (unresolved at link) → ZGEMM
+  (2a2dabb0); debug builds use `-qopt-matmul-` (debug shadow keeps matmul).
+
 ## Cluster-phase items (prepared locally, to be checked on the clusters)
 - HDF5 provenance (P6-2): non-standard schemes write `Sequential_scheme`, `N_delay_requested` (at the parameter write) and
   `N_delay_used` (end of run) as attributes of `/` in `data.h5`; standard runs write nothing new (baseline data.h5 kept).
