@@ -20,6 +20,7 @@
 - Acceptance 6 (Intel), decision 36: 207 is judged on the B580 too, with the device τ pass from 302c-1: self-tests and
   faults, same-seed vs the ifx `GPU=none` oracle, the accuracy gates with an MKL host member in the reference ensemble
   (302c-2's calibration), compare2 on the B580.
+- Intel coverage (302c-1 review): include same-seed runs with N_FL_eff = 1, Symm and flux under `GPU=intel`.
 - Bounds fixed by the manager by decision 37's rule; GPU time per decision 38.
 - `207.draft.json` retired (the shipping check allows only an added `207*.json` between base and pre-registration).
 - Run time and GPU budget (decision 11) from 207-4's numbers.
