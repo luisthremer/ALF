@@ -3,7 +3,7 @@
 # `parallel_tier.sh --build-only`, built beforehand on the login node; nothing is compiled here except the ctest tree if missing).
 #
 # Usage:  testsuite/lowrank/cluster/validate.sh [GROUP ...]      (default: all groups)
-#   core     ctest; regress_vs_baseline.sh (13 sets byte-identical to the baseline commit)
+#   core     ctest (tree built by build_variants.sh ctest); regress_vs_baseline.sh (REGRESS_NO_BUILD=1) (13 sets byte-identical to the baseline commit)
 #   traj     compare_trajectory.sh (trace binary builds/ALF_trace.out): sets start tv kondo jz pv_adiab tv_proj tv_flux z2 z2gt
 #            spin_peierls, each: standard vs delayed, standard vs submatrix, and both again with N_delay=-1 (z2gt: N_delay=-1 with
 #            Global_tau); continuous with HMC (Leapfrog_steps=10, dt 0.05: acceptance ~1) + sequential low-rank, both schemes;
@@ -25,6 +25,8 @@ OUT="$ALFDIR/runs/cluster_val"
 SUM="$OUT/summary.txt"
 mkdir -p "$OUT"
 { [ -z "${ALF_ENV_SH:-}" ] || source "$ALF_ENV_SH" || true; }
+command -v git >/dev/null 2>&1 || module load git >/dev/null 2>&1 || true   # compute nodes may lack git (parallel_tier's build stamp)
+export REGRESS_NO_BUILD=1   # nothing is compiled here (compute nodes may lack make): regress uses the built Prog/ALF.out
 export OMP_NUM_THREADS=1 I_MPI_HYDRA_BOOTSTRAP="${I_MPI_HYDRA_BOOTSTRAP:-fork}" I_MPI_PIN="${I_MPI_PIN:-0}"
 MPIRUN="${MPIRUN:-mpirun}"
 check() { echo "CHECK $1 $2 ${3:-}" | tee -a "$SUM"; }
@@ -35,10 +37,8 @@ g_core() {  # regress first (its incremental `make program` must not race the ct
     "$LR/regress_vs_baseline.sh" >"$d/regress.log" 2>&1; rc=$?
     n=$(grep -c " IDENTICAL" "$d/regress.log")
     if [ $rc = 0 ]; then check regress PASS "$n IDENTICAL"; else check regress FAIL "rc=$rc $(grep -v IDENTICAL "$d/regress.log" | tail -3 | tr '\n' ' ')"; fi
-    ( cd "$ALFDIR" && source configure.sh "${ALF_MACHINE:-GNU}" noMPI NO-INTERACTIVE >/dev/null 2>&1
-      module load cmake >/dev/null 2>&1
-      mkdir -p testsuite/tests && cd testsuite/tests && cmake .. >"$d/cmake.log" 2>&1 && make -j8 >"$d/make_tests.log" 2>&1
-      ctest -j8 >"$d/ctest.log" 2>&1 )
+    if [ -f "$ALFDIR/testsuite/tests/CTestTestfile.cmake" ]; then ( cd "$ALFDIR/testsuite/tests" && ctest -j8 >"$d/ctest.log" 2>&1 )
+    else echo "ctest tree missing: run build_variants.sh ctest on the login node" >"$d/ctest.log"; fi
     if grep -q "100% tests passed" "$d/ctest.log"; then check ctest PASS "$(grep 'tests passed' "$d/ctest.log")"
     else check ctest FAIL "$(grep -E 'tests passed|Failed|\*\*\*' "$d/ctest.log" | head -5 | tr '\n' ' ')"; fi
 }
