@@ -430,6 +430,10 @@ binary with K_ND = 1). Rule: submatrix slower if > 5 % and > 2 × the larger spr
 - 3D cubic: skipped for now. Cross-slice: parked — **remind the user about it on 2026-11-02**.
 - Notifications while the user is away: skill `anthropic-skills:notify-by-calendar-invite` ("Claude Notify" calendar, invite to the uni
   address; test sent 2026-11-01 13:43). Notify on: scan submitted/blocked, failures that stop the work, morning summary.
+  Replies: the RSVP of a question invite is read with `get_event` on the Claude Notify calendar (attendee responseStatus; verified
+  on the test invite: `accepted`). accepted = continue as proposed; declined = wait for the user on that point (do other independent
+  work); tentative / needsAction = wait. While a question is open, check about once per hour (background `sleep 3600` timer).
+  A chat message overrides the RSVP. Only low-stakes go/wait decisions; nothing irreversible or costly on an RSVP alone.
 
 ## Cluster-phase items (prepared locally, to be checked on the clusters)
 - HDF5 provenance (P6-2): non-standard schemes write `Sequential_scheme`, `N_delay_requested` (at the parameter write) and
