@@ -11,7 +11,7 @@ logs written by the scripts named in brackets; raw logs and generated reports ar
 | trajectory | 44 comparisons IDENTICAL: 11 sets x {standard vs delayed, vs submatrix} x {N_delay default, -1}, incl. HMC (acceptance 1) and N_delay = -1 with Global_tau | `logs/smuc_validate_5956005_summary.txt` |
 | regression | production flags (-ipo, -fp-model fast=2): confout_0 identical for all 13 sets, only Ener_scal/Kin_scal differ at ~1e-15 relative; **both built with -no-ipo: 13/13 byte-IDENTICAL** | job 5956097 |
 | debug shadow | 10/10 runs (tv, kondo, jz, z2, spin_peierls x delayed/submatrix), max relative G error <= 2e-13 | job 5956005 |
-| parallel | MPI 1/2/4 ranks (half, tv), OpenMP 1 vs 4 threads, tempering, PARALLEL_PARAMS: all PASS (pre-registered replicates where an array rule failed once); mpi/half/submatrix np4 replicate: see §5 | `logs/ptier_*.txt` |
+| parallel | MPI 1/2/4 ranks (half, tv), OpenMP 1 vs 4 threads, tempering, PARALLEL_PARAMS: all PASS (pre-registered replicates where an array rule failed once); mpi/half/submatrix np4 replicate (job 5956223): PASS | `logs/ptier_*.txt` |
 | other | HDF5 provenance attributes correct; timers build; MPI 4-rank trajectory identity incl. cross-slice | job 5956005 |
 
 Fixes made for the Intel toolchain (all validated again locally: ctest 43/43, regress 13/13): `matmul` in the Op_V_is_symmetric fast

@@ -1,0 +1,15 @@
+# validate.sh 2026-11-01T13:48:33Z host i01r01c03s02 commit 2b7492e0 groups: ptier
+CHECK ptier:mpi_half_delayed PASS parallel tier: 1 cases passed, 0 failed, 338 s total; summary /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/runs/parallel_cl_mpi_half_delayed/summary_20261101_144833.txt
+CHECK ptier:mpi_half_standard PASS parallel tier: 1 cases passed, 0 failed, 356 s total; summary /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/runs/parallel_cl_mpi_half_standard/summary_20261101_144833.txt
+CHECK ptier:mpi_half_submatrix PASS parallel tier: 1 cases passed, 0 failed, 644 s total; summary /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/runs/parallel_cl_mpi_half_submatrix/summary_20261101_144833.txt
+CHECK ptier:mpi_tv_delayed PASS parallel tier: 3 cases passed, 0 failed, 990 s total; summary /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/runs/parallel_cl_mpi_tv_delayed/summary_20261101_123220.txt
+CHECK ptier:mpi_tv_standard PASS parallel tier: 3 cases passed, 0 failed, 862 s total; summary /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/runs/parallel_cl_mpi_tv_standard/summary_20261101_123220.txt
+CHECK ptier:mpi_tv_submatrix PASS parallel tier: 3 cases passed, 0 failed, 1026 s total; summary /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/runs/parallel_cl_mpi_tv_submatrix/summary_20261101_123220.txt
+CHECK ptier:pp_delayed PASS parallel tier: 1 cases passed, 0 failed, 1473 s total; summary /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/runs/parallel_cl_pp_delayed/summary_20261101_130239.txt
+CHECK ptier:pp_standard PASS parallel tier: 1 cases passed, 0 failed, 860 s total; summary /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/runs/parallel_cl_pp_standard/summary_20261101_130239.txt
+CHECK ptier:pp_submatrix PASS parallel tier: 1 cases passed, 0 failed, 851 s total; summary /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/runs/parallel_cl_pp_submatrix/summary_20261101_130239.txt
+CHECK ptier:tempering PASS parallel tier: 3 cases passed, 0 failed, 1694 s total; summary /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/runs/parallel_cl_tempering/summary_20261101_113347.txt
+CHECK ptier:threads_delayed PASS parallel tier: 1 cases passed, 0 failed, 1195 s total; summary /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/runs/parallel_cl_threads_delayed/summary_20261101_130239.txt
+CHECK ptier:threads_standard PASS parallel tier: 1 cases passed, 0 failed, 816 s total; summary /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/runs/parallel_cl_threads_standard/summary_20261101_130239.txt
+CHECK ptier:threads_submatrix PASS parallel tier: 1 cases passed, 0 failed, 896 s total; summary /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/runs/parallel_cl_threads_submatrix/summary_20261101_130239.txt
+# done 2026-11-01T13:59:17Z: 27 PASS, 1 FAIL
