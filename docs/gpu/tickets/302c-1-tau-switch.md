@@ -6,7 +6,7 @@
   `207.json` (207-6/207-7, decision 36)
 - **Depends on:** 207-1 (207 code on `gpu-port`), 302b
 - **Branch:** `gpu-port-302c` (from `gpu-port-207-r`)
-- **Status:** open
+- **Status:** T0 done (2026-11-01, commit `0e656fc8` on `gpu-port-302c`); numerics-reviewer (a) pending
 
 ## Goal
 The 207 device τ pass (`Prog/gpu_tau_mod.F90`: CGR2_2 on the device, udvst kept on the device) runs under `GPU=intel`
@@ -45,3 +45,18 @@ Report with run dirs; numerics-reviewer approves (a).
 
 ## Out of scope
 Accuracy gates and QREF on the B580 (302c-2); harness (207-5); PVC performance.
+
+## Result (2026-11-01, T0 on dev seeds, development evidence)
+- Diff: 207-1's interim guard removed (−14 lines in `Prog/gpu_tau_mod.F90`); the alf_la oneMKL calls needed no change.
+- Self-tests `ALF_GPU_SELFTEST=4`: 12/12 config × path pass on the B580, max 8.4e-12 (8 % of 1e-10). Fault controls
+  `perm`, `prop`, `prec`, `blocks`, `eps:1e-9` killed on both paths; `eps:1e-11` survives; invalid values and 10 debug
+  variables refused.
+- Same-seed vs the ifx `GPU=none` oracle: 6×6 default 2.31e-10, LOG 2.90e-10; 12×12 default 4.81e-10; **12×12 LOG
+  1.128e-9 FAILS ≤ 1e-9**, in the equal-time datasets (first bin 27); the host-τ base gives exactly the same value and its
+  equal-time datasets are bit-identical, τ datasets 2.29e-10 (base 3.02e-10). This is the ticket-213 LOG excess
+  (NVIDIA 1.214e-9), present on Intel too, not caused by the τ pass; it stays with 213 and is `report_only` in 207.json
+  as on NVIDIA.
+- Identity: `Ltau=0` and the `Ltau=1` equal-time datasets bit-identical to the base; runs deterministic; ifx `GPU=none`
+  identical (GNU `GPU=none` not run: the only changed file is compiled under `ALF_GPU` only).
+- Precision-tau means device/CPU-oracle 0.79–1.01 (β = 10 short runs 1.01 / 0.98).
+- Evidence `intel:~/alf-gpu/work/t302c/` (no `provenance.json` in T0, as in 207-1); scripts `docs/gpu/scripts/intel/t302c/`.
