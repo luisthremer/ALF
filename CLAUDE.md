@@ -421,6 +421,14 @@ binary with K_ND = 1). Rule: submatrix slower if > 5 % and > 2 × the larger spr
   Grid adapted to the 30-min limit (L=60 Beta=4 does not fit). Stage B: BLAS layouts (job 5956151) and calibration B2 pending.
 - No 3D cubic lattice in this ALF version: campaigns C3/H2 cannot run without new lattice code (question for the user).
 
+## User decisions 2026-11-01 (evening)
+- Authorisation: any number of SuperMUC-NG **test-partition** jobs for the next 24 h (until 2026-11-02 ~13:00), up to
+  24 h x 16 nodes x 48 cores = 18 432 core-h. Helma off limits today.
+- Goal: find the correct N_delay and how it depends on the parameters; track model/vertex-rank dependence. Final plot: sweep time vs
+  N_delay for appropriate parameter sets. Parameters to vary: system size N, vertex rank / model, interaction U (acceptance), threads per
+  rank (layout), **number of time slices** (Ltrot). PP may be used to pack runs.
+- 3D cubic: skipped for now. Cross-slice: parked — **remind the user about it on 2026-11-02**.
+
 ## Cluster-phase items (prepared locally, to be checked on the clusters)
 - HDF5 provenance (P6-2): non-standard schemes write `Sequential_scheme`, `N_delay_requested` (at the parameter write) and
   `N_delay_used` (end of run) as attributes of `/` in `data.h5`; standard runs write nothing new (baseline data.h5 kept).
