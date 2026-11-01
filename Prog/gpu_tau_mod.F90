@@ -78,6 +78,10 @@
 !> ALF_GPU_FAULT_TAU=perm|prop|prec|blocks injects faults (negative controls; they act wherever the faulted step runs), and the graded
 !> fault ALF_GPU_FAULT_TAU=eps:<x> multiplies, in every device-vs-host comparison of GT0 in the SELFTEST=4 self-test (pass and CGR2_2
 !> alone), the element of largest |GT0| of the host copy of the device GT0 by (1 + x) (the device data and the run are unchanged);
+!> without SELFTEST=4 / TAUTIME (a declared control run, ticket 207-3) eps:<x> multiplies every element of the four device outputs of
+!> every production CGR2_2 by (1 + x r), r in [-1, 1) fixed pseudo-random per element (fault_eps_out); ALF_GPU_FAULT_TAU_AT=<nst>:<nfe>
+!> restricts it to stabilization point nst and flavour nfe of every pass.  With the device tau pass off,
+!> SELFTEST=4, TAUTIME, FAULT_TAU and every TAUDIAG variable stop the run with an error (tau_off_refuse, ticket 207-3);
 !> ALF_GPU_TAUTEST_V=1 prints the per-slice differences of the self-test.  DEBUG AIDS (not used in production, no effect when unset): ALF_GPU_TAUDIAG=1|2 prints one "TAUDIAG" line per
 !> stabilization point and flavour (device precision numbers next to a full host tau pass run in lockstep on the same trajectory, host
 !> CGR2_2 on the device inputs, GTT chains with 1-ulp perturbed right states; 1 adds host twins of single CGR2_2 steps; slow, see
@@ -155,6 +159,10 @@ Module gpu_tau_mod
 
   ! ---- counters / test hooks ----
   Integer, Save :: fault = 0                                  ! 1 perm, 2 prop, 3 prec, 4 blocks
+  ! ticket 207-3: ALF_GPU_FAULT_TAU=eps:<x> outside the SELFTEST=4 / TAUTIME hooks (a declared control run; ticket 212 refuses the
+  ! variable in production runs) perturbs the four outputs of every production CGR2_2 on the device (fault_eps_out)
+  Logical, Save :: eps_tau_prod = .false.
+  Integer, Save :: eps_at_nst = 0, eps_at_nfe = 0               ! ALF_GPU_FAULT_TAU_AT=<nst>:<nfe>: only that position (0: every position)
   Logical, Save :: prec_report = .true.                       ! .false. in the tests: the Control counters are not touched
   Real (Kind=Kind(0.d0)), Save :: last_prec(2,4) = 0.d0       ! last reduction: (max, sum) of the four pairs of tau_stab_cgr
   Integer(int64), Save :: n_pass = 0, n_branch(2) = 0, n_cgr = 0
@@ -232,13 +240,18 @@ Contains
     Character (len=256) :: line
 
     gpu_tau_on = .false.
+    ! ticket 207-3: every early return refuses the tau-pass test / debug variables (tau_off_refuse), so that their rc 0 means something
+    if (.not. gpu_stab_on) call tau_off_refuse('no device stabilization')
     if (.not. gpu_stab_on) return
+    if (get_Ltau() /= 1) call tau_off_refuse('Ltau /= 1')
     if (get_Ltau() /= 1) return
+    if (Projector .or. reconstruction_needed) call tau_off_refuse('Projector or reconstruction')
     if (Projector .or. reconstruction_needed) return
     if (.not. tau_dev_allowed) then
        ! decision 22: no device tau pass under GPU=intel until 302c (the line must not read ACTIVE: 302b forbids it)
        call info_line('GPU tau pass (207): host TAU_M (GPU=intel: the device tau pass waits for ticket 302c, decision 22); '// &
             & 'udvst exported D->H (INTERIM 206)')
+       call tau_off_refuse('GPU=intel, decision 22')
        return
     endif
     t_N = Ndim; t_N2 = 2*Ndim; t_nfe = N_FL_eff; t_nstm = NSTM
@@ -276,6 +289,34 @@ Contains
 #endif
     call info_line(line)
   end subroutine gpu_tau_setup
+
+  !> Ticket 207-3: the device tau pass is off (reason): stop with an error if a variable is set that only acts in the device tau pass
+  !> (ALF_GPU_SELFTEST=4, ALF_GPU_TAUTIME, ALF_GPU_FAULT_TAU, ALF_GPU_TAUDIAG*: every TAUDIAG name this module reads).  Otherwise the
+  !> self-test would exit 0 and a fault would be armed without effect, and an rc 0 could not tell right from wrong.
+  Subroutine tau_off_refuse(reason)
+    Implicit none
+    Character (len=*), intent(in) :: reason
+    Character (len=24), parameter :: nm(12) = [Character(len=24) :: 'ALF_GPU_TAUTIME', 'ALF_GPU_FAULT_TAU', 'ALF_GPU_FAULT_TAU_AT', &
+         & 'ALF_GPU_TAUDIAG', &
+         & 'ALF_GPU_TAUDIAG_FROM', 'ALF_GPU_TAUDIAG_SEED', 'ALF_GPU_TAUDIAG_VAR', 'ALF_GPU_TAUDIAG_AMP', 'ALF_GPU_TAUDIAG_NUL', &
+         & 'ALF_GPU_TAUDIAG_QREF', 'ALF_GPU_TAUDIAG_QVAR', 'ALF_GPU_TAUDIAG_QHOST']
+    Character (len=256) :: v
+    Integer :: i
+    if (gpu_env_is('ALF_GPU_SELFTEST', '4')) &
+         & call tau_off_fail('GPU tau pass (207): OFF ('//reason//'), but ALF_GPU_SELFTEST=4 is set: the tau self-test cannot run (refused)')
+    do i = 1, size(nm)
+       if (gpu_env_get(trim(nm(i)), v)) &
+            & call tau_off_fail('GPU tau pass (207): OFF ('//reason//'), but '//trim(nm(i))//' is set: it would act on nothing (refused)')
+    enddo
+  end subroutine tau_off_refuse
+
+  Subroutine tau_off_fail(text)
+    Implicit none
+    Character (len=*), intent(in) :: text
+    call say(text)
+    flush(output_unit)
+    call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+  end subroutine tau_off_fail
 
   Subroutine gpu_tau_finalize()
     Implicit none
@@ -491,6 +532,8 @@ Contains
     call k_copy_c(n*n, GT0_d(1,1,nf), t_old(1,1,2))
     call k_copy_c(n*n, G0T_d(1,1,nf), t_old(1,1,3))
     call dev_cgr22(nfe, nst, 1.d0, 0.d0, br, G00_d(1,1,nf), GT0_d(1,1,nf), GTT_d(1,1,nf), G0T_d(1,1,nf))
+    if (eps_tau_prod .and. (eps_at_nst == 0 .or. (nst == eps_at_nst .and. nfe == eps_at_nfe))) &
+         & call fault_eps_out(nf)                             ! declared control run only (ticket 207-3): graded output fault
     n_cgr = n_cgr + 1
     n_branch(br) = n_branch(br) + 1
     ! Control_Precision_tau(GR, G00), (HLP4, GTT), (HLP5, GT0), (HLP6, G0T)
@@ -1645,6 +1688,38 @@ Contains
   end subroutine k_tau_init
 
   ! fault injection: A(1,1) *= 1 + 1e-6
+  !> Ticket 207-3, graded fault ALF_GPU_FAULT_TAU=eps:<x> in the sweep (declared control run): every element of the four device outputs
+  !> of the production CGR2_2 (G00, GT0, GTT, G0T of flavour nf) is multiplied by (1 + x r), r in [-1, 1) a fixed pseudo-random number of
+  !> (i, j, block) (no transfer; the precision checks and the QREF dump see the perturbed outputs)
+  Subroutine fault_eps_out(nf)
+    Implicit none
+    Integer, intent(in) :: nf
+    Real (Kind=Kind(0.d0)) :: x
+    x = gpu_env_fault_tau_eps()
+    call k_fault_eps(t_N, 1, x, G00_d(1,1,nf)); call k_fault_eps(t_N, 2, x, GT0_d(1,1,nf))
+    call k_fault_eps(t_N, 3, x, GTT_d(1,1,nf)); call k_fault_eps(t_N, 4, x, G0T_d(1,1,nf))
+  end subroutine fault_eps_out
+
+  Subroutine k_fault_eps(n, b, x, A)
+    Implicit none
+    Integer, intent(in) :: n, b
+    Real (Kind=Kind(0.d0)), intent(in) :: x
+    Complex (Kind=Kind(0.d0)), intent(inout) :: A(n,*)
+    Integer :: i, j
+    Integer(int64) :: k, h
+    Real (Kind=Kind(0.d0)) :: r
+    !$omp target teams distribute parallel do collapse(2) private(k, h, r)
+    do j = 1, n
+       do i = 1, n
+          k = mod(int(i, int64) + int(n, int64)*(int(j, int64) - 1 + int(n, int64)*int(b - 1, int64)), 2147483648_int64)
+          h = mod(k*2654435761_int64 + 1013904223_int64, 4294967296_int64)
+          h = mod(h*1664525_int64 + 1013904223_int64, 4294967296_int64)
+          r = dble(h)/2147483648.d0 - 1.d0
+          A(i,j) = A(i,j) * (1.d0 + x*r)
+       enddo
+    enddo
+  end subroutine k_fault_eps
+
   Subroutine k_fault_scale(A)
     Implicit none
     Complex (Kind=Kind(0.d0)), intent(inout) :: A(*)
@@ -1862,13 +1937,13 @@ Contains
 !====================================================================
   Subroutine gpu_tau_hook()
     Implicit none
-    Character (len=256) :: f
-    Integer :: nfe, ib
+    Character (len=256) :: f, line
+    Integer :: nfe, ib, ios
     Logical :: did
     did = .false.
     if (.not. gpu_tau_on) return
     ! ticket 212: ALF_GPU_FAULT_TAU is refused in production runs and its value was validated (and the armed line printed) by
-    ! gpu_env_check; eps:<x> acts in the SELFTEST=4 comparison only (gpu_env_fault_tau_eps)
+    ! gpu_env_check; eps:<x> acts in the SELFTEST=4 comparison (gpu_env_fault_tau_eps), else in the sweep (eps_tau_prod, ticket 207-3)
     if (gpu_env_get('ALF_GPU_FAULT_TAU', f)) then
        select case (trim(f))
        case ('perm');   fault = 1
@@ -1877,6 +1952,28 @@ Contains
        case ('blocks'); fault = 4
        case default                  ! eps:<x>
        end select
+    endif
+    ! ticket 207-3 (as decision 26 for FAULT_STAB): outside the self-test / timing hooks eps:<x> perturbs the outputs of every production
+    ! CGR2_2 of the sweep (a declared control run: ticket 212 refuses ALF_GPU_FAULT_TAU without ALF_GPU_DEBUG=1)
+    if (gpu_env_fault_tau_eps() > 0.d0 .and. .not. gpu_env_is('ALF_GPU_SELFTEST', '4') .and. .not. gpu_env_is('ALF_GPU_TAUTIME', '1')) then
+       eps_tau_prod = .true.
+       call say('GPU fault armed (production sweep): ALF_GPU_FAULT_TAU eps: every element of the four outputs of every production '// &
+            & 'CGR2_2 is multiplied by (1 + x r), r in [-1, 1) fixed pseudo-random per element')
+    endif
+    ! ticket 207-3: ALF_GPU_FAULT_TAU_AT=<nst>:<nfe> restricts the sweep fault to the stabilization point nst (1..Nstm) and flavour nfe
+    ! (1..N_FL_eff) of every pass (a localized defect); only with eps:<x> acting in the sweep, else refused
+    if (gpu_env_get('ALF_GPU_FAULT_TAU_AT', f)) then
+       ib = index(f, ':')
+       ios = 1
+       if (ib > 1) then
+          read(f(1:ib-1),*,iostat=ios) eps_at_nst
+          if (ios == 0) read(f(ib+1:),*,iostat=ios) eps_at_nfe
+       endif
+       if (ios /= 0 .or. .not. eps_tau_prod .or. verify(trim(f), '0123456789:') /= 0) call env_bad('ALF_GPU_FAULT_TAU_AT', f)
+       if (eps_at_nst < 1 .or. eps_at_nst > t_nstm .or. eps_at_nfe < 1 .or. eps_at_nfe > t_nfe) call env_bad('ALF_GPU_FAULT_TAU_AT', f)
+       write(line,'(A,I0,A,I0,A)') 'GPU fault armed (production sweep): ALF_GPU_FAULT_TAU eps only at stabilization point ', eps_at_nst, &
+            & ' and flavour ', eps_at_nfe, ' of every pass (ALF_GPU_FAULT_TAU_AT)'
+       call say(line)
     endif
     if (gpu_env_is('ALF_GPU_SELFTEST', '4')) then
        call gpu_tau_selftest()
