@@ -420,6 +420,13 @@ binary with K_ND = 1). Rule: submatrix slower if > 5 % and > 2 × the larger spr
   speedup vs standard at 2x24: L=40 Beta=4 1.61–1.86, L=48 Beta=2 U=8 1.80 (delayed) / 2.15 (submatrix), L=56 Beta=2 2.64 / 2.87.
   Grid adapted to the 30-min limit (L=60 Beta=4 does not fit). Stage B: BLAS layouts (job 5956151) and calibration B2 pending.
 - No 3D cubic lattice in this ALF version: campaigns C3/H2 cannot run without new lattice code (question for the user).
+- N_delay scan `smuc_ndscan` (2026-11-01, 714 runs, 714 OK; `docs/cluster/ndscan/`, report §4): optimum flat (Hubbard L=40: 32–128
+  within 3 %); Ltrot and U have no effect; model dependent (tV delayed best 8/128/64 at L=20/30/40); submatrix gives no speedup for tV,
+  1.06 for Kondo; static auto rule within 3 % for 22/28 curves, max loss 15 % (tvL30 delayed); N_delay = −1 not better. Default kept.
+  Noise floor between runs ~3 % (auto vs identical fixed run). Intel MPI truncates the pin table after ~30 cpus → pin check falls back to
+  OMP_AFFINITY (f9ab32f4); `campaign/rejudge_pinning.sh` re-judged the 51 1x48 runs. Collect on the cluster (stdout.log is hashed;
+  campaign is 158 GB because of OMP_DISPLAY_AFFINITY output): `collect.py --strict --allow job.boost_job_start --allow job.numa_nodes
+  --allow run.boost_start`.
 
 ## User decisions 2026-11-01 (evening)
 - Authorisation: any number of SuperMUC-NG **test-partition** jobs for the next 24 h (until 2026-11-02 ~13:00), up to
