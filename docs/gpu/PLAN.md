@@ -172,7 +172,7 @@ ifx 2026.2 + MKL 2026.2, see MACHINES.md), the owner's approval of the process d
 | 302b | 204–206 device paths on the B580 with the 206 gates (self-tests, same-seed vs CPU, precision); τ path still refused | 302a |
 | 302c | τ path (207) on the B580. Split (decision 34): | 302b, 207 committed |
 | 302c-1 | τ switch under `GPU=intel` opened; oneMKL pieces of the device CGR2_2; self-tests and same-seed on the B580 ([ticket](tickets/302c-1-tau-switch.md)); in parallel with 207-3…207-5 (decision 36) | 302b, 207-1 |
-| 302c-2 | Accuracy gates of 207 on the B580, with an MKL host CGR2_2 in the reference ensemble; calibration feeds 207-6 (acceptance is 207's, decision 36) | 302c-1, 207-2, 207-3 |
+| 302c-2 | Accuracy gates of 207 on the B580, with an MKL host CGR2_2 in the reference ensemble; calibration feeds 207-6 (acceptance is 207's, decision 36) ([ticket](tickets/302c-2-accuracy-b580.md)) | 302c-1, 207-2, 207-3 |
 | 303 | (split: 303-1 AOT build for the B580 next to the `spir64` JIT build; 303-2 the 209 suite on the B580) ifx build of the full GPU path on `intel` (B580, `spir64` JIT and AOT), 209 suite on the B580 (correctness; not PVC performance) | 302c, 209 |
 | 304 | (split: 304-1 Slurm scripts; 304-2 validation recipe with expected values and tolerances) Slurm scripts (`test` partition, one rank per tile by default, CCS mode as an option, `I_MPI_OFFLOAD_CELL=tile`, `OMP_TARGET_OFFLOAD=MANDATORY`) + validation recipe with expected values and tolerances | 301, 303 |
 | 305 | Evaluate the owner's results; BENCHMARKS.md PVC column; fixes | 304 |
