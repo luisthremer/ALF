@@ -1,21 +1,24 @@
 #!/bin/bash
 # Ticket 207-3 (development only, dev seeds), nividia: run one binary on one prepared config (single process, 1 thread).
-#   usage: [SET=devN] [TAG=dir] t207_3_run.sh NAME CONFIG [env assignments...]
+#   usage: [SET=devN] [TAG=dir] [SETROOT=dir] t207_3_run.sh NAME CONFIG [env assignments...]
+#   SETROOT: where the prepared seed sets are read (default $W/runs; e.g. the previous agent's t207-3/runs, read only)
 #   -> t207-3/runs/TAG/CONFIG (refuses to overwrite): run.log, stamp.txt (binary sha256, source tree hash, env), provenance.json.
 #   GPU binaries (nv_* except nv_none*) run inside flock ~/alf-gpu/gpu.lock; inside the lock the script waits (up to 60 min, polling)
 #   until no compute process is on the GPU, so only one GPU process runs at a time.  No fixed run-time limit (decision 16); a 2 h guard
 #   timeout only stops a hung run.  Same records as t207_d5_run.sh (the QREF pipeline reads them).
-W=$HOME/alf-gpu/work/t207-3; export TMPDIR=$W/tmp
+W=${T207_3W:-$HOME/alf-gpu/work/t207-3};   # T207_3W: work dir of a follow-up agent (t207-3b)
+export TMPDIR=$W/tmp
 N=$1; C=$2; shift 2
 case $N in gnu*) . ~/alf-gpu/env/gnu.sh;; *) . ~/alf-gpu/env/nvhpc.sh;; esac
 safe() { case "$1" in ""|*..*|*/*) echo "refusing unsafe name: [$1]" >&2; exit 1;; esac; }
 T=${TAG:-$N}; S=${SET:-dev1}; safe "$N"; safe "$C"; safe "$T"; safe "$S"; : "${HOME:?}"
 D="$W/runs/$T/$C"; [ -e "$D" ] && { echo "refusing: $D exists"; exit 1; }
 [ -x "$W/bin/ALF_$N.out" ] || { echo "refusing: binary $N missing"; exit 1; }
-mkdir -p "$W/runs/$T"; cp -r "$W/runs/$S/$C" "$D"; cd "$D" || exit 1; mkdir -p qref   # dumps of ALF_GPU_TAUDIAG_QREF
+SR=${SETROOT:-$W/runs}; [ -d "$SR/$S/$C" ] || { echo "refusing: $SR/$S/$C missing"; exit 1; }
+mkdir -p "$W/runs/$T"; cp -r "$SR/$S/$C" "$D"; cd "$D" || exit 1; mkdir -p qref   # dumps of ALF_GPU_TAUDIAG_QREF
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 for kv in "$@"; do export "$kv"; done
-{ echo "binary $(cat $W/bin/ALF_$N.out.sha256)"; echo "srctree $(cat $W/bin/ALF_$N.srctree 2>/dev/null)"; head -2 $W/bin/ALF_$N.srcstate 2>/dev/null; echo "set $S config $C";
+{ echo "binary $(cat $W/bin/ALF_$N.out.sha256)"; echo "srctree $(cat $W/bin/ALF_$N.srctree 2>/dev/null)"; head -2 $W/bin/ALF_$N.srcstate 2>/dev/null; echo "set $S config $C setroot $SR";
   echo "env $*"; echo "seeds $(sha256sum seeds | cut -c1-16) parameters $(sha256sum parameters | cut -c1-16)"; date -Is; } > stamp.txt
 LOCK=(); GPU=0
 case $N in nv_none*|gnu*) ;; *) export OMP_TARGET_OFFLOAD=MANDATORY; LOCK=(flock "$HOME/alf-gpu/gpu.lock"); GPU=1 ;; esac

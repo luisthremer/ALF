@@ -81,7 +81,7 @@
 !> without SELFTEST=4 / TAUTIME (a declared control run, ticket 207-3) eps:<x> multiplies every element of the four device outputs of
 !> every production CGR2_2 by (1 + x r), r in [-1, 1) fixed pseudo-random per element (fault_eps_out); ALF_GPU_FAULT_TAU_AT=<nst>:<nfe>
 !> restricts it to stabilization point nst and flavour nfe of every pass.  With the device tau pass off,
-!> SELFTEST=4, TAUTIME, FAULT_TAU and every TAUDIAG variable stop the run with an error (tau_off_refuse, ticket 207-3);
+!> SELFTEST=4, TAUTIME, FAULT_TAU[_AT], TAUSWAP, TAU_NS, TAUTEST_V and every TAUDIAG variable stop the run with an error (tau_off_refuse, ticket 207-3);
 !> ALF_GPU_TAUTEST_V=1 prints the per-slice differences of the self-test.  DEBUG AIDS (not used in production, no effect when unset): ALF_GPU_TAUDIAG=1|2 prints one "TAUDIAG" line per
 !> stabilization point and flavour (device precision numbers next to a full host tau pass run in lockstep on the same trajectory, host
 !> CGR2_2 on the device inputs, GTT chains with 1-ulp perturbed right states; 1 adds host twins of single CGR2_2 steps; slow, see
@@ -291,13 +291,14 @@ Contains
   end subroutine gpu_tau_setup
 
   !> Ticket 207-3: the device tau pass is off (reason): stop with an error if a variable is set that only acts in the device tau pass
-  !> (ALF_GPU_SELFTEST=4, ALF_GPU_TAUTIME, ALF_GPU_FAULT_TAU, ALF_GPU_TAUDIAG*: every TAUDIAG name this module reads).  Otherwise the
+  !> (ALF_GPU_SELFTEST=4, ALF_GPU_TAUTIME, ALF_GPU_FAULT_TAU[_AT], ALF_GPU_TAUSWAP, ALF_GPU_TAU_NS, ALF_GPU_TAUTEST_V, ALF_GPU_TAUDIAG*:
+  !> every tau-only name this module reads; ALF_GPU_EXIT is shared with the update / stabilization hooks).  Otherwise the
   !> self-test would exit 0 and a fault would be armed without effect, and an rc 0 could not tell right from wrong.
   Subroutine tau_off_refuse(reason)
     Implicit none
     Character (len=*), intent(in) :: reason
-    Character (len=24), parameter :: nm(12) = [Character(len=24) :: 'ALF_GPU_TAUTIME', 'ALF_GPU_FAULT_TAU', 'ALF_GPU_FAULT_TAU_AT', &
-         & 'ALF_GPU_TAUDIAG', &
+    Character (len=24), parameter :: nm(15) = [Character(len=24) :: 'ALF_GPU_TAUTIME', 'ALF_GPU_FAULT_TAU', 'ALF_GPU_FAULT_TAU_AT', &
+         & 'ALF_GPU_TAUSWAP', 'ALF_GPU_TAU_NS', 'ALF_GPU_TAUTEST_V', 'ALF_GPU_TAUDIAG', &
          & 'ALF_GPU_TAUDIAG_FROM', 'ALF_GPU_TAUDIAG_SEED', 'ALF_GPU_TAUDIAG_VAR', 'ALF_GPU_TAUDIAG_AMP', 'ALF_GPU_TAUDIAG_NUL', &
          & 'ALF_GPU_TAUDIAG_QREF', 'ALF_GPU_TAUDIAG_QVAR', 'ALF_GPU_TAUDIAG_QHOST']
     Character (len=256) :: v

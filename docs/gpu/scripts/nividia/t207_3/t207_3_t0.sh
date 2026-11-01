@@ -7,8 +7,16 @@
 #             the same config without them (DEBUG=1 only) exits 0; production refusal unchanged (no DEBUG)
 #   ident     normal runs (no debug variable) of the 207-3 build and of base (HEAD before the edits): hub12x12_cb_b10_s (tau pass on)
 #             and hub6x6_cb_s_lt0 (tau pass off), default (nv_def) and LOG; data.h5 compared bit for bit
+#   off2      (follow-up t207-3b, builds nv_def_pp3 / nv_log3) the added refusals ALF_GPU_TAUSWAP=8 / ALF_GPU_TAU_NS=0 / ALF_GPU_TAUTEST_V=1
+#             on the tau-off input (DEBUG=1) -> must exit non-zero with the refusal line; SELFTEST=4 still refused; the old builds
+#             nv_def_pp2 / nv_log2 with TAUSWAP=8 on the same input (rc 0 before the fix); the same three variables with the tau pass on
+#             (hub6x6_cb_s) -> rc 0 (the refusal fires only when the pass is off)
+#   ident3    (follow-up) normal runs (no ALF_GPU_* variable) of nv_def_pp3 / nv_log3 and of the previous nv_def_pp2 / nv_log2 on
+#             hub6x6_cb_s (tau pass on) and hub6x6_cb_s_lt0 (off), data.h5 bit for bit; DEBUG=1 without and with eps:1e-6 against the
+#             previous agent's runs t03_at_<old>_{0,all} in PREV (default ~/alf-gpu/work/t207-3, read only; same dev1 seeds via SETROOT)
 #   epsprod   graded output fault in the sweep: hub6x6_cb, DEBUG=1, eps:1e-6 and eps:1e-10 vs no fault (Precision tau in info)
-W=$HOME/alf-gpu/work/t207-3; R=$1; shift; out=$W/logs/t0_$R.txt
+W=${T207_3W:-$HOME/alf-gpu/work/t207-3};   # T207_3W: work dir of a follow-up agent (t207-3b)
+R=$1; shift; out=$W/logs/t0_$R.txt
 case "$R" in ""|*/*|*..*) echo bad run label; exit 1;; esac
 r() { # id binary config env...
   id=$1; b=$2; c=$3; shift 3
@@ -66,5 +74,26 @@ at)   # localized fault (builds nv_def_pp2 / nv_log2 with ALF_GPU_FAULT_TAU_AT):
   done
   h5 "def pp2 vs pp (DEBUG=1, no fault)" $W/runs/t0${R}_at_nv_def_pp2_0/hub6x6_cb_s/data.h5 $W/runs/t02_eps_nv_def_pp_0/hub6x6_cb_s/data.h5
   h5 "log2 vs log (DEBUG=1, no fault)" $W/runs/t0${R}_at_nv_log2_0/hub6x6_cb_s/data.h5 $W/runs/t02_eps_nv_log_0/hub6x6_cb_s/data.h5 ;;
+off2)
+  for b in nv_def_pp3 nv_log3; do
+    r off2_${b}_st4 $b hub6x6_cb_s_lt0 $E ALF_GPU_SELFTEST=4
+    for kv in ALF_GPU_TAUSWAP=8 ALF_GPU_TAU_NS=0 ALF_GPU_TAUTEST_V=1; do
+      r off2_${b}_$(echo $kv | tr '=:.' '___') $b hub6x6_cb_s_lt0 ALF_GPU_DEBUG=1 $kv
+      r on2_${b}_$(echo $kv | tr '=:.' '___') $b hub6x6_cb_s ALF_GPU_DEBUG=1 $kv; done
+  done
+  for b in nv_def_pp2 nv_log2; do r off2_old_${b}_TAUSWAP_8 $b hub6x6_cb_s_lt0 ALF_GPU_DEBUG=1 ALF_GPU_TAUSWAP=8; done ;;
+ident3)
+  PREV=${PREV:-$HOME/alf-gpu/work/t207-3}
+  for pr in nv_def_pp3:nv_def_pp2 nv_log3:nv_log2; do
+    n=${pr%%:*}; o=${pr##*:}
+    for c in hub6x6_cb_s hub6x6_cb_s_lt0; do
+      r id3_${n}_$c $n $c; r id3_${o}_$c $o $c
+      h5 "$n vs $o $c (no env)" $W/runs/t0${R}_id3_${n}_$c/$c/data.h5 $W/runs/t0${R}_id3_${o}_$c/$c/data.h5
+    done
+    r id3_${n}_dbg $n hub6x6_cb_s ALF_GPU_DEBUG=1
+    h5 "$n DEBUG=1 vs PREV t03_at_${o}_0" $W/runs/t0${R}_id3_${n}_dbg/hub6x6_cb_s/data.h5 $PREV/runs/t03_at_${o}_0/hub6x6_cb_s/data.h5
+    r id3_${n}_eps $n hub6x6_cb_s ALF_GPU_DEBUG=1 ALF_GPU_FAULT_TAU=eps:1e-6
+    h5 "$n DEBUG=1 eps:1e-6 vs PREV t03_at_${o}_all" $W/runs/t0${R}_id3_${n}_eps/hub6x6_cb_s/data.h5 $PREV/runs/t03_at_${o}_all/hub6x6_cb_s/data.h5
+  done ;;
 esac; done
 echo done >> $out

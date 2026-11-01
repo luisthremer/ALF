@@ -3,7 +3,8 @@
 # processed the runs; GD=g4: ffab796f, GD=g5: 4118a1de (approved); g4/g5 need runs processed by them) on genuine
 # stride-3 cover-1 run sets with a spec written by t207_3_spec.py (bounds are calibration candidates, not a pre-registration).
 #   usage: t207_3_gate.sh TAG PATH "MAINSETS" CTLSET|- [extra t207_3_spec.py args...]   -> gate/{spec,report,gate}_<TAG>_<PATH>.*
-W=$HOME/alf-gpu/work/t207-3; cd $W || exit 1
+W=${T207_3W:-$HOME/alf-gpu/work/t207-3};   # T207_3W: work dir of a follow-up agent (t207-3b)
+cd $W || exit 1
 TAG=$1; P=$2; MAINS=$3; CTL=$4; shift 4
 PY=~/alf-gpu/venv/bin/python3
 GD=${GD:-g3}

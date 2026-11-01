@@ -2,7 +2,8 @@
 # Ticket 207 (207-3, development only), nividia: run directories (parameters + committed dev seeds) for configs of
 # acceptance/207.draft.json plus the extra Ltau = 0 twins below, into t207-3/runs/<SET>.  SET = base (dev seeds) or devN (the dev
 # seeds rotated by 37*N lines, as acc_driver.py --who agent maps accN).   usage: t207_3_prep.sh SET CONFIG [CONFIG ...]
-W=$HOME/alf-gpu/work/t207-3; export TMPDIR=$W/tmp; . ~/alf-gpu/env/gnu.sh
+W=${T207_3W:-$HOME/alf-gpu/work/t207-3};   # T207_3W: work dir of a follow-up agent (t207-3b)
+export TMPDIR=$W/tmp; . ~/alf-gpu/env/gnu.sh
 SET=$1; shift
 case "$SET" in base|dev[0-9]*) ;; *) echo "bad set $SET"; exit 1;; esac
 : "${HOME:?}"

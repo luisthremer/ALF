@@ -17,14 +17,32 @@ for a member); S_ens(m) = mean over points (pTT: points with B; emax, eF: all po
 Printed (and in OUT.json): per run and pooled over the main runs, S_ens of dev, var8, every reference member (correct variants),
 the controls' dev; pair pooling (every pair of main runs, as a gate on two seed sets would pool); bootstrap 95 % intervals (4000 draws).
 """
-import importlib.util, itertools, json, math, os, random, re, statistics, sys
+import hashlib, importlib.util, itertools, json, math, os, random, re, statistics, sys
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 QPDIR = os.environ.get('T207_3_QPDIR', HERE)      # directory of the strict reader to use (e.g. the 305488ec copy in g3/)
-_spec = importlib.util.spec_from_file_location('t207_d5_qparse', os.path.join(QPDIR, 't207_d5_qparse.py'))
-QP = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(QP)
+# T207_3_QPDIR_V3 (optional, follow-up t207-3b): a second strict reader for runs whose qref_spec.json has that reader's SPEC_VERSION (runs
+# processed by the approved pipeline 4118a1de, spec version 3, which the 305488ec reader (version 2) refuses, and vice versa); each run is
+# read by the reader of its own spec version, unchanged; the reader of every run is recorded.
+QPDIR3 = os.environ.get('T207_3_QPDIR_V3')
+
+
+def _reader(d, name):
+    sp = importlib.util.spec_from_file_location(name, os.path.join(d, 't207_d5_qparse.py'))
+    mod = importlib.util.module_from_spec(sp)
+    sp.loader.exec_module(mod)
+    return mod
+
+
+QP = _reader(QPDIR, 't207_d5_qparse')
 QError = QP.QError
+READERS = {QP.SPEC_VERSION: (QP, QPDIR)}
+if QPDIR3:
+    _qp3 = _reader(QPDIR3, 't207_d5_qparse_v3')
+    if _qp3.SPEC_VERSION in READERS or _qp3.DIAG_NAMES != QP.DIAG_NAMES:
+        raise SystemExit('t207_3_cal: the two readers have the same spec version or different DIAG_NAMES')
+    READERS[_qp3.SPEC_VERSION] = (_qp3, QPDIR3)
+ERRORS = tuple(set(m.QError for m, _ in READERS.values()))
 MEASURES = ('pTT', 'emax', 'eF')
 CTL = {'def': ('ALF_GPU_TAU_NS', '0'), 'log': ('ALF_GPU_TAUSWAP', '8')}
 
@@ -74,19 +92,26 @@ def summ(v):
 
 def load(rundir, path):
     q = os.path.join(rundir, 'qref.txt')
-    run = QP.load(q)
+    with open(os.path.join(rundir, 'qref_spec.json')) as f:
+        ver = json.load(f).get('version')
+    if ver not in READERS:
+        raise QError('%s: qref_spec.json version %r: no reader for it (readers: %s)' % (rundir, ver, sorted(READERS)))
+    rd, rdir = READERS[ver]
+    run = rd.load(q)
     with open(os.path.join(rundir, 'qref_proc.json')) as f:
         pr = json.load(f)
     a = run.spec['args']
     if pr.get('rc') != 0 or pr.get('check_rc') != 0 or a['cover'] != 1 or a['path'] != path or run.spec['run']['variant'] != path:
         raise QError('%s: processing not passing / cover != 1 / wrong path' % rundir)
-    refs = (QP.REF_DEF if path == 'def' else QP.REF_LOG).split(',')
+    refs = (rd.REF_DEF if path == 'def' else rd.REF_LOG).split(',')
     refs = ['nvh' if r == 'H' else r for r in refs]      # the approved reader (4118a1de) writes the host member as 'H'
     for r in refs:
         if r not in ('cpu', 'nvh') and int(r[1:]) not in a['nul']:
             raise QError('%s: reference %s not processed' % (rundir, r))
     role, x = role_of(run.spec['run']['env'], path)
-    return run, refs, role, x, pr.get('prog')
+    qpf = os.path.join(rdir, 't207_d5_qparse.py')
+    reader = '%s sha256 %s' % (qpf, hashlib.sha256(open(qpf, 'rb').read()).hexdigest()[:16])
+    return run, refs, role, x, pr.get('prog'), reader
 
 
 def ratios(run, refs, which, nfe=None):
@@ -174,16 +199,19 @@ def main():
         m = re.match(r'^(main|ctl|flt|attr):([A-Za-z0-9_.-]+)=(.+)$', arg)
         if not m:
             raise QError('bad argument %r' % arg)
-        run, refs, role, x, prog = load(m.group(3), path)
+        run, refs, role, x, prog, reader = load(m.group(3), path)
         if role != m.group(1):
             raise QError('%s: given role %s, env says %s' % (m.group(2), m.group(1), role))
-        runs.append(dict(label=m.group(2), dir=m.group(3), role=role, x=x, run=run, refs=refs, prog=prog,
+        runs.append(dict(label=m.group(2), dir=m.group(3), role=role, x=x, run=run, refs=refs, prog=prog, reader=reader,
                          seeds=run.spec['run']['seeds_sha256'], npts=len(run.points), nb=run.n_with_b))
     progs = set(r['prog'] for r in runs)
     if len(progs) != 1:
         raise QError('runs processed by different programs: %s' % progs)
     refs = runs[0]['refs']
-    res = dict(path=path, refs=refs, prog=progs.pop(), runs=[{k: v for k, v in r.items() if k != 'run'} for r in runs], tables={})
+    if any(r['refs'] != refs for r in runs):
+        raise QError('runs with different reference lists: %s' % set(','.join(r['refs']) for r in runs))
+    reader = ' | '.join(sorted(set(r['reader'] for r in runs)))
+    res = dict(path=path, refs=refs, prog=progs.pop(), reader=reader, runs=[{k: v for k, v in r.items() if k != 'run'} for r in runs], tables={})
     for which in MEASURES:
         for nfe in (None, 1, 2):
             key = '%s%s' % (which, '' if nfe is None else '_nfe%d' % nfe)
@@ -212,9 +240,10 @@ def main():
     res['strata'] = {w: strata(runs, refs, w) for w in MEASURES}
     json.dump(res, open(outf, 'w'), indent=1)
     # ---- text report (generated from res)
-    print('207-3 calibration, path %s, program %s, refs %s' % (path, res['prog'][:16], ','.join(refs)))
+    print('207-3 calibration, path %s, program %s, refs %s, reader %s' % (path, res['prog'][:16], ','.join(refs), reader))
     for r in res['runs']:
-        print('  run %-22s role %-4s x %-8s seeds %s points %d (with B %d)  %s' % (r['label'], r['role'], r['x'], r['seeds'][:16], r['npts'], r['nb'], r['dir']))
+        print('  run %-22s role %-4s x %-8s seeds %s points %d (with B %d)  %s  reader %s' % (r['label'], r['role'], r['x'], r['seeds'][:16], r['npts'],
+                                                                                         r['nb'], r['dir'], r['reader'].split()[-1]))
     for key, t in res['tables'].items():
         mains = [r['label'] for r in res['runs'] if r['role'] == 'main']
         print('== S_ens(%s)  mean [95%% bootstrap]' % key)
@@ -278,6 +307,6 @@ if __name__ == '__main__':
         main()
         if os.environ.get('T207_3_STRATA') == '1':
             print_strata(json.load(open(sys.argv[1])))
-    except QError as e:
+    except ERRORS as e:
         sys.stderr.write('t207_3_cal ERROR: %s\n' % e)
         sys.exit(1)
