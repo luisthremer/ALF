@@ -3,7 +3,7 @@
 - **Phase / lane:** 2 (NVIDIA) · part of 207 (decision 34)
 - **Owner agent:** manager
 - **Review:** numerics-reviewer (acceptance file, part b)
-- **Depends on:** 207-1 … 207-5
+- **Depends on:** 207-1 … 207-5, 302c-1, 302c-2 (decision 36)
 - **Status:** open
 
 ## Goal
@@ -17,8 +17,10 @@
   1.5× Precision-tau mean rule, paired mean and count report-only; β = 4 and β = 10; frozen ensemble lists; control
   runs on fresh seed sets distinct from the main sets; false-alarm budget written down.
 - Statement: WRAPUR accuracy rests on acceptances 1 and 2 plus the mean rule.
-- Acceptance 6 (Intel): **owner decision needed** before this ticket (proposal: "builds under `GPU=intel`; `Ltau = 1`
-  runs with the τ pass on the host, decision 22"; the device τ pass on Intel is 302c).
+- Acceptance 6 (Intel), decision 36: 207 is judged on the B580 too, with the device τ pass from 302c-1: self-tests and
+  faults, same-seed vs the ifx `GPU=none` oracle, the accuracy gates with an MKL host member in the reference ensemble
+  (302c-2's calibration), compare2 on the B580.
+- Bounds fixed by the manager by decision 37's rule; GPU time per decision 38.
 - `207.draft.json` retired (the shipping check allows only an added `207*.json` between base and pre-registration).
 - Run time and GPU budget (decision 11) from 207-4's numbers.
 
