@@ -7,7 +7,8 @@
 #   trace       builds/ALF_trace.out (-DALF_TRACE_UPDATES, built in-tree as compare_trajectory.sh does; the normal build is restored)
 #   mpi tempering hdf5 debug   archived copies of HEAD in builds/cluster/<variant>/src (configure.sh <machine> MPI | Tempering |
 #               noMPI HDF5 | noMPI with ALF_FLAGS_EXT="-DALF_LOWRANK_DEBUG $ALF_DEBUG_EXTRA")
-#   ctest       the CTest tree testsuite/tests (cmake + make against the normal build's Prog/*.o; compute nodes may lack make/cmake)
+#   ctest       the CTest tree testsuite/tests (cmake + make against the normal build's Prog/*.o; compute nodes may lack make/cmake);
+#               ALF_TEST_LDFLAGS = extra link flags of the tests (ifort: -qopt-matmul, the unit-test harness uses matmul)
 #   timers timers_mpi   testsuite/lowrank/timers_build.sh [--mpi]
 # Environment: ALF_MACHINE (default GNU), ALF_ENV_SH (module setup, sourced before configure.sh), MAKE_J (default 4),
 #   ALF_DEBUG_EXTRA (extra flags of the debug build, e.g. -qopt-matmul- for ifort: the debug shadow uses matmul).
@@ -46,9 +47,11 @@ for v in $VARIANTS; do
                     in_tree "-DALF_TRACE_UPDATES" >"$LOG/$v.log" 2>&1 && cp "$ALFDIR/Prog/ALF.out" "$ALFDIR/builds/ALF_trace.out"
                     in_tree "" >>"$LOG/$v.log" 2>&1
                     report $v "$ALFDIR/builds/ALF_trace.out" ;;
-        ctest)      ( cd "$ALFDIR" && cfg "" noMPI && { module load cmake >/dev/null 2>&1 || true; } && mkdir -p testsuite/tests \
-                      && cd testsuite/tests && cmake .. && make -j"$MAKE_J" ) >"$LOG/$v.log" 2>&1
-                    report $v "$ALFDIR/testsuite/tests/CTestTestfile.cmake" ;;
+        ctest)      /bin/rm -f "$ALFDIR/testsuite/tests/ctest_built.ok"
+                    ( cd "$ALFDIR" && cfg "" noMPI && { module load cmake >/dev/null 2>&1 || true; } && mkdir -p testsuite/tests \
+                      && cd testsuite/tests && cmake .. -DCMAKE_EXE_LINKER_FLAGS="${ALF_TEST_LDFLAGS:-}" && make -j"$MAKE_J" \
+                      && date >ctest_built.ok ) >"$LOG/$v.log" 2>&1
+                    report $v "$ALFDIR/testsuite/tests/ctest_built.ok" ;;
         mpi)        copy_build $v "" MPI >"$LOG/$v.log" 2>&1; report $v "$ALFDIR/builds/cluster/$v/src/Prog/ALF.out" ;;
         tempering)  copy_build $v "" Tempering >"$LOG/$v.log" 2>&1; report $v "$ALFDIR/builds/cluster/$v/src/Prog/ALF.out" ;;
         hdf5)       copy_build $v "" noMPI HDF5 >"$LOG/$v.log" 2>&1; report $v "$ALFDIR/builds/cluster/$v/src/Prog/ALF.out" ;;
