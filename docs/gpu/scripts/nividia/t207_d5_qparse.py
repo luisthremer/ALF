@@ -3,10 +3,18 @@
 the run that produced the dumps.  Nothing is skipped silently: every deviation from the expected content is a QError.
 
 Library (callers load it by file path and run python3 -I):
-    load(qref_txt, allow_v1=False) -> Run      the validated points of RUNDIR/qref.txt (RUNDIR = its directory)
-    proc_record(rundir, spec, prog, src)       the processing record qref_proc.json checked (rc, check_rc, args, program and source hash,
-                                               qref_sha256 = the hash of qref.txt now); used by thin, t207_d5_agg.py and t207_d5_gate.py
-    verify_dumps(rundir, spec)                 manifest = the covered dumps, the kept dumps match it
+    load(qref_txt, allow_v1=False, raw=None) -> Run   the validated points of RUNDIR/qref.txt (RUNDIR = its directory); raw: the bytes
+                                               of qref.txt already read by the caller (the bytes that are hashed are the bytes parsed);
+                                               Run.qref_sha256 = sha256 of the parsed bytes, Run.lines = its 'QREF file' lines
+    proc_record(rundir, spec, prog, src, qref_sha256=None, manifest_sha256=None)
+                                               the processing record qref_proc.json checked (rc, check_rc, args, program and source hash,
+                                               qref_sha256 = the hash of qref.txt (given: the hash of the bytes the caller parsed, else the
+                                               file now), manifest_sha256 a sha256 (= the given hash of the manifest bytes the caller parsed));
+                                               used by thin, t207_d5_agg.py and t207_d5_gate.py
+    verify_dumps(rundir, spec)                 manifest = the covered dumps, the kept dumps match it (returns manifest, its sha256)
+    check_dump_headers(rundir, spec)           every kept dump: header and exact size as t207_d5_qref.F90 checks them, and the header's file /
+                                               pass / nst / nfe / br against run.log, N, path, QVAR masks, QHOST, TAUDIAG, hasb against the
+                                               run's records (refuses text files or other data posing as dumps)
     env_table(env_roles), role_of_env(env, table)   the env allow-list as a table of exact envs (driven by the gate spec);
                                                dev_env_table / env_role: the development table of t207_d5_agg.py
     read_json(path, what)                      strict JSON (no duplicate keys, no NaN / Infinity)
@@ -35,7 +43,7 @@ cover, keep) stored in qref_spec.json:
     errors >= 0, propagated numbers exactly -1 where the dump has no B, n0 identical to cpu, br == hbr == the br of run.log,
     quad self-checks <= QSELF_MAX; and a final line 'QREFEND dumps D ok D err 0'; any other line is an error.
 """
-import argparse, hashlib, json, math, os, re, sys
+import argparse, hashlib, json, math, os, re, struct, sys
 from math import gcd
 
 QSELF_MAX = 1e-25          # input check of the proposed criterion (207 dev5): quad vs itself (row-permuted QR input, other branch)
@@ -43,7 +51,8 @@ NUMRE = re.compile(r'^-?[0-9]\.[0-9]{4}E[+-][0-9]{3}$')
 REF_DEF = 'cpu,nvh,n4,n100004,n1,n100001,n2,n1608,n4808,n5,n100005'
 REF_LOG = 'cpu,nvh,n4,n100004,n1,n100001,n2,n5,n100005'
 DIAG_NAMES = ('qself', 'qbr', 'din', 'cpuh', 'cpuhx')     # members that are not error statistics of a G
-SPEC_VERSION = 2
+SPEC_VERSION = 3            # 3 (fix round 4): the run part carries binary_sha256 (the ALF binary of provenance.json = stamp.txt)
+DUMP_MAGIC = 20791         # hdr(1) of a dump (Prog/gpu_tau_mod.F90 qref_post; t207_d5_qref.F90 refuses anything else)
 # Allow-list of the GPU debug environment (ALF_GPU_*) of a run that enters the accuracy statistics: a table {role: exact env}.  A run has a
 # role only if its env equals one row exactly (no extra, no missing variable, same values); a run matching no row, or more than one, is
 # refused.  The gate (t207_d5_gate.py) builds the table from its spec file (env_table: 'main' exact, every control role = main minus
@@ -70,8 +79,9 @@ class Point(object):
 
 
 class Run(object):
-    def __init__(self, spec, points, dumps):
+    def __init__(self, spec, points, dumps, qref_sha256=None, lines=None):
         self.spec, self.points, self.dumps = spec, points, dumps
+        self.qref_sha256, self.lines = qref_sha256, lines          # sha256 of the bytes parsed; the 'QREF file' lines of those bytes
 
     @property
     def n_with_b(self):
@@ -115,9 +125,14 @@ def read_json(p, what):
     """a JSON file, strictly: must exist, parse, have no duplicate keys and no NaN / Infinity constants"""
     if not os.path.isfile(p):
         raise QError('%s missing: %s' % (what, p))
+    with open(p, 'rb') as f:
+        return loads_strict(f.read(), what, p)
+
+
+def loads_strict(raw, what, p):
+    """the JSON value of the bytes raw (read and hashed by the caller), strictly as read_json"""
     try:
-        with open(p, 'rb') as f:
-            return json.loads(f.read().decode('utf-8'), object_pairs_hook=_no_dup_keys, parse_constant=_no_const)
+        return json.loads(raw.decode('utf-8'), object_pairs_hook=_no_dup_keys, parse_constant=_no_const)
     except QError as e:
         raise QError('%s %s: %s' % (what, p, e))
     except (ValueError, UnicodeDecodeError) as e:
@@ -287,6 +302,10 @@ def derive_run(rundir):
     ps = prov.get('seeds_sha256')
     if not (isinstance(ps, str) and re.match(r'^[0-9a-f]{64}$', ps) and ps.startswith(sm[0][0]) and prov['parameters_sha256'].startswith(sm[0][1])):
         raise QError('provenance.json seeds_sha256 / parameters_sha256 do not match the seeds line of stamp.txt')
+    bs = prov.get('binary_sha256')
+    bm = re.findall(r'^binary ([0-9a-f]{64})(?: .*)?$', read_text(rundir, 'stamp.txt'), re.M)
+    if not (isinstance(bs, str) and re.match(r'^[0-9a-f]{64}$', bs)) or len(bm) != 1 or bm[0] != bs:
+        raise QError('provenance.json binary_sha256 %r and the binary line of stamp.txt %s do not agree (the ALF binary of the run)' % (bs, bm))
     par = read_text(rundir, 'parameters')
     info = read_text(rundir, 'info')
     log = read_text(rundir, 'run.log')
@@ -390,7 +409,7 @@ def derive_run(rundir):
         br.append(v[4])
     return dict(passes=passes, ltrot=ltrot, nwrap=nwrap, nstm=nstm, nfl=nfl, n=n, variant=variant, stride=stride, frm=frm,
                 qhost=qhost == '1', qvar=qvar, taudiag=tdg, hasdg=hasdg, env=env_info, ndumps=len(dumps), br=br,
-                seeds_sha256=ps, parameters_sha256=prov['parameters_sha256'],
+                seeds_sha256=ps, parameters_sha256=prov['parameters_sha256'], binary_sha256=bs,
                 records_sha256={r: sha256_file(os.path.join(rundir, r)) for r in RECORDS})
 
 
@@ -520,17 +539,20 @@ def check_ef(e, n, what):
     max|d_b| / max|Gq_b| per block and eF = sqrt(sum|d|^2 / sum|Gq|^2) over the 4 n^2 entries): with D = max_b max|d_b| and M = the largest
     |Gq| entry, sum|d|^2 <= 4n^2 D^2, sum|Gq|^2 >= M^2, and D/M <= e of the block holding D, so eF <= 2n max(e1..e4); sum|d|^2 >= max|d_b*|^2
     and sum|Gq|^2 <= 4n^2 M^2 for the block b* holding M, so eF >= e_b*/(2n) >= min(e1..e4)/(2n).  Slack 1e-4 relative for the 5-digit
-    printing.  It catches an error number moved between the e slots only when it breaks these bounds (weak: factor 2n either side)."""
+    printing.  It catches an error number moved between the e slots only when it breaks these bounds (weak: factor 2n either side).
+    A SANITY CHECK ONLY: a forged line satisfies it easily.  Authenticity of the numbers comes from re-running the program on the kept dumps
+    (t207_d5_gate.py) and, beyond that, from the harness's stamps (207-5)."""
     lo, hi = min(e[0:4]) / (2 * n), 2 * n * max(e[0:4])
     if not (lo * (1 - 1e-4) <= e[4] <= hi * (1 + 1e-4)):
         raise QError('%s: eF = %.4e outside [min(e1..e4)/(2n), 2n max(e1..e4)] = [%.4e, %.4e] (impossible by construction: numbers '
-                     'shifted or not from the program)' % (what, e[4], lo, hi))
+                     'shifted or not from the program; a sanity check only)' % (what, e[4], lo, hi))
 
 
-def load(qref_txt, allow_v1=False, members=None, host='nvh'):
+def load(qref_txt, allow_v1=False, members=None, host='nvh', raw=None):
     """members (optional, from a gate spec): the exact ordered list of the run's statistical members (every member except the diagnostic
     ones DIAG_NAMES, whose presence follows from qs and hostin); the list derived from the run's records, with the in-run host member
-    labelled host, must equal it, else QError"""
+    labelled host, must equal it, else QError.  raw (optional): the bytes of qref_txt as the caller read them: these bytes are parsed, the
+    file is not read again.  The Run carries the sha256 of the parsed bytes (qref_sha256) and their 'QREF file' lines (lines)."""
     rundir = os.path.dirname(os.path.abspath(qref_txt))
     spec = load_spec(rundir)
     run = spec['run']
@@ -540,8 +562,10 @@ def load(qref_txt, allow_v1=False, members=None, host='nvh'):
         if derived != members:
             raise QError('member list %s (derived from the run records, host member labelled %r) differs from the member list of the spec %s'
                          % (derived, host, members))
-    with open(qref_txt, 'rb') as f:
-        raw = f.read()
+    if raw is None:
+        with open(qref_txt, 'rb') as f:
+            raw = f.read()
+    qsha = hashlib.sha256(raw).hexdigest()
     try:
         txt = raw.decode('ascii')
     except UnicodeDecodeError:
@@ -609,7 +633,7 @@ def load(qref_txt, allow_v1=False, members=None, host='nvh'):
             if segs[names.index('n0')].split()[1:] != segs[names.index('cpu')].split()[1:]:
                 raise QError('%s: null code 0 differs from the oracle (cpu)' % what)
         points.append(Point(hd, m, names))
-    return Run(spec, points, exp)
+    return Run(spec, points, exp, qref_sha256=qsha, lines=list(body))
 
 
 # ---------------------------------------------------------------- dump directory
@@ -619,17 +643,27 @@ def dump_name(k):
 
 
 def read_manifest(rundir):
+    return read_manifest_sha(rundir)[0]
+
+
+def read_manifest_sha(rundir):
+    """(manifest {name: sha256}, sha256 of the manifest bytes that were parsed)"""
     p = os.path.join(rundir, 'qref_manifest.txt')
     if not os.path.isfile(p):
         raise QError('qref_manifest.txt missing')
     d = {}
-    with open(p) as f:
-        for ln in f.read().split('\n')[:-1]:
-            m = re.match(r'^([0-9a-f]{64})  (qref/q[0-9]{6}\.bin)$', ln)
-            if not m or m.group(2) in d:
-                raise QError('qref_manifest.txt: bad or duplicate line %r' % ln)
-            d[m.group(2)] = m.group(1)
-    return d
+    with open(p, 'rb') as f:
+        rawm = f.read()
+    try:
+        txtm = rawm.decode('ascii')
+    except UnicodeDecodeError:
+        raise QError('qref_manifest.txt: non-ASCII bytes')
+    for ln in txtm.split('\n')[:-1]:
+        m = re.match(r'^([0-9a-f]{64})  (qref/q[0-9]{6}\.bin)$', ln)
+        if not m or m.group(2) in d:
+            raise QError('qref_manifest.txt: bad or duplicate line %r' % ln)
+        d[m.group(2)] = m.group(1)
+    return d, hashlib.sha256(rawm).hexdigest()
 
 
 def check_dumps(rundir, spec, stride, manifest=None):
@@ -651,23 +685,78 @@ def check_dumps(rundir, spec, stride, manifest=None):
     return len(want)
 
 
-def verify_dumps(rundir, spec):
+def verify_dumps(rundir, spec, parsed=None):
     """the dump evidence after the processing: qref_manifest.txt lists exactly the covered dumps, and qref/ holds exactly the kept ones
-    (every cover*max(keep,1)-th) with the sha256 of the manifest.  Returns the manifest {name: sha256}."""
-    manifest = read_manifest(rundir)
+    (every cover*max(keep,1)-th) with the sha256 of the manifest.  Returns (manifest {name: sha256}, sha256 of the manifest bytes parsed).
+    parsed: (manifest, sha256) of read_manifest_sha already called by the caller (the manifest is then not read again)."""
+    manifest, msha = parsed if parsed is not None else read_manifest_sha(rundir)
     if set(manifest) != set(dump_name(k) for (k, p, nst, nfe, br) in cover_dumps(spec)):
         raise QError('qref_manifest.txt does not list exactly the covered dumps')
     check_dumps(rundir, spec, spec['args']['cover'] * max(spec['args']['keep'], 1), manifest)
-    return manifest
+    return manifest, msha
+
+
+def check_dump_headers(rundir, spec, allow_v1=False):
+    """Every kept dump (qref/qNNNNNN.bin) is a dump of this run at its place in the call sequence: the header as t207_d5_qref.F90 reads it
+    (13 little-endian int32: magic 20791, version, file, pass, nst, nfe, br, N, path flag, number of QVAR masks, QHOST, TAUDIAG, hasb; version 1
+    has 12, no hasb), the QVAR masks that follow it, and the exact file size the header implies (the program's formula).  Every field is compared
+    with what the run's own records say (run.log TAUQREF line of the dump, info N / path, env QVAR / QHOST / TAUDIAG, hasb = nst < NSTM).  A text
+    file or other data posing as a dump is refused here (bad magic or size).  Returns the number of dumps checked."""
+    run = spec['run']
+    islog = run['variant'] == 'log'
+    n = 0
+    for (k, p, nst, nfe, br) in kept_dumps(spec):
+        what = dump_name(k)
+        f = os.path.join(rundir, what)
+        with open(f, 'rb') as fh:
+            head = fh.read(52 + 4 * 64)
+        size = os.path.getsize(f)
+        if len(head) < 48:
+            raise QError('%s: %d bytes, shorter than a dump header (not a dump)' % (what, len(head)))
+        h = list(struct.unpack('<12i', head[:48]))
+        if h[0] != DUMP_MAGIC or h[1] not in (1, 2):
+            raise QError('%s: bad dump header (magic %d, version %d; a dump has magic %d, version 2): not a dump' % (what, h[0], h[1], DUMP_MAGIC))
+        if h[1] == 1 and not allow_v1:
+            raise QError('%s: dump version 1 (no B, Bi; only with allow_v1, never by the gate)' % what)
+        if h[1] == 2:
+            if len(head) < 52:
+                raise QError('%s: short header' % what)
+            h.append(struct.unpack('<i', head[48:52])[0])
+            hlen = 52
+        else:
+            h.append(0)
+            hlen = 48
+        nv = h[9]
+        hasb = 1 if (h[1] == 2 and nst < run['nstm']) else 0
+        want = [('file', 2, k), ('pass', 3, p), ('nst', 4, nst), ('nfe', 5, nfe), ('br', 6, br), ('N', 7, run['n']), ('path flag', 8, 1 if islog else 0),
+                ('number of QVAR masks', 9, len(run['qvar'])), ('QHOST', 10, 1 if run['qhost'] else 0), ('TAUDIAG', 11, 1 if run['hasdg'] else 0),
+                ('hasb', 12, hasb)]
+        for name, i, v in want:
+            if h[i] != v:
+                raise QError('%s: header %s = %d, the run records say %d' % (what, name, h[i], v))
+        if len(head) < hlen + 4 * nv:
+            raise QError('%s: short read (masks)' % what)
+        masks = list(struct.unpack('<%di' % nv, head[hlen:hlen + 4 * nv])) if nv else []
+        if masks != run['qvar']:
+            raise QError('%s: QVAR masks %s in the dump, the run env says %s' % (what, masks, run['qvar']))
+        nn = run['n']
+        sb = 32 * nn * nn + (8 if islog else 16) * nn
+        esz = 4 * (12 + (1 if h[1] == 2 else 0)) + 4 * nv + 2 * sb + (1 + nv + h[10]) * 64 * nn * nn + h[11] * sb + hasb * 32 * nn * nn
+        if size != esz:
+            raise QError('%s: size %d bytes, the header implies %d (truncated, padded or not a dump)' % (what, size, esz))
+        n += 1
+    return n
 
 
 HEX64 = re.compile(r'^[0-9a-f]{64}$')
 
 
-def proc_record(rundir, spec, prog=None, src=None):
+def proc_record(rundir, spec, prog=None, src=None, qref_sha256=None, manifest_sha256=None):
     """RUNDIR/qref_proc.json, the record t207_d5_proc.sh writes after the program and the check (one implementation for thin, agg, gate):
     rc and check_rc are the integer 0, the arguments are those of qref_spec.json, 'prog' and 'prog_src' are sha256 values (equal to prog /
-    src if given), and 'qref_sha256' is the sha256 of RUNDIR/qref.txt as it is now.  Returns the record."""
+    src if given), 'qref_sha256' is the sha256 of qref.txt (qref_sha256 given: the hash of the bytes the caller parsed; else of the file as it
+    is now), and 'manifest_sha256' (fix round 4) is a sha256, equal to manifest_sha256 if given (the hash of the manifest bytes the caller
+    parsed).  Returns the record."""
     pj = os.path.join(rundir, 'qref_proc.json')
     if not os.path.isfile(pj):
         raise QError('qref_proc.json missing in %s (every run needs the record of its processing, t207_d5_proc.sh)' % rundir)
@@ -689,11 +778,19 @@ def proc_record(rundir, spec, prog=None, src=None):
     qs = pr.get('qref_sha256')
     if not (isinstance(qs, str) and HEX64.match(qs)):
         raise QError('qref_proc.json: no valid qref_sha256 (%r): the processing did not record the hash of qref.txt' % (qs,))
-    qt = os.path.join(rundir, 'qref.txt')
-    if not os.path.isfile(qt):
-        raise QError('qref.txt missing in %s' % rundir)
-    if sha256_file(qt) != qs:
-        raise QError('qref.txt: sha256 %s differs from qref_sha256 %s in qref_proc.json (changed after the processing)' % (sha256_file(qt), qs))
+    if qref_sha256 is None:
+        qt = os.path.join(rundir, 'qref.txt')
+        if not os.path.isfile(qt):
+            raise QError('qref.txt missing in %s' % rundir)
+        qref_sha256 = sha256_file(qt)
+    if qref_sha256 != qs:
+        raise QError('qref.txt: sha256 %s differs from qref_sha256 %s in qref_proc.json (changed after the processing)' % (qref_sha256, qs))
+    ms = pr.get('manifest_sha256')
+    if not (isinstance(ms, str) and HEX64.match(ms)):
+        raise QError('qref_proc.json: no valid manifest_sha256 (%r): the processing did not record the hash of qref_manifest.txt' % (ms,))
+    if manifest_sha256 is not None and manifest_sha256 != ms:
+        raise QError('qref_manifest.txt: sha256 %s differs from manifest_sha256 %s in qref_proc.json (changed after the processing)'
+                     % (manifest_sha256, ms))
     return pr
 
 
@@ -704,13 +801,13 @@ def thin(rundir, allow_v1=False):
         raise QError('keep 0: nothing to thin')
     # a passing check is required here, not only in the caller (review fix 6): qref.txt loads strictly, and the processing recorded
     # program exit status 0 and check status 0 for exactly these arguments
-    load(os.path.join(rundir, 'qref.txt'), allow_v1)
+    run = load(os.path.join(rundir, 'qref.txt'), allow_v1)
+    manifest, msha = read_manifest_sha(rundir)
     try:
-        proc_record(rundir, spec)
+        proc_record(rundir, spec, qref_sha256=run.qref_sha256, manifest_sha256=msha)
     except QError as e:
         raise QError('%s: nothing deleted' % e)
     stride = spec['args']['cover'] * keep
-    manifest = read_manifest(rundir)
     cov = cover_dumps(spec)
     if set(manifest) != set(dump_name(k) for (k, p, nst, nfe, br) in cov):
         raise QError('qref_manifest.txt does not list exactly the covered dumps')

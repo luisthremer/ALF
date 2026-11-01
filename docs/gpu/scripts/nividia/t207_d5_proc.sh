@@ -18,7 +18,11 @@
 #   source t207_d5_qref.F90 next to this script (else refusal); the binary hash is recorded in qref_proc.json ('prog'; 'prog_src' = the
 #   verified source hash); t207_d5_agg.py needs the record for every run and t207_d5_gate.py requires the value of its spec (prog_sha, src_sha).  KEEP > 0 must satisfy the keep rule of
 #   qparse (gcd(cover*KEEP, P) = 1); the kept dumps allow pointwise re-checking only, the recomputable result is the full qref.txt plus the manifest.
-#   qref_proc.json also records qref_sha256 (the sha256 of qref.txt after the check): agg and the gate refuse a qref.txt that differs from it.
+#   qref_proc.json also records qref_sha256 (the sha256 of qref.txt after the check): agg and the gate refuse a qref.txt that differs from it;
+#   and manifest_sha256 (fix round 4: the sha256 of qref_manifest.txt), which the gate requires to equal the hash of the manifest it parses.
+#   These records sit in the run directory and can be rewritten together with what they describe: they detect accidents, not forgery.  The
+#   gate re-runs the program on the kept dumps (authenticity of the numbers of those dumps); binding qref.txt, qref_proc.json and the manifest
+#   to the run beyond that is the harness's job (207-5: stamps of all of them in the attempt log outside the run directory).
 #   The gate (t207_d5_gate.py) refuses a run processed with DUMP_COVER != 1 (unless its spec is marked test_only) or ALLOW_V1 (always).
 #   4 OpenMP threads, OpenBLAS 1 thread.
 W=${D5W:-$HOME/alf-gpu/work/t207/dev5}; export TMPDIR=$W/tmp; . ~/alf-gpu/env/gnu.sh > /dev/null
@@ -62,7 +66,8 @@ def first(p):
     return open(p).read().split()[0]
 json.dump(dict(ticket='207-2 pipeline (development evidence, dev seeds)', run=R, prog=progsha,
                prog_src=first(B.replace('.out', '.src.sha256')), args=dict(path=P, qs=int(QS), nul=NUL, hostin=int(HI), cover=int(COVER), keep=int(KEEP)),
-               rc=int(rc), check_rc=int(crc), qref_sha256=hashlib.sha256(open('qref.txt', 'rb').read()).hexdigest(), check=open('qref_check.txt').read().strip(), wall_s=int(wall),
+               rc=int(rc), check_rc=int(crc), qref_sha256=hashlib.sha256(open('qref.txt', 'rb').read()).hexdigest(),
+               manifest_sha256=hashlib.sha256(open('qref_manifest.txt', 'rb').read()).hexdigest(), check=open('qref_check.txt').read().strip(), wall_s=int(wall),
                lines=sum(1 for l in open('qref.txt') if l.startswith('QREF file')),
                dumps=sum(1 for l in open('qref_list.txt'))), open('qref_proc.json', 'w'), indent=1)
 PY
