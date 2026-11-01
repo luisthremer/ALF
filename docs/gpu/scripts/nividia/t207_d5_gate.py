@@ -28,7 +28,8 @@ Across the runs: 7. the same parameters; no run twice (directory, qref.txt sha25
 line shared by two runs); the number of runs per role equals the spec's n_runs.  8. Pinning: every run's ALF binary (provenance.json
 binary_sha256 = stamp.txt) is the spec's binary_sha256, its parameters sha256 the spec's parameters_sha256, and the seed sets per role are
 exactly the spec's seeds (set equality; no run chosen out of a larger set, no other seed set).  9. Authenticity: the program (--prog) is run
-on the kept dumps of every run with the run's processing arguments; its output must equal the run's qref.txt lines of those dumps (headers
+on the kept dumps of every run with the run's processing arguments (afterwards every kept dump is hashed again and must still match the
+manifest); its output must equal the run's qref.txt lines of those dumps (headers
 except the timing tq exactly, member names and order exactly, every number exactly, i.e. bit identity of the printed text: the pinned
 program is bit-identical across dump list order, subsets and thread counts (reviewer probe P1 of round 4), every kept dev5 dump re-processed
 to equal numbers, and VERIFICATION section 7 demands bit identity where it holds).
@@ -50,7 +51,8 @@ This gate alone is not forgery-proof.
 Code-enforced spec content (not left to the spec writer):
   - env_roles.main is exactly {ALF_GPU_DEBUG=1, ALF_GPU_TAUDIAG_QHOST=1, ALF_GPU_TAUDIAG_QVAR=8, ALF_GPU_TAUDIAG_QREF=<int>=1..,
     ALF_GPU_TAUDIAG_FROM=<int>}; a control role may omit only ALF_GPU_TAUDIAG_QVAR and adds at least one fault from the table FAULTS
-    (ALF_GPU_TAU_NS=0 default path, ALF_GPU_TAUSWAP=8 LOG path, ALF_GPU_FAULT_TAU=eps:<x>[@<nst>[:<nfe>]] both paths);
+    (ALF_GPU_TAU_NS=0 default path, ALF_GPU_TAUSWAP=8 LOG path, ALF_GPU_FAULT_TAU=eps:<x> both paths, optionally with
+    ALF_GPU_FAULT_TAU_AT=<nst>:<nfe>, which requires ALF_GPU_FAULT_TAU in the same role);
   - refs equal the frozen list of the path (FROZEN_REFS, host member = host_member) unless the spec is marked test_only; var<m>, u<k>,
     dev, n0 and the diagnostic members are never references.
 Decision, per gate {name, measure, statistic, pool, bound}:
@@ -83,8 +85,9 @@ per-member statistics, every decisive number, the verdict and the exit code.  It
 
 Spec file (JSON object, no duplicate keys, no NaN / Infinity; every key below required unless marked optional, no other key):
   spec_version 1; path 'def' | 'log'; host_member: the label the offline program prints for the in-run host CGR2_2 of QHOST=1
-  (it depends on the build of the offline program, e.g. the NVIDIA and the Intel builds print different labels; no label is hard-coded in
-  the gate, qparse or agg: the spec's host_member is used everywhere, and FROZEN_REFS hold the placeholder H for it); members: {role: [the exact ordered statistical members of that role's runs]}
+  (t207_d5_qref.F90 always prints 'nvh', on both machines and for dumps of the nvfortran and of the ifx binary: specs use 'nvh', "in-run host
+  member, label fixed by the program"; the gate, qparse and agg take it from the spec only, and FROZEN_REFS hold the placeholder H for it);
+  members: {role: [the exact ordered statistical members of that role's runs]}
   for main and the roles of the run controls; refs: the frozen reference list of the path (another list only with test_only);
   qs: one integer > 0; nul: the null codes of the processing (distinct integers >= 0, with 0 and the codes of refs); cover: 1 (another
   value only with test_only); keep: the processing's KEEP (integer >= 0; 0 = no thinning, every covered dump kept), equal in every run;
@@ -130,12 +133,14 @@ MAIN_ENV_INT = {'ALF_GPU_TAUDIAG_QREF': 1, 'ALF_GPU_TAUDIAG_FROM': 0}          #
 CONTROL_MAY_OMIT = ('ALF_GPU_TAUDIAG_QVAR',)
 _EPS = r'(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eEdD][-+]?[0-9]+)?'
 # fault variable -> (paths, value regex, meaning).  ALF_GPU_FAULT_TAU=eps:<x> is the graded fault of 207-3 (x > 0, < 1e300, as
-# gpu_state_mod validates it); '@<nst>[:<nfe>]' restricts it to one block (and flavour) position.  207-3 defines the position syntax: if it
+# gpu_state_mod validates it); 207-3 restricts it to one block and flavour position with the separate variable ALF_GPU_FAULT_TAU_AT=<nst>:<nfe>
+# (positive integers; only together with ALF_GPU_FAULT_TAU; 207-5 round 2: the earlier '@<nst>[:<nfe>]' suffix is dropped).  If the syntax
 # differs from this, this table is the one place to change (QUESTION in the 207-2 report).
 FAULTS = {'ALF_GPU_TAU_NS': (('def',), re.compile(r'^0$'), 'default path forced (no pre-pivot): NS=0 control'),
           'ALF_GPU_TAUSWAP': (('log',), re.compile(r'^8$'), 'LOG path: device CGR2_2 step swapped (mask 8)'),
-          'ALF_GPU_FAULT_TAU': (('def', 'log'), re.compile(r'^eps:(' + _EPS + r')(?:@[1-9][0-9]*(?::[1-9][0-9]*)?)?$'),
-                                'graded fault of 207-3 on the device CGR2_2 output')}
+          'ALF_GPU_FAULT_TAU': (('def', 'log'), re.compile(r'^eps:(' + _EPS + r')$'), 'graded fault of 207-3 on the device CGR2_2 output'),
+          'ALF_GPU_FAULT_TAU_AT': (('def', 'log'), re.compile(r'^[1-9][0-9]*:[1-9][0-9]*$'),
+                                   'position (nst:nfe) of the graded fault; only with ALF_GPU_FAULT_TAU')}
 MEMO = {}       # reprocessing results within ONE process (the self-test calls main() in-process); see reprocess()
 
 
@@ -360,6 +365,9 @@ def check_env_rules(s, table, run_roles):
             raise InputError('gate spec: env_roles.%s.omit_env %s: a control may omit only %s' % (role, bad_omit, list(CONTROL_MAY_OMIT)))
         if not r['extra_env']:
             raise InputError('gate spec: env_roles.%s adds no fault (extra_env empty): a control role adds at least one fault of %s' % (role, sorted(FAULTS)))
+        if 'ALF_GPU_FAULT_TAU_AT' in r['extra_env'] and 'ALF_GPU_FAULT_TAU' not in r['extra_env']:
+            raise InputError('gate spec: env_roles.%s.extra_env has ALF_GPU_FAULT_TAU_AT without ALF_GPU_FAULT_TAU (the position of a fault that '
+                             'is not set)' % role)
         for k, v in sorted(r['extra_env'].items()):
             f = FAULTS.get(k)
             ok = f is not None and s['path'] in f[0] and f[1].match(v)
@@ -533,6 +541,14 @@ def authenticate(runs, s, prog):
     out = []
     for x in runs:
         new, src = reprocess(x, s, prog)
+        # re-hash at read time (207-5, round-5 follow-up): every kept dump must still have the sha256 of the manifest after the program has
+        # read it (a dump replaced or a symbolic link re-pointed between the check of step 3 and the re-processing is refused).  A change
+        # undone before this check is not seen: the harness refuses symbolic links in its run directories and stamps every kept dump.
+        for (k, p, nst, nfe, br) in x['kept']:
+            nm = QP.dump_name(k)
+            fp = os.path.join(x['dir'], nm)
+            if not os.path.isfile(fp) or QP.sha256_file(fp) != x['manifest'][nm]:
+                raise InputError('run %s: %s changed during the re-processing (sha256 differs from the manifest, or the file is gone)' % (x['dir'], nm))
         bynum = {}
         for ln in x['lines']:
             bynum[int(ln.split()[2])] = ln
@@ -720,7 +736,7 @@ LIMITS = ('This gate re-computes, with the pinned program and demanding exact eq
 
 
 def main(argv):
-    rep = dict(tool='t207_d5_gate.py (207-2 design 3, fix round 5)', argv=argv, limits=LIMITS,
+    rep = dict(tool='t207_d5_gate.py (207-2 design 3, fix round 5; 207-5 follow-ups)', argv=argv, limits=LIMITS,
                scripts={f: sha(os.path.join(HERE, f)) for f in ('t207_d5_gate.py', 't207_d5_agg.py', 't207_d5_qparse.py', 't207_d5_qref.F90')})
     report = None
     try:

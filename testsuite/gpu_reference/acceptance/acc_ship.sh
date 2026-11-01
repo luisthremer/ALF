@@ -5,7 +5,8 @@
 #     BASE_SHA: the accepted commit the ticket starts from; its harness is the approved one.
 #     PREREG_SHA: the commit in which acceptance/<TICKET>*.json was pre-registered (recorded in the ticket and
 #     DECISIONS.md). Checks: PREREG is a strict ancestor of the candidate; between BASE and PREREG the judging tools
-#     (acceptance/, compare2.py, configs*.py) change only by adding <TICKET>*.json; between PREREG and the candidate they
+#     (acceptance/, compare2.py, configs*.py, and since 207-5 the QREF gate scripts docs/gpu/scripts/nividia/t207_d5_*, which verdict.py
+#     calls) change only by adding <TICKET>*.json; between PREREG and the candidate they
 #     do not change at all, and existing test files under testsuite/ are not modified or deleted unless the acceptance
 #     file lists them in "allowed_test_changes".
 #   Result on HOST: ~/alf-gpu/work/t<TICKET>/cand/<WHO>/<sha12>/{src,base_src} (read-only), {src,base_src}.tar,
@@ -21,7 +22,8 @@ case "$WHO" in mgr|agent) ;; *) echo "WHO must be mgr or agent"; exit 2;; esac
 SHA=$(git rev-parse --verify "$4^{commit}"); BASE=$(git rev-parse --verify "$5^{commit}"); PRE=$(git rev-parse --verify "$6^{commit}")
 S12=${SHA:0:12}; TREE=$(git rev-parse "$SHA^{tree}")
 ACCF=testsuite/gpu_reference/acceptance/$TICKET.json
-TOOLS="testsuite/gpu_reference/acceptance testsuite/gpu_reference/compare2.py testsuite/gpu_reference/configs.py testsuite/gpu_reference/configs_stat.py"
+set -f   # TOOLS holds a git pathspec glob (t207_d5_*): no pathname expansion against the working tree
+TOOLS="testsuite/gpu_reference/acceptance testsuite/gpu_reference/compare2.py testsuite/gpu_reference/configs.py testsuite/gpu_reference/configs_stat.py docs/gpu/scripts/nividia/t207_d5_*"
 git cat-file -e "$PRE:$ACCF" || { echo "$ACCF does not exist in the pre-registration commit $PRE"; exit 3; }
 [ "$PRE" != "$SHA" ] && git merge-base --is-ancestor "$PRE" "$SHA" || { echo "REFUSED: PREREG must be a strict ancestor of the candidate"; exit 3; }
 git merge-base --is-ancestor "$BASE" "$PRE" || { echo "REFUSED: BASE must be an ancestor of PREREG"; exit 3; }

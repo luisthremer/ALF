@@ -2,7 +2,8 @@
 # Acceptance harness, MACHINE side: one run of a stamped binary under `env -i` with an explicit whitelist.
 #   usage: acc_run.sh RUNDIR BINARY CONFIGDIR [--allow-debug] [--qref] [VAR=value ...]
 #     --qref    (ticket 207-5) creates RUNDIR/qref/ before the run: the directory the QREF dumps of ALF_GPU_TAUDIAG_QREF are written to
-#               (acc_qproc.sh moves it to RUNDIR/qproc/qref/ and processes it right after the run)
+#               (acc_qproc.sh moves it to RUNDIR/qproc/qref/ and processes it right after the run); a QREF run takes only ALF_GPU_* extra
+#               variables (the QREF gate sees only those: ALFSH_*, ALF_LA_TEST_*, the MPS/cuBLAS/device variables are refused, exit 2)
 #     RUNDIR    must not exist (created atomically; evidence is never overwritten);
 #     CONFIGDIR a prepared ALF run directory (parameters, seeds), copied into RUNDIR;
 #     VAR=value extra variables. Every ALF_GPU_* / ALFSH_* / ALF_LA_TEST_* variable needs --allow-debug (given by the
@@ -27,6 +28,9 @@ BJ=${BIN%.out}.build.json; [ -x "$BIN" ] && [ -f "$BJ" ] || { echo "no stamped b
 ls "$CFG" | grep -q -E '^(data\.h5|info|confout|confin)' && { echo "refusing: $CFG contains outputs of an earlier run"; exit 2; }
 ENVX=()
 for kv in "$@"; do
+  if [ $QREFD = 1 ]; then
+    case "$kv" in ALF_GPU_*=*) ;; *) echo "refusing ${kv%%=*} in a QREF run: only ALF_GPU_* variables (the QREF gate cannot see any other)"; exit 2;; esac
+  fi
   case "$kv" in
     ALF_GPU_*=*|ALFSH_*=*|ALF_LA_TEST_*=*) [ $ALLOW = 1 ] || { echo "refusing debug/fault variable without --allow-debug: $kv"; exit 2; }; ENVX+=("$kv");;
     CUDA_MPS_PIPE_DIRECTORY=*|CUDA_MPS_LOG_DIRECTORY=*|CUBLAS_WORKSPACE_CONFIG=*|ONEAPI_DEVICE_SELECTOR=*|ZE_AFFINITY_MASK=*) ENVX+=("$kv");;

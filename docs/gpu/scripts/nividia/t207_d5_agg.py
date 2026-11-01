@@ -14,8 +14,8 @@ usage: t207_d5_agg.py OUT.json MEASURE --ref def|log|LIST [--host LABEL] [--allo
          'log' = cpu,H,n4,n100004,n1,n100001,n2,n5,n100005 (H: the host member label), or a comma list of names cpu, the host label,
          n<code> (code != 0).  An unknown name, a duplicate, or a listed name missing from any run is an error (no method is ever treated
          as correct by default).
-  --host: the label of the in-run host CGR2_2 member (it depends on the build of the offline program, e.g. nvh NVIDIA, ifh Intel);
-         default: the label the runs carry at the host position (t207_d5_qparse.load), which must be the same in every run.
+  --host: the label of the in-run host CGR2_2 member (t207_d5_qref.F90 always prints nvh, for dumps of the nvfortran and of the ifx
+         binary alike); default: the label the runs carry at the host position (t207_d5_qparse.load), which must be the same in every run.
   ROLE is tied to the run's own env (ticket 207-2, review): a main run has exactly ALF_GPU_{DEBUG=1, TAUDIAG_QREF, TAUDIAG_FROM,
          TAUDIAG_QHOST=1, TAUDIAG_QVAR=8}, a ctl run the same plus TAU_NS=0 (default path) or TAUSWAP=8 (LOG path) (QVAR optional); any
          other ALF_GPU_* variable, or a role that does not match the env, is an error.

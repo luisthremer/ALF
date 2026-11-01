@@ -20,6 +20,9 @@ Rules:
   * an existing binary is reused only if its build record matches the acceptance file;
   * QREF runs (ticket 207-5; "qref" key of a run, "qbuilds" of the file): the offline program is built from the candidate tarball
     (acc_qbuild.sh); each run's dumps are processed right after the run (acc_qproc.sh: strict check, then thinning), before the next run;
+    then the run directory is stamped (sha256 of every file: records, qproc/qref.txt, qref_proc.json, qref_manifest.txt, acc_qproc.json, every
+    kept dump) in the attempts log, outside the run directory (a "qref_stamp" line); a mutated copy of a QREF run is stamped after mutate.py;
+    verdict.py checks the stamps before and after it calls the 207-2 gate;
   * "mutations" (script-level positive controls) are applied after the runs with mutate.py, which must succeed;
   * "gpunone": true runs acc_gpunone.sh into runs/<who>/gpunone;
   * free disk >= disk_min_free_GB at start; run directories are never overwritten; TMPDIR stays in the ticket dir.
@@ -168,7 +171,7 @@ def main():
     attempts = os.path.expanduser(f"~/alf-gpu/archive/attempts/t{a.ticket}.log")  # manager-owned directory
     os.makedirs(os.path.dirname(attempts), exist_ok=True)
     earlier = [l for l in open(attempts)] if os.path.exists(attempts) else []
-    if a.who == "mgr" and any(" mgr " in l and name in l for l in earlier) and not a.reason:
+    if a.who == "mgr" and any(" mgr " in l and name in l and " qref_stamp " not in l for l in earlier) and not a.reason:
         raise SystemExit("a manager T2 of this ticket exists already: give --reason (re-running until green is not allowed)")
     with open(attempts, "a") as f:
         f.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {a.who} {cand['sha']} {name} reason={a.reason or '-'}\n")
@@ -218,6 +221,17 @@ def main():
     os.makedirs(rroot, exist_ok=True)
     pool = []
     renv = dict(os.environ, ACC_TIMEOUT=str(acc.get("timeout_s", 900)), ACC_GPU_LOCK=LOCK)
+    import qref_gate  # noqa: E402  (stamps of QREF run directories, ticket 207-5)
+
+    def qstamp(rid):
+        try:
+            line = qref_gate.stamp_line(a.who, cand["sha"], rid, qref_gate.stamp_object(os.path.join(rroot, rid)))
+        except (OSError, ValueError) as e:
+            log(f"qref stamp {rid}: FAILED {type(e).__name__}: {e} (the verdict will refuse the run)", fh)
+            return
+        with open(attempts, "a") as f:
+            f.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {line}\n")
+        log(f"qref stamp {rid}: written to {attempts}", fh)
 
     def launch(rid):
         r = acc["runs"][rid]
@@ -261,8 +275,10 @@ def main():
                 # QREF run (207-5): its dumps are processed (strict check, then thinning) before the next run starts (~1.6 GB per run)
                 q = r["qref"]
                 qp = subprocess.run(["bash", os.path.join(HERE, "acc_qproc.sh"), a.ticket, a.who, a.sha12, rid, q["path"], str(q["qs"]),
-                                     q["nul"], str(q.get("hostin", 0)), str(q.get("keep", 39))], capture_output=True, text=True)
+                                     q["nul"], str(q.get("hostin", 0)), str(q.get("keep", 39))], capture_output=True, text=True,
+                                    env=dict(os.environ, ACC_PYTHON=sys.executable))
                 log(f"qref processing {rid}: rc {qp.returncode} {qp.stdout.strip()[-300:]}", fh)
+                qstamp(rid)
         else:
             if r.get("refcache"):
                 if r["build"].startswith("base_"):
@@ -289,6 +305,8 @@ def main():
         log(f"mutation {m['dst']} ({m['kind']}): rc {q.returncode} {q.stdout.strip()[-200:]}", fh)
         if q.returncode != 0:
             raise SystemExit(f"mutation {m['dst']} failed: the control would test nothing")
+        if acc["runs"].get(m["src"], {}).get("qref"):
+            qstamp(m["dst"])
     for t in acc.get("ctests", []):  # unit-test gates and their controls (acc_ctest.sh), each in runs/<id>
         if os.path.exists(os.path.join(rroot, t["id"])):
             continue

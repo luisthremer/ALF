@@ -48,12 +48,14 @@ from math import gcd
 
 QSELF_MAX = 1e-25          # input check of the proposed criterion (207 dev5): quad vs itself (row-permuted QR input, other branch)
 NUMRE = re.compile(r'^-?[0-9]\.[0-9]{4}E[+-][0-9]{3}$')
-# The frozen reference lists (decision 33); 'H' stands for the label of the in-run host CGR2_2 member (QHOST=1), which differs per build of the
-# offline program (e.g. nvh for the NVIDIA build, ifh for the Intel build): ref_names(path, host) substitutes it.  No label is hard-coded here.
+# The frozen reference lists (decision 33); 'H' stands for the label of the in-run host CGR2_2 member (QHOST=1): ref_names(path, host)
+# substitutes it.  The offline program t207_d5_qref.F90 always prints the label 'nvh' for that member, whichever ALF binary (nvfortran or ifx)
+# wrote the dumps; gate specs therefore use host_member 'nvh' on both machines ("in-run host member, label fixed by the program", 207-5).  The
+# label is a parameter here (no label hard-coded) only so that a program printing another label would need no change of this parser.
 REF_DEF = 'cpu,H,n4,n100004,n1,n100001,n2,n1608,n4808,n5,n100005'
 REF_LOG = 'cpu,H,n4,n100004,n1,n100001,n2,n5,n100005'
 # names a host label may not take (they are the names of other members)
-HOST_RESERVED = re.compile(r'^(dev|cpu|H|var[0-9]+|n[0-9]+|u[0-9]+|qself|qbr|din|cpuh|cpuhx)$')
+HOST_RESERVED = re.compile(r'^(dev|cpu|H|var[0-9]+|n[0-9]+|u[0-9]+|qself|qbr|din|cpuh|cpuhx|ctl_dev)$')   # ctl_dev: agg's name of a control run's dev (207-5)
 HOSTNAME = re.compile(r'^[A-Za-z][A-Za-z0-9_]*$')
 DIAG_NAMES = ('qself', 'qbr', 'din', 'cpuh', 'cpuhx')     # members that are not error statistics of a G
 SPEC_VERSION = 3            # 3 (fix round 4): the run part carries binary_sha256 (the ALF binary of provenance.json = stamp.txt)
@@ -506,8 +508,8 @@ def kept_summary(spec):
 
 def expected_names(spec, k, hasb, host):
     """the ordered member names of dump number k derived from the run's records and the processing arguments; host: the label the offline
-    program prints for the in-run host CGR2_2 of ALF_GPU_TAUDIAG_QHOST=1 (it depends on the build of the program; a gate spec declares it
-    as host_member; required when the run has QHOST=1)"""
+    program prints for the in-run host CGR2_2 of ALF_GPU_TAUDIAG_QHOST=1 (t207_d5_qref.F90 always prints nvh; a gate spec declares it as
+    host_member; required when the run has QHOST=1)"""
     a, run = spec['args'], spec['run']
     names = ['dev'] + ['var%d' % m for m in run['qvar']]
     if run['qhost']:

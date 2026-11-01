@@ -29,6 +29,12 @@ Fix round 5 (review 207-2e): the spec pins keep, hostin and min_reprocessed (M1)
 one-digit difference is now INPUT_ERROR, test F1g changed); end-to-end device FAIL through the real processing (N2, dump mode, test
 N2_*); control member that is a reference (N3); minimal program env, LD_PRELOAD refused (N4); test S4 renamed (N7).  Manager items: X1 the host member label from the spec (no hard-coded label in gate / qparse / agg; tests X1_*),
 X2 t207_d5_proc.sh sources ~/alf-gpu/env/gnu.sh only if it exists.
+207-5 (harness, round-5 review follow-ups): Y1 ctl_dev is a reserved host label; Y2 a kept dump changed while the program re-processes it is
+refused (re-hash at read time; Y2b the same copy unchanged keeps the baseline verdict); Z0 t207_d5_pairs.py with agg.ref_list's host argument
+(text group); Z1-Z3 t207_d5_proc.sh: interpreter D5_PYTHON (default ~/alf-gpu/venv/bin/python3) refused if not executable, used and recorded in
+qref_proc.json with the machine record (dump group).  Localized fault (manager, 2026-11-01): ALF_GPU_FAULT_TAU_AT=<nst>:<nfe> only with
+ALF_GPU_FAULT_TAU (E14-E17); changed pre-existing assertions: E13_1/E13_2 ('eps:2.5e-10@2', 'eps:1e-9@3:2' valid) moved to E12_9/E12_10 (now
+refused: the '@' form is dropped), so E13 has two cases.
 """
 import contextlib, hashlib, importlib.util, io, json, math, os, re, shutil, struct, subprocess, sys
 sys.dont_write_bytecode = True
@@ -205,6 +211,19 @@ def expect_error(name, qpath, substr, label='dev1', absent=None, **kw):
     rc, msg = py('t207_d5_agg.py', *agg_args(out, qpath, label, **kw))
     ok = rc == 1 and substr in msg and not os.path.exists(out) and (absent is None or absent not in msg)
     record(name, 'error: %s' % substr[:24], ok, 'rc %d: %s' % (rc, msg.strip().split('\n')[-1][:110]))
+
+
+def pairs_tests():
+    """207-5: t207_d5_pairs.py runs with agg.ref_list's signature (host label argument, default nvh) on the repro runs m_def_dev1..4"""
+    p = subprocess.run([PY, '-I', os.path.join(HERE, 't207_d5_pairs.py'), '0.15', 'def'], capture_output=True, text=True, cwd=W, timeout=3600)
+    LAST['rc'] = p.returncode
+    rows = [l for l in p.stdout.split('\n') if re.match(r'^  dev[1-4]\+dev[1-4] ', l)]
+    record('Z0_pairs_default_host_nvh', 'rc 0, 6 pairs', p.returncode == 0 and len(rows) == 6 and 'path def, bound 0.15' in p.stdout,
+           (rows[0] if rows else (p.stdout + p.stderr).strip()[-150:]))
+    p = subprocess.run([PY, '-I', os.path.join(HERE, 't207_d5_pairs.py'), '0.15', 'def', 'cpu'], capture_output=True, text=True, cwd=W, timeout=3600)
+    LAST['rc'] = p.returncode
+    record('Z0b_pairs_reserved_host_label', 'rc != 0: host member label', p.returncode != 0 and 'host member label' in p.stdout + p.stderr,
+           (p.stdout + p.stderr).strip()[-150:])
 
 
 def text_tests():
@@ -1124,6 +1143,36 @@ def gate_tests():
     record('X1_agg_host_label_ifh_from_runs', 'agg ok, numbers = baseline', Ai is not None and Ai['host_member'] == 'ifh' and 'ifh' in Ai['refs'] and dmi <= 1e-12,
            last(msgi) if Ai is None else 'host %s, refs %s, max |agg ifh - agg nvh| %.1e' % (Ai['host_member'], ','.join(Ai['refs']), dmi))
     gate('X1_spec_host_member_reserved_name', B, gspec(host_member='cpu'), 2, "host_member")
+    # 207-5 (round-5 review follow-ups): ctl_dev (agg's name of a control run's dev) is a reserved label; a kept dump that changes while the
+    # program re-processes it is refused (re-hash at read time; the dump of the copy is first made a regular file with the same bytes, then
+    # rewritten by a hook that runs right after the program, so nothing is written through a symbolic link into the dev5 data)
+    gate('Y1_spec_host_member_ctl_dev_reserved', B, gspec(host_member='ctl_dev'), 2, "host_member")
+    def to_regular(d, name):              # the symbolic link replaced by a regular file with the same bytes (manifest unchanged)
+        data = dump_bytes(d, name)
+        os.remove(os.path.join(d, 'qref', name))
+        with open(os.path.join(d, 'qref', name), 'wb') as fh:
+            fh.write(data)
+    yd = gcopy('rehash')
+    yname = sorted(os.listdir(os.path.join(yd[0], 'qref')))[0]
+    to_regular(yd[0], yname)
+    yfile = os.path.join(yd[0], 'qref', yname)
+    ysaved = GATE.reprocess
+
+    def yhook(x, s, prog):
+        r = ysaved(x, s, prog)
+        if x['dir'] == os.path.abspath(yd[0]):
+            assert not os.path.islink(yfile)
+            with open(yfile, 'r+b') as fh:
+                fh.seek(os.path.getsize(yfile) - 8)
+                fh.write(b'\x01' * 8)
+        return r
+    GATE.reprocess = yhook
+    try:
+        gate('Y2_dump_changed_during_reprocessing', yd, gspec(), 2, 'changed during the re-processing')
+    finally:
+        GATE.reprocess = ysaved
+    gate('Y2b_same_copy_unchanged_baseline', gcopy('rehash_base', edits={GSET[0]: lambda d: to_regular(d, yname)}),
+         gspec(), 4, 'GATE TEST-ONLY')
     # ---- command line (fix round 4: --spec-sha and --prog are required; every case below names them, so that only the defect named fails)
     sp0 = os.path.join(gdir(), 'spec_baseline_gate_test_only_kept_subset.json')
     hs0 = sha_file(sp0)
@@ -1509,12 +1558,24 @@ def fix4_tests(B, A, rep0):
                                                members={'main': mlist(NUL_LOG), 'ctl_tau_ns0': mlist(NUL_LOG, var=False)}), 2, 'is not a fault of the fixed list for the log path')
     gate('E10_ctl_omits_QHOST', B, ce({'ALF_GPU_TAU_NS': '0'}, omit=('ALF_GPU_TAUDIAG_QVAR', 'ALF_GPU_TAUDIAG_QHOST')), 2, 'a control may omit only')
     gate('E11_ctl_adds_no_fault', B, ce({}), 2, 'adds no fault')
-    for i, v in enumerate(('perm', 'eps:abc', 'eps:-1', 'eps:0', 'eps:1e300', 'eps:1e-9@0', 'eps:1e-9@1:0', 'eps:1e-9@a', 'eps:1e-9@1:2:3')):
+    for i, v in enumerate(('perm', 'eps:abc', 'eps:-1', 'eps:0', 'eps:1e300', 'eps:1e-9@0', 'eps:1e-9@1:0', 'eps:1e-9@a', 'eps:1e-9@1:2:3',
+                           'eps:2.5e-10@2', 'eps:1e-9@3:2')):     # 207-5: the last two (the dropped '@' form) moved here from E13
         gate('E12_ctl_FAULT_TAU_invalid_%d' % i, B, ce({'ALF_GPU_TAU_NS': '0', 'ALF_GPU_FAULT_TAU': v}), 2, 'is not a fault of the fixed list')
     # silent: valid fault values pass the spec check; the dev5 control run has no such env, so its role is not found (env allow-list)
-    for i, v in enumerate(('eps:1e-9', 'eps:2.5e-10@2', 'eps:1e-9@3:2', 'eps:.5d-9')):
+    for i, v in enumerate(('eps:1e-9', 'eps:.5d-9')):      # 207-5: the '@' forms are no longer valid (see E12_9, E12_10)
         gate('E13_ctl_FAULT_TAU_valid_silent_%d' % i, B, ce({'ALF_GPU_TAU_NS': '0', 'ALF_GPU_FAULT_TAU': v}), 2, 'env allow-list',
              check=lambda r, o: ('fixed list' not in o, 'spec accepted, refused at the run'))
+    # 207-5 (manager, 2026-11-01): 207-3's localized fault is the separate variable ALF_GPU_FAULT_TAU_AT=<nst>:<nfe>, only with ALF_GPU_FAULT_TAU
+    for i, (ex, om) in enumerate((({'ALF_GPU_FAULT_TAU': 'eps:1e-9'}, ()), ({'ALF_GPU_FAULT_TAU': 'eps:1e-9', 'ALF_GPU_FAULT_TAU_AT': '2:1'}, ()),
+                                  ({'ALF_GPU_FAULT_TAU': 'eps:3e-10', 'ALF_GPU_FAULT_TAU_AT': '12:2'}, ('ALF_GPU_TAUDIAG_QVAR',)))):
+        gate('E14_ctl_FAULT_TAU_with_or_without_AT_valid_silent_%d' % i, B, ce(ex, omit=om), 2, 'env allow-list',
+             check=lambda r, o: ('fixed list' not in o and 'without ALF_GPU_FAULT_TAU' not in o, 'spec accepted, refused at the run'))
+    gate('E15_ctl_FAULT_TAU_AT_without_FAULT_TAU', B, ce({'ALF_GPU_TAU_NS': '0', 'ALF_GPU_FAULT_TAU_AT': '2:1'}), 2, 'ALF_GPU_FAULT_TAU_AT without ALF_GPU_FAULT_TAU')
+    gate('E15b_ctl_only_FAULT_TAU_AT', B, ce({'ALF_GPU_FAULT_TAU_AT': '2:1'}), 2, 'ALF_GPU_FAULT_TAU_AT without ALF_GPU_FAULT_TAU')
+    for i, v in enumerate(('0:1', '2:0', '2', 'a:1', '1:2:3', '2:1 ', '-1:1')):
+        gate('E16_ctl_FAULT_TAU_AT_invalid_%d' % i, B, ce({'ALF_GPU_FAULT_TAU': 'eps:1e-9', 'ALF_GPU_FAULT_TAU_AT': v}), 2,
+             'is not a fault of the fixed list' if v.strip() == v else 'value of ALF_GPU_FAULT_TAU_AT')
+    gate('E17_main_with_FAULT_TAU', B, em('ALF_GPU_FAULT_TAU', 'eps:1e-9'), 2, 'env_roles.main')
     # ---- 4. refs frozen (D5: refs = three noisiest variants let the swapped device pass)
     Dd = gcopy('D', edits={t: e_qref(lines_all(swap_members('dev', 'var8'))) for t in M})
     nov8 = lambda s: s.__setitem__('controls', [c for c in s['controls'] if c['name'] != 'var8'])       # noqa: E731
@@ -2036,6 +2097,28 @@ def dump_tests():
     pr = json.load(open(os.path.join(d, 'qref_proc.json')))
     want = open(os.path.join(W, 'bin', 'qref_log.out.sha256')).read().split()[0]
     record('dump_log_baseline', 'rc 0, prog hash recorded', rc == 0 and pr['prog'] == want, 'rc %d, prog %s' % (rc, pr['prog'][:16]))
+    # 207-5: the interpreter of the parser steps is D5_PYTHON (default ~/alf-gpu/venv/bin/python3), recorded in qref_proc.json with the machine
+    import socket
+    mc = pr.get('machine') or {}
+    record('Z1_proc_records_python_and_machine', 'default python, this host', pr.get('python') == os.path.expanduser('~/alf-gpu/venv/bin/python3')
+           and mc.get('host') == socket.gethostname() and re.match(r'^[0-9a-f]{64}$', mc.get('openblas_sha256') or '') is not None,
+           'python %s, host %s, openblas %s' % (pr.get('python'), mc.get('host'), (mc.get('openblas') or '')[-40:]))
+    d, files = mkdumpdir('python_missing', 'def')
+    env = dict(os.environ, D5W=W, D5RUNS=os.path.join(ST, 'dumpruns'), DUMP_COVER='40', TMPDIR=os.path.join(W, 'tmp'), D5_PYTHON='/nonexistent/python3')
+    rc, out = sh(['bash', os.path.join(HERE, 't207_d5_proc.sh'), d, 'def', '0', NU, '0', '0'], env=env)
+    record('Z2_proc_python_not_executable_refused', 'rc 1, nothing written', rc == 1 and 'D5_PYTHON' in out and not os.path.exists(os.path.join(d, 'qref_spec.json'))
+           and files_left(d) == files, out.strip().split('\n')[-1][:100])
+    wrap = os.path.join(ST, 'pywrap.sh')
+    with open(wrap, 'w') as f:
+        f.write('#!/bin/bash\necho "$@" >> %s.calls\nexec %s "$@"\n' % (wrap, os.path.expanduser('~/alf-gpu/venv/bin/python3')))
+    os.chmod(wrap, 0o755)
+    d, files = mkdumpdir('python_wrapper', 'def')
+    env = dict(env, D5_PYTHON=wrap)
+    rc, out = sh(['bash', os.path.join(HERE, 't207_d5_proc.sh'), d, 'def', '0', NU, '0', '0'], env=env)
+    calls = open(wrap + '.calls').read().count('t207_d5_qparse.py') if os.path.exists(wrap + '.calls') else 0
+    pw = json.load(open(os.path.join(d, 'qref_proc.json'))) if os.path.exists(os.path.join(d, 'qref_proc.json')) else {}
+    record('Z3_proc_python_from_D5_PYTHON', 'rc 0, wrapper used and recorded', rc == 0 and calls >= 2 and pw.get('python') == wrap,
+           'rc %d, %d parser calls through the wrapper, recorded %s' % (rc, calls, pw.get('python')))
 
 
 def main():
@@ -2049,6 +2132,7 @@ def main():
     if WHAT in ('text', 'all'):
         text_tests()
         agg_tests()
+        pairs_tests()
     if WHAT in ('reproc', 'all'):
         reproc_tests()
     if WHAT in ('dump', 'all'):

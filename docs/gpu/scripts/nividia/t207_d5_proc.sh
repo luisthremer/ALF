@@ -1,7 +1,7 @@
 #!/bin/bash
 # Ticket 207 dev5 / 207-2 (accuracy test against a quad reference, development only), nividia, CPU only: run the offline quad-reference
 # program on the dumps of one run directory, check its output strictly, and only then thin the dumps.
-#   usage: [D5W=workdir] [D5RUNS=runsdir] [DUMP_COVER=K] [ALLOW_V1=1] t207_d5_proc.sh RUNDIR def|log QS NULCODES HOSTIN KEEP
+#   usage: [D5W=workdir] [D5RUNS=runsdir] [DUMP_COVER=K] [ALLOW_V1=1] [D5_PYTHON=python3] t207_d5_proc.sh RUNDIR def|log QS NULCODES HOSTIN KEEP
 #   RUNDIR must be under $D5RUNS (default $D5W/runs; default $D5W = ~/alf-gpu/work/t207/dev5) and holds the run's records (parameters, info, run.log,
 #   stamp.txt, provenance.json) and qref/q*.bin; DUMP_COVER=K (default 1): the directory holds only every K-th dump of the run
 #   (a directory thinned earlier; dumps may be symbolic links to them); ALLOW_V1=1 accepts version 1 dumps (smoke runs, no B, Bi).  Steps, in this order, any failure stops the script:
@@ -27,13 +27,18 @@
 #   and (fix round 5) a run whose QS, NULCODES, HOSTIN or KEEP differ from its spec or that keeps fewer dumps than the spec's min_reprocessed;
 #   it re-computes the kept dumps and demands the qref.txt lines of them exactly (timing tq aside).
 #   4 OpenMP threads, OpenBLAS 1 thread.
+#   D5_PYTHON (207-5): the Python interpreter of the parser steps (default ~/alf-gpu/venv/bin/python3; on a machine without that venv, e.g.
+#   intel, the harness passes its own); it must be an executable file.  qref_proc.json records it ('python', with its version) and the machine
+#   the processing ran on ('machine': host name, sha256 of /etc/machine-id, sha256 of the libopenblas the program loads): the gate's exact
+#   re-processing depends on that library, so the harness runs processing and gate on the same machine and checks this record.
 #   Environment: ~/alf-gpu/env/gnu.sh is sourced only if it exists (it does on nividia; the intel machine has no such file, there the
 #   caller's environment is used as it is; the program binary itself needs no LD_LIBRARY_PATH on nividia, see program_env in the gate).
 W=${D5W:-$HOME/alf-gpu/work/t207/dev5}; export TMPDIR=$W/tmp
 if [ -f ~/alf-gpu/env/gnu.sh ]; then . ~/alf-gpu/env/gnu.sh > /dev/null; fi
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 R=$1; P=$2; QS=$3; NUL=$4; HI=$5; KEEP=$6; COVER=${DUMP_COVER:-1}; V1=""; [ -n "$ALLOW_V1" ] && V1=--allow-v1
-PY=~/alf-gpu/venv/bin/python3
+PY=${D5_PYTHON:-$HOME/alf-gpu/venv/bin/python3}
+[ -f "$PY" ] && [ -x "$PY" ] || { echo "refusing: interpreter D5_PYTHON='$PY' is not an executable file"; exit 1; }
 [ $# -eq 6 ] || { echo "usage: t207_d5_proc.sh RUNDIR def|log QS NULCODES HOSTIN KEEP"; exit 1; }
 RUNS=${D5RUNS:-$W/runs}                                 # the only tree this script works in (the self-test uses its own)
 case "$R" in $RUNS/*) ;; *) echo "refusing: $R not under $RUNS"; exit 1;; esac
@@ -64,9 +69,17 @@ s=$(date +%s)
 $B "$QS" "$NUL" "$HI" < qref_list.txt > qref.txt 2> qref_err.txt; rc=$?
 e=$(date +%s)
 $PY -I $HERE/t207_d5_qparse.py check "$R" $V1 > qref_check.txt 2>&1; crc=$?
-$PY -I - "$R" "$B" "$P" "$QS" "$NUL" "$HI" "$COVER" "$KEEP" $rc $crc $((e-s)) "$PROGSHA" <<'PY'
-import hashlib, json, sys, os
-R, B, P, QS, NUL, HI, COVER, KEEP, rc, crc, wall, progsha = sys.argv[1:13]
+BLAS=$(ldd "$B" 2>/dev/null | awk '$1 ~ /^libopenblas/ {print $3; exit}')
+$PY -I - "$R" "$B" "$P" "$QS" "$NUL" "$HI" "$COVER" "$KEEP" $rc $crc $((e-s)) "$PROGSHA" "$PY" "$BLAS" <<'PY'
+import hashlib, json, sys, os, platform, socket
+R, B, P, QS, NUL, HI, COVER, KEEP, rc, crc, wall, progsha, py, blas = sys.argv[1:15]
+def h(p):
+    try:
+        return hashlib.sha256(open(p, 'rb').read()).hexdigest()
+    except OSError:
+        return None
+machine = dict(host=socket.gethostname(), machine_id_sha256=h('/etc/machine-id'), openblas=os.path.realpath(blas) if blas else None,
+               openblas_sha256=h(os.path.realpath(blas)) if blas else None)
 def first(p):
     return open(p).read().split()[0]
 json.dump(dict(ticket='207-2 pipeline (development evidence, dev seeds)', run=R, prog=progsha,
@@ -74,7 +87,8 @@ json.dump(dict(ticket='207-2 pipeline (development evidence, dev seeds)', run=R,
                rc=int(rc), check_rc=int(crc), qref_sha256=hashlib.sha256(open('qref.txt', 'rb').read()).hexdigest(),
                manifest_sha256=hashlib.sha256(open('qref_manifest.txt', 'rb').read()).hexdigest(), check=open('qref_check.txt').read().strip(), wall_s=int(wall),
                lines=sum(1 for l in open('qref.txt') if l.startswith('QREF file')),
-               dumps=sum(1 for l in open('qref_list.txt'))), open('qref_proc.json', 'w'), indent=1)
+               dumps=sum(1 for l in open('qref_list.txt')), python=py, python_version=platform.python_version(), machine=machine),
+          open('qref_proc.json', 'w'), indent=1)
 PY
 [ $? -eq 0 ] && [ -s qref_proc.json ] || { echo "proc FAILED: could not write qref_proc.json"; exit 2; }
 echo "proc $R rc=$rc check_rc=$crc wall=$((e-s))s: $(tail -1 qref_check.txt)"

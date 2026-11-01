@@ -4,7 +4,7 @@
  "candidate_sha": "self",
  "base_sha": "bbbbbbbbbbbb",
  "created": "2026-11-01",
- "_status": "DRAFT: TEST ONLY (dry run of the QREF harness support of ticket 207-5), not an acceptance file: the bound is a placeholder, nothing here is calibrated; tools_sha256 pins the 207-2 scripts of the branch state it was written against and must be recomputed after a change of them.",
+ "_status": "DRAFT: TEST ONLY (dry run of the QREF harness support of ticket 207-5, second round), not an acceptance file: the bound 0.15 is a placeholder fixed before the run (207-3 calibrates); dev seeds only (--who agent); tools_sha256 pins the scripts of the shipped state.",
  "approvals": [],
  "machine": "nividia",
  "gpu_exclusive": true,
@@ -23,6 +23,15 @@
  ],
  "forbidden_lines": [],
  "allowed_test_changes": [],
+ "qref_env_allowed": [
+  "NVHPC",
+  "LD_LIBRARY_PATH",
+  "MANPATH",
+  "PS1",
+  "VIRTUAL_ENV",
+  "VIRTUAL_ENV_PROMPT"
+ ],
+ "_qref_env_allowed_reason": "the variables ~/alf-gpu/env/nvhpc.sh sets (compiler paths, venv); nothing else may be in a QREF run's env",
  "qbuilds": {
   "def": {
    "configure": "GNU noMPI",
@@ -39,26 +48,53 @@
   }
  },
  "configs": {
-  "hub12x12_qdry": {
-   "base": "hub12x12_cb",
+  "hub6x6_qdry": {
+   "base": "hub6x6_cb",
    "overrides": {
-    "beta": 10.0,
+    "beta": 4.0,
     "NSweep": 10,
-    "NBin": 3
+    "NBin": 4
    }
   }
  },
  "runs": {
   "q_m1": {
    "build": "nv_def_pp",
-   "config": "hub12x12_qdry",
+   "config": "hub6x6_qdry",
    "seeds": "acc1",
    "env": [
     "ALF_GPU_DEBUG=1",
     "ALF_GPU_TAUDIAG_QHOST=1",
     "ALF_GPU_TAUDIAG_QVAR=8",
     "ALF_GPU_TAUDIAG_QREF=3",
-    "ALF_GPU_TAUDIAG_FROM=21"
+    "ALF_GPU_TAUDIAG_FROM=11"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU build: git none backend CUDA"
+   ],
+   "qref": {
+    "path": "def",
+    "qs": 20,
+    "nul": "0,4,100004,1,100001,2,1608,4808,5,100005",
+    "hostin": 0,
+    "keep": 39
+   }
+  },
+  "q_m2": {
+   "build": "nv_def_pp",
+   "config": "hub6x6_qdry",
+   "seeds": "acc2",
+   "env": [
+    "ALF_GPU_DEBUG=1",
+    "ALF_GPU_TAUDIAG_QHOST=1",
+    "ALF_GPU_TAUDIAG_QVAR=8",
+    "ALF_GPU_TAUDIAG_QREF=3",
+    "ALF_GPU_TAUDIAG_FROM=11"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -78,14 +114,68 @@
   },
   "q_c1": {
    "build": "nv_def_pp",
-   "config": "hub12x12_qdry",
+   "config": "hub6x6_qdry",
    "seeds": "acc3",
    "env": [
     "ALF_GPU_DEBUG=1",
     "ALF_GPU_TAUDIAG_QHOST=1",
     "ALF_GPU_TAUDIAG_QREF=3",
-    "ALF_GPU_TAUDIAG_FROM=21",
+    "ALF_GPU_TAUDIAG_FROM=11",
     "ALF_GPU_TAU_NS=0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU build: git none backend CUDA"
+   ],
+   "qref": {
+    "path": "def",
+    "qs": 20,
+    "nul": "0,4,100004,1,100001,2,1608,4808,5,100005",
+    "hostin": 0,
+    "keep": 39
+   }
+  },
+  "q_m1_sw": {
+   "build": "nv_def_pp",
+   "config": "hub6x6_qdry",
+   "seeds": "acc1",
+   "env": [
+    "ALF_GPU_DEBUG=1",
+    "ALF_GPU_TAUDIAG_QHOST=1",
+    "ALF_GPU_TAUDIAG_QVAR=8",
+    "ALF_GPU_TAUDIAG_QREF=3",
+    "ALF_GPU_TAUDIAG_FROM=11"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU build: git none backend CUDA"
+   ],
+   "qref": {
+    "path": "def",
+    "qs": 20,
+    "nul": "0,4,100004,1,100001,2,1608,4808,5,100005",
+    "hostin": 0,
+    "keep": 39
+   }
+  },
+  "q_m2_sw": {
+   "build": "nv_def_pp",
+   "config": "hub6x6_qdry",
+   "seeds": "acc2",
+   "env": [
+    "ALF_GPU_DEBUG=1",
+    "ALF_GPU_TAUDIAG_QHOST=1",
+    "ALF_GPU_TAUDIAG_QVAR=8",
+    "ALF_GPU_TAUDIAG_QREF=3",
+    "ALF_GPU_TAUDIAG_FROM=11"
    ],
    "allow_debug": true,
    "active_lines": [
@@ -105,12 +195,12 @@
   },
   "q_off": {
    "build": "nv_def_pp",
-   "config": "hub12x12_qdry",
+   "config": "hub6x6_qdry",
    "seeds": "acc1"
   },
   "q_off_m": {
    "build": "nv_def_pp",
-   "config": "hub12x12_qdry",
+   "config": "hub6x6_qdry",
    "seeds": "acc1"
   }
  },
@@ -118,41 +208,150 @@
   {
    "id": "qref_def",
    "type": "qref",
-   "path": "def",
-   "stride": 3,
-   "qs": [
-    20
-   ],
-   "keep": 39,
-   "nul": "0,4,100004,1,100001,2,1608,4808,5,100005",
+   "spec": {
+    "spec_version": 1,
+    "path": "def",
+    "host_member": "nvh",
+    "members": {
+     "main": [
+      "dev",
+      "var8",
+      "nvh",
+      "cpu",
+      "n0",
+      "n4",
+      "n100004",
+      "n1",
+      "n100001",
+      "n2",
+      "n1608",
+      "n4808",
+      "n5",
+      "n100005",
+      "u1",
+      "u2"
+     ],
+     "ctl_ns0": [
+      "dev",
+      "nvh",
+      "cpu",
+      "n0",
+      "n4",
+      "n100004",
+      "n1",
+      "n100001",
+      "n2",
+      "n1608",
+      "n4808",
+      "n5",
+      "n100005",
+      "u1",
+      "u2"
+     ]
+    },
+    "refs": [
+     "cpu",
+     "nvh",
+     "n4",
+     "n100004",
+     "n1",
+     "n100001",
+     "n2",
+     "n1608",
+     "n4808",
+     "n5",
+     "n100005"
+    ],
+    "qs": 20,
+    "nul": [
+     0,
+     4,
+     100004,
+     1,
+     100001,
+     2,
+     1608,
+     4808,
+     5,
+     100005
+    ],
+    "cover": 1,
+    "keep": 39,
+    "hostin": 0,
+    "min_reprocessed": 3,
+    "expect_points": {
+     "pTT": 60
+    },
+    "prog_sha": "@harness",
+    "src_sha": "f838325788bab4f7209ef0074cdaefb05f8f0b023a065bfdd6e5843155bc85e6",
+    "binary_sha256": "@harness",
+    "parameters_sha256": "@harness",
+    "seeds": "@harness",
+    "env_roles": {
+     "main": {
+      "ALF_GPU_DEBUG": "1",
+      "ALF_GPU_TAUDIAG_QHOST": "1",
+      "ALF_GPU_TAUDIAG_QVAR": "8",
+      "ALF_GPU_TAUDIAG_QREF": "3",
+      "ALF_GPU_TAUDIAG_FROM": "11"
+     },
+     "ctl_ns0": {
+      "extra_env": {
+       "ALF_GPU_TAU_NS": "0"
+      },
+      "omit_env": [
+       "ALF_GPU_TAUDIAG_QVAR"
+      ]
+     }
+    },
+    "n_runs": {
+     "main": 2,
+     "ctl_ns0": 1
+    },
+    "gates": [
+     {
+      "name": "acc_pTT",
+      "measure": "pTT",
+      "statistic": "S_ens",
+      "pool": "pooled",
+      "bound": 0.15
+     }
+    ],
+    "controls": [
+     {
+      "name": "var8",
+      "kind": "variant",
+      "member": "var8",
+      "trips": "acc_pTT"
+     },
+     {
+      "name": "ns0",
+      "kind": "run",
+      "role": "ctl_ns0",
+      "trips": "acc_pTT"
+     }
+    ]
+   },
+   "spec_template_sha256": "b35675e49837c31acc03f1cc5f653a87a407b8457f444e7e328e0a1f6bb78ed3",
    "runs": [
-    "q_m1"
+    "q_m1",
+    "q_m2"
    ],
-   "ctl_runs": [
-    "q_c1"
-   ],
-   "refs": "def",
-   "bound": 0.15,
-   "expect_points": 60,
-   "required_controls": [
-    "var8",
-    "ctl_dev"
-   ],
-   "pointwise": {
-    "measure": "emax",
-    "bound": null,
-    "expect_points": 67
+   "ctl_runs": {
+    "ctl_ns0": [
+     "q_c1"
+    ]
    },
    "tools_sha256": {
-    "t207_d5_proc.sh": "516bcf1e1bdda8aa8f526b2befc8f6d9acb7bcf18f0c2d502dcfd53b5cd318dd",
-    "t207_d5_qparse.py": "7e8584cf656931390dc53907f03f39525cf17c6bd42f87256773720eacfc65e2",
-    "t207_d5_agg.py": "a03f7fa51e0c7a2a2a6755257323393562b46ea4c7377bab01a636e58a37c65e",
-    "t207_d5_gate.py": "888d6df095e7790086ddc797ec9fea9800e996ffb5ca3295d27a23e127897659",
+    "t207_d5_proc.sh": "ba47e1312f687d48f2c4250860e32ecc5b2fef4b9ddad60d3f27a38d363cd37b",
+    "t207_d5_qparse.py": "a4d3780d19de578b0dd1474f77665258b878cebd3aed66de4c645901d70f4c79",
+    "t207_d5_agg.py": "917fdeea410c054ac6211a1fc2d3abe581a08c8d3c90b6dc335fc9b118c6ade9",
+    "t207_d5_gate.py": "e6c43a0ab09ba924dd021262cb85e932221b7c7e49eda24d1b89ac8fd8946105",
     "t207_d5_qref.F90": "f838325788bab4f7209ef0074cdaefb05f8f0b023a065bfdd6e5843155bc85e6",
     "t207_d5_build.sh": "700dcc8d16b7b00b46df2e5f004af54762fc1b2974405fdc6b9c3b112842d27c",
     "t207_d5_qbuild.sh": "486efc7eb4750ec09baa959fa0b1812833352d3e55e2343ee37a54ffc9da92ef"
    },
-   "_reason": "dry run: placeholder bound 0.15 (207-3 calibrates); pointwise bound unset (DRAFT file)"
+   "_reason": "dry run: placeholder bound 0.15 on S_ens(pTT) pooled (not calibrated; 207-3); 6x6 beta 4, 4 bins x 10 sweeps, FROM 11, stride 3, KEEP 39: 80 dumps per run, 60 with B, 3 kept (gcd(39, 8) = 1)"
   },
   {
    "id": "qref_identity",
@@ -169,10 +368,13 @@
  ],
  "controls": [
   {
-   "id": "c_qref_device_is_var8",
+   "id": "c_qref_swap",
    "like": "qref_def",
    "replace": {
-    "device": "var8"
+    "runs": [
+     "q_m1_sw",
+     "q_m2_sw"
+    ]
    },
    "expect": "FAIL"
   },
@@ -195,6 +397,16 @@
    "src": "q_off",
    "dst": "q_off_m",
    "kind": "scale:Ener_scal/obser:1e-12"
+  },
+  {
+   "src": "q_m1",
+   "dst": "q_m1_sw",
+   "kind": "qref_swap:dev:var8"
+  },
+  {
+   "src": "q_m2",
+   "dst": "q_m2_sw",
+   "kind": "qref_swap:dev:var8"
   }
  ]
 }

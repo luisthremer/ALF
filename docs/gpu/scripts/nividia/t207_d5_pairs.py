@@ -2,18 +2,19 @@
 """Ticket 207 dev5 (development only): gate simulation for the proposed statistic S_ens(pTT) pooled over two seed sets.
 For every pair of the four dev seed sets and each path: pooled S_ens of the device, of the stand-in control (var8) and of every
 correct variant, with a bootstrap over points (sets resampled separately); share of bootstrap means above the bound.
-usage: t207_d5_pairs.py BOUND def|log  (reads runs/m_<path>_devN/hub12x12_cb_p/qref.txt through the strict parser; the reference ensemble
-is the explicit list 'def' / 'log' of t207_d5_agg.py; any deviation in the input is an error)"""
+usage: t207_d5_pairs.py BOUND def|log [HOST]  (reads runs/m_<path>_devN/hub12x12_cb_p/qref.txt through the strict parser; the reference
+ensemble is the explicit list 'def' / 'log' of t207_d5_agg.py with the in-run host member labelled HOST (default nvh, the label
+t207_d5_qref.F90 prints; 207-5: agg.ref_list takes the label since 207-2 fix round 5); any deviation in the input is an error)"""
 import importlib.util, itertools, math, os, random, sys
 sys.dont_write_bytecode = True      # the loaders below import sibling scripts by path: no __pycache__ in the scripts directory
 spec = importlib.util.spec_from_file_location('agg', os.path.join(os.path.dirname(os.path.abspath(__file__)), 't207_d5_agg.py'))
 agg = importlib.util.module_from_spec(spec); spec.loader.exec_module(agg)
-if len(sys.argv) != 3 or sys.argv[2] not in ('def', 'log'):
-    sys.exit('usage: t207_d5_pairs.py BOUND def|log')
-B = float(sys.argv[1]); path = sys.argv[2]
-refs = agg.ref_list(path)
+if len(sys.argv) not in (3, 4) or sys.argv[2] not in ('def', 'log'):
+    sys.exit('usage: t207_d5_pairs.py BOUND def|log [HOST]')
+B = float(sys.argv[1]); path = sys.argv[2]; host = sys.argv[3] if len(sys.argv) == 4 else 'nvh'
 per = {}
 try:
+    refs = agg.ref_list(path, host)
     for s in ('dev1', 'dev2', 'dev3', 'dev4'):
         res, n_exp = agg.per_run(agg.parse('runs/m_%s_%s/hub12x12_cb_p/qref.txt' % (path, s)), 'pTT', refs)
         per[s] = (res, refs)

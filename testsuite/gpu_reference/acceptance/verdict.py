@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Acceptance verdicts from raw run outputs (ALF GPU port, standard of 2026-10-29).
 
-usage: verdict.py ACCEPTANCE.json RUNROOT [--out DIR] [--candidate SHA] [--seeds-record JSON]
-       verdict.py --selfcheck            positive controls of this script (synthetic data, CPU only, seconds)
+usage: verdict.py ACCEPTANCE.json RUNROOT [--out DIR] [--candidate SHA] [--seeds-record JSON] [--attempts LOG]
+       verdict.py --selfcheck [--qref-fixture CANDROOT]   positive controls of this script (synthetic data, CPU only, seconds;
+                                         the QREF cases against the real 207-2 gate need --qref-fixture: a finished dry-run candidate root
+                                         on the machine that processed it, see qref_selfcheck.py; without it the self-check ends INCOMPLETE,
+                                         exit 4, never PASS)
 
 RUNROOT holds one directory per run id of the acceptance file (written by acc_run.sh: provenance.json, info, run.log,
 data.h5, ...). Writes verdict.json and verdict.md (refuses to overwrite them). Needs TMPDIR (confinement).
@@ -637,13 +640,13 @@ def resolve_control(c, acc):
     base = next((g for g in acc["gates"] if g["id"] == c["like"]), None)
     if base is None:
         raise SystemExit(f"control {c['id']}: unknown gate {c['like']}")
-    allowed = {"runs", "pairs", "cases", "a", "b", "checks", "device"}  # device: qref gates (207-5), the judged member dev -> var8
+    allowed = {"runs", "pairs", "cases", "a", "b", "checks"}
     rp = c.get("replace", {})
     extra = set(rp) - allowed
     if extra:
         raise SystemExit(f"control {c['id']}: may replace only {sorted(allowed)}, not {sorted(extra)}")
-    if "device" in rp and (base["type"] != "qref" or rp["device"] != "var8"):
-        raise SystemExit(f"control {c['id']}: 'device' may only be var8, in a qref gate")
+    if base["type"] == "qref" and set(rp) - {"runs"}:  # qref (207-5): only the main runs change (e.g. mutate.py qref_swap copies)
+        raise SystemExit(f"control {c['id']}: a qref control may replace only runs")
     if "checks" in rp:  # only the files may change; regex, equals and the number of checks stay the gate's
         if len(rp["checks"]) != len(base["checks"]):
             raise SystemExit(f"control {c['id']}: must replace every check of {c['like']}")
@@ -708,8 +711,9 @@ def write_md(v, path):
 
 
 # ------------------------------------------------------------------ self-check
-def selfcheck():
-    """Synthetic run directories through every gate type: each case must give exactly its expected outcome."""
+def selfcheck(fixture=None):
+    """Synthetic run directories through every gate type: each case must give exactly its expected outcome.  fixture: a finished QREF
+    dry-run candidate root for the cases against the real 207-2 gate (qref_selfcheck.py)."""
     import h5py
     import numpy as np
     tmp = tmpdir()
@@ -1031,9 +1035,16 @@ def selfcheck():
     print(f"{'ok ' if ok_x else 'BAD'} lint: ALF_LA_TEST_ in a gate run, faults gate exempt, selector declared on GPU=intel, gpu flag, ctest pin")
     shutil.rmtree(tmp)
     import qref_selfcheck
-    bad += qref_selfcheck.selfcheck(sys.modules[__name__])
-    print("selfcheck:", "PASS" if not bad else f"FAIL ({bad} wrong)")
-    return 0 if not bad else 1
+    qbad, qrun = qref_selfcheck.selfcheck(sys.modules[__name__], fixture)
+    bad += qbad
+    if bad:
+        print(f"selfcheck: FAIL ({bad} wrong)")
+        return 1
+    if not qrun:
+        print("selfcheck: INCOMPLETE (every case run so far as expected; the QREF cases against the real 207-2 gate need --qref-fixture)")
+        return 4
+    print("selfcheck: PASS")
+    return 0
 
 
 GATE_DEBUG_OK = ("ALF_GPU_SELFTEST", "ALF_GPU_EXIT", "ALF_GPU_TAUDIAG", "ALF_GPU_TAUDIAG_FROM", "ALF_GPU_DEBUG")
@@ -1098,7 +1109,8 @@ def lint_errors(acc):
         if g["type"] in ("log_regex", "files_identical"):
             return []
         cs = g.get("cases", {})
-        out = list(g.get("runs", [])) + list(g.get("ctl_runs", [])) + list((g.get("pointwise") or {}).get("ctl_runs", [])) + [x for p in g.get("pairs", []) for x in p[:2]] + (list(cs.keys()) if isinstance(cs, dict) else [])
+        cr = g.get("ctl_runs", {})  # qref gates (207-5): {control role: [run ids]}
+        out = list(g.get("runs", [])) + [x for v in (cr.values() if isinstance(cr, dict) else [cr]) for x in v] + [x for p in g.get("pairs", []) for x in p[:2]] + (list(cs.keys()) if isinstance(cs, dict) else [])
         out += [g[k] for k in ("a", "b") if k in g]
         for c in cs if isinstance(cs, list) else []:
             out += [c["gpu"]] + c["cpu"]
@@ -1254,10 +1266,11 @@ def main():
     ap.add_argument("--seeds-record", default=None, help="the driver's seeds record (sha256 per seed set/config)")
     ap.add_argument("--attempts", default=None, help="the ticket's attempts log (earlier T2 runs are listed)")
     ap.add_argument("--selfcheck", action="store_true")
+    ap.add_argument("--qref-fixture", default=None, help="selfcheck: a finished QREF dry-run candidate root (cases against the real gate)")
     ap.add_argument("--lint", action="store_true", help="static checks of the acceptance file only")
     a = ap.parse_args()
     if a.selfcheck:
-        return selfcheck()
+        return selfcheck(a.qref_fixture)
     if a.lint and a.acceptance:
         return lint(json.load(open(a.acceptance)))
     if not (a.acceptance and a.runroot):
@@ -1278,8 +1291,10 @@ def main():
         print("runs use acceptance seeds: --seeds-record is required")
         return 2
     if a.attempts and os.path.isfile(a.attempts):
-        acc["_attempts"] = [l.strip() for l in open(a.attempts) if l.strip()]
+        acc["_attempt_lines"] = [l.strip() for l in open(a.attempts) if l.strip()]  # with the qref_stamp lines (207-5)
+        acc["_attempts"] = [l for l in acc["_attempt_lines"] if " qref_stamp " not in l]
     out = a.out or a.runroot
+    acc["_out"] = out  # qref gates write the filled spec and the 207-2 gate report there
     for f in ("verdict.json", "verdict.md"):
         if os.path.exists(os.path.join(out, f)):
             print(f"refusing to overwrite {os.path.join(out, f)}")

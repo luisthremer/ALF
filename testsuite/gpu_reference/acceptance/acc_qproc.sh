@@ -7,7 +7,14 @@
 #   every field of them against the harness provenance again), and the dumps (qref/ is moved, same file system).  Then
 #   t207_d5_proc.sh (from the shipped candidate tree, under env -i, D5W = cand/.../qw, D5RUNS = cand/.../runs) does, in its own order:
 #   spec -> manifest -> program -> strict check -> qref_proc.json -> thinning (every KEEP-th dump by the gcd keep rule).
-#   qproc/acc_qproc.json records the arguments, the status, the qbuild record, and the sha256 of the scripts used.
+#   qproc/acc_qproc.json records the arguments, the status, the qbuild record, the sha256 of the scripts used, the interpreter of the parser
+#   steps (D5_PYTHON = ACC_PYTHON, default ~/alf-gpu/venv/bin/python3; the driver passes its own interpreter) and the machine (qref_gate.py
+#   machine: host name, sha256 of /etc/machine-id, the libopenblas the offline program loads, with its sha256), which verdict.py requires to be
+#   the machine it runs the gate on (the gate's exact re-processing depends on that library).
+#   Record format (207-5 decision): the 207-2 parser (t207_d5_qparse.derive_run, reviewed) reads its own runner's records (rc, env token list,
+#   run_log_sha256, info_sha256, seeds_sha256, parameters_sha256, binary_sha256, stamp.txt); this bridge writes exactly those, generated from the
+#   harness provenance (alf-acc-prov/1), instead of teaching the reviewed parser a second format; verdict.py re-checks every bridged field
+#   against the harness provenance and the attempt-log stamps before it calls the gate.
 #   Exit status: 0 only if proc.sh exited 0.  Nothing is deleted before the strict check passed (proc.sh); on a failure every dump stays.
 set -o pipefail
 export LC_ALL=C
@@ -30,6 +37,8 @@ for f in ("parameters", "info", "run.log"):
     shutil.copy2(os.path.join(r, f), os.path.join(q, f))
 tok = [t for t in p["extra_env"] if t.startswith("ALF_GPU_")]
 assert all(t.startswith("ALF_GPU_") for t in p["extra_env"]), "extra variables other than ALF_GPU_* in a QREF run"
+envtok = sorted("%s=%s" % (k, v) for k, v in p["env"].items() if k.startswith("ALF_GPU_"))
+assert envtok == sorted(tok), "the recorded env has ALF_GPU_* %s, the declared extra env %s" % (envtok, sorted(tok))
 seeds, par = p["inputs"]["seeds_sha256"], p["inputs"]["parameters_sha256"]
 assert par == h(os.path.join(q, "parameters")) and p["outputs"]["info"] == h(os.path.join(q, "info")) and p["outputs"]["run.log"] == h(os.path.join(q, "run.log"))
 with open(os.path.join(q, "stamp.txt"), "w") as f:       # the lines t207_d5_qparse.py reads
@@ -40,17 +49,20 @@ json.dump({"rc": p["exit_code"], "env": tok, "seeds_sha256": seeds, "parameters_
 PY
 mv $R/qref $Q/qref || exit 2
 BASEF=$(df -BG --output=avail $C | tail -1 | tr -dc 0-9)
+PYQ=${ACC_PYTHON:-$HOME/alf-gpu/venv/bin/python3}
+PROG=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['program'])" $QB) || exit 2
+MACH=$(python3 "$(dirname "$0")/qref_gate.py" machine "$PROG") || { echo "machine record failed"; exit 2; }
 s=$(date +%s)
-env -i HOME="$QH" USER="$USER" LANG=C LC_ALL=C PATH=/usr/bin:/bin D5W="$W" D5RUNS="$C/runs" \
+env -i HOME="$QH" USER="$USER" LANG=C LC_ALL=C PATH=/usr/bin:/bin D5W="$W" D5RUNS="$C/runs" D5_PYTHON="$PYQ" \
   bash $S/t207_d5_proc.sh $Q $P $QS $NUL $HI $KEEP > $Q/proc.log 2>&1
 rc=$?
-python3 - "$Q" "$QB" "$S" "$rc" "$((`date +%s`-s))" "$P $QS $NUL $HI $KEEP" "$BASEF" <<'PY'
+python3 - "$Q" "$QB" "$S" "$rc" "$((`date +%s`-s))" "$P $QS $NUL $HI $KEEP" "$BASEF" "$PYQ" "$MACH" <<'PY'
 import hashlib, json, os, sys
-q, qb, s, rc, wall, args, free = sys.argv[1:8]
+q, qb, s, rc, wall, args, free, pyq, mach = sys.argv[1:10]
 h = lambda f: hashlib.sha256(open(f, "rb").read()).hexdigest()
 P, QS, NUL, HI, KEEP = args.split()
 json.dump({"schema": "alf-acc-qproc/1", "args": {"path": P, "qs": int(QS), "nul": NUL, "hostin": int(HI), "keep": int(KEEP)}, "proc_rc": int(rc),
-           "wall_s": int(wall), "free_GB_before": int(free or -1), "qbuild_sha256": h(qb),
+           "wall_s": int(wall), "free_GB_before": int(free or -1), "qbuild_sha256": h(qb), "python": pyq, "machine": json.loads(mach),
            "tools_sha256": {n: h(os.path.join(s, n)) for n in sorted(f for f in os.listdir(s) if f.startswith("t207_d5_"))},
            "proc_log_sha256": h(os.path.join(q, "proc.log"))}, open(os.path.join(q, "acc_qproc.json"), "w"), indent=1)
 PY
