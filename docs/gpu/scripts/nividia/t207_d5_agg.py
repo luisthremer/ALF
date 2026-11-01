@@ -17,8 +17,9 @@ usage: t207_d5_agg.py OUT.json MEASURE --ref def|log|LIST [--allow-v1] [--prog-s
          TAUDIAG_QHOST=1, TAUDIAG_QVAR=8}, a ctl run the same plus TAU_NS=0 (default path) or TAUSWAP=8 (LOG path) (QVAR optional); any
          other ALF_GPU_* variable, or a role that does not match the env, is an error.
   The same run twice (same qref.txt sha256, same run.log sha256, or the same role + seeds + parameters) is an error.
-  --prog-sha: the sha256 of the offline program; every run's qref_proc.json (written by t207_d5_proc.sh, which checks the binary against
-         its .sha256 file) must carry it, else error.  A qref_proc.json next to qref.txt must say rc 0, check_rc 0 and the arguments of the spec.
+  Every run needs a qref_proc.json next to its qref.txt (written by t207_d5_proc.sh, which checks the binary against its .sha256 file): it
+         must say rc 0, check_rc 0, the arguments of the spec and carry a valid program sha256 (recorded per run in the aggregate); a run
+         without it is an error.  --prog-sha (optional here, mandatory in the gate): every run's recorded hash must equal it, else error.
 Input is read through the strict parser t207_d5_qparse.py (every point, every member, every number checked); any deviation ends the
 run with an error and no output file.  Measures pTT / pmax use the points with B (their number must equal the number derived from
 the run parameters); emax / eF use all points.  An error number that is zero or not finite is an error (no clamping).
@@ -101,13 +102,11 @@ def logs(run, which):
 
 
 def proc_record(qref_txt, spec, progsha):
-    """qref_proc.json of the processing: must say rc 0, check_rc 0 and the arguments of the spec; returns the recorded program sha256 (or None
-    if there is no qref_proc.json and no --prog-sha was asked for)"""
+    """qref_proc.json of the processing (always required): must say rc 0, check_rc 0 and the arguments of the spec and carry a valid program
+    sha256 (equal to --prog-sha if given); returns the recorded program sha256"""
     pj = os.path.join(os.path.dirname(os.path.abspath(qref_txt)), 'qref_proc.json')
     if not os.path.isfile(pj):
-        if progsha is not None:
-            raise QError('--prog-sha given, but %s is missing' % pj)
-        return None
+        raise QError('%s is missing: every run needs the record of its processing (t207_d5_proc.sh) with the program hash' % pj)
     with open(pj) as f:
         pr = json.load(f)
     a = spec['args']
@@ -202,7 +201,7 @@ def main():
             dup[(what, key)] = lab
         inputs[lab] = dict(role=role, path=fn, qref_sha256=keys[0][1], run_log_sha256=keys[1][1], seeds_sha256=r['seeds_sha256'],
                            parameters_sha256=r['parameters_sha256'], prog_sha256=prog, n_points=len(run.points), n_used=res['cpu']['n'],
-                           n_expected=n_exp, v1=any(p.hd['ver'] == 1 for p in run.points), variant=r['variant'], args=run.spec['args'],
+                           n_expected=n_exp, nstm=r['nstm'], nfl=r['nfl'], stride=r['stride'], v1=any(p.hd['ver'] == 1 for p in run.points), variant=r['variant'], args=run.spec['args'],
                            env=r['env'], members=sorted(res))
         table[lab] = {}
         for m, d in res.items():

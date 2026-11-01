@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Ticket 207-2: verdict of the accuracy test against the quad reference from the aggregate of t207_d5_agg.py.
 
-usage: t207_d5_gate.py --bound B --expect-points N --qs Q [--qs Q ...] [--prog-sha SHA256] [--require-controls] AGG.json   (agg run, measure pTT)
+usage: t207_d5_gate.py --bound B --expect-points N --qs Q [--qs Q ...] --prog-sha SHA256 [--require-controls] AGG.json   (agg run, measure pTT)
+--bound, --expect-points and --prog-sha may be given once only; --prog-sha is required (program identity is mandatory).
 Verdict on the pooled statistic S_ens(pTT) of the runs in AGG.json (one path):
   INPUT_ERROR (exit 2)  the file is not a complete aggregate or not the accepted configuration: wrong measure, a run whose points used
                         differ from the number derived from its parameters or from --expect-points, runs with different member lists,
@@ -10,11 +11,17 @@ Verdict on the pooled statistic S_ens(pTT) of the runs in AGG.json (one path):
                           cover == 1 (every dump processed) and no version 1 dump; qs equal to one of the --qs values and > 0; 0 in the
                           null codes and the null codes contain the reference list; the reference list is exactly the frozen list of
                           the run's path; the env (ALF_GPU_*) is exactly the allowed one for its role (main / ctl, see t207_d5_qparse.py);
-                          no run twice (qref.txt sha256, run.log sha256, role+seeds+parameters); with --prog-sha every run's program hash
-                          equals it.
+                          no run twice (qref.txt sha256, run.log sha256, role+seeds+parameters); every run's program hash is 64 hex digits
+                          and equals --prog-sha; hostin in {0, 1}, keep >= 0 and the keep rule gcd(cover*keep, P) = 1 (P from the run's
+                          nstm, nfl, stride, written by the aggregation).
+                        Counts and means are tied to the per-run data: the member set of every run is exactly the one expected for its role
+                        and env (main: dev, var<QVAR>, cpu, nvh, u1, u2, n<code>; ctl: the same, but only 'ctl_dev' under 'runs'); every
+                        runs[l][m].S_ens.n equals n_used of the run; every pooled n is the sum of n_used over the runs that have the member
+                        and every pooled mean equals the n-weighted mean of the run means (1e-12 relative).
                         Any exception (a structurally broken file) is INPUT_ERROR too: the line 'GATE FAIL' is printed only on a real FAIL
-  FAIL (exit 1)         the device S_ens (member 'dev' of the main runs) is > B, or a control present in the file (the stand-in
-                        'var8' of the main runs, 'ctl_dev' of production control runs) has S_ens <= B
+  FAIL (exit 1)         the device S_ens (member 'dev' of the main runs) is > B, or a control present in the file (table CONTROLS: the
+                        stand-in 'var8' of the main runs, 'ctl_dev' of production control runs) has its statistic <= B;
+                        with --require-controls every control of the table marked required must be present (else INPUT_ERROR)
   PASS (exit 0)         otherwise
 The bound is an argument and is not stored in the aggregate.  Every number of the decision is printed.
 """
@@ -39,6 +46,35 @@ def fin(x, what):
     if not isinstance(x, (int, float)) or isinstance(x, bool) or not math.isfinite(x):
         raise InputError('%s: %r is not a finite number' % (what, x))
     return x
+
+
+HEX64 = '0123456789abcdef'
+# Control kinds of the gate, one row each.  'member': name in the aggregate's 'pooled'; 'role': role of the runs carrying it; 'stat': an
+# entry of STATS (the pooled statistic that must exceed the bound); 'required': demanded by --require-controls.  A later control (graded
+# fault ALF_GPU_FAULT_TAU=eps:<x>, a pointwise statistic of emax/eF) is a new row, if needed a new STATS entry and a new member name in
+# expected_members() / run_members(); nothing else in decide() is specific to var8 / ctl_dev.
+CONTROLS = (
+    dict(member='var8', role='main', stat='S_ens', required=True, what='stand-in (variant var8 of the main runs)'),
+    dict(member='ctl_dev', role='ctl', stat='S_ens', required=True, what='production control run (TAU_NS=0 / TAUSWAP=8)'),
+)
+STATS = {'S_ens': lambda entry: entry['S_ens']}   # (a malformed entry raises: caught as INPUT_ERROR by main) aggregate entry (S_cpu, S_ens) -> summary dict with mean, n
+
+
+def expected_members(i):
+    """the members the aggregation writes in inputs[l].members of a run: from its null codes and env"""
+    m = {'dev', 'cpu', 'nvh', 'u1', 'u2'} | {'n%d' % c for c in i['args']['nul']}
+    if 'ALF_GPU_TAUDIAG_QVAR' in i['env']:
+        m.add('var' + i['env']['ALF_GPU_TAUDIAG_QVAR'])
+    return sorted(m)
+
+
+def run_members(i):
+    """the keys of runs[l]: every member of a main run, only the renamed device of a control run"""
+    return expected_members(i) if i['role'] == 'main' else ['ctl_dev']
+
+
+def isint(x):
+    return isinstance(x, int) and not isinstance(x, bool)
 
 
 def check_run(lab, i, refs, qs_ok, expect, progsha):
@@ -73,11 +109,27 @@ def check_run(lab, i, refs, qs_ok, expect, progsha):
         raise InputError('run %s: %s' % (lab, e))
     if role != i['role']:
         raise InputError('run %s: role %s, but its env is that of a %s run' % (lab, i['role'], role))
-    if progsha is not None and need(i, 'prog_sha256', lab) != progsha:
-        raise InputError('run %s: program sha256 %r differs from --prog-sha' % (lab, i['prog_sha256']))
+    ps = need(i, 'prog_sha256', lab)
+    if not (isinstance(ps, str) and len(ps) == 64 and all(c in HEX64 for c in ps)):
+        raise InputError('run %s: program sha256 %r is not 64 hex digits (no program identity recorded; differs from --prog-sha)' % (lab, ps))
+    if ps != progsha:
+        raise InputError('run %s: program sha256 %r differs from --prog-sha' % (lab, ps))
+    hostin, keep = need(a, 'hostin', lab + ' args'), need(a, 'keep', lab + ' args')
+    if not (isint(hostin) and hostin in (0, 1)):
+        raise InputError('run %s: hostin %r is not 0 or 1' % (lab, hostin))
+    if not (isint(keep) and keep >= 0):
+        raise InputError('run %s: keep %r is not an integer >= 0' % (lab, keep))
+    if keep > 0:
+        geo = [need(i, k, lab) for k in ('nstm', 'nfl', 'stride')]
+        if not all(isint(x) and x >= 1 for x in geo):
+            raise InputError('run %s: nstm, nfl, stride %r are not positive integers' % (lab, geo))
+        pp, g = QP.keep_rule(geo[0], geo[1], geo[2], cover * keep)
+        if g != 1:
+            raise InputError('run %s: keep rule: gcd(cover*keep = %d, P = %d) = %d != 1: the kept dumps are a biased subset of the block/flavour '
+                             'positions' % (lab, cover * keep, pp, g))
 
 
-def decide(agg, bound, require_controls, expect, qs_ok, progsha=None):
+def decide(agg, bound, require_controls, expect, qs_ok, progsha):
     out = []
     if need(agg, 'measure', 'aggregate') != 'pTT':
         raise InputError('measure is %r, the gate uses pTT' % agg['measure'])
@@ -116,39 +168,65 @@ def decide(agg, bound, require_controls, expect, qs_ok, progsha=None):
                 members0 = mem
             elif mem != members0:
                 raise InputError('main runs %s and %s have different member lists' % (main[0], lab))
+        elif i['role'] != 'ctl':
+            raise InputError('run %s: role %r' % (lab, i['role']))
+        if mem != expected_members(i):
+            raise InputError('run %s (%s): member list %s differs from the expected %s' % (lab, i['role'], mem, expected_members(i)))
+        if sorted(runs[lab]) != run_members(i):
+            raise InputError('run %s (%s): the per-run statistics are for %s, expected %s' % (lab, i['role'], sorted(runs[lab]), run_members(i)))
+        for m in run_members(i):
+            nm = STATS['S_ens'](runs[lab][m])['n']
+            if nm - nu != 0 or not isint(nm):
+                raise InputError('run %s member %s: S_ens n %r differs from the %d points used of the run' % (lab, m, nm, nu))
         variants.add(need(i, 'variant', lab))
         out.append('run %-8s %-4s points %d used %d expected %d' % (lab, i['role'], npt, nu, ne))
     if len(variants) != 1:
         raise InputError('runs of different paths: %s' % sorted(variants))
+    names = set()
+    for l in inputs:
+        names |= set(run_members(inputs[l]))
+    if not isinstance(pooled, dict) or set(pooled) != names:
+        raise InputError('pooled members %s differ from the members of the runs %s' % (sorted(pooled) if isinstance(pooled, dict) else pooled, sorted(names)))
 
-    def pooled_s(name):
-        e = need(need(pooled, name, 'pooled'), 'S_ens', 'pooled ' + name)
+    def pooled_s(name, stat='S_ens'):
+        """pooled statistic of a member, tied to the per-run data: n = sum of the points used of the runs that have the member, mean = their
+        n-weighted mean (1e-12 relative); returns (mean, n)"""
+        e = STATS[stat](need(pooled, name, 'pooled'))
         mean, n = fin(need(e, 'mean', name), name + ' mean'), need(e, 'n', name)
-        nexp = sum(runs[l][name]['S_ens']['n'] for l in runs if name in runs[l])
-        if n != nexp or n < 1:
-            raise InputError('pooled %s: n %r, sum over the runs %r' % (name, n, nexp))
-        for l in runs:
-            if name in runs[l]:
-                fin(runs[l][name]['S_ens']['mean'], '%s %s mean' % (l, name))
+        holders = [l for l in runs if name in runs[l]]
+        nruns = sum(STATS[stat](runs[l][name])['n'] for l in holders)
+        nexp = sum(inputs[l]['n_used'] for l in holders)
+        if n != nexp or nruns != nexp or n < 1:
+            raise InputError('pooled %s: n %r, points used by the runs %r (sum of the run counts %r)' % (name, n, nexp, nruns))
+        wsum = 0.0
+        for l in holders:
+            s = STATS[stat](runs[l][name])
+            wsum += s['n'] * fin(need(s, 'mean', '%s %s' % (l, name)), '%s %s mean' % (l, name))
+        wm = wsum / nexp
+        if not abs(mean - wm) <= 1e-12 * max(1.0, abs(mean)):
+            raise InputError('pooled %s: mean %.17g differs from the n-weighted mean of the runs %.17g' % (name, mean, wm))
         return mean, n
 
     dev, ndev = pooled_s('dev')
-    if ndev != sum(inputs[l]['n_used'] for l in main):
-        raise InputError('pooled dev n %d differs from the points of the main runs' % ndev)
-    ctl = [n for n in ('var8', 'ctl_dev') if n in pooled]
-    if require_controls and not ctl:
-        raise InputError('--require-controls: no control member (var8, ctl_dev) in the aggregate')
+    for name in sorted(pooled):                    # every pooled member is checked against the per-run data, not only the decisive ones
+        pooled_s(name)
+    ctls = []
+    for c in CONTROLS:
+        if c['member'] in pooled:
+            ctls.append(c)
+        elif require_controls and c['required']:
+            raise InputError('--require-controls: no control %s (%s) in the aggregate' % (c['member'], c['what']))
     verdict = 'PASS'
     reasons = []
     out.append('device S_ens(pTT) pooled over %d points: %+.4f  (bound %+.4f)' % (ndev, dev, bound))
     if not dev <= bound:
         verdict = 'FAIL'; reasons.append('device S_ens %+.4f > bound %+.4f' % (dev, bound))
-    for c in ctl:
-        v, n = pooled_s(c)
+    for c in ctls:
+        v, n = pooled_s(c['member'], c['stat'])
         ok = v > bound
-        out.append('control %-7s S_ens(pTT) pooled over %d points: %+.4f  (must be > %+.4f): %s' % (c, n, v, bound, 'killed' if ok else 'NOT KILLED'))
+        out.append('control %-7s %s(pTT) pooled over %d points: %+.4f  (must be > %+.4f): %s' % (c['member'], c['stat'], n, v, bound, 'killed' if ok else 'NOT KILLED'))
         if not ok:
-            verdict = 'FAIL'; reasons.append('control %s S_ens %+.4f <= bound %+.4f' % (c, v, bound))
+            verdict = 'FAIL'; reasons.append('control %s %s %+.4f <= bound %+.4f' % (c['member'], c['stat'], v, bound))
     return verdict, reasons, out
 
 
@@ -159,11 +237,15 @@ def main():
     bound = expect = progsha = None
     qs_ok = set()
     files = []
+    given = set()
     try:
         i = 0
         while i < len(a):
             if a[i] in ('--bound', '--expect-points', '--qs', '--prog-sha') and i + 1 < len(a):
                 v = a[i + 1]
+                if a[i] in given and a[i] != '--qs':
+                    raise InputError('%s given twice' % a[i])
+                given.add(a[i])
                 if a[i] == '--bound':
                     bound = float(v)
                     if not math.isfinite(bound):
@@ -181,9 +263,9 @@ def main():
                 i += 2
             else:
                 files.append(a[i]); i += 1
-        if bound is None or expect is None or not qs_ok or len(files) != 1:
-            raise InputError('usage: t207_d5_gate.py --bound B --expect-points N --qs Q [--qs Q ...] [--prog-sha SHA256] [--require-controls] AGG.json '
-                             '(all of --bound, --expect-points, --qs and the file are required; see the header of the script)')
+        if bound is None or expect is None or not qs_ok or progsha is None or len(files) != 1:
+            raise InputError('usage: t207_d5_gate.py --bound B --expect-points N --qs Q [--qs Q ...] --prog-sha SHA256 [--require-controls] AGG.json '
+                             '(all of --bound, --expect-points, --qs, --prog-sha and the file are required; see the header of the script)')
         with open(files[0]) as f:
             agg = json.load(f)
         verdict, reasons, lines = decide(agg, bound, req, expect, qs_ok, progsha)

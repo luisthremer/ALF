@@ -14,8 +14,9 @@
 #     6. only if the program exited 0 and the check passed and KEEP > 0: t207_d5_qparse.py thin deletes the dumps that are not every
 #        KEEP-th of the covered ones, only files listed in the manifest whose sha256 still matches and that are not symbolic links
 #        (list in qref_thinned.txt).  Kept: records, manifest, full qref.txt, every KEEP-th dump.  Exit status: 0 only if all passed.
-#   Program hash: the sha256 of the binary is computed and must equal the one in its .sha256 file (else refusal); it is recorded in
-#   qref_proc.json ('prog'), and t207_d5_agg.py / t207_d5_gate.py can require a given value (--prog-sha).  KEEP > 0 must satisfy the keep rule of
+#   Program hash: the sha256 of the binary is computed and must equal the one in its .sha256 file, and the .src.sha256 file must name the
+#   source t207_d5_qref.F90 next to this script (else refusal); the binary hash is recorded in qref_proc.json ('prog'; 'prog_src' = the
+#   verified source hash); t207_d5_agg.py needs the record for every run and t207_d5_gate.py requires a given value (--prog-sha).  KEEP > 0 must satisfy the keep rule of
 #   qparse (gcd(cover*KEEP, P) = 1); the kept dumps allow pointwise re-checking only, the recomputable result is the full qref.txt plus the manifest.
 #   The gate (t207_d5_gate.py) refuses a run processed with DUMP_COVER != 1 or ALLOW_V1 (it reads cover and the dump version from the aggregate).
 #   4 OpenMP threads, OpenBLAS 1 thread.
@@ -34,6 +35,9 @@ case "$COVER" in ''|*[!0-9]*|0) echo "DUMP_COVER must be a positive integer"; ex
 # the program that runs is the one its .sha256 file names (review fix 7): compute, compare, record
 PROGSHA=$(sha256sum "$B" | cut -d' ' -f1); WANTSHA=$(cut -d' ' -f1 "$B.sha256" 2>/dev/null)
 [ -n "$PROGSHA" ] && [ "$PROGSHA" = "$WANTSHA" ] || { echo "refusing: sha256 of $B is '$PROGSHA', $B.sha256 says '$WANTSHA'"; exit 1; }
+# prog_src in qref_proc.json is only recorded if the .src.sha256 file names the source that sits next to this script (fix round 2)
+SRCSHA=$(cut -d' ' -f1 "${B%.out}.src.sha256" 2>/dev/null); HERESRC=$(sha256sum "$HERE/t207_d5_qref.F90" 2>/dev/null | cut -d' ' -f1)
+[ -n "$SRCSHA" ] && [ "$SRCSHA" = "$HERESRC" ] || { echo "refusing: ${B%.out}.src.sha256 says '$SRCSHA', $HERE/t207_d5_qref.F90 has '$HERESRC' (the binary was not built from this source)"; exit 1; }
 cd "$R" || exit 1
 for f in qref.txt qref_spec.json qref_proc.json qref_check.txt qref_thinned.txt; do [ -e $f ] && { echo "refusing: $R/$f exists"; exit 1; }; done
 $PY -I $HERE/t207_d5_qparse.py spec "$R" --path $P --qs "$QS" --nul "$NUL" --hostin "$HI" --cover "$COVER" --keep "$KEEP" || { echo "proc FAILED: spec"; exit 2; }
