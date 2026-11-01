@@ -6,7 +6,7 @@
   207's base)
 - **Depends on:** 207-2 (output format and parser)
 - **Branch:** `gpu-port-207-harness`
-- **Status:** open
+- **Status:** first round done (WIP `123f7c89` on `gpu-port-207-harness`); adaptation to the redesigned 207-2 gate pending
 
 ## Goal
 `acc_driver.py` / `verdict.py` can run and judge the QREF gates from a pre-registered acceptance file (reviewer
@@ -35,3 +35,15 @@ change 6, retention of decision 33).
 
 ## Done when
 Self-checks pass, an end-to-end dry run on a dev build passes, review (c) approves, merged into `gpu-port`.
+
+## State (2026-11-01)
+- WIP `123f7c89`: `--qref` runs, `acc_qbuild.sh` (offline program from the candidate tarball), `acc_qproc.sh` (processing
+  before the next run, keep rule), `qref_gate.py` (gate types `qref`, `h5_identical`), selfcheck with synthetic
+  `qref.txt` (PASS). Dry run on nividia (fake candidate, 12×12 β = 10, 3 bins, stride 3, 60 points): retention and the
+  identity gate work (PASS, control killed); the QREF gate FAILED as it should because var8 (+0.078) and the TAU_NS=0
+  control (+0.044) were not killed at the placeholder 0.15 on this short run (6×6 β = 10: −0.10 / −0.14). Not a
+  calibration; passed to 207-3/207-4.
+- Second round, after the 207-2 redesign: replace `statistic()` by the spec-driven gate (spec embedded in the acceptance
+  file, including the pointwise bound and control sizes); add `docs/gpu/scripts/nividia/t207_d5_*` to `TOOLS` in
+  `acc_ship.sh`; test the shipping path with a real commit; Intel member name from 302c-2; a real `~/alf-gpu/env/gnu.sh`
+  on `intel` (manager).
