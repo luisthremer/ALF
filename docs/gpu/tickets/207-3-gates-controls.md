@@ -64,3 +64,20 @@ Commit `9a35bdd6`. Evidence `nividia:~/alf-gpu/work/t207-3b/` (`logs/summary_gat
   2e-15 not killed (+0.032). Default near control 2e-15 +0.204 (margin +0.054).
 - emax q95 ≤ 0.60 misses the localized fault by 0.014 / 0.030; only by_stratum catches it.
 - Open for the review and 207-6: which near controls to pre-register (must be killed reliably once on fresh seeds).
+
+## Review (2026-11-01)
+numerics-reviewer: (a) code **approve** (nits: comment placement, "pseudo-random" wording — the pattern is a
+deterministic sawtooth, header sentence on SELFTEST=4 + eps). (b') calibration **changes required**:
+1. near controls too thin for one kill on fresh seeds (predictive sd ≈ 0.027): def 2e-15 margin +0.054 (miss ≈ 2.3 %),
+   LOG 5e-15 +0.051 (≈ 3 %), TAUSWAP=8 +0.061 (≈ 1 %, fixed); together ≈ 6 % that some control is not killed. Require
+   margin ≥ ~0.10: LOG 1e-14, def ~3e-15–4e-15 confirmed on two seed sets; state TAUSWAP's miss risk and a control-miss
+   budget in 207-6;
+2. by_stratum / q95 correct-variant margins must be shown at the T2 pooling (per run up to +0.159 / +0.444 def,
+   +0.190 / +0.474 LOG; the bounds 0.30 / 0.60 still pass); one minimum-stratum-size rule;
+3. flavour gap: a var8-size defect in flavour 2 only gives pooled LOG S_ens(pTT) ≈ +0.10 and passes; a per-flavour max
+   gate looks separable — calibrate it with a flavour-only control or state the gap to the owner.
+Device values credible (attribution checked); generated numbers reproduced by an independent parser.
+Fix round 207-3c running (FAULT_TAU_AT=0:<nfe> flavour-only fault; ≤ 55 GPU-min, counted against 207-4's pot so
+207 calibration stays within decision 38's 2 × 4 h; 207-3 alone used ≈ 4.05 h).
+Merge note: `gpu-port-302c-2` (08559f0b) merged 428576dd; merge the final 207-3 before Intel evidence counts as
+final-code evidence.
