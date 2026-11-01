@@ -428,6 +428,8 @@ binary with K_ND = 1). Rule: submatrix slower if > 5 % and > 2 × the larger spr
   N_delay for appropriate parameter sets. Parameters to vary: system size N, vertex rank / model, interaction U (acceptance), threads per
   rank (layout), **number of time slices** (Ltrot). PP may be used to pack runs.
 - 3D cubic: skipped for now. Cross-slice: parked — **remind the user about it on 2026-11-02**.
+- Notifications while the user is away: skill `anthropic-skills:notify-by-calendar-invite` ("Claude Notify" calendar, invite to the uni
+  address; test sent 2026-11-01 13:43). Notify on: scan submitted/blocked, failures that stop the work, morning summary.
 
 ## Cluster-phase items (prepared locally, to be checked on the clusters)
 - HDF5 provenance (P6-2): non-standard schemes write `Sequential_scheme`, `N_delay_requested` (at the parameter write) and
