@@ -47,3 +47,17 @@ Self-checks pass, an end-to-end dry run on a dev build passes, review (c) approv
   file, including the pointwise bound and control sizes); add `docs/gpu/scripts/nividia/t207_d5_*` to `TOOLS` in
   `acc_ship.sh`; test the shipping path with a real commit; Intel member name from 302c-2; a real `~/alf-gpu/env/gnu.sh`
   on `intel` (manager).
+- From the 207-2 gate reviews (rounds 3 and 4, 2026-11-01), the gate relies on the harness for:
+  - **Stamps:** sha256 of every kept dump, `qref.txt`, `qref_proc.json` and `qref_manifest.txt` in the attempt log,
+    outside the run directory; the gate's `--spec-sha` value and the spec itself in the acceptance file.
+  - **Env outside `ALF_GPU_*`:** the gate sees only `ALF_GPU_*` (info line). `ALF_LA_TEST_*`, `ALFSH_*`,
+    `OMP_TARGET_OFFLOAD` (DISABLED turns "dev" into a host result) and other debug/fault variables must be refused by
+    the harness's env allow-list and provenance check, outside declared control runs.
+  - **Binary ↔ source:** the gate takes `prog_sha`/`binary_sha256` ↔ `src_sha` from the spec; building both from the
+    candidate tarball with provenance (task 2) is what makes the pairing true.
+  - **Record format:** `t207_d5_qparse.derive_run` expects the dev-run records (`rc`, env list, `run_log_sha256`,
+    `info_sha256`, `stamp.txt`); `acc_run.sh` writes `alf-acc-prov/1` (`exit_code`, env dict, `inputs.seeds_sha256`, no
+    `stamp.txt`). Unadapted, every harness run would be INPUT_ERROR. Adapting means changing reviewed gate code:
+    re-run the gate self-test and get a fresh review of that diff.
+  - **Spec after seeds:** the spec pins seed hashes per role, so it is written after the fresh acceptance seeds are
+    drawn (207-6).
