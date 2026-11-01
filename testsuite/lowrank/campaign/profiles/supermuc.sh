@@ -47,6 +47,9 @@ profile_setup() {
     export I_MPI_JOB_RESPECT_PROCESS_PLACEMENT=0
     export I_MPI_PIN=1 I_MPI_PIN_CELL=core I_MPI_PIN_DOMAIN=omp:compact I_MPI_DEBUG=4
     export OMP_PLACES=cores OMP_PROC_BIND=close
+    # the stack modules set KMP_AFFINITY=granularity=thread,compact,1,0, which takes precedence over OMP_PLACES/OMP_PROC_BIND in
+    # the Intel OpenMP runtime; unset it so the documented settings above decide the thread placement inside each rank's domain
+    unset KMP_AFFINITY
     return 0
 }
 
