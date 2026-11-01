@@ -110,18 +110,19 @@ prov_rss() {
     esac
 }
 
-# prov_job DIR: job-level provenance (node, CPU, memory, clock, Slurm, MPI, modules, environment) into DIR/job.prov
-prov_job() {
-    local d="$1" f="$1/job.prov" v
+# The job provenance is built from three parts. prov_job (one node per job) writes all of them into DIR/job.prov;
+# a packed job (several nodes, job_template_packed.sh) writes the job-level parts once (prov_job_common, prov_job_env)
+# and the node-level part (prov_node_hw, called by node_prov.sh on each host) once per host.
+
+# prov_job_common DIR FILE: campaign, job, Slurm view of the job (node list, partition, exclusive), EAR
+prov_job_common() {
+    local d="$1" f="$2" v
     prov_kv "$f" campaign_id "$CAMPAIGN_ID" || return 1
     prov_kv "$f" job_name "$JOB_NAME"
     prov_kv "$f" slurm_job_id "${SLURM_JOB_ID:-unavailable(no SLURM_JOB_ID)}"
     prov_kv "$f" cluster "${SLURM_CLUSTER_NAME:-unavailable(no SLURM_CLUSTER_NAME)}"
-    prov_kv "$f" node "${SLURMD_NODENAME:-unavailable(no SLURMD_NODENAME)}"
-    prov_kv "$f" hostname "$(hostname)"
     prov_kv "$f" profile "$PROFILE_NAME"
     prov_kv "$f" job_start "$(date '+%Y-%m-%dT%H:%M:%S%z')"
-    # Slurm view of the job
     prov_cmd "$d/scontrol.txt" scontrol show job "${SLURM_JOB_ID:-0}"
     prov_kv "$f" node_list "$(prov_field "$d/scontrol.txt" 's/.*[[:space:]]NodeList=\([^[:space:]]*\).*/\1/p')"
     prov_kv "$f" partition "$(prov_field "$d/scontrol.txt" 's/.*[[:space:]]Partition=\([^[:space:]]*\).*/\1/p')"
@@ -129,7 +130,11 @@ prov_job() {
     case "$v" in NO) v="yes (OverSubscribe=NO)" ;; unavailable*) ;; *) v="no (OverSubscribe=$v)" ;; esac
     prov_kv "$f" exclusive "$v"
     prov_kv "$f" ear "$EAR_SETTING"
-    # CPU, NUMA, memory
+}
+
+# prov_node_hw DIR FILE: CPU, NUMA, memory and clock state of the node this runs on (dumps into DIR)
+prov_node_hw() {
+    local d="$1" f="$2"
     prov_cmd "$d/lscpu.txt" lscpu
     prov_kv "$f" cpu_model "$(prov_field "$d/lscpu.txt" 's/^Model name:[[:space:]]*//p')"
     prov_kv "$f" cpus "$(prov_field "$d/lscpu.txt" 's/^CPU(s):[[:space:]]*//p')"
@@ -142,7 +147,11 @@ prov_job() {
     prov_cmd "$d/free.txt" free -m
     prov_kv "$f" mem_total_mib "$(prov_field "$d/free.txt" 's/^Mem:[[:space:]]*\([0-9]*\).*/\1/p')"
     prov_freq "$f" job_start
-    # MPI, modules, environment of the runs
+}
+
+# prov_job_env DIR FILE: MPI, modules, runtime environment file, pinning / threading environment of the runs
+prov_job_env() {
+    local d="$1" f="$2" v
     prov_cmd "$d/mpi_version.txt" $MPI_VERSION_CMD
     v="$(grep -v '^[[:space:]]*$' "$d/mpi_version.txt" | head -1)"
     case "$v" in *[Vv]ersion*) ;; *) v="$v $(grep -m1 -i 'version' "$d/mpi_version.txt")" ;; esac
@@ -151,6 +160,10 @@ prov_job() {
     if type module >/dev/null 2>&1; then module list > "$d/modules.txt" 2>&1; v="$(cat "$d/modules.txt")"
     else v="unavailable(no module command)"; echo "$v" > "$d/modules.txt"; fi
     prov_kv "$f" modules_job "$v"
+    # the profile's runtime environment file (SuperMUC: RUNTIME_ENV_SH) is sourced by profile_setup, not part of the campaign
+    prov_kv "$f" runtime_env_sh "${RUNTIME_ENV_SH:-n/a (profile sources none)}"
+    if [ -n "${RUNTIME_ENV_SH:-}" ]; then prov_kv "$f" runtime_env_sh_sha256 "$(prov_sha256 "$RUNTIME_ENV_SH")"
+    else prov_kv "$f" runtime_env_sh_sha256 "n/a (profile sources none)"; fi
     env | LC_ALL=C sort > "$d/env.txt"
     prov_kv "$f" pin_env "$(env | LC_ALL=C sort | grep -E '^(I_MPI_PIN|I_MPI_DEBUG|KMP_|OMP_PLACES|OMP_PROC_BIND|SLURM_CPU_BIND)' | tr '\n' ' ')"
     prov_kv "$f" omp_num_threads "${OMP_NUM_THREADS:-unset}"
@@ -160,6 +173,17 @@ prov_job() {
     prov_kv "$f" mkl_verbose_in_runs "${MKL_VERBOSE:-unset}"
     prov_kv "$f" prov_sysfs_root "${PROV_SYSFS_ROOT:-/ (real)}"
     prov_kv "$f" prov_proc_root "${PROV_PROC_ROOT:-/ (real)}"
+}
+
+# prov_job DIR: job-level provenance of a one-node job (node, CPU, memory, clock, Slurm, MPI, modules, environment)
+# into DIR/job.prov
+prov_job() {
+    local d="$1" f="$1/job.prov"
+    prov_job_common "$d" "$f" || return 1
+    prov_kv "$f" node "${SLURMD_NODENAME:-unavailable(no SLURMD_NODENAME)}"
+    prov_kv "$f" hostname "$(hostname)"
+    prov_node_hw "$d" "$f"
+    prov_job_env "$d" "$f"
 }
 
 # prov_pin_check FILE RANKS THREADS [THREADS_PER_CORE]: verify the pinning record of a run.

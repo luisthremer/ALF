@@ -11,6 +11,8 @@ PROFILE_NAME=helma
 CORES_PER_NODE=384
 NODE_MEM_GB="[[usable memory per node in GB (node has 768 GB)]]"
 PARTITIONS="cpu:1440 preempt_cpu:2880"
+# partition:max nodes per job (packed jobs, description key pack_nodes)
+PARTITION_MAX_NODES="[[max nodes per job and partition, e.g. cpu:N preempt_cpu:1]]"
 ACCOUNT="[[NHR project account (sbatch --account), or empty if not required]]"
 SBATCH_EXTRA=""
 EAR_SETTING="none (no EAR at NHR@FAU)"
@@ -23,6 +25,7 @@ TIME_STYLE=gnu
 FAKEINTEL_LIB="[[absolute path of the fakeintel shared library on Helma]]"
 BLAS_PROBE_CMD="[[blas_bench binary of Task T2 with tiny arguments, e.g. /path/blas_bench.out --probe]]"
 MKL_PROBE_REQUIRED=1
+NODE_HOST_CHECK=1                   # packed jobs: a slot aborts if the launcher did not start it on its host
 PROV_SYSFS_ROOT=""
 PROV_PROC_ROOT=""
 
@@ -42,4 +45,12 @@ profile_launch() {
     local np="$1" nt="$2"
     shift 2
     srun -n "$np" --cpus-per-task="$nt" --cpu-bind=cores,verbose "$@"
+}
+
+# profile_launch_on HOST RANKS THREADS CMD ...   (packed jobs; UNTESTED on Helma: same srun style as profile_launch, pinned to
+# HOST with --nodelist. Concurrent steps on different hosts of one allocation may need --exact (Slurm >= 21.08) or --overlap)
+profile_launch_on() {
+    local host="$1" np="$2" nt="$3"
+    shift 3
+    srun --nodelist="$host" -N 1 -n "$np" --cpus-per-task="$nt" --cpu-bind=cores,verbose "$@"
 }

@@ -1,5 +1,14 @@
 #!/bin/bash
-# Test shim for 'scontrol show job ID' (record written by the sbatch shim).
+# Test shim for 'scontrol show job ID' (record written by the sbatch shim) and 'scontrol show hostnames LIST'
+# (one host per line; LIST = comma separated names, each optionally prefix[a-b] with zero padding kept).
+if [ "$1" = show ] && [ "$2" = hostnames ]; then
+    printf '%s\n' "$3" | awk -F, '{for (i = 1; i <= NF; i++) {
+        if (match($i, /\[[0-9]+-[0-9]+\]$/)) {
+            pre = substr($i, 1, RSTART - 1); rng = substr($i, RSTART + 1, RLENGTH - 2); split(rng, ab, "-")
+            for (k = ab[1] + 0; k <= ab[2] + 0; k++) printf "%s%0" length(ab[1]) "d\n", pre, k
+        } else print $i } }'
+    exit 0
+fi
 [ "$1" = show ] && [ "$2" = job ] && [ -r "$SHIM_STATE/jobs/$3" ] && { cat "$SHIM_STATE/jobs/$3"; exit 0; }
 echo "slurm_load_jobs error: Invalid job id specified" >&2
 exit 1
