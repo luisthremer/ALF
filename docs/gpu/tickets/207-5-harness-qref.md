@@ -6,7 +6,7 @@
   207's base)
 - **Depends on:** 207-2 (output format and parser)
 - **Branch:** `gpu-port-207-harness`
-- **Status:** first round done (WIP `123f7c89` on `gpu-port-207-harness`); adaptation to the redesigned 207-2 gate pending
+- **Status:** first round done (WIP `123f7c89`); second round running on `3466c2f9` (207-2 gate approved)
 
 ## Goal
 `acc_driver.py` / `verdict.py` can run and judge the QREF gates from a pre-registered acceptance file (reviewer
@@ -32,6 +32,8 @@ change 6, retention of decision 33).
 
 ## Files allowed
 `testsuite/gpu_reference/acceptance/` (scripts, README), `docs/gpu/VERIFICATION.md` (gate description).
+Second round (2026-11-01): also `docs/gpu/scripts/nividia/t207_d5_{gate.py,qparse.py,agg.py,proc.sh,selftest.py,pairs.py}`
+(207-2's approved gate; 207-3 does not edit them). Base: `gpu-port-207-harness` `3466c2f9` (= WIP + `gpu-port-207-r`).
 
 ## Done when
 Self-checks pass, an end-to-end dry run on a dev build passes, review (c) approves, merged into `gpu-port`.
