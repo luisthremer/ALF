@@ -124,7 +124,7 @@ Unsupported inputs are refused at setup (H4).
 | 207-3 | Pointwise accuracy gate and graded controls, β = 4 ([ticket](tickets/207-3-gates-controls.md)) | 207-1, 207-2 |
 | 207-4 | β = 10 calibration of the accuracy gates ([ticket](tickets/207-4-beta10.md)) | 207-3 |
 | 207-5 | Harness support for the QREF gates ([ticket](tickets/207-5-harness-qref.md)) | 207-2 |
-| 207-6 | Pre-registration of `207.json` ([ticket](tickets/207-6-preregistration.md)) | 207-1 … 207-5 |
+| 207-6 | Pre-registration of `207.json` on both GPUs (decision 36) ([ticket](tickets/207-6-preregistration.md)) | 207-1 … 207-5, 302c-1, 302c-2 |
 | 207-7 | Candidate, T1, T2, verification, merge ([ticket](tickets/207-7-acceptance.md)) | 207-6 |
 | 208 | Measurements on the device. Split (decision 34; ticket files when each starts; each sub-ticket that changes production code has its own pre-registered acceptance): | 205, 207 |
 | 208-1 | G device-authoritative: remove the 206 interim per-CGR G round trip; host copy of G only where a host reader needs it | 207 |
@@ -177,8 +177,8 @@ ifx 2026.2 + MKL 2026.2, see MACHINES.md), the owner's approval of the process d
 | 302a | ONEMKL backend of `alf_la` + `alf_la.tests` routine tests and `t_order` on the B580; per routine measured GPU / host / hybrid; STABLOG keeps host ZGEQP3; interop queue question (ADR-002 §1) ([draft](tickets/302a-onemkl-backend.md)); acceptance in two parts: B580 tests on `intel`, GPU=none and CUDA identity on `nividia` | 202 (interface), consistent oneAPI (owner, decision 6), harness |
 | 302b | 204–206 device paths on the B580 with the 206 gates (self-tests, same-seed vs CPU, precision); τ path still refused | 302a |
 | 302c | τ path (207) on the B580. Split (decision 34): | 302b, 207 committed |
-| 302c-1 | τ switch under `GPU=intel` opened; oneMKL pieces of the device CGR2_2; self-tests and same-seed on the B580 | 302b, 207 |
-| 302c-2 | Accuracy gates of 207 on the B580, with an MKL host CGR2_2 in the reference ensemble; acceptance | 302c-1 |
+| 302c-1 | τ switch under `GPU=intel` opened; oneMKL pieces of the device CGR2_2; self-tests and same-seed on the B580 ([ticket](tickets/302c-1-tau-switch.md)); in parallel with 207-3…207-5 (decision 36) | 302b, 207-1 |
+| 302c-2 | Accuracy gates of 207 on the B580, with an MKL host CGR2_2 in the reference ensemble; calibration feeds 207-6 (acceptance is 207's, decision 36) | 302c-1, 207-2, 207-3 |
 | 303 | (split: 303-1 AOT build for the B580 next to the `spir64` JIT build; 303-2 the 209 suite on the B580) ifx build of the full GPU path on `intel` (B580, `spir64` JIT and AOT), 209 suite on the B580 (correctness; not PVC performance) | 302c, 209 |
 | 304 | (split: 304-1 Slurm scripts; 304-2 validation recipe with expected values and tolerances) Slurm scripts (`test` partition, one rank per tile by default, CCS mode as an option, `I_MPI_OFFLOAD_CELL=tile`, `OMP_TARGET_OFFLOAD=MANDATORY`) + validation recipe with expected values and tolerances | 301, 303 |
 | 305 | Evaluate the owner's results; BENCHMARKS.md PVC column; fixes | 304 |
