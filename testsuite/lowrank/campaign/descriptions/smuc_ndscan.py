@@ -7,7 +7,8 @@
 #   system size L = 20, 30, 40, 50 | time slices Beta = 1, 2, 4 (Ltrot 10, 20, 40) | U = 1, 4, 8 (acceptance) |
 #   vertex rank / model: tV (rank-2 bonds) L = 20, 30, 40; Kondo (bilayer, rank-2 J vertices) L = 20 |
 #   threads per rank: layouts 1x48, 2x24, 4x12 at the base point.
-# sec_per_sweep_est = standard scheme's value at 2x24 (conservative for all schemes); from pilot stages S/A and B2.
+# sec_per_sweep_est = standard scheme's value at 2x24 (conservative for all schemes); from pilot stages S/A and B2 (B2, 2x24 standard:
+# Hubbard L=20 2.1 s, L=30 9.6 s, L=50 237 s, tV L=30 20.2 s per sweep; tV ~2x Hubbard at the same L; Kondo not calibrated -> generous).
 _BASE = {"Dtau": "0.1d0", "Ltau": "0", "LOBS_ST": "1", "LOBS_EN": "1"}
 _TV = {"ham_name": "\"tV\"", "Model": "\"tV\"", "ham_V": "-1.d0", "N_SUN": "1"}
 _KONDO = {"ham_name": "\"Kondo\"", "Model": "\"Kondo\"", "Lattice_type": "\"Bilayer_square\""}
@@ -33,14 +34,14 @@ CAMPAIGN = {
     "fakeintel": "off",
     "repetitions": 3,
     "seed": 790789,
-    "max_jobs_in_queue": 3,
+    "max_jobs_in_queue": 2,
     "max_attempts": 2,
     "wall_safety": 1.15,
     "pack_nodes": 16,
     "points": [
         # system size (base U=4, Beta=2)
         _pt("hubL20", 20, 2.0, 20, 4),
-        _pt("hubL30", 30, 15.0, 3, 4),
+        _pt("hubL30", 30, 12.0, 4, 4),
         _pt("hubL40", 40, 70.0, 1, 4, layouts=("2x24", "1x48", "4x12")),
         _pt("hubL50", 50, 260.0, 1, 3, setup=90),
         # time slices at L=40
@@ -50,9 +51,9 @@ CAMPAIGN = {
         _pt("hubL40U1", 40, 70.0, 1, 4, U="1.d0"),
         _pt("hubL40U8", 40, 80.0, 1, 4, U="8.d0", nwrap="5"),
         # vertex rank / model
-        _pt("tvL20", 20, 2.0, 20, 4, model="tV", extra=_TV, n_fl=1),
-        _pt("tvL30", 30, 15.0, 3, 4, model="tV", extra=_TV, n_fl=1),
-        _pt("tvL40", 40, 70.0, 1, 4, model="tV", extra=_TV, n_fl=1),
-        _pt("kondoL20", 20, 12.0, 4, 4, model="Kondo", extra=_KONDO, n_fl=2),
+        _pt("tvL20", 20, 5.0, 10, 4, model="tV", extra=_TV, n_fl=1),
+        _pt("tvL30", 30, 24.0, 2, 4, model="tV", extra=_TV, n_fl=1),
+        _pt("tvL40", 40, 140.0, 1, 3, model="tV", extra=_TV, n_fl=1),
+        _pt("kondoL20", 20, 30.0, 2, 4, model="Kondo", extra=_KONDO, n_fl=2),
     ],
 }
