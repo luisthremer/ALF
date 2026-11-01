@@ -385,6 +385,14 @@ binary with K_ND = 1). Rule: submatrix slower if > 5 % and > 2 × the larger spr
   The −1 choice was the same in all 3 repetitions of every point. One outlier repetition (tV L=12 submatrix fixed 32: 4.18 s vs 0.37)
   is noted in the table; no verdict depends on it.
 
+## Benchmark instrumentation (plan `docs/superpowers/plans/2026-10-31-bench-instrumentation.md`, all tasks complete 2026-11-01)
+- T1 timers (`-DALF_TIMERS`, `testsuite/lowrank/timers_build.sh`), T3 campaign generator (`testsuite/lowrank/campaign/`), T2 BLAS ceiling
+  microbenchmark (`testsuite/lowrank/blas_bench.sh`; MPI build with a barrier per point for srun/mpiexec, memory guard, `--probe` for the
+  MKL provenance check; test `campaign/tests/test_blas_bench.sh`, 143 PASS; Homebrew mpiexec needs `FI_PROVIDER=tcp` on the Mac).
+  Parked minors (cluster-only paths: barrier timeout/ABORT, Linux OMP_PLACES with inherited cpusets) are in the ledger; set
+  `BLAS_BENCH_READY_TIMEOUT=3600` for N = 8000 jobs.
+- Cluster request (first stop): `docs/cluster/2026-10-31-cluster-request.md`.
+
 ## Cluster-phase items (prepared locally, to be checked on the clusters)
 - HDF5 provenance (P6-2): non-standard schemes write `Sequential_scheme`, `N_delay_requested` (at the parameter write) and
   `N_delay_used` (end of run) as attributes of `/` in `data.h5`; standard runs write nothing new (baseline data.h5 kept).
@@ -396,7 +404,9 @@ binary with K_ND = 1). Rule: submatrix slower if > 5 % and > 2 × the larger spr
 - Large-N precision with the automatic default (final review, Important 2): at Ndim 1600–3600 the static rule gives n0 = 128
   (delayed) / 128–256 (submatrix), never run locally beyond Ndim 400 in the statistical tiers. Phase-7 step: Mz Hubbard L = 40 and
   60, U = 4 and 8, Beta = 4, same seed: standard vs auto vs fixed 32, compare Precision Green mean/max and Phase (paired, ≤ 2×).
-  (A Mac pre-check at L = 32/40 is run before the request; see "Phase 6 results".)
+  Mac pre-check done (`docs/benchmarks/largeN_precision.md`, `precision_report.py`): L = 32 (U = 4, 8) and L = 40 (U = 4), Beta 2, same seed,
+  auto (n0 64; submatrix 128 at L = 40) and fixed 32 vs standard: same acceptance everywhere, Green max ratio 1.000, mean 0.99–1.02,
+  Phase max ≤ 1.61. At U = 8 standard itself reaches Green max 8.8e-2 with Nwrap = 10 → C0 needs a shorter Nwrap at U = 8.
 - Intel toolchain: ifx/ifort + MKL builds never made (B3/B4); first build on each machine compiles all variants (noMPI, MPI,
   TEMPERING, HDF5, debug, trace, timers) and runs ctest + regress + a trajectory subset.
 - Untested combinations (low risk by construction — G flushed and asserted at every WRAPGRUP/WRAPGRDO exit and between sweeps;

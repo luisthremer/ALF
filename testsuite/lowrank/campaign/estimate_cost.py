@@ -43,8 +43,8 @@ def campaign(name, machine, points, layouts, schemes, reps, nd_values=(0,)):
     return dict(name=name, machine=machine, jobs=njobs, node_h=nh, core_h=nh * CORES[machine])
 
 
-def blas(name, machine, n_layout_runs, hours_per_run=0.5):
-    """BLAS microbenchmark: one exclusive node per layout run, ~0.5 h each (N up to 8000 incl. ZGEQP3)."""
+def blas(name, machine, n_layout_runs, hours_per_run=1.0):
+    """BLAS microbenchmark: one exclusive node per layout run, ~1 h each (N up to 8000; 1-thread ZGEQP3 at N = 8000 alone ~45 min at the Mac rate of ~10 GFLOP/s)."""
     nh = n_layout_runs * hours_per_run
     return dict(name=name, machine=machine, jobs=n_layout_runs, node_h=nh, core_h=nh * CORES[machine])
 
