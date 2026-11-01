@@ -4,7 +4,7 @@
 #   usage: t207_d5_qbuild.sh TREE OUT CPPFLAGS     e.g. t207_d5_qbuild.sh gnu_pp qref_pp -DQR_PREPIVOT ; ... gnu_log qref_log -DSTABLOG
 # Parts: 1 module q5 (quad reference) and 3 the program with -O2 (no fast-math); 2 module q5nul (null copy of CGR2_2) with the tree's
 # ALF_FLAGS_PROG, as cgr2_2_mod.  Result: dev5/bin/<OUT>.out (+ .sha256); objects in dev5/qbuild_<OUT> (build tree, removable).
-W=$HOME/alf-gpu/work/t207/dev5; export TMPDIR=$W/tmp; . ~/alf-gpu/env/gnu.sh > /dev/null
+W=${D5W:-$HOME/alf-gpu/work/t207/dev5}; export TMPDIR=$W/tmp; . ~/alf-gpu/env/gnu.sh > /dev/null
 TR=$1; OUT=$2; FL=$3
 safe() { case "$1" in ""|*..*|*/*) echo "refusing unsafe name: [$1]" >&2; exit 1;; esac; }
 safe "$TR"; safe "$OUT"
