@@ -3,20 +3,20 @@
 
 Needs WORKDIR/runs/{m_def_dev1..4,c_def_dev1,d_def_dev1,m_log_dev1,s_def,s_log}/hub12x12_cb_p produced by t207_d5_repro.sh (the new pipeline on the kept dev5
 dumps) and WORKDIR/bin/qref_pp.out, qref_log.out.  Everything it writes goes to WORKDIR/st/ (created; refuses to start if it exists).
-  baseline   the unmutated inputs must be accepted (agg exit 0) and the gate must say PASS (device S_ens(pTT) pooled over the four
-             default-path seed sets <= bound, both controls > bound)
-  text       mutations of qref.txt, of the run's records and of the spec: each must end in the error named (the strict parser, agg,
-             stat) or, for the swap of device and var8, in GATE FAIL
-  gate       mutations of the aggregate JSON, of the gate's arguments and of the bound: INPUT_ERROR / FAIL as named.  The kept dev5 dumps are a
-             subset (cover 20 / 40), which the gate refuses (cover != 1, tested unmodified); the gate logic is tested on the same aggregate with
-             inputs[*].args.cover set to 1 ('legalised', a doctored aggregate: the data are the kept subset, the tests are about the gate's
-             decisions, one planted defect at a time against that PASSing baseline)
+  text       mutations of qref.txt, of the run's records and of the spec: each must end in the error named (the strict parser, agg, stat)
+  gate       the gate (design 3) on copies of the run directories m_def_dev2..4 + c_def_dev1 with a gate spec: the baseline, every spec
+             defect, every evidence defect (one per copy; records edited consistently where the test is about a check behind them) and every
+             planted defect of the numbers: INPUT_ERROR / FAIL / DEV-ONLY as named; every gate run must leave a report with the same verdict
+             and exit status.  The kept dev5 dumps are a subset (cover 40), which the gate refuses with a cover-1 spec (tested); the gate logic
+             is tested through a spec marked test_only, whose all-criteria-met verdict is TEST-ONLY (exit 4), never PASS.  A genuine cover-1
+             stride-3 PASS needs 207-3's runs.  The baseline's numbers are compared with agg's CLI on the same files (1e-12).
   dump       mutations of real dumps (NaN, Infinity, zeroed state, truncation, extra bytes, bad header) run through t207_d5_proc.sh
              (program + strict check): the program must print a QREFERR line for the dump, exit with status 3, the check must fail and no
              dump may be deleted; plus the directory checks (extra / missing dump, stale manifest, symlink and sha256 guards of the thinning).
              The dev5 v2 dumps are kept at an even spacing (cover 20/40), which the keep rule refuses for thinning, so the thinning is tested
              on the cover-1 version 1 smoke runs s_def / s_log (stride 1, KEEP 3); the v2 mutations run with KEEP 0.
-Output: one table line per test, generated from the actual outcomes; exit status 1 if any test did not give the expected outcome.
+Output: one table line per test, generated from the actual outcomes, with the exit status of the last command the test ran (also in
+st/results.txt, column last_rc); exit status 1 if any test did not give the expected outcome.
 The bound used is 0.15 (the proposed criterion of 207 dev5; the self-test is not a calibration and does not change any bound).
 """
 import hashlib, importlib.util, json, os, re, shutil, struct, subprocess, sys
@@ -34,8 +34,12 @@ ST = os.path.join(W, 'st')
 RESULTS = []
 
 
+LAST = {'rc': None}
+
+
 def sh(argv, env=None, timeout=3600):
     p = subprocess.run(argv, capture_output=True, text=True, env=env, timeout=timeout)
+    LAST['rc'] = p.returncode
     return p.returncode, (p.stdout + p.stderr)
 
 
@@ -44,8 +48,10 @@ def py(script, *args):
 
 
 def record(name, expect, ok, detail):
-    RESULTS.append((name, expect, ok, detail))
-    print('%-34s %-34s %-5s %s' % (name, expect, 'ok' if ok else 'WRONG', detail.replace('\n', ' ')[:150]), flush=True)
+    """one result line; the exit status of the last command the test ran is recorded with it (results.txt column 'last_rc')"""
+    RESULTS.append((name, expect, ok, detail, LAST['rc']))
+    print('%-34s %-34s %-5s rc %-4s %s' % (name, expect, 'ok' if ok else 'WRONG', LAST['rc'], detail.replace('\n', ' ')[:150]), flush=True)
+    LAST['rc'] = None
 
 
 def base(tag):
@@ -53,6 +59,19 @@ def base(tag):
 
 
 REC = ('parameters', 'info', 'run.log', 'stamp.txt', 'provenance.json', 'qref_spec.json', 'qref_proc.json')
+
+
+def sha_file(p):
+    return hashlib.sha256(open(p, 'rb').read()).hexdigest()
+
+
+def fix_qsha(d):
+    """set qref_sha256 of RUNDIR/qref_proc.json to the hash of its qref.txt as it is now (a consistent edit, used to reach the checks behind it)"""
+    pj = os.path.join(d, 'qref_proc.json')
+    if os.path.exists(pj):
+        pv = json.load(open(pj))
+        pv['qref_sha256'] = sha_file(os.path.join(d, 'qref.txt'))
+        json.dump(pv, open(pj, 'w'), indent=1)
 
 
 def mkrun(name, src_tag, qtxt=None, rec=None, spec=None, fixprov=False):
@@ -67,6 +86,7 @@ def mkrun(name, src_tag, qtxt=None, rec=None, spec=None, fixprov=False):
     else:
         with open(os.path.join(d, 'qref.txt'), 'wb') as f:
             f.write(qtxt if isinstance(qtxt, bytes) else qtxt.encode('latin-1'))
+        fix_qsha(d)                   # the processing record names the mutated qref.txt (consistent edit): the inner checks are reached
     if rec:
         for f, fn in rec.items():
             p = os.path.join(d, f)
@@ -130,32 +150,8 @@ A_SET = ['dev1', 'dev2', 'dev3', 'dev4']
 G_SET = ['dev2', 'dev3', 'dev4']          # the gate tests use the three runs with the same number of points (7 with B each, cover 40)
 
 
-def legal(a):
-    """a doctored copy of an aggregate: every run claims cover 1 and a null-error-statistic qs of 20 (the kept dev5 dumps are a subset, which
-    the gate refuses unmodified).  All other fields stay as the aggregation wrote them."""
-    a = json.loads(json.dumps(a))
-    for i in a['inputs'].values():
-        i['args']['cover'] = 1
-        i['args']['qs'] = 20
-    return a
-
-
 def prog_of_runs():
     return json.load(open(os.path.join(base('m_def_dev2'), 'qref_proc.json')))['prog']
-
-
-def gate_run(agg, name, expect=7, qs=(20,), bound=None, extra=(), args=None):
-    """write the aggregate dict and run the gate on it; returns (rc, output)"""
-    p = os.path.join(ST, 'gate_%s.json' % name)
-    with open(p, 'w') as f:
-        json.dump(agg, f)
-    a = ['--bound', str(BOUND if bound is None else bound), '--expect-points', str(expect)] if args is None else list(args)
-    if args is None:
-        for q in qs:
-            a += ['--qs', str(q)]
-        if '--prog-sha' not in extra:                      # the gate requires the program identity (fix round 2): the one of the dev5 runs
-            a += ['--prog-sha', prog_of_runs()]
-    return py('t207_d5_gate.py', *(a + list(extra) + [p]))
 
 
 def agg_args(out, mut_path=None, mut_label='dev1', refs='def', measure='pTT', extra=None, sets=None):
@@ -214,7 +210,9 @@ def text_tests():
         ('trailing_garbage_line', lambda t: '\n'.join(nl[:-2] + ['QREF junk', nl[-2], '']), '15 QREF lines, 14 expected'),
         ('non_ascii_byte', lambda t: t.replace('QREF file 1 ', 'QREF file 1\xb7 ', 1), 'non-ASCII'),
         ('duplicate_member_cpu', lambda t: edit_line(t, 3, lambda l: _dup_member(l, 'cpu')), 'members, expected'),
-    ]
+        # the by-construction bounds min(e1..e4)/(2n) <= eF <= 2n max(e1..e4) (t207_d5_qparse.check_ef)
+        ('eF_above_2n_max_block', lambda t: edit_line(t, 1, set_tok('dev', 4, '1.0000E-005')), 'outside [min(e1..e4)/(2n), 2n max(e1..e4)]'),
+        ('eF_below_min_block_over_2n', lambda t: edit_line(t, 1, set_tok('dev', 4, '1.0000E-020')), 'outside [min(e1..e4)/(2n), 2n max(e1..e4)]'),    ]
     for name, mut, substr in tests:
         q = mkrun(name, 'm_def_dev1', mut(t0))
         expect_error(name, q, substr, absent='unexpected line' if name == 'QREFERR_line' else None)
@@ -224,31 +222,6 @@ def text_tests():
     # well-formed huge value (the old clamp value): accepted as data (a very large error, no longer a placeholder): the pooled S_ens moves
     q = mkrun('overflow_value_dev_pTT', 'm_def_dev1', edit_line(t0, 1, set_tok('dev', 5, '1.7977E+308')))
     expect_error('overflow_value_dev_pTT', q, 'is not finite')
-    q = mkrun('huge_value_dev_pTT', 'm_def_dev2', edit_line(orig('m_def_dev2'), 1, set_tok('dev', 5, '1.0000E+100')))
-    out = os.path.join(ST, 'agg_huge.json')
-    rc, msg = py('t207_d5_agg.py', *agg_args(out, q, 'dev2', sets=G_SET))
-    rc2, g = gate_run(legal(json.load(open(out))), 'huge') if rc == 0 else (-1, msg)
-    record('huge_value_dev_pTT', 'GATE FAIL', rc2 == 1 and 'GATE FAIL' in g, g.strip().split('\n')[-1][:110])
-    # dev and var8 swapped at every point: the gate catches it
-    def swap(t):
-        ls = t.split('\n')
-        for i, l in enumerate(ls):
-            if l.startswith('QREF file '):
-                segs = l.split(' | ')
-                d = [j for j, s in enumerate(segs) if j and s.split()[0] == 'dev'][0]
-                v = [j for j, s in enumerate(segs) if j and s.split()[0] == 'var8'][0]
-                nd, nv = segs[d].split()[1:], segs[v].split()[1:]
-                segs[d] = 'dev ' + ' '.join(nv)
-                segs[v] = 'var8 ' + ' '.join(nd)
-                ls[i] = ' | '.join(segs)
-        return '\n'.join(ls)
-    sets = {}
-    for lab in G_SET:
-        sets[lab] = mkrun('swap_dev_var8_' + lab, 'm_def_' + lab, swap(orig('m_def_' + lab)))
-    out = os.path.join(ST, 'agg_swap.json')
-    rc, msg = py('t207_d5_agg.py', out, 'pTT', '--ref', 'def', *['main:%s=%s' % (s, sets[s]) for s in G_SET])
-    rc2, g = gate_run(legal(json.load(open(out))), 'swap') if rc == 0 else (-1, msg)
-    record('dev_var8_swapped_all_sets', 'GATE FAIL', rc == 0 and rc2 == 1 and 'GATE FAIL' in g, ' '.join(l.strip() for l in g.strip().split('\n') if 'S_ens' in l or 'GATE' in l)[:150])
     # records and spec
     rtests = [
         ('records_run.log_edited_after_run', dict(**{'run.log': lambda t: t.replace(' TAUQREF file 2 ', ' TAUQREFX file 2 ', 1)}), None, False, 'does not match the record run.log'),
@@ -513,175 +486,657 @@ def agg_tests():
     record('keep_rule_cli_spec_refused', 'rc 1: keep rule', rc == 1 and 'keep rule' in out and not os.path.exists(os.path.join(rd, 'qref_spec.json')), last(out))
 
 
+# ---------------------------------------------------------------- gate (design 3: recomputed from the run directories, no aggregate input)
+GSET = ['m_def_dev2', 'm_def_dev3', 'm_def_dev4', 'c_def_dev1_q20']      # three main seed sets with 7 points with B each, one TAU_NS=0 control run processed with qs 20 like the main runs (repro tag c_def_dev1_q20)
+NUL_DEF = [0, 4, 100004, 1, 100001, 2, 1608, 4808, 5, 100005]
+NUL_LOG = [0, 4, 100004, 1, 100001, 2, 5, 100005]
+
+
+def mlist(nul, var=True, host='nvh'):
+    """the ordered statistical member list of a run (main: with var8; control runs of dev5: without QVAR)"""
+    return ['dev'] + (['var8'] if var else []) + [host, 'cpu'] + ['n%d' % c for c in nul] + ['u1', 'u2']
+GW = {0: 'GATE PASS', 1: 'GATE FAIL', 2: 'GATE INPUT_ERROR', 3: 'GATE DEV-ONLY', 4: 'GATE TEST-ONLY'}
+
+
+def gdir():
+    return os.path.join(ST, 'g')
+
+
+def gspec(**kw):
+    """the gate spec for the kept dev5 subset (every 40th dump): marked test_only, since the subset has cover 40.  Bound 0.15 = the proposed
+    criterion of 207 dev5 (the self-test is not a calibration).  A genuine cover-1 stride-3 run set does not exist yet (207-3)."""
+    s = dict(spec_version=1, path='def', host_member='nvh', members={'main': mlist(NUL_DEF), 'ctl_tau_ns0': mlist(NUL_DEF, var=False)},
+             refs=QP.REF_DEF.split(','), qs=20, nul=list(NUL_DEF), cover=40,
+             test_only='207-2 self-test on the kept dev5 subset (cover 40, 7 points with B per run): tests the gate logic only; '
+                       'a genuine cover-1 stride-3 run set is pending (207-3)',
+             expect_points={'pTT': 7}, prog_sha=prog_of_runs(), src_sha=sha_file(os.path.join(HERE, 't207_d5_qref.F90')),
+             env_roles={'main': {'ALF_GPU_DEBUG': '1', 'ALF_GPU_TAUDIAG_QHOST': '1', 'ALF_GPU_TAUDIAG_QVAR': '8',
+                                 'ALF_GPU_TAUDIAG_QREF': '2', 'ALF_GPU_TAUDIAG_FROM': '331'},
+                        'ctl_tau_ns0': {'extra_env': {'ALF_GPU_TAU_NS': '0'}, 'omit_env': ['ALF_GPU_TAUDIAG_QVAR']}},
+             n_runs={'main': 3, 'ctl_tau_ns0': 1},
+             gates=[dict(name='acc_pTT', measure='pTT', statistic='S_ens', pool='pooled', bound=BOUND)],
+             controls=[dict(name='var8', kind='variant', member='var8', trips='acc_pTT'),
+                       dict(name='tau_ns0', kind='run', role='ctl_tau_ns0', trips='acc_pTT')])
+    s.update(kw)
+    return s
+
+
+def smut(fn, **kw):
+    s = gspec(**kw)
+    fn(s)
+    return s
+
+
+def gcopy(name, tags=None, edits=None, src=None):
+    """copies of run directories (records, qref.txt, processing records, qref/ with its symbolic links) under st/g/NAME/LABEL; tags: the
+    labels (default GSET), src: {label: source tag} for labels that are not tags; edits: {label: fn(dir)}; returns the run directories"""
+    out = []
+    tags = tags or GSET
+    for lab in (edits or {}):
+        assert lab in tags, lab
+    for lab in tags:
+        d = os.path.join(gdir(), name, lab, 'hub12x12_cb_p')
+        shutil.copytree(base((src or {}).get(lab, lab)), d, symlinks=True)
+        if edits and lab in edits:
+            edits[lab](d)
+        out.append(d)
+    return out
+
+
+def fix_records(d):
+    """after an edit of records: provenance.json hashes, the parameters prefix of stamp.txt and the stored spec's record hashes follow the
+    edit (a consistent forgery, so that the checks behind these are reached)"""
+    pj = os.path.join(d, 'provenance.json')
+    pv = json.load(open(pj))
+    for key, f in (('parameters_sha256', 'parameters'), ('run_log_sha256', 'run.log'), ('info_sha256', 'info')):
+        pv[key] = sha_file(os.path.join(d, f))
+    json.dump(pv, open(pj, 'w'), indent=1)
+    st_ = open(os.path.join(d, 'stamp.txt')).read()
+    open(os.path.join(d, 'stamp.txt'), 'w').write(re.sub(r'( parameters )[0-9a-f]{16}', lambda m: m.group(1) + pv['parameters_sha256'][:16], st_))
+    sp = os.path.join(d, 'qref_spec.json')
+    s = json.load(open(sp))
+    s['run']['records_sha256'] = {r: sha_file(os.path.join(d, r)) for r in QP.RECORDS}
+    s['run']['parameters_sha256'] = pv['parameters_sha256']
+    s['run']['seeds_sha256'] = pv['seeds_sha256']
+    json.dump(s, open(sp, 'w'), indent=1)
+
+
+def e_qref(fn):
+    """edit of qref.txt (text -> text); qref_sha256 of the processing record follows (consistent)"""
+    def e(d):
+        p = os.path.join(d, 'qref.txt')
+        t = open(p).read()
+        t2 = fn(t)
+        assert t2 != t
+        open(p, 'w').write(t2)
+        fix_qsha(d)
+    return e
+
+
+def e_qref_raw(fn):
+    """edit of qref.txt without updating the processing record"""
+    def e(d):
+        p = os.path.join(d, 'qref.txt')
+        t = open(p).read()
+        t2 = fn(t)
+        assert t2 != t
+        open(p, 'w').write(t2)
+    return e
+
+
+def e_proc(fn):
+    def e(d):
+        p = os.path.join(d, 'qref_proc.json')
+        x = json.load(open(p))
+        fn(x)
+        json.dump(x, open(p, 'w'), indent=1)
+    return e
+
+
+def e_args(**kv):
+    """the processing arguments changed consistently in qref_spec.json and qref_proc.json"""
+    def e(d):
+        for f in ('qref_spec.json', 'qref_proc.json'):
+            p = os.path.join(d, f)
+            x = json.load(open(p))
+            for k, v in kv.items():
+                x['args'][k] = (','.join(str(c) for c in v) if (f == 'qref_proc.json' and k == 'nul') else v)
+            json.dump(x, open(p, 'w'), indent=1)
+    return e
+
+
+def e_env(fn):
+    """the run's ALF_GPU_* env changed by fn(dict) consistently in info, stamp.txt, provenance.json and the stored spec"""
+    def e(d):
+        sp = json.load(open(os.path.join(d, 'qref_spec.json')))
+        new = fn(dict(sp['run']['env']))
+        t = open(os.path.join(d, 'info')).read()
+        t2 = re.sub(r'^( *GPU debug env: ).*$', lambda m: m.group(1) + ', '.join('%s=%s' % kv for kv in sorted(new.items())), t, flags=re.M)
+        assert t2 != t
+        open(os.path.join(d, 'info'), 'w').write(t2)
+        t = open(os.path.join(d, 'stamp.txt')).read()
+        open(os.path.join(d, 'stamp.txt'), 'w').write(re.sub(r'^env .*$', lambda m: 'env ' + ' '.join('%s=%s' % kv for kv in new.items()), t, flags=re.M))
+        pv = json.load(open(os.path.join(d, 'provenance.json')))
+        pv['env'] = ['%s=%s' % kv for kv in new.items()]
+        json.dump(pv, open(os.path.join(d, 'provenance.json'), 'w'), indent=1)
+        sp['run']['env'] = new
+        json.dump(sp, open(os.path.join(d, 'qref_spec.json'), 'w'), indent=1)
+        fix_records(d)
+    return e
+
+
+def e_seeds(full):
+    """the run's seeds hash set to FULL (64 hex) consistently in stamp.txt, provenance.json and the stored spec"""
+    def e(d):
+        t = open(os.path.join(d, 'stamp.txt')).read()
+        open(os.path.join(d, 'stamp.txt'), 'w').write(re.sub(r'^seeds [0-9a-f]{16}', 'seeds ' + full[:16], t, flags=re.M))
+        pv = json.load(open(os.path.join(d, 'provenance.json')))
+        pv['seeds_sha256'] = full
+        json.dump(pv, open(os.path.join(d, 'provenance.json'), 'w'), indent=1)
+        fix_records(d)
+    return e
+
+
+def rewrite(p, fn):
+    """file P replaced by fn(its text); the text is read before the file is opened for writing"""
+    t = open(p).read()
+    t2 = fn(t)
+    assert t2 != t, 'rewrite of %s had no effect' % p
+    with open(p, 'w') as f:
+        f.write(t2)
+
+
+def e_file(fn):
+    def e(d):
+        fn(d)
+    return e
+
+
+def chain(*es):
+    def e(d):
+        for x in es:
+            x(d)
+    return e
+
+
+def fmt(x):
+    """a number in the program's ES12.4E3 format"""
+    m, ex = ('%.4E' % x).split('E')
+    return '%sE%s%03d' % (m, ex[0], abs(int(ex)))
+
+
+def lines_all(fn, only=None):
+    """fn applied to every QREF data line (or to the data line number only, 1-based)"""
+    def g(t):
+        ls = t.split('\n')
+        k = 0
+        for i, l in enumerate(ls):
+            if l.startswith('QREF file '):
+                k += 1
+                if only is None or k == only:
+                    ls[i] = fn(l)
+        return '\n'.join(ls)
+    return g
+
+
+def scale(member, idx, f):
+    def g(line):
+        segs = line.split(' | ')
+        for j, s in enumerate(segs):
+            t = s.split()
+            if j and t[0] == member:
+                t[1 + idx] = fmt(float(t[1 + idx]) * f)
+                segs[j] = ' '.join(t)
+        return ' | '.join(segs)
+    return g
+
+
+def setnum(member, idx, tok):
+    def g(line):
+        segs = line.split(' | ')
+        for j, s in enumerate(segs):
+            t = s.split()
+            if j and t[0] == member:
+                t[1 + idx] = tok
+                segs[j] = ' '.join(t)
+        return ' | '.join(segs)
+    return g
+
+
+def copy_member(dst, src):
+    def g(line):
+        segs = line.split(' | ')
+        nums = {s.split()[0]: s.split()[1:] for s in segs[1:]}
+        for j, s in enumerate(segs):
+            if j and s.split()[0] == dst:
+                segs[j] = dst + ' ' + ' '.join(nums[src])
+        return ' | '.join(segs)
+    return g
+
+
+def swap_members(a, b):
+    def g(line):
+        segs = line.split(' | ')
+        nums = {s.split()[0]: s.split()[1:] for s in segs[1:]}
+        for j, s in enumerate(segs):
+            n = s.split()[0]
+            if j and n in (a, b):
+                segs[j] = n + ' ' + ' '.join(nums[b if n == a else a])
+        return ' | '.join(segs)
+    return g
+
+
+def drop_member(m):
+    return lambda line: ' | '.join(s for s in line.split(' | ') if not s.startswith(m + ' '))
+
+
+def gate(name, dirs, spec, expect_rc, substr, check=None, raw=None):
+    """run the gate on the run directories with the spec (dict, or raw text); the outcome must be the expected exit status with the
+    expected verdict as the last line, 'GATE PASS' printed iff rc 0, 'GATE FAIL' iff rc 1, and a report that records the same verdict and
+    exit status.  check(report, output) -> (ok, text): an additional condition."""
+    sp = os.path.join(gdir(), 'spec_%s.json' % name)
+    with open(sp, 'w') as f:
+        f.write(raw if raw is not None else json.dumps(spec, indent=1))
+    rp = os.path.join(gdir(), 'rep_%s.json' % name)
+    rc, out = py('t207_d5_gate.py', '--spec', sp, '--report', rp, *dirs)
+    lines = out.strip().split('\n')
+    rep = json.load(open(rp)) if os.path.exists(rp) else None
+    ok = (rc == expect_rc and substr in out and lines[-1].startswith(GW.get(expect_rc, '?')) and ('GATE PASS' in out) == (expect_rc == 0)
+          and ('GATE FAIL' in out) == (expect_rc == 1) and rep is not None and rep.get('exit_code') == rc
+          and rep.get('verdict') == GW.get(rc, '? ?').split()[1])
+    extra = ''
+    if ok and check is not None:
+        ok, extra = check(rep, out)
+    record(name, 'rc %d: %s' % (expect_rc, substr[:28]), ok, lines[-1][:150] + (' | ' + extra if extra else ''))
+    return rc, out, rep
+
+
+def prog_of(tag):
+    return json.load(open(os.path.join(base(tag), 'qref_proc.json')))['prog']
+
+
+def seeds_of(tag):
+    return json.load(open(os.path.join(base(tag), 'provenance.json')))['seeds_sha256']
+
+
 def gate_tests():
-    out = os.path.join(ST, 'agg_base.json')
-    rc, msg = py('t207_d5_agg.py', *agg_args(out))
+    os.makedirs(gdir())
+    B = gcopy('base')
+    M3 = B[:3]
+    Q = lambda d: os.path.join(d, 'qref.txt')                                                    # noqa: E731
+    # ---- baseline: the kept dev5 subset through the test_only spec; every number independently from agg's CLI on the same files
+    rc, msg = py('t207_d5_agg.py', *agg_args(os.path.join(ST, 'agg_base.json')))
     record('baseline_agg_def_dev1-4', 'ok', rc == 0, 'agg accepted all four runs' if rc == 0 else last(msg))
-    if rc != 0:
-        return
-    # the gate on the kept dev5 subset itself: refused (cover != 1); the gate on dev2-4 + control, legalised: PASS
-    rc, msg = py('t207_d5_agg.py', os.path.join(ST, 'agg_gate.json'), 'pTT', '--ref', 'def',
-                 *(['main:%s=%s' % (s, os.path.join(base('m_def_' + s), 'qref.txt')) for s in G_SET] + ['ctl:c1=' + os.path.join(base('c_def_dev1'), 'qref.txt')]))
-    record('baseline_agg_gate_set', 'ok', rc == 0, 'agg accepted dev2-4 and the control run' if rc == 0 else last(msg))
-    agg0 = json.load(open(os.path.join(ST, 'agg_gate.json')))
-    rc, g = gate_run(agg0, 'unmodified_kept_subset')
-    record('gate_kept_dev5_subset_unmodified', 'rc 2: INPUT_ERROR (cover)', rc == 2 and 'INPUT_ERROR' in g and 'cover' in g and 'GATE FAIL' not in g, g.strip()[-120:])
-    agg = legal(agg0)
-    rc, g = gate_run(agg, 'baseline', extra=['--require-controls'])
-    record('baseline_gate_legalised', 'GATE PASS', rc == 0 and 'GATE PASS' in g, ' '.join(l.strip() for l in g.strip().split('\n') if 'S_ens' in l or 'GATE' in l)[:160])
-    prog = agg['inputs']['dev2']['prog_sha256']
+    out = os.path.join(ST, 'agg_gate.json')
+    rca, msga = py('t207_d5_agg.py', out, 'pTT', '--ref', 'def', *(['main:%s=%s' % (t, Q(d)) for t, d in zip(GSET[:3], M3)] + ['ctl:c1=' + Q(B[3])]))
+    record('baseline_agg_gate_set', 'ok', rca == 0, 'agg accepted dev2-4 and the control run' if rca == 0 else last(msga))
+    A = json.load(open(out))
 
-    def variant(name, fn, expect_rc, substr, bound=None, extra=(), expect=7, qs=(20,), args=None, a0=None):
-        a = json.loads(json.dumps(agg if a0 is None else a0))
-        fn(a)
-        rc, g = gate_run(a, name, expect=expect, qs=qs, bound=bound, extra=extra, args=args)
-        # the line 'GATE FAIL' appears exactly for a real FAIL (rc 1), never for an input error or a crash
-        ok = rc == expect_rc and substr in g and (('GATE FAIL' in g) == (expect_rc == 1))
-        record(name, 'rc %d: %s' % (expect_rc, substr), ok, g.strip().split('\n')[-1][:120])
+    def same_as_agg(rep, o):
+        g = rep['gates'][0]
+        c = {x['name']: x['checks'][0] for x in rep['controls']}
+        pairs = [(g['device_value'], A['pooled']['dev']['S_ens']['mean'])] + \
+                [(v, A['runs'][t]['dev']['S_ens']['mean']) for v, t in zip(g['device_run_means'], GSET[:3])] + \
+                [(c['var8']['value'], A['pooled']['var8']['S_ens']['mean']), (c['tau_ns0']['value'], A['pooled']['ctl_dev']['S_ens']['mean'])]
+        dmax = max(abs(a - b) for a, b in pairs)
+        sc = rep['scripts']
+        hashes = all(sc[f] == sha_file(os.path.join(HERE, f)) for f in ('t207_d5_gate.py', 't207_d5_agg.py', 't207_d5_qparse.py', 't207_d5_qref.F90'))
+        ok = dmax <= 1e-12 and hashes and [r['role'] for r in rep['runs']] == ['main'] * 3 + ['ctl_tau_ns0'] and 'control var8' in o and 'control tau_ns0' in o
+        return ok, 'device %+.4f, var8 %+.4f, tau_ns0 %+.4f; max |gate - agg| %.1e; script hashes %s' % (
+            g['device_value'], c['var8']['value'], c['tau_ns0']['value'], dmax, 'ok' if hashes else 'WRONG')
+    rc, o, rep0 = gate('baseline_gate_test_only_kept_subset', B, gspec(), 4, 'GATE TEST-ONLY', check=same_as_agg)
+    # the same through pool each_run: the expected outcome is derived from agg's per-run numbers (independent of the gate's flow)
+    dev_max = max(A['runs'][t]['dev']['S_ens']['mean'] for t in GSET[:3])
+    v8_min = min(A['runs'][t]['var8']['S_ens']['mean'] for t in GSET[:3])
+    ctl_min = A['runs']['c1']['ctl_dev']['S_ens']['mean']
+    exp = 4 if (dev_max <= BOUND and v8_min > BOUND and ctl_min > BOUND) else 1
+    gate('gate_pool_each_run_matches_agg_runs', B, smut(lambda s: s['gates'][0].__setitem__('pool', 'each_run')), exp, GW[exp],
+         check=lambda r, o: (abs(r['gates'][0]['device_value'] - dev_max) <= 1e-12, 'device max run %+.4f, var8 min run %+.4f, ctl %+.4f' % (dev_max, v8_min, ctl_min)))
+    # the LOG path: m_log_dev2..4 + c_log_dev1 (TAUSWAP=8) through a LOG test_only spec; outcome and numbers from agg's CLI
+    LS = ['m_log_dev2', 'm_log_dev3', 'm_log_dev4', 'c_log_dev1_q20']
+    L = gcopy('base_log', tags=LS)
+    outl = os.path.join(ST, 'agg_gate_log.json')
+    rcl, msgl = py('t207_d5_agg.py', outl, 'pTT', '--ref', 'log', *(['main:%s=%s' % (t, Q(d)) for t, d in zip(LS[:3], L[:3])] + ['ctl:c1=' + Q(L[3])]))
+    record('baseline_agg_gate_set_log', 'ok', rcl == 0, 'agg accepted log dev2-4 and the control run' if rcl == 0 else last(msgl))
+    AL = json.load(open(outl))
+    lspec = gspec(path='log', refs=QP.REF_LOG.split(','), nul=list(NUL_LOG), prog_sha=prog_of('m_log_dev2'),
+                  env_roles={'main': gspec()['env_roles']['main'], 'ctl_tauswap8': {'extra_env': {'ALF_GPU_TAUSWAP': '8'}, 'omit_env': ['ALF_GPU_TAUDIAG_QVAR']}},
+                  n_runs={'main': 3, 'ctl_tauswap8': 1}, members={'main': mlist(NUL_LOG), 'ctl_tauswap8': mlist(NUL_LOG, var=False)},
+                  controls=[dict(name='var8', kind='variant', member='var8', trips='acc_pTT'), dict(name='tauswap8', kind='run', role='ctl_tauswap8', trips='acc_pTT')])
+    lv = (AL['pooled']['dev']['S_ens']['mean'], AL['pooled']['var8']['S_ens']['mean'], AL['pooled']['ctl_dev']['S_ens']['mean'])
+    expl = 4 if (lv[0] <= BOUND and lv[1] > BOUND and lv[2] > BOUND) else 1
 
-    nop = lambda a: None                                                                         # noqa: E731
-    variant('gate_bound_below_device', nop, 1, 'GATE FAIL', bound=-0.5)
-    variant('gate_bound_above_controls', nop, 1, 'NOT KILLED', bound=0.5)
-    variant('gate_dev_mean_NaN', lambda a: a['pooled']['dev']['S_ens'].__setitem__('mean', float('nan')), 2, 'INPUT_ERROR')
-    variant('gate_wrong_measure', lambda a: a.__setitem__('measure', 'emax'), 2, 'INPUT_ERROR')
-    variant('gate_n_used_short', lambda a: a['inputs']['dev2'].__setitem__('n_used', a['inputs']['dev2']['n_used'] - 1), 2, 'INPUT_ERROR')
-    variant('gate_pooled_n_wrong', lambda a: a['pooled']['dev']['S_ens'].__setitem__('n', 3), 2, 'INPUT_ERROR')
-    variant('gate_ref_missing_in_run', lambda a: a['inputs']['dev2']['members'].remove('n4'), 2, 'INPUT_ERROR')
-    variant('gate_no_dev_in_main', lambda a: a['inputs']['dev2']['members'].remove('dev'), 2, 'INPUT_ERROR')
-    variant('gate_no_controls_required', lambda a: (a['pooled'].pop('var8'), a['pooled'].pop('ctl_dev'), None), 2, 'INPUT_ERROR', extra=['--require-controls'])
-    variant('gate_runs_inputs_differ', lambda a: a['inputs'].pop('dev3'), 2, 'INPUT_ERROR')
-    variant('gate_variant_mixed', lambda a: a['inputs']['dev3'].__setitem__('variant', 'log'), 2, 'INPUT_ERROR')
-    # review fix 1: configuration of every run
-    variant('gate_cover_2', lambda a: a['inputs']['dev3']['args'].__setitem__('cover', 2), 2, 'cover')
-    variant('gate_v1_dumps', lambda a: a['inputs']['dev3'].__setitem__('v1', True), 2, 'version 1')
-    variant('gate_v1_flag_missing', lambda a: a['inputs']['dev3'].pop('v1'), 2, "'v1' missing")
-    variant('gate_qs_zero', lambda a: a['inputs']['dev3']['args'].__setitem__('qs', 0), 2, 'qs', qs=(0, 20))
-    variant('gate_qs_not_passed', lambda a: a['inputs']['dev3']['args'].__setitem__('qs', 40), 2, 'qs 40')
-    variant('gate_qs_two_values_passed_ok', lambda a: a['inputs']['dev3']['args'].__setitem__('qs', 40), 0, 'GATE PASS', qs=(20, 40))
-    variant('gate_nul_without_0', lambda a: a['inputs']['dev3']['args']['nul'].remove(0), 2, 'null codes')
-    variant('gate_nul_misses_ref_code', lambda a: a['inputs']['dev3']['args']['nul'].remove(1608), 2, 'null code 1608')
-    variant('gate_refs_member_dropped', lambda a: a['refs'].remove('n1608'), 2, 'frozen list')
-    variant('gate_refs_reordered', lambda a: a['refs'].reverse(), 2, 'frozen list')
-    variant('gate_refs_other_path_list', lambda a: a.__setitem__('refs', QP.REF_LOG.split(',')), 2, 'frozen list')
-    variant('gate_n_used_vs_expect_points', nop, 2, 'points used', expect=8)
-    variant('gate_n_used_tampered_with_expected', lambda a: [i.update(n_used=8, n_expected=8) for i in a['inputs'].values()], 2, 'INPUT_ERROR')
-    # review fix 2: env and role
-    variant('gate_env_TAUSWAP_main', lambda a: a['inputs']['dev3']['env'].__setitem__('ALF_GPU_TAUSWAP', '8'), 2, 'env allow-list')
-    variant('gate_env_unknown_var_main', lambda a: a['inputs']['dev3']['env'].__setitem__('ALF_GPU_FOO', '1'), 2, 'env allow-list')
-    variant('gate_env_QVAR_removed_main', lambda a: a['inputs']['dev3']['env'].pop('ALF_GPU_TAUDIAG_QVAR'), 2, 'env allow-list')
-    variant('gate_env_QVAR_other_main', lambda a: a['inputs']['dev3']['env'].__setitem__('ALF_GPU_TAUDIAG_QVAR', '8,16'), 2, 'env allow-list')
-    variant('gate_env_DEBUG_removed_main', lambda a: a['inputs']['dev3']['env'].pop('ALF_GPU_DEBUG'), 2, 'env allow-list')
-    variant('gate_env_QHOST_0_main', lambda a: a['inputs']['dev3']['env'].__setitem__('ALF_GPU_TAUDIAG_QHOST', '0'), 2, 'env allow-list')
-    variant('gate_env_QREF_not_a_number', lambda a: a['inputs']['dev3']['env'].__setitem__('ALF_GPU_TAUDIAG_QREF', 'x'), 2, 'env allow-list')
-    variant('gate_env_ctl_TAU_NS_1', lambda a: a['inputs']['c1']['env'].__setitem__('ALF_GPU_TAU_NS', '1'), 2, 'env allow-list')
-    variant('gate_env_ctl_TAUSWAP_on_default_path',
-            lambda a: (a['inputs']['c1']['env'].pop('ALF_GPU_TAU_NS'), a['inputs']['c1']['env'].__setitem__('ALF_GPU_TAUSWAP', '8')), 2, 'env allow-list')
-    variant('gate_role_main_but_ctl_env', lambda a: a['inputs']['c1'].__setitem__('role', 'main'), 2, 'role main')
-    variant('gate_role_ctl_but_main_env', lambda a: a['inputs']['dev3'].__setitem__('role', 'ctl'), 2, 'role ctl')
-    variant('gate_env_missing', lambda a: a['inputs']['dev3'].pop('env'), 2, "'env' missing")
-    # review fix 3: the same run twice
-    variant('gate_dup_qref_sha256', lambda a: a['inputs']['dev3'].__setitem__('qref_sha256', a['inputs']['dev2']['qref_sha256']), 2, 'same run')
-    variant('gate_dup_run_log_sha256', lambda a: a['inputs']['dev3'].__setitem__('run_log_sha256', a['inputs']['dev2']['run_log_sha256']), 2, 'same run')
-    variant('gate_dup_seeds_and_parameters', lambda a: a['inputs']['dev3'].__setitem__('seeds_sha256', a['inputs']['dev2']['seeds_sha256']), 2, 'same run')
-    variant('gate_seeds_shared_with_other_role_ok', lambda a: a['inputs']['c1'].__setitem__('seeds_sha256', a['inputs']['dev2']['seeds_sha256']), 0, 'GATE PASS')
-    # review fix 7: program hash
-    variant('gate_prog_sha_matching', nop, 0, 'GATE PASS', extra=['--prog-sha', prog])
-    variant('gate_prog_sha_mismatch', nop, 2, 'differs from --prog-sha', extra=['--prog-sha', '0' * 64])
-    variant('gate_prog_sha_one_run_differs', lambda a: a['inputs']['dev3'].__setitem__('prog_sha256', '1' * 64), 2, 'differs from --prog-sha', extra=['--prog-sha', prog])
-    variant('gate_prog_sha_unrecorded', lambda a: a['inputs']['dev3'].__setitem__('prog_sha256', None), 2, 'differs from --prog-sha', extra=['--prog-sha', prog])
-    variant('gate_prog_sha_not_a_hash', nop, 2, 'not a sha256', extra=['--prog-sha', 'abc'])
-    # review fix 4: a crash is not a FAIL
-    variant('gate_crash_args_not_a_dict', lambda a: a['inputs']['dev3'].__setitem__('args', 'x'), 2, 'INPUT_ERROR')
-    variant('gate_crash_inputs_a_string', lambda a: a.__setitem__('inputs', 'x'), 2, 'INPUT_ERROR')
-    variant('gate_crash_runs_entry_a_list', lambda a: a['runs'].__setitem__('dev3', []), 2, 'INPUT_ERROR')
-    variant('gate_crash_pooled_entry_string', lambda a: a['pooled'].__setitem__('dev', 'x'), 2, 'INPUT_ERROR')
-    # real crashes (not caught by the gate's own checks: a TypeError / AttributeError / KeyError inside the decision): exit 2 and the exception named
-    variant('gate_REAL_crash_n_points_a_string', lambda a: a['inputs']['dev3'].__setitem__('n_points', 'x'), 2, 'TypeError')
-    variant('gate_pooled_n_a_list', lambda a: a['pooled']['dev']['S_ens'].__setitem__('n', [1]), 2, 'INPUT_ERROR')
-    variant('gate_REAL_crash_runs_entry_n_a_list', lambda a: a['runs']['dev3']['dev']['S_ens'].__setitem__('n', [7]), 2, 'TypeError')
-    variant('gate_REAL_crash_bound_stats_None', lambda a: a['runs']['dev3'].__setitem__('dev', None), 2, 'TypeError')
-    variant('gate_crash_env_a_list', lambda a: a['inputs']['dev3'].__setitem__('env', []), 2, 'INPUT_ERROR')
-    variant('gate_crash_top_level_list', nop, 2, 'INPUT_ERROR', a0=[1, 2])
-    variant('gate_crash_refs_with_non_string', lambda a: a.__setitem__('refs', ['cpu', 5]), 2, 'INPUT_ERROR')
-    rc, g = py('t207_d5_gate.py', '--bound', str(BOUND), '--expect-points', '7', '--qs', '20', '--prog-sha', prog_of_runs(), os.path.join(ST, 'does_not_exist.json'))
-    record('gate_missing_file', 'rc 2: INPUT_ERROR', rc == 2 and 'INPUT_ERROR' in g and 'GATE FAIL' not in g, g.strip()[-100:])
-    with open(os.path.join(ST, 'gate_notjson.json'), 'w') as f:
-        f.write('{"measure": "pTT", ')
-    rc, g = py('t207_d5_gate.py', '--bound', str(BOUND), '--expect-points', '7', '--qs', '20', '--prog-sha', prog_of_runs(), os.path.join(ST, 'gate_notjson.json'))
-    record('gate_truncated_json', 'rc 2: INPUT_ERROR', rc == 2 and 'INPUT_ERROR' in g and 'GATE FAIL' not in g, g.strip()[-100:])
-    pth = os.path.join(ST, 'gate_baseline.json')
-    for name, a in (('gate_bound_nan', ['--bound', 'nan', '--expect-points', '7', '--qs', '20']), ('gate_no_expect_points', ['--bound', '0.15', '--qs', '20']),
-                    ('gate_no_qs', ['--bound', '0.15', '--expect-points', '7']), ('gate_no_bound', ['--expect-points', '7', '--qs', '20']),
-                    ('gate_expect_points_zero', ['--bound', '0.15', '--expect-points', '0', '--qs', '20']),
-                    ('gate_qs_not_an_integer', ['--bound', '0.15', '--expect-points', '7', '--qs', 'x']),
-                    ('gate_unknown_option', ['--bound', '0.15', '--expect-points', '7', '--qs', '20', '--allow-cover', '40'])):
-        rc, g = py('t207_d5_gate.py', *(a + ['--prog-sha', prog_of_runs(), pth]))      # the program hash is given: each test lacks exactly one argument
-        record(name, 'rc 2: INPUT_ERROR', rc == 2 and 'INPUT_ERROR' in g and 'GATE FAIL' not in g, g.strip().split('\n')[-1][-100:])
+    def same_as_agg_log(rep, o):
+        c = {x['name']: x['checks'][0]['value'] for x in rep['controls']}
+        dmax = max(abs(a - b) for a, b in zip((rep['gates'][0]['device_value'], c['var8'], c['tauswap8']), lv))
+        return dmax <= 1e-12, 'device %+.4f, var8 %+.4f, tauswap8 %+.4f; max |gate - agg| %.1e' % (lv + (dmax,))
+    gate('baseline_gate_test_only_kept_subset_log', L, lspec, expl, GW[expl], check=same_as_agg_log)
+    # ---- modes: cover, test_only, controls
+    gate('gate_kept_dev5_subset_cover1_spec', B, smut(lambda s: s.pop('test_only'), cover=1), 2, 'processed with cover 40')
+    gate('gate_cover40_without_test_only', B, smut(lambda s: s.pop('test_only')), 2, 'must cover every dump')
+    gate('gate_test_only_empty_reason', B, gspec(test_only=' '), 2, 'test_only must be a non-empty reason')
+    nocl = dict(controls=[], n_runs={'main': 3}, members={'main': mlist(NUL_DEF)}, env_roles={'main': gspec()['env_roles']['main']})
+    gate('P6_no_controls_dev_only', M3, gspec(**nocl), 3, 'GATE DEV-ONLY: no control declared')
+    gate('P6_no_controls_ctl_run_given', B, gspec(**nocl), 2, 'env allow-list')
+    gate('R_C_control_declared_run_missing', M3, gspec(), 2, 'declared in the spec, but no run has its role')
+    gate('P2_main_run_offered_as_control', M3, gspec(n_runs={'main': 2, 'ctl_tau_ns0': 1}), 2, 'declared in the spec, but no run has its role')
+    two = lambda s: (s['gates'].append(dict(name='acc_emax', measure='emax', statistic='S_ens', pool='pooled', bound=BOUND)),     # noqa: E731
+                     s['expect_points'].__setitem__('emax', 7))
+    gate('gate_uncovered_gate_dev_only_emax_wired', B, smut(two), 3, 'gates without a control that trips them',
+         check=lambda r, o: (len(r['gates']) == 2 and r['gates'][1]['passed'], 'emax device %+.4f' % r['gates'][1]['device_value']))
+    for m in ('emax', 'eF'):
+        gate('gate_%s_device_fail' % m, B, smut(lambda s: (s['gates'].append(dict(name='acc_' + m, measure=m, statistic='S_ens', pool='pooled', bound=-1.0)),
+                                                         s['expect_points'].__setitem__(m, 7))), 1, 'gate acc_%s: device' % m)
+    # ---- bounds and the decision
+    gate('gate_bound_below_device', B, smut(lambda s: s['gates'][0].__setitem__('bound', -0.5)), 1, 'gate acc_pTT: device')
+    gate('gate_bound_above_controls', B, smut(lambda s: s['gates'][0].__setitem__('bound', 0.5)), 1, 'NOT KILLED')
+    mnt = lambda b: (lambda s: (s['gates'].append(dict(name='acc_pTT2', measure='pTT', statistic='S_ens', pool='pooled', bound=b)),   # noqa: E731
+                                s['controls'][1].__setitem__('must_not_trip', ['acc_pTT2'])))
+    gate('gate_control_trips_gate_it_must_not', B, smut(mnt(BOUND)), 1, 'control tau_ns0 trips gate acc_pTT2')
+    gate('gate_control_must_not_trip_holds', B, smut(mnt(5.0)), 3, 'gates without a control that trips them: [\'acc_pTT2\']',
+         check=lambda r, o: (r['controls'][1]['checks'][1]['ok'] is True and r['controls'][1]['checks'][1]['must_trip'] is False, 'must_not_trip check ok'))
+    # ---- spec structure and values (each: INPUT_ERROR with its own message)
+    rp =os.path.join(gdir(), 'rep_gate_missing_spec_file.json')
+    rc, o = py('t207_d5_gate.py', '--spec', os.path.join(gdir(), 'does_not_exist.json'), '--report', rp, *B)
+    record('gate_missing_spec_file', 'rc 2: gate spec missing', rc == 2 and 'gate spec missing' in o and json.load(open(rp))['exit_code'] == 2, last(o))
+    for name, raw, substr in (('gate_truncated_spec', '{"spec_version": 1, ', 'is not valid JSON'),
+                              ('gate_spec_top_level_list', '[1, 2]', 'not a JSON object'),
+                              ('gate_spec_duplicate_key', json.dumps(gspec(), indent=1).replace('"qs": 20,', '"qs": 20, "qs": 20,', 1), 'duplicate key'),
+                              ('gate_bound_NaN_token', json.dumps(gspec(), indent=1).replace('"bound": 0.15', '"bound": NaN', 1), 'non-finite constant NaN'),
+                              ('gate_bound_Infinity_token', json.dumps(gspec(), indent=1).replace('"bound": 0.15', '"bound": Infinity', 1), 'non-finite constant')):
+        assert raw.count('NaN') + raw.count('Infinity') <= 1
+        gate(name, B, None, 2, substr, raw=raw)
+    agg_as_spec = json.dumps(A)
+    gate('P8b_aggregate_passed_as_spec', B, None, 2, 'allow_v1 is refused', raw=agg_as_spec)       # the aggregate carries allow_v1: refused first
+    gate('P8c_aggregate_without_allow_v1_as_spec', B, None, 2, 'unknown keys', raw=json.dumps({k: v for k, v in A.items() if k != 'allow_v1'}))
+    spec_tests = [
+        ('P8_allow_v1_true', lambda s: s.__setitem__('allow_v1', True), 'allow_v1 is refused'),
+        ('P8_allow_v1_false', lambda s: s.__setitem__('allow_v1', False), 'allow_v1 is refused'),
+        ('gate_spec_unknown_key', lambda s: s.__setitem__('allow_cover', 40), 'unknown keys'),
+        ('gate_spec_version_2', lambda s: s.__setitem__('spec_version', 2), 'spec_version'),
+        ('gate_spec_path_unknown', lambda s: s.__setitem__('path', 'foo'), 'path'),
+        ('gate_no_expect_points', lambda s: s.pop('expect_points'), "missing keys ['expect_points']"),
+        ('gate_no_qs', lambda s: s.pop('qs'), "missing keys ['qs']"),
+        ('R_A2_prog_sha_absent', lambda s: s.pop('prog_sha'), "missing keys ['prog_sha']"),
+        ('gate_no_controls_key', lambda s: s.pop('controls'), "missing keys ['controls']"),
+        ('gate_no_n_runs', lambda s: s.pop('n_runs'), "missing keys ['n_runs']"),
+        # gates
+        ('gate_wrong_measure_pmax', lambda s: s['gates'][0].__setitem__('measure', 'pmax'), "unknown measure 'pmax'"),
+        ('gate_unknown_measure', lambda s: s['gates'][0].__setitem__('measure', 'foo'), "unknown measure 'foo'"),
+        ('P4_statistic_S_cpu', lambda s: s['gates'][0].__setitem__('statistic', 'S_cpu'), 'not a decision statistic'),
+        ('P4c_statistic_missing', lambda s: s['gates'][0].pop('statistic'), 'exactly the keys'),
+        ('gate_pool_unknown', lambda s: s['gates'][0].__setitem__('pool', 'median'), "pool 'median'"),
+        ('gate_REAL_crash_bound_stats_None', lambda s: s['gates'][0].__setitem__('bound', None), 'bound None is not a finite number'),
+        ('gate_bound_a_string', lambda s: s['gates'][0].__setitem__('bound', '0.15'), "bound '0.15' is not a finite number"),
+        ('gate_bound_true', lambda s: s['gates'][0].__setitem__('bound', True), 'bound True is not a finite number'),
+        ('gate_no_bound', lambda s: s['gates'][0].pop('bound'), 'exactly the keys'),
+        ('gate_gates_empty', lambda s: s.__setitem__('gates', []), 'gates must be a non-empty list'),
+        ('gate_gates_not_a_list', lambda s: s.__setitem__('gates', 'acc_pTT'), 'gates must be a non-empty list'),
+        ('gate_gate_extra_key', lambda s: s['gates'][0].__setitem__('note', 'x'), 'exactly the keys'),
+        ('gate_gate_names_duplicate', lambda s: s['gates'].append(dict(s['gates'][0])), 'is not a unique name'),
+        # expect_points
+        ('gate_n_used_vs_expect_points_8', lambda s: s['expect_points'].__setitem__('pTT', 8), 'points used for measure pTT'),
+        ('gate_n_used_short_expect_6', lambda s: s['expect_points'].__setitem__('pTT', 6), 'points used for measure pTT'),
+        ('P7_expect_points_float', lambda s: s['expect_points'].__setitem__('pTT', 7.0), 'pTT: 7.0 is not an integer >= 1'),
+        ('gate_REAL_crash_runs_entry_n_a_list', lambda s: s['expect_points'].__setitem__('pTT', [7]), 'pTT: [7] is not an integer >= 1'),
+        ('gate_expect_points_true', lambda s: s['expect_points'].__setitem__('pTT', True), 'pTT: True is not an integer >= 1'),
+        ('gate_expect_points_zero', lambda s: s['expect_points'].__setitem__('pTT', 0), 'pTT: 0 is not an integer >= 1'),
+        ('gate_expect_points_extra_measure', lambda s: s['expect_points'].__setitem__('emax', 7), 'exactly the measures of the gates'),
+        # qs (one qs per gate run), nul, refs
+        ('gate_qs_zero', lambda s: s.__setitem__('qs', 0), 'qs 0: one integer > 0'),
+        ('gate_qs_a_list', lambda s: s.__setitem__('qs', [20]), 'qs [20]: one integer > 0'),
+        ('gate_qs_two_values', lambda s: s.__setitem__('qs', [20, 40]), 'qs [20, 40]: one integer > 0'),
+        ('gate_qs_not_an_integer', lambda s: s.__setitem__('qs', '20'), "qs '20': one integer > 0"),
+        ('gate_qs_float', lambda s: s.__setitem__('qs', 20.0), 'qs 20.0: one integer > 0'),
+        ('gate_qs_not_passed_40', lambda s: s.__setitem__('qs', 40), 'processed with qs 20, the spec says 40'),
+        ('gate_nul_without_0', lambda s: s['nul'].remove(0), 'containing 0'),
+        ('gate_nul_misses_ref_code', lambda s: s['nul'].remove(1608), 'processed with nul'),
+        ('gate_nul_duplicate', lambda s: s['nul'].append(4), 'distinct integers'),
+        ('gate_nul_extra_code_vs_runs', lambda s: s['nul'].append(7), 'processed with nul'),
+        ('gate_refs_unknown_name', lambda s: s['refs'].append('foo'), 'every reference member'),
+        ('gate_refs_dev_listed', lambda s: s['refs'].append('dev'), 'is not a reference member'),
+        ('gate_refs_n0_listed', lambda s: s['refs'].append('n0'), 'is not a reference member'),
+        ('gate_refs_qself_listed', lambda s: s['refs'].append('qself'), 'is not a reference member'),
+        ('gate_refs_variant_control_member', lambda s: (s['refs'].append('var8'), s['members']['ctl_tau_ns0'].insert(1, 'var8')),
+         'must be a member of main in members, not dev and not a reference member'),
+        ('gate_refs_one_name', lambda s: s.__setitem__('refs', ['cpu']), 'at least two names'),
+        # member lists (names from the spec; strictly exactly those, in that order)
+        ('gate_members_order_swapped', lambda s: s['members']['main'].__setitem__(slice(4, 6), s['members']['main'][5:3:-1]), 'differs from the member list of the spec'),
+        ('gate_members_one_missing', lambda s: s['members']['main'].remove('u2'), 'differs from the member list of the spec'),
+        ('gate_members_extra', lambda s: s['members']['main'].append('zz'), 'differs from the member list of the spec'),
+        ('gate_members_ctl_list_with_var8', lambda s: s['members']['ctl_tau_ns0'].insert(1, 'var8'), 'differs from the member list of the spec'),
+        ('gate_host_member_other_label', lambda s: s.update(host_member='host', members={r: ['host' if x == 'nvh' else x for x in l] for r, l in s['members'].items()},
+                                                            refs=['host' if x == 'nvh' else x for x in s['refs']]), "member 'nvh' where 'host' was expected"),
+        ('gate_host_member_not_in_list', lambda s: s.__setitem__('host_member', 'host'), 'does not contain host_member host'),
+        ('gate_members_role_missing', lambda s: s['members'].pop('ctl_tau_ns0'), 'must have exactly the roles'),
+        ('gate_members_no_dev', lambda s: s['members']['main'].remove('dev'), 'must contain dev'),
+        ('gate_members_diag_listed', lambda s: s['members']['main'].append('qself'), 'no diagnostic member'),
+        ('gate_members_not_a_dict', lambda s: s.__setitem__('members', ['dev']), 'members must be a dictionary'),
+        ('gate_refs_duplicate', lambda s: s['refs'].append('n4'), 'duplicate name'),
+        ('gate_refs_empty', lambda s: s.__setitem__('refs', []), 'at least two names'),
+        ('gate_cover_zero', lambda s: s.__setitem__('cover', 0), 'cover 0: an integer >= 1'),
+        ('gate_cover_float', lambda s: s.__setitem__('cover', 40.0), 'cover 40.0: an integer >= 1'),
+        # program identity
+        ('gate_prog_sha_mismatch', lambda s: s.__setitem__('prog_sha', '0' * 64), 'differs from the required'),
+        ('gate_prog_sha_not_a_hash', lambda s: s.__setitem__('prog_sha', 'abc'), 'is not a sha256'),
+        ('gate_prog_sha_upper_case', lambda s: s.__setitem__('prog_sha', s['prog_sha'].upper()), 'is not a sha256'),
+        ('gate_src_sha_not_this_source', lambda s: s.__setitem__('src_sha', '0' * 64), 'of the t207_d5_qref.F90 next to the gate'),
+        # env table
+        ('gate_env_roles_no_main', lambda s: s['env_roles'].pop('main'), 'role main is required'),
+        ('gate_env_roles_main_no_QREF', lambda s: s['env_roles']['main'].pop('ALF_GPU_TAUDIAG_QREF'), 'ALF_GPU_TAUDIAG_QREF missing'),
+        ('gate_env_roles_override', lambda s: s['env_roles']['ctl_tau_ns0']['extra_env'].__setitem__('ALF_GPU_TAUDIAG_QHOST', '0'), 'no override'),
+        ('gate_env_roles_omit_unknown', lambda s: s['env_roles']['ctl_tau_ns0']['omit_env'].append('ALF_GPU_FOO'), 'omit_env'),
+        ('gate_env_roles_value_int', lambda s: s['env_roles']['main'].__setitem__('ALF_GPU_DEBUG', 1), 'non-empty string'),
+        ('gate_env_roles_key_not_ALF_GPU', lambda s: s['env_roles']['main'].__setitem__('FOO', '1'), 'not an ALF_GPU_* variable'),
+        ('gate_env_roles_two_roles_same_env', lambda s: (s['env_roles'].__setitem__('ctl2', json.loads(json.dumps(s['env_roles']['ctl_tau_ns0']))),
+                                                         s['controls'].append(dict(name='c2', kind='run', role='ctl2', trips='acc_pTT')),
+                                                         s['n_runs'].__setitem__('ctl2', 1)), 'have the same env'),
+        ('gate_env_roles_unused_role', lambda s: s['env_roles'].__setitem__('ctl_swap', {'extra_env': {'ALF_GPU_TAUSWAP': '8'}, 'omit_env': []}), 'used by no control'),
+        ('gate_env_roles_main_QVAR_not_a_list', lambda s: (s['env_roles']['main'].__setitem__('ALF_GPU_TAUDIAG_QVAR', 'x'),
+                                                           s['env_roles']['ctl_tau_ns0'].__setitem__('omit_env', [])), 'not a comma list of integers'),
+        ('gate_env_roles_entry_extra_key', lambda s: s['env_roles']['ctl_tau_ns0'].__setitem__('note', 'x'), 'exactly the keys extra_env and omit_env'),
+        ('gate_env_roles_empty_control_role', lambda s: s['env_roles'].__setitem__('ctl_tau_ns0', {'extra_env': {}, 'omit_env': []}), 'both empty'),
+        # run counts
+        ('gate_n_runs_main_4', lambda s: s['n_runs'].__setitem__('main', 4), 'runs per role'),
+        ('P7_n_runs_float', lambda s: s['n_runs'].__setitem__('main', 3.0), 'main: 3.0 is not an integer >= 1'),
+        ('gate_n_runs_missing_role', lambda s: s['n_runs'].pop('ctl_tau_ns0'), 'must have exactly the roles'),
+        ('gate_n_runs_extra_role', lambda s: s['n_runs'].__setitem__('ctl_x', 1), 'must have exactly the roles'),
+        ('gate_n_runs_zero', lambda s: s['n_runs'].__setitem__('main', 0), 'main: 0 is not an integer >= 1'),
+        # controls
+        ('gate_controls_not_a_list', lambda s: s.__setitem__('controls', 'var8'), 'controls must be a list'),
+        ('gate_control_entry_a_list', lambda s: s['controls'].__setitem__(0, ['var8']), 'is not a dictionary'),
+        ('gate_control_kind_unknown', lambda s: s['controls'][0].__setitem__('kind', 'foo'), 'kind variant'),
+        ('P4b_control_statistic_key', lambda s: s['controls'][1].__setitem__('statistic', 'S_cpu'), 'kind variant'),
+        ('gate_control_member_var16', lambda s: s['controls'][0].__setitem__('member', 'var16'), 'must be a member of main'),
+        ('gate_control_member_dev', lambda s: s['controls'][0].__setitem__('member', 'dev'), 'must be a member of main'),
+        ('gate_control_trips_unknown_gate', lambda s: s['controls'][0].__setitem__('trips', 'nope'), 'is not a gate of the spec'),
+        ('gate_control_must_not_trip_its_own', lambda s: s['controls'][0].__setitem__('must_not_trip', ['acc_pTT']), 'list of distinct gates other than'),
+        ('gate_control_run_role_main', lambda s: s['controls'][1].__setitem__('role', 'main'), 'is not a control role'),
+        ('gate_control_run_role_unknown', lambda s: s['controls'][1].__setitem__('role', 'ghost'), 'is not a control role'),
+        ('gate_control_names_duplicate', lambda s: s['controls'][1].__setitem__('name', 'var8'), 'is not a unique name'),
+        # P1 / P1b: the default-path runs judged as LOG
+        ('P1_def_runs_spec_says_log', lambda s: s.update(path='log', refs=QP.REF_LOG.split(','), prog_sha=prog_of('m_log_dev2'),
+                                                          env_roles=dict(s['env_roles'], ctl_tau_ns0={'extra_env': {'ALF_GPU_TAUSWAP': '8'}, 'omit_env': ['ALF_GPU_TAUDIAG_QVAR']})),
+         'a def-path run (info)'),
+        ('P1b_def_runs_spec_says_log_def_codes_removed', lambda s: s.update(path='log', refs=QP.REF_LOG.split(','), nul=list(NUL_LOG), prog_sha=prog_of('m_log_dev2')),
+         'a def-path run (info)'),
+    ]
+    for name, fn, substr in spec_tests:
+        gate(name, B, smut(fn), 2, substr)
+    # ---- the reference list is the spec's (manager note 2026-11-01: names come from the spec, no frozen list in the scripts): another list
+    # is accepted and judged with it; the expected outcome and numbers come from agg's CLI with the same --ref list
+    for name, refs in (('gate_refs_member_dropped', [r for r in QP.REF_DEF.split(',') if r != 'n1608']),
+                       ('gate_refs_reordered', QP.REF_DEF.split(',')[::-1]),
+                       ('gate_refs_other_path_list', QP.REF_LOG.split(','))):
+        oa = os.path.join(ST, 'agg_%s.json' % name)
+        rcr, msgr = py('t207_d5_agg.py', oa, 'pTT', '--ref', ','.join(refs), *(['main:%s=%s' % (t, Q(d)) for t, d in zip(GSET[:3], M3)] + ['ctl:c1=' + Q(B[3])]))
+        Ar = json.load(open(oa)) if rcr == 0 else None
+        if Ar is None:
+            record(name, 'agg ok', False, last(msgr))
+            continue
+        vr = (Ar['pooled']['dev']['S_ens']['mean'], Ar['pooled']['var8']['S_ens']['mean'], Ar['pooled']['ctl_dev']['S_ens']['mean'])
+        er = 4 if (vr[0] <= BOUND and vr[1] > BOUND and vr[2] > BOUND) else 1
 
-    # ---- fix round 2 (second numerics review): program identity, counts and means tied to the per-run data, controls, nits.
-    # R_* reproduce the reviewer's six planted one-defect aggregates (made here from the baseline aggregate, rev207-2b/{A..E}) as INPUT_ERROR.
-    def drop_member(a, lab, m):
-        a['inputs'][lab]['members'].remove(m)
-        a['runs'][lab].pop(m)
-    bsl = agg['inputs']['dev2']
+        def same(rep, o, vr=vr):
+            c = {x['name']: x['checks'][0]['value'] for x in rep['controls']}
+            dm = max(abs(a - b) for a, b in zip((rep['gates'][0]['device_value'], c['var8'], c['tau_ns0']), vr))
+            return dm <= 1e-12, 'device %+.4f var8 %+.4f tau_ns0 %+.4f, max |gate - agg| %.1e' % (vr + (dm,))
+        gate(name, B, gspec(refs=refs), er, GW[er], check=same)
+    # a host member printed under another label (renamed in every qref.txt line, processing record kept consistent) is accepted when the
+    # spec declares that label; the numbers are those of the baseline
+    ren = e_qref(lambda t: t.replace(' | nvh ', ' | hostx '))
+    hs = gspec(host_member='hostx', members={r: ['hostx' if x == 'nvh' else x for x in l] for r, l in gspec()['members'].items()},
+               refs=['hostx' if x == 'nvh' else x for x in QP.REF_DEF.split(',')])
+    gate('gate_host_member_relabelled_accepted', gcopy('hostx', edits={t: ren for t in GSET}), hs, 4, 'GATE TEST-ONLY',
+         check=lambda r, o: (abs(r['gates'][0]['device_value'] - rep0['gates'][0]['device_value']) <= 1e-12, 'device %+.4f as the baseline' % r['gates'][0]['device_value']))
+    gate('gate_host_member_relabelled_spec_says_nvh', gcopy('hostx2', edits={t: ren for t in GSET}), gspec(), 2, "member 'hostx' where 'nvh' was expected")
+    # ---- command line
+    sp0 = os.path.join(gdir(), 'spec_baseline_gate_test_only_kept_subset.json')
+    for name, args, substr in (('gate_cli_no_report', ['--spec', sp0] + B, 'usage'),
+                               ('gate_cli_spec_twice', ['--spec', sp0, '--spec', sp0, '--report', os.path.join(gdir(), 'rep_cli2.json')] + B, 'given twice'),
+                               ('gate_cli_unknown_option', ['--require-controls', '--spec', sp0, '--report', os.path.join(gdir(), 'rep_cli3.json')] + B, 'unknown option'),
+                               ('gate_cli_no_run_dirs', ['--spec', sp0, '--report', os.path.join(gdir(), 'rep_cli4.json')], 'usage')):
+        rc, o = py('t207_d5_gate.py', *args)
+        record(name, 'rc 2: ' + substr, rc == 2 and substr in o and 'GATE FAIL' not in o and 'GATE PASS' not in o, last(o))
+    rp = os.path.join(gdir(), 'rep_exists.json')
+    open(rp, 'w').write('keep\n')
+    rc, o = py('t207_d5_gate.py', '--spec', sp0, '--report', rp, *B)
+    record('gate_report_exists_not_overwritten', 'rc 2, file unchanged', rc == 2 and 'exists' in o and open(rp).read() == 'keep\n', last(o))
+    # ---- evidence: one defect per copy of the run set (INPUT_ERROR)
+    D3 = 'm_def_dev3'
+    ev = [
+        ('P10_run_dir_nonexistent', None, B + [os.path.join(gdir(), 'nonexistent', 'hub12x12_cb_p')], 'not a directory'),
+        ('gate_run_qref_txt_missing', {D3: e_file(lambda d: os.remove(os.path.join(d, 'qref.txt')))}, None, 'qref.txt missing'),
+        ('gate_run_qref_edited_after_processing', {D3: e_qref_raw(lines_all(scale('u1', 0, 1.001), only=2))}, None, 'differs from qref_sha256'),
+        ('gate_run_proc_json_missing', {D3: e_file(lambda d: os.remove(os.path.join(d, 'qref_proc.json')))}, None, 'qref_proc.json missing'),
+        ('R_A_no_program_identity', {t: e_proc(lambda x: x.pop('prog')) for t in GSET}, None, 'no valid program sha256'),
+        ('R_A3_prog_not_hex_in_run', {D3: e_proc(lambda x: x.__setitem__('prog', 'G' * 64))}, None, 'no valid program sha256'),
+        ('gate_prog_sha_one_run_differs', {D3: e_proc(lambda x: x.__setitem__('prog', '1' * 64))}, None, 'program sha256 1111'),
+        ('gate_run_prog_src_differs', {D3: e_proc(lambda x: x.__setitem__('prog_src', '2' * 64))}, None, 'program source sha256 2222'),
+        ('gate_run_proc_rc_1', {D3: e_proc(lambda x: x.__setitem__('rc', 1))}, None, 'are not both 0'),
+        ('gate_run_proc_check_rc_true', {D3: e_proc(lambda x: x.__setitem__('check_rc', True))}, None, 'are not both 0'),
+        ('gate_run_proc_qref_sha256_missing', {D3: e_proc(lambda x: x.pop('qref_sha256'))}, None, 'no valid qref_sha256'),
+        ('gate_run_proc_args_differ', {D3: e_proc(lambda x: x['args'].__setitem__('qs', 40))}, None, 'differ from the arguments in qref_spec.json'),
+        ('P9_mixed_qs_one_run_40', {D3: e_args(qs=40)}, None, 'processed with qs 40, the spec says 20'),
+        ('R_E_hostin_7', {D3: e_args(hostin=7)}, None, 'bad processing arguments'),
+        ('R_E_hostin_true', {D3: e_args(hostin=True)}, None, 'must be integers'),
+        ('R_E_keep_negative', {D3: e_args(keep=-5)}, None, 'bad processing arguments'),
+        ('keep_rule_refused_by_gate', {D3: e_args(keep=1)}, None, 'keep rule'),
+        ('gate_cover_2', {D3: e_args(cover=2)}, None, 'covered dumps'),
+        ('gate_run_records_edited', {D3: e_file(lambda d: open(os.path.join(d, 'run.log'), 'a').write(' extra\n'))}, None, 'does not match the record run.log'),
+        ('gate_run_manifest_hash_edited', {D3: e_file(lambda d: rewrite(os.path.join(d, 'qref_manifest.txt'),
+                                                                        lambda t: re.sub(r'^[0-9a-f]{64}', '0' * 64, t, count=1)))}, None, 'sha256 differs from qref_manifest.txt'),
+        ('gate_run_dump_removed', {D3: e_file(lambda d: os.remove(os.path.join(d, 'qref', sorted(os.listdir(os.path.join(d, 'qref')))[2])))}, None, 'qref/ holds 6 files'),
+        ('gate_env_missing_stamp_line', {D3: e_file(lambda d: rewrite(os.path.join(d, 'stamp.txt'), lambda t: re.sub(r'^env .*\n', '', t, flags=re.M)))},
+         None, 'stamp.txt: env line'),
+        ('gate_run_point_dropped_ctl', {'c_def_dev1_q20': e_qref(lambda t: '\n'.join(t.split('\n')[:2] + t.split('\n')[3:]).replace(
+            'QREFEND dumps 7 ok 7 err 0', 'QREFEND dumps 6 ok 6 err 0'))}, None, 'differs from dumps 7'),
+        ('gate_run_dev_NaN', {D3: e_qref(lines_all(setnum('dev', 5, 'NaN'), only=1))}, None, 'not a number in the format ES12.4E3'),
+        ('gate_run_dev_removed', {D3: e_qref(lines_all(drop_member('dev'), only=1))}, None, 'members, expected'),
+        ('gate_run_var8_removed_all_points', {D3: e_qref(lines_all(drop_member('var8')))}, None, 'members, expected'),
+        ('gate_variant_mixed_log_run', None, 'm_log_dev2', 'a log-path run (info)'),
+        # env (consistent edits of info, stamp.txt, provenance.json and the stored spec)
+        ('gate_env_TAUSWAP_main', {D3: e_env(lambda e: dict(e, ALF_GPU_TAUSWAP='8'))}, None, 'env allow-list'),
+        ('gate_env_unknown_var_main', {D3: e_env(lambda e: dict(e, ALF_GPU_FOO='1'))}, None, 'env allow-list'),
+        ('gate_env_DEBUG_removed_main', {D3: e_env(lambda e: {k: v for k, v in e.items() if k != 'ALF_GPU_DEBUG'})}, None, 'env allow-list'),
+        ('gate_env_QVAR_removed_main', {D3: e_env(lambda e: {k: v for k, v in e.items() if k != 'ALF_GPU_TAUDIAG_QVAR'})}, None, 'differs from the env'),
+        ('gate_env_QVAR_other_main', {D3: e_env(lambda e: dict(e, ALF_GPU_TAUDIAG_QVAR='8,16'))}, None, 'differs from the env'),
+        ('gate_env_QHOST_0_main', {D3: e_env(lambda e: dict(e, ALF_GPU_TAUDIAG_QHOST='0'))}, None, 'differs from the env'),
+        ('gate_env_QREF_not_a_number', {D3: e_env(lambda e: dict(e, ALF_GPU_TAUDIAG_QREF='x'))}, None, 'not a QREF run'),
+        ('gate_env_FROM_other_main', {D3: e_env(lambda e: dict(e, ALF_GPU_TAUDIAG_FROM='330'))}, None, 'differs from the env'),
+        ('gate_env_ctl_TAU_NS_1', {'c_def_dev1_q20': e_env(lambda e: dict(e, ALF_GPU_TAU_NS='1'))}, None, 'env allow-list'),
+        ('gate_env_ctl_TAUSWAP_on_default_path', {'c_def_dev1_q20': e_env(lambda e: dict({k: v for k, v in e.items() if k != 'ALF_GPU_TAU_NS'}, ALF_GPU_TAUSWAP='8'))},
+         None, 'env allow-list'),
+        ('P2c_ctl_two_faults', {'c_def_dev1_q20': e_env(lambda e: dict(e, ALF_GPU_TAUSWAP='8'))}, None, 'env allow-list'),
+        ('P2_ctl_run_with_main_env', {'c_def_dev1_q20': e_env(lambda e: dict({k: v for k, v in e.items() if k != 'ALF_GPU_TAU_NS'}, ALF_GPU_TAUDIAG_QVAR='8'))},
+         None, 'differs from the env'),
+        ('P11_ctl_same_seeds_as_main', {'c_def_dev1_q20': e_seeds(seeds_of('m_def_dev2'))}, None, 'same seeds'),
+    ]
+    for name, edits, extra, substr in ev:
+        if isinstance(extra, list):
+            dirs = extra
+        elif isinstance(extra, str):
+            dirs = gcopy(name, tags=GSET + [extra])
+        else:
+            dirs = gcopy(name, edits=edits)
+        gate(name, dirs, gspec(), 2, substr)
+    gate('gate_runs_different_parameters', gcopy('gate_runs_different_parameters', edits={D3: chain(
+        e_file(lambda d: open(os.path.join(d, 'parameters'), 'a').write('! a comment line: other parameters file\n')), e_file(fix_records))}),
+        gspec(), 2, 'different parameters')
+    gate('gate_no_main_run', B[3:], gspec(), 2, 'no main run')
+    # a version 1 run (s_def: no B, Bi) through a spec that matches it in everything else (qs 1, cover 1, its env): refused by the parser
+    v1env = dict(gspec()['env_roles']['main'], ALF_GPU_TAUDIAG_QREF='1', ALF_GPU_TAUDIAG_FROM='399')
+    gate('gate_v1_run_in_set', gcopy('gate_v1_run_in_set', tags=['s_def']), gspec(qs=1, cover=1, env_roles={'main': v1env}, n_runs={'main': 1}, controls=[],
+                                                                                  members={'main': mlist(NUL_DEF)}), 2, 'only with allow_v1')
+    # the catch-all: an unreadable record is an exception the gate does not test for; it must end as INPUT_ERROR naming the exception
+    dirs = gcopy('gate_REAL_crash_unreadable_record')
+    os.chmod(os.path.join(dirs[1], 'qref_spec.json'), 0)
+    gate('gate_REAL_crash_unreadable_record', dirs, gspec(), 2, 'PermissionError')
+    os.chmod(os.path.join(dirs[1], 'qref_spec.json'), 0o644)
+    # ---- the same run twice (INPUT_ERROR)
+    gate('gate_dup_same_dir_twice', B + [B[1]], gspec(n_runs={'main': 4, 'ctl_tau_ns0': 1}), 2, 'same directory')
+    dd = gcopy('gate_dup_copied_dir', tags=GSET + ['dup3'], src={'dup3': D3})
+    gate('gate_dup_copied_dir', dd, gspec(n_runs={'main': 4, 'ctl_tau_ns0': 1}), 2, 'same qref.txt sha256')
+    dd = gcopy('gate_dup_edited_qref_same_records', tags=GSET + ['dup3'], src={'dup3': D3}, edits={'dup3': e_qref(lines_all(scale('u1', 0, 1.001), only=2))})
+    gate('gate_dup_edited_qref_same_records', dd, gspec(n_runs={'main': 4, 'ctl_tau_ns0': 1}), 2, 'same run.log sha256')
+    forge = chain(e_qref(lines_all(scale('u1', 0, 1.001), only=2)), e_file(lambda d: open(os.path.join(d, 'run.log'), 'a').write(' harmless extra line\n')),
+                  e_file(fix_records), e_seeds('f' * 64))
+    dd = gcopy('P5_dup_run_new_hashes', tags=GSET + ['dup3'], src={'dup3': D3}, edits={'dup3': forge})
+    gate('P5_dup_run_new_hashes', dd, gspec(n_runs={'main': 4, 'ctl_tau_ns0': 1}), 2, 'same dump sha256')
 
-    def drop_ctl(a):                                     # the control run with all its numbers, as in the reviewer's C_noctl
-        a['pooled'].pop('ctl_dev'); a['inputs'].pop('c1'); a['runs'].pop('c1')
-    variant('R_A_no_program_identity', lambda a: [i.__setitem__('prog_sha256', None) for i in a['inputs'].values()], 2, 'not 64 hex digits', extra=['--prog-sha', prog])
-    variant('R_A2_prog_sha_arg_absent', nop, 2, 'usage', args=['--bound', '0.15', '--expect-points', '7', '--qs', '20', '--require-controls'])
-    variant('R_A3_prog_sha_not_hex_in_run', lambda a: a['inputs']['dev3'].__setitem__('prog_sha256', 'G' * 64), 2, 'not 64 hex digits')
-    variant('R_B_pooled_mean_tampered', lambda a: a['pooled']['dev']['S_ens'].__setitem__('mean', -3.0), 2, 'n-weighted mean')
-    variant('R_B_run_n_tampered_sum_kept',
-            lambda a: (a['runs']['dev3']['dev']['S_ens'].__setitem__('n', 8), a['runs']['dev2']['dev']['S_ens'].__setitem__('n', 6)), 2, 'differs from the 7 points used')
-    variant('R_C_no_control_run_required', drop_ctl, 2, 'no control ctl_dev', extra=['--require-controls'])
-    variant('R_C2_no_control_run_not_required_ok', drop_ctl, 0, 'GATE PASS')
-    variant('R_D_ctl_n_1', lambda a: (a['pooled']['ctl_dev']['S_ens'].__setitem__('n', 1), a['runs']['c1']['ctl_dev']['S_ens'].__setitem__('n', 1)), 2, 'points used')
-    variant('R_D2_ctl_pooled_n_only', lambda a: a['pooled']['ctl_dev']['S_ens'].__setitem__('n', 1), 2, 'pooled ctl_dev')
-    variant('R_E_keep_negative', lambda a: a['inputs']['dev3']['args'].__setitem__('keep', -5), 2, 'keep -5')
-    variant('R_E_hostin_7', lambda a: a['inputs']['dev3']['args'].__setitem__('hostin', 7), 2, 'hostin 7')
-    variant('R_E_hostin_true', lambda a: a['inputs']['dev3']['args'].__setitem__('hostin', True), 2, 'hostin True')
-    variant('R_E_hostin_1_ok', lambda a: a['inputs']['dev3']['args'].__setitem__('hostin', 1), 0, 'GATE PASS')
-    # counts tied to the runs
-    variant('pooled_var8_n_tampered', lambda a: a['pooled']['var8']['S_ens'].__setitem__('n', 20), 2, 'pooled var8')
-    variant('pooled_var8_mean_tampered', lambda a: a['pooled']['var8']['S_ens'].__setitem__('mean', a['pooled']['var8']['S_ens']['mean'] + 1e-6), 2, 'n-weighted mean')
-    variant('pooled_ctl_dev_mean_tampered', lambda a: a['pooled']['ctl_dev']['S_ens'].__setitem__('mean', 9.0), 2, 'n-weighted mean')
-    variant('pooled_reference_mean_tampered', lambda a: a['pooled']['n4']['S_ens'].__setitem__('mean', 5.0), 2, 'pooled n4')
-    variant('pooled_mean_rounding_1e-14_ok', lambda a: a['pooled']['dev']['S_ens'].__setitem__('mean', a['pooled']['dev']['S_ens']['mean'] + 1e-14), 0, 'GATE PASS')
-    variant('run_mean_changed_pooled_kept', lambda a: a['runs']['dev3']['dev']['S_ens'].__setitem__('mean', a['runs']['dev3']['dev']['S_ens']['mean'] + 0.5), 2, 'n-weighted mean')
-    variant('run_member_n_differs_from_n_used_var8', lambda a: a['runs']['dev3']['var8']['S_ens'].__setitem__('n', 6), 2, 'differs from the 7 points used')
-    variant('pooled_member_not_in_any_run', lambda a: a['pooled'].__setitem__('zz', json.loads(json.dumps(a['pooled']['dev']))), 2, 'pooled members')
-    variant('pooled_member_missing', lambda a: a['pooled'].pop('u1'), 2, 'pooled members')
-    # member sets per role
-    variant('main_run_var8_dropped_consistently', lambda a: drop_member(a, 'dev3', 'var8'), 2, 'member list')
-    variant('main_run_member_n4_dropped_runs_only', lambda a: a['runs']['dev3'].pop('n4'), 2, 'per-run statistics')
-    variant('main_run_member_extra_runs_only', lambda a: a['runs']['dev3'].__setitem__('ctl_dev', json.loads(json.dumps(a['runs']['dev3']['dev']))), 2, 'per-run statistics')
-    variant('ctl_run_runs_has_extra_dev', lambda a: a['runs']['c1'].__setitem__('dev', json.loads(json.dumps(a['runs']['c1']['ctl_dev']))), 2, 'per-run statistics')
-    variant('ctl_run_runs_lacks_ctl_dev', lambda a: a['runs']['c1'].__setitem__('dev', a['runs']['c1'].pop('ctl_dev')), 2, 'per-run statistics')
-    variant('ctl_run_members_has_var8', lambda a: a['inputs']['c1']['members'].append('var8'), 2, 'member list')
-    variant('ctl_run_members_lacks_dev', lambda a: a['inputs']['c1']['members'].remove('dev'), 2, 'member list')
-    # control kinds: each required control is evaluated on its own statistic; a failing one fails the gate whichever it is
-    def set_stat(a, name, lab, v):
-        a['runs'][lab][name]['S_ens']['mean'] = v
-        a['pooled'][name]['S_ens']['mean'] = v
-    variant('control_ctl_dev_not_killed', lambda a: set_stat(a, 'ctl_dev', 'c1', 0.0), 1, 'control ctl_dev')
-    variant('control_var8_not_killed', lambda a: [set_stat(a, 'var8', l, 0.0) for l in ('dev2', 'dev3', 'dev4')], 1, 'control var8')
-    variant('control_var8_pooled_missing_required', lambda a: a['pooled'].pop('var8'), 2, 'pooled members', extra=['--require-controls'])
-    variant('controls_table_rows_required', nop, 0, 'control ctl_dev', extra=['--require-controls'])
-    # nits: keep rule, repeated arguments
-    geo = (bsl['nstm'], bsl['nfl'], bsl['stride'])
-    bad_k = [k for k in range(2, 400) if QP.keep_rule(*geo, k)[1] != 1][0]
-    good_k = [k for k in range(2, 400) if QP.keep_rule(*geo, k)[1] == 1][0]
-    variant('keep_rule_refused_by_gate', lambda a: a['inputs']['dev3']['args'].__setitem__('keep', bad_k), 2, 'keep rule')
-    variant('keep_rule_accepted_by_gate', lambda a: a['inputs']['dev3']['args'].__setitem__('keep', good_k), 0, 'GATE PASS')
-    variant('keep_rule_geometry_missing', lambda a: (a['inputs']['dev3']['args'].__setitem__('keep', good_k), a['inputs']['dev3'].pop('nstm')), 2, "'nstm' missing")
-    variant('keep_rule_geometry_not_int', lambda a: (a['inputs']['dev3']['args'].__setitem__('keep', good_k), a['inputs']['dev3'].__setitem__('stride', 0)), 2, 'positive integers')
-    for name, a in (('gate_bound_twice', ['--bound', '0.15', '--bound', '0.15', '--expect-points', '7', '--qs', '20']),
-                    ('gate_expect_points_twice', ['--bound', '0.15', '--expect-points', '7', '--expect-points', '7', '--qs', '20']),
-                    ('gate_prog_sha_twice', ['--bound', '0.15', '--expect-points', '7', '--qs', '20', '--prog-sha', prog, '--prog-sha', prog])):
-        rc, g = py('t207_d5_gate.py', *(a + (['--prog-sha', prog] if 'prog' not in name else []) + [pth]))
-        record(name, 'rc 2: INPUT_ERROR given twice', rc == 2 and 'given twice' in g and 'GATE FAIL' not in g, g.strip().split('\n')[-1][-100:])
-    rc, g = py('t207_d5_gate.py', '--bound', '0.15', '--expect-points', '7', '--qs', '20', '--qs', '40', '--prog-sha', prog, pth)
-    record('gate_qs_repeated_ok', 'rc 0 (--qs may be repeated)', rc == 0 and 'GATE PASS' in g, g.strip().split('\n')[-1][-100:])
+    def own_dumps(d):                       # the dumps copied and changed by one byte each, manifest rewritten: only the QREF lines are shared
+        qd = os.path.join(d, 'qref')
+        lines = []
+        for f in sorted(os.listdir(qd)):
+            p = os.path.join(qd, f)
+            src = os.path.realpath(p)
+            os.remove(p)
+            shutil.copyfile(src, p)
+            with open(p, 'ab') as g:
+                g.write(b'\0')
+            lines.append('%s  qref/%s' % (sha_file(p), f))
+        open(os.path.join(d, 'qref_manifest.txt'), 'w').write('\n'.join(lines) + '\n')
+    dd = gcopy('P5b_dup_run_dumps_forged_too', tags=GSET + ['dup3'], src={'dup3': D3}, edits={'dup3': chain(forge, e_file(own_dumps))})
+    gate('P5b_dup_run_dumps_forged_too', dd, gspec(n_runs={'main': 4, 'ctl_tau_ns0': 1}), 2, 'same QREF data line')
+    shutil.rmtree(os.path.join(dd[-1], 'qref'))           # own temporary dump copies (40 MB); the record of the test stays
+    # ---- planted defects in the evidence: the gate's criterion catches them (FAIL)
+    up = {t: e_qref(lines_all(scale('dev', 5, 10.0))) for t in GSET[:3]}
+    gate('P3a_device_x10_all_runs', gcopy('P3a', edits=up), gspec(), 1, 'gate acc_pTT: device')
+    gate('huge_value_dev_pTT', gcopy('huge', edits={'m_def_dev2': e_qref(lines_all(setnum('dev', 5, '1.0000E+100'), only=1))}), gspec(), 1, 'gate acc_pTT: device')
+    gate('dev_var8_swapped_all_sets', gcopy('swap', edits={t: e_qref(lines_all(swap_members('dev', 'var8'))) for t in GSET[:3]}), gspec(), 1,
+         'control var8 not killed by gate acc_pTT', check=lambda r, o: ('gate acc_pTT: device' in o and 'FAIL' in o, 'device and var8 both caught'))
+    gate('P2b_ctl_dev_is_a_correct_result', gcopy('P2b', edits={'c_def_dev1_q20': e_qref(lines_all(copy_member('dev', 'nvh')))}), gspec(), 1,
+         'control tau_ns0 not killed by gate acc_pTT')
+    gate('control_var8_not_killed', gcopy('v8nk', edits={t: e_qref(lines_all(copy_member('var8', 'nvh'))) for t in GSET[:3]}), gspec(), 1,
+         'control var8 not killed by gate acc_pTT')
+    # P3b: failing evidence with a doctored aggregate (device mean -0.5) lying next to it: the gate never reads an aggregate
+    dd = gcopy('P3b', edits=up)
+    doc = json.loads(json.dumps(A))
+    doc['pooled']['dev']['S_ens']['mean'] = -0.5
+    for t in GSET[:3]:
+        doc['runs'][t]['dev']['S_ens']['mean'] = -0.5
+    for d in dd:
+        json.dump(doc, open(os.path.join(d, 'agg.json'), 'w'))
+    gate('P3b_doctored_aggregate_beside_failing_runs', dd, gspec(), 1, 'gate acc_pTT: device')
+    # P3c: (a) the shuffled aggregate cannot be an input: beside the true runs the decision and the per-run means are the true ones
+    dd = gcopy('P3c_a')
+    doc = json.loads(json.dumps(A))
+    doc['runs']['m_def_dev2']['dev']['S_ens']['mean'] = 5.0
+    for d in dd:
+        json.dump(doc, open(os.path.join(d, 'agg.json'), 'w'))
+    gate('P3c_shuffled_aggregate_beside_true_runs', dd, gspec(), 4, 'GATE TEST-ONLY',
+         check=lambda r, o: (max(abs(a - b) for a, b in zip(r['gates'][0]['device_run_means'], [A['runs'][t]['dev']['S_ens']['mean'] for t in GSET[:3]])) <= 1e-12,
+                             'per-run device means are the true ones'))
+    # (b) the evidence analogue: one run's device errors x1e5, another's x1e-5, pooled mean unchanged.  pool 'pooled' cannot see it (a known
+    # limit of a pooled criterion: rc 4, recorded as such, not a detection); pool 'each_run' catches it (FAIL)
+    ud = {'m_def_dev2': e_qref(lines_all(scale('dev', 5, 1e5))), 'm_def_dev3': e_qref(lines_all(scale('dev', 5, 1e-5)))}
+    dd = gcopy('P3c_b', edits=ud)
+    gate('P3c_evidence_up_down_pooled_LIMIT_not_detected', dd, gspec(), 4, 'GATE TEST-ONLY',
+         check=lambda r, o: (abs(r['gates'][0]['device_value'] - rep0['gates'][0]['device_value']) < 1e-9 and max(r['gates'][0]['device_run_means']) > 4,
+                             'pooled unchanged %+.4f, run means %s' % (r['gates'][0]['device_value'], ' '.join('%+.2f' % v for v in r['gates'][0]['device_run_means']))))
+    gate('P3c_evidence_up_down_each_run', dd, smut(lambda s: s['gates'][0].__setitem__('pool', 'each_run')), 1, 'gate acc_pTT: device')
+    # hostin 1 is a valid processing argument (no din members without ALF_GPU_TAUDIAG): accepted
+    gate('R_E_hostin_1_ok', gcopy('hostin1', edits={D3: e_args(hostin=1)}), gspec(), 4, 'GATE TEST-ONLY')
 
 
 # ---------------------------------------------------------------- dump mutations
@@ -957,8 +1412,9 @@ def main():
     bad = [r for r in RESULTS if not r[2]]
     print('\nself-test: %d tests, %d with the expected outcome, %d WRONG' % (len(RESULTS), len(RESULTS) - len(bad), len(bad)))
     with open(os.path.join(ST, 'results.txt'), 'w') as f:
-        for name, expect, ok, detail in RESULTS:
-            f.write('%s\t%s\t%s\t%s\n' % (name, expect, 'ok' if ok else 'WRONG', detail.replace('\n', ' ')))
+        f.write('name\texpected\toutcome\tlast_rc\tdetail\n')
+        for name, expect, ok, detail, rc in RESULTS:
+            f.write('%s\t%s\t%s\t%s\t%s\n' % (name, expect, 'ok' if ok else 'WRONG', rc, detail.replace('\n', ' ')))
     sys.exit(1 if bad else 0)
 
 

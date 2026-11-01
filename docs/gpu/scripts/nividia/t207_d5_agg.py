@@ -17,9 +17,11 @@ usage: t207_d5_agg.py OUT.json MEASURE --ref def|log|LIST [--allow-v1] [--prog-s
          TAUDIAG_QHOST=1, TAUDIAG_QVAR=8}, a ctl run the same plus TAU_NS=0 (default path) or TAUSWAP=8 (LOG path) (QVAR optional); any
          other ALF_GPU_* variable, or a role that does not match the env, is an error.
   The same run twice (same qref.txt sha256, same run.log sha256, or the same role + seeds + parameters) is an error.
-  Every run needs a qref_proc.json next to its qref.txt (written by t207_d5_proc.sh, which checks the binary against its .sha256 file): it
-         must say rc 0, check_rc 0, the arguments of the spec and carry a valid program sha256 (recorded per run in the aggregate); a run
-         without it is an error.  --prog-sha (optional here, mandatory in the gate): every run's recorded hash must equal it, else error.
+  Every run needs a qref_proc.json next to its qref.txt (written by t207_d5_proc.sh, which checks the binary against its .sha256 file),
+         checked by t207_d5_qparse.proc_record: rc 0, check_rc 0, the arguments of the spec, valid program and source sha256, and the
+         sha256 of qref.txt as it is now; a run without it is an error.  --prog-sha (optional here): every run's program hash must equal it.
+This script is a development and report tool: the accuracy gate (t207_d5_gate.py) does not read its output; it imports ref_list, per_run,
+pool_values and summ from here and recomputes everything from the run directories (one implementation of the statistics).
 Input is read through the strict parser t207_d5_qparse.py (every point, every member, every number checked); any deviation ends the
 run with an error and no output file.  Measures pTT / pmax use the points with B (their number must equal the number derived from
 the run parameters); emax / eF use all points.  An error number that is zero or not finite is an error (no clamping).
@@ -104,23 +106,17 @@ def logs(run, which):
 def proc_record(qref_txt, spec, progsha):
     """qref_proc.json of the processing (always required): must say rc 0, check_rc 0 and the arguments of the spec and carry a valid program
     sha256 (equal to --prog-sha if given); returns the recorded program sha256"""
-    pj = os.path.join(os.path.dirname(os.path.abspath(qref_txt)), 'qref_proc.json')
+    rundir = os.path.dirname(os.path.abspath(qref_txt))
+    pj = os.path.join(rundir, 'qref_proc.json')
     if not os.path.isfile(pj):
         raise QError('%s is missing: every run needs the record of its processing (t207_d5_proc.sh) with the program hash' % pj)
-    with open(pj) as f:
-        pr = json.load(f)
-    a = spec['args']
-    pa = pr.get('args') if isinstance(pr, dict) else None
-    if not isinstance(pa, dict) or pr.get('rc') != 0 or pr.get('check_rc') != 0 or pa.get('path') != a['path'] or pa.get('qs') != a['qs'] \
-            or pa.get('hostin') != a['hostin'] or pa.get('cover') != a['cover'] or pa.get('keep') != a['keep'] \
-            or pa.get('nul') != ','.join(str(c) for c in a['nul']):
-        raise QError('%s: not a passing processing of the arguments in qref_spec.json (rc, check_rc, args)' % pj)
-    prog = pr.get('prog')
-    if not (isinstance(prog, str) and re.match(r'^[0-9a-f]{64}$', prog)):
-        raise QError('%s: no valid program sha256' % pj)
-    if progsha is not None and prog != progsha:
-        raise QError('%s: program sha256 %s differs from --prog-sha %s' % (pj, prog, progsha))
-    return prog
+    try:
+        pr = QP.proc_record(rundir, spec)              # the one implementation of the record check (qparse; also used by thin and the gate)
+    except QError as e:
+        raise QError('%s: not a passing processing of the arguments in qref_spec.json (rc, check_rc, args, hashes): %s' % (pj, e))
+    if progsha is not None and pr['prog'] != progsha:
+        raise QError('%s: program sha256 %s differs from --prog-sha %s' % (pj, pr['prog'], progsha))
+    return pr['prog']
 
 
 def per_run(run, which, refs):
@@ -139,6 +135,19 @@ def per_run(run, which, refs):
         re_ = [p[m] - sum(p[k] for k in members) / len(members) for p in L]
         res[m] = dict(n=len(rc), rc=rc, re=re_)
     return res, n_exp
+
+
+STATISTICS = {'S_cpu': 'rc', 'S_ens': 're'}       # statistic name -> per-point list of per_run()
+
+
+def pool_values(results, member, statistic):
+    """the per-point values of a statistic of one member, concatenated over the per_run() results of several runs (the pooled statistic is
+    their mean: every point weighs the same)"""
+    key = STATISTICS[statistic]
+    out = []
+    for res in results:
+        out += res[member][key]
+    return out
 
 
 def summ(v):
@@ -212,10 +221,9 @@ def main():
                 continue                            # the other methods of a control run are not part of the calibration
             sc, se = summ(d['rc']), summ(d['re'])
             table[lab][name] = dict(S_cpu=sc, S_ens=se)
-            pooled.setdefault(name, dict(rc=[], re=[]))
-            pooled[name]['rc'] += d['rc']; pooled[name]['re'] += d['re']
+            pooled.setdefault(name, []).append({name: d})
     corr_all = set(refs)
-    pool = {m: dict(S_cpu=summ(d['rc']), S_ens=summ(d['re'])) for m, d in pooled.items()}
+    pool = {m: dict(S_cpu=summ(pool_values(rs, m, 'S_cpu')), S_ens=summ(pool_values(rs, m, 'S_ens'))) for m, rs in pooled.items()}
     # print
     labs = [lab for _, lab, _, _ in runs]
     order = ['dev', 'var8', 'ctl_dev', 'cpu', 'nvh'] + sorted(m for m in pool if m.startswith('n') and m not in ('nvh', 'n0')) + ['u1', 'u2']

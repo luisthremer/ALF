@@ -4,6 +4,12 @@ the run that produced the dumps.  Nothing is skipped silently: every deviation f
 
 Library (callers load it by file path and run python3 -I):
     load(qref_txt, allow_v1=False) -> Run      the validated points of RUNDIR/qref.txt (RUNDIR = its directory)
+    proc_record(rundir, spec, prog, src)       the processing record qref_proc.json checked (rc, check_rc, args, program and source hash,
+                                               qref_sha256 = the hash of qref.txt now); used by thin, t207_d5_agg.py and t207_d5_gate.py
+    verify_dumps(rundir, spec)                 manifest = the covered dumps, the kept dumps match it
+    env_table(env_roles), role_of_env(env, table)   the env allow-list as a table of exact envs (driven by the gate spec);
+                                               dev_env_table / env_role: the development table of t207_d5_agg.py
+    read_json(path, what)                      strict JSON (no duplicate keys, no NaN / Infinity)
 CLI (python3 -I t207_d5_qparse.py ...):
     spec  RUNDIR --path def|log --qs Q --nul CODES|- --hostin 0|1 [--cover C] [--keep K]
                           derive the expected content from the run's own records, check the dump directory (before the
@@ -38,14 +44,17 @@ REF_DEF = 'cpu,nvh,n4,n100004,n1,n100001,n2,n1608,n4808,n5,n100005'
 REF_LOG = 'cpu,nvh,n4,n100004,n1,n100001,n2,n5,n100005'
 DIAG_NAMES = ('qself', 'qbr', 'din', 'cpuh', 'cpuhx')     # members that are not error statistics of a G
 SPEC_VERSION = 2
-# allow-list of the GPU debug environment of a run that enters the accuracy gate (ticket 207-2, review fix 2).  A main run (the device
-# under test; 'var8' is its stand-in control) has exactly these variables, a control run (production control: its 'dev' is the planted
-# defect) the same plus TAU_NS=0 (default path) or TAUSWAP=8 (LOG path).  Any other ALF_GPU_* variable (for instance ALF_GPU_TAUSWAP=<mask>,
-# which makes the 'device' result a host result) means the run does not test the device: refused.  A control run does not need QVAR (its
-# var8 member is not used; the dev5 control runs c_*_dev1 have none), if it has it, it is 8.
-MAIN_ENV = {'ALF_GPU_DEBUG': '1', 'ALF_GPU_TAUDIAG_QHOST': '1', 'ALF_GPU_TAUDIAG_QVAR': '8'}
-ENV_COUNT_KEYS = ('ALF_GPU_TAUDIAG_QREF', 'ALF_GPU_TAUDIAG_FROM')       # non-negative integers (QREF >= 1)
-CTL_EXTRA = {'def': ('ALF_GPU_TAU_NS', '0'), 'log': ('ALF_GPU_TAUSWAP', '8')}
+# Allow-list of the GPU debug environment (ALF_GPU_*) of a run that enters the accuracy statistics: a table {role: exact env}.  A run has a
+# role only if its env equals one row exactly (no extra, no missing variable, same values); a run matching no row, or more than one, is
+# refused.  The gate (t207_d5_gate.py) builds the table from its spec file (env_table: 'main' exact, every control role = main minus
+# omit_env plus extra_env).  The development aggregation (t207_d5_agg.py) uses dev_env_table(): main = DEV_MAIN_ENV plus the run's own
+# QREF / FROM numbers, control = the same plus TAU_NS=0 (default path) or TAUSWAP=8 (LOG path), with or without QVAR (the dev5 control runs
+# c_*_dev1 have none).  Any other ALF_GPU_* variable (for instance ALF_GPU_TAUSWAP=<mask>, which makes the 'device' result a host result)
+# means the run does not test the device: refused.
+DEV_MAIN_ENV = {'ALF_GPU_DEBUG': '1', 'ALF_GPU_TAUDIAG_QHOST': '1', 'ALF_GPU_TAUDIAG_QVAR': '8'}
+DEV_COUNT_KEYS = ('ALF_GPU_TAUDIAG_QREF', 'ALF_GPU_TAUDIAG_FROM')       # non-negative integers (QREF >= 1)
+DEV_CTL_EXTRA = {'def': ('ALF_GPU_TAU_NS', '0'), 'log': ('ALF_GPU_TAUSWAP', '8')}
+ENVNAME = re.compile(r'^ALF_GPU_[A-Z0-9_]+$')
 RECORDS = ('parameters', 'info', 'run.log', 'stamp.txt', 'provenance.json')
 
 
@@ -87,6 +96,32 @@ def read_text(rundir, name):
         return raw.decode('utf-8')
     except UnicodeDecodeError:
         raise QError('record %s is not valid UTF-8' % name)
+
+
+def _no_dup_keys(pairs):
+    d = {}
+    for k, v in pairs:
+        if k in d:
+            raise QError('duplicate key %r' % (k,))
+        d[k] = v
+    return d
+
+
+def _no_const(c):
+    raise QError('non-finite constant %s' % c)
+
+
+def read_json(p, what):
+    """a JSON file, strictly: must exist, parse, have no duplicate keys and no NaN / Infinity constants"""
+    if not os.path.isfile(p):
+        raise QError('%s missing: %s' % (what, p))
+    try:
+        with open(p, 'rb') as f:
+            return json.loads(f.read().decode('utf-8'), object_pairs_hook=_no_dup_keys, parse_constant=_no_const)
+    except QError as e:
+        raise QError('%s %s: %s' % (what, p, e))
+    except (ValueError, UnicodeDecodeError) as e:
+        raise QError('%s %s is not valid JSON: %s' % (what, p, e))
 
 
 def one(rx, txt, what, flags=re.M):
@@ -135,28 +170,92 @@ def parse_env_tokens(tokens, what):
     return d
 
 
-def env_role(env, variant):
-    """'main' or 'ctl' if the env of a run is exactly the allowed one for that role and path, else QError"""
+def isint(x):
+    return isinstance(x, int) and not isinstance(x, bool)
+
+
+def check_env_dict(d, what):
+    """a dict of ALF_GPU_* names to non-empty string values"""
+    if not isinstance(d, dict):
+        raise QError('%s is not a dictionary' % what)
+    for k, v in d.items():
+        if not (isinstance(k, str) and ENVNAME.match(k)):
+            raise QError('%s: %r is not an ALF_GPU_* variable name' % (what, k))
+        if not isinstance(v, str) or v == '' or v != v.strip():
+            raise QError('%s: value of %s is %r (a non-empty string without surrounding blanks expected)' % (what, k, v))
+    return d
+
+
+def env_table(env_roles):
+    """the allow-list table {role: exact env} of a gate spec's 'env_roles': {'main': {VAR: value, ...}, ROLE: {'extra_env': {...},
+    'omit_env': [VAR, ...]}, ...}.  A control role is main minus omit_env plus extra_env; extra_env names no variable of main (no silent
+    override), omit_env names only variables of main; no two roles have the same env."""
+    if not isinstance(env_roles, dict) or 'main' not in env_roles:
+        raise QError('env_roles: a dictionary with the role main is required')
+    main = dict(check_env_dict(env_roles['main'], 'env_roles.main'))
+    for k in DEV_COUNT_KEYS:
+        if k not in main or not re.match(r'^[0-9]+$', main[k]) or (k.endswith('QREF') and int(main[k]) < 1):
+            raise QError('env_roles.main: %s missing or not a valid number (%r)' % (k, main.get(k)))
+    table = {'main': main}
+    for role, r in env_roles.items():
+        if role == 'main':
+            continue
+        if not (isinstance(role, str) and re.match(r'^[A-Za-z0-9_.-]+$', role)):
+            raise QError('env_roles: bad role name %r' % (role,))
+        if not isinstance(r, dict) or set(r) != {'extra_env', 'omit_env'}:
+            raise QError('env_roles.%s: exactly the keys extra_env and omit_env are required' % role)
+        extra = check_env_dict(r['extra_env'], 'env_roles.%s.extra_env' % role)
+        omit = r['omit_env']
+        if not isinstance(omit, list) or not all(isinstance(k, str) and k in main for k in omit) or len(set(omit)) != len(omit):
+            raise QError('env_roles.%s.omit_env %r: a list of distinct variables of main expected' % (role, omit))
+        if not extra and not omit:
+            raise QError('env_roles.%s: extra_env and omit_env both empty (the env of main)' % role)
+        for k in extra:
+            if k in main:
+                raise QError('env_roles.%s.extra_env: %s is a variable of main (no override: omit it and add it)' % (role, k))
+        e = {k: v for k, v in main.items() if k not in omit}
+        e.update(extra)
+        table[role] = e
+    roles = sorted(table)
+    for i, a in enumerate(roles):
+        for b in roles[i + 1:]:
+            if table[a] == table[b]:
+                raise QError('env_roles: roles %s and %s have the same env' % (a, b))
+    return table
+
+
+def role_of_env(env, table):
+    """the role whose env equals the run's env exactly, else QError"""
     if not isinstance(env, dict):
         raise QError('env is not a dictionary')
-    extra = [k for k in ('ALF_GPU_TAU_NS', 'ALF_GPU_TAUSWAP') if k in env]
-    if not extra:
-        role, want = 'main', dict(MAIN_ENV)
-    else:
-        role, want = 'ctl', dict(MAIN_ENV)
-        if 'ALF_GPU_TAUDIAG_QVAR' not in env:
-            del want['ALF_GPU_TAUDIAG_QVAR']
-        if variant not in CTL_EXTRA:
-            raise QError('env allow-list: unknown path %r' % (variant,))
-        want[CTL_EXTRA[variant][0]] = CTL_EXTRA[variant][1]
-    for k in ENV_COUNT_KEYS:
+    hit = [role for role, want in table.items() if env == want]
+    if len(hit) != 1:
+        raise QError('env allow-list: the run has ALF_GPU_* %s, which is %s; the allowed environments are: %s' % (
+            ' '.join('%s=%s' % kv for kv in sorted(env.items())), 'not an allowed one' if not hit else 'more than one role %s' % hit,
+            '; '.join('%s: %s' % (r, ' '.join('%s=%s' % kv for kv in sorted(t.items()))) for r, t in sorted(table.items()))))
+    return hit[0]
+
+
+def dev_env_table(env, variant):
+    """the development table of t207_d5_agg.py: QREF / FROM are taken from the run's own env (non-negative integers, QREF >= 1)"""
+    if not isinstance(env, dict):
+        raise QError('env is not a dictionary')
+    if variant not in DEV_CTL_EXTRA:
+        raise QError('env allow-list: unknown path %r' % (variant,))
+    main = dict(DEV_MAIN_ENV)
+    for k in DEV_COUNT_KEYS:
         if k not in env or not re.match(r'^[0-9]+$', str(env[k])) or (k.endswith('QREF') and int(env[k]) < 1):
             raise QError('env allow-list: %s missing or not a valid number: %r' % (k, env.get(k)))
-        want[k] = env[k]
-    if env != want:
-        raise QError('env allow-list: the %s run has ALF_GPU_* %s, the allowed environment is %s' % (
-            role, ' '.join('%s=%s' % kv for kv in sorted(env.items())), ' '.join('%s=%s' % kv for kv in sorted(want.items()))))
-    return role
+        main[k] = env[k]
+    k, v = DEV_CTL_EXTRA[variant]
+    return env_table({'main': main, 'ctl': {'extra_env': {k: v}, 'omit_env': ['ALF_GPU_TAUDIAG_QVAR']},
+                      'ctl_qvar': {'extra_env': {k: v}, 'omit_env': []}})
+
+
+def env_role(env, variant):
+    """development roles of t207_d5_agg.py: 'main' or 'ctl' (rows ctl / ctl_qvar of dev_env_table), else QError"""
+    r = role_of_env(env, dev_env_table(env, variant))
+    return 'ctl' if r.startswith('ctl') else r
 
 
 def parse_int_list(s, what):
@@ -174,12 +273,10 @@ def derive_run(rundir):
     """Everything the expected content depends on that comes from the run's own records (no processing arguments)."""
     for r in RECORDS:
         read_text(rundir, r)
-    pp = os.path.join(rundir, 'provenance.json')
-    if not os.path.isfile(pp):
-        raise QError('record provenance.json missing in %s' % rundir)
-    with open(pp) as f:
-        prov = json.load(f)
-    if prov.get('rc') != 0:
+    prov = read_json(os.path.join(rundir, 'provenance.json'), 'record provenance.json')
+    if not isinstance(prov, dict):
+        raise QError('provenance.json is not a JSON object')
+    if not isint(prov.get('rc')) or prov.get('rc') != 0:
         raise QError('provenance.json: rc = %r (the run did not end normally)' % prov.get('rc'))
     for key, name in (('parameters_sha256', 'parameters'), ('run_log_sha256', 'run.log'), ('info_sha256', 'info')):
         if prov.get(key) != sha256_file(os.path.join(rundir, name)):
@@ -310,8 +407,11 @@ def make_spec(rundir, path, qs, nul, hostin, cover=1, keep=0):
     run = derive_run(rundir)
     if run['variant'] != path:
         raise QError('the run is a %s run (info), the processing says %s' % (run['variant'], path))
+    if not (isint(qs) and isint(hostin) and isint(cover) and isint(keep) and isinstance(nul, list) and all(isint(c) and c >= 0 for c in nul)):
+        raise QError('bad processing arguments: qs, hostin, cover, keep must be integers and nul a list of integers >= 0 (got qs %r hostin %r '
+                     'cover %r keep %r nul %r)' % (qs, hostin, cover, keep, nul))
     if qs < 0 or hostin not in (0, 1) or cover < 1 or keep < 0:
-        raise QError('bad processing arguments')
+        raise QError('bad processing arguments: qs %r hostin %r cover %r keep %r' % (qs, hostin, cover, keep))
     if len(nul) != len(set(nul)):
         raise QError('duplicate null code')
     if keep > 0:
@@ -361,11 +461,13 @@ def kept_summary(spec):
                cnt(2, range(1, run['nstm'] + 1)), cnt(4, (1, 2)), cnt(3, range(1, run['nfl'] + 1))))
 
 
-def expected_names(spec, k, hasb):
+def expected_names(spec, k, hasb, host='nvh'):
+    """the ordered member names of dump number k derived from the run's records and the processing arguments; host: the label the offline
+    program prints for the in-run host CGR2_2 of ALF_GPU_TAUDIAG_QHOST=1 (t207_d5_qref.F90 prints 'nvh'; a gate spec declares it)"""
     a, run = spec['args'], spec['run']
     names = ['dev'] + ['var%d' % m for m in run['qvar']]
     if run['qhost']:
-        names.append('nvh')
+        names.append(host)
     names.append('cpu')
     names += ['n%d' % c for c in a['nul']]
     names += ['u1', 'u2']
@@ -377,13 +479,10 @@ def expected_names(spec, k, hasb):
 
 
 def load_spec(rundir):
-    p = os.path.join(rundir, 'qref_spec.json')
-    if not os.path.isfile(p):
-        raise QError('%s missing (the processing writes it before the program runs)' % p)
-    with open(p) as f:
-        stored = json.load(f)
-    a = stored.get('args')
-    if stored.get('version') != SPEC_VERSION or not isinstance(a, dict):
+    stored = read_json(os.path.join(rundir, 'qref_spec.json'), 'qref_spec.json (written by the processing before the program runs)')
+    a = stored.get('args') if isinstance(stored, dict) else None
+    if not isinstance(stored, dict) or stored.get('version') != SPEC_VERSION or not isinstance(a, dict) \
+            or set(a) != {'path', 'qs', 'nul', 'hostin', 'cover', 'keep'}:
         raise QError('qref_spec.json: bad version or args')
     fresh = make_spec(rundir, a['path'], a['qs'], a['nul'], a['hostin'], a['cover'], a['keep'])
     if json.loads(json.dumps(fresh)) != stored:
@@ -416,11 +515,31 @@ def parse_header(line, what):
     return hd
 
 
-def load(qref_txt, allow_v1=False):
+def check_ef(e, n, what):
+    """Invariant of the program's output, true by construction for every member (errs and qdiff of t207_d5_qref.F90 compute e1..e4 =
+    max|d_b| / max|Gq_b| per block and eF = sqrt(sum|d|^2 / sum|Gq|^2) over the 4 n^2 entries): with D = max_b max|d_b| and M = the largest
+    |Gq| entry, sum|d|^2 <= 4n^2 D^2, sum|Gq|^2 >= M^2, and D/M <= e of the block holding D, so eF <= 2n max(e1..e4); sum|d|^2 >= max|d_b*|^2
+    and sum|Gq|^2 <= 4n^2 M^2 for the block b* holding M, so eF >= e_b*/(2n) >= min(e1..e4)/(2n).  Slack 1e-4 relative for the 5-digit
+    printing.  It catches an error number moved between the e slots only when it breaks these bounds (weak: factor 2n either side)."""
+    lo, hi = min(e[0:4]) / (2 * n), 2 * n * max(e[0:4])
+    if not (lo * (1 - 1e-4) <= e[4] <= hi * (1 + 1e-4)):
+        raise QError('%s: eF = %.4e outside [min(e1..e4)/(2n), 2n max(e1..e4)] = [%.4e, %.4e] (impossible by construction: numbers '
+                     'shifted or not from the program)' % (what, e[4], lo, hi))
+
+
+def load(qref_txt, allow_v1=False, members=None, host='nvh'):
+    """members (optional, from a gate spec): the exact ordered list of the run's statistical members (every member except the diagnostic
+    ones DIAG_NAMES, whose presence follows from qs and hostin); the list derived from the run's records, with the in-run host member
+    labelled host, must equal it, else QError"""
     rundir = os.path.dirname(os.path.abspath(qref_txt))
     spec = load_spec(rundir)
     run = spec['run']
     exp = cover_dumps(spec)
+    if members is not None:
+        derived = [x for x in expected_names(spec, 1, 1, host) if x not in DIAG_NAMES]
+        if derived != members:
+            raise QError('member list %s (derived from the run records, host member labelled %r) differs from the member list of the spec %s'
+                         % (derived, host, members))
     with open(qref_txt, 'rb') as f:
         raw = f.read()
     try:
@@ -461,7 +580,7 @@ def load(qref_txt, allow_v1=False):
                 raise QError('%s: header %s = %d, expected %d' % (what, key, hd[key], v))
         if not hd['tq'] >= 0:
             raise QError('%s: tq' % what)
-        names = expected_names(spec, k, hasb)
+        names = expected_names(spec, k, hasb, host)
         segs = line.split(' | ')[1:]
         if len(segs) != len(names):
             raise QError('%s: %d members, expected %d (%s)' % (what, len(segs), len(names), ' '.join(names)))
@@ -484,6 +603,7 @@ def load(qref_txt, allow_v1=False):
                     raise QError('%s: member %s: propagated numbers must be exactly -1 (no B), got %s' % (what, name, ' '.join(t[6:9])))
             elif max(vals) > QSELF_MAX:
                 raise QError('%s: quad self-check %s = %.3e > %.0e' % (what, name, max(vals), QSELF_MAX))
+            check_ef(vals, run['n'], '%s member %s' % (what, name))
             m[name] = vals
         if 'n0' in m:
             if segs[names.index('n0')].split()[1:] != segs[names.index('cpu')].split()[1:]:
@@ -531,6 +651,52 @@ def check_dumps(rundir, spec, stride, manifest=None):
     return len(want)
 
 
+def verify_dumps(rundir, spec):
+    """the dump evidence after the processing: qref_manifest.txt lists exactly the covered dumps, and qref/ holds exactly the kept ones
+    (every cover*max(keep,1)-th) with the sha256 of the manifest.  Returns the manifest {name: sha256}."""
+    manifest = read_manifest(rundir)
+    if set(manifest) != set(dump_name(k) for (k, p, nst, nfe, br) in cover_dumps(spec)):
+        raise QError('qref_manifest.txt does not list exactly the covered dumps')
+    check_dumps(rundir, spec, spec['args']['cover'] * max(spec['args']['keep'], 1), manifest)
+    return manifest
+
+
+HEX64 = re.compile(r'^[0-9a-f]{64}$')
+
+
+def proc_record(rundir, spec, prog=None, src=None):
+    """RUNDIR/qref_proc.json, the record t207_d5_proc.sh writes after the program and the check (one implementation for thin, agg, gate):
+    rc and check_rc are the integer 0, the arguments are those of qref_spec.json, 'prog' and 'prog_src' are sha256 values (equal to prog /
+    src if given), and 'qref_sha256' is the sha256 of RUNDIR/qref.txt as it is now.  Returns the record."""
+    pj = os.path.join(rundir, 'qref_proc.json')
+    if not os.path.isfile(pj):
+        raise QError('qref_proc.json missing in %s (every run needs the record of its processing, t207_d5_proc.sh)' % rundir)
+    pr = read_json(pj, 'qref_proc.json')
+    if not isinstance(pr, dict):
+        raise QError('qref_proc.json is not a JSON object')
+    if not (isint(pr.get('rc')) and isint(pr.get('check_rc')) and pr['rc'] == 0 and pr['check_rc'] == 0):
+        raise QError('qref_proc.json: rc %r / check_rc %r are not both 0 (the processing did not pass)' % (pr.get('rc'), pr.get('check_rc')))
+    a, pa = spec['args'], pr.get('args')
+    want = dict(path=a['path'], qs=a['qs'], nul=','.join(str(c) for c in a['nul']), hostin=a['hostin'], cover=a['cover'], keep=a['keep'])
+    if not isinstance(pa, dict) or set(pa) != set(want) or any(type(pa[k]) is not type(v) or pa[k] != v for k, v in want.items()):
+        raise QError('qref_proc.json args %r differ from the arguments in qref_spec.json %r' % (pa, want))
+    for key, what, given in (('prog', 'program', prog), ('prog_src', 'program source', src)):
+        v = pr.get(key)
+        if not (isinstance(v, str) and HEX64.match(v)):
+            raise QError('qref_proc.json: no valid %s sha256 (%s = %r)' % (what, key, v))
+        if given is not None and v != given:
+            raise QError('qref_proc.json: %s sha256 %s (%s) differs from the required %s' % (what, v, key, given))
+    qs = pr.get('qref_sha256')
+    if not (isinstance(qs, str) and HEX64.match(qs)):
+        raise QError('qref_proc.json: no valid qref_sha256 (%r): the processing did not record the hash of qref.txt' % (qs,))
+    qt = os.path.join(rundir, 'qref.txt')
+    if not os.path.isfile(qt):
+        raise QError('qref.txt missing in %s' % rundir)
+    if sha256_file(qt) != qs:
+        raise QError('qref.txt: sha256 %s differs from qref_sha256 %s in qref_proc.json (changed after the processing)' % (sha256_file(qt), qs))
+    return pr
+
+
 def thin(rundir, allow_v1=False):
     spec = load_spec(rundir)
     keep = spec['args']['keep']
@@ -539,18 +705,10 @@ def thin(rundir, allow_v1=False):
     # a passing check is required here, not only in the caller (review fix 6): qref.txt loads strictly, and the processing recorded
     # program exit status 0 and check status 0 for exactly these arguments
     load(os.path.join(rundir, 'qref.txt'), allow_v1)
-    pj = os.path.join(rundir, 'qref_proc.json')
-    if not os.path.isfile(pj):
-        raise QError('qref_proc.json missing: nothing deleted')
-    with open(pj) as f:
-        pr = json.load(f)
-    a = spec['args']
-    pa = pr.get('args') if isinstance(pr, dict) else None
-    if not isinstance(pr, dict) or pr.get('rc') != 0 or pr.get('check_rc') != 0 or isinstance(pr.get('rc'), bool) or isinstance(pr.get('check_rc'), bool):
-        raise QError('qref_proc.json: rc / check_rc are not both 0 (the processing did not pass): nothing deleted')
-    if not isinstance(pa, dict) or pa.get('path') != a['path'] or pa.get('qs') != a['qs'] or pa.get('hostin') != a['hostin'] \
-            or pa.get('cover') != a['cover'] or pa.get('keep') != a['keep'] or pa.get('nul') != ','.join(str(c) for c in a['nul']):
-        raise QError('qref_proc.json args differ from qref_spec.json: nothing deleted')
+    try:
+        proc_record(rundir, spec)
+    except QError as e:
+        raise QError('%s: nothing deleted' % e)
     stride = spec['args']['cover'] * keep
     manifest = read_manifest(rundir)
     cov = cover_dumps(spec)
