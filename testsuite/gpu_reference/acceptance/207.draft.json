@@ -1,10 +1,11 @@
 {
  "schema": "alf-acc/1",
- "_status": "DRAFT, not in force. Becomes 207.json, pre-registered in its own commit after ticket 212 has landed and the 207 candidate is rebased on it (then base_sha, the base builds, the GPU=none counts and the debug-variable gate of 212 are re-derived, and parameters_sha256 is filled in per config). Owner decisions of 2026-10-29 are quoted in approvals.",
+ "_status": "DRAFT, not in force (2026-10-30, after the rebase of 207 onto gpu-port 3f8ec8fa = 206 + 212). Becomes 207.json, pre-registered in its own commit after review (b); then 'DRAFT' leaves this field and every config keeps its parameters_sha256 (computed 2026-10-30 on nividia with the prep of acc_driver.py; the shared configs match 212.json). Open before pre-registration: (1) compare2 run length 120 bins x 30 sweeps (s8_U4_b2_cb_short, as 212 T2, ~18 min per GPU run): allowed since decision 16 (2026-10-30: no fixed per-run time limit; a run without progress for 15 min is investigated); timeout_s 1500 is a hang guard only; (2) acceptance 6 (Intel) gets its own part file 207.intel.json: oneAPI on intel is now a consistent 2026.2 set with a passing link test (decision 13), so the old blocking reason (version mix) is gone; until that part exists and passes, the item stays in 'blocked' (decision 4b); (3) ALF_GPU_TAUDIAG_SEED (PLAN.md 212 row) is not implemented: its meaning is not specified anywhere (question to the manager).",
  "ticket": "207",
  "candidate_sha": "self",
- "base_sha": "64ecde7266ae",
+ "base_sha": "3f8ec8faee62",
  "created": "2026-10-29",
+ "updated": "2026-10-30",
  "approvals": [
   {
    "date": "2026-10-29",
@@ -99,15 +100,21 @@
  ],
  "machine": "nividia",
  "gpu_exclusive": true,
- "timeout_s": 900,
+ "timeout_s": 1500,
+ "_timeout_reason": "only the compare2 runs need it (120 x 30 sweeps, ~18 min on the GPU as in 212 T2: 1073 s); every other run stays below 900 s; a hang guard, not a criterion (decision 16)",
  "disk_min_free_GB": 5,
  "cpu_parallel": 3,
+ "false_alarm_budget": 0.08,
+ "_false_alarm_reason": "compare2 (alpha 0.01, Sidak inside) ~1 %; its CPU-vs-CPU null control ~1 %; INCONCLUSIVE compare2 outcomes ~1 %; paired point tests per path ~2.5 % each at the observed LOG ratio, 2 paths (not calibrated, caveat 3 of ticket 207); precision mean ~1 % per case, 4 cases (not calibrated); all other gates deterministic",
  "active_lines": [
   "GPU path (gpu_state): ACTIVE",
   "GPU update path (ticket 205): ACTIVE",
   "GPU stabilization (206): ACTIVE",
-  "GPU tau pass (207): ACTIVE"
+  "GPU tau pass (207): ACTIVE",
+  "GPU debug env: none",
+  "GPU build: git none backend CUDA"
  ],
+ "allowed_test_changes": [],
  "builds": {
   "nv_def": {
    "tool": "nvhpc",
@@ -141,6 +148,19 @@
    "configure": "PGI noMPI HDF5 LOG",
    "gpu": false
   },
+  "base_nv_def": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5 GPU=nvidia",
+   "gpu": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU debug env: none",
+    "GPU build: git none backend CUDA"
+   ],
+   "_reason": "the base (3f8ec8fa, 206 + 212) has no 207 tau pass; its runs must show the 205/206 ACTIVE lines and 212's production lines"
+  },
   "base_nv_log": {
    "tool": "nvhpc",
    "configure": "PGI noMPI HDF5 LOG GPU=nvidia",
@@ -148,9 +168,10 @@
    "active_lines": [
     "GPU path (gpu_state): ACTIVE",
     "GPU update path (ticket 205): ACTIVE",
-    "GPU stabilization (206): ACTIVE"
-   ],
-   "_reason": "the base has no 207 tau pass; its runs must show the 205/206 ACTIVE lines"
+    "GPU stabilization (206): ACTIVE",
+    "GPU debug env: none",
+    "GPU build: git none backend CUDA"
+   ]
   },
   "gnu_cand": {
    "tool": "gnu",
@@ -165,50 +186,68 @@
  },
  "configs": {
   "hub6x6_cb": {
-   "base": "hub6x6_cb"
+   "base": "hub6x6_cb",
+   "parameters_sha256": "29f2117541ebbd14b6481c6101b22f0eca364d26fe317e6605956757d64b9915"
   },
   "hub6x6_dense": {
-   "base": "hub6x6_dense"
+   "base": "hub6x6_dense",
+   "parameters_sha256": "9bdbd7df6e75184196b5deee792f988f742fac2c5b10fe2f28f67287f9329ba0"
   },
   "hub12x12_cb": {
-   "base": "hub12x12_cb"
+   "base": "hub12x12_cb",
+   "parameters_sha256": "637e5e095e5d3bdb403a9ce9bbd4dd61c094a523843df68c9366b8db106f8d37"
   },
   "hub12x12_cb_b10": {
    "base": "hub12x12_cb",
    "overrides": {
     "beta": 10.0
-   }
+   },
+   "parameters_sha256": "0ba78a51e7b11625ceb515f720d159e8b42aec9d2d97951cf27106d4f9b85a38"
   },
   "hub6x6_cb_flux": {
    "base": "hub6x6_cb",
    "overrides": {
     "N_Phi": 1,
     "Phi_X": 0.3
-   }
+   },
+   "parameters_sha256": "5669e2840154c15330baccc9b112f86c5a1a800984ba78cad86ee69072345d40"
   },
   "hub6x6_cb_symm": {
-   "base": "hub6x6_cb_symm"
+   "base": "hub6x6_cb_symm",
+   "parameters_sha256": "8405877d10fc17ebedfe7b274b4f988adff7c3df0819f73f947d3df73b647c24"
   },
   "hub6x6_cb_fd": {
    "base": "hub6x6_cb",
    "overrides": {
     "NSweep": 1,
     "NBin": 200
-   }
+   },
+   "parameters_sha256": "04ae4aa187b9925b984db09d4c2e78eea990c54cbed0f5ef2ec9476162c31d1e"
+  },
+  "hub6x6_cb_fd_lt0": {
+   "base": "hub6x6_cb",
+   "overrides": {
+    "NSweep": 1,
+    "NBin": 200,
+    "Ltau": 0
+   },
+   "parameters_sha256": "2b1b2b823f8ba02e0c2124c43e8deaa3d24da035046ca5e6b857499015801ea4"
   },
   "hub12x12_cb_fd": {
    "base": "hub12x12_cb",
    "overrides": {
     "NSweep": 1,
     "NBin": 300
-   }
+   },
+   "parameters_sha256": "d4c44e07b153d3fa28e7f1ad0c203ed65b355aba8761ee83d2e5f47ac00a166a"
   },
   "hub12x12_cb_p": {
    "base": "hub12x12_cb",
    "overrides": {
     "NSweep": 20,
     "NBin": 20
-   }
+   },
+   "parameters_sha256": "21835ab7c6f5bb077d998a08c54d7b4635d4ae44373ecd64de176a09af22c7c7"
   },
   "hub12x12_cb_b10_p": {
    "base": "hub12x12_cb",
@@ -216,201 +255,608 @@
     "beta": 10.0,
     "NSweep": 20,
     "NBin": 8
-   }
+   },
+   "parameters_sha256": "eb04a07376afdb930c65b1308d58bae3211077b29284997fbf530bc757d6a466"
   },
-  "s8_U4_b2_cb": {
-   "base": "s8_U4_b2_cb"
+  "hub12x12_cb_b10_p_lt0": {
+   "base": "hub12x12_cb",
+   "overrides": {
+    "beta": 10.0,
+    "NSweep": 20,
+    "NBin": 8,
+    "Ltau": 0
+   },
+   "parameters_sha256": "483fc548bb309121d21d67d8f6884d4fb9f6ff6fd02a3755c3207df0dc61234e"
+  },
+  "s8_U4_b2_cb_short": {
+   "base": "s8_U4_b2_cb",
+   "overrides": {
+    "NSweep": 30,
+    "NBin": 120
+   },
+   "parameters_sha256": "06c10c72653a64d7c092d2c4d0df5fd45c0e3db40cacefe7dacb55b4752d1fcc"
+  },
+  "hub12x12_cb_tm": {
+   "base": "hub12x12_cb",
+   "overrides": {
+    "NSweep": 10,
+    "NBin": 2
+   },
+   "parameters_sha256": "bbc0f7e4fd73f8c5848dd7c81739f00ebda2744d4ebd9e18ae56e31bd641ff33"
+  },
+  "hub20x20_cb_tm": {
+   "base": "hub20x20_cb",
+   "overrides": {
+    "NSweep": 5,
+    "NBin": 2
+   },
+   "parameters_sha256": "5607993a46cd993c39b584ff6b5c40ed197229c8ab92dce7c0ce22fb8bd15028"
+  },
+  "hub20x20_cb": {
+   "base": "hub20x20_cb",
+   "parameters_sha256": "8cefccce64911a42de66c0c56d07548f02cfee0cb20850a3ffcec54b9caa7ebd"
+  },
+  "hub32x32_cb": {
+   "base": "hub32x32_cb",
+   "parameters_sha256": "1f2337c9ba996965a9c2fbb15a18803621745be806f76420cd4f6bbdb3d4f878"
   }
  },
- "_configs_note": "parameters_sha256 per config is filled in when 207.json is frozen (the driver then refuses any other parameters)",
  "runs": {
   "st_nv_def_pp_hub6x6_cb": {
    "build": "nv_def_pp",
    "config": "hub6x6_cb",
    "env": [
-    "ALF_GPU_SELFTEST=4",
-    "ALF_GPU_EXIT=1"
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE"
+   ]
   },
   "st_nv_def_pp_hub6x6_dense": {
    "build": "nv_def_pp",
    "config": "hub6x6_dense",
    "env": [
-    "ALF_GPU_SELFTEST=4",
-    "ALF_GPU_EXIT=1"
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE"
+   ]
   },
   "st_nv_def_pp_hub12x12_cb": {
    "build": "nv_def_pp",
    "config": "hub12x12_cb",
    "env": [
-    "ALF_GPU_SELFTEST=4",
-    "ALF_GPU_EXIT=1"
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE"
+   ]
   },
   "st_nv_def_pp_hub12x12_cb_b10": {
    "build": "nv_def_pp",
    "config": "hub12x12_cb_b10",
    "env": [
-    "ALF_GPU_SELFTEST=4",
-    "ALF_GPU_EXIT=1"
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE"
+   ]
   },
   "st_nv_def_pp_hub6x6_cb_flux": {
    "build": "nv_def_pp",
    "config": "hub6x6_cb_flux",
    "env": [
-    "ALF_GPU_SELFTEST=4",
-    "ALF_GPU_EXIT=1"
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE"
+   ]
   },
   "st_nv_def_pp_hub6x6_cb_symm": {
    "build": "nv_def_pp",
    "config": "hub6x6_cb_symm",
    "env": [
-    "ALF_GPU_SELFTEST=4",
-    "ALF_GPU_EXIT=1"
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE"
+   ]
   },
   "fault_nv_def_pp_perm": {
    "build": "nv_def_pp",
    "config": "hub6x6_cb",
    "env": [
-    "ALF_GPU_SELFTEST=4",
     "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4",
     "ALF_GPU_FAULT_TAU=perm"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_TAU=perm, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_TAU=perm"
+   ]
   },
   "fault_nv_def_pp_prop": {
    "build": "nv_def_pp",
    "config": "hub6x6_cb",
    "env": [
-    "ALF_GPU_SELFTEST=4",
     "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4",
     "ALF_GPU_FAULT_TAU=prop"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_TAU=prop, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_TAU=prop"
+   ]
   },
   "fault_nv_def_pp_prec": {
    "build": "nv_def_pp",
    "config": "hub6x6_cb",
    "env": [
-    "ALF_GPU_SELFTEST=4",
     "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4",
     "ALF_GPU_FAULT_TAU=prec"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_TAU=prec, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_TAU=prec"
+   ]
   },
   "fault_nv_def_pp_blocks": {
    "build": "nv_def_pp",
    "config": "hub6x6_cb",
    "env": [
-    "ALF_GPU_SELFTEST=4",
     "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4",
     "ALF_GPU_FAULT_TAU=blocks"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_TAU=blocks, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_TAU=blocks"
+   ]
+  },
+  "fault_nv_def_pp_eps1em9": {
+   "build": "nv_def_pp",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4",
+    "ALF_GPU_FAULT_TAU=eps:1e-9"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_TAU=eps:1e-9, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_TAU=eps:1e-9"
+   ]
+  },
+  "eps11_nv_def_pp": {
+   "build": "nv_def_pp",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4",
+    "ALF_GPU_FAULT_TAU=eps:1e-11"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_TAU=eps:1e-11, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_TAU=eps:1e-11"
+   ]
   },
   "st_nv_log_hub6x6_cb": {
    "build": "nv_log",
    "config": "hub6x6_cb",
    "env": [
-    "ALF_GPU_SELFTEST=4",
-    "ALF_GPU_EXIT=1"
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE"
+   ]
   },
   "st_nv_log_hub6x6_dense": {
    "build": "nv_log",
    "config": "hub6x6_dense",
    "env": [
-    "ALF_GPU_SELFTEST=4",
-    "ALF_GPU_EXIT=1"
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE"
+   ]
   },
   "st_nv_log_hub12x12_cb": {
    "build": "nv_log",
    "config": "hub12x12_cb",
    "env": [
-    "ALF_GPU_SELFTEST=4",
-    "ALF_GPU_EXIT=1"
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE"
+   ]
   },
   "st_nv_log_hub12x12_cb_b10": {
    "build": "nv_log",
    "config": "hub12x12_cb_b10",
    "env": [
-    "ALF_GPU_SELFTEST=4",
-    "ALF_GPU_EXIT=1"
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE"
+   ]
   },
   "st_nv_log_hub6x6_cb_flux": {
    "build": "nv_log",
    "config": "hub6x6_cb_flux",
    "env": [
-    "ALF_GPU_SELFTEST=4",
-    "ALF_GPU_EXIT=1"
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE"
+   ]
   },
   "st_nv_log_hub6x6_cb_symm": {
    "build": "nv_log",
    "config": "hub6x6_cb_symm",
    "env": [
-    "ALF_GPU_SELFTEST=4",
-    "ALF_GPU_EXIT=1"
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE"
+   ]
   },
   "fault_nv_log_perm": {
    "build": "nv_log",
    "config": "hub6x6_cb",
    "env": [
-    "ALF_GPU_SELFTEST=4",
     "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4",
     "ALF_GPU_FAULT_TAU=perm"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_TAU=perm, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_TAU=perm"
+   ]
   },
   "fault_nv_log_prop": {
    "build": "nv_log",
    "config": "hub6x6_cb",
    "env": [
-    "ALF_GPU_SELFTEST=4",
     "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4",
     "ALF_GPU_FAULT_TAU=prop"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_TAU=prop, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_TAU=prop"
+   ]
   },
   "fault_nv_log_prec": {
    "build": "nv_log",
    "config": "hub6x6_cb",
    "env": [
-    "ALF_GPU_SELFTEST=4",
     "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4",
     "ALF_GPU_FAULT_TAU=prec"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_TAU=prec, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_TAU=prec"
+   ]
   },
   "fault_nv_log_blocks": {
    "build": "nv_log",
    "config": "hub6x6_cb",
    "env": [
-    "ALF_GPU_SELFTEST=4",
     "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4",
     "ALF_GPU_FAULT_TAU=blocks"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_TAU=blocks, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_TAU=blocks"
+   ]
+  },
+  "fault_nv_log_eps1em9": {
+   "build": "nv_log",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4",
+    "ALF_GPU_FAULT_TAU=eps:1e-9"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_TAU=eps:1e-9, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_TAU=eps:1e-9"
+   ]
+  },
+  "eps11_nv_log": {
+   "build": "nv_log",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4",
+    "ALF_GPU_FAULT_TAU=eps:1e-11"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_EXIT=1, ALF_GPU_FAULT_TAU=eps:1e-11, ALF_GPU_SELFTEST=4",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU fault armed: ALF_GPU_FAULT_TAU=eps:1e-11"
+   ]
+  },
+  "inv_fault_tau": {
+   "build": "nv_def_pp",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4",
+    "ALF_GPU_FAULT_TAU=xyz"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU fault value invalid: ALF_GPU_FAULT_TAU=xyz"
+   ]
+  },
+  "inv_fault_tau_eps": {
+   "build": "nv_def_pp",
+   "config": "hub6x6_cb",
+   "env": [
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_SELFTEST=4",
+    "ALF_GPU_FAULT_TAU=eps:abc"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU fault value invalid: ALF_GPU_FAULT_TAU=eps:abc"
+   ]
+  },
+  "ref_tau_ns": {
+   "build": "nv_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_TAU_NS=0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_TAU_NS (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_tauswap": {
+   "build": "nv_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_TAUSWAP=8"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_TAUSWAP (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_taudiag": {
+   "build": "nv_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_TAUDIAG=2"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_TAUDIAG (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_taudiag_from": {
+   "build": "nv_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_TAUDIAG_FROM=331"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_TAUDIAG_FROM (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_tautime": {
+   "build": "nv_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_TAUTIME=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_TAUTIME (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_tautest_v": {
+   "build": "nv_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_TAUTEST_V=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_TAUTEST_V (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_fault_tau": {
+   "build": "nv_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_FAULT_TAU=perm"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_FAULT_TAU (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "ref_taudiag_seed": {
+   "build": "nv_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_TAUDIAG_SEED=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU debug env refused: ALF_GPU_TAUDIAG_SEED (production run; set ALF_GPU_DEBUG=1 for a debug run)"
+   ]
+  },
+  "acc_tau_ns": {
+   "build": "nv_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_DEBUG=1",
+    "ALF_GPU_TAU_NS=0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_TAU_NS=0"
+   ]
+  },
+  "acc_tauswap": {
+   "build": "nv_def",
+   "config": "hub6x6_cb_fd",
+   "env": [
+    "ALF_GPU_DEBUG=1",
+    "ALF_GPU_TAUSWAP=8"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_TAUSWAP=8"
+   ]
   },
   "ss_def_6": {
    "build": "nv_def",
@@ -448,12 +894,88 @@
    "config": "hub12x12_cb_fd",
    "refcache": true
   },
-  "ni_base_log_6": {
-   "build": "base_nv_log",
+  "det_def_6b": {
+   "build": "nv_def",
    "config": "hub6x6_cb_fd"
   },
-  "rp_log_6b": {
+  "det_log_6b": {
    "build": "nv_log",
+   "config": "hub6x6_cb_fd"
+  },
+  "det_def_b10a": {
+   "build": "nv_def",
+   "config": "hub12x12_cb_b10_p"
+  },
+  "det_def_b10b": {
+   "build": "nv_def",
+   "config": "hub12x12_cb_b10_p"
+  },
+  "lt0_def_6": {
+   "build": "nv_def",
+   "config": "hub6x6_cb_fd_lt0",
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU debug env: none",
+    "GPU build: git none backend CUDA"
+   ],
+   "_reason": "production run (no debug variable); allow_debug only to replace the active lines: with Ltau = 0 the tau pass is not set up and prints no line"
+  },
+  "lt0_def_b10": {
+   "build": "nv_def",
+   "config": "hub12x12_cb_b10_p_lt0",
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU debug env: none",
+    "GPU build: git none backend CUDA"
+   ],
+   "_reason": "as lt0_def_6"
+  },
+  "ni_base_def_6": {
+   "build": "base_nv_def",
+   "config": "hub6x6_cb_fd"
+  },
+  "det_log_b10a": {
+   "build": "nv_log",
+   "config": "hub12x12_cb_b10_p"
+  },
+  "det_log_b10b": {
+   "build": "nv_log",
+   "config": "hub12x12_cb_b10_p"
+  },
+  "lt0_log_6": {
+   "build": "nv_log",
+   "config": "hub6x6_cb_fd_lt0",
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU debug env: none",
+    "GPU build: git none backend CUDA"
+   ],
+   "_reason": "production run (no debug variable); allow_debug only to replace the active lines: with Ltau = 0 the tau pass is not set up and prints no line"
+  },
+  "lt0_log_b10": {
+   "build": "nv_log",
+   "config": "hub12x12_cb_b10_p_lt0",
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU debug env: none",
+    "GPU build: git none backend CUDA"
+   ],
+   "_reason": "as lt0_def_6"
+  },
+  "ni_base_log_6": {
+   "build": "base_nv_log",
    "config": "hub6x6_cb_fd"
   },
   "pr_def_b4": {
@@ -481,24 +1003,24 @@
    "config": "hub12x12_cb_p",
    "seeds": "acc1"
   },
-  "pr_nv_none_pp_b4": {
-   "build": "nv_none_pp",
-   "config": "hub12x12_cb_p",
-   "seeds": "acc1"
-  },
-  "pr_nv_none_log_b4": {
-   "build": "nv_none_log",
-   "config": "hub12x12_cb_p",
-   "seeds": "acc1"
-  },
   "pr_nv_none_b10": {
    "build": "nv_none",
    "config": "hub12x12_cb_b10_p",
    "seeds": "acc1"
   },
+  "pr_nv_none_pp_b4": {
+   "build": "nv_none_pp",
+   "config": "hub12x12_cb_p",
+   "seeds": "acc1"
+  },
   "pr_nv_none_pp_b10": {
    "build": "nv_none_pp",
    "config": "hub12x12_cb_b10_p",
+   "seeds": "acc1"
+  },
+  "pr_nv_none_log_b4": {
+   "build": "nv_none_log",
+   "config": "hub12x12_cb_p",
    "seeds": "acc1"
   },
   "pr_nv_none_log_b10": {
@@ -509,63 +1031,168 @@
   "ctl_pr_ns0_def_b4": {
    "build": "nv_def",
    "config": "hub12x12_cb_p",
-   "seeds": "acc1",
    "env": [
+    "ALF_GPU_DEBUG=1",
     "ALF_GPU_NS=0"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "seeds": "acc1",
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_NS=0"
+   ]
   },
   "pd_log_b4": {
    "build": "nv_log",
    "config": "hub12x12_cb_p",
-   "seeds": "acc1",
    "env": [
+    "ALF_GPU_DEBUG=1",
     "ALF_GPU_TAUDIAG=2",
     "ALF_GPU_TAUDIAG_FROM=331"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "seeds": "acc1",
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_TAUDIAG=2, ALF_GPU_TAUDIAG_FROM=331",
+    "GPU tau pass: DEBUG ALF_GPU_TAUDIAG=1 active (host oracle chains at every stabilization point, slow)"
+   ]
   },
   "pd_def_b4": {
    "build": "nv_def_pp",
    "config": "hub12x12_cb_p",
-   "seeds": "acc1",
    "env": [
+    "ALF_GPU_DEBUG=1",
     "ALF_GPU_TAUDIAG=2",
     "ALF_GPU_TAUDIAG_FROM=331"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "seeds": "acc1",
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_TAUDIAG=2, ALF_GPU_TAUDIAG_FROM=331",
+    "GPU tau pass: DEBUG ALF_GPU_TAUDIAG=1 active (host oracle chains at every stabilization point, slow)"
+   ]
   },
   "ctl_pd_tauswap8_log": {
    "build": "nv_log",
    "config": "hub12x12_cb_p",
-   "seeds": "acc1",
    "env": [
+    "ALF_GPU_DEBUG=1",
     "ALF_GPU_TAUDIAG=2",
     "ALF_GPU_TAUDIAG_FROM=331",
     "ALF_GPU_TAUSWAP=8"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "seeds": "acc1",
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_TAUDIAG=2, ALF_GPU_TAUDIAG_FROM=331, ALF_GPU_TAUSWAP=8",
+    "GPU tau pass: DEBUG ALF_GPU_TAUDIAG=1 active (host oracle chains at every stabilization point, slow)",
+    "GPU tau pass: DEBUG ALF_GPU_TAUSWAP active (host twins of CGR2_2 steps)"
+   ]
   },
   "ctl_pd_tauns0_def": {
    "build": "nv_def_pp",
    "config": "hub12x12_cb_p",
-   "seeds": "acc1",
    "env": [
+    "ALF_GPU_DEBUG=1",
     "ALF_GPU_TAUDIAG=2",
     "ALF_GPU_TAUDIAG_FROM=331",
     "ALF_GPU_TAU_NS=0"
    ],
-   "allow_debug": true
+   "allow_debug": true,
+   "seeds": "acc1",
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_TAUDIAG=2, ALF_GPU_TAUDIAG_FROM=331, ALF_GPU_TAU_NS=0",
+    "GPU tau pass: DEBUG ALF_GPU_TAUDIAG=1 active (host oracle chains at every stabilization point, slow)"
+   ]
+  },
+  "pd_log_b4_m_infl": {
+   "build": "nv_log",
+   "config": "hub12x12_cb_p",
+   "env": [
+    "ALF_GPU_DEBUG=1",
+    "ALF_GPU_TAUDIAG=2",
+    "ALF_GPU_TAUDIAG_FROM=331"
+   ],
+   "allow_debug": true,
+   "seeds": "acc1",
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_TAUDIAG=2, ALF_GPU_TAUDIAG_FROM=331",
+    "GPU tau pass: DEBUG ALF_GPU_TAUDIAG=1 active (host oracle chains at every stabilization point, slow)"
+   ]
+  },
+  "pd_log_b4_m_bias": {
+   "build": "nv_log",
+   "config": "hub12x12_cb_p",
+   "env": [
+    "ALF_GPU_DEBUG=1",
+    "ALF_GPU_TAUDIAG=2",
+    "ALF_GPU_TAUDIAG_FROM=331"
+   ],
+   "allow_debug": true,
+   "seeds": "acc1",
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_TAUDIAG=2, ALF_GPU_TAUDIAG_FROM=331",
+    "GPU tau pass: DEBUG ALF_GPU_TAUDIAG=1 active (host oracle chains at every stabilization point, slow)"
+   ]
   },
   "c2_gpu": {
    "build": "nv_def",
-   "config": "s8_U4_b2_cb",
+   "config": "s8_U4_b2_cb_short",
    "seeds": "acc1"
   },
   "c2_cpu": {
    "build": "nv_none",
-   "config": "s8_U4_b2_cb",
+   "config": "s8_U4_b2_cb_short",
    "seeds": "acc2"
+  },
+  "c2_cpu_null": {
+   "build": "nv_none",
+   "config": "s8_U4_b2_cb_short",
+   "seeds": "acc3"
+  },
+  "c2_gpu_m_shift": {
+   "build": "nv_def",
+   "config": "s8_U4_b2_cb_short",
+   "seeds": "acc1"
+  },
+  "c2_gpu_m_nan": {
+   "build": "nv_def",
+   "config": "s8_U4_b2_cb_short",
+   "seeds": "acc1"
   },
   "id_base_hub6x6_cb": {
    "build": "base_gnu",
@@ -591,6 +1218,10 @@
    "build": "gnu_cand",
    "config": "hub6x6_cb_symm"
   },
+  "id_cand_hub6x6_cb_m": {
+   "build": "gnu_cand",
+   "config": "hub6x6_cb"
+  },
   "ss_log_6_m_small": {
    "build": "nv_log",
    "config": "hub6x6_cb_fd"
@@ -603,50 +1234,164 @@
    "build": "nv_log",
    "config": "hub6x6_cb_fd"
   },
-  "rp_log_6b_m": {
-   "build": "nv_log",
+  "det_def_6b_m": {
+   "build": "nv_def",
    "config": "hub6x6_cb_fd"
   },
-  "pd_log_b4_m_infl": {
-   "build": "nv_log",
-   "config": "hub12x12_cb_p",
-   "seeds": "acc1",
-   "env": [
-    "ALF_GPU_TAUDIAG=2",
-    "ALF_GPU_TAUDIAG_FROM=331"
-   ],
-   "allow_debug": true
-  },
-  "pd_log_b4_m_bias": {
-   "build": "nv_log",
-   "config": "hub12x12_cb_p",
-   "seeds": "acc1",
-   "env": [
-    "ALF_GPU_TAUDIAG=2",
-    "ALF_GPU_TAUDIAG_FROM=331"
-   ],
-   "allow_debug": true
-  },
-  "c2_gpu_m_shift": {
+  "lt0_def_6_m": {
    "build": "nv_def",
-   "config": "s8_U4_b2_cb",
-   "seeds": "acc1"
+   "config": "hub6x6_cb_fd_lt0",
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU debug env: none",
+    "GPU build: git none backend CUDA"
+   ]
   },
-  "c2_gpu_m_nan": {
+  "tm_def_144": {
    "build": "nv_def",
-   "config": "s8_U4_b2_cb",
-   "seeds": "acc1"
+   "config": "hub12x12_cb_tm"
   },
-  "c2_cpu_null": {
-   "build": "nv_none",
-   "config": "s8_U4_b2_cb",
-   "seeds": "acc3"
+  "tmb_def_144": {
+   "build": "base_nv_def",
+   "config": "hub12x12_cb_tm"
   },
-  "id_cand_hub6x6_cb_m": {
-   "build": "gnu_cand",
-   "config": "hub6x6_cb"
+  "tm_def_400": {
+   "build": "nv_def",
+   "config": "hub20x20_cb_tm"
+  },
+  "tmb_def_400": {
+   "build": "base_nv_def",
+   "config": "hub20x20_cb_tm"
+  },
+  "tt_def_144": {
+   "build": "nv_def",
+   "config": "hub12x12_cb",
+   "env": [
+    "ALF_GPU_DEBUG=1",
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_TAUTIME=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_EXIT=1, ALF_GPU_TAUTIME=1"
+   ]
+  },
+  "tt_def_400": {
+   "build": "nv_def",
+   "config": "hub20x20_cb",
+   "env": [
+    "ALF_GPU_DEBUG=1",
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_TAUTIME=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_EXIT=1, ALF_GPU_TAUTIME=1"
+   ]
+  },
+  "tt_def_1024": {
+   "build": "nv_def",
+   "config": "hub32x32_cb",
+   "env": [
+    "ALF_GPU_DEBUG=1",
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_TAUTIME=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_EXIT=1, ALF_GPU_TAUTIME=1"
+   ]
+  },
+  "tm_log_144": {
+   "build": "nv_log",
+   "config": "hub12x12_cb_tm"
+  },
+  "tmb_log_144": {
+   "build": "base_nv_log",
+   "config": "hub12x12_cb_tm"
+  },
+  "tm_log_400": {
+   "build": "nv_log",
+   "config": "hub20x20_cb_tm"
+  },
+  "tmb_log_400": {
+   "build": "base_nv_log",
+   "config": "hub20x20_cb_tm"
+  },
+  "tt_log_144": {
+   "build": "nv_log",
+   "config": "hub12x12_cb",
+   "env": [
+    "ALF_GPU_DEBUG=1",
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_TAUTIME=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_EXIT=1, ALF_GPU_TAUTIME=1"
+   ]
+  },
+  "tt_log_400": {
+   "build": "nv_log",
+   "config": "hub20x20_cb",
+   "env": [
+    "ALF_GPU_DEBUG=1",
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_TAUTIME=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_EXIT=1, ALF_GPU_TAUTIME=1"
+   ]
+  },
+  "tt_log_1024": {
+   "build": "nv_log",
+   "config": "hub32x32_cb",
+   "env": [
+    "ALF_GPU_DEBUG=1",
+    "ALF_GPU_EXIT=1",
+    "ALF_GPU_TAUTIME=1"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU build: git none backend CUDA",
+    "GPU debug env: ALF_GPU_DEBUG=1, ALF_GPU_EXIT=1, ALF_GPU_TAUTIME=1"
+   ]
   }
  },
+ "_report_runs": "tm_*/tmb_* (s/sweep with Ltau = 1, candidate vs base 3f8ec8fa, N = 144 and 400) and tt_* (ALF_GPU_TAUTIME=1: one tau pass device vs host at N = 144, 400, 1024, default and LOG, plus the interim bytes per pass) are read by no gate; the report quotes them with their provenance stamps",
  "gates": [
   {
    "id": "selftest",
@@ -711,11 +1456,14 @@
      "min": 1
     }
    ],
-   "_reason": "ticket 207 acceptance 1: every slice <= 1e-10, CGR2_2 alone <= 1e-10, both branches hit, reduction <= 1e-12; self-test and paired runs use nv_def_pp (default path) because their in-binary oracle is the QR_PREPIVOT host algorithm; production gates use nv_def. Both branches were hit naturally in every config in the 2026-10-29 logs."
+   "_reason": "ticket 207 acceptance 1: every slice <= 1e-10, CGR2_2 alone <= 1e-10, both branches hit, reduction <= 1e-12; self-test and paired runs use nv_def_pp (default path) because their in-binary oracle is the QR_PREPIVOT host algorithm; production gates use nv_def. Both branches were hit naturally in every config in the 2026-10-29 logs. T0 of 2026-10-30 (rebased code): max 1.85e-11 (hub12x12_cb_b10 default, G0T), both branches hit naturally in every config."
   },
   {
    "id": "faults",
    "type": "faults",
+   "armed_lines": [
+    "GPU fault armed: ALF_GPU_FAULT_TAU"
+   ],
    "cases": {
     "fault_nv_def_pp_perm": "tau: pass",
     "fault_nv_def_pp_prop": "tau: pass",
@@ -724,9 +1472,37 @@
     "fault_nv_log_perm": "tau: pass",
     "fault_nv_log_prop": "tau: pass",
     "fault_nv_log_prec": "precision reduction",
-    "fault_nv_log_blocks": "tau: pass"
+    "fault_nv_log_blocks": "tau: pass",
+    "fault_nv_def_pp_eps1em9": "tau: pass",
+    "fault_nv_log_eps1em9": "tau: pass"
    },
-   "_reason": "negative controls of the self-test, both paths; rc must be 1 and FAILED must name the sub-test; expected sub-test names as printed by gpu_tau_mod ('tau: pass', 'precision reduction')"
+   "_reason": "negative controls of the self-test, both paths, each showing its armed line; the graded fault eps:1e-9 (10x the tolerance, on the largest |GT0| element of the compared device copy) must fail 'tau: pass'"
+  },
+  {
+   "id": "refusal",
+   "type": "faults",
+   "fail_regex": "GPU debug env refused: ",
+   "cases": {
+    "ref_tau_ns": "refused: ALF_GPU_TAU_NS ",
+    "ref_tauswap": "refused: ALF_GPU_TAUSWAP ",
+    "ref_taudiag": "refused: ALF_GPU_TAUDIAG ",
+    "ref_taudiag_from": "refused: ALF_GPU_TAUDIAG_FROM ",
+    "ref_tautime": "refused: ALF_GPU_TAUTIME ",
+    "ref_tautest_v": "refused: ALF_GPU_TAUTEST_V ",
+    "ref_fault_tau": "refused: ALF_GPU_FAULT_TAU ",
+    "ref_taudiag_seed": "refused: ALF_GPU_TAUDIAG_SEED "
+   },
+   "_reason": "212's allow-list applied to every 207 variable (and the unimplemented name TAUDIAG_SEED): refused in a production run, exact line, exit code 1, no new code"
+  },
+  {
+   "id": "invalid_value",
+   "type": "faults",
+   "fail_regex": "GPU fault value invalid: ",
+   "cases": {
+    "inv_fault_tau": "ALF_GPU_FAULT_TAU=xyz",
+    "inv_fault_tau_eps": "ALF_GPU_FAULT_TAU=eps:abc"
+   },
+   "_reason": "212's rule for fault values applied to ALF_GPU_FAULT_TAU: an unparsable value is an error (exact line, exit code 1)"
   },
   {
    "id": "same_seed",
@@ -756,29 +1532,70 @@
    "_reason": "VERIFICATION.md 7 and decision 3 (2026-10-29): 1e-9 overall and in the tau line, no bin above 1e-4. The LOG 12x12 pair is not part of this gate: its excess (1.214e-9, bin 184, equal-time, 206 code) has its own ticket 213 (owner decision 3b, 2026-10-29); it still runs and is reported (gate same_seed_log12_reported). The per-entry metric is reported, not gated."
   },
   {
-   "id": "non_interference_log",
+   "id": "determinism",
+   "type": "replay",
+   "pairs": [
+    [
+     "ss_def_6",
+     "det_def_6b"
+    ],
+    [
+     "ss_log_6",
+     "det_log_6b"
+    ],
+    [
+     "det_def_b10a",
+     "det_def_b10b"
+    ],
+    [
+     "det_log_b10a",
+     "det_log_b10b"
+    ]
+   ],
+   "n_datasets": 38,
+   "_reason": "same binary twice, bit-identical data.h5 (incl. the tau datasets) and Precision lines (Green, tau, Phase), both paths: 212 made the default path deterministic; every 207 floating-point sum is either 212's fixed-order k_prec (dev_prec) or a host computation"
+  },
+  {
+   "id": "tau_invariance",
    "type": "replay",
    "datasets": "equal_time",
    "pairs": [
+    [
+     "ss_def_6",
+     "lt0_def_6"
+    ],
+    [
+     "ss_log_6",
+     "lt0_log_6"
+    ],
+    [
+     "det_def_b10a",
+     "lt0_def_b10"
+    ],
+    [
+     "det_log_b10a",
+     "lt0_log_b10"
+    ]
+   ],
+   "n_datasets": 23,
+   "_reason": "the tau pass leaves the sweep unchanged: same binary and seeds, Ltau = 1 vs Ltau = 0, equal-time/scalar datasets bit-identical (PLAN.md 212 row), both paths"
+  },
+  {
+   "id": "non_interference",
+   "type": "replay",
+   "datasets": "equal_time",
+   "pairs": [
+    [
+     "ni_base_def_6",
+     "ss_def_6"
+    ],
     [
      "ni_base_log_6",
      "ss_log_6"
     ]
    ],
    "n_datasets": 23,
-   "_reason": "the tau pass must not change the sweep (equal-time/scalar datasets bit-identical to the 206 binary); LOG only: the default path is not run-to-run reproducible (2026-10-29)"
-  },
-  {
-   "id": "replay_log",
-   "type": "replay",
-   "pairs": [
-    [
-     "ss_log_6",
-     "rp_log_6b"
-    ]
-   ],
-   "n_datasets": 38,
-   "_reason": "determinism premise (LOG measured bitwise reproducible, 2026-10-29)"
+   "_reason": "the 207 code does not change the sweep: equal-time/scalar datasets bit-identical to the base binary (3f8ec8fa, 206 + 212), both paths (both deterministic since 212)"
   },
   {
    "id": "paired_b4",
@@ -798,7 +1615,7 @@
    ],
    "count_k": 2.0,
    "count_min_events": 10,
-   "_reason": "In force (decision 1 of 2026-10-29): the rewrite approved on 2026-10-29 incl. the sd condition. Thresholds were written after the beta = 4 LOG paired data had been seen (ticket 207, caveat 3). The default path FAILED it (1.707) on 2026-10-29. beta = 10 not covered (a TAUDIAG run there exceeds 15 min): open. Gate runs carry declared diagnostic variables (VERIFICATION 2 exception)."
+   "_reason": "In force (decision 1 of 2026-10-29): the rewrite approved on 2026-10-29 incl. the sd condition. Thresholds were written after the beta = 4 LOG paired data had been seen (ticket 207, caveat 3). The default path FAILED it (1.707) on 2026-10-29. beta = 10 not covered (a TAUDIAG run there exceeds 15 min): open. Gate runs carry declared diagnostic variables (VERIFICATION 2 exception). Gate runs carry ALF_GPU_DEBUG=1 (212: TAUDIAG is refused in a production run). T0 2026-10-30 on dev1 seeds: see the ticket's handoff notes."
   },
   {
    "id": "precision",
@@ -847,7 +1664,7 @@
     "Szz(k=(pi,pi),tau=beta/2)",
     "chi_zz(pi,pi)"
    ],
-   "_reason": "observable bias vs upstream GPU=none on independent seeds; MDE per BASELINE.md (0.13-33 %)"
+   "_reason": "observable bias vs upstream GPU=none on independent seeds, tau-resolved observables included; run length 120 x 30 as 212 T2 (decision 14 for 212; no per-run time limit since decision 16)"
   },
   {
    "id": "gpu_none_identity",
@@ -891,7 +1708,7 @@
      ]
     }
    ],
-   "_reason": "3 changed CPU-path files (main.F90, tau_m_mod.F90, control_mod.F90) x 9 macro sets; 1 build file (Prog/Makefile: conditional GPU source line, reviewed); no other changed files. Re-derive after the rebase on 212."
+   "_reason": "changed-file set of the rebased candidate against 3f8ec8fa (git diff --name-status, 2026-10-30): CPU-path Fortran main.F90, tau_m_mod.F90, control_mod.F90 (3 x 9 macro sets = 27 comparisons); 1 build file (Prog/Makefile: conditional GPU source line); Prog/gpu_* and docs/ excluded by acc_gpunone.sh; no other changed files. T0 2026-10-30: 27 0 0 0 1 0"
   },
   {
    "id": "gpu_none_ctest",
@@ -908,10 +1725,11 @@
      "equals": [
       100,
       0,
-      52
+      53
      ]
     }
-   ]
+   ],
+   "_reason": "ctest of the GNU devel noMPI build (as in CI): 53 tests since 212 (52 + t_determinism)"
   },
   {
    "id": "same_seed_log12_reported",
@@ -939,11 +1757,34 @@
    "replace": {
     "runs": [
      "fault_nv_def_pp_perm",
-     "fault_nv_log_prop"
+     "fault_nv_log_eps1em9"
     ]
    },
+   "expect": "FAIL"
+  },
+  {
+   "id": "ctl_selftest_graded_1e-11",
+   "like": "selftest",
+   "replace": {
+    "runs": [
+     "eps11_nv_def_pp",
+     "eps11_nv_log"
+    ]
+   },
+   "expect": "PASS",
+   "_reason": "the graded fault at 0.1x the tolerance (armed line required) must not fail the self-test; at 1e-9 (faults gate) it must"
+  },
+  {
+   "id": "ctl_faults_undetectable",
+   "like": "faults",
+   "replace": {
+    "cases": {
+     "eps11_nv_def_pp": "tau: pass",
+     "eps11_nv_log": "tau: pass"
+    }
+   },
    "expect": "FAIL",
-   "_reason": "the self-test gate must FAIL on runs with a planted fault"
+   "_reason": "an armed but undetectable fault (rc 0) must not count as detected"
   },
   {
    "id": "ctl_faults_on_clean_runs",
@@ -955,7 +1796,29 @@
     }
    },
    "expect": "FAIL",
-   "_reason": "control of the control: clean runs must not count as detected faults"
+   "_reason": "clean runs show no armed line: INPUT_ERROR or FAIL, never a detection (the armed-line check runs first)"
+  },
+  {
+   "id": "ctl_refusal_debug_accepted",
+   "like": "refusal",
+   "replace": {
+    "cases": {
+     "acc_tau_ns": "refused: ALF_GPU_TAU_NS ",
+     "acc_tauswap": "refused: ALF_GPU_TAUSWAP "
+    }
+   },
+   "expect": "FAIL",
+   "_reason": "with ALF_GPU_DEBUG=1 the same variables are accepted (sampled: TAU_NS, TAUSWAP; the paired gate runs show the same for TAUDIAG)"
+  },
+  {
+   "id": "ctl_invalid_value_valid",
+   "like": "invalid_value",
+   "replace": {
+    "cases": {
+     "eps11_nv_def_pp": "ALF_GPU_FAULT_TAU=xyz"
+    }
+   },
+   "expect": "FAIL"
   },
   {
    "id": "ctl_ss_small_entry",
@@ -1001,13 +1864,26 @@
    "expect": "INPUT_ERROR"
   },
   {
-   "id": "ctl_replay_1e-12",
-   "like": "replay_log",
+   "id": "ctl_determinism_1e-12",
+   "like": "determinism",
    "replace": {
     "pairs": [
      [
-      "ss_log_6",
-      "rp_log_6b_m"
+      "ss_def_6",
+      "det_def_6b_m"
+     ]
+    ]
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "ctl_tau_invariance_1e-12",
+   "like": "tau_invariance",
+   "replace": {
+    "pairs": [
+     [
+      "ss_def_6",
+      "lt0_def_6_m"
      ]
     ]
    },
@@ -1015,12 +1891,12 @@
   },
   {
    "id": "ctl_noninterf_1e-12",
-   "like": "non_interference_log",
+   "like": "non_interference",
    "replace": {
     "pairs": [
      [
-      "ni_base_log_6",
-      "rp_log_6b_m"
+      "ni_base_def_6",
+      "det_def_6b_m"
      ]
     ]
    },
@@ -1083,14 +1959,6 @@
    },
    "expect": "FAIL",
    "_reason": "206: ALF_GPU_NS=0 gave Green mean 2.4x the CPU mean"
-  },
-  {
-   "id": "ctl_compare2_shift",
-   "like": "compare2",
-   "replace": {
-    "a": "c2_gpu_m_shift"
-   },
-   "expect": "FAIL"
   },
   {
    "id": "ctl_compare2_nan",
@@ -1157,6 +2025,15 @@
     "a": "c2_cpu_null"
    },
    "_reason": "null calibration: CPU vs CPU on two fresh seed sets must PASS; a FAIL means the gate is miscalibrated for this run length (the harness test of 2026-10-29 found exactly such a false alarm)"
+  },
+  {
+   "id": "ctl_compare2_shift",
+   "like": "compare2",
+   "replace": {
+    "a": "c2_gpu_m_shift"
+   },
+   "expect": "FAIL",
+   "_reason": "shift of 8 standard errors as in 212 (decision 12 for 212; at m = 11, alpha 0.01 Sidak a shift of 5 is caught only ~60 % of the time): needs the owner's approval for 207"
   }
  ],
  "mutations": [
@@ -1176,11 +2053,6 @@
    "kind": "drop:SpinZ_tau"
   },
   {
-   "src": "rp_log_6b",
-   "dst": "rp_log_6b_m",
-   "kind": "scale:Den_eq/obser:1e-12"
-  },
-  {
    "src": "pd_log_b4",
    "dst": "pd_log_b4_m_infl",
    "kind": "taudiag_inflate:0.15"
@@ -1192,11 +2064,6 @@
   },
   {
    "src": "c2_gpu",
-   "dst": "c2_gpu_m_shift",
-   "kind": "shift:Ener_scal/obser:5"
-  },
-  {
-   "src": "c2_gpu",
    "dst": "c2_gpu_m_nan",
    "kind": "nan:SpinZ_eq/obser"
   },
@@ -1204,15 +2071,28 @@
    "src": "id_cand_hub6x6_cb",
    "dst": "id_cand_hub6x6_cb_m",
    "kind": "scale:Den_eq/obser:1e-12"
+  },
+  {
+   "src": "c2_gpu",
+   "dst": "c2_gpu_m_shift",
+   "kind": "shift:Ener_scal/obser:8"
+  },
+  {
+   "src": "det_def_6b",
+   "dst": "det_def_6b_m",
+   "kind": "scale:Den_eq/obser:1e-12"
+  },
+  {
+   "src": "lt0_def_6",
+   "dst": "lt0_def_6_m",
+   "kind": "scale:Den_eq/obser:1e-12"
   }
  ],
  "gpunone": true,
- "false_alarm_budget": 0.07,
- "_false_alarm_reason": "compare2 alpha 0.01 with Sidak inside (m = 11); paired point tests per path ~2.5 % each at the observed LOG ratio, 2 paths; precision mean ~1 %.",
  "blocked": [
   {
    "item": "acceptance 6 (GPU=intel build on intel + 6x6 run)",
-   "reason": "oneAPI version mix on intel (ifx 2025.3, MKL 2026.2); decision 4 of 2026-10-29"
+   "reason": "decision 4 of 2026-10-29; the oneAPI version mix is fixed (decision 13, 2026-10-30: consistent 2026.2 set, link test passed); acceptance 6 gets its own part file (207.intel.json, Intel lane), and stays BLOCKED here until that part passes; 207 does not close while it is BLOCKED without the owner's OK (decision 4b)"
   }
  ],
  "log_mutations": [

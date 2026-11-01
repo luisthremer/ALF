@@ -382,6 +382,29 @@ module Control
         XMEAN_tau = XMEAN_tau + XMEAN
       End Subroutine Control_Precision_tau
 
+#ifdef ALF_GPU
+!--------------------------------------------------------------------
+!> GPU path (ticket 207): Control_Precision_tau for values already reduced on the device (gpu_tau_mod): XMAX = max |A-B|,
+!> XSUM = sum |A-B| over the Ndim x Ndim entries (entries that are NaN in A or B are excluded from both), NNanA, NNanB = number
+!> of NaN entries of A and B.  Same bookkeeping as Control_Precision_tau; as COMPARE, a NaN entry makes the mean NaN
+!> (Control_Precision_tau does not abort on NaN either).
+!--------------------------------------------------------------------
+      Subroutine Control_Precision_tau_vals(XMAX, XSUM, NNanA, NNanB, Ndim)
+        Use iso_fortran_env, only: int64
+        Implicit none
+
+        Real    (Kind=Kind(0.d0)), intent(in) :: XMAX, XSUM
+        Integer, intent(in) :: NNanA, NNanB, Ndim
+        Real    (Kind=Kind(0.d0)) :: XMEAN
+
+        NCG_tau = NCG_tau + 1
+        XMEAN = XSUM/DBLE(Ndim*Ndim)
+        if (NNanA > 0 .or. NNanB > 0) XMEAN = transfer(9221120237041090560_int64, 0.d0)
+        IF (XMAX  >  XMAX_tau) XMAX_tau = XMAX
+        XMEAN_tau = XMEAN_tau + XMEAN
+      End Subroutine Control_Precision_tau_vals
+#endif
+
 
       Subroutine Control_PrecisionP(Z,Z1)
         Implicit none

@@ -146,6 +146,7 @@ Program Main
         use gpu_stab_mod,  only: gpu_stab_on, gpu_stab_setup, gpu_stab_finalize, gpu_stab_hook, gpu_stab_wrapur, &
              &                   gpu_stab_wrapul, gpu_stab_exchange, gpu_stab_store_l, gpu_stab_cgr, gpu_stab_reset_l, &
              &                   gpu_stab_reset_r, gpu_stab_reset_st
+        use gpu_tau_mod,   only: gpu_tau_on, gpu_tau_setup, gpu_tau_finalize, gpu_tau_hook
 #endif
          
 #ifdef HDF5
@@ -624,6 +625,9 @@ Program Main
         ! then used only for the interim copies (udvst when Ltau = 1).  Hook: ALF_GPU_SELFTEST=3 / ALF_GPU_STABTIME=1.
         call gpu_stab_setup(Stab_nt, NSTM)
         if (gpu_stab_on) call gpu_stab_hook()
+        ! ticket 207: tau pass (TAU_M) on the device (Ltau = 1): udvst is read from the device slots, no export.  Hook: ALF_GPU_SELFTEST=4 / ALF_GPU_TAUTIME=1.
+        call gpu_tau_setup(Stab_nt, NSTM)
+        if (gpu_tau_on) call gpu_tau_hook()
 #endif
 
         DO NST = NSTM-1,1,-1
@@ -1040,6 +1044,7 @@ Program Main
         endif
         DEALLOCATE(udvl, udvr, udvst)
 #ifdef ALF_GPU
+        call gpu_tau_finalize()
         call gpu_stab_finalize()
         call gpu_state_finalize()
 #endif
