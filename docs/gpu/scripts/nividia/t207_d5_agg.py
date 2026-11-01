@@ -119,8 +119,17 @@ def proc_record(qref_txt, spec, progsha):
     return pr['prog']
 
 
+def positions(run, which):
+    """per point used by measure which (same order as logs()): its position (nst, nfe, br) in the call cycle (fix round 4: strata)"""
+    return [(pt.hd['nst'], pt.hd['nfe'], pt.hd['br']) for pt in run.points if not (which in ('pTT', 'pmax') and not pt.hasb)]
+
+
 def per_run(run, which, refs):
+    """per member: n, rc (S_cpu per point), re (S_ens per point) and pos (the (nst, nfe, br) of every point, for per-stratum statistics)"""
     L, n_exp = logs(run, which)
+    pos = positions(run, which)
+    if len(pos) != len(L):
+        raise QError('positions: %d points, %d values' % (len(pos), len(L)))
     methods = list(L[0])
     for p in L:
         if list(p) != methods:
@@ -133,7 +142,7 @@ def per_run(run, which, refs):
         members = [k for k in refs if k != m]
         rc = [p[m] - p['cpu'] for p in L]
         re_ = [p[m] - sum(p[k] for k in members) / len(members) for p in L]
-        res[m] = dict(n=len(rc), rc=rc, re=re_)
+        res[m] = dict(n=len(rc), rc=rc, re=re_, pos=list(pos))
     return res, n_exp
 
 
