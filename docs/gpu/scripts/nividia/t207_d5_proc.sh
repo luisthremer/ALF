@@ -16,9 +16,10 @@
 #        (list in qref_thinned.txt).  Kept: records, manifest, full qref.txt, every KEEP-th dump.  Exit status: 0 only if all passed.
 #   Program hash: the sha256 of the binary is computed and must equal the one in its .sha256 file, and the .src.sha256 file must name the
 #   source t207_d5_qref.F90 next to this script (else refusal); the binary hash is recorded in qref_proc.json ('prog'; 'prog_src' = the
-#   verified source hash); t207_d5_agg.py needs the record for every run and t207_d5_gate.py requires a given value (--prog-sha).  KEEP > 0 must satisfy the keep rule of
+#   verified source hash); t207_d5_agg.py needs the record for every run and t207_d5_gate.py requires the value of its spec (prog_sha, src_sha).  KEEP > 0 must satisfy the keep rule of
 #   qparse (gcd(cover*KEEP, P) = 1); the kept dumps allow pointwise re-checking only, the recomputable result is the full qref.txt plus the manifest.
-#   The gate (t207_d5_gate.py) refuses a run processed with DUMP_COVER != 1 or ALLOW_V1 (it reads cover and the dump version from the aggregate).
+#   qref_proc.json also records qref_sha256 (the sha256 of qref.txt after the check): agg and the gate refuse a qref.txt that differs from it.
+#   The gate (t207_d5_gate.py) refuses a run processed with DUMP_COVER != 1 (unless its spec is marked test_only) or ALLOW_V1 (always).
 #   4 OpenMP threads, OpenBLAS 1 thread.
 W=${D5W:-$HOME/alf-gpu/work/t207/dev5}; export TMPDIR=$W/tmp; . ~/alf-gpu/env/gnu.sh > /dev/null
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -55,13 +56,13 @@ $B "$QS" "$NUL" "$HI" < qref_list.txt > qref.txt 2> qref_err.txt; rc=$?
 e=$(date +%s)
 $PY -I $HERE/t207_d5_qparse.py check "$R" $V1 > qref_check.txt 2>&1; crc=$?
 $PY -I - "$R" "$B" "$P" "$QS" "$NUL" "$HI" "$COVER" "$KEEP" $rc $crc $((e-s)) "$PROGSHA" <<'PY'
-import json, sys, os
+import hashlib, json, sys, os
 R, B, P, QS, NUL, HI, COVER, KEEP, rc, crc, wall, progsha = sys.argv[1:13]
 def first(p):
     return open(p).read().split()[0]
 json.dump(dict(ticket='207-2 pipeline (development evidence, dev seeds)', run=R, prog=progsha,
                prog_src=first(B.replace('.out', '.src.sha256')), args=dict(path=P, qs=int(QS), nul=NUL, hostin=int(HI), cover=int(COVER), keep=int(KEEP)),
-               rc=int(rc), check_rc=int(crc), check=open('qref_check.txt').read().strip(), wall_s=int(wall),
+               rc=int(rc), check_rc=int(crc), qref_sha256=hashlib.sha256(open('qref.txt', 'rb').read()).hexdigest(), check=open('qref_check.txt').read().strip(), wall_s=int(wall),
                lines=sum(1 for l in open('qref.txt') if l.startswith('QREF file')),
                dumps=sum(1 for l in open('qref_list.txt'))), open('qref_proc.json', 'w'), indent=1)
 PY
