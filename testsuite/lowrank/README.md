@@ -2,6 +2,10 @@
 
 Validation tools for the delayed/submatrix local updates (branch `feature/delayed-submatrix`).
 
+Other machines: the build steps of `regress_vs_baseline.sh`, `compare_trajectory.sh`, `tiers.sh`, `parallel_tier.sh`,
+`timers_build.sh` and `blas_bench.sh` run `source configure.sh "${ALF_MACHINE:-GNU}" <mode>`; `ALF_ENV_SH` (optional) is a file
+sourced first for the module setup, e.g. on SuperMUC-NG `ALF_MACHINE=SuperMUC-NG ALF_ENV_SH=<workdir>/env_alf.sh`.
+
 ## make_params.py
 
 `make_params.py [--template DIR] OUT_DIR KEY=VALUE ...` copies `Scripts_and_Parameters_files/Start/{parameters,seeds}`

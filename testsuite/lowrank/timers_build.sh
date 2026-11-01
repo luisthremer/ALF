@@ -66,7 +66,7 @@ mkdir -p "$COPY/src"
     cd "$COPY/src" || exit 1
     export ALF_FLAGS_EXT="-DALF_TIMERS"
     # shellcheck disable=SC1091
-    source configure.sh GNU "$MODE" NO-INTERACTIVE >/dev/null 2>&1
+    { [ -z "${ALF_ENV_SH:-}" ] || source "$ALF_ENV_SH" || true; } && source configure.sh "${ALF_MACHINE:-GNU}" "$MODE" NO-INTERACTIVE >/dev/null 2>&1
     make program -j"${MAKE_JOBS:-2}"
 ) >"$LOG" 2>&1 || { echo "build failed, see $LOG" >&2; exit 2; }
 [ -x "$COPY/src/Prog/ALF.out" ] || { echo "build produced no binary, see $LOG" >&2; exit 2; }

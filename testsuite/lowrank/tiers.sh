@@ -27,7 +27,7 @@ LOG="$ALFDIR/runs/tiers/$SCHEME"; mkdir -p "$LOG"
 cd "$ALFDIR"
 source "$HERE/sets.sh"
 setnames() { for e in "${SETS[@]}" "${TRAJ_ONLY_SETS[@]}"; do printf '%s\n' "${e%%|*}"; done; }
-build_env() { source configure.sh GNU noMPI NO-INTERACTIVE >/dev/null 2>&1; }
+build_env() { { [ -z "${ALF_ENV_SH:-}" ] || source "$ALF_ENV_SH" || true; } && source configure.sh "${ALF_MACHINE:-GNU}" noMPI NO-INTERACTIVE >/dev/null 2>&1; }
 
 if [[ " $PHASES " == *" traj "* ]]; then
   first="--rebuild"
