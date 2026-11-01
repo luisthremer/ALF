@@ -427,6 +427,7 @@ binary with K_ND = 1). Rule: submatrix slower if > 5 % and > 2 × the larger spr
   OMP_AFFINITY (f9ab32f4); `campaign/rejudge_pinning.sh` re-judged the 51 1x48 runs. Collect on the cluster (stdout.log is hashed;
   campaign is 158 GB because of OMP_DISPLAY_AFFINITY output): `collect.py --strict --allow job.boost_job_start --allow job.numa_nodes
   --allow run.boost_start`.
+  OMP_DISPLAY_AFFINITY costs ~1.5 % of the sweep time, ratios unaffected (A/B job 5957003).
 
 ## User decisions 2026-11-01 (evening)
 - Authorisation: any number of SuperMUC-NG **test-partition** jobs for the next 24 h (until 2026-11-02 ~13:00), up to
