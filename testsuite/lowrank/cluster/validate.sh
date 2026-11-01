@@ -12,7 +12,8 @@
 #            timers build (timers.txt); MPI trajectory identity (4 ranks: delayed, submatrix, both with Lowrank_cross_slice=.T., vs
 #            standard; confout_0 and bins, compare_runs.py)
 #   noipo    regress between -no-ipo builds of branch and baseline (../ALF_noipo, ../ALF_baseline_noipo; not in the default set)
-#   ptier    parallel_tier.sh phases concurrently, each in its own output tree: mpi (half and tv separately), threads, tempering, pp
+#   ptier    parallel_tier.sh phases, one invocation per (item, scheme) concurrently, each in its own output tree; items from
+#            VAL_PT_ITEMS (default "mpi:half mpi:tv threads tempering pp")
 # Environment: ALF_MACHINE, ALF_ENV_SH (module setup), HDF5_MODULE (module providing h5dump, default hdf5/1.10.7-intel21),
 #   VAL_JOBS (concurrent trajectory sets, default 11; e.g. 4 on a laptop),
 #   MPIRUN (default "mpirun"; single node: I_MPI_HYDRA_BOOTSTRAP=fork, I_MPI_PIN=0 so concurrent runs do not pin to the same cores).
@@ -136,18 +137,24 @@ g_extras() {
 }
 
 g_ptier() {  # exit code of parallel_tier.sh = verdict (0 iff every case passed, after the pre-registered replicate protocol)
-    local d="$OUT/ptier" pids=() t
+    # VAL_PT_ITEMS: phase[:set] items (default all); each item runs one parallel_tier.sh per scheme concurrently (own output tree),
+    # so that one 30-min job holds an item (the statistical runs take ~5 min each on one Skylake core)
+    local d="$OUT/ptier" pids=() it ph set sc tag
     mkdir -p "$d"
     export PT_BUILDS="$ALFDIR/builds"   # the trees of `parallel_tier.sh --build-only` (no make on compute nodes)
-    ( PT_SETS=half PT_TAG=_cl_mpi_half "$LR/parallel_tier.sh" mpi >"$d/mpi_half.log" 2>&1; echo $? >"$d/mpi_half.rc" ) & pids+=($!)
-    ( PT_SETS=tv   PT_TAG=_cl_mpi_tv   "$LR/parallel_tier.sh" mpi >"$d/mpi_tv.log" 2>&1; echo $? >"$d/mpi_tv.rc" ) & pids+=($!)
-    for t in threads tempering pp; do
-        ( PT_TAG=_cl_$t "$LR/parallel_tier.sh" $t >"$d/$t.log" 2>&1; echo $? >"$d/$t.rc" ) & pids+=($!)
+    for it in ${VAL_PT_ITEMS:-mpi:half mpi:tv threads tempering pp}; do
+        ph="${it%%:*}"; set=""; [ "$ph" != "$it" ] && set="${it#*:}"
+        for sc in standard delayed submatrix; do
+            tag="${ph}${set:+_$set}_$sc"
+            ( PT_SETS="${set:-$PT_SETS}" PT_SCHEMES=$sc PT_TAG=_cl_$tag "$LR/parallel_tier.sh" $ph >"$d/$tag.log" 2>&1; echo $? >"$d/$tag.rc" ) &
+            pids+=($!)
+        done
     done
     wait "${pids[@]}"
-    for t in mpi_half mpi_tv threads tempering pp; do
-        if [ "$(cat "$d/$t.rc")" = 0 ]; then check "ptier:$t" PASS "$(grep 'parallel tier:' "$d/$t.log" | tail -1)"
-        else check "ptier:$t" FAIL "rc=$(cat "$d/$t.rc") $(grep -E 'FAIL|ERROR|parallel tier:' "$d/$t.log" | head -3 | tr '\n' ' ')"; fi
+    for f in "$d"/*.rc; do
+        tag="$(basename "$f" .rc)"
+        if [ "$(cat "$f")" = 0 ]; then check "ptier:$tag" PASS "$(grep 'parallel tier:' "$d/$tag.log" | tail -1)"
+        else check "ptier:$tag" FAIL "rc=$(cat "$f") $(grep -E 'FAIL|ERROR|parallel tier:' "$d/$tag.log" | head -3 | tr '\n' ' ')"; fi
     done
 }
 
