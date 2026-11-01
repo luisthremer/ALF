@@ -197,6 +197,15 @@ for i in (0, 2):
     assert j["slot_host_requested"] == n["slot_host_requested"] and j["job_script_sha256"] == prov(base + "/job.prov")["job_script_sha256"]
     assert "cpu_model" not in prov(base + "/job.prov"), "node-level key in the job-level file"
 EOF
+# node-local frequency provenance: every launch through profile_launch_on from the slot (cwd = the campaign dir) is logged by the
+# srun shim: 1 node_prov launch per started slot + 2 clock-state launches (start, end) per started run; slot 1 aborted after its node_prov
+expect "launches for shimnode1 (1 node_prov + 2 x 2 runs)" "$(grep -c -x -F "$C shimnode1" "$SHIM_STATE/launch_hosts")" 5
+expect "launches for shimnode2 (aborted slot: node_prov only)" "$(grep -c -x -F "$C shimnode2" "$SHIM_STATE/launch_hosts")" 1
+expect "launches for shimnode3 (1 + 2 x 2 runs)" "$(grep -c -x -F "$C shimnode3" "$SHIM_STATE/launch_hosts")" 5
+for k in governor_start freq_driver_start cur_freq_start max_freq_start boost_start governor_end cur_freq_end boost_end freq_host_start freq_host_end placement_check; do
+    grep -q "^$k=" "$C/runs/hub_L8_1x1_r2_standard/a1/run.prov" || fail "run.prov lacks $k"
+done
+grep -q "unavailable" "$C/runs/hub_L8_1x1_r2_standard/a1/run.prov" && fail "unavailable value in run.prov" || pass "run.prov: clock state and placement keys from the node, none unavailable"
 $COLLECT "$C" --strict > "$T/collect_pack1_$STAMP.txt" 2>&1; rc=$?
 cat "$T/collect_pack1_$STAMP.txt" | grep -v 'WARNING  .*build_info git commit'
 expect "collect --strict rc (packed campaign)" "$rc" 0
@@ -309,6 +318,44 @@ grep -q -E 'truncated, [0-9]+ bins' "$CP/report.md" && pass "table 1 marks the t
 expect "report of a non-pilot, non-truncated campaign has no pilot / truncated text" "$(grep -c -i -E 'pilot|truncated' "$C/report.md")" 0
 sed 's/"pilot": true/"pilot": false/' "$CP/collected.json" > "$T/collected_nopilot_$STAMP.json"
 $REPORT "$T/collected_nopilot_$STAMP.json" --out "$T/report_nopilot_$STAMP.md" > /dev/null; expect "pilot flag false: no pilot marking" "$(grep -c 'pilot (1 repetition' "$T/report_nopilot_$STAMP.md")" 0
+
+echo "== review fixes: per-run placement check, node-hour estimate, node limit, cpu_max_h shorter than a bin"
+export CAMPAIGN_TEST_BIN="$NOMPI_BIN" CAMPAIGN_TEST_REPS=1
+# unbalanced slots: L = 6 runs estimated at 1501.8 s (3 slots of one run), L = 8 runs at 901.8 s (slots of 2 and 1 run)
+out="$(CAMPAIGN_TEST_SETUP6=1500 $MK "$DESC" --dry-run 2>&1)"
+printf '%s\n' "$out" | head -4 | cut -c1-400
+# job 1: 3 slots of 1621.8 s (incl. 120 s), --time 46 min; job 2: 2 slots (1923.6 s and 1021.8 s), --time 54 min
+has "estimate = nodes x longest slot: (3 x 1621.8 + 2 x 1923.6) s x 4 cores = 9.7 core-h = 2.4 node-h" "$out" "allocation estimate (nodes x longest slot, what Slurm charges) 9.7 core-h = 2.4 node-h"
+has "busy time of the slots (7810.8 s x 4 cores = 8.7 core-h)" "$out" "busy time of the slots 8.7 core-h (utilisation 90 %)"
+has "upper bound nodes x --time (3 x 46 + 2 x 54 min = 16.4 core-h)" "$out" "upper bound (nodes x --time) 16.4 core-h"
+has "per-job node-h line (job 2)" "$out" "allocation estimate 1.07 node-h (nodes x longest slot), upper bound 1.80 node-h (nodes x --time)"
+has "per-job node-h line (job 1)" "$out" "allocation estimate 1.35 node-h (nodes x longest slot), upper bound 2.30 node-h (nodes x --time)"
+sed 's/^PARTITION_MAX_NODES=.*/PARTITION_MAX_NODES=""/' "$CDIR/profiles/local.sh" > "$T/local_nolimit_$STAMP.sh"
+out="$(CAMPAIGN_TEST_PROFILE="$T/local_nolimit_$STAMP.sh" CAMPAIGN_TEST_REPS=2 $MK "$DESC" --dry-run 2>&1)"; rc=$?
+expect "no PARTITION_MAX_NODES entry: accepted rc" "$rc" 0
+has "no node limit: warning" "$out" "has no PARTITION_MAX_NODES entry for partition local: packed jobs are capped at 1 node"
+has "no node limit: one node per job (4 slots -> 4 jobs)" "$out" "4 jobs, 12 runs"
+expect "no node limit: every job has 1 node" "$(printf '%s\n' "$out" | grep -c '^job .*nodes=1 ')" 4
+export CAMPAIGN_TEST_ID="t4short_$STAMP"
+out="$(CAMPAIGN_TEST_CPU_MAX_H=0.00001 $MK "$PDESC" --dry-run 2>&1)"; rc=$?
+expect "cpu_max_h shorter than one bin: accepted rc" "$rc" 0
+has "cpu_max_h < bin: warning" "$out" "is shorter than one bin (NSweep x sec_per_sweep_est = 1 s)"
+has "cpu_max_h < bin: estimate = setup + one bin" "$out" "estimated wall  20.3 min"
+
+echo "-- per-run placement: ranks of a run report another host than its slot's (SHIM_FAKE_HOSTNAME_MATCH); real node names, host check on"
+export CAMPAIGN_TEST_ID="t4place_$STAMP"
+CPL="$ROOT/$CAMPAIGN_TEST_ID"
+$MK "$PDESC" --root "$ROOT" > /dev/null || fail "generate placement"
+SHIM_NODELIST_REAL=1 LOCAL_NODE_HOST_CHECK=1 SHIM_FAKE_HOSTNAME_MATCH="/hub_L6_1x1_r1_delayed_nd8/" "$CPL/submit_all.sh" 2>&1 | grep -v WARNING | tail -1
+cat "$CPL/runs/hub_L6_1x1_r1_delayed_nd8/status"
+expect "run whose ranks ran elsewhere: INVALID" "$(st "$CPL" hub_L6_1x1_r1_delayed_nd8)" INVALID
+grep -q '^INVALID placement: ranks ran on fakehost.shim, expected' "$CPL/runs/hub_L6_1x1_r1_delayed_nd8/status" && pass "placement status text" || fail "placement status text"
+expect "run on its own host (host check on, real names): OK" "$(st "$CPL" hub_L6_1x1_r1_standard)" OK
+grep -q '^placement_check=OK all ranks on' "$CPL/runs/hub_L6_1x1_r1_standard/a1/run.prov" && pass "placement_check=OK recorded" || fail "placement_check OK"
+grep -q '^placement_check=BAD ranks ran on fakehost.shim' "$CPL/runs/hub_L6_1x1_r1_delayed_nd8/a1/run.prov" && pass "placement_check=BAD recorded" || fail "placement_check BAD"
+$COLLECT "$CPL" --strict > "$T/collect_place_$STAMP.txt" 2>&1; rc=$?
+expect "collect --strict rc (one valid run)" "$rc" 0
+has "INVALID placement run excluded and listed" "$(cat "$T/collect_place_$STAMP.txt")" "EXCLUDED hub_L6_1x1_r1_delayed_nd8: INVALID placement"
 
 echo "run_pack_test: $([ $fails = 0 ] && echo ALL PASS || echo FAILED) ($fails failures); campaigns: $C $C2 $C3"
 [ $fails = 0 ]

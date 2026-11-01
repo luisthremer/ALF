@@ -22,6 +22,9 @@
 # slot never stops the other slots: a slot that cannot start (node provenance, host check, MKL probe) marks only its own
 # runs NOT_RUN. Job level (binary / build info mismatch, profile_setup) aborts everything before any slot starts.
 # The per-run block below is the one of job_template.sh (one node per job) with HOST / slot added: keep them in sync.
+# Clock state (governor, frequencies, boost) of a run and the hardware / hostname of a slot are read ON the slot's host
+# (node_prov.sh through profile_launch_on), never on the batch host; a run whose ranks did not all run on the slot's host is
+# INVALID (placement).
 
 CAMPAIGN_ID='@@CAMPAIGN_ID@@'
 JOB_NAME='@@JOB_NAME@@'
@@ -188,6 +191,16 @@ kill_launch() { [ -n "$LP" ] || return 0; kill_tree "$LP"; wait "$LP" 2>/dev/nul
 # lrun CMD ...: CMD in a background subshell, waited for (so that the slot's TERM trap acts at once); status in LRC
 lrun() { "$@" & LP=$!; wait "$LP"; LRC=$?; LP=""; }
 in_dir() { local d="$1"; shift; cd "$d" && "$@"; }
+# node_freq TAG: clock state of THIS slot's node (governor, driver, cur / max frequency, boost; keys *_TAG and freq_host_TAG) into
+# the run's run.prov ($f), read ON the host through the launcher (the slot subshell itself runs on the batch host)
+node_freq() {
+    local k
+    lrun profile_launch_on "$HOST" 1 1 "$C/scripts/node_prov.sh" --freq "$f" "$1" > "$A/node_freq_$1.out" 2>&1 < /dev/null
+    for k in governor freq_driver cur_freq max_freq boost; do
+        grep -q "^${k}_$1=" "$f" || prov_kv "$f" "${k}_$1" "unavailable(clock state not read on $HOST: launcher rc=$LRC)"
+    done
+    grep -q "^freq_host_$1=" "$f" || prov_kv "$f" "freq_host_$1" "unavailable(not read on $HOST)"
+}
 
 slot_exit() {
     local rc="$1"
@@ -284,7 +297,7 @@ run_slot() {
         prov_kv "$f" slot "$SLOT"
         prov_kv "$f" slot_host "$HOST"
         prov_kv "$f" mkl_verbose_env "${MKL_VERBOSE:-unset}"
-        prov_freq "$f" start
+        node_freq start
         prov_kv "$f" run_start "$(date '+%Y-%m-%dT%H:%M:%S%z')"
         slog "run $rid ($scheme, N_delay=$nd) attempt a$k"
         t0="$(prov_now)"
@@ -292,7 +305,7 @@ run_slot() {
             > "$A/stdout.log" 2> "$A/stderr.log" < /dev/null
         rc=$LRC
         t1="$(prov_now)"
-        prov_freq "$f" end
+        node_freq end
         prov_kv "$f" wall_s "$(awk -v a="$t0" -v b="$t1" 'BEGIN {printf "%.3f", b - a}')"
         res="1 s (date without %N)"; case "$t0" in *.*) res="1 ns (date +%s.%N)" ;; esac
         prov_kv "$f" wall_resolution "$res"
@@ -309,7 +322,17 @@ run_slot() {
         [ -n "$rss" ] || { rss="unavailable(no /usr/bin/time output, no sacct)"; src="none"; }
         prov_kv "$f" max_rss_kb "$rss"
         prov_kv "$f" max_rss_source "$src"
-        prov_kv "$f" rank_hosts "$(cat "$A"/rank_alf_*.prov 2>/dev/null | sed -n 's/^host=//p' | sort -u | tr '\n' ' ')"
+        rhosts="$(cat "$A"/rank_alf_*.prov 2>/dev/null | sed -n 's/^host=//p' | sort -u | tr '\n' ' ')"
+        prov_kv "$f" rank_hosts "$rhosts"
+        # placement: every rank of the run must have run on the slot's host (else two slots may share a node)
+        placement="OK (not checked: NODE_HOST_CHECK=0)"
+        if [ "${NODE_HOST_CHECK:-1}" = 1 ]; then
+            placement="OK all ranks on $HOST"; wrong=""
+            [ -n "$rhosts" ] || wrong=" (no rank host record)"
+            for h in $rhosts; do [ "${h%%.*}" = "${HOST%%.*}" ] || wrong="$wrong $h"; done
+            [ -z "$wrong" ] || placement="BAD ranks ran on$wrong, expected $HOST"
+        fi
+        prov_kv "$f" placement_check "$placement"
         prov_kv "$f" rank_affinity_preinit "$(for p in "$A"/rank_alf_*.prov; do [ -r "$p" ] && printf 'r%s:%s ' "$(sed -n 's/^rank=//p' "$p")" "$(sed -n 's/^affinity=//p' "$p")"; done)"
         prov_kv "$f" fakeintel_maps "$(cat "$A"/rank_alf_*.prov 2>/dev/null | sed -n 's/^fakeintel_maps=//p' | sort -u | tr '\n' ' ')"
         prov_kv "$f" ld_preload "$(cat "$A"/rank_alf_*.prov 2>/dev/null | sed -n 's/^ld_preload=//p' | sort -u | tr '\n' ' ')"
@@ -333,6 +356,7 @@ run_slot() {
             reason="info has no 'Sequential scheme: $scheme' line (scheme not active)"
         fi
         if [ -n "$reason" ]; then status="FAILED rc=$rc $reason"; SLOT_RC=1
+        elif [ "${placement%% *}" = BAD ]; then status="INVALID placement: ${placement#BAD }"; SLOT_RC=1
         elif [ "$pinrc" -ne 0 ]; then status="INVALID pinning: $pin"; SLOT_RC=1
         else status="OK"; fi
         prov_kv "$f" status "$status"

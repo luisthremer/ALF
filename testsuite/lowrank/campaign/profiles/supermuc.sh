@@ -22,6 +22,7 @@ EAR_SETTING="off (sbatch --ear=off)"
 FAKEINTEL_DEFAULT=off
 
 # ---- runtime part (used inside the job on the compute node) ----------------------------------------------------------
+# (the hdf5 module that configure.sh loads for the build is not needed at run time: benchmark binaries are built without HDF5)
 # environment file of the runtime stack: it does 'module purge; module unload stack; module load stack/22.2.1' (stack/24.5.0 is sticky
 # and conflicts); profile_setup sources it and then loads slurm_setup. The modules actually loaded are recorded (module list).
 RUNTIME_ENV_SH="/hppfs/work/pn73xu/di38zuw/CLAUDE/env_alf.sh"
@@ -38,6 +39,12 @@ profile_setup() {
     [ -r "$RUNTIME_ENV_SH" ] || { echo "profile_setup: $RUNTIME_ENV_SH not readable" >&2; return 1; }
     . "$RUNTIME_ENV_SH" || return 1
     module load slurm_setup || return 1
+    # configure.sh (SUPERMUC-NG) unsets FORT_BLOCKSIZE at build time; the runs must not see it either
+    unset FORT_BLOCKSIZE
+    # packed jobs: under Slurm Intel MPI takes the per-node process counts from the allocation (respects Slurm's placement) and
+    # then ignores -hosts / -ppn; 0 makes `mpiexec -hosts H -n N -ppn N` authoritative, so that slot i really runs on host i
+    # (every run's rank hosts are checked against its slot host afterwards, NODE_HOST_CHECK)
+    export I_MPI_JOB_RESPECT_PROCESS_PLACEMENT=0
     export I_MPI_PIN=1 I_MPI_PIN_CELL=core I_MPI_PIN_DOMAIN=omp:compact I_MPI_DEBUG=4
     export OMP_PLACES=cores OMP_PROC_BIND=close
     return 0
