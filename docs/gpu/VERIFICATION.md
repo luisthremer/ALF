@@ -55,6 +55,32 @@ the script changes; `verdict.py --lint` must pass for every acceptance file (the
 `compare2.py` is fail-closed since 2026-10-29 (exit 3: NaN, missing observables, m = 0, identical seeds or means
 without `--same-seed`). The per-ticket `tNNN_*` scripts are development tools only.
 
+## 4b. QREF accuracy gates (ticket 207-5; decisions 33, 35, 36, 37)
+Gate type `qref` judges the accuracy of the device's τ-pass CGR2_2 output against a binary128 reference: S_ens(pTT) ≤ bound
+(ensemble-relative accuracy at the next precision check) and a pointwise statistic (S_ens of `emax` or `eF`, own bound, own
+controls), pooled over the main runs. The statistics and the strict reading of the dumps are the 207-2 scripts
+(`docs/gpu/scripts/nividia/t207_d5_{qparse,agg,gate}.py`, `t207_d5_proc.sh`, `t207_d5_qref.F90`); the harness calls them and does not
+re-implement them. Pre-registered in the acceptance file (`qref` gate, `qbuilds`, runs with a `qref` entry): bound, expected point
+count (with B; all points for the pointwise statistic), the qs values, stride 3, null codes, KEEP 39, the frozen reference ensemble
+(`refs`; on `intel` the member list differs, an MKL/ifx host member replaces `nvh`), the required control members, and the sha256 of the
+207-2 scripts (a changed script is INPUT_ERROR, not a different gate).
+- Runs: env exactly the allow-list of `t207_d5_qparse.py` (`env_role`: main = `DEBUG=1`, `TAUDIAG_QREF`, `_QHOST=1`, `_QVAR=8`, `_FROM`;
+  production control = the same plus `TAU_NS=0` / `TAUSWAP=8` or the 207-3 fault, declared control runs only), `acc_run.sh --qref`.
+- Offline program and GNU oracle objects: `acc_qbuild.sh`, from the candidate's tarball (hash re-checked), record
+  `bin/qref_<path>.qbuild.json` (tarball and candidate hashes, program hash, source and script hashes, compiler).
+- Processing before the next run starts (`acc_qproc.sh` → `t207_d5_proc.sh`): strict check of `qref.txt`, manifest, then retention (full
+  `qref.txt`, every 39th dump by the gcd keep rule). The verdict re-checks the records of `qproc/` against the harness provenance, the
+  program hash, the manifest and the kept dumps, then calls `t207_d5_agg.py` and `t207_d5_gate.py` with the program hash, the bound,
+  the expected points and the qs values; INPUT_ERROR for anything they refuse (non-finite or missing numbers, missing member or point,
+  qself/qbr > 1e-25, n0 ≠ cpu, a run twice, wrong env, wrong point count).
+- Controls: inside the gate the production control run must be killed (`ctl_dev` > bound) and so must the stand-in `var8`; the harness
+  control `{"like": <qref gate>, "replace": {"device": "var8"}}` judges the planted stand-in as the device and must FAIL.
+- Gate type `h5_identical`: `data.h5` of a QREF run and of a production run (same build, config, seeds), every dataset byte-identical;
+  control: a mutated copy (`mutate.py scale:…:1e-12`).
+- `verdict.py --selfcheck` plants NaN, Infinity, an E-less number, a missing member, a missing point, shifted fields, a changed header,
+  device and var8 swapped, a control that is not killed, a defect in only one of the two statistics, an extra `ALF_GPU_*` variable, a
+  changed script hash, a changed program hash, altered records, a deleted kept dump; each must give its outcome.
+
 ## 5. Positive controls for every gate
 Each gate has at least one control, run on the same build profile and judged with the gate's own criterion
 (`"like": <gate>`), that must FAIL; `verdict.py --lint` refuses an acceptance file with an uncovered gate. A control
@@ -69,6 +95,7 @@ is not a gate.
 | paired same-trajectory | `ALF_GPU_TAUSWAP=8` (LOG), `ALF_GPU_TAU_NS=0` (default); `mutate.py taudiag_inflate/taudiag_bias` |
 | precision mean | `ALF_GPU_NS=0` (once per toolchain; on the B580/oneMKL it cannot degrade precision, so 302b uses the graded device fault `ALF_GPU_FAULT_STAB=eps:<x>` instead, decisions 26–27); known blind spot: the 207 ZUNMQR defect (+17 % on the τ mean) |
 | compare2 | `mutate.py shift:<obs>:5` (5 standard errors of the mean, FAIL); `nan:` (INPUT_ERROR) |
+| QREF accuracy (207) | the stand-in `var8` and the production control run (`TAU_NS=0` / `TAUSWAP=8` / graded fault) inside the gate; `replace: {device: var8}` (FAIL); a mutated `data.h5` copy for the QREF identity pair |
 | GPU=none identity | a planted declaration appended to a compared file (`acc_gpunone.sh --plant`); a copy of the ctest log with one failed test; other seeds (`data.h5` identity) |
 | replay / determinism | a 1-ulp-level difference (`mutate.py scale:…:1e-12`) |
 

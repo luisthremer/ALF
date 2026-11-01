@@ -1,0 +1,200 @@
+{
+ "schema": "alf-acc/1",
+ "ticket": "207-5",
+ "candidate_sha": "self",
+ "base_sha": "bbbbbbbbbbbb",
+ "created": "2026-11-01",
+ "_status": "DRAFT: TEST ONLY (dry run of the QREF harness support of ticket 207-5), not an acceptance file: the bound is a placeholder, nothing here is calibrated; tools_sha256 pins the 207-2 scripts of the branch state it was written against and must be recomputed after a change of them.",
+ "approvals": [],
+ "machine": "nividia",
+ "gpu_exclusive": true,
+ "timeout_s": 1500,
+ "_timeout_reason": "hang guard only (decision 16)",
+ "disk_min_free_GB": 5,
+ "cpu_parallel": 1,
+ "false_alarm_budget": 1.0,
+ "active_lines": [
+  "GPU path (gpu_state): ACTIVE",
+  "GPU update path (ticket 205): ACTIVE",
+  "GPU stabilization (206): ACTIVE",
+  "GPU tau pass (207): ACTIVE",
+  "GPU build: git none backend CUDA",
+  "GPU debug env: none"
+ ],
+ "forbidden_lines": [],
+ "allowed_test_changes": [],
+ "qbuilds": {
+  "def": {
+   "configure": "GNU noMPI",
+   "flags_ext": "-DQR_PREPIVOT",
+   "qflags": "-DQR_PREPIVOT"
+  }
+ },
+ "builds": {
+  "nv_def_pp": {
+   "tool": "nvhpc",
+   "configure": "PGI noMPI HDF5 GPU=nvidia",
+   "flags_ext": "-DQR_PREPIVOT",
+   "gpu": true
+  }
+ },
+ "configs": {
+  "hub12x12_qdry": {
+   "base": "hub12x12_cb",
+   "overrides": {
+    "beta": 10.0,
+    "NSweep": 10,
+    "NBin": 3
+   }
+  }
+ },
+ "runs": {
+  "q_m1": {
+   "build": "nv_def_pp",
+   "config": "hub12x12_qdry",
+   "seeds": "acc1",
+   "env": [
+    "ALF_GPU_DEBUG=1",
+    "ALF_GPU_TAUDIAG_QHOST=1",
+    "ALF_GPU_TAUDIAG_QVAR=8",
+    "ALF_GPU_TAUDIAG_QREF=3",
+    "ALF_GPU_TAUDIAG_FROM=21"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU build: git none backend CUDA"
+   ],
+   "qref": {
+    "path": "def",
+    "qs": 20,
+    "nul": "0,4,100004,1,100001,2,1608,4808,5,100005",
+    "hostin": 0,
+    "keep": 39
+   }
+  },
+  "q_c1": {
+   "build": "nv_def_pp",
+   "config": "hub12x12_qdry",
+   "seeds": "acc3",
+   "env": [
+    "ALF_GPU_DEBUG=1",
+    "ALF_GPU_TAUDIAG_QHOST=1",
+    "ALF_GPU_TAUDIAG_QREF=3",
+    "ALF_GPU_TAUDIAG_FROM=21",
+    "ALF_GPU_TAU_NS=0"
+   ],
+   "allow_debug": true,
+   "active_lines": [
+    "GPU path (gpu_state): ACTIVE",
+    "GPU update path (ticket 205): ACTIVE",
+    "GPU stabilization (206): ACTIVE",
+    "GPU tau pass (207): ACTIVE",
+    "GPU build: git none backend CUDA"
+   ],
+   "qref": {
+    "path": "def",
+    "qs": 20,
+    "nul": "0,4,100004,1,100001,2,1608,4808,5,100005",
+    "hostin": 0,
+    "keep": 39
+   }
+  },
+  "q_off": {
+   "build": "nv_def_pp",
+   "config": "hub12x12_qdry",
+   "seeds": "acc1"
+  },
+  "q_off_m": {
+   "build": "nv_def_pp",
+   "config": "hub12x12_qdry",
+   "seeds": "acc1"
+  }
+ },
+ "gates": [
+  {
+   "id": "qref_def",
+   "type": "qref",
+   "path": "def",
+   "stride": 3,
+   "qs": [
+    20
+   ],
+   "keep": 39,
+   "nul": "0,4,100004,1,100001,2,1608,4808,5,100005",
+   "runs": [
+    "q_m1"
+   ],
+   "ctl_runs": [
+    "q_c1"
+   ],
+   "refs": "def",
+   "bound": 0.15,
+   "expect_points": 60,
+   "required_controls": [
+    "var8",
+    "ctl_dev"
+   ],
+   "pointwise": {
+    "measure": "emax",
+    "bound": null,
+    "expect_points": 67
+   },
+   "tools_sha256": {
+    "t207_d5_proc.sh": "516bcf1e1bdda8aa8f526b2befc8f6d9acb7bcf18f0c2d502dcfd53b5cd318dd",
+    "t207_d5_qparse.py": "7e8584cf656931390dc53907f03f39525cf17c6bd42f87256773720eacfc65e2",
+    "t207_d5_agg.py": "a03f7fa51e0c7a2a2a6755257323393562b46ea4c7377bab01a636e58a37c65e",
+    "t207_d5_gate.py": "888d6df095e7790086ddc797ec9fea9800e996ffb5ca3295d27a23e127897659",
+    "t207_d5_qref.F90": "f838325788bab4f7209ef0074cdaefb05f8f0b023a065bfdd6e5843155bc85e6",
+    "t207_d5_build.sh": "700dcc8d16b7b00b46df2e5f004af54762fc1b2974405fdc6b9c3b112842d27c",
+    "t207_d5_qbuild.sh": "486efc7eb4750ec09baa959fa0b1812833352d3e55e2343ee37a54ffc9da92ef"
+   },
+   "_reason": "dry run: placeholder bound 0.15 (207-3 calibrates); pointwise bound unset (DRAFT file)"
+  },
+  {
+   "id": "qref_identity",
+   "type": "h5_identical",
+   "pairs": [
+    [
+     "q_m1",
+     "q_off"
+    ]
+   ],
+   "min_datasets": 10,
+   "_reason": "data.h5 of a QREF run vs a production run, same build, config and seed"
+  }
+ ],
+ "controls": [
+  {
+   "id": "c_qref_device_is_var8",
+   "like": "qref_def",
+   "replace": {
+    "device": "var8"
+   },
+   "expect": "FAIL"
+  },
+  {
+   "id": "c_identity_mutated",
+   "like": "qref_identity",
+   "replace": {
+    "pairs": [
+     [
+      "q_m1",
+      "q_off_m"
+     ]
+    ]
+   },
+   "expect": "FAIL"
+  }
+ ],
+ "mutations": [
+  {
+   "src": "q_off",
+   "dst": "q_off_m",
+   "kind": "scale:Ener_scal/obser:1e-12"
+  }
+ ]
+}

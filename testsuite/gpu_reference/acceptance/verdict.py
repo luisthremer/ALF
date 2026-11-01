@@ -27,6 +27,9 @@ import subprocess
 import sys
 import tempfile
 
+sys.dont_write_bytecode = True  # the shipped candidate tree is read-only; qref_gate.py / qref_synth.py are imported from this directory
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 FLOAT = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eEdD][-+]?\d+)?"
 
 
@@ -602,7 +605,17 @@ def g_files_identical(g, root, acc):
     return res
 
 
-GATES = {"files_identical": g_files_identical, "selftest": g_selftest, "faults": g_faults, "same_seed": g_same_seed, "replay": g_replay,
+def g_qref(g, root, acc):
+    import qref_gate
+    return qref_gate.g_qref(sys.modules[__name__], g, root, acc)
+
+
+def g_h5_identical(g, root, acc):
+    import qref_gate
+    return qref_gate.g_h5_identical(sys.modules[__name__], g, root, acc)
+
+
+GATES = {"qref": g_qref, "h5_identical": g_h5_identical, "files_identical": g_files_identical, "selftest": g_selftest, "faults": g_faults, "same_seed": g_same_seed, "replay": g_replay,
          "paired": g_paired, "precision": g_precision, "compare2": g_compare2, "log_regex": g_log_regex}
 
 
@@ -624,11 +637,13 @@ def resolve_control(c, acc):
     base = next((g for g in acc["gates"] if g["id"] == c["like"]), None)
     if base is None:
         raise SystemExit(f"control {c['id']}: unknown gate {c['like']}")
-    allowed = {"runs", "pairs", "cases", "a", "b", "checks"}
+    allowed = {"runs", "pairs", "cases", "a", "b", "checks", "device"}  # device: qref gates (207-5), the judged member dev -> var8
     rp = c.get("replace", {})
     extra = set(rp) - allowed
     if extra:
         raise SystemExit(f"control {c['id']}: may replace only {sorted(allowed)}, not {sorted(extra)}")
+    if "device" in rp and (base["type"] != "qref" or rp["device"] != "var8"):
+        raise SystemExit(f"control {c['id']}: 'device' may only be var8, in a qref gate")
     if "checks" in rp:  # only the files may change; regex, equals and the number of checks stay the gate's
         if len(rp["checks"]) != len(base["checks"]):
             raise SystemExit(f"control {c['id']}: must replace every check of {c['like']}")
@@ -1015,6 +1030,8 @@ def selfcheck():
     bad += not ok_x
     print(f"{'ok ' if ok_x else 'BAD'} lint: ALF_LA_TEST_ in a gate run, faults gate exempt, selector declared on GPU=intel, gpu flag, ctest pin")
     shutil.rmtree(tmp)
+    import qref_selfcheck
+    bad += qref_selfcheck.selfcheck(sys.modules[__name__])
     print("selfcheck:", "PASS" if not bad else f"FAIL ({bad} wrong)")
     return 0 if not bad else 1
 
@@ -1081,7 +1098,7 @@ def lint_errors(acc):
         if g["type"] in ("log_regex", "files_identical"):
             return []
         cs = g.get("cases", {})
-        out = list(g.get("runs", [])) + [x for p in g.get("pairs", []) for x in p[:2]] + (list(cs.keys()) if isinstance(cs, dict) else [])
+        out = list(g.get("runs", [])) + list(g.get("ctl_runs", [])) + list((g.get("pointwise") or {}).get("ctl_runs", [])) + [x for p in g.get("pairs", []) for x in p[:2]] + (list(cs.keys()) if isinstance(cs, dict) else [])
         out += [g[k] for k in ("a", "b") if k in g]
         for c in cs if isinstance(cs, list) else []:
             out += [c["gpu"]] + c["cpu"]
@@ -1096,7 +1113,7 @@ def lint_errors(acc):
             else:
                 ok_vars = GATE_DEBUG_OK + (SELFTEST_ONLY if g["type"] == "selftest" else ())
                 bad = [kv for kv in runs[x].get("env", []) if kv.split("=")[0].startswith(DEBUG_PREFIXES)
-                       and kv.split("=")[0] not in ok_vars and g["type"] != "faults"]
+                       and kv.split("=")[0] not in ok_vars and g["type"] not in ("faults", "qref", "h5_identical")]  # checked by qref_gate.lint (env_role; the QREF-on run of an identity pair)
                 if bad:
                     errs.append(f"gate {g['id']}: run {x} carries fault/numerics variables {bad} (allowed only in controls)")
         for p in g.get("pairs", []):
@@ -1215,6 +1232,8 @@ def lint_errors(acc):
         for d in dir_refs(g):
             if ct.get(d, {}).get("control") or ct.get(d, {}).get("env") and not ct.get(d, {}).get("control"):
                 errs.append(f"gate {g['id']}: uses ctest output {d} that is a control or carries an environment")
+    import qref_gate
+    errs += qref_gate.lint(sys.modules[__name__], acc)
     return errs
 
 

@@ -1,6 +1,8 @@
 #!/bin/bash
 # Acceptance harness, MACHINE side: one run of a stamped binary under `env -i` with an explicit whitelist.
-#   usage: acc_run.sh RUNDIR BINARY CONFIGDIR [--allow-debug] [VAR=value ...]
+#   usage: acc_run.sh RUNDIR BINARY CONFIGDIR [--allow-debug] [--qref] [VAR=value ...]
+#     --qref    (ticket 207-5) creates RUNDIR/qref/ before the run: the directory the QREF dumps of ALF_GPU_TAUDIAG_QREF are written to
+#               (acc_qproc.sh moves it to RUNDIR/qproc/qref/ and processes it right after the run)
 #     RUNDIR    must not exist (created atomically; evidence is never overwritten);
 #     CONFIGDIR a prepared ALF run directory (parameters, seeds), copied into RUNDIR;
 #     VAR=value extra variables. Every ALF_GPU_* / ALFSH_* / ALF_LA_TEST_* variable needs --allow-debug (given by the
@@ -19,6 +21,7 @@ set -o pipefail
 export LC_ALL=C
 D=$1; BIN=$2; CFG=$3; shift 3
 ALLOW=0; [ "${1:-}" = --allow-debug ] && { ALLOW=1; shift; }
+QREFD=0; [ "${1:-}" = --qref ] && { QREFD=1; shift; }
 BJ=${BIN%.out}.build.json; [ -x "$BIN" ] && [ -f "$BJ" ] || { echo "no stamped binary $BIN"; exit 2; }
 [ -f "$CFG/parameters" ] && [ -f "$CFG/seeds" ] || { echo "no prepared config in $CFG"; exit 2; }
 ls "$CFG" | grep -q -E '^(data\.h5|info|confout|confin)' && { echo "refusing: $CFG contains outputs of an earlier run"; exit 2; }
@@ -43,6 +46,7 @@ ENVF=$HOME/alf-gpu/env/$TOOL.sh; [ -f "$ENVF" ] || { echo "no env file $ENVF"; e
 mkdir -p "$(dirname "$D")" && mkdir "$D" || { echo "refusing: $D exists or cannot be created"; exit 2; }
 cp -r "$CFG/." "$D/" || exit 2
 mkdir -p "$D/tmp"
+[ $QREFD = 1 ] && { [ $ALLOW = 1 ] || { echo "refusing --qref without --allow-debug"; exit 2; }; mkdir "$D/qref" || exit 2; }
 cd "$D" || exit 2
 GPUCK=-1
 if command -v nvidia-smi > /dev/null; then

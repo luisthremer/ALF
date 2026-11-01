@@ -18,6 +18,8 @@ Rules:
   * on a machine without nvidia-smi (intel) the GPU idle check is replaced by a user-load check (no other user's process
     above 10 % CPU);
   * an existing binary is reused only if its build record matches the acceptance file;
+  * QREF runs (ticket 207-5; "qref" key of a run, "qbuilds" of the file): the offline program is built from the candidate tarball
+    (acc_qbuild.sh); each run's dumps are processed right after the run (acc_qproc.sh: strict check, then thinning), before the next run;
   * "mutations" (script-level positive controls) are applied after the runs with mutate.py, which must succeed;
   * "gpunone": true runs acc_gpunone.sh into runs/<who>/gpunone;
   * free disk >= disk_min_free_GB at start; run directories are never overwritten; TMPDIR stays in the ticket dir.
@@ -197,6 +199,19 @@ def main():
         log(f"build {bname}: rc {p.returncode} {p.stdout.strip()[-200:]}", fh)
         if p.returncode != 0:
             raise SystemExit(f"build {bname} failed")
+    # offline QREF programs (ticket 207-5): one per path used by a QREF run, built from the candidate's tarball
+    for qp in sorted({r["qref"]["path"] for r in acc["runs"].values() if r.get("qref")}):
+        qb = acc.get("qbuilds", {}).get(qp)
+        if qb is None:
+            raise SystemExit(f"QREF runs use path {qp}, but the acceptance file has no qbuilds.{qp}")
+        if os.path.exists(os.path.join(C, "bin", f"qref_{qp}.qbuild.json")):
+            log(f"qbuild {qp}: exists, reused", fh)
+            continue
+        p = subprocess.run(["bash", os.path.join(HERE, "acc_qbuild.sh"), a.ticket, a.who, a.sha12, qp, qb["configure"], qb["qflags"]],
+                           env=dict(os.environ, ALF_FLAGS_EXT=qb.get("flags_ext", "")), capture_output=True, text=True)
+        log(f"qbuild {qp}: rc {p.returncode} {p.stdout.strip()[-200:]}", fh)
+        if p.returncode != 0:
+            raise SystemExit(f"qbuild {qp} failed")
     # runs
     only = [x for x in a.only.split(",") if x]
     rroot = os.path.join(C, "runs")
@@ -210,6 +225,8 @@ def main():
                os.path.join(cdir, seed_set(r, a.who), r["config"])]
         if r.get("allow_debug"):
             cmd.append("--allow-debug")
+        if r.get("qref"):
+            cmd.append("--qref")
         return subprocess.Popen(cmd + r.get("env", []), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=renv)
 
     def reap(block=False):
@@ -228,6 +245,9 @@ def main():
             log(f"run {rid}: directory exists, kept as is", fh)
             continue
         if acc["builds"][r["build"]].get("gpu", True):
+            if r.get("qref") and shutil.disk_usage(C).free / 2**30 < acc.get("disk_min_free_GB", 5) + 2:
+                log(f"STOP: not enough disk for the dumps of {rid}", fh)
+                return 1
             ok, detail = gpu_idle()
             if not ok:
                 log(f"STOP: GPU not idle before {rid}: {detail}", fh)
@@ -237,6 +257,12 @@ def main():
             p = launch(rid)
             p.wait()
             log(f"gpu run {rid}: rc {p.returncode} wall {time.time() - t0:.0f} s", fh)
+            if r.get("qref") and p.returncode == 0:
+                # QREF run (207-5): its dumps are processed (strict check, then thinning) before the next run starts (~1.6 GB per run)
+                q = r["qref"]
+                qp = subprocess.run(["bash", os.path.join(HERE, "acc_qproc.sh"), a.ticket, a.who, a.sha12, rid, q["path"], str(q["qs"]),
+                                     q["nul"], str(q.get("hostin", 0)), str(q.get("keep", 39))], capture_output=True, text=True)
+                log(f"qref processing {rid}: rc {qp.returncode} {qp.stdout.strip()[-300:]}", fh)
         else:
             if r.get("refcache"):
                 if r["build"].startswith("base_"):

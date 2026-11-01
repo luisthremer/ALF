@@ -9,6 +9,9 @@ Implements [docs/gpu/VERIFICATION.md](../../../docs/gpu/VERIFICATION.md).
 | `acc_ship.sh HOST TICKET WHO CAND BASE PREREG` | laptop | checks the pre-registration (PREREG strict ancestor of CAND; tools unchanged since BASE except the added `TICKET*.json`, and since PREREG at all; existing tests unmodified unless allowed), then `git archive` of CAND and BASE to `~/alf-gpu/work/t<TICKET>/cand/<WHO>/<sha12>/`, hashes checked on both ends, `changed_files.txt`, `.alf_candidate` |
 | `acc_build.sh TICKET WHO SHA12 NAME TOOL ARGS` | machine | extracts the re-hashed tarball, builds under `env -i`, refuses an HDF5 download; `bin/NAME.out` + `NAME.build.json` (with `tar_sha256_built`) |
 | `acc_run.sh RUNDIR BIN CONFIG [--allow-debug] [VAR=v]` | machine | one run under `env -i` + whitelist (`OMP_TARGET_OFFLOAD=MANDATORY` for GPU builds, `ONEAPI_DEVICE_SELECTOR=level_zero:0` for `GPU=intel` builds; `ALF_GPU_*`, `ALFSH_*`, `ALF_LA_TEST_*` only with `--allow-debug`), timeout, GPU and user-load check, `provenance.json` with output hashes |
+| `acc_qbuild.sh TICKET WHO SHA12 def\|log "CONFIGURE" QFLAGS` | machine | (207-5) offline quad-reference program + GNU CPU-oracle objects from the hash-checked tarball (the 207-2 scripts `t207_d5_build.sh`/`t207_d5_qbuild.sh` under `env -i`, work tree `cand/.../qw`); `bin/qref_<path>.qbuild.json` (tarball/candidate/program/script hashes, compiler). `ACC_QBUILD_HOME` only for a machine without `~/alf-gpu/env/gnu.sh` (intel) |
+| `acc_qproc.sh TICKET WHO SHA12 RUNID def\|log QS NUL HOSTIN KEEP` | machine | (207-5) after a `acc_run.sh --qref` run: bridge records into `runs/<id>/qproc/` (207-2 layout, generated from the harness provenance), move the dumps, `t207_d5_proc.sh` (strict check, manifest, thinning by the gcd keep rule), `acc_qproc.json`; the driver calls it right after each QREF run, before the next run |
+| `qref_gate.py`, `qref_selfcheck.py`, `qref_synth.py` | machine | (207-5) gate types `qref` and `h5_identical` of `verdict.py` (thin layer over `t207_d5_{qparse,agg,gate}.py`), their lint, their `--selfcheck` cases on synthetic runs (`qref_synth.py`: exact-format qref.txt through the real parser) |
 | `acc_ctest.sh TICKET WHO SHA12 OUT TOOL [--base] [--regex R] [--repeat N] [--env V=x] -- CONFIGURE` | machine | unit tests from the verified tarball under `env -i`, `ctest -V`, one test at a time, build paths and addresses normalised; GPU configurations with MANDATORY offload under the GPU lock (`GPU=intel`: `ONEAPI_DEVICE_SELECTOR=level_zero:0`, stamp line `selector`, effective env in `env_rep_N.txt`; `--env` refuses the offload/device variables); `ctest.exit` 0 passed, 1 a test failed its own check, 2 invalid (crash, timeout, not run, build failure) |
 | `acc_gpunone.sh TICKET WHO SHA12 OUT [--plant]` | machine | GPU=none: preprocessed changed Fortran (9 macro sets, own headers per side), counts of added/deleted, build and other changed files, ctest; `--plant` is its positive control |
 | `acc_driver.py --ticket N --sha12 S --who mgr\|agent [--part P] [--reason R]` | machine | lint, configs and seeds (fresh `acc*` for mgr, `devN` for agent), builds, runs (GPU one at a time, lock), ctests, mutations, GPU=none, verdict; attempts log |
@@ -54,7 +57,14 @@ commit. Raw outputs stay until the owner's gate.
   directory also reads its `ctest.exit` (2 = INVALID) when the check names no `exit_file`.
 - `mutations` (`mutate.py` on run directories) and `log_mutations` (planted failures in harness logs).
 - `gates`: `{id, type, …, _reason}`; types `selftest`, `faults`, `same_seed`, `replay`, `paired`, `precision`,
-  `compare2`, `log_regex`, `files_identical`.
+  `compare2`, `log_regex`, `files_identical`, `qref`, `h5_identical`.
+- QREF (ticket 207-5, docs/gpu/VERIFICATION.md 4b): `qbuilds`: path (`def`|`log`) -> `configure` (CPU, no GPU= token), `flags_ext`,
+  `qflags` (`-DQR_PREPIVOT` / `-DSTABLOG`); a run with a `qref` entry `{path, qs, nul, hostin, keep}` is a QREF run (needs
+  `allow_debug`, its env is the allow-list of `t207_d5_qparse.py`, stride 3); gate `qref`: `path, stride, qs, keep, nul, runs, ctl_runs,
+  refs, bound, expect_points, required_controls, pointwise {measure, bound (null only in a DRAFT file), expect_points, ctl_runs},
+  tools_sha256 (the 207-2 scripts), device`; gate `h5_identical`: `pairs [[on, off]], min_datasets`. A control of a `qref` gate may
+  `replace: {"device": "var8"}`. The member list of the reference ensemble is the gate's `refs` (Intel: with an MKL/ifx host member in
+  place of `nvh`; the 207-2 scripts must accept the name first).
 - `controls`: `{id, like: <gate id>, replace: {runs|pairs|cases|a|b|checks}, expect}`. The control keeps its gate's
   criterion (only the inputs change); every gate needs one with `expect: FAIL`; a control counts only while its gate
   passes on the clean runs.
