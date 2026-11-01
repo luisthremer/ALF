@@ -35,5 +35,7 @@
 - Intel controls are the sweep output fault (`FAULT_TAU=eps:<x>`, `FAULT_TAU_AT`); var8 / NS=0 / TAUSWAP=8 are no defect
   on oneMKL (302c-2). Intel specs use host_member `nvh` (label fixed by the offline program).
 
+- Spec instance fields (207-5): `binary_sha256`, `prog_sha`, `seeds` = `"@harness"`; `parameters_sha256` concrete.
+
 ## Done when
 Review (b) approves; PREREG_SHA recorded in the ticket.

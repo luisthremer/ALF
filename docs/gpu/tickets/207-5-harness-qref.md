@@ -74,3 +74,14 @@ Self-checks pass, an end-to-end dry run on a dev build passes, review (c) approv
     `nvh`; reviewer advises against a label argument, so Intel specs use `nvh` as "in-run host member, label fixed by
     the program"); add `ctl_dev` to `HOST_RESERVED`; fix or retire `t207_d5_pairs.py`; run processing and gate on the
     same machine (exact equality depends on the system OpenBLAS); refuse symlinked dumps or re-hash at read time.
+- **Round 2 result (2026-11-01, not reviewed):** `gpu-port-207-harness` `f06b35c5` (tree 0350f690). qref_gate.py calls
+  the approved gate; stamps in the attempts log; env allow-list refusals shown; bridge to the 207-2 record layout
+  (derive_run unchanged); `qref_swap:dev:var8` control; t207_d5_* in TOOLS; FAULT_TAU_AT in the gate's FAULTS table.
+  Evidence on tree 1713bb7c: selfcheck 57 QREF cases 0 wrong, gate self-test 493/493, dry run FAIL by placeholder
+  bound at 6×6 (var8 −0.146 not killed; not a calibration). **Not yet run on the final tree 0350f690**
+  (`nividia:~/alf-gpu/work/t207-5/chain3.sh`, needs ≥ 7.6 GB free on /).
+- Manager decision on the spec's instance fields: `binary_sha256` and `prog_sha` (built after the freeze) and `seeds`
+  (drawn by the driver after the freeze, VERIFICATION §3) may be `"@harness"`; `parameters_sha256` is known at
+  pre-registration and is concrete in the acceptance file.
+- Open: a real `acc_ship.sh` + T1 needs the t207_d5 scripts in gpu-port first (BASE vs PREREG); driver QREF disk
+  margin (`disk_min_free_GB` + 2) as a per-file parameter.
