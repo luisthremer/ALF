@@ -405,6 +405,22 @@ binary with K_ND = 1). Rule: submatrix slower if > 5 % and > 2 × the larger spr
 - Found: ifort -O3 -parallel mapped a `matmul` in the Op_V_is_symmetric fast path to `matmul_mkl_c128` (unresolved at link) → ZGEMM
   (2a2dabb0); debug builds use `-qopt-matmul-` (debug shadow keeps matmul).
 
+## Phase 7 results on SuperMUC-NG (2026-11-01; ifort 2021.4, MKL 2020.4, Intel MPI 2019.12; logs in docs/cluster/)
+- Builds: all variants (noMPI, MPI, Tempering, PP, HDF5, debug, trace, timers, ctest tree) via `cluster/build_variants.sh` on the login
+  node; compute nodes have no git/make (git module loaded in validate.sh; nothing compiled in jobs).
+- Validation (`cluster/validate.sh`, jobs 5956005/027/034/097): 44 trajectory comparisons IDENTICAL (incl. HMC with acceptance 1 and
+  N_delay = −1 with Global_tau); HDF5 attributes correct; debug shadow 10/10 (≤ 2e-13); timers; MPI 4-rank identity incl. cross-slice;
+  ctest 43/43 (tests linked with `ALF_TEST_LDFLAGS=-qopt-matmul`); tempering 3/3 PASS. **Regress with the production flags (-ipo,
+  -fp-model fast=2): confout_0 identical for all 13 sets, only Ener_scal/Kin_scal differ at ~1e-15 relative; with -no-ipo for both
+  branch and baseline: 13/13 byte-IDENTICAL** → whole-program inlining changes the kinetic-energy summation order, not the chain.
+- Pitfall: the stack modules set `KMP_AFFINITY=...compact` → concurrent independent processes all pinned to core 0 (job 5956034
+  timed out); validate.sh disables it, the campaign profile unsets it (OMP_PLACES/OMP_PROC_BIND + Intel MPI domains decide).
+- Pilot C0 (approved): stage S (4 nodes, job 5956035) verified the packed launch (placement OK, 2 disjoint 24-core domains per node);
+  stage A (16 nodes, job 5956099, `docs/cluster/pilot/`): paired precision ratios 0.985–1.018 (auto N_delay 64/128/256, N up to 3136);
+  speedup vs standard at 2x24: L=40 Beta=4 1.61–1.86, L=48 Beta=2 U=8 1.80 (delayed) / 2.15 (submatrix), L=56 Beta=2 2.64 / 2.87.
+  Grid adapted to the 30-min limit (L=60 Beta=4 does not fit). Stage B: BLAS layouts (job 5956151) and calibration B2 pending.
+- No 3D cubic lattice in this ALF version: campaigns C3/H2 cannot run without new lattice code (question for the user).
+
 ## Cluster-phase items (prepared locally, to be checked on the clusters)
 - HDF5 provenance (P6-2): non-standard schemes write `Sequential_scheme`, `N_delay_requested` (at the parameter write) and
   `N_delay_used` (end of run) as attributes of `/` in `data.h5`; standard runs write nothing new (baseline data.h5 kept).
