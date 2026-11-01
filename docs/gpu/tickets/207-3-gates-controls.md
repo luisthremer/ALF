@@ -55,3 +55,12 @@ Commit `gpu-port-207-3` `428576dd`. Evidence `nividia:~/alf-gpu/work/t207-3/` (`
 - Manager decisions (2026-11-01): localized fault stays `FAULT_TAU_AT` (gate table adapted in 207-5); `tau_off_refuse`
   also refuses TAUSWAP, TAU_NS, TAUTEST_V (closing round); keep rule adopted: gcd(m, P) = 1 and
   m ≤ (ndumps − 1)/(P − 1), m = cover·keep (β = 4: KEEP 39; β = 10: KEEP 11).
+
+## Result, closing round (2026-11-01; dev seeds, not reviewed)
+Commit `9a35bdd6`. Evidence `nividia:~/alf-gpu/work/t207-3b/` (`logs/summary_gates_final.{txt,json}`, generated).
+- `tau_off_refuse` also refuses TAUSWAP, TAU_NS, TAUTEST_V (rc = 1 on τ-off input, both paths); normal runs
+  bit-identical to the previous binaries.
+- LOG near pTT control: eps 5e-15 killed (+0.201, 95 % interval above 0.15, margin +0.051), 1e-14 killed (+0.425);
+  2e-15 not killed (+0.032). Default near control 2e-15 +0.204 (margin +0.054).
+- emax q95 ≤ 0.60 misses the localized fault by 0.014 / 0.030; only by_stratum catches it.
+- Open for the review and 207-6: which near controls to pre-register (must be killed reliably once on fresh seeds).
