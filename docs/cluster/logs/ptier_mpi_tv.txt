@@ -1,0 +1,9 @@
+parallel tier on HEAD f334dd45, phases: mpi, extra: none, replicate=1
+PASS mpi/tv/standard/np1: scalars max|z|=1.51 (Part[1]) sign z=-1.17; Green_eqJK n=32 frac>2=9.4%(lim 15.6%) max|z|=2.58 rms=1.14 ; SpinZ_eqJK n=20 frac>2=0.0%(lim 18.5%) max|z|=1.75 rms=0.91  wall=220s
+PASS mpi/tv/standard/np2: scalars max|z|=0.78 (Part[1]) sign z=-0.20; Green_eqJK n=32 frac>2=6.2%(lim 15.6%) max|z|=2.66 rms=1.19 ; SpinZ_eqJK n=20 frac>2=0.0%(lim 18.5%) max|z|=1.89 rms=0.89  wall=271s
+PASS mpi/tv/standard/np4: scalars max|z|=0.56 (Part[1]) sign z=-0.47; Green_eqJK n=32 frac>2=9.4%(lim 15.6%) max|z|=2.76 rms=1.22 ; SpinZ_eqJK n=20 frac>2=0.0%(lim 18.5%) max|z|=1.99 rms=0.92  wall=305s
+PASS mpi/tv/delayed/np1: scalars max|z|=0.42 (Part[1]) sign z=0.24; Green_eqJK n=32 frac>2=9.4%(lim 15.6%) max|z|=2.21 rms=1.03 ; SpinZ_eqJK n=20 frac>2=10.0%(lim 18.5%) max|z|=3.00 rms=1.18  wall=300s
+PASS mpi/tv/delayed/np2: scalars max|z|=0.13 (Part[1]) sign z=-0.11; Green_eqJK n=32 frac>2=3.1%(lim 15.6%) max|z|=2.14 rms=1.02 ; SpinZ_eqJK n=20 frac>2=10.0%(lim 18.5%) max|z|=3.47 rms=1.16  wall=289s
+PASS mpi/tv/delayed/np4: scalars max|z|=0.73 (Ener[1]) sign z=-0.14; Green_eqJK n=32 frac>2=6.2%(lim 15.6%) max|z|=2.20 rms=1.11 ; SpinZ_eqJK n=20 frac>2=0.0%(lim 18.5%) max|z|=1.77 rms=0.91  wall=315s
+PASS mpi/tv/submatrix/np1: scalars max|z|=0.54 (Kin[1]) sign z=0.33; Green_eqJK n=32 frac>2=3.1%(lim 15.6%) max|z|=2.04 rms=1.09 ; SpinZ_eqJK n=20 frac>2=5.0%(lim 18.5%) max|z|=2.79 rms=1.04  wall=216s
+PASS mpi/tv/submatrix/np2: scalars max|z|=1.15 (Kin[1]) sign z=0.49; Green_eqJK n=32 frac>2=3.1%(lim 15.6%) max|z|=2.13 rms=1.08 ; SpinZ_eqJK n=20 frac>2=5.0%(lim 18.5%) max|z|=2.79 rms=1.12  wall=270s

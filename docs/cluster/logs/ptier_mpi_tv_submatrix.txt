@@ -1,0 +1,6 @@
+parallel tier on HEAD b81af54c, phases: mpi, extra: none, replicate=1
+PASS mpi/tv/submatrix/np1: scalars max|z|=0.54 (Kin[1]) sign z=0.33; Green_eqJK n=32 frac>2=3.1%(lim 15.6%) max|z|=2.04 rms=1.09 ; SpinZ_eqJK n=20 frac>2=5.0%(lim 18.5%) max|z|=2.79 rms=1.04  wall=464s
+PASS mpi/tv/submatrix/np2: scalars max|z|=1.15 (Kin[1]) sign z=0.49; Green_eqJK n=32 frac>2=3.1%(lim 15.6%) max|z|=2.13 rms=1.08 ; SpinZ_eqJK n=20 frac>2=5.0%(lim 18.5%) max|z|=2.79 rms=1.12  wall=298s
+PASS mpi/tv/submatrix/np4: scalars max|z|=0.79 (Kin[1]) sign z=0.51; Green_eqJK n=32 frac>2=9.4%(lim 15.6%) max|z|=2.30 rms=1.05 ; SpinZ_eqJK n=20 frac>2=0.0%(lim 18.5%) max|z|=1.70 rms=0.93  wall=294s
+phase mpi: 1026 s
+parallel tier: 3 cases passed, 0 failed, 1026 s total; summary /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/runs/parallel_cl_mpi_tv_submatrix/summary_20261101_123220.txt

@@ -1,0 +1,6 @@
+parallel tier on HEAD b81af54c, phases: mpi, extra: none, replicate=1
+PASS mpi/half/standard/np1: scalars max|z|=1.20 (Pot[1]) sign z=0.00; Green_eqJK n=26 frac>2=0.0%(lim 16.8%) max|z|=1.86 rms=1.10 ; SpinZ_eqJK n=20 frac>2=0.0%(lim 18.5%) max|z|=1.57 rms=0.56  wall=347s
+PASS mpi/half/standard/np2: scalars max|z|=1.95 (Pot[1]) sign z=0.00; Green_eqJK n=26 frac>2=0.0%(lim 16.8%) max|z|=1.87 rms=0.97 ; SpinZ_eqJK n=20 frac>2=0.0%(lim 18.5%) max|z|=1.93 rms=0.79  wall=347s
+PASS mpi/half/standard/np4: scalars max|z|=1.53 (Kin[1]) sign z=0.00; Green_eqJK n=26 frac>2=0.0%(lim 16.8%) max|z|=1.70 rms=1.00 ; SpinZ_eqJK n=20 frac>2=0.0%(lim 18.5%) max|z|=1.33 rms=0.62  wall=356s
+phase mpi: 977 s
+parallel tier: 3 cases passed, 0 failed, 977 s total; summary /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/runs/parallel_cl_mpi_half_standard/summary_20261101_123220.txt
