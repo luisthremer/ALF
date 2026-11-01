@@ -30,5 +30,10 @@
   the spec pins seed hashes, so it is written after the fresh seeds are drawn; `--spec-sha` goes into the acceptance
   file.
 
+- Keep rule (207-3, adopted 2026-11-01): gcd(m, P) = 1 and m ≤ (ndumps − 1)/(P − 1), m = cover·keep, so the kept
+  dumps cover all P positions (β = 4: KEEP 39; β = 10: KEEP 11).
+- Intel controls are the sweep output fault (`FAULT_TAU=eps:<x>`, `FAULT_TAU_AT`); var8 / NS=0 / TAUSWAP=8 are no defect
+  on oneMKL (302c-2). Intel specs use host_member `nvh` (label fixed by the offline program).
+
 ## Done when
 Review (b) approves; PREREG_SHA recorded in the ticket.

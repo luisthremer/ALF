@@ -36,3 +36,22 @@ Calibrated, on dev seeds at β = 4, the two accuracy gates of decision 33 and co
 
 ## Done when
 Calibration tables from stamped runs; numerics-reviewer approves code and calibration.
+
+## Result, main round (2026-11-01; dev seeds, not reviewed)
+Commit `gpu-port-207-3` `428576dd`. Evidence `nividia:~/alf-gpu/work/t207-3/` (`logs/cal_*`, `logs/report_cal_*`, `gate/`).
+- Code: `ALF_GPU_FAULT_TAU=eps:<x>` now also perturbs the four device CGR2_2 outputs in the sweep (1 + x·r, fixed r per
+  element and block; debug only); `ALF_GPU_FAULT_TAU_AT=<nst>:<nfe>` localizes it; every early return of `gpu_tau_setup`
+  refuses SELFTEST=4, TAUTIME, FAULT_TAU(_AT) and the TAUDIAG variables. Normal runs bit-identical to base (data.h5).
+- β = 4, stride 3, KEEP 39, cover 1: proposed gates by decision 37's rule (correct-variant max / control min):
+  S_ens(pTT) pooled ≤ 0.15 (def +0.113 per run / 2e-15 +0.204; LOG +0.061 / TAUSWAP +0.211, var8 ≥ +0.218);
+  emax pooled ≤ 0.15 (1e-12 +0.25…+0.275); emax by_stratum ≤ 0.30 (localized 2e-12 @ (2,2) +0.56…+0.59);
+  emax q95 ≤ 0.60. Not separable, report-only: pTT by_stratum, pTT q95, S_ens_max.
+- **FAILED item:** on LOG the graded fault 2e-15 is not killed by pTT (+0.032); closing round runs 1e-14 and 5e-15.
+- Var8 on LOG is a real defect at full run length (+0.218…+0.252); dev5's +0.123 came from the biased kept subset.
+- Attribution: the device pTT excess (+0.066) comes from device rounding when Q is formed and applied (var4/var256
+  bring it to cpu level); the device QR makes the device more accurate pointwise (var16).
+- First genuine gate runs: approved gate 4118a1de end to end with KEEP 39 → PASS, re-processing 1034/1034 equal;
+  by_stratum with 10 and 8 strata shown.
+- Manager decisions (2026-11-01): localized fault stays `FAULT_TAU_AT` (gate table adapted in 207-5); `tau_off_refuse`
+  also refuses TAUSWAP, TAU_NS, TAUTEST_V (closing round); keep rule adopted: gcd(m, P) = 1 and
+  m ≤ (ndumps − 1)/(P − 1), m = cover·keep (β = 4: KEEP 39; β = 10: KEEP 11).
