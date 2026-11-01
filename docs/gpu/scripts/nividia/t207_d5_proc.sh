@@ -14,6 +14,10 @@
 #     6. only if the program exited 0 and the check passed and KEEP > 0: t207_d5_qparse.py thin deletes the dumps that are not every
 #        KEEP-th of the covered ones, only files listed in the manifest whose sha256 still matches and that are not symbolic links
 #        (list in qref_thinned.txt).  Kept: records, manifest, full qref.txt, every KEEP-th dump.  Exit status: 0 only if all passed.
+#   Program hash: the sha256 of the binary is computed and must equal the one in its .sha256 file (else refusal); it is recorded in
+#   qref_proc.json ('prog'), and t207_d5_agg.py / t207_d5_gate.py can require a given value (--prog-sha).  KEEP > 0 must satisfy the keep rule of
+#   qparse (gcd(cover*KEEP, P) = 1); the kept dumps allow pointwise re-checking only, the recomputable result is the full qref.txt plus the manifest.
+#   The gate (t207_d5_gate.py) refuses a run processed with DUMP_COVER != 1 or ALLOW_V1 (it reads cover and the dump version from the aggregate).
 #   4 OpenMP threads, OpenBLAS 1 thread.
 W=${D5W:-$HOME/alf-gpu/work/t207/dev5}; export TMPDIR=$W/tmp; . ~/alf-gpu/env/gnu.sh > /dev/null
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -27,6 +31,9 @@ case $P in def) B=$W/bin/qref_pp.out;; log) B=$W/bin/qref_log.out;; *) echo "bad
 case "$KEEP" in ''|*[!0-9]*) echo "KEEP must be a non-negative integer"; exit 1;; esac
 case "$COVER" in ''|*[!0-9]*|0) echo "DUMP_COVER must be a positive integer"; exit 1;; esac
 [ -x "$B" ] || { echo "refusing: $B missing"; exit 1; }
+# the program that runs is the one its .sha256 file names (review fix 7): compute, compare, record
+PROGSHA=$(sha256sum "$B" | cut -d' ' -f1); WANTSHA=$(cut -d' ' -f1 "$B.sha256" 2>/dev/null)
+[ -n "$PROGSHA" ] && [ "$PROGSHA" = "$WANTSHA" ] || { echo "refusing: sha256 of $B is '$PROGSHA', $B.sha256 says '$WANTSHA'"; exit 1; }
 cd "$R" || exit 1
 for f in qref.txt qref_spec.json qref_proc.json qref_check.txt qref_thinned.txt; do [ -e $f ] && { echo "refusing: $R/$f exists"; exit 1; }; done
 $PY -I $HERE/t207_d5_qparse.py spec "$R" --path $P --qs "$QS" --nul "$NUL" --hostin "$HI" --cover "$COVER" --keep "$KEEP" || { echo "proc FAILED: spec"; exit 2; }
@@ -43,23 +50,24 @@ s=$(date +%s)
 $B "$QS" "$NUL" "$HI" < qref_list.txt > qref.txt 2> qref_err.txt; rc=$?
 e=$(date +%s)
 $PY -I $HERE/t207_d5_qparse.py check "$R" $V1 > qref_check.txt 2>&1; crc=$?
-$PY -I - "$R" "$B" "$P" "$QS" "$NUL" "$HI" "$COVER" "$KEEP" $rc $crc $((e-s)) <<'PY'
+$PY -I - "$R" "$B" "$P" "$QS" "$NUL" "$HI" "$COVER" "$KEEP" $rc $crc $((e-s)) "$PROGSHA" <<'PY'
 import json, sys, os
-R, B, P, QS, NUL, HI, COVER, KEEP, rc, crc, wall = sys.argv[1:12]
+R, B, P, QS, NUL, HI, COVER, KEEP, rc, crc, wall, progsha = sys.argv[1:13]
 def first(p):
     return open(p).read().split()[0]
-json.dump(dict(ticket='207-2 pipeline (development evidence, dev seeds)', run=R, prog=first(B + '.sha256'),
+json.dump(dict(ticket='207-2 pipeline (development evidence, dev seeds)', run=R, prog=progsha,
                prog_src=first(B.replace('.out', '.src.sha256')), args=dict(path=P, qs=int(QS), nul=NUL, hostin=int(HI), cover=int(COVER), keep=int(KEEP)),
                rc=int(rc), check_rc=int(crc), check=open('qref_check.txt').read().strip(), wall_s=int(wall),
                lines=sum(1 for l in open('qref.txt') if l.startswith('QREF file')),
                dumps=sum(1 for l in open('qref_list.txt'))), open('qref_proc.json', 'w'), indent=1)
 PY
+[ $? -eq 0 ] && [ -s qref_proc.json ] || { echo "proc FAILED: could not write qref_proc.json"; exit 2; }
 echo "proc $R rc=$rc check_rc=$crc wall=$((e-s))s: $(tail -1 qref_check.txt)"
 if [ $rc -ne 0 ] || [ $crc -ne 0 ]; then
   echo "proc FAILED: program exit status $rc, check status $crc: every dump is kept"; exit 3
 fi
 if [ "$KEEP" -gt 0 ]; then
-  $PY -I $HERE/t207_d5_qparse.py thin "$R" || { echo "proc FAILED: thin (nothing deleted)"; exit 4; }
+  $PY -I $HERE/t207_d5_qparse.py thin "$R" $V1 || { echo "proc FAILED: thin (nothing deleted)"; exit 4; }
   $PY -I $HERE/t207_d5_qparse.py check "$R" --dumps $V1 >> qref_check.txt 2>&1 || { echo "proc FAILED: dump directory after thinning"; exit 5; }
 fi
 exit 0

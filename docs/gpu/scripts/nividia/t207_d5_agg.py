@@ -8,11 +8,17 @@ of the CGR2_2 output as the next precision check receives it; emax: pointwise ma
                                                                   point; leave-one-out for a member)
 with a bootstrap 95 % interval over points, and the share of bootstrap means above each candidate bound.
 
-usage: t207_d5_agg.py OUT.json MEASURE --ref def|log|LIST [--allow-v1] ROLE:LABEL=path/qref.txt ...
+usage: t207_d5_agg.py OUT.json MEASURE --ref def|log|LIST [--allow-v1] [--prog-sha SHA256] ROLE:LABEL=path/qref.txt ...
   ROLE: main (device = 'dev', stand-in control = 'var8') | ctl (production control run: its 'dev' is the defect)
   --ref: the reference ensemble, an explicit list (ticket 207-2): 'def' = cpu,nvh,n4,n100004,n1,n100001,n2,n1608,n4808,n5,n100005,
          'log' = cpu,nvh,n4,n100004,n1,n100001,n2,n5,n100005, or a comma list of names cpu, nvh, n<code> (code != 0).  An unknown
          name, a duplicate, or a listed name missing from any run is an error (no method is ever treated as correct by default).
+  ROLE is tied to the run's own env (ticket 207-2, review): a main run has exactly ALF_GPU_{DEBUG=1, TAUDIAG_QREF, TAUDIAG_FROM,
+         TAUDIAG_QHOST=1, TAUDIAG_QVAR=8}, a ctl run the same plus TAU_NS=0 (default path) or TAUSWAP=8 (LOG path) (QVAR optional); any
+         other ALF_GPU_* variable, or a role that does not match the env, is an error.
+  The same run twice (same qref.txt sha256, same run.log sha256, or the same role + seeds + parameters) is an error.
+  --prog-sha: the sha256 of the offline program; every run's qref_proc.json (written by t207_d5_proc.sh, which checks the binary against
+         its .sha256 file) must carry it, else error.  A qref_proc.json next to qref.txt must say rc 0, check_rc 0 and the arguments of the spec.
 Input is read through the strict parser t207_d5_qparse.py (every point, every member, every number checked); any deviation ends the
 run with an error and no output file.  Measures pTT / pmax use the points with B (their number must equal the number derived from
 the run parameters); emax / eF use all points.  An error number that is zero or not finite is an error (no clamping).
@@ -94,6 +100,30 @@ def logs(run, which):
     return out, n_exp
 
 
+def proc_record(qref_txt, spec, progsha):
+    """qref_proc.json of the processing: must say rc 0, check_rc 0 and the arguments of the spec; returns the recorded program sha256 (or None
+    if there is no qref_proc.json and no --prog-sha was asked for)"""
+    pj = os.path.join(os.path.dirname(os.path.abspath(qref_txt)), 'qref_proc.json')
+    if not os.path.isfile(pj):
+        if progsha is not None:
+            raise QError('--prog-sha given, but %s is missing' % pj)
+        return None
+    with open(pj) as f:
+        pr = json.load(f)
+    a = spec['args']
+    pa = pr.get('args') if isinstance(pr, dict) else None
+    if not isinstance(pa, dict) or pr.get('rc') != 0 or pr.get('check_rc') != 0 or pa.get('path') != a['path'] or pa.get('qs') != a['qs'] \
+            or pa.get('hostin') != a['hostin'] or pa.get('cover') != a['cover'] or pa.get('keep') != a['keep'] \
+            or pa.get('nul') != ','.join(str(c) for c in a['nul']):
+        raise QError('%s: not a passing processing of the arguments in qref_spec.json (rc, check_rc, args)' % pj)
+    prog = pr.get('prog')
+    if not (isinstance(prog, str) and re.match(r'^[0-9a-f]{64}$', prog)):
+        raise QError('%s: no valid program sha256' % pj)
+    if progsha is not None and prog != progsha:
+        raise QError('%s: program sha256 %s differs from --prog-sha %s' % (pj, prog, progsha))
+    return prog
+
+
 def per_run(run, which, refs):
     L, n_exp = logs(run, which)
     methods = list(L[0])
@@ -120,12 +150,17 @@ def summ(v):
 def main():
     args = sys.argv[1:]
     allow_v1 = False
+    progsha = None
     refarg = None
     rest = []
     i = 0
     while i < len(args):
         if args[i] == '--allow-v1':
             allow_v1 = True
+        elif args[i] == '--prog-sha':
+            if i + 1 >= len(args) or not re.match(r'^[0-9a-f]{64}$', args[i + 1]):
+                raise QError('--prog-sha needs a sha256 (64 lower-case hex digits)')
+            progsha = args[i + 1]; i += 1
         elif args[i] == '--ref':
             if i + 1 >= len(args):
                 raise QError('--ref needs a value')
@@ -147,13 +182,28 @@ def main():
             raise QError('duplicate label %s' % m.group(2))
         seen.add(m.group(2))
         runs.append((m.group(1), m.group(2), m.group(3), parse(m.group(3), allow_v1)))
+        run = runs[-1][3]
+        role_env = QP.env_role(run.spec['run']['env'], run.spec['run']['variant'])
+        if role_env != m.group(1):
+            raise QError('run %s: role %s given, but its env is that of a %s run' % (m.group(2), m.group(1), role_env))
     table = {}
     pooled = {}
     inputs = {}
+    dup = {}
     for role, lab, fn, run in runs:
         res, n_exp = per_run(run, which, refs)
-        inputs[lab] = dict(role=role, path=fn, qref_sha256=QP.sha256_file(fn), n_points=len(run.points), n_used=res['cpu']['n'], n_expected=n_exp,
-                           variant=run.spec['run']['variant'], args=run.spec['args'], env=run.spec['run']['env'], members=sorted(res))
+        r = run.spec['run']
+        prog = proc_record(fn, run.spec, progsha)
+        keys = [('qref.txt sha256', QP.sha256_file(fn)), ('run.log sha256', r['records_sha256']['run.log']),
+                ('run record (role, seeds, parameters)', (role, r['seeds_sha256'], r['parameters_sha256']))]
+        for what, key in keys:
+            if (what, key) in dup:
+                raise QError('run %s is the same run as %s (same %s): a run may enter once' % (lab, dup[(what, key)], what))
+            dup[(what, key)] = lab
+        inputs[lab] = dict(role=role, path=fn, qref_sha256=keys[0][1], run_log_sha256=keys[1][1], seeds_sha256=r['seeds_sha256'],
+                           parameters_sha256=r['parameters_sha256'], prog_sha256=prog, n_points=len(run.points), n_used=res['cpu']['n'],
+                           n_expected=n_exp, v1=any(p.hd['ver'] == 1 for p in run.points), variant=r['variant'], args=run.spec['args'],
+                           env=r['env'], members=sorted(res))
         table[lab] = {}
         for m, d in res.items():
             name = m
@@ -208,7 +258,7 @@ def main():
     for m in pool:
         for ref in ('S_cpu', 'S_ens'):
             pool[m][ref].pop('boot')
-    json.dump(dict(measure=which, refs=refs, inputs=inputs, runs=table, pooled=pool), open(outf, 'w'), indent=1)
+    json.dump(dict(measure=which, refs=refs, allow_v1=allow_v1, prog_sha_required=progsha, inputs=inputs, runs=table, pooled=pool), open(outf, 'w'), indent=1)
 
 
 if __name__ == '__main__':

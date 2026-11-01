@@ -28,20 +28,20 @@ ident)
 main)
   for s in $SETS; do
     r m_def_$s $s $BD hub12x12_cb_p $Q ALF_GPU_TAUDIAG_QREF=2 ALF_GPU_TAUDIAG_FROM=331 ALF_GPU_TAUDIAG_QVAR=8
-    pr m_def_$s def 20 0 40
+    pr m_def_$s def 20 0 39
     r m_log_$s $s $BL hub12x12_cb_p $Q ALF_GPU_TAUDIAG_QREF=2 ALF_GPU_TAUDIAG_FROM=331 ALF_GPU_TAUDIAG_QVAR=8
-    pr m_log_$s log 20 0 40
+    pr m_log_$s log 20 0 39
   done ;;
 ctl)
   r c_def_dev1 dev1 $BD hub12x12_cb_p $Q ALF_GPU_TAUDIAG_QREF=2 ALF_GPU_TAUDIAG_FROM=331 ALF_GPU_TAU_NS=0
-  pr c_def_dev1 def 0 0 40
+  pr c_def_dev1 def 20 0 39
   r c_log_dev1 dev1 $BL hub12x12_cb_p $Q ALF_GPU_TAUDIAG_QREF=2 ALF_GPU_TAUDIAG_FROM=331 ALF_GPU_TAUSWAP=8
-  pr c_log_dev1 log 0 0 40 ;;
+  pr c_log_dev1 log 20 0 39 ;;
 din)
   r d_def_dev1 dev1 $BD hub12x12_cb_p $Q ALF_GPU_TAUDIAG=2 ALF_GPU_TAUDIAG_QREF=4 ALF_GPU_TAUDIAG_FROM=331
-  pr d_def_dev1 def 0 1 10
+  pr d_def_dev1 def 0 1 9
   r d_log_dev1 dev1 $BL hub12x12_cb_p $Q ALF_GPU_TAUDIAG=2 ALF_GPU_TAUDIAG_QREF=4 ALF_GPU_TAUDIAG_FROM=331
-  pr d_log_dev1 log 0 1 10 ;;
+  pr d_log_dev1 log 0 1 9 ;;
 *) echo "bad phase"; exit 1 ;;
 esac
 echo "done $P $(date -Is)" >> $out

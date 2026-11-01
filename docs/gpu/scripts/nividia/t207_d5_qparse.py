@@ -10,8 +10,12 @@ CLI (python3 -I t207_d5_qparse.py ...):
                           processing), write RUNDIR/qref_spec.json
     check RUNDIR [--allow-v1] [--dumps]      validate RUNDIR/qref.txt against the spec re-derived from the records
                           (--dumps: and the dump directory after the processing)
-    thin  RUNDIR          delete the dumps that are not every (cover*keep)-th, only those listed in RUNDIR/qref_manifest.txt
-                          whose sha256 still matches and that are not symbolic links; nothing is deleted if one check fails
+    thin  RUNDIR [--allow-v1]   delete the dumps that are not every (cover*keep)-th, only those listed in RUNDIR/qref_manifest.txt
+                          whose sha256 still matches and that are not symbolic links; requires qref.txt to load strictly and
+                          qref_proc.json with rc 0 and check_rc 0 for the same arguments; nothing is deleted if one check fails
+Keep rule: with keep > 0, gcd(cover*keep, P) = 1 is required (P = C/gcd(C, stride), C = NSTM*N_FL), so that the kept dumps visit every
+block/flavour position of the call cycle equally often.  The kept dumps allow pointwise re-checking only; the recomputable result is the
+full qref.txt plus the manifest.  'check' prints the per-nst / br / nfe counts of the kept dumps.
 
 The expected content is derived from  parameters (Nbin, Nsweep, Nwrap, Beta, Dtau), info (Sweeps, Bins, Nstm, N_FL, the
 GPU debug env line, the GPU tau pass line), stamp.txt and provenance.json (env of the run, return code, hashes of the
@@ -26,13 +30,22 @@ cover, keep) stored in qref_spec.json:
     quad self-checks <= QSELF_MAX; and a final line 'QREFEND dumps D ok D err 0'; any other line is an error.
 """
 import argparse, hashlib, json, math, os, re, sys
+from math import gcd
 
 QSELF_MAX = 1e-25          # input check of the proposed criterion (207 dev5): quad vs itself (row-permuted QR input, other branch)
 NUMRE = re.compile(r'^-?[0-9]\.[0-9]{4}E[+-][0-9]{3}$')
 REF_DEF = 'cpu,nvh,n4,n100004,n1,n100001,n2,n1608,n4808,n5,n100005'
 REF_LOG = 'cpu,nvh,n4,n100004,n1,n100001,n2,n5,n100005'
 DIAG_NAMES = ('qself', 'qbr', 'din', 'cpuh', 'cpuhx')     # members that are not error statistics of a G
-SPEC_VERSION = 1
+SPEC_VERSION = 2
+# allow-list of the GPU debug environment of a run that enters the accuracy gate (ticket 207-2, review fix 2).  A main run (the device
+# under test; 'var8' is its stand-in control) has exactly these variables, a control run (production control: its 'dev' is the planted
+# defect) the same plus TAU_NS=0 (default path) or TAUSWAP=8 (LOG path).  Any other ALF_GPU_* variable (for instance ALF_GPU_TAUSWAP=<mask>,
+# which makes the 'device' result a host result) means the run does not test the device: refused.  A control run does not need QVAR (its
+# var8 member is not used; the dev5 control runs c_*_dev1 have none), if it has it, it is 8.
+MAIN_ENV = {'ALF_GPU_DEBUG': '1', 'ALF_GPU_TAUDIAG_QHOST': '1', 'ALF_GPU_TAUDIAG_QVAR': '8'}
+ENV_COUNT_KEYS = ('ALF_GPU_TAUDIAG_QREF', 'ALF_GPU_TAUDIAG_FROM')       # non-negative integers (QREF >= 1)
+CTL_EXTRA = {'def': ('ALF_GPU_TAU_NS', '0'), 'log': ('ALF_GPU_TAUSWAP', '8')}
 RECORDS = ('parameters', 'info', 'run.log', 'stamp.txt', 'provenance.json')
 
 
@@ -122,6 +135,30 @@ def parse_env_tokens(tokens, what):
     return d
 
 
+def env_role(env, variant):
+    """'main' or 'ctl' if the env of a run is exactly the allowed one for that role and path, else QError"""
+    if not isinstance(env, dict):
+        raise QError('env is not a dictionary')
+    extra = [k for k in ('ALF_GPU_TAU_NS', 'ALF_GPU_TAUSWAP') if k in env]
+    if not extra:
+        role, want = 'main', dict(MAIN_ENV)
+    else:
+        role, want = 'ctl', dict(MAIN_ENV)
+        if 'ALF_GPU_TAUDIAG_QVAR' not in env:
+            del want['ALF_GPU_TAUDIAG_QVAR']
+        if variant not in CTL_EXTRA:
+            raise QError('env allow-list: unknown path %r' % (variant,))
+        want[CTL_EXTRA[variant][0]] = CTL_EXTRA[variant][1]
+    for k in ENV_COUNT_KEYS:
+        if k not in env or not re.match(r'^[0-9]+$', str(env[k])) or (k.endswith('QREF') and int(env[k]) < 1):
+            raise QError('env allow-list: %s missing or not a valid number: %r' % (k, env.get(k)))
+        want[k] = env[k]
+    if env != want:
+        raise QError('env allow-list: the %s run has ALF_GPU_* %s, the allowed environment is %s' % (
+            role, ' '.join('%s=%s' % kv for kv in sorted(env.items())), ' '.join('%s=%s' % kv for kv in sorted(want.items()))))
+    return role
+
+
 def parse_int_list(s, what):
     if s == '-' or s == '':
         return []
@@ -147,6 +184,12 @@ def derive_run(rundir):
     for key, name in (('parameters_sha256', 'parameters'), ('run_log_sha256', 'run.log'), ('info_sha256', 'info')):
         if prov.get(key) != sha256_file(os.path.join(rundir, name)):
             raise QError('provenance.json %s does not match the record %s' % (key, name))
+    sm = re.findall(r'^seeds ([0-9a-f]{16}) parameters ([0-9a-f]{16}) *$', read_text(rundir, 'stamp.txt'), re.M)
+    if len(sm) != 1:
+        raise QError('stamp.txt: seeds/parameters line: expected exactly one, found %d' % len(sm))
+    ps = prov.get('seeds_sha256')
+    if not (isinstance(ps, str) and re.match(r'^[0-9a-f]{64}$', ps) and ps.startswith(sm[0][0]) and prov['parameters_sha256'].startswith(sm[0][1])):
+        raise QError('provenance.json seeds_sha256 / parameters_sha256 do not match the seeds line of stamp.txt')
     par = read_text(rundir, 'parameters')
     info = read_text(rundir, 'info')
     log = read_text(rundir, 'run.log')
@@ -250,7 +293,15 @@ def derive_run(rundir):
         br.append(v[4])
     return dict(passes=passes, ltrot=ltrot, nwrap=nwrap, nstm=nstm, nfl=nfl, n=n, variant=variant, stride=stride, frm=frm,
                 qhost=qhost == '1', qvar=qvar, taudiag=tdg, hasdg=hasdg, env=env_info, ndumps=len(dumps), br=br,
+                seeds_sha256=ps, parameters_sha256=prov['parameters_sha256'],
                 records_sha256={r: sha256_file(os.path.join(rundir, r)) for r in RECORDS})
+
+
+def keep_rule(nstm, nfl, stride, m):
+    """(P, gcd(m, P)): number of distinct call positions visited by the dumps, and the gcd with the thinning step m = cover*keep"""
+    c = nstm * nfl
+    pp = c // gcd(c, stride)
+    return pp, gcd(m, pp)
 
 
 def make_spec(rundir, path, qs, nul, hostin, cover=1, keep=0):
@@ -263,6 +314,17 @@ def make_spec(rundir, path, qs, nul, hostin, cover=1, keep=0):
         raise QError('bad processing arguments')
     if len(nul) != len(set(nul)):
         raise QError('duplicate null code')
+    if keep > 0:
+        # Keep rule (review fix 5).  Call number c (0-based, counted from the first dump pass) is in the block of the pass at position c mod C,
+        # C = NSTM*N_FL (blocks x flavours); dump number k is call (k-1)*stride, so the dumps visit P = C/gcd(C, stride) positions cyclically.
+        # Keeping every m-th dump (m = cover*keep) visits all P positions equally often iff gcd(m, P) = 1.  Otherwise the kept dumps are a
+        # biased subset of the blocks/flavours (e.g. every 40th of stride 2, C = 8: only nst = 1) on which the accuracy bound cannot separate
+        # right from wrong.  Refused.  The kept dumps allow pointwise re-checking only; what is recomputable from the evidence is the full
+        # qref.txt plus the manifest.
+        pp, g = keep_rule(run['nstm'], run['nfl'], run['stride'], cover * keep)
+        if g != 1:
+            raise QError('keep rule: gcd(cover*keep = %d, P = %d) = %d != 1 (C = NSTM*N_FL = %d, stride %d): the kept dumps would cover only a '
+                         'subset of the block/flavour positions' % (cover * keep, pp, g, run['nstm'] * run['nfl'], run['stride']))
     return dict(version=SPEC_VERSION, run=run, args=dict(path=path, qs=qs, nul=nul, hostin=hostin, cover=cover, keep=keep))
 
 
@@ -281,6 +343,22 @@ def cover_dumps(spec):
                     if (k - 1) % spec['args']['cover'] == 0:
                         out.append((k, p, nst, nfe, run['br'][k - 1]))
     return out
+
+
+def kept_dumps(spec):
+    """the covered dumps that stay after the thinning (all covered ones if keep is 0)"""
+    m = spec['args']['cover'] * max(spec['args']['keep'], 1)
+    return [d for d in cover_dumps(spec) if (d[0] - 1) % m == 0]
+
+
+def kept_summary(spec):
+    kd = kept_dumps(spec)
+    run = spec['run']
+    def cnt(i, rng):
+        return ' '.join('%d:%d' % (v, sum(1 for d in kd if d[i] == v)) for v in rng)
+    return ('QPARSE kept dumps (every %d-th of the run, stride %d): %d of %d; per nst %s; per br %s; per nfe %s'
+            % (spec['args']['cover'] * max(spec['args']['keep'], 1), run['stride'], len(kd), run['ndumps'],
+               cnt(2, range(1, run['nstm'] + 1)), cnt(4, (1, 2)), cnt(3, range(1, run['nfl'] + 1))))
 
 
 def expected_names(spec, k, hasb):
@@ -361,7 +439,7 @@ def load(qref_txt, allow_v1=False):
     body = lines[:-1]
     for ln in body:
         if ln.startswith('QREFERR'):
-            raise QError(ln[:400])
+            raise QError('the program reported an error: ' + ln[:400])
     if (int(me.group(1)), int(me.group(2)), int(me.group(3))) != (len(exp), len(exp), 0):
         raise QError('QREFEND %s differs from dumps %d ok %d err 0' % (me.group(0), len(exp), len(exp)))
     if len(body) != len(exp):
@@ -453,11 +531,26 @@ def check_dumps(rundir, spec, stride, manifest=None):
     return len(want)
 
 
-def thin(rundir):
+def thin(rundir, allow_v1=False):
     spec = load_spec(rundir)
     keep = spec['args']['keep']
     if keep < 1:
         raise QError('keep 0: nothing to thin')
+    # a passing check is required here, not only in the caller (review fix 6): qref.txt loads strictly, and the processing recorded
+    # program exit status 0 and check status 0 for exactly these arguments
+    load(os.path.join(rundir, 'qref.txt'), allow_v1)
+    pj = os.path.join(rundir, 'qref_proc.json')
+    if not os.path.isfile(pj):
+        raise QError('qref_proc.json missing: nothing deleted')
+    with open(pj) as f:
+        pr = json.load(f)
+    a = spec['args']
+    pa = pr.get('args') if isinstance(pr, dict) else None
+    if not isinstance(pr, dict) or pr.get('rc') != 0 or pr.get('check_rc') != 0 or isinstance(pr.get('rc'), bool) or isinstance(pr.get('check_rc'), bool):
+        raise QError('qref_proc.json: rc / check_rc are not both 0 (the processing did not pass): nothing deleted')
+    if not isinstance(pa, dict) or pa.get('path') != a['path'] or pa.get('qs') != a['qs'] or pa.get('hostin') != a['hostin'] \
+            or pa.get('cover') != a['cover'] or pa.get('keep') != a['keep'] or pa.get('nul') != ','.join(str(c) for c in a['nul']):
+        raise QError('qref_proc.json args differ from qref_spec.json: nothing deleted')
     stride = spec['args']['cover'] * keep
     manifest = read_manifest(rundir)
     cov = cover_dumps(spec)
@@ -491,7 +584,7 @@ def main():
     c = sub.add_parser('check')
     c.add_argument('rundir'); c.add_argument('--allow-v1', action='store_true'); c.add_argument('--dumps', action='store_true')
     t = sub.add_parser('thin')
-    t.add_argument('rundir')
+    t.add_argument('rundir'); t.add_argument('--allow-v1', action='store_true')
     a = ap.parse_args()
     try:
         if a.cmd == 'spec':
@@ -512,9 +605,12 @@ def main():
                 nd = check_dumps(a.rundir, sp, sp['args']['cover'] * max(sp['args']['keep'], 1), read_manifest(a.rundir))
                 msg = ', %d dumps in qref/ match the manifest' % nd
             print('QPARSE check ok: %d points (%d with B)%s' % (len(r.points), r.n_with_b, msg))
+            if r.spec['args']['keep'] > 0:
+                print(kept_summary(r.spec))
         else:
-            nd, nk = thin(a.rundir)
+            nd, nk = thin(a.rundir, a.allow_v1)
             print('QPARSE thin ok: %d dumps deleted, %d kept' % (nd, nk))
+            print(kept_summary(load_spec(a.rundir)))
     except QError as e:
         sys.stderr.write('QPARSE ERROR: %s\n' % e)
         sys.exit(1)
