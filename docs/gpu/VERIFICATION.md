@@ -38,8 +38,10 @@ gate's statistic, threshold and reason, α and the multiple-comparison correctio
 positive controls with their expected outcome. Development uses the committed dev seeds; acceptance seeds are drawn
 fresh by the driver (`secrets.randbits`) after the candidate is frozen. Changing the file needs the owner's quoted,
 dated approval (in the file's `approvals` and in DECISIONS.md) **and** fresh seeds afterwards. A statistical FAIL goes
-to the owner; "re-run until green" is forbidden. When a criterion fails, relaxing it is never put forward as the first
-or recommended option.
+to the owner; "re-run until green" is forbidden. When a sound criterion fails, relaxing it is never put forward as the first
+or recommended option. Sound means calibrated: correct code (e.g. CPU variants with another rounding order) passes it
+and a planted defect fails it; if measurements show that correct code cannot meet a criterion, the manager tells the
+owner plainly, with the numbers, and recommends a calibrated replacement (CLAUDE.md, working principle).
 
 ## 4. Scripted verdicts
 `verdict.py` computes PASS/FAIL for every gate from raw outputs and writes `verdict.json`/`verdict.md`; report tables

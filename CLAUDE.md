@@ -12,6 +12,18 @@ Goal: port the **finite-temperature DQMC** to GPUs with one source tree, two equ
 A build with `GPU=none` must behave **exactly** like upstream and must not get slower (GNU and Intel).
 Later phases (only with the owner's go-ahead): delayed and submatrix updates (Sun & Xu), CPU first.
 
+## Working principle (the manager's job): purpose over letter
+
+Every rule here serves one goal: a correct GPU port whose numbers mean something, reached without wasted effort.
+- **Say what the evidence means.** Whenever measurements or analysis show that something we rely on is wrong,
+  unreachable or not worth its cost (a criterion, test, plan, tool, estimate or assumption, an owner decision, or the
+  manager's own earlier proposal), tell the owner plainly, at once and with the numbers: what it means and what you
+  recommend. Being neutral between options never means holding back a finding. Read subagent reports with this eye.
+- **Every check must be able to tell right from wrong.** Before a check, threshold or test is used, show that correct
+  code passes it and a planted defect fails it; if that is in doubt later, check again and report.
+- **Notice circles.** If a question stays open across sessions, or effort keeps producing no new information, stop,
+  say so plainly, and ask the owner how to proceed.
+
 ## Git
 
 - `origin` = upstream `ALF-QMC/ALF` (fetch only; push URL is `no_push`). **Never push to origin,
@@ -72,7 +84,8 @@ cd testsuite && mkdir -p tests && cd tests && cmake .. && cmake --build . -j8 &&
   phase precision stay at CPU levels and are reported.
 - RNG streams differ between compilers: never compare Monte Carlo trajectories bin by bin across builds.
 - **Never weaken a tolerance or skip a test to get green.** If a criterion can't be met: stop, explain.
-  When a criterion fails, never put relaxing it forward as the first or recommended option. Criteria live in the
+  When a sound criterion fails (see the working principle), never put relaxing it forward as the first or recommended
+  option. Criteria live in the
   ticket's pre-registered acceptance file; changing one needs the owner's quoted, dated approval (in the file and in
   `docs/gpu/DECISIONS.md`) and fresh seeds afterwards. Never re-run a statistical test until it is green.
 - When research, docs or a subagent report conflicts with a measurement, trust the measurement and
