@@ -1,0 +1,11 @@
+parallel tier on HEAD 2b7492e0, phases: pp, extra: none, replicate=1
+INFO pp/half/delayed/exchange: Acceptance Tempering = 0.000000000000000E+000 (PARALLEL_PARAMS has no exchange steps: expected absent or 0)
+PASS pp/half/delayed/Temp_0(U=3): scalars max|z|=0.50 (Kin[1]) sign z=0.00; Green_eqJK n=20 frac>2=10.0%(lim 18.5%) max|z|=2.75 rms=1.06 ; SpinZ_eqJK n=20 frac>2=5.0%(lim 18.5%) max|z|=2.61 rms=1.02 
+FAIL-ARRAY pp/half/delayed/Temp_1(U=4): scalars max|z|=2.37 (Kin[1]) sign z=0.00; Green_eqJK n=26 frac>2=19.2%(lim 16.8%) max|z|=2.71 rms=1.36 FAIL; SpinZ_eqJK n=20 frac>2=5.0%(lim 18.5%) max|z|=2.34 rms=0.83 
+replicate (array-only failure, fresh seeds) for PARALLEL_PARAMS/half/delayed:
+INFO pp/half/delayed/exchange: Acceptance Tempering = 0.000000000000000E+000 (PARALLEL_PARAMS has no exchange steps: expected absent or 0)
+PASS pp/half/delayed/Temp_0(U=3): scalars max|z|=0.78 (Ener[1]) sign z=0.00; Green_eqJK n=25 frac>2=4.0%(lim 17.1%) max|z|=2.31 rms=1.12 ; SpinZ_eqJK n=20 frac>2=0.0%(lim 18.5%) max|z|=1.63 rms=0.81 
+PASS pp/half/delayed/Temp_1(U=4): scalars max|z|=0.54 (Pot[1]) sign z=0.00; Green_eqJK n=26 frac>2=15.4%(lim 16.8%) max|z|=2.73 rms=1.20 ; SpinZ_eqJK n=20 frac>2=0.0%(lim 18.5%) max|z|=1.78 rms=0.88 
+REPLICATE-PASS PARALLEL_PARAMS/half/delayed (round 1 failed an array rule only; the replicate passes everything)
+phase pp: 1473 s
+parallel tier: 1 cases passed, 0 failed, 1473 s total; summary /hppfs/work/pn73xu/di38zuw/CLAUDE/ALF/runs/parallel_cl_pp_delayed/summary_20261101_130239.txt
