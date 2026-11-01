@@ -8,11 +8,15 @@ DESCRIPTION.py is a python file that defines a dict CAMPAIGN (see README.md and 
   <binary>.build_info.txt), binary_sha256 (optional), fakeintel (on|off, default: profile), repetitions, seed,
   max_jobs_in_queue, max_attempts, template (parameter template dir; default <binary>.start written by build_info.sh,
   else the current checkout's Start template with a warning), wall_safety, pack_nodes (int >= 1, default 1; see
-  below), points = [
+  below), pilot (bool, default False: allows repetitions = 1 on a non-local profile, with a warning; recorded in
+  campaign.json and marked in the report), points = [
     {name, model, keys {KEY: VALUE} (make_params.py syntax), L [list], schemes [standard|delayed|submatrix],
      n_delay [ints >= -1; 0 = auto, -1 = auto+tune], nsweep, nbin (int or {L: int}), layouts ["RxT", ...],
      partial_node (allow ranks*threads != cores per node), n_fl, orbitals, sec_per_sweep_est (number or {L: number}),
-     setup_s_est (number or {L: number}), mem_gb_per_rank (optional override of the estimate)} ]
+     setup_s_est (number or {L: number}), mem_gb_per_rank (optional override of the estimate),
+     cpu_max_h (optional float > 0: ALF's CPU_MAX in hours; ALF then ignores NBin, runs bins until the budget is used
+     and stops gracefully after the bin that reaches it; the run's wall estimate is cpu_max_h*3600 + setup_s_est and
+     nbin / sec_per_sweep_est may be omitted; collect.py counts the bins actually written)} ]
 
 Writes <root>/<id>/ (default root: <ALF>/runs/campaigns): campaign.json (resolved description, run list, sha256 of
 every script), campaign.env, jobs.list, jobs/<job>.sbatch, runs/<run_id>/input/{parameters,seeds}, scripts/
@@ -182,8 +186,17 @@ def build(desc, prof, profile_path):
     if fakeintel not in ("on", "off"):
         die("fakeintel must be on or off")
     reps = int(desc["repetitions"])
+    pilot = desc.get("pilot", False)
+    if not isinstance(pilot, bool):
+        die("pilot must be True or False (got %r)" % (pilot,))
+    if pilot and reps != 1:
+        die("pilot = True is for a single repetition (repetitions = %d)" % reps)
     if reps < 3 and prof["name"] != "local":
-        die("repetitions = %d: at least 3 are required for a cluster campaign (median and spread)" % reps)
+        if not pilot:
+            die("repetitions = %d: at least 3 are required for a cluster campaign (median and spread); a pilot "
+                "campaign (description key pilot = True) may use repetitions = 1" % reps)
+        sys.stderr.write("make_campaign.py: WARNING: pilot campaign with 1 repetition: no spread, medians are single "
+                         "measurements (the report is marked accordingly)\n")
     seed = int(desc["seed"])
     safety = float(desc.get("wall_safety", 1.5))
     prefix = "c_" + cid
@@ -218,10 +231,20 @@ def build(desc, prof, profile_path):
             die("point %s: low-rank schemes need an n_delay list" % name)
         for L in p["L"]:
             L = int(L)
+            cpu_max_h = p.get("cpu_max_h")
+            if cpu_max_h is not None:
+                if isinstance(cpu_max_h, bool) or not isinstance(cpu_max_h, (int, float)) or not cpu_max_h > 0:
+                    die("point %s: cpu_max_h must be a number > 0 (hours)" % name)
+                cpu_max_h = float(cpu_max_h)
             nsweep = int(per_l(p.get("nsweep"), L, "nsweep", name))
-            nbin = int(per_l(p.get("nbin"), L, "nbin", name))
-            sps = float(per_l(p.get("sec_per_sweep_est"), L, "sec_per_sweep_est", name))
+            # with cpu_max_h ALF ignores NBin (set to 10^7 internally) and the time model is the budget
+            nbin = int(per_l(p.get("nbin", 1) if cpu_max_h is not None else p.get("nbin"), L, "nbin", name))
+            sps = float(per_l(p.get("sec_per_sweep_est", 0.0) if cpu_max_h is not None else p.get("sec_per_sweep_est"),
+                              L, "sec_per_sweep_est", name))
             setup = float(per_l(p.get("setup_s_est"), L, "setup_s_est", name))
+            # estimated time of one run: the nominal NSweep x NBin, or, with CPU_MAX, the whole budget + setup (the run
+            # uses all of it: Control_init starts the CPU_MAX clock after the Hamiltonian setup)
+            run_cost = setup + nsweep * nbin * sps if cpu_max_h is None else setup + cpu_max_h * 3600.0
             ndim = L * L * int(p.get("orbitals", 1))
             n_fl = int(p.get("n_fl", 2))
             mem = float(p["mem_gb_per_rank"]) if "mem_gb_per_rank" in p else mem_estimate_gb(ndim, n_fl, beta, dtau, nwrap)
@@ -245,7 +268,7 @@ def build(desc, prof, profile_path):
                     die("point %s L=%d layout %s: memory estimate %d x %.2f GB > 90%% of %.0f GB node memory"
                         % (name, L, lay, ranks, mem, prof["node_mem_gb"]))
                 if pack > 1:
-                    run_est = setup + nsweep * nbin * sps
+                    run_est = run_cost
                     if slot_wall_min(run_est, safety) > max_wall_min:
                         die("point %s L=%d layout %s: a single run (setup + %d sweeps x %d bins) needs a wall estimate "
                             "of %d min > %d min of partition %s: it cannot be packed (reduce nsweep/nbin or L, or use "
@@ -259,12 +282,14 @@ def build(desc, prof, profile_path):
                                    "n_delay_requested": nd, "layout": lay, "ranks": ranks, "threads": threads,
                                    "repetition": rep, "seed": seed + rep - 1, "nsweep": nsweep, "nbin": nbin,
                                    "keys": keys}
+                            if cpu_max_h is not None:
+                                rec["cpu_max_h"] = cpu_max_h
                             # order inside a slot: by point, L, repetition, then the scheme order rotated by the repetition
                             order = (pidx, L, rep, (pos - (rep - 1)) % len(entries))
                             groups.setdefault((ranks, threads, lay), []).append(
                                 {"run": rec, "est": run_est, "order": order, "mem": mem})
                     continue
-                est_s = len(entries) * (setup + nsweep * nbin * sps) + 120.0
+                est_s = len(entries) * run_cost + 120.0
                 wall_min = int(math.ceil(est_s * safety / 60.0)) + 5
                 if wall_min > max_wall_min:
                     die("point %s L=%d layout %s: wall estimate %d min > %d min of partition %s"
@@ -281,7 +306,7 @@ def build(desc, prof, profile_path):
                                      "L": L, "ndim": ndim, "beta": beta, "dtau": dtau, "scheme": s,
                                      "n_delay_requested": nd, "layout": lay, "ranks": ranks, "threads": threads,
                                      "repetition": rep, "seed": seed + rep - 1, "nsweep": nsweep, "nbin": nbin,
-                                     "keys": keys})
+                                     "keys": keys, **({"cpu_max_h": cpu_max_h} if cpu_max_h is not None else {})})
                     jobs.append({"job": jname, "point": name, "L": L, "layout": lay, "ranks": ranks,
                                  "threads": threads, "repetition": rep, "runs": jruns, "wall_min": wall_min,
                                  "est_s": est_s, "mem_gb_per_rank": mem})
@@ -305,7 +330,7 @@ def build(desc, prof, profile_path):
     ids = [r["run_id"] for r in runs]
     if len(set(ids)) != len(ids):
         die("duplicate run ids (repeated L, layout or n_delay in a point?)")
-    return {"prefix": prefix, "fakeintel": fakeintel, "max_wall_min": max_wall_min, "jobs": jobs, "runs": runs,
+    return {"prefix": prefix, "pilot": pilot, "fakeintel": fakeintel, "max_wall_min": max_wall_min, "jobs": jobs, "runs": runs,
             "pack": pack, "max_slots": max_slots}
 
 
@@ -390,6 +415,8 @@ def main(argv):
                 "max_attempts": int(desc.get("max_attempts", 2)), "job_prefix": plan["prefix"],
                 "script_sha256": {k: sha256(v) for k, v in sorted(scripts.items())},
                 "description_text": desc_text, "jobs": plan["jobs"], "runs": plan["runs"]}
+    if plan["pilot"]:
+        resolved["pilot"] = True
     if packed:
         resolved["pack_nodes"] = plan["pack"]
         resolved["pack_max_slots_per_job"] = plan["max_slots"]
@@ -461,6 +488,8 @@ def main(argv):
                "SEED=%d" % r["seed"]]
         if r["scheme"] != "standard":          # standard ignores N_delay: the template value stays
             kv.append("N_delay=%d" % r["n_delay_requested"])
+        if "cpu_max_h" in r:                   # graceful stop after the bin in which the limit is reached
+            kv.append("CPU_MAX=%r" % r["cpu_max_h"])
         cmd = [sys.executable, "-I", MAKE_PARAMS] + (["--template", template] if template else []) + [inp] + kv
         subprocess.run(cmd, check=True)
     for name, text in job_text.items():

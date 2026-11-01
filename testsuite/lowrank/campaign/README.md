@@ -45,6 +45,22 @@ Local side (`make_campaign.py`, `collect.py`, `report.py`): python3, stdlib only
    `<id>/submit_all.sh [--dry-run] [--wait SECONDS]`.
 7. **Copy back** and run `collect.py <id> --strict`, then `report.py <id>/collected.json --out report.md`.
 
+## Pilot campaigns and truncated runs (pilot, cpu_max_h)
+
+- `pilot` (top-level description key, bool, default False): a cluster profile normally needs >= 3 repetitions; with `pilot = True`
+  exactly 1 repetition is allowed (a warning is printed), campaign.json records `"pilot": true`, collect.py copies the flag, and
+  report.py marks the heading of every table (and a banner) as "pilot (1 repetition, no spread)".
+- `cpu_max_h` (optional per point, float > 0): written as `CPU_MAX` into the run's parameters. ALF then sets NBin to 10^7, runs bins
+  until the budget is used and stops gracefully after the bin in which the limit is reached (the CPU_MAX clock starts after the
+  Hamiltonian setup). So the run uses its whole budget regardless of `nbin`: **the run's wall estimate is `cpu_max_h*3600 +
+  setup_s_est`** (in the one-node jobs and in the slot packing; `nbin` and `sec_per_sweep_est` may then be omitted). The generator's
+  3 x safety formula still applies on top.
+- info of such a run has "Prog will stop after hours: <CPU_MAX>" and, at the end, "Effective number of bins: <n>" instead of a "Bins"
+  line. collect.py takes the bins written from there: `sec_per_sweep = CPU Time / (NSweep x bins written)` (not NSweep x NBin);
+  rows carry `truncated`, `bins_done`, `sweeps_done`; a run whose info disagrees with the request (CPU_MAX missing or different,
+  sweeps per bin) is excluded; with a timers.txt a differing bin count is warned. report.py flags truncated runs (banner, and
+  "(k truncated, n bins)" in the n_valid column of table 1).
+
 ## Packed jobs (pack_nodes)
 
 Why: the SuperMUC-NG allocation may use only the `test` partition: at most 16 nodes x 48 cores and 30 min per job, **only one
@@ -186,7 +202,7 @@ with TIMER_RATE); excluded and missing runs.
 testsuite/lowrank/campaign/tests/run_local_test.sh runs/campaign_test/bin/ALF_mpi.out runs/campaign_test/bin/ALF_nompi.out
 testsuite/lowrank/campaign/tests/run_pack_test.sh   runs/campaign_test/bin/ALF_mpi.out runs/campaign_test/bin/ALF_nompi.out
 ```
-`run_pack_test.sh` (about 35 s, at most 3 processes) tests packed jobs with `tests/campaign_pack_test.py`: `pack_nodes = 1`
+`run_pack_test.sh` (about 40 s, at most 3 processes; also the pilot / cpu_max_h tests with `tests/campaign_pilot_test.py`) tests packed jobs with `tests/campaign_pack_test.py`: `pack_nodes = 1`
 unchanged, refusals, `--dry-run` packing, the slot assignment against an independent first-fit-decreasing, the job script,
 concurrent slots on fake hosts `shimnode1..3` (sbatch shim `--nodes=N`, `scontrol show hostnames` shim, srun shim host log,
 `SHIM_PROBE_FAIL_HOST`), a failing run, a failing slot, collect/report, resubmission, SIGTERM, the host check.

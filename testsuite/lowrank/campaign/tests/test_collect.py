@@ -92,6 +92,11 @@ with tempfile.TemporaryDirectory() as tmp:
     check("duplicate timer line is an error", raises(collect.parse_timers, p2) is not None)
 
 # --strict rules (strict_problems): generic unavailable values, cluster-only rules, --allow
+d = info("info_cpumax.txt")
+check("cpu_max info (truncated run): no Bins line, effective bins", d["truncated"] and d["cpu_max_info"] == 0.05
+      and d["bins_effective"] == 7 and d["bins_info"] == 7 and d["sweeps_info"] == 20, str((d["truncated"], d["bins_info"])))
+check("truncated run: s/sweep from the bins written (90 s / (20 x 7))", abs(d["cpu_time_s"] / (d["sweeps_info"] * d["bins_info"]) - 90.0 / 140) < 1e-12)
+check("untruncated info: truncated False, no effective bins", not info("info_fixed.txt")["truncated"] and info("info_fixed.txt")["bins_effective"] is None)
 job = {k: "x" for k in collect.REQUIRED_JOB}
 run = {k: "x" for k in collect.REQUIRED_RUN}
 inf = {k: 1 for k in collect.REQUIRED_INFO}

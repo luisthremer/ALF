@@ -12,7 +12,9 @@
 # (MKL probe fails on its host) marks only its own runs NOT_RUN, per-slot status lines, collect.py --strict and report.py
 # read the packed campaign, a resubmission re-runs only the pending runs; SIGTERM (time limit) marks the running runs of
 # every slot FAILED rc=143, the rest NOT_RUN, and leaves no process behind; the host check aborts all slots when the
-# launcher does not start them on their host.
+# launcher does not start them on their host. Round 2: pilot campaigns (1 repetition on a cluster profile, recorded and marked
+# in the report) and per-point cpu_max_h (CPU_MAX in the parameters, run estimate = budget + setup, truncated runs: seconds per
+# sweep from the bins actually written, flagged in collect/report).
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CDIR="$(dirname "$HERE")"
 ALF="$(cd "$CDIR/../../.." && pwd)"
@@ -248,6 +250,65 @@ hasf "host check message" "$JH/slot_0/abort_reason.txt" "instead of 'shimnode1'"
 n_notrun=0; for r in $(cut -d' ' -f2- "$C3/jobs.list"); do [ "$(st "$C3" "$r")" = NOT_RUN ] && n_notrun=$((n_notrun + 1)); done
 expect "all runs NOT_RUN (nothing was started on a wrong host)" "$n_notrun" "$(cut -d' ' -f2- "$C3/jobs.list" | wc -w | tr -d ' ')"
 expect "no attempt directory created" "$(ls -d "$C3"/runs/*/a[0-9]* 2>/dev/null | wc -l | tr -d ' ')" 0
+
+echo "== pilot (1 repetition) and cpu_max_h (truncated runs)"
+PDESC="$HERE/campaign_pilot_test.py"
+export CAMPAIGN_TEST_BIN="$NOMPI_BIN" CAMPAIGN_TEST_ID="t4pilot_$STAMP" CAMPAIGN_TEST_REPS=1
+out="$(CAMPAIGN_TEST_PROFILE=supermuc CAMPAIGN_TEST_PARTITION=test CAMPAIGN_TEST_PILOT=0 CAMPAIGN_TEST_SETUP=60 $MK "$PDESC" --dry-run 2>&1)"; rc=$?
+expect "cluster profile, 1 repetition, no pilot flag: refused rc" "$rc" 1; has "refusal names the pilot key" "$out" "pilot = True"
+out="$(CAMPAIGN_TEST_PROFILE=supermuc CAMPAIGN_TEST_PARTITION=test CAMPAIGN_TEST_REPS=2 CAMPAIGN_TEST_SETUP=60 $MK "$PDESC" --dry-run 2>&1)"; rc=$?
+expect "pilot with 2 repetitions refused rc" "$rc" 1; has "pilot needs exactly 1 repetition" "$out" "single repetition"
+out="$(CAMPAIGN_TEST_PROFILE=supermuc CAMPAIGN_TEST_PARTITION=test CAMPAIGN_TEST_SETUP=60 $MK "$PDESC" --dry-run 2>&1)"; rc=$?
+expect "cluster profile, pilot = True, 1 repetition: accepted rc" "$rc" 0
+has "pilot warning" "$out" "WARNING: pilot campaign with 1 repetition"
+CAMPAIGN_TEST_PROFILE=supermuc CAMPAIGN_TEST_PARTITION=test CAMPAIGN_TEST_SETUP=60 CAMPAIGN_TEST_ID="t4pilotsm_$STAMP" $MK "$PDESC" --root "$ROOT" > /dev/null 2>&1 || fail "generate supermuc pilot"
+hasf "campaign.json records pilot: true" "$ROOT/t4pilotsm_$STAMP/campaign.json" '"pilot": true'
+expect "campaign.json of a non-pilot campaign has no pilot entry" "$(grep -c '"pilot"' "$C/campaign.json")" 0
+expect "cpu_max_h reaches ALF's parameters" "$(grep -c -E '^CPU_MAX +=.*0\.0008' "$ROOT/t4pilotsm_$STAMP/runs/hub_L6_1x1_r1_standard/input/parameters")" 1
+sed '/"cpu_max_h"/d' "$PDESC" > "$T/pilot_nocpu_$STAMP.py"
+out="$($MK "$T/pilot_nocpu_$STAMP.py" --dry-run 2>&1)"; rc=$?
+expect "without cpu_max_h the nominal 100000 bins do not fit: refused rc" "$rc" 1; has "single-run refusal" "$out" "a single run"
+out="$($MK "$PDESC" --dry-run 2>&1)"; rc=$?
+expect "with cpu_max_h the run estimate is the budget (+ setup): accepted rc" "$rc" 0
+has "two runs (1102.9 s each) need two slots" "$out" "nodes=2"
+has "slot estimate = setup + 2.88 s + start-up" "$out" "estimated wall  20.4 min"
+out="$(CAMPAIGN_TEST_PACK=1 CAMPAIGN_TEST_SETUP=500 $MK "$PDESC" --dry-run 2>&1)"; rc=$?
+expect "one-node job (pack_nodes = 1) also uses the cpu_max_h estimate rc" "$rc" 0; has "one job" "$out" "1 jobs, 2 runs"
+sed '/"cpu_max_h"/d' "$PDESC" > "$T/pilot_nocpu_$STAMP.py"
+out="$(CAMPAIGN_TEST_PACK=1 CAMPAIGN_TEST_SETUP=500 $MK "$T/pilot_nocpu_$STAMP.py" --dry-run 2>&1)"; rc=$?
+expect "one-node job without cpu_max_h: refused rc" "$rc" 1; has "wall refusal" "$out" "wall estimate"
+echo "-- run it (local, packed, 2 slots): ALF stops gracefully after a bin"
+CP="$ROOT/$CAMPAIGN_TEST_ID"
+$MK "$PDESC" --root "$ROOT" > /dev/null || fail "generate pilot"
+"$CP/submit_all.sh" 2>&1 | grep -v WARNING | tail -2
+for r in hub_L6_1x1_r1_standard hub_L6_1x1_r1_delayed_nd8; do
+    expect "status $r" "$(st "$CP" "$r")" OK
+    grep -q -E '^ *Effective number of bins' "$CP/runs/$r/a1/info" && pass "info of $r: Effective number of bins" || fail "no effective bins in $r"
+    grep -q -E '^ *Bins ' "$CP/runs/$r/a1/info" && fail "info of $r has a Bins line" || pass "info of $r: no Bins line (CPU_MAX mode)"
+    grep -E 'Effective number of bins' "$CP/runs/$r/a1/info"
+done
+$COLLECT "$CP" --strict > "$T/collect_pilot_$STAMP.txt" 2>&1; rc=$?
+grep -v 'WARNING  .*build_info git commit' "$T/collect_pilot_$STAMP.txt"
+expect "collect --strict rc (truncated runs)" "$rc" 0
+python3 -I - "$CP/collected.json" <<'PYEOF' && pass "truncated rows: s/sweep = CPU Time / (NSweep x bins written), not NSweep x NBin; pilot flag; flagged truncated" || fail "truncated rows (see above)"
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert d["pilot"] is True and len(d["rows"]) == 2, (d["pilot"], len(d["rows"]))
+for r in d["rows"]:
+    assert r["truncated"] is True and r["cpu_max_info"] == 0.0008, (r["truncated"], r["cpu_max_info"])
+    assert r["bins_done"] >= 1 and r["bins_done"] == r["bins_info"] and r["bins_done"] < r["nbin"], (r["bins_done"], r["nbin"])
+    assert r["sweeps_done"] == 20 * r["bins_done"]
+    assert abs(r["sec_per_sweep"] - r["cpu_time_s"] / (20.0 * r["bins_done"])) < 1e-12
+    assert r["sec_per_sweep"] > 1000 * r["cpu_time_s"] / (20.0 * r["nbin"])          # the NSweep x NBin formula would be 1e5 too small
+    print("  %s: bins done %d, %.4f s/sweep" % (r["run_id"], r["bins_done"], r["sec_per_sweep"]))
+PYEOF
+$REPORT "$CP/collected.json" --out "$CP/report.md" > /dev/null && pass "report.py (pilot, truncated)" || fail "report.py pilot"
+expect "all four table headings are marked pilot (1 repetition, no spread)" "$(grep -c -E '^## [1-4]\..*pilot \(1 repetition, no spread\)' "$CP/report.md")" 4
+hasf "report banner: truncated runs" "$CP/report.md" "truncated by CPU_MAX"
+grep -q -E 'truncated, [0-9]+ bins' "$CP/report.md" && pass "table 1 marks the truncated runs with the bins done" || fail "table 1 truncated mark"
+expect "report of a non-pilot, non-truncated campaign has no pilot / truncated text" "$(grep -c -i -E 'pilot|truncated' "$C/report.md")" 0
+sed 's/"pilot": true/"pilot": false/' "$CP/collected.json" > "$T/collected_nopilot_$STAMP.json"
+$REPORT "$T/collected_nopilot_$STAMP.json" --out "$T/report_nopilot_$STAMP.md" > /dev/null; expect "pilot flag false: no pilot marking" "$(grep -c 'pilot (1 repetition' "$T/report_nopilot_$STAMP.md")" 0
 
 echo "run_pack_test: $([ $fails = 0 ] && echo ALL PASS || echo FAILED) ($fails failures); campaigns: $C $C2 $C3"
 [ $fails = 0 ]
