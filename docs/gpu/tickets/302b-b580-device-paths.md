@@ -10,7 +10,8 @@
 - **Branch:** `gpu-port-302b` (the 2026-10-30 draft branch `gpu-port-302b-b580` is superseded)
 - **Acceptance files:** `testsuite/gpu_reference/acceptance/302b.json` (Intel part, `intel`: 83 runs, 15 gates, 19
   controls) and `302b.nvidia.json` (`nividia` part, `acc_driver.py --part nvidia`: 10 runs, 5 gates, 5 controls).
-- **Status:** ACCEPTED (T2 PASS on both machines, 2026-10-31), awaiting the owner's gate. Candidate 2 = `25cf8269`
+- **Status:** CLOSED (owner's gate 2026-10-31, decision 30; merged into `gpu-port` as `01f3ba1c`). Evidence:
+  `~/alf-gpu/archive/t302b_2026-10-31/` on intel and nividia (sha256 manifests). Candidate 2 = `25cf8269`
   (branch `gpu-port-302b-impl2`, code identical to candidate 1 `08b095b4`) on **PREREG_SHA `8167e684`** (re-registration
   for decisions 28, compare2 120 × 60, and 29, false-alarm budget 0.35; approved by review (b)). Earlier
   pre-registrations: `3e7d1992` (decisions 26–27) and `0e427164`, both superseded. Review (a) and T1 of candidate 1
