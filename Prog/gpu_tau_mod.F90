@@ -123,6 +123,13 @@ Module gpu_tau_mod
   Public :: gpu_tau_on, gpu_tau_setup, gpu_tau_finalize, gpu_tau_hook, gpu_tau_pass
 
   Logical, Save :: gpu_tau_on = .false.
+  ! decision 22 (302b): under GPU=intel (oneMKL backend) the equal-time sweep runs on the device but TAU_M stays on the host until
+  ! ticket 302c brings the tau pass to the device; the host TAU_M then reads the INTERIM 206 export of udvst (gpu_stab_exchange)
+#if defined(ALF_LA_ONEMKL)
+  Logical, Parameter :: tau_dev_allowed = .false.
+#else
+  Logical, Parameter :: tau_dev_allowed = .true.
+#endif
 
   Integer, Save :: t_N = 0, t_N2 = 0, t_nfe = 0, t_nstm = 0
   Integer, Allocatable, Save :: t_nt(:)                       ! Stab_nt(0:NSTM)
@@ -228,6 +235,12 @@ Contains
     if (.not. gpu_stab_on) return
     if (get_Ltau() /= 1) return
     if (Projector .or. reconstruction_needed) return
+    if (.not. tau_dev_allowed) then
+       ! decision 22: no device tau pass under GPU=intel until 302c (the line must not read ACTIVE: 302b forbids it)
+       call info_line('GPU tau pass (207): host TAU_M (GPU=intel: the device tau pass waits for ticket 302c, decision 22); '// &
+            & 'udvst exported D->H (INTERIM 206)')
+       return
+    endif
     t_N = Ndim; t_N2 = 2*Ndim; t_nfe = N_FL_eff; t_nstm = NSTM
     n = t_N; n2 = t_N2
     allocate(t_nt(0:NSTM)); t_nt = Stab_nt
