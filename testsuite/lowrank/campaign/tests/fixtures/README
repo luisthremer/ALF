@@ -4,3 +4,5 @@ Lnx <GHz> lp64 <threading layer>", with versions from the audit (SuperMUC stack/
 The exact strings on the machines are unverified; the parser in provenance.sh (prov_mkl_parse) matches loosely.
 sysfs/ is a fake /sys cpufreq tree (macOS has none); proc/self/maps lists a fake fakeintel library for the preload check.
 info_*.txt / timers_*.txt: info lines in every N_delay format collect.py must parse, and the T1 timers.txt format.
+pin_intel_truncated*.txt / omp_*.txt: Intel MPI 2019 cuts the "Pin cpu" list after ~30 entries and leaves a trailing comma (seen on
+SuperMUC-NG with 1x48 and 2x24, campaign smuc_ndscan); the OMP_AFFINITY lines (OMP_AFFINITY_FORMAT of the job templates) then decide.

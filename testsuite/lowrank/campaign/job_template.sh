@@ -212,13 +212,13 @@ while read -r rid scheme nd; do
     if [ "$n" -gt 0 ]; then v="$n lines in pin_map.txt; first: $(head -1 "$A/pin_map.txt")"
     else v="unavailable(no I_MPI_DEBUG / cpu-bind lines)"; fi
     prov_kv "$f" pin_map "$v"
-    pin="$(prov_pin_check "$A/pin_map.txt" "$RANKS" "$THREADS" "${TPC:-1}")"; pinrc=$?
-    prov_kv "$f" pin_check "$pin"
     cat "$A/stdout.log" "$A/stderr.log" "$A"/rss_*.txt 2>/dev/null | grep '^OMP_AFFINITY' > "$A/omp_affinity.txt"
     n="$(wc -l < "$A/omp_affinity.txt" | tr -d ' ')"
     if [ "$n" -gt 0 ]; then v="$n lines in omp_affinity.txt; first: $(head -1 "$A/omp_affinity.txt")"
     else v="none printed (no OpenMP parallel region was entered)"; fi
     prov_kv "$f" omp_affinity "$v"
+    pin="$(prov_pin_check "$A/pin_map.txt" "$RANKS" "$THREADS" "${TPC:-1}" "$A/omp_affinity.txt")"; pinrc=$?
+    prov_kv "$f" pin_check "$pin"
     reason=""
     if [ "$rc" -ne 0 ]; then reason="launcher rc=$rc"
     elif [ ! -s "$A/info" ]; then reason="no info file"

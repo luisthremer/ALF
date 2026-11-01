@@ -186,7 +186,7 @@ prov_job() {
     prov_job_env "$d" "$f"
 }
 
-# prov_pin_check FILE RANKS THREADS [THREADS_PER_CORE]: verify the pinning record of a run.
+# prov_pin_check FILE RANKS THREADS [THREADS_PER_CORE [OMP_AFFINITY_FILE]]: verify the pinning record of a run.
 # Sources: Intel MPI I_MPI_DEBUG>=4 table lines "[0] MPI startup(): <rank> <pid> <node> <cpus>" with <cpus> as
 # "{0,1,2}", "0,1,2", "0-11" or a mix of lists and ranges (braces optional), and srun --cpu-bind=verbose lines
 # "cpu-bind=MASK - <node>, task <rank> <local> [<pid>]: mask 0x<hex> set" (masks of any width). When both are present,
@@ -195,9 +195,13 @@ prov_job() {
 # ranks, each pinned to THREADS cpus (or THREADS x THREADS_PER_CORE hardware threads for core binding with SMT), and
 # pairwise disjoint sets per node. Prints "OK <source>: ..." / "BAD ..."; returns 0 / 1. Table lines with a rank
 # that cannot be parsed unambiguously are quoted in the BAD reason.
+# Intel MPI 2019 cuts long "Pin cpu" lists after ~30 entries and leaves a trailing comma (1x48 on SuperMUC-NG). If any
+# table line is cut, the table cannot be judged and the OMP_AFFINITY lines of OMP_AFFINITY_FILE decide instead
+# ("OMP_AFFINITY host=<h> pid=<p> thread=<n> affinity=<list>"): per pid the union of its threads' cpus, keyed by pid.
 prov_pin_check() {
     [ -r "$1" ] || { echo "BAD no pinning record file"; return 1; }
-    awk -v R="$2" -v T="$3" -v TPC="${4:-1}" '
+    omp="${5:-}"; [ -n "$omp" ] && [ -r "$omp" ] || omp=/dev/null
+    awk -v R="$2" -v T="$3" -v TPC="${4:-1}" -v OMPF="$omp" '
         function put(src, r, node, c) { k = ++cnt[src]; er[src, k] = r; en[src, k] = node; ec[src, k] = c }
         function hexset(src, r, node, h,   i, L, v, b) {
             h = tolower(h); sub(/^0x/, "", h); L = length(h)
@@ -214,12 +218,22 @@ prov_pin_check() {
                 for (c = lo; c <= hi; c++) put(src, r, node, c)
             }
         }
+        FILENAME == OMPF {
+            if ($0 !~ /^OMP_AFFINITY / || $0 !~ / pid=[0-9]+ / || $0 !~ / affinity=[0-9]/) next
+            h = $0; sub(/.* host=/, "", h); sub(/[ \t].*/, "", h)
+            p = $0; sub(/.* pid=/, "", p); sub(/[ \t].*/, "", p)
+            a = $0; sub(/.* affinity=/, "", a); sub(/[ \t].*/, "", a)
+            if (!((p, a) in oseen)) { oseen[p, a] = 1; listset("O", p, h, a) }
+            next
+        }
         /MPI startup\(\):/ {
             s = $0; sub(/.*MPI startup\(\):[ \t]*/, "", s); nw = split(s, w, /[ \t]+/)
             if (w[1] !~ /^[0-9]+$/) next                       # header, version and environment lines
             set = s; for (i = 1; i <= 3; i++) sub(/^[^ \t]+[ \t]+/, "", set); sub(/[ \t]+$/, "", set)
             if (nw >= 4 && w[2] ~ /^[0-9]+$/ && set ~ /^\{?[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*\}?$/) {
                 listset("I", w[1] + 0, w[3], set)
+            } else if (nw >= 4 && w[2] ~ /^[0-9]+$/ && set ~ /^\{?[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*,$/) {
+                if (trunc == "") trunc = $0
             } else if (raw == "") raw = $0
             next
         }
@@ -230,10 +244,15 @@ prov_pin_check() {
             hexset("S", r, node, m)
         }
         END {
+            if (trunc != "" && raw == "") {     # a cut Intel table: judge the OpenMP thread affinity instead
+                if (cnt["O"] == 0) { print "BAD truncated I_MPI_DEBUG pin list and no OMP_AFFINITY record: " trunc; exit 1 }
+                delete cnt["I"]
+            }
             if (cnt["I"] == 0 && raw != "") {   # an Intel table exists but cannot be judged: never fall back to srun
                 print "BAD unparsable I_MPI_DEBUG pin line: " raw; exit 1
             }
-            if (cnt["I"] > 0) { src = "I"; name = "I_MPI_DEBUG pin table" (cnt["S"] > 0 ? " (srun masks informational)" : "") }
+            if (trunc != "" && raw == "") { src = "O"; name = "OpenMP thread affinity (I_MPI_DEBUG pin list truncated)" }
+            else if (cnt["I"] > 0) { src = "I"; name = "I_MPI_DEBUG pin table" (cnt["S"] > 0 ? " (srun masks informational)" : "") }
             else if (cnt["S"] > 0) { src = "S"; name = "srun cpu-bind masks" }
             else {
                 print "BAD no parsable I_MPI_DEBUG pin lines or cpu-bind masks" (raw != "" ? "; unparsed: " raw : "")
@@ -258,7 +277,7 @@ prov_pin_check() {
             if (nov) { print "BAD overlapping domains (" name "):" ov; exit 1 }
             for (r in ranks) { sz = n[r]; break }
             print "OK " name ": " R " ranks x " sz " cpus, disjoint"
-        }' "$1"
+        }' "$1" "$omp"
 }
 
 # prov_mkl_threads_check THREADS LAYER: non-zero if more than one thread is requested but MKL runs sequentially
