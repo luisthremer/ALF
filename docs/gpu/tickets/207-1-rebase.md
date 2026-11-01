@@ -5,7 +5,7 @@
 - **Review:** numerics-reviewer (merge diff) · no harness acceptance (preparatory; 207 is accepted as a whole in 207-7)
 - **Depends on:** –
 - **Branch:** `gpu-port-207-r` = `gpu-port` `8efc6c31` + merge of the 207 WIP `c8d1c6f1` (manager; only docs conflicted)
-- **Status:** done, pending numerics-reviewer approval of the merge diff (fix `2579bc5d` on `gpu-port-207-r`)
+- **Status:** done (2026-11-01): numerics-reviewer approved the merge diff and fix `2579bc5d` on `gpu-port-207-r`
 
 ## Goal
 The 207 device τ pass, unchanged in behaviour, builds and runs on top of the current `gpu-port` (212, 302a, 302b and the
@@ -57,3 +57,7 @@ Pipeline fixes (207-2), new gates and controls (207-3), β = 10 (207-4), harness
   difference on dev5's kept dumps, so the lost v2 source `b161b985` is not needed to reproduce dev5.
 - **Evidence:** `nividia:~/alf-gpu/work/t207-1/`, `intel:~/alf-gpu/work/t207-1/` (indexes `logs/t0_index_*.json`;
   T0 scripts wrote no `provenance.json`, the QREF runs did). Scripts: `docs/gpu/scripts/nividia/t207_1/`.
+- **Review (numerics-reviewer, part a, approve):** merge hunks identical to both sides; the one broken assumption was
+  302b removing the `ALF_LA_ONEMKL` early return in `gpu_stab_setup`, closed by `2579bc5d`; guard placement in
+  `gpu_tau_setup` confirmed; `GPU=none` unchanged by reading. Nit (self-test/fault silent when the τ pass is off) moved to
+  207-3 task 4. The merge carries `207.draft.json` unchanged from the WIP; 207-6 replaces it.
