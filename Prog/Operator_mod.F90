@@ -1115,7 +1115,7 @@ Contains
       Complex(Kind=Kind(0.d0)), intent(inout) :: M(:,:)
       Type(Operator), intent(in) :: Op
       Integer :: Q(Op%N), iq(Op%N), nq, a, b, k
-      Complex(Kind=Kind(0.d0)), allocatable :: F(:,:), Mq(:,:)   ! heap: N x N and Ndim x N can be large
+      Complex(Kind=Kind(0.d0)), allocatable :: F(:,:), Mq(:,:), Rq(:,:)   ! heap: N x N and Ndim x N can be large
       nq = 0
       do a = 1, Op%N
          iq(a) = 0
@@ -1139,10 +1139,13 @@ Contains
             F(iq(a), iq(b)) = F(iq(a), iq(b)) + Op%g * Op%O(a, b)
          enddo
       enddo
-      allocate(Mq(size(M,1), nq))
+      allocate(Mq(size(M,1), nq), Rq(size(M,1), nq))
       Mq = M(:, Q(1:nq))
-      M(:, Q(1:nq)) = matmul(Mq, F)
-      deallocate(Mq, F)
+      ! ZGEMM, not matmul: ifort -O3 -parallel maps this matmul to matmul_mkl_c128, which the ALF link line does not provide
+      call ZGEMM('N', 'N', size(M,1), nq, nq, cmplx(1.d0, 0.d0, kind(0.d0)), Mq, size(M,1), F, nq, &
+           &     cmplx(0.d0, 0.d0, kind(0.d0)), Rq, size(M,1))
+      M(:, Q(1:nq)) = Rq
+      deallocate(Mq, Rq, F)
     end subroutine mult_right_local
 
   end function Op_V_is_symmetric
