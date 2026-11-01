@@ -139,7 +139,7 @@ build() {   # build noMPI|mpi
         cp "$HERE/blas_bench.F90" "$dir/blas_bench.F90"
         # configure.sh works relative to $PWD and must be sourced in this shell (exports ALF_FC, ALF_FLAGS_PROG, LIB_BLAS_LAPACK)
         cd "$ALFDIR" || exit 1
-        source configure.sh "${BLAS_BENCH_MACHINE:-GNU}" $cfg NO-INTERACTIVE >/dev/null 2>&1
+        { [ -z "${ALF_ENV_SH:-}" ] || source "$ALF_ENV_SH" || true; } && source configure.sh "${BLAS_BENCH_MACHINE:-${ALF_MACHINE:-GNU}}" $cfg NO-INTERACTIVE >/dev/null 2>&1
         if [ -z "$ALF_FC" ] || [ -z "$ALF_FLAGS_PROG" ]; then echo "blas_bench.sh: configure.sh ($cfg) did not set ALF_FC / ALF_FLAGS_PROG" >&2; exit 1; fi
         cd "$dir" || exit 1
         /bin/rm -f Timers_mod.o timers_mod.mod blas_bench.o "$out"
@@ -151,7 +151,7 @@ build() {   # build noMPI|mpi
             echo "blas_bench.sh: $flavour build failed, see $dir/build.log" >&2; tail -20 "$dir/build.log" >&2; exit 1; }
         {
             echo "flavour=$flavour"
-            echo "machine=${BLAS_BENCH_MACHINE:-GNU}"
+            echo "machine=${BLAS_BENCH_MACHINE:-${ALF_MACHINE:-GNU}}"
             echo "compiler=$ALF_FC"
             echo "compiler_version=$($ALF_FC --version 2>&1 | head -1)"
             echo "flags=$flags"

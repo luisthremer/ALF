@@ -52,7 +52,7 @@ mkdir -p "$ALFDIR/builds" "$ALFDIR/runs"
 build_in_tree() {  # $1 = extra flag or empty; leaves Prog/ALF.out built from scratch with that flag
     ( set +eu; cd "$ALFDIR"
       if [ -n "$1" ]; then export ALF_FLAGS_EXT="$1"; fi
-      source configure.sh GNU noMPI NO-INTERACTIVE >/dev/null 2>&1
+      { [ -z "${ALF_ENV_SH:-}" ] || source "$ALF_ENV_SH" || true; } && source configure.sh "${ALF_MACHINE:-GNU}" noMPI NO-INTERACTIVE >/dev/null 2>&1
       make -C Prog clean >/dev/null 2>&1 && make program -j"${MAKE_JOBS:-8}" ) >"$ALFDIR/runs/build_trace.log" 2>&1 \
         || { echo "build failed, see $ALFDIR/runs/build_trace.log" >&2; return 2; }
 }

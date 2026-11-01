@@ -93,7 +93,7 @@ build_variant() {   # build_variant VARIANT: copy of the committed tree, built o
         cd "$dir/src" || exit 1
         unset ALF_FLAGS_EXT          # an inherited debug/trace flag must not leak into the tier's binaries
         # shellcheck disable=SC1091
-        source configure.sh GNU "$mode" NO-INTERACTIVE >/dev/null 2>&1 && make all -j"$MAKE_J"
+        { [ -z "${ALF_ENV_SH:-}" ] || source "$ALF_ENV_SH" || true; } && source configure.sh "${ALF_MACHINE:-GNU}" "$mode" NO-INTERACTIVE >/dev/null 2>&1 && make all -j"$MAKE_J"
     ) >"$PAR/build_$v.log" 2>&1
     if [ ! -x "$dir/src/Prog/ALF.out" ] || [ ! -x "$dir/src/Analysis/ana.out" ]; then
         say "ERROR: build of $v failed, see $PAR/build_$v.log"; exit 2

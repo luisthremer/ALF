@@ -24,7 +24,7 @@ COMMON_EXTRA=("$@")
 
 build() {  # build ALF.out in the tree $1, log to $2
     # configure.sh is not safe under set -eu, so relax them inside this subshell
-    (set +eu; cd "$1" && source configure.sh GNU noMPI NO-INTERACTIVE >/dev/null 2>&1 \
+    (set +eu; cd "$1" && { [ -z "${ALF_ENV_SH:-}" ] || source "$ALF_ENV_SH" || true; } && source configure.sh "${ALF_MACHINE:-GNU}" noMPI NO-INTERACTIVE >/dev/null 2>&1 \
         && make program -j8 >"$2" 2>&1) \
         || { echo "build failed in $1, see $2" >&2; exit 2; }
 }
