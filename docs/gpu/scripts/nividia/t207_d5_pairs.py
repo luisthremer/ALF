@@ -2,16 +2,23 @@
 """Ticket 207 dev5 (development only): gate simulation for the proposed statistic S_ens(pTT) pooled over two seed sets.
 For every pair of the four dev seed sets and each path: pooled S_ens of the device, of the stand-in control (var8) and of every
 correct variant, with a bootstrap over points (sets resampled separately); share of bootstrap means above the bound.
-usage: t207_d5_pairs.py BOUND def|log  (reads runs/m_<path>_devN/hub12x12_cb_p/qref.txt)"""
-import itertools, math, random, sys
-sys.path.insert(0, '.')
-import importlib.util
-spec = importlib.util.spec_from_file_location('agg', 't207_d5_agg.py'); agg = importlib.util.module_from_spec(spec); spec.loader.exec_module(agg)
+usage: t207_d5_pairs.py BOUND def|log  (reads runs/m_<path>_devN/hub12x12_cb_p/qref.txt through the strict parser; the reference ensemble
+is the explicit list 'def' / 'log' of t207_d5_agg.py; any deviation in the input is an error)"""
+import importlib.util, itertools, math, os, random, sys
+sys.dont_write_bytecode = True      # the loaders below import sibling scripts by path: no __pycache__ in the scripts directory
+spec = importlib.util.spec_from_file_location('agg', os.path.join(os.path.dirname(os.path.abspath(__file__)), 't207_d5_agg.py'))
+agg = importlib.util.module_from_spec(spec); spec.loader.exec_module(agg)
+if len(sys.argv) != 3 or sys.argv[2] not in ('def', 'log'):
+    sys.exit('usage: t207_d5_pairs.py BOUND def|log')
 B = float(sys.argv[1]); path = sys.argv[2]
+refs = agg.ref_list(path)
 per = {}
-for s in ('dev1', 'dev2', 'dev3', 'dev4'):
-    res, corr = agg.per_run(agg.parse('runs/m_%s_%s/hub12x12_cb_p/qref.txt' % (path, s)), 'pTT')
-    per[s] = (res, corr)
+try:
+    for s in ('dev1', 'dev2', 'dev3', 'dev4'):
+        res, n_exp = agg.per_run(agg.parse('runs/m_%s_%s/hub12x12_cb_p/qref.txt' % (path, s)), 'pTT', refs)
+        per[s] = (res, refs)
+except agg.QError as e:
+    sys.exit('t207_d5_pairs ERROR: %s' % e)
 rng = random.Random(7)
 print('path %s, bound %.2f: S_ens(pTT) pooled over two seed sets' % (path, B))
 print('  %-10s %8s %8s %8s %10s %10s %8s' % ('pair', 'dev', 'var8', 'nullmax', 'P(dev>B)', 'P(var8<=B)', 'P(nmax>B)'))

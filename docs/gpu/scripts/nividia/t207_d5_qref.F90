@@ -19,7 +19,7 @@
 !          2 (module q5nul: the null copy of CGR2_2, compiled with the build tree's ALF_FLAGS_PROG like cgr2_2_mod, so that code 0
 !          reproduces the oracle bit for bit), 3 (the program, -O2); linked with cgr2_2_mod / udv_state_mod / QDRP_decompose_mod.
 !   run:   t207_d5_qref.out QS NULCODES HOSTIN < list_of_dump_files     (NULCODES: comma list or '-'; HOSTIN 0|1)
-! Output (ticket 207-2: nothing is dropped silently): per dump either one 'QREF file F pass P nst S nfe E br B hbr H n N ver V hasb Y
+! Output (ticket 207-2: nothing is dropped silently): per dump either one 'QREF file F pass P nst S nfe E br B hbr H n N ver V hasb Y dg D
 ! tq T | name x1..x8 | ...' line (numbers ES12.4E3, 8 per method, 5 for qself/qbr) or one 'QREFERR dump <file> : <reasons>' line
 ! (non-finite number in a matrix read from the dump or in a computed number, unreadable / truncated / inconsistent dump), and at
 ! the end 'QREFEND dumps D ok K err E'.  The exit status is 3 if any dump failed, non-zero for any other error; the program no
@@ -840,8 +840,9 @@ contains
     if (.not. fin_q(Gq, 4*n*n)) then
        call fail('non-finite number in the quad reference'); return
     endif
-    write(line,'(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,F9.2)') 'QREF file ', hdr(3), ' pass ', hdr(4), ' nst ', hdr(5), &
-         & ' nfe ', hdr(6), ' br ', hdr(7), ' hbr ', nbr, ' n ', n, ' ver ', hdr(2), ' hasb ', hdr(13), ' tq ', tq
+    write(line,'(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,F9.2)') 'QREF file ', hdr(3), ' pass ', hdr(4), &
+         & ' nst ', hdr(5), ' nfe ', hdr(6), ' br ', hdr(7), ' hbr ', nbr, ' n ', n, ' ver ', hdr(2), ' hasb ', hdr(13), &
+         & ' dg ', hdr(12), ' tq ', tq
     M = Md(:,:,:,1)
     call put('dev')
     do k = 1, nv
