@@ -68,7 +68,9 @@ scheme choice: delayed for tV and Kondo, submatrix for Hubbard.
 
 Caveats: (1) every run printed OpenMP affinity on each parallel region (`OMP_DISPLAY_AFFINITY`, ~1.2 M lines, 75 MB per run). The
 line count is the same for all schemes of a point (e.g. 1 197 082 for standard and delayed at hubL40 2x24), so it is a constant cost per
-point: it cannot move the optimum, but absolute times may be slightly high (not quantified). (2) The 51 1x48 runs were first marked
+point: it cannot move the optimum. Measured A/B (job 5957003, `cluster/affinity_overhead.sbatch`, hubL40 2x24, ABBA order,
+`logs/affinity_ab_5957003/`): delayed N_delay 64 34.94 s/sweep with vs 34.39 without (+1.6 %), standard 60.96 vs 60.14 (+1.4 %);
+speedup 1.745 vs 1.749, so the absolute times are ~1.5 % high and the ratios are unaffected. (2) The 51 1x48 runs were first marked
 INVALID because Intel MPI 2019 truncates the pin table after ~30 cpus; the pinning check now uses the OMP affinity in that case
 (f9ab32f4) and `rejudge_pinning.sh` re-judged them (51 OK; original verdict kept in run.prov).
 
