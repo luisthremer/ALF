@@ -4,13 +4,10 @@ Decision 41 (DECISIONS.md): 207 closes on functional checks only. No agents, no 
 long jobs detached on the remote machine, then end the turn.
 
 ## Current step
-All five checks measured. Check 4 FAILS on Intel as measured (see below); NVIDIA is consistent. STOPPED for the owner (decision 41:
-record and tell, no debugging campaign). Nothing merged into gpu-port, 207 NOT marked closed.
+DONE: owner accepted check 4 (2026-11-02). 207 and 207-7 marked closed; gpu-port-207-final merged into gpu-port and pushed.
 
-## Next step (owner's call)
-(a) accept as is (compare2 error bars are under-resolved on every observable, the 3 failing ones are one strongly correlated AF-mode
-group), or (b) one more Intel seed rotation (~7 min on B580, scripts/obs.sh with another offset) to see whether the 6 sigma is a fluke.
-Then merge gpu-port-207-final -> gpu-port (ff main checkout as in the task), push fork, mark 207 and 207-7 closed.
+## Next step
+None for 207.
 
 ## Running
 Nothing.
