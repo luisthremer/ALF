@@ -28,19 +28,41 @@ r() { local tag=$1 set=$2 bin=$3 cfg=$4; shift 4
       echo "df / $(df -B1M --output=avail / | tail -1 | tr -d ' ') MB free before $tag (waiting for the lock and the disk check)" >> $out
       MINFREE_MB=${MINFREE_MB:-6700} SET=$set TAG=$tag bash $W/t207_3_run.sh $bin $cfg "$@" 9>&- >> $out 2>&1; }
 # HOLDLOCK=1 (fix round t207-3c): every run and its processing hold gpu.lock together (fd 9 of this shell; t207_3_run.sh gets
-# T207_3_LOCKED=1), so no other agent's GPU run (and its ~1-1.6 GB of dumps) starts while this run's dumps are on disk: with ~7.4 GB
+# T207_3_LOCKED=1; while the disk is below the floor the lock is given up and retaken, t207-3e), so no other agent's GPU run (and its ~1-1.6 GB of dumps) starts while this run's dumps are on disk: with ~7.4 GB
 # free without dumps, two dump sets at once would take / below the 5 GB floor.  The lock is released after the thinning.
-rp() { local tag=$1 path=$2; shift 2
+rp() { local tag=$1 path=$2 tw0 dw rc cfg; shift 2; tw0=$(date +%s); cfg=$3      # $@ = SET BIN CONFIG env...
        if [ "$HOLDLOCK" = 1 ]; then
-         exec 9> "$HOME/alf-gpu/gpu.lock"; flock 9; echo "gpu.lock taken for $tag + processing $(date -Is)" >> $out
-         export T207_3_LOCKED=1; r $tag "$@"; pr $tag $path; unset T207_3_LOCKED
-         flock -u 9; exec 9>&-; echo "gpu.lock released after $tag $(date -Is)" >> $out
+         while :; do
+           # t207-3f: hard stop of the retry loop, independent of the run script: (now - tw0) > DISKWAIT_S + 600
+           if [ $(( $(date +%s) - tw0 )) -gt $(( ${DISKWAIT_S:-28800} + 600 )) ]; then
+             echo "ERROR: $tag still waiting after DISKWAIT_S + 600 s, giving up, not processed $(date -Is)" >> $out; break; fi
+           exec 9> "$HOME/alf-gpu/gpu.lock"; flock 9; echo "gpu.lock taken for $tag + processing $(date -Is)" >> $out
+           export T207_3_LOCKED=1
+           dw=${DISKWAIT_S:-28800}; [ $(( $(date +%s) - tw0 )) -ge "$dw" ] && dw=0     # last attempt: t207_3_run.sh gives up (rc 8) instead of flagging
+           DISKWAIT_S=$dw r $tag "$@"; rc=$?
+           # t207-3f: a non-zero exit status of run.sh (refusal) ends the loop with a logged error, no processing
+           if [ $rc -ne 0 ]; then
+             unset T207_3_LOCKED; flock -u 9; exec 9>&-
+             echo "ERROR: t207_3_run.sh for $tag exited with status $rc, not retried, not processed; gpu.lock released $(date -Is)" >> $out; break
+           fi
+           # t207-3e: a failed disk check leaves the flag $W/runs/$tag/$cfg/.diskwait (nothing run): give the lock up while waiting
+           if [ -f $W/runs/$tag/$cfg/.diskwait ]; then
+             unset T207_3_LOCKED; flock -u 9; exec 9>&-; echo "gpu.lock released for $tag (disk wait, retry in 300 s) $(date -Is)" >> $out
+             sleep 300; continue
+           fi
+           pr $tag $path $cfg; unset T207_3_LOCKED
+           flock -u 9; exec 9>&-; echo "gpu.lock released after $tag $(date -Is)" >> $out
+           break
+         done
        else
-         r $tag "$@"; pr $tag $path
+         r $tag "$@"; pr $tag $path $cfg
        fi; }
-pr() { [ -f $W/runs/$1/hub12x12_cb_p/provenance.json ] || { echo "no run $1, not processed" >> $out; return 1; }
-       grep -q '"rc": 0,' $W/runs/$1/hub12x12_cb_p/provenance.json || { echo "run $1 rc != 0, not processed" >> $out; return 1; }
-       local nl=$NUL; [ "$2" = log ] && nl=$NULL; D5W=$W D5RUNS=$W/runs bash $PROC $W/runs/$1/hub12x12_cb_p $2 $QS $nl 0 $KEEP >> $out 2>&1
+# pr TAG PATH [CONFIG]: process one run; skips a run that is already processed (qref_proc.json exists, t207-3f)
+pr() { local d=$W/runs/$1/${3:-hub12x12_cb_p}
+       [ -f $d/provenance.json ] || { echo "no run $1, not processed" >> $out; return 1; }
+       grep -q '"rc": 0,' $d/provenance.json || { echo "run $1 rc != 0, not processed" >> $out; return 1; }
+       [ -f $d/qref_proc.json ] && { echo "run $1 already processed (qref_proc.json exists), skipped" >> $out; return 0; }
+       local nl=$NUL; [ "$2" = log ] && nl=$NULL; D5W=$W D5RUNS=$W/runs bash $PROC $d $2 $QS $nl 0 $KEEP >> $out 2>&1
        echo "df / $(df -h / | tail -1 | awk '{print $4}') free after $1" >> $out; }
 Q="ALF_GPU_DEBUG=1 ALF_GPU_TAUDIAG_QHOST=1 ALF_GPU_TAUDIAG_QREF=$STRIDE ALF_GPU_TAUDIAG_FROM=$FROM"
 xtag() { echo "$1" | tr '.-' 'pm'; }
