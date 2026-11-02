@@ -23,14 +23,43 @@
 #   a caller passes DISKWAIT_S=0 for its last attempt.
 W=${T207_3W:-$HOME/alf-gpu/work/t207-3};   # T207_3W: work dir of a follow-up agent (t207-3b)
 export TMPDIR=$W/tmp
-N=$1; C=$2; shift 2
+N=$1; C=$2; shift 2; ENVS="$*"
 case $N in gnu*) . ~/alf-gpu/env/gnu.sh;; *) . ~/alf-gpu/env/nvhpc.sh;; esac
 safe() { case "$1" in ""|*..*|*/*) echo "refusing unsafe name: [$1]" >&2; exit 1;; esac; }
 T=${TAG:-$N}; S=${SET:-dev1}; safe "$N"; safe "$C"; safe "$T"; safe "$S"; : "${HOME:?}"
+# provenance.json of the run in the current directory: prov RC START END
+prov() {
+~/alf-gpu/venv/bin/python3 -I - "$W" "$N" "$S" "$C" "$T" "$1" "$2" "$3" "$ENVS" <<'PY'
+import hashlib, json, os, socket, subprocess, sys
+W, N, S, C, T, rc, s, e, env = sys.argv[1:10]
+def sha(p):
+    return hashlib.sha256(open(p, 'rb').read()).hexdigest() if os.path.exists(p) else None
+def rd(p):
+    return open(p).read().strip() if os.path.exists(p) else None
+gpu = subprocess.run(['nvidia-smi', '--query-gpu=name,driver_version', '--format=csv,noheader'], capture_output=True, text=True).stdout.strip()
+json.dump(dict(ticket='207-3 (development evidence, dev seeds; not acceptance)', tag=T, build=N, seed_set=S, config=C, rc=int(rc),
+               wall_s=round(float(e) - float(s), 1), binary_sha256=sha(os.path.join(W, 'bin', 'ALF_%s.out' % N)),
+               srctree=rd(os.path.join(W, 'bin', 'ALF_%s.srctree' % N)), srcstate=rd(os.path.join(W, 'bin', 'ALF_%s.srcstate' % N)),
+               env=env.split(), seeds_sha256=sha('seeds'), parameters_sha256=sha('parameters'), run_log_sha256=sha('run.log'),
+               info_sha256=sha('info'), data_h5_sha256=sha('data.h5'), host=socket.gethostname(), gpu=gpu),
+          open('provenance.json', 'w'), indent=1)
+PY
+}
 D="$W/runs/$T/$C"; RESUME=0; [ -e "$D/.diskwait" ] && RESUME=1      # resume after a disk wait (flag left by an earlier call)
-[ -e "$D" ] && [ $RESUME = 0 ] && { echo "refusing: $D exists"; exit 1; }
-[ -x "$W/bin/ALF_$N.out" ] || { echo "refusing: binary $N missing"; exit 1; }
-SR=${SETROOT:-$W/runs}; [ -d "$SR/$S/$C" ] || { echo "refusing: $SR/$S/$C missing"; exit 1; }
+# refusal: while resuming (flag $D/.diskwait set by an earlier call) the flag is dropped and, unless a provenance.json exists (never
+# overwritten), a provenance.json with rc 1 is written, so the caller (t207_3_chain.sh rp) sees the failure instead of retrying forever (t207-3f)
+bad() { echo "refusing: $*"
+        if [ $RESUME = 1 ]; then rm -f "$D/.diskwait"
+          [ -e "$D/provenance.json" ] || { local t; t=$(date +%s.%N); (cd "$D" && prov 1 $t $t); }
+        fi; exit 1; }
+[ -e "$D" ] && [ $RESUME = 0 ] && bad "$D exists"
+[ -x "$W/bin/ALF_$N.out" ] || bad "binary $N missing"
+SR=${SETROOT:-$W/runs}; [ -d "$SR/$S/$C" ] || bad "$SR/$S/$C missing"
+if [ $RESUME = 1 ]; then   # a resumed directory must hold only the copied inputs and stamp.txt, with the source set's seeds and parameters
+  for f in run.log data.h5 info provenance.json; do [ -e "$D/$f" ] && bad "cannot resume, $D/$f exists"; done
+  for f in seeds parameters; do
+    [ "$(sha256sum < "$D/$f" 2>/dev/null)" = "$(sha256sum < "$SR/$S/$C/$f" 2>/dev/null)" ] || bad "cannot resume, $f differs from $SR/$S/$C/$f"; done
+fi
 [ $RESUME = 0 ] && { mkdir -p "$W/runs/$T"; cp -r "$SR/$S/$C" "$D"; }
 cd "$D" || exit 1; mkdir -p qref; rm -f .diskwait   # dumps of ALF_GPU_TAUDIAG_QREF
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
@@ -75,18 +104,4 @@ while :; do
 done
 s=$(cat .t0); e=$(cat .t1); rc=$(cat .rc); rm -f .t0 .t1 .rc
 printf '%s %s %s %s rc=%s wall=%.1fs bin %s env [%s]\n' "$T" $N $S $C $rc $(echo "$e - $s" | bc) "$(cut -c1-16 $W/bin/ALF_$N.out.sha256)" "$*" | tee -a stamp.txt
-~/alf-gpu/venv/bin/python3 -I - "$W" "$N" "$S" "$C" "$T" "$rc" "$s" "$e" "$*" <<'PY'
-import hashlib, json, os, socket, subprocess, sys
-W, N, S, C, T, rc, s, e, env = sys.argv[1:10]
-def sha(p):
-    return hashlib.sha256(open(p, 'rb').read()).hexdigest() if os.path.exists(p) else None
-def rd(p):
-    return open(p).read().strip() if os.path.exists(p) else None
-gpu = subprocess.run(['nvidia-smi', '--query-gpu=name,driver_version', '--format=csv,noheader'], capture_output=True, text=True).stdout.strip()
-json.dump(dict(ticket='207-3 (development evidence, dev seeds; not acceptance)', tag=T, build=N, seed_set=S, config=C, rc=int(rc),
-               wall_s=round(float(e) - float(s), 1), binary_sha256=sha(os.path.join(W, 'bin', 'ALF_%s.out' % N)),
-               srctree=rd(os.path.join(W, 'bin', 'ALF_%s.srctree' % N)), srcstate=rd(os.path.join(W, 'bin', 'ALF_%s.srcstate' % N)),
-               env=env.split(), seeds_sha256=sha('seeds'), parameters_sha256=sha('parameters'), run_log_sha256=sha('run.log'),
-               info_sha256=sha('info'), data_h5_sha256=sha('data.h5'), host=socket.gethostname(), gpu=gpu),
-          open('provenance.json', 'w'), indent=1)
-PY
+prov $rc $s $e

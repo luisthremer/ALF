@@ -8,6 +8,8 @@
 #         (flavour-only fault); otherwise the source of nv_def_pp3 / nv_log3 (git 9a35bdd6)
 #   fix3: (fix round t207-3e) nv_def_pp5 (QR_PREPIVOT) and nv_log5 (STABLOG) from src: the source of nv_def_pp4 / nv_log4 with the strict
 #         ALF_GPU_FAULT_TAU_AT parser (exactly one ':', non-empty digit fields) and the comment fix
+#   fix4: (fix round t207-3f) nv_def_pp6 (QR_PREPIVOT) and nv_log6 (STABLOG) from src: the source of nv_def_pp5 / nv_log5 with at most 9 digits
+#         per ALF_GPU_FAULT_TAU_AT field
 #   prev: (follow-up) copies of the previous agent's binaries NAMES (default nv_def_pp2 nv_log2) from PREV (default ~/alf-gpu/work/t207-3,
 #         read only), sha256 checked against PREV's .sha256 files (for the identity runs of the fix builds); t207-3c:
 #         PREV=~/alf-gpu/work/t207-3b NAMES="nv_def_pp3 nv_log3" (the 9a35bdd6 builds: source tree hash 2f62897ab04225ef)
@@ -28,6 +30,8 @@ fix2) ALF_FLAGS_EXT=-DQR_PREPIVOT bash t207_d5_build.sh src nv_def_pp4 nvhpc PGI
       bash t207_d5_build.sh src nv_log4 nvhpc PGI noMPI HDF5 LOG GPU=nvidia ;;
 fix3) ALF_FLAGS_EXT=-DQR_PREPIVOT bash t207_d5_build.sh src nv_def_pp5 nvhpc PGI noMPI HDF5 GPU=nvidia
       bash t207_d5_build.sh src nv_log5 nvhpc PGI noMPI HDF5 LOG GPU=nvidia ;;
+fix4) ALF_FLAGS_EXT=-DQR_PREPIVOT bash t207_d5_build.sh src nv_def_pp6 nvhpc PGI noMPI HDF5 GPU=nvidia
+      bash t207_d5_build.sh src nv_log6 nvhpc PGI noMPI HDF5 LOG GPU=nvidia ;;
 prev) PREV=${PREV:-$HOME/alf-gpu/work/t207-3}
       for b in ${NAMES:-nv_def_pp2 nv_log2}; do
         case "$b" in ""|*..*|*/*) echo "refusing name [$b]"; exit 1;; esac

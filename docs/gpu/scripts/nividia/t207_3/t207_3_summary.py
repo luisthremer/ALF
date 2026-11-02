@@ -27,9 +27,10 @@ SEPARATES (correct side with margin, every control killed with margin) / THIN (e
 DOES NOT SEPARATE (a correct variant fails the bound or a control is not killed).  Gate-set claims per path (GATE_SETS) are computed
 here, not assembled by hand.  PROPOSED marks the controls proposed for pre-registration (a column; the counted runs are unchanged).
 T207_3_TEST_BOUND='def:pTT_flavour_max=0.15' overrides one bound for a test of the rule (printed as TEST ONLY).
-Margin: bound - value (device, correct variants), value - bound (controls; > 0 = killed).  Separation (decision 37) is stated for the
-S_ens(pTT) gates only, over every pTT control (var8, the production control, every graded fault): every correct variant passes in every
-T2 pooling and every control fails.  The near-threshold rule of the 207-3 review (margin >= 0.10 above the bound) is flagged per control.
+Margin: bound - value (device, correct variants), value - bound (controls; > 0 = killed).  Separation (decision 37; 207-3f: for every
+gated statistic, pTT and emax): every correct variant (reference members AND the device) passes in every T2 pooling.  The pTT gates judge
+every counted control (var8, the production control, every graded fault) and every control must fail; the emax gates judge the PROPOSED
+controls only and list the other counted controls (killed / not killed) as information.  The near-threshold rule of the 207-3 review (margin >= 0.10 above the bound) is flagged per control.
 Probes: graded-fault runs measured as response probes, known to lie below the detection threshold and not candidate controls (the 207-3
 closing round: LOG eps 2e-15, +0.032), are shown in every table but not counted in the separation; they are listed in PROBES below with
 their reason and printed with the separation lines.
@@ -51,10 +52,15 @@ GATES = [  # name, measure, statistic, pool, bound, kind
 # per-path bound overrides (207-3d): (path, gate name) -> bound; replaces the bound of GATES for that path only
 BOUND_PATH = {('def', 'pTT_flavour_max'): 0.20}
 NEAR_MARGIN = 0.10
-# 207-3e: the written separation rule.  A correct variant (every frozen reference member and the device, each over the main runs) passes
-# WITH MARGIN when its single-run margin (bound - worst main-run value) is >= CORR_MARGIN and z = margin / sd >= CORR_Z, sd = run-to-run
-# sd of that member over the main runs; a control is killed WITH MARGIN when value - bound >= CTL_MARGIN.
+# 207-3e/3f: the written separation rule (207-6 "Margin rule").  A correct variant (every frozen reference member and the device, each over
+# the main runs) passes WITH MARGIN when its worst single-run margin (bound - largest main-run value) is >= CORR_MARGIN and
+# z = (bound - mean over the main runs) / sd >= CORR_Z, sd = run-to-run sd of that member over the main runs (the single-run margin is NOT
+# divided by sd).  A control is killed WITH MARGIN when value - bound >= CTL_MARGIN on each of >= CTL_SETS fresh seed sets (kinds of
+# PROPOSED controls, enforced below); a control present in every main run (var8) may instead show z_fix = (smallest main-run value - bound)
+# / run-to-run sd over the main runs >= FIX_Z.  The correct side also includes the device: above the bound in any run, pair or the main
+# pool it FAILS (DOES NOT SEPARATE).  The rule is generated for every gated statistic (pTT and emax).
 CORR_MARGIN, CORR_Z, CTL_MARGIN = 0.03, 2.5, NEAR_MARGIN
+CTL_SETS, FIX_Z = 2, 4.0
 # gate sets proposed for 207-6 (S_ens(pTT) gates only): the claim computed below is that every control is killed with margin by >= 1 gate
 GATE_SETS = {'def': ['pTT_pooled', 'pTT_flavour_max'], 'log': ['pTT_pooled', 'pTT_flavour_max']}
 # controls proposed for pre-registration (label regexes; var8 only against pTT_pooled); a marking column, not a filter of the counted runs
@@ -62,8 +68,16 @@ PROPOSED = {'def': [r'f_def_4em15_dev\d+', r'f_def_4em15_at0x2_dev\d+'], 'log': 
 # test-only bound override for checking that the rule can fail: T207_3_TEST_BOUND='def:pTT_flavour_max=0.15' (printed as TEST ONLY)
 TEST_BOUND = os.environ.get('T207_3_TEST_BOUND')
 if TEST_BOUND:
-    _k, _v = TEST_BOUND.split('=')
-    BOUND_PATH[tuple(_k.split(':'))] = float(_v)
+    try:
+        _k, _v = TEST_BOUND.split('=')
+        _p, _g = _k.split(':')
+        _v = float(_v)
+    except ValueError:
+        sys.exit('T207_3_TEST_BOUND=%r: expected path:gate=value' % TEST_BOUND)
+    if _p not in GATE_SETS or _g not in [g[0] for g in GATES if g[4] is not None]:
+        sys.exit('T207_3_TEST_BOUND=%r: unknown path %r or gate %r (paths %s, gated %s)' % (
+            TEST_BOUND, _p, _g, sorted(GATE_SETS), [g[0] for g in GATES if g[4] is not None]))
+    BOUND_PATH[(_p, _g)] = _v
 PROBES = {'f_log_2em15_dev9': 'LOG eps 2e-15: response probe below the pTT detection threshold (207-3 closing round, +0.032); not a candidate control'}
 
 
@@ -144,6 +158,13 @@ def main():
         mps.add(cal['min_stratum_pts'])
         refs = cal['refs']
         mains = [r['label'] for r in cal['runs'] if r['role'] == 'main']
+        if len(mains) < 2:
+            sys.exit('%s: %d main run(s); the run-to-run sd and z need >= 2: refusing' % (f, len(mains)))
+        mseeds = [r['seeds'] for r in cal['runs'] if r['role'] == 'main']
+        if len(set(mains)) != len(mains) or len(set(mseeds)) != len(mseeds):
+            sys.exit('%s: duplicated main run (label or seeds sha256 repeated): refusing' % f)
+        seedof = {r['label']: r['seeds'] for r in cal['runs']}
+        role = {r['label']: r['role'] for r in cal['runs']}
         ctls = [r for r in cal['runs'] if r['role'] in ('ctl', 'flt')]
         T2 = t2_groups(cal)
         lines.append('== path %s: %s; main runs %s; program %s; reader %s' % (path, f, ','.join(mains), cal['prog'][:16], cal.get('reader', '?')))
@@ -197,45 +218,58 @@ def main():
                 if bound is not None:
                     lines.append('  %-34s control %-44s %+.3f  margin %+.3f  %s%s  %s' % (
                         '', c['name'], c['value'], c['margin'], 'KILLED' if c['killed'] else 'NOT killed',
-                        ' (margin < %.2f)' % NEAR_MARGIN if c['killed'] and c['margin'] < NEAR_MARGIN and meas == 'pTT' else '', c['detail'])
-                        + ('  [PREREG-PROPOSED]' if c['proposed'] and meas == 'pTT' else ''))
+                        ' (margin < %.2f)' % NEAR_MARGIN if c['killed'] and c['margin'] < NEAR_MARGIN else '', c['detail'])
+                        + ('  [PREREG-PROPOSED]' if c['proposed'] else ''))
                 else:
                     lines.append('  %-34s control %-44s %+.3f  %s' % ('', c['name'], c['value'], c['detail']))
             # separation by decision 37 (pTT S_ens gates): correct variants in every T2 pooling vs every pTT control
-            if meas == 'pTT' and stat in ('S_ens', 'S_ens_flmax') and pool == 'pooled':
-                cw = max([z for z in (run_c, pair_c) if z] + [(cmax, 'main', cm)])
+            if bound is not None:
+                # correct side: reference members AND the device over every run, pair and the main pool (207-3f)
+                cw = max([z for z in (run_c, pair_c) if z] + [(cmax, 'main', cm)] + [(v, g, 'dev') for v, g in t2d] + [(dv, 'main', 'dev')])
                 cc = [c for c in row['controls'] if c['name'].split(' ')[0] not in PROBES]
+                # pTT gates (decision 37): every counted control is judged; emax gates: the PROPOSED controls are judged, the counted controls
+                # not killed are listed for information (the emax gates are not claimed to detect every graded fault)
+                jc = cc if meas == 'pTT' else [c for c in cc if c['proposed']]
                 probes = [c['name'] for c in row['controls'] if c['name'].split(' ')[0] in PROBES]
-                cl = min(cc, key=lambda c: c['value'])
-                notk = [c['name'] for c in cc if not c['killed']]
+                cl = min(jc or cc, key=lambda c: c['value'])
+                notk = [c['name'] for c in jc if not c['killed']]
+                notk_info = [c['name'] for c in cc if not c['killed'] and c not in jc]
+                kil_info = ['%s %+.3f' % (c['name'], c['margin']) for c in cc if c['killed'] and c not in jc]
                 # written rule (207-3e): correct side per member (reference members and device) over the main runs
                 cs = []
                 for m in list(refs) + ['dev']:
                     vs = [value(cal, 'run:' + l, m, meas, stat, pool)[0] for l in mains]
-                    sd = statistics.stdev(vs) if len(vs) > 1 else float('nan')
+                    sd = statistics.stdev(vs)
+                    if not (math.isfinite(sd) and sd > 0):
+                        sys.exit('%s %s %s: run-to-run sd %r of %s over the main runs is not finite and > 0: refusing' % (path, name, m, sd, vs))
                     mg = bound - max(vs)                       # single-run margin: the worst main run
                     mm = bound - statistics.fmean(vs)          # margin of the member's mean over the main runs
-                    cs.append(dict(member=m, worst_run=max(vs), margin=mg, mean_margin=mm, sd=sd, z=(mm / sd if sd > 0 else math.inf)))
+                    cs.append(dict(member=m, worst_run=max(vs), margin=mg, mean_margin=mm, sd=sd, z=mm / sd))
                 zw = min(cs, key=lambda c: c['z']); mw = min(cs, key=lambda c: c['margin'])
                 corr_pass = cw[0] < bound
                 corr_ok = corr_pass and all(c['margin'] >= CORR_MARGIN and c['z'] >= CORR_Z for c in cs)
                 corr_side = 'PASSES WITH MARGIN' if corr_ok else ('THIN' if corr_pass else 'FAILS')
                 v8 = [value(cal, 'run:' + l, 'var8', meas, stat, pool)[0] for l in mains]
-                v8sd = statistics.stdev(v8) if len(v8) > 1 else float('nan')
-                v8z = (min(v8) - bound) / v8sd if v8sd > 0 else math.inf
-                near = [c['name'] for c in cc if c['killed'] and c['margin'] < CTL_MARGIN]
+                v8sd = statistics.stdev(v8)
+                if not (math.isfinite(v8sd) and v8sd > 0):
+                    sys.exit('%s %s var8: run-to-run sd %r over the main runs is not finite and > 0: refusing' % (path, name, v8sd))
+                v8z = (min(v8) - bound) / v8sd              # z_fix of the 207-6 rule: worst single main run vs the bound
+                near = [c['name'] for c in jc if c['killed'] and c['margin'] < CTL_MARGIN]
                 if not corr_pass or notk:
                     ok = 'DOES NOT SEPARATE'
                 elif corr_ok and not near:
                     ok = 'SEPARATES'
                 else:
                     ok = 'THIN'
-                sep.append('  %s %-16s bound %.2f%s: correct side %s (rule: single-run margin >= %.2f and z >= %.1f; worst margin %+.3f (%s), worst z %.1f '
+                sep.append('  %s %-16s [%s] bound %.2f%s: correct side %s (rule: single-run margin >= %.2f and z >= %.1f; worst margin %+.3f (%s), worst z %.1f '
                            '(%s: mean margin %+.3f, sd %.3f); main-pooled/pair/run max %+.3f (%s, %s)); controls: smallest %+.3f (%s; margin %+.3f), '
-                           'not killed: %s; killed with margin < %.2f: %s; var8 smallest main-run margin/sd = %.1f; probes not counted: %s -> %s' % (
-                               path, name, bound, ' (TEST ONLY bound)' if TEST_BOUND else '', corr_side, CORR_MARGIN, CORR_Z, mw['margin'], mw['member'],
+                           'not killed: %s%s; killed with margin < %.2f: %s; var8 z_fix = (smallest main run - bound)/sd = %.1f; probes not counted: %s -> %s' % (
+                               path, name, meas, bound, ' (TEST ONLY bound)' if TEST_BOUND else '', corr_side, CORR_MARGIN, CORR_Z, mw['margin'], mw['member'],
                                zw['z'], zw['member'], zw['mean_margin'], zw['sd'], cw[0], cw[1], cw[2], cl['value'], cl['name'], cl['margin'],
-                               ', '.join(notk) or 'none', CTL_MARGIN, ', '.join(near) or 'none', v8z, ', '.join(probes) or 'none', ok))
+                               ', '.join(notk) or 'none', (' (judged: %s; counted but not judged, information: not killed: %s; killed: %s)' % (
+                                   'every counted control' if meas == 'pTT' else 'PROPOSED controls', ', '.join(notk_info) or 'none',
+                                   ', '.join(kil_info) or 'none')),
+                               CTL_MARGIN, ', '.join(near) or 'none', v8z, ', '.join(probes) or 'none', ok))
                 row['separation'] = dict(correct_worst=cw, smallest_control=cl, not_killed=notk, near=near, correct_side=corr_side,
                                          correct_members=cs, var8_margin_over_sd=v8z, verdict=ok, separates=(ok == 'SEPARATES'))
         # gate-set claim (207-3e): every counted pTT control is killed with margin (>= CTL_MARGIN) by at least one gate of the set
@@ -244,6 +278,19 @@ def main():
         gsl.append('  gate set %s {%s}%s: correct side %s' % (path, ', '.join('%s %.2f' % (g, rowd[g]['bound']) for g in gs),
                                                          ' (TEST ONLY bound)' if TEST_BOUND else '',
                                                          '; '.join('%s %s' % (g, rowd[g]['separation']['correct_side']) for g in gs)))
+        # claim B needs, per kind of PROPOSED control, >= CTL_SETS runs on distinct fresh seed sets (distinct from each other, from every
+        # main run and from every run of another role); computed from the cal JSON, not assumed (207-3f)
+        kinds = {}
+        for q in PROPOSED[path]:
+            runs = [r['label'] for r in ctls if re.fullmatch(q, r['label'])]
+            sh = [seedof[l] for l in runs]
+            other = {seedof[l] for l in seedof if role[l] != 'flt'} | {seedof[l] for l in mains}
+            fresh = len(set(sh)) == len(sh) and not (set(sh) & other)
+            kinds[q] = dict(runs=runs, seeds=[x[:16] for x in sh], distinct_fresh=fresh, enough=(len(runs) >= CTL_SETS and fresh))
+            gsl.append('  gate set %s control kind %-28s runs %s seeds %s: %d runs, %s -> %s' % (
+                path, q, ','.join(runs) or 'none', ','.join(x[:8] for x in sh) or '-', len(runs),
+                'distinct and fresh (not a main-run or other-role seed set)' if fresh else 'seed sets NOT distinct or not fresh',
+                'enough (>= %d)' % CTL_SETS if kinds[q]['enough'] else 'TOO FEW fresh seed sets (need >= %d)' % CTL_SETS))
         gcl = []
         for c0 in rowd[gs[0]]['controls']:
             if c0['name'].split(' ')[0] in PROBES:
@@ -252,28 +299,40 @@ def main():
             for g in gs:
                 c = [x for x in rowd[g]['controls'] if ckey(x['name']) == ckey(c0['name'])][0]
                 per.append((c['margin'], g, c['proposed']))
+            # NOTE (conservative): for var8 each gate's value is the smallest over the main runs / pairs (ckey drops the group), so this is
+            # max over gates of (min over groups), which is <= min over groups of (max over gates): the var8 gate-set max-min is conservative
             bm, bg, _ = max(per)
             prop = any(z[2] for z in per)
             # a proposed control counts against the gates it is proposed for (var8: pTT_pooled only)
             pm, pg, _ = max([z for z in per if z[2]] or per)
+            # which rule the control meets: margin >= CTL_MARGIN, or (var8, present in every main run) z_fix >= FIX_Z on the gate it is proposed for
+            isv8 = c0['name'].split(' ')[0] == 'var8'
+            zf = rowd[pg]['separation']['var8_margin_over_sd'] if isv8 else None
+            rules = (['margin>=%.2f' % CTL_MARGIN] if pm >= CTL_MARGIN else []) + (['z_fix>=%.0f' % FIX_Z] if isv8 and zf >= FIX_Z and pm > 0 else [])
             gcl.append(dict(control=c0['name'], gate=bg, margin=bm, with_margin=bm >= CTL_MARGIN, proposed=prop,
-                            prop_gate=pg, prop_margin=pm, prop_with_margin=pm >= CTL_MARGIN))
+                            prop_gate=pg, prop_margin=pm, prop_with_margin=pm >= CTL_MARGIN, z_fix=zf, rules_met=rules,
+                            prop_ok=bool(rules)))
             gsl.append('    %-58s killed by %-16s margin %+.3f  %s  %s' % (c0['name'], bg if bm > 0 else '-- none --', bm,
                        'WITH MARGIN' if bm >= CTL_MARGIN else ('thin' if bm > 0 else 'NOT KILLED'),
-                       ('[PREREG-PROPOSED: gate %s margin %+.3f]' % (pg, pm)) if prop else ''))
+                       ('[PREREG-PROPOSED: gate %s margin %+.3f; rule met: %s%s]' % (
+                           pg, pm, ' + '.join(rules) or 'NONE', '' if zf is None else '; z_fix = %.1f' % zf)) if prop else ''))
         na = sum(g['with_margin'] for g in gcl)
         pr = [g for g in gcl if g['proposed']]
-        npr = sum(g['prop_with_margin'] for g in pr)
+        npr = sum(g['prop_ok'] for g in pr)
         prr = [g for g in pr if not g['control'].startswith('var8')]
         nrr = sum(g['prop_with_margin'] for g in prr)
-        P['gate_set'] = dict(gates=gs, bounds={g: rowd[g]['bound'] for g in gs}, controls=gcl,
-                             all_with_margin=(na == len(gcl)), proposed_with_margin=(npr == len(pr)), proposed_resizable_with_margin=(nrr == len(prr)))
+        kinds_ok = all(k['enough'] for k in kinds.values())
+        P['gate_set'] = dict(kinds=kinds, kinds_ok=kinds_ok, gates=gs, bounds={g: rowd[g]['bound'] for g in gs}, controls=gcl,
+                             all_with_margin=(na == len(gcl)), proposed_with_margin=(npr == len(pr) and kinds_ok),
+                             proposed_resizable_with_margin=(nrr == len(prr) and kinds_ok))
         gsl.append('  gate set %s claim A (every counted control killed with margin >= %.2f by >= 1 gate): %d of %d -> %s' % (
             path, CTL_MARGIN, na, len(gcl), 'HOLDS' if na == len(gcl) else 'DOES NOT HOLD'))
-        gsl.append('  gate set %s claim B (every control proposed for pre-registration killed with margin >= %.2f; var8 by pTT_pooled): %d of %d -> %s' % (
-            path, CTL_MARGIN, npr, len(pr), 'HOLDS' if npr == len(pr) else 'DOES NOT HOLD'))
-        gsl.append('  gate set %s claim B-resizable (the proposed controls without the fixed var8): %d of %d -> %s; not with margin: %s' % (
-            path, nrr, len(prr), 'HOLDS' if nrr == len(prr) else 'DOES NOT HOLD',
+        gsl.append('  gate set %s claim B (every control proposed for pre-registration killed with margin >= %.2f, var8 by pTT_pooled alternatively '
+                   'z_fix >= %.0f; every kind of control on >= %d fresh seed sets): %d of %d, kinds %s -> %s' % (
+            path, CTL_MARGIN, FIX_Z, CTL_SETS, npr, len(pr), 'ok' if kinds_ok else 'NOT ok',
+            'HOLDS' if (npr == len(pr) and kinds_ok) else 'DOES NOT HOLD'))
+        gsl.append('  gate set %s claim B-resizable (the proposed controls without the fixed var8; kinds on >= %d fresh seed sets): %d of %d, kinds %s -> %s; not with margin: %s' % (
+            path, CTL_SETS, nrr, len(prr), 'ok' if kinds_ok else 'NOT ok', 'HOLDS' if (nrr == len(prr) and kinds_ok) else 'DOES NOT HOLD',
             ', '.join('%s %+.3f' % (g['control'], g['prop_margin']) for g in pr if not g['prop_with_margin']) or 'none'))
         # flavour 1 vs flavour 2 (task 0): S_ens per flavour, pooled main runs for device / correct / var8, each control run
         for meas in ('pTT', 'emax', 'eF'):
@@ -327,7 +386,7 @@ def main():
           'smallest stratum seen: %d points (path %s, measure %s, group %s, member %s, level %s)' % ((mp,) + sm))
     print('T2 pooling assumed: 1 or 2 main runs per path (each main run alone and every pair of main runs)')
     print('\n'.join(lines))
-    print('== separation of the S_ens(pTT) gates by decision 37 (every correct variant passes in every pooling, every pTT control fails)')
+    print('== separation of every gate (decision 37 + margin rule): every correct variant incl. the device passes in every pooling; pTT gates: every counted control fails; emax gates: the PROPOSED controls fail, the rest is information')
     for k, v in sorted(PROBES.items()):
         print('  probe %s: %s' % (k, v))
     print('\n'.join(sep))

@@ -1972,10 +1972,11 @@ Contains
     ! (1..N_FL_eff) of every pass (a localized defect); nst = 0 means every stabilization point of flavour nfe (a flavour-only defect,
     ! review of 207-3); only with eps:<x> acting in the sweep, else refused
     if (gpu_env_get('ALF_GPU_FAULT_TAU_AT', f)) then
-       ! exactly one ':' with non-empty digit fields on both sides (no sign, blank or second ':')
+       ! exactly one ':' with non-empty digit fields of at most 9 digits on both sides (no sign, blank or second ':'; nvfortran wraps
+       ! an overflowing list-directed integer read silently, 4294967297 would read as 1)
        ib = index(f, ':')
        ios = 1
-       if (ib > 1 .and. ib < len_trim(f) .and. verify(trim(f), '0123456789:') == 0 .and. index(f(ib+1:), ':') == 0) then
+       if (ib > 1 .and. ib < len_trim(f) .and. ib - 1 <= 9 .and. len_trim(f) - ib <= 9 .and. verify(trim(f), '0123456789:') == 0 .and. index(f(ib+1:), ':') == 0) then
           ios = 0
           read(f(1:ib-1),*,iostat=ios) eps_at_nst
           if (ios == 0) read(f(ib+1:),*,iostat=ios) eps_at_nfe
