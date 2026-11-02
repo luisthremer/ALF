@@ -408,7 +408,7 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: GR(Ndim,Ndim,N_FL)
     Integer :: nfe, nf, I, J
     Complex (Kind=Kind(0.d0)) :: Z
-    tobs_dev = gpu_obs_tau_active() .and. (.not. diag_on) .and. (.not. qf_on)
+    tobs_dev = gpu_obs_tau_active() .and. (.not. diag_on) .and. (.not. qf_on) .and. prec_report     ! prec_report = .false. in the self-tests (host comparisons need the downloads)
     call sync_fields(1, Ltrot)           ! host-update path only (ALF_GPU_NOUPDATE=1): nsigma%f -> nsigma_d, INTERIM 206; no-op with device updates
     do nfe = 1, t_nfe
        nf = Calc_Fl_map(nfe)
