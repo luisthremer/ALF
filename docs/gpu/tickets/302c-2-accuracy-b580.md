@@ -61,3 +61,27 @@ S_ens(pTT), reference list `ens`, pooled:
 
 Next (round 2, after 207-3's output fault lands): rebuild at the merged sha, run the graded output fault on the B580
 and calibrate per β and path by decision 37's rule; then numerics review.
+
+## Result, round 2 (2026-11-02; dev seeds dev5–dev9, development evidence, not reviewed)
+Scripts `d0faa7ac` (`t302c2b_*`), binaries from 08559f0b; evidence `intel:~/alf-gpu/work/t302c-2b/`
+(`tab/summary.md`, `tab/gates_b{4,10}_{def,log}.*`, generated). 28 QREF runs, 139.6 GPU-min, no lock waits.
+- T0 at 08559f0b passes on the B580 (self-tests max 8.4e-12; same-seed 6×6 vs ifx GPU=none 2.31e-10 / 2.90e-10; fault
+  classes killed; the output fault acts linearly, 9.755e-8 per 1e-10). TAUSWAP / TAU_NS / TAUTEST_V not refused
+  with the τ pass off at this sha: expected, 207-3's closing round was not in it.
+- β = 4: the proposed gates separate except the near control 2e-15 (def +0.119, LOG −0.067, not killed); 1e-14 is
+  killed on both paths (+0.625 / +0.332). The B580 device sits lower than NVIDIA's (def pTT −0.032, LOG −0.125).
+- β = 10: **emax pooled / by_stratum / q95 are blind to eps 1e-12 and the localized 2e-12** (inside the correct band;
+  only 1e-10 is caught); the localized fault is caught by pTT by_stratum only (+2.371 vs correct max +0.369).
+  **β = 10 LOG: a correct variant exceeds pTT 0.15** (n100004 pooled +0.172, single run +0.207); the four highest
+  correct members are always the flag-4 row-permuted variants (confirmed on fresh seeds). emax by_stratum / q95 at
+  β = 10 LOG pass the correct variants with margins of only 0.018 / 0.015 (2 main sets).
+- Fault runs kept KEEP 117 (gcd 1 with P; evidence budget); statistics use the full qref.txt, only the re-processing
+  sample is smaller. Accepted for calibration evidence; T2 runs follow the keep rule.
+
+### Manager decisions (2026-11-02)
+- 207-3 final (b2c71200) merged into `gpu-port-302c-2` as `d3e82a36` (code changes identical to 428576dd..b2c71200).
+- Control sizes are set per β (decision 37 covers control fault sizes): round 3 measures emax/localized ladders and
+  larger pTT controls at β = 10, flavour-only controls, and two more β = 10 main sets per path, at d3e82a36, after a
+  bit-identity check that round 2's main runs carry over to the merged code.
+- The β = 10 LOG pTT bound is set from data by decision 37 (not 0.15) with the same rule on both GPUs; if no bound
+  gives correct margin ≥ 0.05 and control margin ≥ 0.10, work stops for the owner.
