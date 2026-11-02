@@ -110,3 +110,18 @@ Commit `b2c71200`. Evidence `nividia:~/alf-gpu/work/t207-3c/` (`logs/summary_gat
   resizable controls. Fixed controls either go into 207-6's control-miss budget with their miss risk stated, or stay
   calibration evidence and are not T2 kill criteria; 207-6 decides and states which.
 - **Disk:** every lane's chain checks free disk inside the GPU lock (207-4 told).
+
+## Result, 207-3d (2026-11-02; dev seeds dev24, dev25, not yet reviewed)
+Commit `88c94f27` (per-path bound override in `t207_3_summary.py`). Evidence `nividia:~/alf-gpu/work/t207-3d/`
+(`logs/summary_gates_final.{txt,json}`, generated). 17.4 GPU-min (207-3 total ≈ 5.16 h; 207-4 cap 2 h 40 min).
+- Def flavour-2-only control eps 4e-15 @0:2: flavour max +0.338 / +0.362 (margin to 0.20: +0.138 / +0.162); pooled
+  +0.187 / +0.224 (killed by pooled too, margin < 0.10).
+- Def `pTT_flavour_max` ≤ 0.20: correct-variant max +0.132 single run (margin +0.068), +0.112 pair (+0.088); device
+  +0.064…+0.112 at T2 pooling.
+- Every pTT control is killed by pooled ≤ 0.15 or def flavour max ≤ 0.20, except flavour-2-only 2e-15 (dev22: pooled
+  +0.124, flavour max +0.181).
+- **Manager decision:** dev22 (flavour-only 2e-15) is a below-threshold probe, as the detection limit stated before
+  207-3d ran ("between 2e-15 and 4e-15", decisions on 207-3c) already said; it is not a control. Def detection limit
+  for a flavour-only defect: between 2e-15 and 4e-15 (S_nfe2 +0.181 at 2e-15, +0.34…+0.36 at 4e-15). Proposed def
+  gate set for 207-6: pTT pooled ≤ 0.15 and pTT flavour max ≤ 0.20; LOG: both at 0.15. Next: independent review of
+  the 207-3c/3d calibration.
