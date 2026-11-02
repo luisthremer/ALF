@@ -186,3 +186,18 @@ var8 alternative not defined as computed. run.sh/chain.sh — (6) a refusal on r
 loops forever. Fix round 207-3f (scripts only plus the 9-digit nit, no calibration GPU runs).
 - 207-6 definition of the fixed-control alternative: z_fix = (worst single main run − bound) / run-to-run sd over the
   main runs ≥ 4 (conservative; LOG var8 vs pTT pooled 4.4).
+
+## Result, 207-3f (2026-11-02; scripts, no calibration runs)
+Commit `c48e61e2`. Evidence `nividia:~/alf-gpu/work/t207-3f/` (`logs/summary_gates_final.*`, `logs/t0_f2.txt`,
+`logs/rt_scripts.txt`, `logs/plants.txt`). 6.1 GPU-min. All review items done; every reviewer plant now fails as
+expected (device over bound → FAILS / DOES NOT SEPARATE; one control seed set removed → claims DOES NOT HOLD; sd 0,
+duplicate or single main run → refused; flag + missing binary → chain stops). AT fields ≤ 9 digits
+(`4294967297:2` refused); data.h5 bit-identical to nv_*5.
+Generated: correct side (device included) passes with margin on all ten gates (emax: def +0.101/+0.141/+0.156,
+LOG +0.090/+0.110/+0.126, z ≥ 3.8). Claims B and B-resizable HOLD on both paths, each proposed pTT control kind on
+two fresh seed sets; LOG var8 only via z_fix 4.4.
+**Gap found by the manager:** the emax gates were judged against the small pTT controls (not their job). Their own
+controls are eps 1e-12 (emax pooled, q95) and 2e-12@2:2 (by_stratum), each on **one** seed set per path (dev6,
+dev8): emax pooled 1e-12 +0.125 def / +0.100 LOG, q95 +0.209 / +0.163, by_stratum +0.259 / +0.287. The ≥ 2-set rule
+needs four more runs (≈ 40 GPU-min), beyond decision 38's 2 × 4 h (207-3 ≈ 5.5 h, 207-4 ≈ 2.3 h so far). Asked the
+owner (calendar invite 2026-11-02).
