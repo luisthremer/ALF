@@ -7,6 +7,7 @@ usage: t207_3_summary.py OUT.json CAL_def.json CAL_log.json
 
 Gates (statistic of the per-point values r(p) of t207_3_cal.py; definitions as in t207_d5_gate.py of gpu-port-207-2 4118a1de):
   decisive (proposed):  S_ens(pTT) pooled <= 0.15;  S_ens(emax) pooled <= 0.15;  S_ens(emax) by_stratum <= 0.30;  S_ens_q95(emax) pooled <= 0.60
+  per-path bounds (BOUND_PATH, 207-3d): def pTT_flavour_max <= 0.20 (LOG keeps the 0.15 of the table)
   candidate (t207-3c):  S_ens(pTT) flavour max <= 0.15 = max(S_ens(pTT) of the flavour-1 points, of the flavour-2 points)  (decision 35)
   report only:          S_ens(pTT) by_stratum, S_ens_q95(pTT) pooled, S_ens_max(pTT) pooled, S_ens_max(emax) pooled, S_ens(emax) flavour max
   pooled     : over all points of the runs of the group
@@ -40,6 +41,8 @@ GATES = [  # name, measure, statistic, pool, bound, kind
     ('emax_max', 'emax', 'S_ens_max', 'pooled', None, 'report'),
     ('emax_flavour_max', 'emax', 'S_ens_flmax', 'pooled', None, 'report'),
 ]
+# per-path bound overrides (207-3d): (path, gate name) -> bound; replaces the bound of GATES for that path only
+BOUND_PATH = {('def', 'pTT_flavour_max'): 0.20}
 NEAR_MARGIN = 0.10
 PROBES = {'f_log_2em15_dev9': 'LOG eps 2e-15: response probe below the pTT detection threshold (207-3 closing round, +0.032); not a candidate control'}
 
@@ -95,7 +98,8 @@ def main():
     if len(sys.argv) != 4:
         sys.exit(__doc__)
     outf = sys.argv[1]
-    res = dict(gates=[dict(name=g[0], measure=g[1], statistic=g[2], pool=g[3], bound=g[4], kind=g[5]) for g in GATES], paths={},
+    res = dict(gates=[dict(name=g[0], measure=g[1], statistic=g[2], pool=g[3], bound=g[4], kind=g[5]) for g in GATES],
+               bound_path={'%s:%s' % k: v for k, v in BOUND_PATH.items()}, paths={},
                t2_pooling_assumed='T2 pools 1 or 2 main runs per path: every main run alone and every pair of main runs')
     lines, flav, sep, small, efl, spr = [], [], [], [], [], []
     mps = set()
@@ -118,6 +122,7 @@ def main():
                     for lev in ('nf', 'nfb'):
                         small.append((min(v[1] for v in d[lev].values()), path, w, gname, m, lev))
         for name, meas, stat, pool, bound, kind in GATES:
+            bound = BOUND_PATH.get((path, name), bound)
             row = dict(gate=name, bound=bound, kind=kind)
             dv, dd = value(cal, 'main', 'dev', meas, stat, pool)
             cv = [(value(cal, 'main', m, meas, stat, pool), m) for m in refs]
