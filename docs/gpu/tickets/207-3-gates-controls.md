@@ -81,3 +81,32 @@ Fix round 207-3c running (FAULT_TAU_AT=0:<nfe> flavour-only fault; ≤ 55 GPU-mi
 207 calibration stays within decision 38's 2 × 4 h; 207-3 alone used ≈ 4.05 h).
 Merge note: `gpu-port-302c-2` (08559f0b) merged 428576dd; merge the final 207-3 before Intel evidence counts as
 final-code evidence.
+
+## Result, fix round 207-3c (2026-11-02; dev seeds dev19–dev23, not yet reviewed)
+Commit `b2c71200`. Evidence `nividia:~/alf-gpu/work/t207-3c/` (`logs/summary_gates_final.{txt,json}`,
+`logs/report_cal_{def,log}_final.*`, generated; T0 `logs/t0_5.txt`). 49.2 GPU-min.
+- `FAULT_TAU_AT=0:<nfe>`: faults only flavour nfe (flavour 1 outputs bit-identical, flavour 2 rel 3.7e-7…9.1e-7 at
+  eps 1e-6); bad values refused; unset / old forms bit-identical to 9a35bdd6 and 428576dd (38/38 datasets).
+- Statistics now per main run and per pair of main runs (T2 pools 1–2 runs per path).
+- Near controls on fresh seeds: def 4e-15 +0.332 / +0.381 (margin ≥ +0.18), LOG 1e-14 +0.426 (+0.425 earlier).
+- Flavour-2-only controls are **not killed by the pooled gate**: def 2e-15 @0:2 pooled +0.124, LOG 6e-15 @0:2 +0.096.
+- Flavour-max gate `pTT_flavour_max` = max(S_nfe1, S_nfe2) at 0.15:
+  LOG separates (correct max +0.095, margin +0.055; controls ≥ +0.215);
+  **def does not meet decision 37's margin**: correct max +0.132 single run (margin +0.018), +0.112 pair; flavour-2
+  control +0.181 (margin +0.031).
+- Flavour 1 and 2 behave alike (device def +0.054 / +0.078, LOG −0.034 / −0.031). eF adds no detection over emax.
+- Minimum stratum size: the approved gate's rule, none (smallest stratum 9 points).
+
+### Manager decisions on 207-3c (2026-11-02)
+- **T2 pooling:** 207-6 pre-registers 2 main runs per path and β; the calibration evidence quotes single-run and pair
+  values, the margin rule uses the single-run (worse) value.
+- **Def flavour-max bound:** 0.15 fails decision 37's rule (margin +0.018). The bound is not yet registered; by
+  decision 37 the manager may set it if correct variants pass with margin and planted defects fail. Candidate: def
+  `pTT_flavour_max` ≤ 0.20 (correct margin +0.068 single / +0.088 pair), with a flavour-2-only control def 4e-15
+  @0:2, to be measured on two fresh seed sets (207-3d). Stated cost: on def a flavour-only defect is caught from
+  about the size giving S_nfe ≈ 0.20 (between 2e-15 and 4e-15), all-flavour defects from below 2e-15. If 207-3d does
+  not show margin ≥ 0.10 for the control, work on this gate stops for the owner. LOG keeps 0.15.
+- **Fixed controls with margin < 0.10** (LOG var8 +0.068, TAUSWAP=8 +0.061 over 0.15): the ≥ 0.10 rule applies to
+  resizable controls. Fixed controls either go into 207-6's control-miss budget with their miss risk stated, or stay
+  calibration evidence and are not T2 kill criteria; 207-6 decides and states which.
+- **Disk:** every lane's chain checks free disk inside the GPU lock (207-4 told).
