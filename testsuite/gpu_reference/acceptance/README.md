@@ -60,11 +60,17 @@ commit. Raw outputs stay until the owner's gate.
   `compare2`, `log_regex`, `files_identical`, `qref`, `h5_identical`.
 - QREF (ticket 207-5, docs/gpu/VERIFICATION.md 4b): `qbuilds`: path (`def`|`log`) -> `configure` (CPU, no GPU= token), `flags_ext`,
   `qflags` (`-DQR_PREPIVOT` / `-DSTABLOG`); `qref_env_allowed`: the names the env file of the GPU build sets (no debug, fault or steering
-  names; lint); a run with a `qref` entry `{path, qs, nul, hostin, keep}` (= the spec's) is a QREF run (needs `allow_debug`, only `ALF_GPU_*`
+  names; lint); `qref_env_pinned` `{NAME: value}` + `_qref_env_pinned_reason`: a name the env file sets that the allow-list refuses by name, allowed
+  only with exactly that value (intel: `{"NEO_CACHE_PERSISTENT": "0"}`; never offload, device-steering, debug, fault or trace names);
+  `qref_gate_timeout_s` (hang guard of the gate subprocess, default 7200); a run with a `qref` entry `{path, qs, nul, hostin, keep}` (= the spec's) is a QREF run (needs `allow_debug`, only `ALF_GPU_*`
   in its env, whose role in the spec's `env_roles` must be the role it is listed for); gate `qref`: `spec` (the 207-2 gate spec, instance
-  fields `binary_sha256`, `prog_sha`, `parameters_sha256`, `seeds` may be `"@harness"`), `spec_template_sha256`, `runs` (main),
+  fields `binary_sha256`, `prog_sha`, `seeds` may be `"@harness"`, `parameters_sha256` only in a DRAFT; `"@harness"` seeds outside a DRAFT
+  need `acc*` seeds in every run of the gate and its controls), `spec_template_sha256`, `runs` (main),
   `ctl_runs` `{role: [ids]}`, `tools_sha256` (the 207-2 scripts); gate `h5_identical`: `pairs [[on, off]], min_datasets`. A control of a
-  `qref` gate replaces only `runs` (copies made by `mutate.py qref_swap:dev:var8`). Host member: the offline program always prints `nvh`;
+  `qref` gate replaces only `runs`: `mutations` of kind `qref_swap:dev:var8` of exactly the gate's main runs; it counts as a detection only if the
+  device fails a bound and the copies' device equals the clean report's var8 (otherwise INPUT_ERROR "uninformative control"). QREF runs are
+  never `base_*` builds; their env file must be the one of the build record. Stamps (`qref_stamp` lines in the attempts log) detect edits made
+  after the stamp, not fabrication before it: the attempts log is writable by the same user. Host member: the offline program always prints `nvh`;
   specs use `host_member` `nvh` on both machines ("in-run host member, label fixed by the program").
 - `controls`: `{id, like: <gate id>, replace: {runs|pairs|cases|a|b|checks}, expect}`. The control keeps its gate's
   criterion (only the inputs change); every gate needs one with `expect: FAIL`; a control counts only while its gate

@@ -25,10 +25,14 @@ import qref_gate as QG
 
 CAND = "c0ffee000000" + "0" * 28
 TAR = "7a" * 32
+PAR = "5e" * 32  # a concrete parameters_sha256 (required outside a DRAFT, fix round 3)
 
 
 def _res(V, name, expect, v, w, why, out):
-    ok = v == expect and (why is None or (w is not None and why in w))
+    """why: a substring of the reason, or a compiled regular expression it must match"""
+    hit = why is None or (w is not None and (why.search(w) is not None if hasattr(why, "search") else why in w))
+    ok = v == expect and hit
+    why = getattr(why, "pattern", why)
     print(f"{'ok ' if ok else 'BAD'} qref {name:58s} expected {expect}{' (' + why + ')' if why else ''} got {v}"
           + (f" | {(w or '')[:160]}" if ok else f": {(w or '')[:300]}"), flush=True)
     out.append((name, expect, v, ok))
@@ -40,6 +44,12 @@ def _mem(nul, var=True):
 
 
 NUL_DEF = [0, 4, 100004, 1, 100001, 2, 1608, 4808, 5, 100005]
+# the environment names of a GPU=intel run on `intel` (read-only, 2026-11-01: env -i HOME USER LANG LC_ALL PATH TMPDIR bash --noprofile --norc -c
+# '. ~/alf-gpu/env/intel.sh; export OMP_TARGET_OFFLOAD=MANDATORY ONEAPI_DEVICE_SELECTOR=level_zero:0 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+# MKL_NUM_THREADS=1; env')
+INTEL_ENV = ("CLASSPATH CMAKE_PREFIX_PATH CMPLR_ROOT CPATH CPLUS_INCLUDE_PATH C_INCLUDE_PATH DIAGUTIL_PATH HOME I_MPI_ROOT LANG LC_ALL LD_LIBRARY_PATH "
+             "LIBRARY_PATH MANPATH MKLROOT MKL_NUM_THREADS NEO_CACHE_PERSISTENT NLSPATH OCL_ICD_FILENAMES OMP_NUM_THREADS OMP_TARGET_OFFLOAD "
+             "ONEAPI_DEVICE_SELECTOR OPENBLAS_NUM_THREADS PATH PKG_CONFIG_PATH PWD SHLVL TBBROOT TCMROOT TCM_ROOT TMPDIR UMF_ROOT USER _").split()
 
 
 def synth_spec():
@@ -47,7 +57,7 @@ def synth_spec():
     return {"spec_version": 1, "path": "def", "host_member": "nvh", "members": {"main": _mem(NUL_DEF), "ctl_ns0": _mem(NUL_DEF, False)},
             "refs": ["cpu", "nvh", "n4", "n100004", "n1", "n100001", "n2", "n1608", "n4808", "n5", "n100005"], "qs": 20, "nul": NUL_DEF,
             "cover": 1, "keep": 39, "hostin": 0, "min_reprocessed": 2, "expect_points": {"pTT": 60}, "prog_sha": "@harness", "src_sha": src,
-            "binary_sha256": "@harness", "parameters_sha256": "@harness", "seeds": "@harness",
+            "binary_sha256": "@harness", "parameters_sha256": PAR, "seeds": "@harness",
             "env_roles": {"main": {"ALF_GPU_DEBUG": "1", "ALF_GPU_TAUDIAG_QHOST": "1", "ALF_GPU_TAUDIAG_QVAR": "8", "ALF_GPU_TAUDIAG_QREF": "3",
                                    "ALF_GPU_TAUDIAG_FROM": "11"},
                           "ctl_ns0": {"extra_env": {"ALF_GPU_TAU_NS": "0"}, "omit_env": ["ALF_GPU_TAUDIAG_QVAR"]}},
@@ -108,6 +118,59 @@ def part_a(V, tmp, out):
     lint_case("tools_sha256 incomplete", dict(G0, tools_sha256={k: v for k, v in tools.items() if k != "t207_d5_gate.py"}), "tools_sha256")
     sp = copy.deepcopy(G0["spec"]); del sp["prog_sha"]
     lint_case("instance field missing", with_sha(dict(G0, spec=sp)), "spec.prog_sha missing")
+    # fix round 3
+    sp = copy.deepcopy(G0["spec"]); sp["parameters_sha256"] = "@harness"
+    lint_case("parameters_sha256 @harness in a frozen file", with_sha(dict(G0, spec=sp)), "parameters_sha256 must be concrete")
+    lint_case("parameters_sha256 @harness in a DRAFT", with_sha(dict(G0, spec=sp)), None, a=dict(acc, _status="DRAFT x"))
+    devr = {r: dict(x, seeds="dev%d" % (i + 1)) for i, (r, x) in enumerate(acc["runs"].items())}
+    lint_case("@harness seeds with dev seeds in a frozen file", G0, "acceptance (acc*) seeds", a=dict(acc, runs=devr))
+    lint_case("@harness seeds with dev seeds in a DRAFT", G0, None, a=dict(acc, runs=devr, _status="DRAFT x"))
+    sp = copy.deepcopy(G0["spec"])
+    sp["seeds"] = {"main": ["1" * 64, "2" * 64], "ctl_ns0": ["3" * 64]}
+    lint_case("concrete seeds with dev seeds in a frozen file", with_sha(dict(G0, spec=sp)), None, a=dict(acc, runs=devr))
+    swr = dict(acc["runs"], m1s=dict(acc["runs"]["m1"]), m2s=dict(acc["runs"]["m2"]))
+    swm = [{"src": "m1", "dst": "m1s", "kind": "qref_swap:dev:var8"}, {"src": "m2", "dst": "m2s", "kind": "qref_swap:dev:var8"}]
+    swc = [{"id": "c", "like": "qref_def", "replace": {"runs": ["m1s", "m2s"]}, "expect": "FAIL"}]
+    lint_case("harness control: qref_swap copies of both main runs", G0, None, a=dict(acc, runs=swr, mutations=swm, controls=swc))
+    lint_case("harness control: a copy of another kind", G0, "must be a mutations entry of kind",
+              a=dict(acc, runs=swr, mutations=[swm[0], dict(swm[1], kind="seeds")], controls=swc))
+    lint_case("harness control: both copies of one main run", G0, "exactly the gate's main runs",
+              a=dict(acc, runs=swr, mutations=[swm[0], dict(swm[1], src="m1")], controls=swc))
+    lint_case("harness control copy with dev seeds, @harness, frozen", G0, "acceptance (acc*) seeds",
+              a=dict(acc, runs=dict(swr, m2s=dict(swr["m2s"], seeds="dev2")), mutations=swm, controls=swc))
+    lint_case("QREF run on a base build", G0, "base build",
+              a=dict(acc, builds=dict(acc["builds"], base_gpu=acc["builds"]["gpu"]), runs=dict(acc["runs"], m2=dict(acc["runs"]["m2"], build="base_gpu"))))
+    pinr = "intel.sh sets it (no kernel cache outside ~/alf-gpu)"
+    lint_case("qref_env_pinned NEO_CACHE_PERSISTENT=0 with reason", G0, None,
+              a=dict(acc, qref_env_pinned={"NEO_CACHE_PERSISTENT": "0"}, _qref_env_pinned_reason=pinr))
+    lint_case("qref_env_pinned without reason", G0, "_qref_env_pinned_reason", a=dict(acc, qref_env_pinned={"NEO_CACHE_PERSISTENT": "0"}))
+    for n in ("OMP_TARGET_OFFLOAD", "ONEAPI_DEVICE_SELECTOR", "ZE_AFFINITY_MASK", "LIBOMPTARGET_DEBUG", "ALF_GPU_TAU_NS", "LD_PRELOAD", "OMP_NUM_THREADS"):
+        lint_case(f"qref_env_pinned {n}", G0, "may not be pinned", a=dict(acc, qref_env_pinned={n: "0"}, _qref_env_pinned_reason=pinr))
+    lint_case("qref_env_allowed NEO_CACHE_PERSISTENT (by name)", G0, "may not be allowed", a=dict(acc, qref_env_allowed=["NEO_CACHE_PERSISTENT"]))
+    lint_case("qref_gate_timeout_s 0", G0, "qref_gate_timeout_s", a=dict(acc, qref_gate_timeout_s=0))
+
+    # check_env with the complete environment of a GPU=intel run on `intel` (names read on intel 2026-11-01: env -i + ~/alf-gpu/env/intel.sh
+    # + the harness exports, as acc_run.sh builds it); only the names matter, values are placeholders except the checked ones
+    ienv = {n: "x" for n in INTEL_ENV}
+    ienv.update(OMP_TARGET_OFFLOAD="MANDATORY", ONEAPI_DEVICE_SELECTOR="level_zero:0", OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1",
+                MKL_NUM_THREADS="1", NEO_CACHE_PERSISTENT="0", **dict(kv.split("=", 1) for kv in main_env))
+    iacc = dict(acc, qref_env_allowed=sorted(n for n in INTEL_ENV if n not in QG.ENV_BASE and n != "NEO_CACHE_PERSISTENT"),
+                qref_env_pinned={"NEO_CACHE_PERSISTENT": "0"}, _qref_env_pinned_reason=pinr,
+                builds={"gpu": {"tool": "intel", "configure": "IntelLLVM noMPI HDF5 GPU=intel", "gpu": True}})
+    lint_case("intel: qref_env_allowed + pinned for the full intel env", G0, None, a=iacc)
+
+    def env_case(name, env, a, why):
+        try:
+            QG.check_env(V, "m1", {"env": env}, acc["runs"]["m1"], a, a["builds"]["gpu"])
+            v, w = "PASS", None
+        except V.InputFail as e:
+            v, w = "INPUT_ERROR", str(e)
+        _res(V, name, "PASS" if why is None else "INPUT_ERROR", v, w, why, out)
+    env_case("check_env: full intel env, NEO_CACHE_PERSISTENT=0 pinned", ienv, iacc, None)
+    env_case("check_env: full intel env without the pin", ienv, dict(iacc, qref_env_pinned={}), "cannot see")
+    env_case("check_env: NEO_CACHE_PERSISTENT=1 (wrong value)", dict(ienv, NEO_CACHE_PERSISTENT="1"), iacc, "pre-registered value")
+    env_case("check_env: NEO_CACHE_PERSISTENT missing", {k: v for k, v in ienv.items() if k != "NEO_CACHE_PERSISTENT"}, iacc, "pre-registered value")
+    env_case("check_env: intel env + SYCL_PI_TRACE", dict(ienv, SYCL_PI_TRACE="1"), iacc, "cannot see")
 
     # h5_identical on synthetic run directories (unchanged gate of the first round)
     root = os.path.join(tmp, "runs_h5")
@@ -229,7 +292,7 @@ def part_b(V, C, tmp, out):
     allr = rids + list(swaps.values())
     n = [0]
 
-    def setup(mutate=None, restamp=True, extra_lines=None, drop_stamp=None):
+    def setup(mutate=None, restamp=True, extra_lines=None, drop_stamp=None, stamp_cand=None):
         n[0] += 1
         T = os.path.join(tmp, "b%03d" % n[0])
         runs = os.path.join(T, "runs")
@@ -246,7 +309,7 @@ def part_b(V, C, tmp, out):
             for r in allr:
                 if r == drop_stamp:
                     continue
-                ls.append("2026-11-01T00:00:00 " + QG.stamp_line("agent", cand["sha"], r, QG.stamp_object(os.path.join(runs, r))))
+                ls.append("2026-11-01T00:00:00 " + QG.stamp_line("agent", stamp_cand or cand["sha"], r, QG.stamp_object(os.path.join(runs, r))))
             return ls
         lines = None if restamp else stamps()
         if mutate:
@@ -255,8 +318,8 @@ def part_b(V, C, tmp, out):
             lines = stamps()
         return T, runs, lines + (extra_lines(runs) if extra_lines else [])
 
-    def case(name, expect, gate=None, why=None, mutate=None, restamp=True, extra_lines=None, drop_stamp=None, a=None):
-        T, runs, lines = setup(mutate, restamp, extra_lines, drop_stamp)
+    def case(name, expect, gate=None, why=None, mutate=None, restamp=True, extra_lines=None, drop_stamp=None, a=None, stamp_cand=None):
+        T, runs, lines = setup(mutate, restamp, extra_lines, drop_stamp, stamp_cand)
         a2 = dict(acc, _attempt_lines=lines, _out=os.path.join(T, "out"), **dict({"_allow_mutated": True}, **(a or {})))
         v, r, w = V.run_gate(gate or g0, runs, a2)
         _res(V, name, expect, v, w, why, out)
@@ -291,11 +354,12 @@ def part_b(V, C, tmp, out):
         sp.update(kw)
         return with_sha(dict(g0, spec=sp, runs=runs_ or g0["runs"]))
 
-    # a separable (main set, measure, statistic) for the PASS path: device below every control.  Probe gates on every measure (bounds +50:
-    # the numbers only, from the report's localized section) on the original main runs and on their qref_swap copies (device and var8
-    # exchanged: the copies' device is the originals' var8); the other set is the planted counterpart of the FAIL cases.
+    # a separable (measure, statistic) on the original main runs for the PASS path: device below every control.  Probe gates on every measure
+    # (bounds +50: the numbers only, from the report's localized section); the qref_swap copies (device and var8 exchanged: the copies' device is
+    # the originals' var8) are the planted counterpart of the FAIL cases (fix round 3: only the original runs can be the clean gate of the
+    # harness control, whose runs must be qref_swap copies).
     ctl_who = [("main", c["member"]) if c["kind"] == "variant" else (c["role"], "dev") for c in spec0["controls"]]
-    sets = [("original main runs", mains)] + ([("qref_swap copies", [swaps[r] for r in mains])] if swaps else [])
+    sets = [("original main runs", mains)]
     sep = None
     for label, mset in sets:
         probe = variant([{"name": "p_" + mm, "measure": mm, "statistic": "S_ens", "pool": "pooled", "bound": 50.0} for mm in ("pTT", "emax", "eF")],
@@ -333,9 +397,10 @@ def part_b(V, C, tmp, out):
     b = (d + cmin) / 2
     gP = variant([{"name": "sc", "measure": m, "statistic": st, "pool": "pooled", "bound": b}], runs_=mset)
     print(f"    PASS-path spec on the {label}: {st}({m}) device {d:+.4f}, smallest control {cmin:+.4f}, bound {b:+.4f} (self-check only, no calibration)")
-    case("separable spec (bound between device and controls)", "PASS", gP, a=MU)
+    vP, rP, _w = case("separable spec (bound between device and controls)", "PASS", gP, a=MU)
+    DEVFAIL = re.compile(r"device [+-][0-9]+\.[0-9]+ > bound [+-][0-9]+\.[0-9]+")
     case("bound below the device value", "FAIL", variant([{"name": "sc", "measure": m, "statistic": st, "pool": "pooled", "bound": d - 0.05}], runs_=mset),
-         why="device", a=MU)
+         why=DEVFAIL, a=MU)
     case("bound above every control (controls not killed)", "FAIL",
          variant([{"name": "sc", "measure": m, "statistic": st, "pool": "pooled", "bound": cmin + 0.05}], runs_=mset), why="not killed", a=MU)
     m2 = "eF" if m != "eF" else "emax"
@@ -346,17 +411,35 @@ def part_b(V, C, tmp, out):
                   {"name": "nc", "measure": m, "statistic": st, "pool": "pooled", "bound": 50.0}], runs_=mset)
     case("a gate no control trips: DEV-ONLY", "INPUT_ERROR", g3, why="DEV-ONLY", a=MU)
     case("spec marked test_only: TEST-ONLY", "INPUT_ERROR", variant(gP["spec"]["gates"], runs_=mset, test_only="self-check"), why="TEST-ONLY", a=MU)
-    if swaps:
-        case("device and var8 swapped consistently (the other main set)", "FAIL", dict(gP, runs=other), why="gate FAIL", a=MU)
+    if swaps and rP:
+        # the harness control (fix round 3): a FAIL counts only through the device (> bound), with the copies' device = the clean var8
+        GR = {"_gate_results": {gP["id"]: rP}}
+        ctl = dict(gP, runs=other, _control_of=gP["id"])
+        CTLDET = re.compile(r"^control detection: gate sc: device [+-][0-9]+\.[0-9]+ > bound [+-][0-9]+\.[0-9]+ \(= the clean report's var8 value\)")
+        case("harness control: qref_swap copies vs the clean gate (detection)", "FAIL", ctl, why=CTLDET, a=dict(MU, **GR))
+        case("the same without the clean result (swap gate alone)", "INPUT_ERROR", ctl, why="uninformative control", a=MU)
+        gH = variant([{"name": "sc", "measure": m, "statistic": st, "pool": "pooled", "bound": 50.0}], runs_=other)
+        case("harness control failing only by the internal var8 (bound 50)", "INPUT_ERROR", dict(gH, _control_of=gP["id"]),
+             why="without the device failing", a=dict(MU, **GR))
+        bad_rP = copy.deepcopy(rP)
+        for c_ in bad_rP["controls"]:
+            for ch in c_["checks"]:
+                if c_["member"] == "var8":
+                    ch["pooled"] = ch["pooled"] + 1e-3
+        case("harness control: copies' device is not the clean var8", "INPUT_ERROR", ctl, why="is not the clean report's var8", a=dict(MU, _gate_results={gP["id"]: bad_rP}))
+        gB = variant([{"name": "sc", "measure": m, "statistic": st, "pool": "pooled", "bound": d - 0.05}], runs_=mset)
+        case("harness control on the original (unswapped) runs", "INPUT_ERROR", dict(gB, _control_of=gP["id"]), why="not qref_swap:dev:var8 copies",
+             a=dict(MU, **GR))
         ev = V.evaluate
         T, runs, lines = setup()
         accE = dict(acc, gates=[gP], controls=[{"id": "c_swap", "like": gP["id"], "replace": {"runs": other}, "expect": "FAIL"}],
                     _attempt_lines=lines, _out=os.path.join(T, "out"), _status="DRAFT selfcheck", blocked=[], **MU)
-        accE.pop("mutations", None)
         e = ev(accE, runs)
-        okE = e["gates"][0]["verdict"] == "PASS" and e["controls"][0]["outcome"] == "FAIL" and e["controls"][0]["as_expected"]
+        okE = e["gates"][0]["verdict"] == "PASS" and e["controls"][0]["outcome"] == "FAIL" and e["controls"][0]["as_expected"] \
+            and CTLDET.search(e["controls"][0]["reason"] or "") is not None
         print(f"{'ok ' if okE else 'BAD'} qref {'evaluate(): gate PASS, harness control (swapped copies) FAIL':58s} got {e['gates'][0]['verdict']} / "
-              f"{e['controls'][0]['outcome']}" + ("" if okE else f": {e['gates'][0]['reason']} | {e['controls'][0]['reason']}"), flush=True)
+              f"{e['controls'][0]['outcome']} | {(e['controls'][0]['reason'] or '')[:160]}"
+              + ("" if okE else f": {e['gates'][0]['reason']} | {e['controls'][0]['reason']}"), flush=True)
         out.append(("evaluate with harness control", "PASS/FAIL", None, okE))
         shutil.rmtree(T)
     else:
@@ -467,6 +550,60 @@ def part_b(V, C, tmp, out):
     case("control run listed as a main run", "INPUT_ERROR", dict(gP, runs=[mset[0], ctl0], ctl_runs={k: [mset[1]] for k in g0["ctl_runs"]}),
          why="role")
     case("a run listed twice", "INPUT_ERROR", dict(gP, runs=[mset[0], mset[0]]), why="listed twice")
+
+    # ---- fix round 3
+    def jedit(rel, fn):
+        def mm(runs):
+            pj = os.path.join(runs, r1, rel)
+            d = json.load(open(pj))
+            fn(d)
+            json.dump(d, open(pj, "w"), indent=1)
+        return mm
+
+    def base_build(p):
+        p["build"]["source"] = "base_src"
+        p["build"]["candidate"] = dict(p["build"]["candidate"], base_sha=cand["sha"], base_tar_sha256=p["build"]["tar_sha256_built"])
+    case("binary from a base build record (source base_src, consistent)", "INPUT_ERROR", gP, mutate=jedit("provenance.json", base_build),
+         why="never the base", a={"base_sha": cand["sha"]})
+    case("run's env file differs from its build record's", "INPUT_ERROR", gP, mutate=jedit("provenance.json", lambda p: p.update(env_file_sha256="3" * 64)),
+         why="env file")
+    case("acc_qproc.json proc_rc 1 (restamped)", "INPUT_ERROR", gP, mutate=jedit("qproc/acc_qproc.json", lambda d: d.update(proc_rc=1)),
+         why="processing status 1")
+    case("qproc/ missing (restamped)", "INPUT_ERROR", gP, mutate=lambda runs: shutil.rmtree(os.path.join(runs, r1, "qproc")), why="no qproc/")
+    case("bridge qproc/provenance.json edited (seeds, restamped)", "INPUT_ERROR", gP,
+         mutate=jedit("qproc/provenance.json", lambda d: d.update(seeds_sha256="4" * 64)), why="qproc/provenance.json is not")
+
+    def stamp_txt(runs):
+        p = os.path.join(runs, r1, "qproc", "stamp.txt")
+        ls = open(p).read().splitlines()
+        ls[1] = ls[1] + " ALF_GPU_TAU_NS=0"
+        open(p, "w").write("\n".join(ls) + "\n")
+    case("bridge qproc/stamp.txt edited (env line, restamped)", "INPUT_ERROR", gP, mutate=stamp_txt, why="stamp.txt is not generated")
+    case("qref_proc.json with another python (restamped)", "INPUT_ERROR", gP, mutate=jedit("qproc/qref_proc.json", lambda d: d.update(python="/usr/bin/python3.x")),
+         why="interpreter")
+
+    def lib_edit(d):
+        k = sorted(d["machine"]["libs"])[0]
+        d["machine"]["libs"][k] = dict(d["machine"]["libs"][k], sha256="6" * 64)
+    case("acc_qproc.json: one library of the program differs (restamped)", "INPUT_ERROR", gP, mutate=jedit("qproc/acc_qproc.json", lib_edit),
+         why="same machine")
+    case("stamps written for another candidate (find_stamp)", "INPUT_ERROR", gP, stamp_cand="deadbeef0000" + "0" * 28, why="stamp of candidate deadbeef0000")
+    case("@harness seeds without the driver's seeds record", "INPUT_ERROR", gP, a={"_seeds_record": None}, why="no seeds record")
+    case("@harness seeds, frozen file, a main run on dev seeds", "INPUT_ERROR", gP,
+         a={"_status": "", "runs": dict(acc["runs"], **{r1: dict(acc["runs"][r1], seeds="dev1")})}, why="outside a DRAFT")
+    sp = copy.deepcopy(gP["spec"]); sp["parameters_sha256"] = rP["filled"]["parameters_sha256"] if rP else "0" * 64
+    case("concrete parameters_sha256 = the runs' (frozen-file form)", "PASS", with_sha(dict(gP, spec=sp)), a=MU)
+    sp2 = copy.deepcopy(sp); sp2["parameters_sha256"] = "1" * 64
+    case("concrete parameters_sha256 differs from the runs'", "INPUT_ERROR", with_sha(dict(gP, spec=sp2)), why="parameters_sha256", a=MU)
+    PIN = {"qref_env_pinned": {"NEO_CACHE_PERSISTENT": "0"}, "_qref_env_pinned_reason": "self-check"}
+    case("pinned NEO_CACHE_PERSISTENT=0 in every run's recorded env (restamped)", "PASS", gP,
+         mutate=lambda runs: [prov_env(r, "NEO_CACHE_PERSISTENT", "0")(runs) for r in rids], a=dict(MU, **PIN))
+    case("pinned NEO_CACHE_PERSISTENT=0 in one run only (restamped)", "INPUT_ERROR", gP, mutate=prov_env(r1, "NEO_CACHE_PERSISTENT", "0"),
+         why="NEO_CACHE_PERSISTENT=None", a=dict(MU, **PIN))
+    case("pinned NEO_CACHE_PERSISTENT=1 in the recorded env (restamped)", "INPUT_ERROR", gP, mutate=prov_env(r1, "NEO_CACHE_PERSISTENT", "1"),
+         why="pre-registered value", a=dict(MU, **PIN))
+    case("NEO_CACHE_PERSISTENT=0 recorded, not pinned (restamped)", "INPUT_ERROR", gP, mutate=prov_env(r1, "NEO_CACHE_PERSISTENT", "0"), why="cannot see",
+         a=MU)
     print(f"    part B: {n[0]} case directories, {time.time() - t0:.0f} s")
 
 

@@ -8,8 +8,9 @@ the instance fields of the pre-registered spec from the harness records, writes 
   detection; DEV-ONLY = a gate no control trips, TEST-ONLY = a spec marked test_only: not acceptance verdicts).
 
 Gate `qref` (acceptance file):
-  id, type "qref", spec {the 207-2 gate spec, see t207_d5_gate.py; the instance fields binary_sha256, prog_sha, parameters_sha256 and seeds
-  may be the string "@harness"}, spec_template_sha256 (sha256 of canon(spec), canon = sorted keys, no blanks, + newline), runs [main run ids],
+  id, type "qref", spec {the 207-2 gate spec, see t207_d5_gate.py; the instance fields binary_sha256, prog_sha and seeds may be the string
+  "@harness", parameters_sha256 only in a DRAFT (lint); "@harness" seeds outside a DRAFT need acc* seeds in every run of the gate and its
+  controls}, spec_template_sha256 (sha256 of canon(spec), canon = sorted keys, no blanks, + newline), runs [main run ids],
   ctl_runs {control role of the spec: [run ids]}, tools_sha256 {207-2 script: sha256} (TOOL_FILES), _reason.
   Instance fields (known only after the candidate is built and the seeds are drawn, VERIFICATION section 3): "@harness" is replaced by the
   value of the harness records: binary_sha256 = the ALF binary of the runs (build record from the verified tarball, = provenance of every
@@ -20,16 +21,19 @@ Before the gate runs, for every run of the gate (verdict-side checks, INPUT_ERRO
   - check_prov (harness provenance, active lines, build from the candidate tarball, seeds record, MANDATORY offload);
   - env: the recorded environment holds exactly the declared ALF_GPU_* tokens, nothing with the prefix ALF (ALFSH_*, ALF_LA_TEST_*, ...), no
     LD_PRELOAD / LD_AUDIT, OMP_TARGET_OFFLOAD=MANDATORY, thread counts 1, and otherwise only the harness's own variables (ENV_BASE) and the
-    names the acceptance file lists in qref_env_allowed (what its env file sets; the lint refuses debug-like names there): everything the
-    gate cannot see is refused here;
+    names the acceptance file lists in qref_env_allowed (what its env file sets; the lint refuses debug-like names there) or pins with their
+    exact value in qref_env_pinned: everything the gate cannot see is refused here;
   - no symbolic link anywhere in the run directory; stamp: exactly one qref_stamp line of the attempt log for the run directory, and every
     regular file of the run directory (records, provenance, qproc/: qref.txt, qref_proc.json, qref_manifest.txt, acc_qproc.json, the kept
     dumps, ...) has the stamped sha256, no file added or missing (checked again after the gate);
+  - the binary from the candidate (build source src, no base_* build); the run's env file = its build record's (sha256);
   - acc_qproc.json: processing exit 0, the spec's arguments (path, qs, nul, hostin, keep), the pre-registered script hashes, the build record
     used; machine (host, /etc/machine-id, libopenblas of the program) = qref_proc.json's = the machine running this verdict;
   - offline build record bin/qref_<path>.qbuild.json: from the candidate (sha, verified tarball), source hash = spec src_sha, program on
     disk = its prog_sha256, scripts = tools_sha256;
   - bridge records qproc/{parameters,info,run.log,provenance.json,stamp.txt} = the harness provenance (acc_qproc.sh wrote them from it).
+Harness control (a control of a qref gate, resolve_control sets _control_of): its main runs are qref_swap:dev:var8 copies of the gate's main
+runs; a gate FAIL counts as a detection only through the device (control_detection), else INPUT_ERROR "uninformative control".
 Gate `h5_identical`: pairs [[on, off]] of runs with the same build, config and seeds, `on` with ALF_GPU_TAUDIAG_QREF, `off` without any
 ALF_GPU_* variable; every dataset of data.h5 byte-identical.
 
@@ -53,6 +57,8 @@ TOOL_FILES = ("t207_d5_proc.sh", "t207_d5_qparse.py", "t207_d5_agg.py", "t207_d5
               "t207_d5_qbuild.sh")
 STRIDE = "3"  # decision 35
 HARNESS = "@harness"
+SWAP_KIND = "qref_swap:dev:var8"  # mutate.py: the only harness control of a qref gate
+SWAP_MEMBER = "var8"
 INSTANCE = ("binary_sha256", "prog_sha", "parameters_sha256", "seeds")
 GATE_EXIT = {0: "PASS", 1: "FAIL", 2: "INPUT_ERROR", 3: "DEV-ONLY", 4: "TEST-ONLY"}
 # the variables acc_run.sh itself puts into a run's environment (env -i + its own exports) and those bash adds
@@ -61,6 +67,14 @@ ENV_BASE = ("HOME", "USER", "LANG", "LC_ALL", "PATH", "TMPDIR", "PWD", "OLDPWD",
 # names that may never be allowed by qref_env_allowed (lint): debug / fault / steering variables the gate cannot see
 ENV_NEVER = re.compile(r"^(ALF.*|LD_PRELOAD|LD_AUDIT|OMP_.*|LIBOMPTARGET_.*|KMP_.*|GOMP_.*|NV_ACC_.*|NVCOMPILER_.*|PGI_.*|ACC_.*|CUDA_.*|CUBLAS_.*|"
                        r"CUSOLVER_.*|ZE_.*|SYCL_.*|IGC_.*|NEO.*|MKL_.*|OPENBLAS_.*|.*DEBUG.*|.*FAULT.*|ONEAPI_DEVICE_SELECTOR)$")
+# qref_env_pinned {NAME: value} (fix round 3): a variable the env file sets that ENV_NEVER would refuse by name although its value is harmless
+# (intel: NEO_CACHE_PERSISTENT=0, the confinement setting of ~/alf-gpu/env/intel.sh: no compiled-kernel cache outside ~/alf-gpu); allowed
+# only with exactly the pre-registered value.  Never pinnable: what makes "dev" a host result, steers the device or switches debug/faults on.
+ENV_PIN_NEVER = re.compile(r"^(ALF.*|LD_PRELOAD|LD_AUDIT|OMP_.*|LIBOMPTARGET_.*|KMP_.*|GOMP_.*|NV_ACC_.*|ACC_.*|CUDA_VISIBLE_DEVICES|CUDA_MPS_.*|"
+                           r"ONEAPI_DEVICE_SELECTOR|ZE_AFFINITY_MASK|ZE_ENABLE_PCI_ID_DEVICE_ORDER|ZE_FLAT_DEVICE_HIERARCHY|SYCL_DEVICE_FILTER|"
+                           r"SYCL_DEVICE_ALLOWLIST|.*DEBUG.*|.*FAULT.*|.*TRACE.*)$")
+GATE_TIMEOUT_S = 7200  # hang guard of the 207-2 gate subprocess (decision 16), not a criterion: the gate re-runs the offline program on the kept
+                       # dumps (6x6 dry run: a few seconds; a 12x12 acceptance set with ~10x the dumps stays far below); qref_gate_timeout_s overrides
 STAMP_SKIP = ("tmp",)  # the run's own TMPDIR is not evidence
 
 
@@ -94,29 +108,42 @@ def _load(name):
 
 
 # ------------------------------------------------------------------ machine record and stamps (shared with acc_qproc.sh / acc_driver.py)
+PROC_MACHINE = ("host", "machine_id_sha256", "openblas", "openblas_sha256")  # the fields t207_d5_proc.sh writes into qref_proc.json
+
+
 def machine_record(prog):
-    """host name, sha256 of /etc/machine-id, the libopenblas the program loads (ldd) with its sha256: what the exact re-processing depends on"""
+    """host name, sha256 of /etc/machine-id, the libopenblas the program loads (ldd) with its sha256 (the fields of t207_d5_proc.sh), and every
+    library ldd resolves for the program (soname -> real path and sha256; "not found" -> null): what the exact re-processing depends on"""
     def h(p):
         try:
             return sha(p)
         except OSError:
             return None
-    blas = None
+    blas, libs = None, {}
     try:
         out = subprocess.run(["ldd", prog], capture_output=True, text=True, env={"PATH": "/usr/bin:/bin"}).stdout
         for ln in out.splitlines():
             t = ln.split()
-            if t and t[0].startswith("libopenblas") and len(t) >= 3 and t[1] == "=>":
-                blas = os.path.realpath(t[2])
-                break
+            if len(t) >= 3 and t[1] == "=>":
+                name, path = t[0], (os.path.realpath(t[2]) if t[2].startswith("/") else None)
+            elif t and t[0].startswith("/"):
+                name, path = t[0], os.path.realpath(t[0])   # the dynamic loader
+            else:
+                continue                                     # linux-vdso (no file)
+            libs[name] = {"path": path, "sha256": h(path) if path else None}
+            if blas is None and name.startswith("libopenblas") and path:
+                blas = path
     except OSError:
         pass
-    return {"host": socket.gethostname(), "machine_id_sha256": h("/etc/machine-id"), "openblas": blas, "openblas_sha256": h(blas) if blas else None}
+    return {"host": socket.gethostname(), "machine_id_sha256": h("/etc/machine-id"), "openblas": blas, "openblas_sha256": h(blas) if blas else None,
+            "libs": libs}
 
 
 def stamp_object(rd):
     """sha256 of every regular file of a run directory (relative path; the run's tmp/ excluded); a symbolic link is an error"""
-    rd = os.path.abspath(rd)
+    if os.path.islink(os.path.normpath(rd)):
+        raise ValueError(f"run directory {rd} is a symbolic link")
+    rd = os.path.realpath(rd)
     files = {}
     for top, dirs, fs in os.walk(rd):
         rel = os.path.relpath(top, rd)
@@ -141,7 +168,7 @@ def find_stamp(V, acc, rd):
     lines = acc.get("_attempt_lines")
     if lines is None:
         raise V.InputFail("qref gate: no attempt log given (--attempts): the QREF evidence is bound to the run by the stamps there")
-    rd = os.path.abspath(rd)
+    rd = os.path.realpath(rd)
     hits = []
     for ln in lines:
         t = ln.split(None, 5)          # TIME qref_stamp WHO CANDIDATE RUNID JSON (the JSON has no blanks)
@@ -190,6 +217,18 @@ def lint(V, acc):
     for n in acc.get("qref_env_allowed", []):
         if not isinstance(n, str) or ENV_NEVER.match(n) or n in ENV_BASE:
             errs.append(f"qref_env_allowed: {n!r} may not be allowed (debug, fault or steering variable, or a harness variable)")
+    pin = acc.get("qref_env_pinned", {})
+    if not isinstance(pin, dict):
+        errs.append("qref_env_pinned must be {NAME: exact value}")
+        pin = {}
+    for n, v in pin.items():
+        if ENV_PIN_NEVER.match(n) or n in ENV_BASE or n in acc.get("qref_env_allowed", []) or not isinstance(v, str):
+            errs.append(f"qref_env_pinned: {n!r}={v!r} may not be pinned (offload, device steering, debug/fault/trace, a harness variable, already "
+                        f"in qref_env_allowed, or not a string value)")
+    if pin and not acc.get("_qref_env_pinned_reason"):
+        errs.append("qref_env_pinned needs _qref_env_pinned_reason (which env file sets it and why the value is harmless)")
+    if "qref_gate_timeout_s" in acc and not (_num(acc["qref_gate_timeout_s"]) and acc["qref_gate_timeout_s"] > 0):
+        errs.append("qref_gate_timeout_s must be a positive number (hang guard of the gate subprocess)")
     controls = acc.get("controls", [])
     for g in acc.get("gates", []):
         if g.get("type") == "h5_identical":
@@ -243,6 +282,14 @@ def lint(V, acc):
         for k in INSTANCE:
             if k not in spec:
                 errs.append(f"gate {gid}: spec.{k} missing (a value or \"{HARNESS}\")")
+        if not draft and not is_sha(spec.get("parameters_sha256")):
+            errs.append(f"gate {gid}: spec.parameters_sha256 must be concrete outside a DRAFT (known at pre-registration; manager decision 2026-11-01)")
+        if not draft and spec.get("seeds") == HARNESS:  # the driver's seeds record pins only acc* sets (fresh, drawn after the freeze)
+            ctl_rep = [rid for c in controls if c.get("like") == gid for rid in c.get("replace", {}).get("runs", [])]
+            devs = [rid for rid in [x for v in roles.values() for x in v] + ctl_rep if not str(runs.get(rid, {}).get("seeds", "dev")).startswith("acc")]
+            if devs:
+                errs.append(f"gate {gid}: spec.seeds \"{HARNESS}\" outside a DRAFT needs acceptance (acc*) seeds for every run of the gate and its "
+                            f"controls; dev seeds only with concrete hashes in the spec: {devs}")
         # the gate's own spec check, with the instance fields filled by dummies (unique seeds per run)
         try:
             GATE = _load("t207_d5_gate")
@@ -271,6 +318,8 @@ def lint(V, acc):
                     continue
                 if not builds.get(r["build"], {}).get("gpu", True):
                     errs.append(f"gate {gid}: run {rid} is a CPU build (the device under test must run)")
+                if str(r.get("build", "")).startswith("base_"):
+                    errs.append(f"gate {gid}: run {rid} is a base build (QREF runs judge the candidate)")
                 if not r.get("allow_debug"):
                     errs.append(f"gate {gid}: run {rid} needs allow_debug")
                 q = r.get("qref")
@@ -296,10 +345,18 @@ def lint(V, acc):
                 rp = c.get("replace", {})
                 if set(rp) - {"runs"}:
                     errs.append(f"control {c.get('id')}: a qref control may replace only runs (the main runs; e.g. mutate.py qref_swap copies)")
+                srcs = []
                 for rid in rp.get("runs", []):
                     used_runs.add(rid)
                     if rid not in runs or not runs[rid].get("qref"):
                         errs.append(f"control {c.get('id')}: run {rid} is not a declared QREF run")
+                    m = [x for x in acc.get("mutations", []) if x.get("dst") == rid]
+                    if len(m) != 1 or m[0].get("kind") != SWAP_KIND:
+                        errs.append(f"control {c.get('id')}: run {rid} must be a mutations entry of kind {SWAP_KIND} (the harness control of a qref gate)")
+                    else:
+                        srcs.append(m[0].get("src"))
+                if sorted(srcs) != sorted(mains):
+                    errs.append(f"control {c.get('id')}: the {SWAP_KIND} copies must be made from exactly the gate's main runs {mains} (sources {srcs})")
     for p in sorted(used_paths):
         qb = acc.get("qbuilds", {}).get(p)
         if not (isinstance(qb, dict) and isinstance(qb.get("configure"), str) and isinstance(qb.get("qflags"), str)):
@@ -329,11 +386,15 @@ def check_env(V, rid, p, decl, acc, bdecl):
     tok = sorted(f"{k}={v}" for k, v in env.items() if k.startswith("ALF_GPU_"))
     if tok != sorted(decl.get("env", [])):
         raise V.InputFail(f"{rid}: recorded ALF_GPU_* {tok} differ from the declared env {sorted(decl.get('env', []))}")
-    allowed = set(ENV_BASE) | set(acc.get("qref_env_allowed", []))
+    pin = acc.get("qref_env_pinned", {})
+    allowed = set(ENV_BASE) | set(acc.get("qref_env_allowed", [])) | set(pin)
     bad = sorted(k for k in env if not k.startswith("ALF_GPU_") and (k.startswith("ALF") or k in ("LD_PRELOAD", "LD_AUDIT") or k not in allowed))
     if bad:
         raise V.InputFail(f"{rid}: variables the QREF gate cannot see are refused in a QREF run: {bad} (allowed besides the declared ALF_GPU_*: "
-                          f"the harness variables and qref_env_allowed)")
+                          f"the harness variables, qref_env_allowed and qref_env_pinned)")
+    wrong = sorted(f"{k}={env.get(k)!r} (pinned {v!r})" for k, v in pin.items() if env.get(k) != v)
+    if wrong:
+        raise V.InputFail(f"{rid}: pinned variables without their pre-registered value (qref_env_pinned): {wrong}")
     if env.get("OMP_TARGET_OFFLOAD") != "MANDATORY":
         raise V.InputFail(f"{rid}: OMP_TARGET_OFFLOAD={env.get('OMP_TARGET_OFFLOAD')!r} (MANDATORY required: another value can make 'dev' a host result)")
     for k in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
@@ -350,6 +411,12 @@ def check_run(V, g, acc, root, rid, role, mach_cache):
     p = V.check_prov(rd, acc, 0)
     decl = acc["runs"][rid]
     bdecl = acc["builds"][decl["build"]]
+    if p["build"].get("source") != "src" or decl["build"].startswith("base_"):
+        raise V.InputFail(f"{rid}: binary built from source {p['build'].get('source')!r} (build {decl['build']}): a QREF run judges the candidate "
+                          f"(source 'src'), never the base")
+    if not is_sha(p.get("env_file_sha256")) or p.get("env_file_sha256") != p["build"].get("env_file_sha256"):
+        raise V.InputFail(f"{rid}: the run's env file {str(p.get('env_file_sha256'))[:16]} is not the one of its build record "
+                          f"{str(p['build'].get('env_file_sha256'))[:16]} (it could re-point the device libraries)")
     check_env(V, rid, p, decl, acc, bdecl)
     stamp = check_stamp(V, acc, rd)
     if stamp["files"].get("provenance.json") != sha(os.path.join(rd, "provenance.json")):
@@ -387,7 +454,7 @@ def check_run(V, g, acc, root, rid, role, mach_cache):
         mach_cache[prog] = machine_record(prog)
     mach = mach_cache[prog]
     pr = json.loads(V.read(os.path.join(q, "qref_proc.json")))
-    if ap.get("machine") != mach or pr.get("machine") != mach:
+    if ap.get("machine") != mach or pr.get("machine") != {k: mach[k] for k in PROC_MACHINE}:
         raise V.InputFail(f"{rid}: processed on {ap.get('machine')} / {pr.get('machine')}, this verdict runs on {mach}: processing and gate must "
                           f"run on the same machine (exact re-processing depends on its libopenblas)")
     if pr.get("python") != ap.get("python") or pr.get("prog") != rec["prog_sha256"]:
@@ -447,8 +514,20 @@ def g_qref(V, g, root, acc):
     roles = [("main", rid) for rid in g["runs"]] + [(r, rid) for r, ids in sorted(g["ctl_runs"].items()) for rid in ids]
     if len({rid for _, rid in roles}) != len(roles):
         raise V.InputFail("qref gate: a run listed twice")
+    if spec.get("seeds") == HARNESS:
+        # "@harness" seeds pin only what the driver's seeds record holds; outside a DRAFT that must be fresh acceptance (acc*) sets
+        if acc.get("_seeds_record") is None:
+            raise V.InputFail("qref gate: spec.seeds is \"@harness\", but no seeds record of the driver was given (--seeds-record)")
+        devs = [rid for _, rid in roles if not str(acc["runs"].get(rid, {}).get("seeds", "dev")).startswith("acc")]
+        if devs and "DRAFT" not in acc.get("_status", ""):
+            raise V.InputFail(f"qref gate: spec.seeds \"@harness\" outside a DRAFT with non-acceptance seeds in runs {devs} (dev seeds only with "
+                              f"concrete hashes in the spec)")
     mach_cache = {}
     infos = [check_run(V, g, acc, root, rid, role, mach_cache) for role, rid in roles]
+    if g.get("_control_of"):  # the harness control: the main runs replaced by qref_swap copies of the gate's main runs
+        notswap = [x["rid"] for x in infos if x["role"] == "main" and json.loads(V.read(os.path.join(root, x["rid"], "provenance.json"))).get("mutated") != SWAP_KIND]
+        if notswap:
+            raise V.InputFail(f"qref control: main runs {notswap} are not {SWAP_KIND} copies (mutate.py)")
     filled, inst = fill_spec(V, spec, infos)
     raw = canon(filled)
     ssha = hashlib.sha256(raw).hexdigest()
@@ -464,7 +543,11 @@ def g_qref(V, g, root, acc):
     env["OMP_NUM_THREADS"] = "4"
     cmd = [sys.executable, "-I", os.path.join(TOOLS, "t207_d5_gate.py"), "--spec", sp, "--spec-sha", ssha, "--prog", infos[0]["program"], "--report", rp] \
         + [x["qdir"] for x in infos]
-    pr = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=out)
+    tmo = acc.get("qref_gate_timeout_s", GATE_TIMEOUT_S)
+    try:
+        pr = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=out, timeout=tmo)
+    except subprocess.TimeoutExpired:
+        raise V.InputFail(f"qref gate: the 207-2 gate did not finish within {tmo} s (hang guard, decision 16; not a criterion)")
     lines = [l for l in pr.stdout.splitlines() if l.strip()]
     for x in infos:  # nothing changed while the gate ran
         check_stamp(V, acc, os.path.join(root, x["rid"]), x["stamp"])
@@ -479,18 +562,58 @@ def g_qref(V, g, root, acc):
         raise V.InputFail("qref gate: the report's spec sha256 is not the one passed")
     res = {"gate_verdict": verdict, "spec_sha256": ssha, "spec_file": sp, "report": rp, "report_sha256": sha(rp), "filled": inst,
            "runs": {x["rid"]: x["role"] for x in infos}, "program": infos[0]["program"],
-           "gates": [{k: x.get(k) for k in ("name", "measure", "statistic", "pool", "bound", "device_value", "passed")} for x in rep.get("gates", [])],
-           "controls": [{"name": c["name"], "checks": [{k: ch.get(k) for k in ("gate", "must_trip", "value", "ok")} for ch in c.get("checks", [])]}
+           "gates": [{k: x.get(k) for k in ("name", "measure", "statistic", "pool", "bound", "device_value", "device_pooled_value", "device_run_values",
+                                            "passed")} for x in rep.get("gates", [])],
+           "controls": [{"name": c.get("name"), "kind": c.get("kind"), "member": c.get("member"),
+                         "checks": [{k: ch.get(k) for k in ("gate", "must_trip", "value", "pooled", "run_values", "ok")} for ch in c.get("checks", [])]}
                         for c in rep.get("controls", [])],
            "authenticity": rep.get("authenticity"), "reasons": rep.get("reasons"), "last_line": lines[-1]}
     if pr.returncode == 0:
         return res
     summary = "; ".join(rep.get("reasons", []))[:600]
+    vals = " ".join(f"{x['name']}: device {x['device_value']:+.4f} bound {x['bound']:+.4f}" for x in res["gates"] if _num(x.get("device_value")))
+    if pr.returncode == 1 and g.get("_control_of"):
+        raise V.CriterionFail(control_detection(V, g, acc, res) + f" | gate FAIL: {summary} | report {rp}")
     if pr.returncode == 1:
-        raise V.CriterionFail(f"gate FAIL: {summary} | " + " ".join(f"{x['name']}: device {x['device_value']:+.4f} bound {x['bound']:+.4f}"
-                                                                     for x in res["gates"] if x.get("device_value") is not None)
-                              + f" | report {rp}")
+        raise V.CriterionFail(f"gate FAIL: {summary} | {vals} | report {rp}")
     raise V.InputFail(f"gate {verdict}: {summary} | report {rp}")
+
+
+def control_detection(V, g, acc, res):
+    """the harness control (qref_swap copies) counts as a detection only through the device: some gate of the report with passed false and
+    device_value > bound, and the device numbers of the copies are exactly the clean report's var8 numbers (the swap really put var8 in the
+    device's place).  A FAIL through the gate's internal controls alone (in the copies var8 holds the real device data, which a working gate does
+    not kill) is uninformative: INPUT_ERROR, never a detection."""
+    failing = [x for x in res["gates"] if x.get("passed") is False and _num(x.get("device_value")) and _num(x.get("bound"))
+               and x["device_value"] > x["bound"]]
+    if not failing:
+        raise V.InputFail(f"uninformative control: the gate FAILs on the {SWAP_KIND} copies without the device failing a bound "
+                          f"(reasons: {'; '.join(res.get('reasons') or [])[:300]})")
+    clean = (acc.get("_gate_results") or {}).get(g["_control_of"])
+    if not isinstance(clean, dict) or not isinstance(clean.get("controls"), list):
+        raise V.InputFail(f"uninformative control: no clean result of gate {g['_control_of']} to compare the copies' device with")
+    names = [c["name"] for c in g["spec"]["controls"] if c.get("kind") == "variant" and c.get("member") == SWAP_MEMBER]
+    cc = [c for c in clean["controls"] if c.get("name") in names and c.get("member") == SWAP_MEMBER]
+    if len(cc) != 1:
+        raise V.InputFail(f"uninformative control: the spec has no single variant control on member {SWAP_MEMBER} to compare with")
+    chk = {ch["gate"]: ch for ch in cc[0]["checks"]}
+    compared, hit = [], []
+    for x in res["gates"]:
+        ch = chk.get(x["name"])
+        if ch is None:
+            continue
+        if x.get("device_pooled_value") != ch.get("pooled") or x.get("device_run_values") != ch.get("run_values"):
+            raise V.InputFail(f"uninformative control: gate {x['name']}: the copies' device {x.get('device_pooled_value')} {x.get('device_run_values')} "
+                              f"is not the clean report's {SWAP_MEMBER} {ch.get('pooled')} {ch.get('run_values')} (the swap did not put {SWAP_MEMBER} "
+                              f"in the device's place)")
+        compared.append(x["name"])
+        if x in failing:
+            hit.append(x)
+    if not hit:
+        raise V.InputFail(f"uninformative control: no failing gate ({[x['name'] for x in failing]}) is one the clean {SWAP_MEMBER} control is "
+                          f"judged by ({compared})")
+    return "control detection: " + "; ".join(f"gate {x['name']}: device {x['device_value']:+.4f} > bound {x['bound']:+.4f} (= the clean "
+                                             f"report's {SWAP_MEMBER} value)" for x in hit)
 
 
 def g_h5_identical(V, g, root, acc):

@@ -30,7 +30,7 @@ import subprocess
 import sys
 import tempfile
 
-sys.dont_write_bytecode = True  # the shipped candidate tree is read-only; qref_gate.py / qref_synth.py are imported from this directory
+sys.dont_write_bytecode = True  # the shipped candidate tree is read-only; qref_gate.py / qref_selfcheck.py are imported from this directory
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 FLOAT = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eEdD][-+]?\d+)?"
@@ -664,6 +664,8 @@ def resolve_control(c, acc):
     if "cases" in rp and isinstance(rp["cases"], dict):  # fault controls: only the runs change, not the expected sub-tests
         if not set(rp["cases"].values()) <= set(base["cases"].values()):
             raise SystemExit(f"control {c['id']}: expected sub-tests must be the gate's")
+    if base["type"] == "qref":  # qref_gate.control_detection compares the copies' device with the clean gate's var8 (fix round 3)
+        return dict(base, **rp, id=c["id"], _control_of=c["like"])
     return dict(base, **rp, id=c["id"])
 
 
@@ -679,9 +681,10 @@ def evaluate(acc, root):
         if not g.get("report_only"):  # report-only gates (owner decision, stated in _reason) never decide the verdict
             ok &= v == "PASS"
     gate_verdict = {g["id"]: g["verdict"] for g in out["gates"]}
+    gate_result = {g["id"]: g["result"] for g in out["gates"] if g["verdict"] == "PASS"}
     for c in acc.get("controls", []):
         cg = resolve_control(c, acc)
-        v, r, why = run_gate(cg, root, dict(acc, _allow_mutated=True))
+        v, r, why = run_gate(cg, root, dict(acc, _allow_mutated=True, _gate_results=gate_result))
         exp = c.get("expect", "FAIL")
         good = v == exp
         if gate_verdict.get(c["like"]) != "PASS":  # a control proves something only against a gate that passes

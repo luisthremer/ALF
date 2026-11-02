@@ -65,17 +65,24 @@ control trips), TEST-ONLY 4 (spec marked `test_only`) and anything else → INPU
   every gate with measure, statistic, pool and bound, every control) with `spec_template_sha256` = sha256 of its canonical form (sorted keys,
   no blanks, newline), `runs` (main), `ctl_runs` (`{role: [run ids]}`), `tools_sha256` of the 207-2 scripts, and per run a `qref` entry
   (path, qs, nul, hostin, keep = the spec's). `acc_ship.sh` also pins `docs/gpu/scripts/nividia/t207_d5_*` with the judging tools.
-- **Instance fields** (known only after the candidate is built and the seeds are drawn, section 3): `binary_sha256`, `prog_sha`,
-  `parameters_sha256`, `seeds` may be `"@harness"`; the verdict fills them from its records (ALF build record from the verified tarball, offline
-  build record `bin/qref_<path>.qbuild.json` from the same tarball, the runs' parameters, the driver's seeds record per role); a concrete value
-  must equal the harness value. The filled spec and its sha256 (passed as `--spec-sha`) and the gate report are written next to `verdict.json`.
+- **Instance fields** (known only after the candidate is built and the seeds are drawn, section 3): `binary_sha256`, `prog_sha` and `seeds`
+  may be `"@harness"`; `parameters_sha256` is known at pre-registration and must be concrete outside a DRAFT (manager decision 2026-11-01; lint).
+  The verdict fills `"@harness"` from its records (ALF build record from the verified tarball, offline build record
+  `bin/qref_<path>.qbuild.json` from the same tarball, the driver's seeds record per role); a concrete value must equal the harness value.
+  `"@harness"` seeds pin only what the driver's seeds record holds, so outside a DRAFT every run of the gate and of its controls must use
+  acceptance (`acc*`) seeds and the record is required; dev seeds only with concrete hashes in the spec (lint and verdict). The filled spec and its sha256 (passed as `--spec-sha`) and the gate report are written next to `verdict.json`.
 - **Runs** (`acc_run.sh --qref`): only `ALF_GPU_*` extra variables; the verdict refuses any recorded variable the gate cannot see: anything
   `ALF*` besides the declared `ALF_GPU_*` tokens (`ALFSH_*`, `ALF_LA_TEST_*`, ...), `LD_PRELOAD`/`LD_AUDIT`, `OMP_TARGET_OFFLOAD` ≠ MANDATORY,
   thread counts ≠ 1, and every name outside the harness's own variables and the file's `qref_env_allowed` (what the env file sets; the lint
-  refuses debug, fault and steering names there). This holds for control runs too: their faults are the gate's `ALF_GPU_*` control roles.
+  refuses debug, fault and steering names there). A name the lint would refuse by name although the env file sets a harmless value (intel:
+  `NEO_CACHE_PERSISTENT=0`, the confinement setting of `~/alf-gpu/env/intel.sh`) goes into `qref_env_pinned` `{NAME: value}` with
+  `_qref_env_pinned_reason`: allowed only with exactly that value (and then required); offload, device-steering, debug, fault and trace names can
+  never be pinned. The run's binary must come from the candidate (build source `src`, never a `base_*` build) and its env file must be the one
+  of its build record (sha256; the env file could otherwise re-point the device libraries). This holds for control runs too: their faults are the gate's `ALF_GPU_*` control roles.
 - **Processing** right after each run, before the next (`acc_qproc.sh` → `t207_d5_proc.sh`): bridge records in the 207-2 layout generated from
   the harness provenance (the reviewed parser is not taught a second format), strict check, manifest, thinning by the gcd keep rule; the
-  interpreter (`D5_PYTHON`) and the machine (host, `/etc/machine-id`, the libopenblas the program loads) are recorded.
+  interpreter (`D5_PYTHON`) and the machine (host, `/etc/machine-id`, the libopenblas the program loads, and every library `ldd` resolves for
+  the offline program, with path and sha256) are recorded.
 - **Stamps:** after the processing (and after `mutate.py qref_swap` for a control copy) the driver writes a `qref_stamp` line per run into the
   attempt log outside the run directory: sha256 of every file of the run directory (records, `qref.txt`, `qref_proc.json`, `qref_manifest.txt`,
   `acc_qproc.json`, every kept dump). Before calling the gate the verdict demands exactly one stamp per run, no file added, missing or changed,
@@ -88,15 +95,27 @@ control trips), TEST-ONLY 4 (spec marked `test_only`) and anything else → INPU
   builds from the tarball above.
 - **Controls:** inside the gate the stand-in `var8` and the production control role (`TAU_NS=0` / `TAUSWAP=8` / the 207-3 fault
   `ALF_GPU_FAULT_TAU=eps:<x>`, optionally localized by `ALF_GPU_FAULT_TAU_AT=<nst>:<nfe>`, which needs `FAULT_TAU`) must be killed,
-  else FAIL; the harness control `{"like": <qref gate>, "replace": {"runs": [...]}}` judges copies of the main runs made by
-  `mutate.py qref_swap:dev:var8` (device and var8 exchanged in the kept dumps and in `qref.txt`, so that the re-processing agrees) and must FAIL.
+  else FAIL; the harness control `{"like": <qref gate>, "replace": {"runs": [...]}}` judges copies of exactly the gate's main runs made by
+  `mutate.py qref_swap:dev:var8` (device and var8 exchanged in the kept dumps and in `qref.txt`, so that the re-processing agrees; `mutations`
+  entries, lint) and must FAIL **through the device**: it counts as a detection only if the gate report shows a gate with `passed` false and
+  device value > bound, and the copies' device numbers (pooled and per run) equal the clean gate report's var8 numbers. In the copies the
+  gate's internal var8 holds the real device data, so a FAIL by "control var8 not killed" alone says nothing about the device: INPUT_ERROR
+  ("uninformative control"), never a detection.
+- **Hang guard:** the gate subprocess has a timeout (default 7200 s, `qref_gate_timeout_s`; decision 16, never a criterion): INPUT_ERROR.
 - Gate type `h5_identical`: `data.h5` of a QREF run and of a production run (same build, config, seeds), every dataset byte-identical;
   control: a mutated copy (`mutate.py scale:…:1e-12`).
+- **Limits of the stamps:** they detect edits after the stamp, not fabrication before it: the attempts log is writable by the same user that
+  runs the harness. They bind the evidence to the run as far as the user account can be trusted (README of the harness).
 - `verdict.py --selfcheck --qref-fixture CANDROOT` (on the machine of a finished QREF dry run) runs the cases against the real gate: NaN,
   Infinity, an E-less number, a missing member, a missing point, shifted fields, a changed header, device and var8 swapped (in `qref.txt` only:
   INPUT_ERROR; consistently: FAIL), a control not killed, a defect in one of two statistics, DEV-ONLY, TEST-ONLY, an extra `ALF_GPU_*`,
   `ALF_LA_TEST_*`, `ALFSH_*`, `OMP_TARGET_OFFLOAD=DISABLED`, `LIBOMPTARGET_DEBUG`, `LD_PRELOAD`, an unknown variable, a changed script or
-  program hash, altered records, a deleted or symlinked kept dump, another machine, a missing or doubled stamp, a changed spec. Without the
+  program hash, altered records, a deleted or symlinked kept dump, another machine, a missing or doubled stamp, a changed spec; since fix round 3
+  also the harness control through the device (detection), the same without the clean result, a FAIL only by the internal var8, copies whose
+  device is not the clean var8, the control on unswapped runs, a base build record, another env file, `proc_rc` ≠ 0, a missing `qproc/`, edited
+  bridge `provenance.json` / `stamp.txt`, `qref_proc.json` with another interpreter, a changed library, stamps of another candidate,
+  `"@harness"` seeds without the record or with dev seeds in a frozen file, concrete `parameters_sha256` (equal: PASS; different), a pinned
+  variable with its value (PASS), another value, unpinned; synthetic: the full `intel` environment with `NEO_CACHE_PERSISTENT=0` pinned. Without the
   fixture the self-check ends INCOMPLETE (exit 4), never PASS.
 
 ## 5. Positive controls for every gate
@@ -113,7 +132,7 @@ is not a gate.
 | paired same-trajectory | `ALF_GPU_TAUSWAP=8` (LOG), `ALF_GPU_TAU_NS=0` (default); `mutate.py taudiag_inflate/taudiag_bias` |
 | precision mean | `ALF_GPU_NS=0` (once per toolchain; on the B580/oneMKL it cannot degrade precision, so 302b uses the graded device fault `ALF_GPU_FAULT_STAB=eps:<x>` instead, decisions 26–27); known blind spot: the 207 ZUNMQR defect (+17 % on the τ mean) |
 | compare2 | `mutate.py shift:<obs>:5` (5 standard errors of the mean, FAIL); `nan:` (INPUT_ERROR) |
-| QREF accuracy (207) | the stand-in `var8` and the production control run (`TAU_NS=0` / `TAUSWAP=8` / graded fault) inside the gate; `replace: {runs: [qref_swap copies]}` (`mutate.py qref_swap:dev:var8`, FAIL); a mutated `data.h5` copy for the QREF identity pair |
+| QREF accuracy (207) | the stand-in `var8` and the production control run (`TAU_NS=0` / `TAUSWAP=8` / graded fault) inside the gate; `replace: {runs: [qref_swap copies]}` (`mutate.py qref_swap:dev:var8`, FAIL through the device: a gate with device > bound, device = the clean var8; else INPUT_ERROR); a mutated `data.h5` copy for the QREF identity pair |
 | GPU=none identity | a planted declaration appended to a compared file (`acc_gpunone.sh --plant`); a copy of the ctest log with one failed test; other seeds (`data.h5` identity) |
 | replay / determinism | a 1-ulp-level difference (`mutate.py scale:…:1e-12`) |
 

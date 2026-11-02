@@ -9,8 +9,9 @@
 #   spec -> manifest -> program -> strict check -> qref_proc.json -> thinning (every KEEP-th dump by the gcd keep rule).
 #   qproc/acc_qproc.json records the arguments, the status, the qbuild record, the sha256 of the scripts used, the interpreter of the parser
 #   steps (D5_PYTHON = ACC_PYTHON, default ~/alf-gpu/venv/bin/python3; the driver passes its own interpreter) and the machine (qref_gate.py
-#   machine: host name, sha256 of /etc/machine-id, the libopenblas the offline program loads, with its sha256), which verdict.py requires to be
-#   the machine it runs the gate on (the gate's exact re-processing depends on that library).
+#   machine: host name, sha256 of /etc/machine-id, the libopenblas the offline program loads, with its sha256, and every library ldd resolves
+#   for it, with real path and sha256: on nividia the program links libblas.so.3/liblapack.so.3, not libopenblas by name), which verdict.py
+#   requires to be the machine it runs the gate on (the gate's exact re-processing depends on those libraries).
 #   Record format (207-5 decision): the 207-2 parser (t207_d5_qparse.derive_run, reviewed) reads its own runner's records (rc, env token list,
 #   run_log_sha256, info_sha256, seeds_sha256, parameters_sha256, binary_sha256, stamp.txt); this bridge writes exactly those, generated from the
 #   harness provenance (alf-acc-prov/1), instead of teaching the reviewed parser a second format; verdict.py re-checks every bridged field
