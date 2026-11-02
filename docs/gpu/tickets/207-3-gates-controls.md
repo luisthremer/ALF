@@ -173,3 +173,16 @@ Commit `5cb5aff4`. Evidence `nividia:~/alf-gpu/work/t207-3e/` (`logs/summary_gat
   TAUSWAP (+0.065).
 - Stray file from a confinement slip: `nividia:~/alf-gpu/work/t207-3/logs/t0_e3.txt` (64 lines of "binary missing",
   no runs); left in place, not evidence.
+
+## Review of 207-3e (2026-11-02)
+Fresh numerics-reviewer: (a) parsing **approve** (nit: nvfortran list-directed read wraps overflow silently,
+`4294967297:2` reads as 1:2 → limit fields to 9 digits). dev26 flavour max recomputed from raw qref.txt (+0.2719,
+margin +0.1219; dev23 +0.1114), summary reproduced exactly. dev26 ran on nv_log4 (AT=0:2 identity to nv_log5 shown
+in T0). (c) scripts **changes required**: summary.py — (1) the device is not in the correct side's pass test (a
+device above the bound printed THIN, not DOES NOT SEPARATE); (2) "≥ 2 fresh seed sets per control" not enforced
+(no grouping by control kind, no distinct-seed check); should: sd 0/NaN gives z = inf; margin rule not generated
+for the emax gates (reviewer computed: correct side passes, def +0.101/+0.141/+0.156, LOG +0.090/+0.110/+0.126);
+var8 alternative not defined as computed. run.sh/chain.sh — (6) a refusal on resume leaves the flag and the chain
+loops forever. Fix round 207-3f (scripts only plus the 9-digit nit, no calibration GPU runs).
+- 207-6 definition of the fixed-control alternative: z_fix = (worst single main run − bound) / run-to-run sd over the
+  main runs ≥ 4 (conservative; LOG var8 vs pTT pooled 4.4).
