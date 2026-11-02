@@ -4,7 +4,9 @@
 # (only the work dir and the compiler environment differ: system gfortran 15.2 + OpenBLAS on intel).
 #   usage: t302c2_qbuild.sh TREE OUT CPPFLAGS     t302c2_qbuild.sh gnu_pp qref_pp -DQR_PREPIVOT ; t302c2_qbuild.sh gnu_log qref_log -DSTABLOG
 # Result: bin/<OUT>.out (+ .sha256, .src.sha256 = sha256 of the t207_d5_qref.F90 next to t207_d5_proc.sh, which proc.sh verifies).
-W=$HOME/alf-gpu/work/t302c-2; export TMPDIR=$W/tmp
+W=${T302C2_W:-$HOME/alf-gpu/work/t302c-2}   # round 2: T302C2_W=$HOME/alf-gpu/work/t302c-2b (only these two)
+case "$W" in "$HOME/alf-gpu/work/t302c-2"|"$HOME/alf-gpu/work/t302c-2b") ;; *) echo "refusing work dir $W"; exit 1;; esac
+:; export TMPDIR=$W/tmp
 TR=$1; OUT=$2; FL=$3
 safe() { case "$1" in ""|*..*|*/*) echo "refusing unsafe name: [$1]" >&2; exit 1;; esac; }
 safe "$TR"; safe "$OUT"
