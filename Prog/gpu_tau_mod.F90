@@ -124,6 +124,7 @@ Module gpu_tau_mod
   Use gpu_state_mod
   Use gpu_wrap_mod, only: gpu_mmthr, gpu_mmthl_m1, gpu_Vslice_R, gpu_Vslice_L
   Use gpu_stab_mod
+  Use gpu_obs_mod, only: gpu_obs_tau_active, gpu_obs_tau_measure
   Use Random_Wrap, only: Get_seed_Len, Ranget
 
   Implicit none
@@ -219,6 +220,7 @@ Module gpu_tau_mod
   ! binary on the same inputs, and with TAUDIAG=1|2 the host chain's right state (input of the host tau pass).  The quad reference
   ! and all error numbers are computed offline (docs/gpu/scripts/nividia/t207_d5_qref.F90; nvfortran has no real(16)).
   Logical, Save :: qf_on = .false., qf_host = .false.
+  Logical, Save :: tobs_dev = .false.     ! ticket 208-3: the tau observables are measured on the device (no D->H of GT0, G0T, GTT, G00)
   Integer, Save :: qf_stride = 1, qf_nv = 0, qf_mask(ndv_max) = 0
   Integer(int64), Save :: qf_cnt = 0, qf_nfile = 0
   Class (UDV_State), Allocatable, Save :: qf_st(:)                  ! (1) device udvr, (2) left state udvst(nst)
@@ -372,6 +374,10 @@ Contains
     Integer, intent(in) :: nt
     Complex (Kind=Kind(0.d0)), intent(in) :: Phase
     Real (Kind=Kind(0.d0)), intent(in) :: Mc_step_Weight
+    if (tobs_dev) then
+       call gpu_obs_tau_measure(nt, GT0_d, G0T_d, G00_d, GTT_d, PHASE, Mc_step_Weight)
+       return
+    endif
     if (nt == 0) then
        if (Symm) then
           Call Hop_mod_Symm(G00_T,G00_d,nt)
@@ -402,6 +408,7 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: GR(Ndim,Ndim,N_FL)
     Integer :: nfe, nf, I, J
     Complex (Kind=Kind(0.d0)) :: Z
+    tobs_dev = gpu_obs_tau_active() .and. (.not. diag_on) .and. (.not. qf_on)
     call sync_fields(1, Ltrot)           ! host-update path only (ALF_GPU_NOUPDATE=1): nsigma%f -> nsigma_d, INTERIM 206; no-op with device updates
     do nfe = 1, t_nfe
        nf = Calc_Fl_map(nfe)
@@ -431,6 +438,7 @@ Contains
   Subroutine tau_end()
     Implicit none
     integer :: nfe
+    tobs_dev = .false.
     do nfe = 1, t_nfe
        call gpu_stab_reset_r(nfe)         ! leave slot 2 clean (main resets it before the next use anyway)
     enddo
@@ -463,6 +471,7 @@ Contains
     Implicit none
     Logical, intent(in) :: incl00
     Integer :: nfe, nf
+    if (tobs_dev) return                 ! ticket 208-3: the device measurement reads the device matrices
     do nfe = 1, t_nfe
        nf = Calc_Fl_map(nfe)
        ! INTERIM 207: removed by 208: D->H of GT0, G0T, GTT (3 * 16 N^2 B per flavour and slice) for ham%OBSERT / Hop_mod_Symm on the host
@@ -536,9 +545,11 @@ Contains
     call prec_pair(2, t_old(1,1,1), GTT_d(1,1,nf))
     call prec_pair(3, t_old(1,1,2), GT0_d(1,1,nf))
     call prec_pair(4, t_old(1,1,3), G0T_d(1,1,nf))
-    ! INTERIM 207: removed by 208: D->H of the new G00 (16 N^2 B), the host observables read it
-    call upd_from_c(G00_d(1,1,nf), n*n)
-    b_d2h = b_d2h + 16_int64*n*n
+    if (.not. tobs_dev) then
+       ! D->H of the new G00 (16 N^2 B) for the host observables (not needed with the device tau observables, ticket 208-3)
+       call upd_from_c(G00_d(1,1,nf), n*n)
+       b_d2h = b_d2h + 16_int64*n*n
+    endif
   end subroutine tau_stab_cgr
 
   !> Control_Precision_tau(A, B) as a device reduction (dev_prec of gpu_stab_mod: one D->H of four numbers, 32 B)

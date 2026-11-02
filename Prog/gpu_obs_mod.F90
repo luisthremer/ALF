@@ -31,12 +31,13 @@ Module gpu_obs_mod
   Use Natural_Constants, only: Eps_small
   Use Lattices_v3
   Use Predefined_Hoppings
-  Use Hamiltonian_main, only: Obs_scal, Obs_eq
+  Use Hamiltonian_main, only: Obs_scal, Obs_eq, Obs_tau
   Use gpu_state_mod
   Use gpu_update_mod, only: gpu_upd_enabled
   Implicit none
   Private
   Public :: gpu_obs_setup, gpu_obs_active, gpu_obs_measure, gpu_obs_flush, gpu_obs_finalize
+  Public :: gpu_obs_tau_active, gpu_obs_tau_measure
 
   Logical, Save :: o_set = .false.         ! model data stored (gpu_obs_setup called)
   Logical, Save :: o_ok = .false.          ! the model is supported
@@ -50,6 +51,10 @@ Module gpu_obs_mod
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: acc(:,:,:,:,:)    ! (N,1,Norb,Norb,nobs)
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: acc0(:,:)        ! (Norb,nobs)
   Integer, Save :: o_dec
+  Logical, Save :: o_tau = .false., o_tdev = .false.     ! tau-resolved observables (ticket 208-3)
+  Integer, Save :: o_Nt
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: tacc(:,:,:,:,:)   ! (N,Nt,Norb,Norb,nobs)
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: tacc0(:,:)        ! (Norb,nobs)
 
 Contains
 
@@ -70,7 +75,7 @@ Contains
     Integer, Allocatable :: cnt(:,:)
     Character (len=16) :: s
 
-    o_set = .true.; o_ok = .false.
+    o_set = .true.; o_ok = .false.; o_tau = .false.
     call get_environment_variable('ALF_GPU_NOOBS', s)
     o_off = (trim(s) == '1')
     if (Symm_ .or. Projector_) return
@@ -144,6 +149,13 @@ Contains
        o_nobs = 3; o_kind(1:3) = (/ 1, 2, 3 /)
     endif
     o_ok = .true.
+    ! tau-resolved observables (allocated by Alloc_obs only for Ltau = 1): the same observables, one per Obs_eq
+    if (allocated(Obs_tau)) then
+       if (size(Obs_tau,1) == o_nobs) then
+          o_Nt = size(Obs_tau(1)%Obs_Latt,2)
+          o_tau = .true.
+       endif
+    endif
   End Subroutine gpu_obs_setup
 
   !> .true. when the device measurement replaces ham%Obser
@@ -347,6 +359,15 @@ Contains
   Subroutine gpu_obs_flush()
     Implicit none
     Integer :: k
+    if (o_tdev) then
+       !$omp target update from(tacc, tacc0)
+       do k = 1, o_nobs
+          Obs_tau(k)%Obs_Latt = Obs_tau(k)%Obs_Latt + tacc(:,:,:,:,k)
+          Obs_tau(k)%Obs_Latt0 = Obs_tau(k)%Obs_Latt0 + tacc0(:,k)
+       enddo
+       tacc = (0.d0, 0.d0); tacc0 = (0.d0, 0.d0)
+       !$omp target update to(tacc, tacc0)
+    endif
     if (.not. o_dev) return
     !$omp target update from(acc, acc0)
     do k = 1, o_nobs
@@ -359,11 +380,155 @@ Contains
 
   Subroutine gpu_obs_finalize()
     Implicit none
+    if (o_tdev) then
+       !$omp target exit data map(delete: tacc, tacc0)
+       deallocate(tacc, tacc0)
+       o_tdev = .false.
+    endif
     if (o_dev) then
        !$omp target exit data map(delete: o_inv, o_jc, o_uo, hk_i, hk_j, hk_f, hk_c, acc, acc0)
        deallocate(acc, acc0)
        o_dev = .false.
     endif
   End Subroutine gpu_obs_finalize
+
+  !> .true. when the device tau-resolved measurement replaces ham%OBSERT (not with Symm / Projector: refused by gpu_obs_setup)
+  Logical Function gpu_obs_tau_active()
+    Implicit none
+    gpu_obs_tau_active = o_set .and. o_ok .and. o_tau .and. (.not. o_off) .and. gpu_active
+  End Function gpu_obs_tau_active
+
+  !> ham%OBSERT on the device: GT0, G0T, G00, GTT are the device-resident matrices of the tau pass (no D->H per slice)
+  Subroutine gpu_obs_tau_measure(nt, GT0, G0T, G00, GTT, Phase, Mc_step_weight)
+    Implicit none
+    Integer, intent(in) :: nt
+    Complex (Kind=Kind(0.d0)), intent(in) :: GT0(o_Ndim,o_Ndim,o_NFL), G0T(o_Ndim,o_Ndim,o_NFL), G00(o_Ndim,o_Ndim,o_NFL), GTT(o_Ndim,o_Ndim,o_NFL)
+    Complex (Kind=Kind(0.d0)), intent(in) :: Phase
+    Real (Kind=Kind(0.d0)), intent(in) :: Mc_step_weight
+    Complex (Kind=Kind(0.d0)) :: ZP, ZS, ZW
+    Integer :: I, k
+    Real (Kind=Kind(0.d0)) :: rs, wr, wi
+
+    if (.not. o_tdev) then
+       allocate(tacc(o_N,o_Nt,o_Norb,o_Norb,o_nobs), tacc0(o_Norb,o_nobs))
+       tacc = (0.d0, 0.d0); tacc0 = (0.d0, 0.d0)
+       if (.not. o_dev) call alloc_dev()
+       !$omp target enter data map(to: tacc, tacc0)
+       o_tdev = .true.
+    endif
+    ZP = Phase/Real(Phase, kind(0.D0))
+    ZS = Real(Phase, kind(0.D0))/Abs(Real(Phase, kind(0.D0)))
+    ZS = ZS*Mc_step_weight
+    ZW = ZP*ZS
+    wr = real(ZW); wi = aimag(ZW)
+    rs = Real(ZS, kind(0.d0))
+    if (nt == 0) then                       ! counters once per pass, as the Predefined_Obs_tau_* routines
+       do I = 1, o_nobs
+          Obs_tau(I)%N = Obs_tau(I)%N + 1
+          Obs_tau(I)%Ave_sign = Obs_tau(I)%Ave_sign + rs
+       enddo
+    endif
+    do k = 1, o_nobs
+       if (o_kind(k) == 4 .and. k /= 2) cycle
+       call tcorr(k, o_kind(k), nt, wr, wi, GT0, G0T, G00, GTT)
+    enddo
+  End Subroutine gpu_obs_tau_measure
+
+  Subroutine tcorr(k, kind_k, nt, wr, wi, GT0, G0T, G00, GTT)
+    Implicit none
+    Integer, intent(in) :: k, kind_k, nt
+    Real (Kind=Kind(0.d0)), intent(in) :: wr, wi
+    Complex (Kind=Kind(0.d0)), intent(in) :: GT0(o_Ndim,o_Ndim,o_NFL), G0T(o_Ndim,o_Ndim,o_NFL), G00(o_Ndim,o_Ndim,o_NFL), GTT(o_Ndim,o_Ndim,o_NFL)
+    Integer :: m, imj, no, no2, I, J, i1, j1, nf, N, Norb, NFL, it
+    Complex (Kind=Kind(0.d0)) :: s1, s2, s3, z, zi, zj, zxy, zz, zs0
+    Real (Kind=Kind(0.d0)) :: ns, rn, sq3
+
+    N = o_N; Norb = o_Norb; NFL = o_NFL; it = nt + 1
+    ns = dble(o_NSUN); rn = 1.d0/dble(o_NFL); sq3 = sqrt(3.d0)
+    if (kind_k == 1) then            ! Green: sum_nf GT0 / N_FL
+       !$omp target teams distribute parallel do private(imj,no,no2,I,J,i1,j1,nf,s1,z)
+       do m = 0, N*Norb*Norb - 1
+          imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
+          s1 = (0.d0, 0.d0)
+          do I = 1, N
+             J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
+             z = (0.d0, 0.d0)
+             do nf = 1, NFL
+                z = z + GT0(i1,j1,nf)
+             enddo
+             s1 = s1 + z*rn
+          enddo
+          tacc(imj,it,no,no2,k) = tacc(imj,it,no,no2,k) + s1*cmplx(wr,wi,kind(0.d0))
+       enddo
+    elseif (kind_k == 2) then        ! SpinSUN (N_FL = 1): - N_SUN G0T(J1,I1,1) GT0(I1,J1,1)
+       !$omp target teams distribute parallel do private(imj,no,no2,I,J,i1,j1,s1)
+       do m = 0, N*Norb*Norb - 1
+          imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
+          s1 = (0.d0, 0.d0)
+          do I = 1, N
+             J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
+             s1 = s1 - ns*G0T(j1,i1,1)*GT0(i1,j1,1)
+          enddo
+          tacc(imj,it,no,no2,k) = tacc(imj,it,no,no2,k) + s1*cmplx(wr,wi,kind(0.d0))
+       enddo
+    elseif (kind_k == 3) then        ! Den
+       !$omp target teams distribute parallel do private(imj,no,no2,I,J,i1,j1,nf,s1,z,zi,zj)
+       do m = 0, N*Norb*Norb - 1
+          imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
+          s1 = (0.d0, 0.d0)
+          do I = 1, N
+             J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
+             zi = (0.d0, 0.d0); zj = (0.d0, 0.d0); z = (0.d0, 0.d0)
+             do nf = 1, NFL
+                zi = zi + ((1.d0, 0.d0) - GTT(i1,i1,nf))
+                zj = zj + ((1.d0, 0.d0) - G00(j1,j1,nf))
+                z = z - G0T(j1,i1,nf)*GT0(i1,j1,nf)
+             enddo
+             s1 = s1 + (zi*ns)*(zj*ns) + z*ns
+          enddo
+          tacc(imj,it,no,no2,k) = tacc(imj,it,no,no2,k) + s1*cmplx(wr,wi,kind(0.d0))
+       enddo
+       !$omp target teams distribute parallel do private(I,i1,zi,nf,zs0)
+       do no = 1, Norb
+          zs0 = (0.d0, 0.d0)
+          do I = 1, N
+             i1 = o_inv(I,no); zi = (0.d0, 0.d0)
+             do nf = 1, NFL
+                zi = zi + ((1.d0, 0.d0) - GTT(i1,i1,nf))
+             enddo
+             zs0 = zs0 + zi*ns
+          enddo
+          tacc0(no,k) = tacc0(no,k) + zs0*cmplx(wr,wi,kind(0.d0))
+       enddo
+    else                             ! SpinMz (N_FL = 2, N_SUN = 1): k = SpinZ, k+1 = SpinXY, k+2 = SpinT
+       !$omp target teams distribute parallel do private(imj,no,no2,I,J,i1,j1,s1,s2,s3,zxy,zz)
+       do m = 0, N*Norb*Norb - 1
+          imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
+          s1 = (0.d0, 0.d0); s2 = (0.d0, 0.d0); s3 = (0.d0, 0.d0)
+          do I = 1, N
+             J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
+             zz  = (GTT(i1,i1,1) - GTT(i1,i1,2))*(G00(j1,j1,1) - G00(j1,j1,2)) &
+                  &  - G0T(j1,i1,1)*GT0(i1,j1,1) - G0T(j1,i1,2)*GT0(i1,j1,2)
+             zxy = - G0T(j1,i1,1)*GT0(i1,j1,2) - G0T(j1,i1,2)*GT0(i1,j1,1)
+             s1 = s1 + zz
+             s2 = s2 + zxy
+             s3 = s3 + (2.d0*zxy + zz)/3.d0
+          enddo
+          tacc(imj,it,no,no2,k)   = tacc(imj,it,no,no2,k)   + s1*cmplx(wr,wi,kind(0.d0))
+          tacc(imj,it,no,no2,k+1) = tacc(imj,it,no,no2,k+1) + s2*cmplx(wr,wi,kind(0.d0))
+          tacc(imj,it,no,no2,k+2) = tacc(imj,it,no,no2,k+2) + s3*cmplx(wr,wi,kind(0.d0))
+       enddo
+       !$omp target teams distribute parallel do private(I,i1,zi,zs0)
+       do no = 1, Norb
+          zs0 = (0.d0, 0.d0)
+          do I = 1, N
+             i1 = o_inv(I,no)
+             zs0 = zs0 + (GTT(i1,i1,2) - GTT(i1,i1,1))
+          enddo
+          tacc0(no,k)   = tacc0(no,k)   + zs0*cmplx(wr,wi,kind(0.d0))
+          tacc0(no,k+2) = tacc0(no,k+2) + zs0*cmplx(wr,wi,kind(0.d0))/sq3
+       enddo
+    endif
+  End Subroutine tcorr
 End Module gpu_obs_mod
 #endif
