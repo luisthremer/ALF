@@ -4,11 +4,12 @@ Decision 41 (DECISIONS.md): 207 closes on functional checks only. No agents, no 
 long jobs detached on the remote machine, then end the turn.
 
 ## Current step
-Build candidate branch `gpu-port-207-final` (from gpu-port-302c-2 4b625b52; merge gpu-port-207-3 c48e61e2,
+DONE: candidate branch `gpu-port-207-final` built (no conflicts; merged 207-3, 207-r, gpu-port d6598bed onto 302c-2).
+Was: build candidate branch `gpu-port-207-final` (from gpu-port-302c-2 4b625b52; merge gpu-port-207-3 c48e61e2,
 gpu-port-207-r 6f452aa8, gpu-port-302b-impl2/gpu-port). Keep 302c-1's removal of the GPU=intel guard block.
 
 ## Next step
-Builds on both machines (nividia: GPU=nvidia nvhpc; intel: GPU=intel ifx+oneMKL), work dir ~/alf-gpu/work/t207-final/.
+Start builds + T0 (self-test, same-seed) on both machines: on both machines (nividia: GPU=nvidia nvhpc; intel: GPU=intel ifx+oneMKL), work dir ~/alf-gpu/work/t207-final/.
 
 ## Running
 Nothing.
