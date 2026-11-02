@@ -154,3 +154,22 @@ Alternative not taken: more points per flavour (pooling 4 instead of 2 main runs
 correct-variant spread (4-run pooled correct max +0.092 at def flavour max) but does not make the 2e-15 control
 reliable (single-run control margin +0.031 at 0.15), so it buys ≈ 0.6e-15 of detection for ≈ 2 more main runs per
 path and β.
+
+## Result, 207-3e (2026-11-02; not yet reviewed)
+Commit `5cb5aff4`. Evidence `nividia:~/alf-gpu/work/t207-3e/` (`logs/summary_gates_final.{txt,json}`,
+`logs/summary_gates_testbound_def_flmax015.*`, T0 `logs/t0_e4.txt`). 15.1 GPU-min (207-3 total ≈ 5.4 h).
+- FAULT_TAU_AT: exactly one ':' with digit fields both sides (refuses `1:2:3`, `0::2`, `+1:2`, ` 1:2`, `1,2`, `2:`,
+  `::`; a trailing blank reads as padding). 0:2 flavour-only; data.h5 38/38 bit-identical to the 207-3c binaries
+  (no env, eps, eps+AT=2:1, both builds).
+- LOG flavour-only control 6e-15@0:2 on a second fresh set (dev26): flavour max +0.272, margin +0.122 (dev23 +0.111).
+- Rule in code (correct: worst single-run margin ≥ 0.03 and z = (bound − mean over main runs)/run-to-run sd ≥ 2.5;
+  control: margin ≥ 0.10). Correct side passes with margin for all proposed gates (def pooled +0.037 z 2.7, def
+  flavour max 0.20 +0.068 z 3.5, LOG pooled +0.089 z 5.1, LOG flavour max +0.055 z 3.3); the test-only bound def
+  flavour max 0.15 prints THIN (+0.018, z 1.9).
+- Gate sets (generated): every proposed resizable control (def 4e-15, def 4e-15@0:2, LOG 1e-14, LOG 6e-15@0:2) is
+  killed with margin ≥ 0.10 by a gate of its path's set. LOG var8 vs pTT pooled: +0.080 single-run minimum, z 4.4 —
+  meets the fixed-control alternative (z ≥ 4) of the 207-6 rule, not the 0.10 margin. Not killed or thin among all
+  counted runs: def dev22 (2e-15@0:2, history), def 2e-15 all-flavour (+0.054), LOG 5e-15 (+0.070), LOG c_log_dev5
+  TAUSWAP (+0.065).
+- Stray file from a confinement slip: `nividia:~/alf-gpu/work/t207-3/logs/t0_e3.txt` (64 lines of "binary missing",
+  no runs); left in place, not evidence.
