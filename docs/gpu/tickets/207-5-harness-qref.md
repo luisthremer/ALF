@@ -85,3 +85,15 @@ Self-checks pass, an end-to-end dry run on a dev build passes, review (c) approv
   pre-registration and is concrete in the acceptance file.
 - Open: a real `acc_ship.sh` + T1 needs the t207_d5 scripts in gpu-port first (BASE vs PREREG); driver QREF disk
   margin (`disk_min_free_GB` + 2) as a per-file parameter.
+
+## Result, fix round 3 (2026-11-02; not yet reviewed)
+Commit `6049df59` on `gpu-port-207-harness` (tree 9467449f). All code items and notes done: qref_swap control counts
+only a device FAIL equal to the clean var8 value; `qref_env_pinned` (NEO_CACHE_PERSISTENT=0) with a never-pinnable
+list; base builds refused; `@harness` seeds need acc* seeds outside DRAFT; concrete parameters_sha256; env_file sha
+check; ldd `libs` record (closes the `openblas: null` gap: the offline program links libblas.so.3 via alternatives);
+realpath stamps; gate timeout 7200 s. Self-check (dev fixture devfix3, patched hashes) PASS 105 cases, 0 wrong;
+207-2 gate self-test text 433/433, reproc 16/16.
+**Item 6 open:** no final-tree dry-run verdict, fixture or dump-mode self-test; nividia disk (5.6–7.7 GB free) never
+met an idle GPU during 207-3/207-4 queues. The manager started `t207-5/chain7.sh` (2026-11-02 05:59; waits ≤ 3 h for
+disk ≥ 7400 MiB and an idle GPU together). Fresh review (c) running.
+Follow-up: whether `t207_d5_proc.sh` should also record all libraries (asked of the reviewer).
