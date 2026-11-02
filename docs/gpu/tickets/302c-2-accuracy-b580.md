@@ -85,3 +85,24 @@ Scripts `d0faa7ac` (`t302c2b_*`), binaries from 08559f0b; evidence `intel:~/alf-
   bit-identity check that round 2's main runs carry over to the merged code.
 - The β = 10 LOG pTT bound is set from data by decision 37 (not 0.15) with the same rule on both GPUs; if no bound
   gives correct margin ≥ 0.05 and control margin ≥ 0.10, work stops for the owner.
+
+## Result, round 3 (2026-11-02; dev seeds, development evidence, not reviewed)
+Scripts `4b625b52` (`t302c2c_*`); binaries at d3e82a36; evidence `intel:~/alf-gpu/work/t302c-2c/` (`tab/summary.md`,
+`tab/gates_*.json`, generated). 20 QREF runs, ≈ 1.66 GPU-h. T0 passes (τ-off refusals now include TAUSWAP / TAU_NS /
+TAUTEST_V; AT=0:2 flavour-only; self-tests max 8.4e-12; same-seed 2.31e-10 / 2.90e-10). m4_def_dev5 and m10_log_dev5
+bit-identical to round 2 (qref.txt with timing masked, 38/38 data.h5), so round 2's main runs count. All runs
+processed with round 2's binary128 programs (one oracle).
+- Every control on **one** seed set (rule needs two).
+- β = 10 (4 main sets): pTT pooled L_rule def 0.131 / LOG 0.249; smallest kills with margin: all-flavour pTT 1e-14
+  def / 3e-14 LOG; flavour-only (flavour max) 1e-14 / 3e-14; emax by_stratum 1e-11; localized 2e-12@2:2 via pTT
+  by_stratum (L 0.617 / 0.816). **No bound** for emax pooled (1e-11 not killed with margin, both paths) and LOG emax q95.
+- β = 4 (only 2 main sets, sd from 2 runs): def pTT pooled L_rule 0.204, LOG 0.153; def flavour-only 4e-15@0:2 has no
+  flavour-max bound under the rule (U 0.243 < L 0.272).
+
+### Manager decisions (2026-11-02)
+- Round 4 on the B580: two more β = 4 main sets per path; second fresh sets for every chosen control (β = 10: def
+  1e-14 and 1e-14@0:2, LOG 3e-14 and 3e-14@0:2, emax 1e-11 both paths, localized 2e-12@2:2 both paths; β = 4: def
+  4e-15, LOG 1e-14, LOG 1e-14@0:2) and def flavour-only 1e-14@0:2 at β = 4 on two sets. Under decision 36
+  (unattended Intel runs), ≈ 17 runs ≈ 1.5 GPU-h.
+- Gate sets are chosen per β and path so that every control kind is killed by one decisive gate; gates that cannot
+  be bounded under the rule (emax pooled at β = 10, LOG emax q95 at β = 10) become report-only, stated in 207-6.
