@@ -415,9 +415,13 @@ Contains
              G0T_d(I,J,nf) = -(Z - GR(I,J,nf))
           enddo
        enddo
-       ! INTERIM 207: removed by 208: H->D of GR (16 N^2 B per flavour): GR is host-authoritative until the measurements move to the device
-       call upd_to_c(G00_d(1,1,nf), t_N*t_N)
-       b_h2d = b_h2d + 16_int64*t_N*t_N
+       if (g_dev_ok(nf)) then
+          ! ticket 208-1: G is device-authoritative: device-to-device copy of G_d into G00_d, no H->D of GR
+          call k_copy_c(t_N*t_N, G_d(1,1,nf), G00_d(1,1,nf))
+       else
+          call upd_to_c(G00_d(1,1,nf), t_N*t_N)
+          b_h2d = b_h2d + 16_int64*t_N*t_N
+       endif
        call k_tau_init(t_N, G00_d(1,1,nf), GT0_d(1,1,nf), GTT_d(1,1,nf), G0T_d(1,1,nf))
        call k_copy_c(t_N*t_N, G00_d(1,1,nf), t_GR(1,1,nf))
        call gpu_stab_reset_r(nfe)         ! fresh udvr (slot 2): the right propagation of TAU_M starts from the unit state

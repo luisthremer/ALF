@@ -143,6 +143,7 @@ Program Main
 #ifdef ALF_GPU
         use gpu_state_mod, only: gpu_state_setup, gpu_state_finalize, gpu_active
         use gpu_wrap_mod,  only: gpu_wrap_hook
+        use gpu_update_mod, only: gpu_upd_enabled, gpu_g_host, gpu_g_host_wrote
         use gpu_stab_mod,  only: gpu_stab_on, gpu_stab_setup, gpu_stab_finalize, gpu_stab_hook, gpu_stab_wrapur, &
              &                   gpu_stab_wrapul, gpu_stab_exchange, gpu_stab_store_l, gpu_stab_cgr, gpu_stab_reset_l, &
              &                   gpu_stab_reset_r, gpu_stab_reset_st
@@ -669,7 +670,7 @@ Program Main
            nf=Calc_Fl_map(nf_eff)
 #ifdef ALF_GPU
            if (gpu_stab_on) then
-              call gpu_stab_cgr(nf_eff, nf, NVAR, GR, Z, .false.)
+              call gpu_stab_cgr(nf_eff, nf, NVAR, GR, Z, .false., lazy=gpu_upd_enabled())
            else
 #endif
            CALL CGR(Z, NVAR, GR(:,:,nf), UDVR(nf_eff), UDVL(nf_eff))
@@ -804,7 +805,7 @@ Program Main
                              IF (NTAU1 .GT. LTROT/2) NVAR = 2
                              ! device: udvl = udvst(NST), udvst(NST) = udvr, CGR and the precision check against the wrapped GR
                              call gpu_stab_exchange(NST, nf_eff, .true., udvst(NST, nf_eff))
-                             call gpu_stab_cgr(nf_eff, nf, NVAR, GR, Z1, .true.)
+                             call gpu_stab_cgr(nf_eff, nf, NVAR, GR, Z1, .true., lazy=gpu_upd_enabled())
                           else
 #endif
                           ! Read from storage left propagation from LTROT to  NTAU1
@@ -835,6 +836,9 @@ Program Main
                        !Stop
                        !write(*,*) "GR before obser sum: ",sum(GR(:,:,1))
                        !write(*,*) "Phase before obser : ",phase
+#ifdef ALF_GPU
+                       call gpu_g_host(GR)          ! ticket 208-1: G is device-authoritative; host measurement reads GR
+#endif
                        Mc_step_weight = 1.d0
                        If (Symm) then
                           Call Hop_mod_Symm(GR_Tilde,GR,ntau1)
@@ -868,6 +872,9 @@ Program Main
                     IF (NTAU1.GE. get_LOBS_ST() .AND. NTAU1.LE. get_LOBS_EN() ) THEN
                        !write(*,*) "GR before obser sum: ",sum(GR(:,:,1))
                        !write(*,*) "Phase before obser : ",phase
+#ifdef ALF_GPU
+                       call gpu_g_host(GR)          ! ticket 208-1: G is device-authoritative; host measurement reads GR
+#endif
                        Mc_step_weight = 1.d0
                        If (Symm) then
                           Call Hop_mod_Symm(GR_Tilde,GR,ntau1)
@@ -903,7 +910,7 @@ Program Main
                              ! device: udvr = udvst(NST), udvst(NST) = udvl (copied to the host object if Ltau = 1: interim),
                              ! CGR and the precision check against the wrapped GR
                              call gpu_stab_exchange(NST, nf_eff, .false., udvst(NST, nf_eff))
-                             call gpu_stab_cgr(nf_eff, nf, NVAR, GR, Z1, .true.)
+                             call gpu_stab_cgr(nf_eff, nf, NVAR, GR, Z1, .true., lazy=gpu_upd_enabled())
                           else
 #endif
                           ! Read from store the right prop. from 1 to LTROT/NWRAP-1
@@ -927,7 +934,13 @@ Program Main
                        Call Control_PrecisionP(Z,Phase)
                        Phase = Z
                        IF( get_Ltau() == 1 .and. Projector .and. Stab_nt(NST)<=THTROT+1 .and. THTROT+1<Stab_nt(NST+1) ) then
+#ifdef ALF_GPU
+                          call gpu_g_host(GR)
+#endif
                           Call tau_p ( udvl, udvr, udvst, GR, PHASE, NSTM, STAB_NT, NST,  get_LOBS_ST(), get_LOBS_EN() )
+#ifdef ALF_GPU
+                          call gpu_g_host_wrote()
+#endif
                        endif
                        NST = NST -1
                     ENDIF
@@ -963,7 +976,7 @@ Program Main
 #ifdef ALF_GPU
                     if (gpu_stab_on) then
                        NVAR = 1
-                       call gpu_stab_cgr(nf_eff, nf, NVAR, GR, Z1, .true.)
+                       call gpu_stab_cgr(nf_eff, nf, NVAR, GR, Z1, .true., lazy=gpu_upd_enabled())
                     else
 #endif
                     TEST(:,:) = GR(:,:,nf)
@@ -995,6 +1008,9 @@ Program Main
                  enddo
                  
                  IF ( get_Ltau() == 1 .and. .not. Projector ) then
+#ifdef ALF_GPU
+                    call gpu_g_host(GR)          ! ticket 208-1: tau_begin builds the host shadows of the tau = 0 matrices from GR
+#endif
                     Call TAU_M( udvst, GR, PHASE, NSTM, get_Nwrap(), STAB_NT, get_LOBS_ST(), get_LOBS_EN() )
                  endif
                  ! When Nwrap > Thtrot+1, the smallest Stab_nt(1)=Nwrap already exceeds
@@ -1005,7 +1021,13 @@ Program Main
                  ! udvst(1..Nstm) contains fresh left propagations from the backward
                  ! sweep, so calling tau_p with NST_IN=0 is correct here.
                  IF ( get_LTAU() == 1 .and. Projector .and. Stab_nt(1) > THTROT+1 ) then
+#ifdef ALF_GPU
+                    call gpu_g_host(GR)
+#endif
                     Call tau_p ( udvl, udvr, udvst, GR, PHASE, NSTM, STAB_NT, 0, get_LOBS_ST(), get_LOBS_EN() )
+#ifdef ALF_GPU
+                    call gpu_g_host_wrote()
+#endif
                  endif
               endif
 

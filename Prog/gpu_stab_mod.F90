@@ -587,39 +587,76 @@ Contains
 !  CGR
 !====================================================================
 !> CGR(Phase, NVAR, GRUP, udvr, udvl) of cgr1_mod for the device states of flavour nfe (udvl = slot 1, udvr = slot 2).
-!> G(:,:) (host) receives the new Green function: INTERIM 206, GR is host-authoritative until 208.  With_prec: the
-!> precision check of Control_PrecisionG against the incoming G (the wrapped one), as a device reduction.
-  Subroutine gpu_stab_cgr(nfe, nf, nvar, G, phase, with_prec)
+!> lazy = .true. (ticket 208-1, the sweep with device updates): G is device-authoritative.  The wrapped G for the precision check is
+!> G_d(:,:,nf) (device-to-device, no H->D), the new G goes to G_d(:,:,nf) on the device and the host G is NOT written (g_host_ok = .false.;
+!> host readers call gpu_g_host).  With chk_level >= 1 or the eps fault control the host copy is kept eager (debug only).
+!> Otherwise (lazy absent/false, self-tests, host-update path) G(:,:) (host) receives the new Green function as before.
+!> With_prec: the precision check of Control_PrecisionG against the incoming G (the wrapped one), as a device reduction.
+  Subroutine gpu_stab_cgr(nfe, nf, nvar, G, phase, with_prec, lazy)
     Implicit none
     Integer, intent(in) :: nfe, nf, nvar
     Complex (Kind=Kind(0.d0)), intent(inout) :: G(Ndim,Ndim,*)
     Complex (Kind=Kind(0.d0)), intent(out) :: phase
     Logical, intent(in) :: with_prec
-    Integer :: n
+    Logical, intent(in), optional :: lazy
+    Integer :: n, i, j
     Real (Kind=Kind(0.d0)) :: xmax, xsum
     Integer :: nna, nnb
+    Logical :: sess, keep_host
 
     n = s_N
+    sess = .false.
+    if (present(lazy)) sess = lazy
+    keep_host = .true.
+    if (sess) keep_host = eps_prod .or. (chk_level >= 1)
     if (with_prec) then
-       st_Gt = G(:,:,nf)
-       ! INTERIM 206: removed by 207/208: H->D of the wrapped G (host-authoritative), 16 N^2 B, for the precision reduction
-       !$omp target update to(st_Gt)
+       if (sess) then
+          if (.not. g_dev_ok(nf)) then
+             ! the device copy is stale (host write since): H->D of the wrapped G once
+             G_d(:,:,nf) = G(:,:,nf)
+             !$omp target update to(G_d(:,:,nf))
+             g_dev_ok(nf) = .true.
+          endif
+          !$omp target teams distribute parallel do collapse(2)
+          do j = 1, n
+             do i = 1, n
+                st_Gt(i,j) = G_d(i,j,nf)
+             enddo
+          enddo
+       else
+          st_Gt = G(:,:,nf)
+          ! H->D of the wrapped G (host-authoritative), 16 N^2 B, for the precision reduction
+          !$omp target update to(st_Gt)
+       endif
     endif
     call dev_cgr(nfe, nvar)
     call la_sync()
     ! D->H: the phase (16 B)
     !$omp target update from(st_c(3:3))
     phase = st_c(3)
-    ! INTERIM 206: removed by 207/208: D->H of the new G, 16 N^2 B (GR is host-authoritative: observables on the host)
-    !$omp target update from(st_Gn)
-    if (eps_prod .and. with_prec) then
-       ! decision 26 (debug control only): graded fault on the device result of the precision check; the returned G carries it too
-       call fault_eps_apply(st_Gn)
-       ! H->D: the perturbed st_Gn must reach the device for the precision reduction (control runs only, 16 N^2 B)
-       !$omp target update to(st_Gn)
+    if (keep_host) then
+       ! D->H of the new G, 16 N^2 B (host copy: self-tests, host-update path, debug controls)
+       !$omp target update from(st_Gn)
+       if (eps_prod .and. with_prec) then
+          ! decision 26 (debug control only): graded fault on the device result of the precision check; the returned G carries it too
+          call fault_eps_apply(st_Gn)
+          ! H->D: the perturbed st_Gn must reach the device for the precision reduction (control runs only, 16 N^2 B)
+          !$omp target update to(st_Gn)
+       endif
+       G(:,:,nf) = st_Gn
+       if (chk_level >= 1) call check_cgr(nfe, nvar, phase, G(:,:,nf))
     endif
-    G(:,:,nf) = st_Gn
-    if (chk_level >= 1) call check_cgr(nfe, nvar, phase, G(:,:,nf))
+    if (sess) then
+       ! the new G becomes the device Green function (device-to-device)
+       !$omp target teams distribute parallel do collapse(2)
+       do j = 1, n
+          do i = 1, n
+             G_d(i,j,nf) = st_Gn(i,j)
+          enddo
+       enddo
+       g_dev_ok(nf) = .true.
+       g_host_ok(nf) = keep_host
+    endif
     if (with_prec) then
        call dev_prec(n, st_Gn, st_Gt, xmax, xsum, nna, nnb)
        call Control_PrecisionG_vals(xmax, xsum, nna, nnb, n)

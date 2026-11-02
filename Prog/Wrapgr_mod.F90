@@ -335,6 +335,7 @@ Contains
        ! ---- host
        call gpu_upd_override(.true., .false.)
        nsigma%f = f0; GR = GR0; PHASE = PH0
+       call gpu_g_host_wrote()
        CALL WRAPGRUP(GR,NTAU,PHASE,Propose_S0,Nt_sequential_start, Nt_sequential_end, N_Global_tau)
        cfu = nsigma%f; cGu = GR; cPu = PHASE
        CALL WRAPGRDO(GR,ntau1,PHASE,Propose_S0,Nt_sequential_start, Nt_sequential_end, N_Global_tau)
@@ -342,9 +343,11 @@ Contains
        ! ---- device
        call random_seed(put=seed1)
        nsigma%f = f0; GR = GR0; PHASE = PH0
+       call gpu_g_host_wrote()
        call gpu_upd_resync_fields()
        call gpu_upd_override(.true., .not. gpu_upd_host_only())
        CALL WRAPGRUP(GR,NTAU,PHASE,Propose_S0,Nt_sequential_start, Nt_sequential_end, N_Global_tau)
+       call gpu_g_host(GR)
        gfu = nsigma%f
        dGu = 0.d0
        do nf_eff = 1, N_FL_eff
@@ -353,6 +356,7 @@ Contains
        enddo
        dPu = abs(PHASE - cPu)
        CALL WRAPGRDO(GR,ntau1,PHASE,Propose_S0,Nt_sequential_start, Nt_sequential_end, N_Global_tau)
+       call gpu_g_host(GR)
        gfd = nsigma%f
        dGd = 0.d0
        do nf_eff = 1, N_FL_eff
@@ -387,6 +391,7 @@ Contains
     call gpu_upd_fault_clear()
     call random_seed(put=seed0)
     nsigma%f = f0; GR = GR0; PHASE = PH0
+    call gpu_g_host_wrote()
     call gpu_upd_resync_fields()
     write(line,'(A,ES10.3,A,ES10.3,A,ES8.1,A,ES10.3,A,ES10.3,A,ES8.1)') 'GPU update self-test max over trials: G rel diff up ', mGu, &
          & ' down ', mGd, ' (tol ', tolG, '), Phase diff up ', mPu, ' down ', mPd, ' (tol ', tolP

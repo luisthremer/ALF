@@ -120,7 +120,7 @@ Module gpu_state_mod
   Public :: hop_gstart, hop_gptr, hop_big, hop_aux, hop_At, hop_Ac, vr_ptr, vr_ent, g_ngroups
   Public :: rnd, rand_mat, rel_diff, is_finite, finite_c, selftest_fail, info_line, same_bits_c
   Public :: V_meta, V_type, V_P, V_exp, nsigma_d, nsigma_t
-  Public :: G_d, udv_U, udv_V, udv_D, udv_L, udw_U, udw_V, udw_D, udw_L
+  Public :: G_d, g_dev_ok, g_host_ok, udv_U, udv_V, udv_D, udv_L, udw_U, udw_V, udw_D, udw_L
   Public :: GT0_d, G0T_d, GTT_d, scr_c, scr_vec, scr_r, scr_work, scr_ipiv
   Public :: upd_cnt
   ! ticket 212: the single reader of every ALF_GPU_* variable (all other GPU files only call these)
@@ -148,6 +148,9 @@ Module gpu_state_mod
 
   ! ---- buffers allocated on the device only (not filled in ticket 203) ----
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: G_d(:,:,:)                    ! (Ndim,Ndim,N_FL)
+  !> ticket 208-1: which copy of G(nf) is current: g_dev_ok(nf) = G_d(:,:,nf) holds the Green function, g_host_ok(nf) = the host GR does
+  !> (at least one is true).  Only the lazy sweep path (gpu_update_mod, gpu_stab_cgr with lazy=.true.) lets them differ.
+  Logical, Allocatable, Save :: g_dev_ok(:), g_host_ok(:)
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: udv_U(:,:,:,:), udv_V(:,:,:,:)   ! (Ndim,Ndim,NSTM,N_FL_eff)
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: udv_D(:,:,:)                  ! (Ndim,NSTM,N_FL_eff)  default
   Real    (Kind=Kind(0.d0)), Allocatable, Save :: udv_L(:,:,:)                  ! (Ndim,NSTM,N_FL_eff)  STABLOG
@@ -911,6 +914,8 @@ Contains
     Implicit none
     Integer :: lw
     allocate( G_d(g_Ndim,g_Ndim,g_NFL) )
+    allocate( g_dev_ok(g_NFL), g_host_ok(g_NFL) )
+    g_dev_ok = .false.; g_host_ok = .true.
     allocate( udv_U(g_Ndim,g_Ndim,g_NSTM,g_NFLeff), udv_V(g_Ndim,g_Ndim,g_NSTM,g_NFLeff) )
     allocate( udw_U(g_Ndim,g_Ndim,2,g_NFLeff), udw_V(g_Ndim,g_Ndim,2,g_NFLeff) )
 #if defined(STABLOG)
@@ -961,7 +966,7 @@ Contains
     !$omp target exit data map(delete: V_meta, V_type, V_P, V_exp)
     !$omp target exit data map(delete: hop_start, hop_meta, hop_P, hop_Rval, hop_Cval)
     deallocate(scr_c, scr_vec, scr_r, scr_ipiv, scr_work, udv_D, udv_L, udw_D, udw_L)
-    deallocate(G_d, udv_U, udv_V, udw_U, udw_V, nsigma_d, nsigma_t)
+    deallocate(G_d, g_dev_ok, g_host_ok, udv_U, udv_V, udw_U, udw_V, nsigma_d, nsigma_t)
     deallocate(V_meta, V_type, V_P, V_exp, hop_start, hop_meta, hop_P, hop_Rval, hop_Cval)
     deallocate(hop_gstart, hop_gptr, hop_big, hop_aux, hop_At, hop_Ac, vr_ptr, vr_ent)
     gpu_active = .false.

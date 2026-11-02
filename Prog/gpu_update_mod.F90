@@ -49,8 +49,8 @@
 !>      of nsigma_d(n,t) (the wrap kernels read the field on the device, so it must not go stale).
 !>   Rank-k updates (N_non_zero > 1) are not implemented: gpu_supported refuses such models (the run stays on the CPU).
 !>
-!> INTERIM 205 (removed by 206/208): G is copied H->D on entry of the GPU WRAPGRUP/DO and D->H on exit, because the
-!> stabilization, the tau pass and the measurements still run on the host.  The host GR is not read between entry and exit.
+!> Ticket 208-1: G is device-authoritative (G_d).  WRAPGRUP/DO copy the host GR to G_d only when the device copy is not current
+!> and never copy back; host readers call gpu_g_host(GR) (D->H of the stale flavours), host writers gpu_g_host_wrote().
 !>
 !> Environment (testing): ALF_GPU_NOUPDATE=1 keeps the host WRAPGRUP/DO in a GPU build; ALF_GPU_TRACE=<file> writes, per
 !> WRAPGRUP/DO call (both paths), the flipped sites of the slice and the Phase (first-divergence tests);
@@ -76,6 +76,7 @@ Module gpu_update_mod
 
   Private
   Public :: gpu_upd_host_only, gpu_upd_enabled, gpu_upd_override, gpu_upd_resync_fields, gpu_upd_check_fields, gpu_upd_selftest_due, gpu_upd_fault_set, gpu_upd_fault_clear
+  Public :: gpu_g_host, gpu_g_host_wrote
   Public :: gpu_wrapgrup, gpu_wrapgrdo, gpu_trace_on, gpu_trace_begin, gpu_trace_end
 
   Logical, Save :: checked = .false., enabled = .false., forced = .false., forced_val = .false.
@@ -217,16 +218,19 @@ Contains
 !====================================================================
 !  Interim copies of G (host GR <-> G_d)
 !====================================================================
+  !> Ticket 208-1: G is device-authoritative during the sweep.  g_in copies the host GR to G_d only for a flavour whose device
+  !> copy is not current (start of the run, after a host write); g_out leaves G_d current and marks the host GR stale.  A host reader
+  !> calls gpu_g_host(GR) first; code that writes the host GR calls gpu_g_host_wrote().
   Subroutine g_in(GR)
     Implicit none
     Complex (Kind=Kind(0.d0)), intent(in) :: GR(:,:,:)
     Integer :: nf_eff, nf
     do nf_eff = 1, N_FL_eff
        nf = Calc_Fl_map(nf_eff)
+       if (g_dev_ok(nf)) cycle
        G_d(:,:,nf) = GR(:,:,nf)
-       ! INTERIM 205: removed by 206/208 (G lives on the device once stabilization and measurements do).  The sweep's
-       ! stabilization / tau pass / measurements still read and write the host GR.
        !$omp target update to(G_d(:,:,nf))
+       g_dev_ok(nf) = .true.
        upd_cnt(7) = upd_cnt(7) + 1
        upd_cnt(9) = upd_cnt(9) + 16_int64*Ndim*Ndim
     enddo
@@ -238,13 +242,34 @@ Contains
     Integer :: nf_eff, nf
     do nf_eff = 1, N_FL_eff
        nf = Calc_Fl_map(nf_eff)
-       ! INTERIM 205: removed by 206/208 (see g_in)
+       g_host_ok(nf) = .false.
+    enddo
+  end subroutine g_out
+
+  !> D->H of G for every flavour whose host copy is stale (before a host reader of GR)
+  Subroutine gpu_g_host(GR)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(inout) :: GR(:,:,:)
+    Integer :: nf_eff, nf
+    if (.not. allocated(g_host_ok)) return
+    do nf_eff = 1, N_FL_eff
+       nf = Calc_Fl_map(nf_eff)
+       if (g_host_ok(nf)) cycle
        !$omp target update from(G_d(:,:,nf))
        GR(:,:,nf) = G_d(:,:,nf)
+       g_host_ok(nf) = .true.
        upd_cnt(8) = upd_cnt(8) + 1
        upd_cnt(9) = upd_cnt(9) + 16_int64*Ndim*Ndim
     enddo
-  end subroutine g_out
+  end subroutine gpu_g_host
+
+  !> The host GR was written (host-only code): the device copy is stale
+  Subroutine gpu_g_host_wrote()
+    Implicit none
+    if (.not. allocated(g_dev_ok)) return
+    g_dev_ok = .false.
+    g_host_ok = .true.
+  end subroutine gpu_g_host_wrote
 
 !====================================================================
 !  Device kernels
