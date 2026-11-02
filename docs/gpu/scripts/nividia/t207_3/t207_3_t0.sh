@@ -15,6 +15,13 @@
 #             hub6x6_cb_s (tau pass on) and hub6x6_cb_s_lt0 (off), data.h5 bit for bit; DEBUG=1 without and with eps:1e-6 against the
 #             previous agent's runs t03_at_<old>_{0,all} in PREV (default ~/alf-gpu/work/t207-3, read only; same dev1 seeds via SETROOT)
 #   epsprod   graded output fault in the sweep: hub6x6_cb, DEBUG=1, eps:1e-6 and eps:1e-10 vs no fault (Precision tau in info)
+#   at0       (fix round t207-3c, builds nv_def_pp4 / nv_log4; old = nv_def_pp3 / nv_log3, the 9a35bdd6 builds) ALF_GPU_FAULT_TAU_AT=0:<nfe>:
+#             bad values refused (0:0, 0:3, 5:2, -1:2, 0:, :2, 0:2 without eps, 0:2 in production); effect per flavour: QREF dumps of every
+#             CGR2_2 call (stride 1, passes 46..50) of eps:1e-6 with AT=0:2 against the unfaulted run (same seeds; inputs, B and the
+#             flavour-1 outputs must be bit-identical, every flavour-2 output must differ); identity without AT against the 9a35bdd6 binaries
+#             (no ALF_GPU_* variable; DEBUG=1 eps:1e-6; both against t207-3b's t04_id3_* runs, same dev1 seeds) and AT=2:1 (old
+#             semantics) against t207-3's t03_at_*2_21 (428576dd binaries, same AT code); data.h5 bit for bit; self-test and two
+#             fault classes on hub6x6_cb (the hook still works)
 W=${T207_3W:-$HOME/alf-gpu/work/t207-3};   # T207_3W: work dir of a follow-up agent (t207-3b)
 R=$1; shift; out=$W/logs/t0_$R.txt
 case "$R" in ""|*/*|*..*) echo bad run label; exit 1;; esac
@@ -94,6 +101,62 @@ ident3)
     h5 "$n DEBUG=1 vs PREV t03_at_${o}_0" $W/runs/t0${R}_id3_${n}_dbg/hub6x6_cb_s/data.h5 $PREV/runs/t03_at_${o}_0/hub6x6_cb_s/data.h5
     r id3_${n}_eps $n hub6x6_cb_s ALF_GPU_DEBUG=1 ALF_GPU_FAULT_TAU=eps:1e-6
     h5 "$n DEBUG=1 eps:1e-6 vs PREV t03_at_${o}_all" $W/runs/t0${R}_id3_${n}_eps/hub6x6_cb_s/data.h5 $PREV/runs/t03_at_${o}_all/hub6x6_cb_s/data.h5
+  done ;;
+at0)
+  PB=${PREVB:-$HOME/alf-gpu/work/t207-3b}; PA=${PREVA:-$HOME/alf-gpu/work/t207-3}
+  F="ALF_GPU_DEBUG=1 ALF_GPU_FAULT_TAU=eps:1e-6"
+  r at0_inv1 nv_def_pp4 hub6x6_cb_s $F ALF_GPU_FAULT_TAU_AT=0:0       # nfe 0
+  r at0_inv2 nv_def_pp4 hub6x6_cb_s $F ALF_GPU_FAULT_TAU_AT=0:3       # nfe > N_FL_eff
+  r at0_inv3 nv_def_pp4 hub6x6_cb_s $F ALF_GPU_FAULT_TAU_AT=5:2       # nst > Nstm (4)
+  r at0_inv4 nv_def_pp4 hub6x6_cb_s $F ALF_GPU_FAULT_TAU_AT=-1:2      # negative
+  r at0_inv5 nv_def_pp4 hub6x6_cb_s $F ALF_GPU_FAULT_TAU_AT=0:        # syntax
+  r at0_inv6 nv_def_pp4 hub6x6_cb_s $F ALF_GPU_FAULT_TAU_AT=:2        # syntax
+  r at0_inv7 nv_def_pp4 hub6x6_cb_s ALF_GPU_DEBUG=1 ALF_GPU_FAULT_TAU_AT=0:2              # without eps
+  r at0_inv8 nv_def_pp4 hub6x6_cb_s ALF_GPU_FAULT_TAU=eps:1e-6 ALF_GPU_FAULT_TAU_AT=0:2  # production run
+  Q="ALF_GPU_TAUDIAG_QREF=1 ALF_GPU_TAUDIAG_FROM=46"
+  for b in nv_def_pp4 nv_log4; do
+    r at0_q_${b}_0 $b hub6x6_cb_s ALF_GPU_DEBUG=1 $Q
+    r at0_q_${b}_02 $b hub6x6_cb_s $F ALF_GPU_FAULT_TAU_AT=0:2 $Q
+    for k in 0 02; do d=$W/runs/t0${R}_at0_q_${b}_$k/hub6x6_cb_s; echo "  $b AT $k: $(grep -A1 -i 'Precision tau' $d/info | tr -s ' \n' ' ')" >> $out; done
+    ~/alf-gpu/venv/bin/python3 -I - $W/runs/t0${R}_at0_q_${b}_0/hub6x6_cb_s/qref $W/runs/t0${R}_at0_q_${b}_02/hub6x6_cb_s/qref $b >> $out <<'PY'
+import os, struct, sys
+import numpy as np
+a, b, name = sys.argv[1:4]
+fa, fb = sorted(os.listdir(a)), sorted(os.listdir(b))
+assert fa == fb and fa, 'dump lists differ or are empty'
+st = {}
+for f in fa:
+    A, B = open(os.path.join(a, f), 'rb').read(), open(os.path.join(b, f), 'rb').read()
+    assert len(A) == len(B), f
+    h = struct.unpack('<13i', A[:52])
+    assert h[0] == 20791 and h[9] == 0 and h[10] == 0 and h[11] == 0 and h == struct.unpack('<13i', B[:52]), (f, h)
+    nst, nfe, n, hasb = h[4], h[5], h[7], h[12]
+    lo = len(A) - 16 * n * n * (4 + 2 * hasb); hi = lo + 64 * n * n          # the four production outputs G00, GT0, GTT, G0T
+    same_in = A[:lo] == B[:lo] and A[hi:] == B[hi:]                          # header, input states, B and Bi
+    oa = np.frombuffer(A[lo:hi], dtype='<c16'); ob = np.frombuffer(B[lo:hi], dtype='<c16')
+    rel = float(np.max(np.abs(ob - oa)) / np.max(np.abs(oa)))
+    s = st.setdefault(nfe, dict(n=0, inputs_identical=0, outputs_identical=0, max_rel=0.0, min_rel=float('inf'), nst=set()))
+    s['n'] += 1; s['inputs_identical'] += same_in; s['outputs_identical'] += (A[lo:hi] == B[lo:hi]); s['nst'].add(nst)
+    s['max_rel'] = max(s['max_rel'], rel); s['min_rel'] = min(s['min_rel'], rel)
+for nfe, s in sorted(st.items()):
+    print('  QREF %s AT=0:2 vs no fault, flavour %d: dumps %d (nst %s), inputs+B identical %d, outputs identical %d, output max rel diff %.3e min %.3e'
+          % (name, nfe, s['n'], ','.join(map(str, sorted(s['nst']))), s['inputs_identical'], s['outputs_identical'], s['max_rel'], s['min_rel']))
+ok = st[1]['outputs_identical'] == st[1]['n'] and st[2]['outputs_identical'] == 0 and all(s['inputs_identical'] == s['n'] for s in st.values())
+print('  QREF %s flavour-only check: %s' % (name, 'PASSED (flavour 1 bit-identical, every flavour-2 output perturbed)' if ok else 'FAILED'))
+PY
+  done
+  for pr in nv_def_pp4:nv_def_pp3:nv_def_pp2 nv_log4:nv_log3:nv_log2; do
+    n=${pr%%:*}; o=${pr#*:}; o=${o%%:*}; oa=${pr##*:}
+    r at0_id_${n} $n hub6x6_cb_s
+    h5 "$n vs $o (9a35bdd6) no env" $W/runs/t0${R}_at0_id_${n}/hub6x6_cb_s/data.h5 $PB/runs/t04_id3_${o}_hub6x6_cb_s/hub6x6_cb_s/data.h5
+    r at0_eps_${n} $n hub6x6_cb_s $F
+    h5 "$n vs $o (9a35bdd6) DEBUG=1 eps:1e-6" $W/runs/t0${R}_at0_eps_${n}/hub6x6_cb_s/data.h5 $PB/runs/t04_id3_${o}_eps/hub6x6_cb_s/data.h5
+    r at0_21_${n} $n hub6x6_cb_s $F ALF_GPU_FAULT_TAU_AT=2:1
+    h5 "$n vs $oa (428576dd) DEBUG=1 eps:1e-6 AT=2:1" $W/runs/t0${R}_at0_21_${n}/hub6x6_cb_s/data.h5 $PA/runs/t03_at_${oa}_21/hub6x6_cb_s/data.h5
+  done
+  for b in nv_def_pp4 nv_log4; do
+    r at0_st4_$b $b hub6x6_cb $E ALF_GPU_SELFTEST=4
+    for f in perm eps:1e-9; do r at0_f_${b}_${f/:/_} $b hub6x6_cb $E ALF_GPU_SELFTEST=4 ALF_GPU_FAULT_TAU=$f; done
   done ;;
 esac; done
 echo done >> $out

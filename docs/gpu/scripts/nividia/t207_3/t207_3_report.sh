@@ -6,12 +6,16 @@
 # proposed-gate summary logs/summary_gates[_<SUF>].{txt,json} (t207_3_summary.py).  Runs that do not exist yet are skipped (listed).
 #   QP3 (optional): a second reader directory for the runs of its spec version (g5: runs processed by the approved pipeline 4118a1de,
 #   e.g. QP=g3 QP3=g5 reads the 305488ec-processed runs with g3 and the 4118a1de-processed runs with g5; t207_3_cal.py T207_3_QPDIR_V3)
-#   usage: [PREV=dir] [QP=g3|g5] [QP3=g5] [SUF=suffix] t207_3_report.sh
+#   PREV may list several directories (space-separated, fix round t207-3c: PREV="~/alf-gpu/work/t207-3 ~/alf-gpu/work/t207-3b"); a run
+#   label found in more than one root stops the script (no silent choice)
+#   usage: [PREV="dir ..."] [QP=g3|g5] [QP3=g5] [SUF=suffix] t207_3_report.sh
 W=${T207_3W:-$HOME/alf-gpu/work/t207-3};   # T207_3W: work dir of a follow-up agent (t207-3b)
 cd $W || exit 1
 PY=~/alf-gpu/venv/bin/python3
 QP=${QP:-g3}; SUF=${SUF:+_$SUF}; V3=(); [ -n "$QP3" ] && V3=(T207_3_QPDIR_V3=$W/$QP3)
-ROOTS=(runs); [ -n "$PREV" ] && ROOTS+=("$PREV/runs")
+ROOTS=(runs); for p in $PREV; do ROOTS+=("$p/runs"); done
+dup=$(for r in "${ROOTS[@]}"; do ls -d $r/[mcf]_*/hub12x12_cb_p 2>/dev/null | xargs -r -n1 dirname | xargs -r -n1 basename; done | sort | uniq -d)
+[ -n "$dup" ] && { echo "refusing: run labels in more than one root: $dup"; exit 1; }
 fr() { local r; for r in "${ROOTS[@]}"; do [ -f $r/$1/hub12x12_cb_p/qref_proc.json ] && { echo $r/$1/hub12x12_cb_p; return; }; done; }
 for p in def log; do
   args=()

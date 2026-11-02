@@ -6,6 +6,13 @@
 #   GPU binaries (nv_* except nv_none*) run inside flock ~/alf-gpu/gpu.lock; inside the lock the script waits (up to 60 min, polling)
 #   until no compute process is on the GPU, so only one GPU process runs at a time.  No fixed run-time limit (decision 16); a 2 h guard
 #   timeout only stops a hung run.  Same records as t207_d5_run.sh (the QREF pipeline reads them).
+#   MINFREE_MB (optional, fix round t207-3c, for the dump-writing beta = 4 runs): inside the lock, once the GPU is free, the run starts
+#   only if / has at least MINFREE_MB + 1600 * (other processes waiting on gpu.lock) MB free (a waiting run of another agent has
+#   done its own disk check before the lock and will write ~1.6 GB of dumps after this run); else the lock is released, the script
+#   sleeps 300 s and tries again, for at most DISKWAIT_S (default 28800) s, then gives up (rc=8, logged, nothing run).
+#   T207_3_LOCKED=1: the caller (t207_3_chain.sh with HOLDLOCK=1) already holds gpu.lock on its own file descriptor through the run and
+#   its processing; no second flock (it would deadlock), waiting runs are not counted (they start only after the thinning), and a
+#   failed disk check is retried every 30 s inside the held lock (other agents' processing goes on and thins their dumps).
 W=${T207_3W:-$HOME/alf-gpu/work/t207-3};   # T207_3W: work dir of a follow-up agent (t207-3b)
 export TMPDIR=$W/tmp
 N=$1; C=$2; shift 2
@@ -22,7 +29,10 @@ for kv in "$@"; do export "$kv"; done
   echo "env $*"; echo "seeds $(sha256sum seeds | cut -c1-16) parameters $(sha256sum parameters | cut -c1-16)"; date -Is; } > stamp.txt
 LOCK=(); GPU=0
 case $N in nv_none*|gnu*) ;; *) export OMP_TARGET_OFFLOAD=MANDATORY; LOCK=(flock "$HOME/alf-gpu/gpu.lock"); GPU=1 ;; esac
+OWN=1; DSLEEP=300; [ "$T207_3_LOCKED" = 1 ] && { LOCK=(); OWN=0; DSLEEP=30; }
 # wall time measured after the lock is taken and the GPU is free (GPU minutes = wall of the run)
+dw0=$(date +%s)
+while :; do
 "${LOCK[@]}" bash -c '
   if [ "$1" = 1 ]; then
     for i in $(seq 1 360); do [ "$(nvidia-smi --query-compute-apps=pid --format=csv,noheader | wc -l)" -eq 0 ] && break; sleep 10; done
@@ -30,7 +40,21 @@ case $N in nv_none*|gnu*) ;; *) export OMP_TARGET_OFFLOAD=MANDATORY; LOCK=(flock
       echo 9 > .rc; date +%s.%N > .t0; cp .t0 .t1; echo "GPU busy for 60 min, not started" > run.log; exit 0
     fi
   fi
-  date +%s.%N > .t0; timeout -k 30 7200 "$0" > run.log 2>&1; echo $? > .rc; date +%s.%N > .t1' $W/bin/ALF_$N.out $GPU
+  if [ -n "$2" ]; then
+    nw=$(( $(pgrep -u "$USER" -x flock -a | grep -c "alf-gpu/gpu[.]lock") - 1 )); [ $nw -lt 0 ] && nw=0
+    [ "$3" = 0 ] && nw=0     # the caller holds the lock through this run and its processing: a waiting run starts only after the thinning
+    fm=$(df -B1M --output=avail / | tail -1 | tr -d " "); need=$(( $2 + 1600 * nw ))
+    echo "disk check in the lock $(date -Is): / $fm MB free, need $need MB ($2 + 1600 x $nw waiting on gpu.lock)" >> stamp.txt
+    if [ "$fm" -lt "$need" ]; then echo 75 > .rc; exit 0; fi
+  fi
+  date +%s.%N > .t0; timeout -k 30 7200 "$0" > run.log 2>&1; echo $? > .rc; date +%s.%N > .t1' $W/bin/ALF_$N.out $GPU "$MINFREE_MB" $OWN
+  [ "$(cat .rc)" = 75 ] || break
+  rm -f .rc
+  if [ $(( $(date +%s) - dw0 )) -ge "${DISKWAIT_S:-28800}" ]; then
+    echo 8 > .rc; date +%s.%N > .t0; cp .t0 .t1; echo "not started: / below the disk floor for ${DISKWAIT_S:-28800} s" > run.log; break
+  fi
+  sleep $DSLEEP
+done
 s=$(cat .t0); e=$(cat .t1); rc=$(cat .rc); rm -f .t0 .t1 .rc
 printf '%s %s %s %s rc=%s wall=%.1fs bin %s env [%s]\n' "$T" $N $S $C $rc $(echo "$e - $s" | bc) "$(cut -c1-16 $W/bin/ALF_$N.out.sha256)" "$*" | tee -a stamp.txt
 ~/alf-gpu/venv/bin/python3 -I - "$W" "$N" "$S" "$C" "$T" "$rc" "$s" "$e" "$*" <<'PY'

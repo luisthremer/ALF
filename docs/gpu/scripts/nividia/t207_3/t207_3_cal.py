@@ -16,6 +16,11 @@ Statistic, per measure M in (pTT, emax, eF) and point p:  r_m(p) = log10 M_m(p) 
 for a member); S_ens(m) = mean over points (pTT: points with B; emax, eF: all points).  Flavour subsets nfe = 1 / 2 of the same points.
 Printed (and in OUT.json): per run and pooled over the main runs, S_ens of dev, var8, every reference member (correct variants),
 the controls' dev; pair pooling (every pair of main runs, as a gate on two seed sets would pool); bootstrap 95 % intervals (4000 draws).
+Strata and tails (fix round t207-3c): per group 'main' (all main runs pooled), 'run:<label>' (each main run), 'pair:<l1>+<l2>' (every
+pair of main runs) and each control run.  Minimum stratum size rule (one rule for this script and t207_3_summary.py, the rule of the
+approved gate t207_d5_gate.py 4118a1de): none, every stratum (nst, nfe) or (nst, nfe, br) with at least MIN_STRATUM_PTS = 1 point enters
+the by_stratum maximum (before t207-3c this script left out strata with < 8 points, the summary none); every group records its smallest
+stratum (the summary reports the smallest one seen) and the strata the rule left out (none can be: kept as a field).
 """
 import hashlib, importlib.util, itertools, json, math, os, random, re, statistics, sys
 sys.dont_write_bytecode = True
@@ -44,6 +49,7 @@ if QPDIR3:
     READERS[_qp3.SPEC_VERSION] = (_qp3, QPDIR3)
 ERRORS = tuple(set(m.QError for m, _ in READERS.values()))
 MEASURES = ('pTT', 'emax', 'eF')
+MIN_STRATUM_PTS = 1          # the one minimum stratum size rule = the approved gate's (no minimum); t207_3_summary.py reads it from the JSON
 CTL = {'def': ('ALF_GPU_TAU_NS', '0'), 'log': ('ALF_GPU_TAUSWAP', '8')}
 
 
@@ -157,21 +163,26 @@ def q(v, p):
     return v[i] + (v[j] - v[i]) * (k - i)
 
 
-def strata(runs, refs, which, minpts=8):
-    """per-stratum means (strata (nst, nfe) and (nst, nfe, br), pooled over the runs of one role) and tail statistics (q90, q95 of
-    the per-point values) for dev, var8, every reference member (leave-one-out) and each control run's dev"""
+def strata(runs, refs, which, minpts=MIN_STRATUM_PTS):
+    """per-stratum means (strata (nst, nfe) and (nst, nfe, br), pooled over the runs of one group) and tail statistics (q90, q95 of
+    the per-point values) for dev, var8, every reference member (leave-one-out) and each control run's dev; groups: all main runs,
+    each main run, every pair of main runs, each control run"""
     res = {}
     mains = [r for r in runs if r['role'] == 'main']
     groups = [('main', mains)] + ([('run:' + r['label'], [r]) for r in mains] if len(mains) > 1 else []) + \
+             ([('pair:%s+%s' % (a['label'], b['label']), [a, b]) for a, b in itertools.combinations(mains, 2)] if len(mains) > 1 else []) + \
              [(r['label'], [r]) for r in runs if r['role'] in ('ctl', 'flt')]
+    cache = {}
     for gname, rs in groups:
         if not rs:
             continue
         vals = {}
         for r in rs:
-            for m, lst in ratios_pos(r['run'], refs, which).items():
+            if r['label'] not in cache:
+                cache[r['label']] = ratios_pos(r['run'], refs, which)
+            for m, lst in cache[r['label']].items():
                 vals.setdefault(m, []).extend(lst)
-        methods = [m for m in vals if m in refs or m in ('dev', 'var8')] if gname == 'main' or gname.startswith('run:') else ['dev']
+        methods = [m for m in vals if m in refs or m in ('dev', 'var8')] if gname == 'main' or gname.startswith(('run:', 'pair:')) else ['dev']
         g = {}
         for m in methods:
             lst = vals[m]
@@ -184,6 +195,8 @@ def strata(runs, refs, which, minpts=8):
                 d[lev] = {'%s' % ('.'.join(str(x) for x in k)): (statistics.fmean(v), len(v)) for k, v in sorted(st.items())}
                 ok = [mv for mv, n in d[lev].values() if n >= minpts]
                 d[lev + '_max'] = max(ok) if ok else None
+                d[lev + '_min_pts'] = min(n for _, n in d[lev].values())
+                d[lev + '_excluded'] = sorted(k for k, (_, n) in d[lev].items() if n < minpts)
             g[m] = d
         res[gname] = g
     return res
@@ -211,7 +224,7 @@ def main():
     if any(r['refs'] != refs for r in runs):
         raise QError('runs with different reference lists: %s' % set(','.join(r['refs']) for r in runs))
     reader = ' | '.join(sorted(set(r['reader'] for r in runs)))
-    res = dict(path=path, refs=refs, prog=progs.pop(), reader=reader, runs=[{k: v for k, v in r.items() if k != 'run'} for r in runs], tables={})
+    res = dict(path=path, refs=refs, prog=progs.pop(), reader=reader, min_stratum_pts=MIN_STRATUM_PTS, runs=[{k: v for k, v in r.items() if k != 'run'} for r in runs], tables={})
     for which in MEASURES:
         for nfe in (None, 1, 2):
             key = '%s%s' % (which, '' if nfe is None else '_nfe%d' % nfe)
@@ -279,9 +292,10 @@ def main():
 def print_strata(res):
     refs = res['refs']
     for w, st in res['strata'].items():
-        print('== strata and tail, measure %s (per-stratum means over the pooled points of the role; strata with < 8 points not in max)' % w)
+        print('== strata and tail, measure %s (per-stratum means over the pooled points of the role; strata with < %d points not in max)' % (
+            w, res['min_stratum_pts']))
         for gname, g in st.items():
-            if gname.startswith('run:'):
+            if gname.startswith(('run:', 'pair:')):
                 continue
             for m, d in g.items():
                 tag = gname if gname != 'main' else ('main ' + m + (' (corr)' if m in refs else ''))
