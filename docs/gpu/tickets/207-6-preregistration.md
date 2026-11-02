@@ -37,5 +37,14 @@
 
 - Spec instance fields (207-5): `binary_sha256`, `prog_sha`, `seeds` = `"@harness"`; `parameters_sha256` concrete.
 
+- Margin rule (207-3c/3d review, manager 2026-11-02), applied to every gate, β and GPU: a correct variant passes with
+  margin when its single-run margin ≥ 0.03 and z = margin / (run-to-run sd of that member over the main runs) ≥ 2.5;
+  a control is killed with margin when its margin ≥ 0.10 on each of ≥ 2 fresh seed sets (a control present in every
+  main run, e.g. var8, may instead show z ≥ 4 at the T2 pooling, risk stated). T2 pools 2 main runs per path and β.
+- Bounds moved after seeing data are stated as such with their cost (def pTT flavour max 0.15 → 0.20, 207-3).
+- TAUSWAP=8 on the LOG pTT gates: calibration only, pending the owner's answer (207-3 review item 4).
+- The flavour-max statistic goes into the approved gate tool and `verdict.py` with `--selfcheck` and a positive
+  control before pre-registration (207-5 follow-up).
+
 ## Done when
 Review (b) approves; PREREG_SHA recorded in the ticket.
