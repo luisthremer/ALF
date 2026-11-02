@@ -130,6 +130,9 @@
       Use Predefined_Hoppings
       Use LRC_Mod
       Use Natural_Constants, only: Eps_small
+#ifdef ALF_GPU
+      Use gpu_obs_mod, only: gpu_obs_setup, gpu_obs_active, gpu_obs_measure
+#endif
 
       Implicit none
       
@@ -670,6 +673,11 @@
              endif
           endif
 
+#ifdef ALF_GPU
+          ! ticket 208-2: model data for the device measurement (host only here; the device arrays are made at the first measurement)
+          call gpu_obs_setup(Latt, Latt_unit, List, Invlist, Hopping_Matrix, N_SUN, N_FL, ham_U, ham_U2, &
+               &   str_to_upper(Lattice_type) == "BILAYER_SQUARE" .or. str_to_upper(Lattice_type) == "BILAYER_HONEYCOMB", ham_h0, Symm, Projector)
+#endif
         End Subroutine Alloc_obs
 
 !--------------------------------------------------------------------
@@ -708,6 +716,13 @@
           Complex (Kind=Kind(0.d0)) :: Zrho, Zkin, ZPot, ZP,ZS
           Integer :: I,J, nf, dec, I1, no_I
 
+#ifdef ALF_GPU
+          ! ticket 208-2: equal-time observables on the device (G is read from G_d)
+          if (gpu_obs_active()) then
+             call gpu_obs_measure(GR, Phase, Ntau, Mc_step_weight)
+             return
+          endif
+#endif
           ZP = PHASE/Real(Phase, kind(0.D0))
           ZS = Real(Phase, kind(0.D0))/Abs(Real(Phase, kind(0.D0)))
 

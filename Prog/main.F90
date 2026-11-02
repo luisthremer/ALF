@@ -144,6 +144,7 @@ Program Main
         use gpu_state_mod, only: gpu_state_setup, gpu_state_finalize, gpu_active
         use gpu_wrap_mod,  only: gpu_wrap_hook
         use gpu_update_mod, only: gpu_upd_enabled, gpu_g_host, gpu_g_host_wrote
+        use gpu_obs_mod, only: gpu_obs_active, gpu_obs_flush, gpu_obs_finalize
         use gpu_stab_mod,  only: gpu_stab_on, gpu_stab_setup, gpu_stab_finalize, gpu_stab_hook, gpu_stab_wrapur, &
              &                   gpu_stab_wrapul, gpu_stab_exchange, gpu_stab_store_l, gpu_stab_cgr, gpu_stab_reset_l, &
              &                   gpu_stab_reset_r, gpu_stab_reset_st
@@ -837,7 +838,7 @@ Program Main
                        !write(*,*) "GR before obser sum: ",sum(GR(:,:,1))
                        !write(*,*) "Phase before obser : ",phase
 #ifdef ALF_GPU
-                       call gpu_g_host(GR)          ! ticket 208-1: G is device-authoritative; host measurement reads GR
+                       if (.not. gpu_obs_active()) call gpu_g_host(GR)   ! 208-1: host measurement reads GR (208-2: not with the device Obser)
 #endif
                        Mc_step_weight = 1.d0
                        If (Symm) then
@@ -873,7 +874,7 @@ Program Main
                        !write(*,*) "GR before obser sum: ",sum(GR(:,:,1))
                        !write(*,*) "Phase before obser : ",phase
 #ifdef ALF_GPU
-                       call gpu_g_host(GR)          ! ticket 208-1: G is device-authoritative; host measurement reads GR
+                       if (.not. gpu_obs_active()) call gpu_g_host(GR)   ! 208-1: host measurement reads GR (208-2: not with the device Obser)
 #endif
                        Mc_step_weight = 1.d0
                        If (Symm) then
@@ -1032,6 +1033,9 @@ Program Main
               endif
 
            ENDDO
+#ifdef ALF_GPU
+           call gpu_obs_flush()         ! ticket 208-2: device accumulators -> host Obs_eq before Pr_obs normalises
+#endif
            Call ham%Pr_obs(get_Ltau())
 #if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
            Call Global_Tempering_Pr
@@ -1068,6 +1072,7 @@ Program Main
 #ifdef ALF_GPU
         call gpu_tau_finalize()
         call gpu_stab_finalize()
+        call gpu_obs_finalize()
         call gpu_state_finalize()
 #endif
         DEALLOCATE(GR, TEST, Stab_nt,GR_Tilde)
