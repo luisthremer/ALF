@@ -97,3 +97,25 @@ realpath stamps; gate timeout 7200 s. Self-check (dev fixture devfix3, patched h
 met an idle GPU during 207-3/207-4 queues. The manager started `t207-5/chain7.sh` (2026-11-02 05:59; waits ≤ 3 h for
 disk ≥ 7400 MiB and an idle GPU together). Fresh review (c) running.
 Follow-up: whether `t207_d5_proc.sh` should also record all libraries (asked of the reviewer).
+
+## Review (c) of fix round 3 (2026-11-02)
+Fresh numerics-reviewer, **changes required** (planted defects on a fixture copy through `verdict.run_gate`):
+1. `ENV_PIN_NEVER` is a deny-list: MKL_CBWR, MKL_ENABLE_INSTRUCTIONS, OPENBLAS_CORETYPE,
+   SYCL_PROGRAM_COMPILE_OPTIONS, IGC_*, CUDA_FORCE_PTX_JIT, NEOReadDebugKeys (case slips past `.*DEBUG.*`) were all
+   accepted as pins → positive allow-list in code (`NEO_CACHE_PERSISTENT` = "0" only), ENV_NEVER case-insensitive,
+   refused-pin self-check cases.
+2. A qref gate's harness control must be `qref_swap:dev:var8`; var8 is no defect on oneMKL, so an Intel QREF gate can
+   never be accepted (fails safe, but blocks 207-6 for Intel).
+3. Swap copies' order is not checked by the lint but matters to control_detection (spurious INPUT_ERROR on reversed
+   order).
+Nits: "acc*" seed test is a naming convention (check against the driver's seeds record); runtime gate-timeout
+self-check case; mark patched/foreign fixtures as "dev fixture". Assertion changes are all strengthenings. Item 6 still
+open. `t207_d5_proc.sh` need not record all libraries (harness `libs` record plus exact re-processing suffice).
+chain7.sh stopped by the manager before any run (its tree is superseded by the fixes).
+
+### Manager decision (2026-11-02): harness positive control of an Intel QREF gate
+In line with 302c-2 (var8 / NS=0 / TAUSWAP are no defect on oneMKL), the positive control of a QREF gate may be,
+per spec, either the `qref_swap:dev:var8` copies (NVIDIA) or **device output-fault runs** (`ALF_GPU_FAULT_TAU=eps:<x>`,
+optionally `FAULT_TAU_AT`, declared debug control runs on their own fresh acc seeds, same binary as the main runs),
+expect FAIL with the device statistic above the bound; the fault size comes from the 207-6 calibration. A fault-run
+control is informative only if the gate fails through the device statistic, not through a missing or refused run.
