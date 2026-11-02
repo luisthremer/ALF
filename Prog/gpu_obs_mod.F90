@@ -22,6 +22,7 @@
 !> The formulas are those of Predefined_Obs_eq_{Green,SpinSUN,SpinMz,Den}_measure and of Obser (GRC(i,j,nf) = delta_ij - GR(j,i,nf)).
 !>
 !> Environment: ALF_GPU_NOOBS=1 keeps the host Obser (A/B tests).
+!> Note (nvfortran): the sign/phase weight enters the device loops as two real scalars (wr, wi); a complex scalar there was read as garbage.
 !--------------------------------------------------------------------
 #ifdef ALF_GPU
 Module gpu_obs_mod
@@ -242,17 +243,16 @@ Contains
     Integer, intent(in) :: k, kind_k, N, Norb, NFL, NSUN
     Complex (Kind=Kind(0.d0)), intent(in) :: ZW
     Real (Kind=Kind(0.d0)), intent(in) :: sq3
-    Integer :: imj, no, no2, I, J, i1, j1, nf
-    Complex (Kind=Kind(0.d0)) :: s1, s2, s3, z, zi, zj, zxy, zz, g11, g22, a, b, w, zs0
-    Real (Kind=Kind(0.d0)) :: ns
+    Integer :: m, imj, no, no2, I, J, i1, j1, nf
+    Complex (Kind=Kind(0.d0)) :: s1, s2, s3, z, zi, zj, zxy, zz, g11, g22, a, b, zs0
+    Real (Kind=Kind(0.d0)) :: ns, wr, wi
 
     ns = dble(NSUN)
-    w = ZW
+    wr = real(ZW); wi = aimag(ZW)
     if (kind_k == 1) then            ! Green
-       !$omp target teams distribute parallel do collapse(3) private(I,J,i1,j1,nf,s1,z)
-       do no2 = 1, Norb
-          do no = 1, Norb
-             do imj = 1, N
+       !$omp target teams distribute parallel do private(imj,no,no2,I,J,i1,j1,nf,s1,z,a)
+       do m = 0, N*Norb*Norb - 1
+          imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
                 s1 = (0.d0, 0.d0)
                 do I = 1, N
                    J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
@@ -263,30 +263,24 @@ Contains
                    enddo
                    s1 = s1 + z*ns
                 enddo
-                acc(imj,1,no,no2,k) = acc(imj,1,no,no2,k) + s1*w
-             enddo
-          enddo
+                acc(imj,1,no,no2,k) = acc(imj,1,no,no2,k) + s1*cmplx(wr,wi,kind(0.d0))
        enddo
     elseif (kind_k == 2) then        ! SpinSUN (N_FL = 1)
-       !$omp target teams distribute parallel do collapse(3) private(I,J,i1,j1,s1,a)
-       do no2 = 1, Norb
-          do no = 1, Norb
-             do imj = 1, N
+       !$omp target teams distribute parallel do private(imj,no,no2,I,J,i1,j1,s1,a)
+       do m = 0, N*Norb*Norb - 1
+          imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
                 s1 = (0.d0, 0.d0)
                 do I = 1, N
                    J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
                    a = -G_d(j1,i1,1); if (i1 == j1) a = a + (1.d0, 0.d0)
                    s1 = s1 + a*G_d(i1,j1,1)*ns
                 enddo
-                acc(imj,1,no,no2,k) = acc(imj,1,no,no2,k) + s1*w
-             enddo
-          enddo
+                acc(imj,1,no,no2,k) = acc(imj,1,no,no2,k) + s1*cmplx(wr,wi,kind(0.d0))
        enddo
     elseif (kind_k == 3) then        ! Den
-       !$omp target teams distribute parallel do collapse(3) private(I,J,i1,j1,nf,s1,z,zi,zj,a)
-       do no2 = 1, Norb
-          do no = 1, Norb
-             do imj = 1, N
+       !$omp target teams distribute parallel do private(imj,no,no2,I,J,i1,j1,nf,s1,z,zi,zj,a)
+       do m = 0, N*Norb*Norb - 1
+          imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
                 s1 = (0.d0, 0.d0)
                 do I = 1, N
                    J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
@@ -299,9 +293,7 @@ Contains
                    enddo
                    s1 = s1 + (zi*ns)*(zj*ns) + z*ns
                 enddo
-                acc(imj,1,no,no2,k) = acc(imj,1,no,no2,k) + s1*w
-             enddo
-          enddo
+                acc(imj,1,no,no2,k) = acc(imj,1,no,no2,k) + s1*cmplx(wr,wi,kind(0.d0))
        enddo
        !$omp target teams distribute parallel do private(I,i1,zi,nf,zs0)
        do no = 1, Norb
@@ -313,13 +305,12 @@ Contains
              enddo
              zs0 = zs0 + zi*ns
           enddo
-          acc0(no,k) = acc0(no,k) + zs0*w
+          acc0(no,k) = acc0(no,k) + zs0*cmplx(wr,wi,kind(0.d0))
        enddo
     else                             ! SpinMz (N_FL = 2, N_SUN = 1): Obs_eq(k) = SpinZ, k+1 = SpinXY, k+2 = SpinT
-       !$omp target teams distribute parallel do collapse(3) private(I,J,i1,j1,s1,s2,s3,zxy,zz,a,b,g11,g22,zi,zj)
-       do no2 = 1, Norb
-          do no = 1, Norb
-             do imj = 1, N
+       !$omp target teams distribute parallel do private(imj,no,no2,I,J,i1,j1,s1,s2,s3,zxy,zz,a,b,zi,zj)
+       do m = 0, N*Norb*Norb - 1
+          imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
                 s1 = (0.d0, 0.d0); s2 = (0.d0, 0.d0); s3 = (0.d0, 0.d0)
                 do I = 1, N
                    J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
@@ -334,11 +325,9 @@ Contains
                    s2 = s2 + zxy
                    s3 = s3 + (2.d0*zxy + zz)/3.d0
                 enddo
-                acc(imj,1,no,no2,k)   = acc(imj,1,no,no2,k)   + s1*w
-                acc(imj,1,no,no2,k+1) = acc(imj,1,no,no2,k+1) + s2*w
-                acc(imj,1,no,no2,k+2) = acc(imj,1,no,no2,k+2) + s3*w
-             enddo
-          enddo
+                acc(imj,1,no,no2,k)   = acc(imj,1,no,no2,k)   + s1*cmplx(wr,wi,kind(0.d0))
+                acc(imj,1,no,no2,k+1) = acc(imj,1,no,no2,k+1) + s2*cmplx(wr,wi,kind(0.d0))
+                acc(imj,1,no,no2,k+2) = acc(imj,1,no,no2,k+2) + s3*cmplx(wr,wi,kind(0.d0))
        enddo
        !$omp target teams distribute parallel do private(I,i1,zi,zs0)
        do no = 1, Norb
@@ -348,8 +337,8 @@ Contains
              zi = ((1.d0, 0.d0) - G_d(i1,i1,2)) - ((1.d0, 0.d0) - G_d(i1,i1,1))
              zs0 = zs0 + zi
           enddo
-          acc0(no,k)   = acc0(no,k)   + zs0*w
-          acc0(no,k+2) = acc0(no,k+2) + zs0*w/sq3
+          acc0(no,k)   = acc0(no,k)   + zs0*cmplx(wr,wi,kind(0.d0))
+          acc0(no,k+2) = acc0(no,k+2) + zs0*cmplx(wr,wi,kind(0.d0))/sq3
        enddo
     endif
   End Subroutine corr
