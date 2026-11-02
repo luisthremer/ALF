@@ -14,9 +14,9 @@ run() { # id bin input gpu(1/0) env...
   echo "$id rc=$(cat .rc) wall=$(( $(date +%s) - s ))s $(grep -hoE 'GPU tau self-test (PASSED|FAILED)' run.log | sort -u | tr '\n' ' ') $*" >> $W/logs/t0.txt; cd $W
 }
 for k in def log; do
-  run st_$k ${P}_$k hub6x6_cb 1 ALF_GPU_EXIT=1 ALF_GPU_SELFTEST=4
-  run sd_gpu_$k ${P}_$k hub6x6_cb_fd 1 ALF_GPU_EXIT=1
-  run sd_none_$k ${P}n_$k hub6x6_cb_fd 0 ALF_GPU_EXIT=1
+  run st_$k ${P}_$k hub6x6_cb 1 ALF_GPU_DEBUG=1 ALF_GPU_EXIT=1 ALF_GPU_SELFTEST=4
+  run sd_gpu_$k ${P}_$k hub6x6_cb_fd 1 ALF_NONE=1
+  run sd_none_$k ${P}n_$k hub6x6_cb_fd 0 ALF_NONE=1
   echo "same-seed $k: $($PY -I $W/scripts/t207_firstdiv.py $W/runs/t0_sd_gpu_$k/data.h5 $W/runs/t0_sd_none_$k/data.h5 2>&1 | tail -4 | tr '\n' ' ')" >> $W/logs/t0.txt
 done
 echo T0_DONE >> $W/logs/t0.txt

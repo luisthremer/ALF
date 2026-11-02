@@ -4,7 +4,7 @@ Decision 41 (DECISIONS.md): 207 closes on functional checks only. No agents, no 
 long jobs detached on the remote machine, then end the turn.
 
 ## Current step
-Check 1 (builds) PASSED on both machines (nv_def/nv_log/nvn_*; in_def/in_log/inn_*; logs/builds.txt). T0 (checks 2+3) started
+Check 1 (builds) PASSED on both machines (nv_def/nv_log/nvn_*; in_def/in_log/inn_*; logs/builds.txt). T0 try 1 failed only in my harness (debug env needs ALF_GPU_DEBUG=1; old in work/t207-final/old). T0 try 2 (checks 2+3) started
 detached on both: scripts/t0.sh (docs/gpu/scripts/t207_final/t0.sh) -> ~/alf-gpu/work/t207-final/logs/t0.txt (ends T0_DONE),
 runs/t0_*/. Self-test uses the production builds (no -DQR_PREPIVOT): if it FAILS only because of that, rebuild *_pp.
 
