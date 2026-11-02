@@ -15,7 +15,7 @@
 !>
 !> Scalars (kin, pot, rho): device reductions, one D->H of three complex numbers per slice (48 B); the host accumulates them in Obs_scal
 !> exactly as Obser does.  Correlations (Green, SpinZ/SpinXY/SpinT or SpinSUN, Den): for every output element (imj, no_I, no_J) of
-!> Obs_Latt a gather over the lattice sites I (the partner site J of I at displacement imj is unique, table jc), accumulated on the
+!> Obs_Latt a gather over the lattice sites I (the partner site J of I at displacement imj is unique, table o_jc), accumulated on the
 !> device in acc_k (shape of Obs_Latt) and acc0_k (shape of Obs_Latt0); gpu_obs_flush adds them into the host arrays once per bin
 !> (before Pr_obs) and zeroes them.  No atomics: the sum over I is a sequential loop per output element.
 !>
@@ -43,9 +43,9 @@ Module gpu_obs_mod
   Logical, Save :: o_off = .false.         ! ALF_GPU_NOOBS=1
   Integer, Save :: o_N, o_Norb, o_NFL, o_NSUN, o_Ndim, o_nk, o_nobs
   Integer, Save :: o_kind(8)               ! per Obs_eq: 1 Green, 2 SpinSUN, 3 Den, 4 SpinMz (fills Obs_eq(k:k+2))
-  Integer, Allocatable, Save :: inv(:,:), jc(:,:), hk_i(:), hk_j(:), hk_f(:)
+  Integer, Allocatable, Save :: o_inv(:,:), o_jc(:,:), hk_i(:), hk_j(:), hk_f(:)
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: hk_c(:)
-  Real (Kind=Kind(0.d0)), Allocatable, Save :: uo(:)
+  Real (Kind=Kind(0.d0)), Allocatable, Save :: o_uo(:)
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: acc(:,:,:,:,:)    ! (N,1,Norb,Norb,nobs)
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: acc0(:,:)        ! (Norb,nobs)
   Integer, Save :: o_dec
@@ -79,21 +79,21 @@ Contains
     if (size(Obs_eq,1) /= merge(5, 3, N_FL == 2)) return
     o_N = Latt%N; o_Norb = Latt_unit%Norb; o_NFL = N_FL; o_NSUN = N_SUN; o_Ndim = size(List,1)
     if (o_Ndim /= o_N*o_Norb) return
-    allocate(inv(o_N,o_Norb), jc(o_N,o_N), uo(o_Norb))
-    inv = Invlist(1:o_N, 1:o_Norb)
-    ! partner table: jc(I, imj) = the J with imj(I,J) = imj; it must be a bijection per I
-    allocate(cnt(o_N,o_N)); cnt = 0; jc = 0
+    allocate(o_inv(o_N,o_Norb), o_jc(o_N,o_N), o_uo(o_Norb))
+    o_inv = Invlist(1:o_N, 1:o_Norb)
+    ! partner table: o_jc(I, imj) = the J with imj(I,J) = imj; it must be a bijection per I
+    allocate(cnt(o_N,o_N)); cnt = 0; o_jc = 0
     do I = 1, o_N
        do J = 1, o_N
           k = Latt%imj(I,J)
-          if (k < 1 .or. k > o_N) then; deallocate(inv, jc, uo, cnt); return; endif
-          jc(I,k) = J; cnt(I,k) = cnt(I,k) + 1
+          if (k < 1 .or. k > o_N) then; deallocate(o_inv, o_jc, o_uo, cnt); return; endif
+          o_jc(I,k) = J; cnt(I,k) = cnt(I,k) + 1
        enddo
     enddo
-    if (any(cnt /= 1)) then; deallocate(inv, jc, uo, cnt); return; endif
+    if (any(cnt /= 1)) then; deallocate(o_inv, o_jc, o_uo, cnt); return; endif
     deallocate(cnt)
-    uo = ham_U
-    if (bilayer .and. o_Norb >= 2) uo(2) = ham_U2
+    o_uo = ham_U
+    if (bilayer .and. o_Norb >= 2) o_uo(2) = ham_U2
     o_dec = 1; if (N_FL == 2) o_dec = 2
     ! kinetic energy as a sparse linear functional of GRC: Z_kin = sum_k hk_c(k) GRC(hk_i(k), hk_j(k), hk_f(k)); the code of
     ! Predefined_Hoppings_Compute_Kin (no pinning), mode 1: T_Loc only, else bonds + T_Loc
@@ -106,7 +106,7 @@ Contains
              do I = 1, o_N
                 do no_I = 1, o_Norb
                    k = k + 1
-                   if (pass == 2) then; hk_i(k) = inv(I,no_I); hk_j(k) = inv(I,no_I); hk_f(k) = nf; hk_c(k) = hop(nf)%T_Loc(no_I); endif
+                   if (pass == 2) then; hk_i(k) = o_inv(I,no_I); hk_j(k) = o_inv(I,no_I); hk_f(k) = nf; hk_c(k) = hop(nf)%T_Loc(no_I); endif
                 enddo
              enddo
           enddo
@@ -120,13 +120,13 @@ Contains
                    J = Latt%nnlist(I,n_1,n_2)
                    Z = hop(nf)%T(Nb) * Generic_hopping(I, no_I, n_1, n_2, hop(nf)%list(Nb,2), N_Phi, Phi_X, Phi_Y, Bulk, Latt, Latt_unit)
                    k = k + 1
-                   if (pass == 2) then; hk_i(k) = inv(I,no_I); hk_j(k) = inv(J,hop(nf)%list(Nb,2)); hk_f(k) = nf; hk_c(k) = Z; endif
+                   if (pass == 2) then; hk_i(k) = o_inv(I,no_I); hk_j(k) = o_inv(J,hop(nf)%list(Nb,2)); hk_f(k) = nf; hk_c(k) = Z; endif
                    k = k + 1
-                   if (pass == 2) then; hk_i(k) = inv(J,hop(nf)%list(Nb,2)); hk_j(k) = inv(I,no_I); hk_f(k) = nf; hk_c(k) = conjg(Z); endif
+                   if (pass == 2) then; hk_i(k) = o_inv(J,hop(nf)%list(Nb,2)); hk_j(k) = o_inv(I,no_I); hk_f(k) = nf; hk_c(k) = conjg(Z); endif
                 enddo
                 do no_I = 1, o_Norb
                    k = k + 1
-                   if (pass == 2) then; hk_i(k) = inv(I,no_I); hk_j(k) = inv(I,no_I); hk_f(k) = nf; hk_c(k) = hop(nf)%T_Loc(no_I); endif
+                   if (pass == 2) then; hk_i(k) = o_inv(I,no_I); hk_j(k) = o_inv(I,no_I); hk_f(k) = nf; hk_c(k) = hop(nf)%T_Loc(no_I); endif
                 enddo
              enddo
           enddo
@@ -155,7 +155,7 @@ Contains
     Implicit none
     allocate(acc(o_N,1,o_Norb,o_Norb,o_nobs), acc0(o_Norb,o_nobs))
     acc = (0.d0, 0.d0); acc0 = (0.d0, 0.d0)
-    !$omp target enter data map(to: inv, jc, uo, hk_i, hk_j, hk_f, hk_c, acc, acc0)
+    !$omp target enter data map(to: o_inv, o_jc, o_uo, hk_i, hk_j, hk_f, hk_c, acc, acc0)
     o_dev = .true.
   End Subroutine alloc_dev
 
@@ -207,10 +207,10 @@ Contains
     !$omp target teams distribute parallel do collapse(2) reduction(+:Zpot) private(i1,zc,zt)
     do I = 1, N
        do no = 1, Norb
-          i1 = inv(I,no)
+          i1 = o_inv(I,no)
           zc = (1.d0, 0.d0) - G_d(i1,i1,1)
           zt = (1.d0, 0.d0) - G_d(i1,i1,dec)
-          Zpot = Zpot + zc*zt*uo(no)
+          Zpot = Zpot + zc*zt*o_uo(no)
        enddo
     enddo
     Zrho = (0.d0, 0.d0)
@@ -218,7 +218,7 @@ Contains
     do nf = 1, NFL
        do I = 1, N
           do no = 1, Norb
-             i1 = inv(I,no)
+             i1 = o_inv(I,no)
              Zrho = Zrho + ((1.d0, 0.d0) - G_d(i1,i1,nf))
           enddo
        enddo
@@ -255,7 +255,7 @@ Contains
              do imj = 1, N
                 s1 = (0.d0, 0.d0)
                 do I = 1, N
-                   J = jc(I,imj); i1 = inv(I,no); j1 = inv(J,no2)
+                   J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
                    z = (0.d0, 0.d0)
                    do nf = 1, NFL
                       a = -G_d(j1,i1,nf); if (i1 == j1) a = a + (1.d0, 0.d0)
@@ -274,7 +274,7 @@ Contains
              do imj = 1, N
                 s1 = (0.d0, 0.d0)
                 do I = 1, N
-                   J = jc(I,imj); i1 = inv(I,no); j1 = inv(J,no2)
+                   J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
                    a = -G_d(j1,i1,1); if (i1 == j1) a = a + (1.d0, 0.d0)
                    s1 = s1 + a*G_d(i1,j1,1)*ns
                 enddo
@@ -289,7 +289,7 @@ Contains
              do imj = 1, N
                 s1 = (0.d0, 0.d0)
                 do I = 1, N
-                   J = jc(I,imj); i1 = inv(I,no); j1 = inv(J,no2)
+                   J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
                    zi = (0.d0, 0.d0); zj = (0.d0, 0.d0); z = (0.d0, 0.d0)
                    do nf = 1, NFL
                       zi = zi + ((1.d0, 0.d0) - G_d(i1,i1,nf))
@@ -307,7 +307,7 @@ Contains
        do no = 1, Norb
           zs0 = (0.d0, 0.d0)
           do I = 1, N
-             i1 = inv(I,no); zi = (0.d0, 0.d0)
+             i1 = o_inv(I,no); zi = (0.d0, 0.d0)
              do nf = 1, NFL
                 zi = zi + ((1.d0, 0.d0) - G_d(i1,i1,nf))
              enddo
@@ -322,7 +322,7 @@ Contains
              do imj = 1, N
                 s1 = (0.d0, 0.d0); s2 = (0.d0, 0.d0); s3 = (0.d0, 0.d0)
                 do I = 1, N
-                   J = jc(I,imj); i1 = inv(I,no); j1 = inv(J,no2)
+                   J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
                    ! GRC1 = c11 = delta - G(j1,i1,1) etc.
                    a = -G_d(j1,i1,1); if (i1 == j1) a = a + (1.d0, 0.d0)      ! GRC(I1,J1,1)
                    b = -G_d(j1,i1,2); if (i1 == j1) b = b + (1.d0, 0.d0)      ! GRC(I1,J1,2)
@@ -344,7 +344,7 @@ Contains
        do no = 1, Norb
           zs0 = (0.d0, 0.d0)
           do I = 1, N
-             i1 = inv(I,no)
+             i1 = o_inv(I,no)
              zi = ((1.d0, 0.d0) - G_d(i1,i1,2)) - ((1.d0, 0.d0) - G_d(i1,i1,1))
              zs0 = zs0 + zi
           enddo
@@ -371,7 +371,7 @@ Contains
   Subroutine gpu_obs_finalize()
     Implicit none
     if (o_dev) then
-       !$omp target exit data map(delete: inv, jc, uo, hk_i, hk_j, hk_f, hk_c, acc, acc0)
+       !$omp target exit data map(delete: o_inv, o_jc, o_uo, hk_i, hk_j, hk_f, hk_c, acc, acc0)
        deallocate(acc, acc0)
        o_dev = .false.
     endif
