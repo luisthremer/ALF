@@ -20,9 +20,31 @@
 - Acceptance 6 (Intel), decision 36: 207 is judged on the B580 too, with the device τ pass from 302c-1: self-tests and
   faults, same-seed vs the ifx `GPU=none` oracle, the accuracy gates with an MKL host member in the reference ensemble
   (302c-2's calibration), compare2 on the B580.
+- Intel coverage (302c-1 review): include same-seed runs with N_FL_eff = 1, Symm and flux under `GPU=intel`.
 - Bounds fixed by the manager by decision 37's rule; GPU time per decision 38.
 - `207.draft.json` retired (the shipping check allows only an added `207*.json` between base and pre-registration).
 - Run time and GPU budget (decision 11) from 207-4's numbers.
+
+- Gate spec (207-2, approved 2026-11-01): `keep` must satisfy the keep rule (40 is refused at stride 3) and
+  `min_reprocessed` ≥ P (number of block/flavour positions) so that every stratum is re-computed at least once per run;
+  the spec pins seed hashes, so it is written after the fresh seeds are drawn; `--spec-sha` goes into the acceptance
+  file.
+
+- Keep rule (207-3, adopted 2026-11-01): gcd(m, P) = 1 and m ≤ (ndumps − 1)/(P − 1), m = cover·keep, so the kept
+  dumps cover all P positions (β = 4: KEEP 39; β = 10: KEEP 11).
+- Intel controls are the sweep output fault (`FAULT_TAU=eps:<x>`, `FAULT_TAU_AT`); var8 / NS=0 / TAUSWAP=8 are no defect
+  on oneMKL (302c-2). Intel specs use host_member `nvh` (label fixed by the offline program).
+
+- Spec instance fields (207-5): `binary_sha256`, `prog_sha`, `seeds` = `"@harness"`; `parameters_sha256` concrete.
+
+- Margin rule (207-3c/3d review, manager 2026-11-02), applied to every gate, β and GPU: a correct variant passes with
+  margin when its worst single-run margin ≥ 0.03 and z = (bound − its mean over the main runs) / (its run-to-run sd) ≥ 2.5;
+  a control is killed with margin when its margin ≥ 0.10 on each of ≥ 2 fresh seed sets (a control present in every
+  main run, e.g. var8, may instead show z_fix = (worst single main run − bound) / run-to-run sd ≥ 4, risk stated). T2 pools 2 main runs per path and β.
+- Bounds moved after seeing data are stated as such with their cost (def pTT flavour max 0.15 → 0.20, 207-3).
+- TAUSWAP=8 on the LOG pTT gates: calibration only, pending the owner's answer (207-3 review item 4).
+- The flavour-max statistic goes into the approved gate tool and `verdict.py` with `--selfcheck` and a positive
+  control before pre-registration (207-5 follow-up).
 
 ## Done when
 Review (b) approves; PREREG_SHA recorded in the ticket.
