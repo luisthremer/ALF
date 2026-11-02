@@ -125,3 +125,32 @@ Commit `88c94f27` (per-path bound override in `t207_3_summary.py`). Evidence `ni
   for a flavour-only defect: between 2e-15 and 4e-15 (S_nfe2 +0.181 at 2e-15, +0.34…+0.36 at 4e-15). Proposed def
   gate set for 207-6: pTT pooled ≤ 0.15 and pTT flavour max ≤ 0.20; LOG: both at 0.15. Next: independent review of
   the 207-3c/3d calibration.
+
+## Review of 207-3c/3d (2026-11-02)
+numerics-reviewer (fresh): key numbers recomputed from raw qref.txt with own code, all match. (a) code **approve**
+(nits: FAULT_TAU_AT accepts extra colons, `1:2:3`; internal-state comment at :170). (c) scripts **approve** (nits:
+separation label ignores margins, gate-set claim assembled by hand, rc 75 in-band sentinel, waiter count misses
+fd-style lockers, LOCKED retry can hold the lock idle). (b') calibration **changes required**:
+1. LOG flavour-only control 6e-15@0:2 measured on one seed set only (+0.261, margin +0.111); confirm on a second.
+2. "With margin" for correct variants needs a written number: worst-member z (4-run sd) def pooled 0.15 2.7, def
+   flavour max 0.20 3.5, LOG flavour max 0.15 3.3; the rejected def flavour max 0.15 was 1.9.
+3. (should) state the 0.10 control rule also in sd units; detection-limit wording: all-flavour def 50 % ≈ 1.3e-15,
+   reliable ≈ 2.1e-15; flavour-only def 50 % ≈ 2.2e-15, reliable ≈ 3e-15.
+4. TAUSWAP=8 (one run, margin +0.061, miss risk 4–11 % with the unknown control sd) → calibration only, not a T2 kill
+   criterion of the pTT gates (its home is the paired test, VERIFICATION §5); making it non-deciding is an owner
+   decision. LOG var8 (sd 0.015, z ≈ 5 single, ≈ 7 at pair pooling) can stay a T2 kill criterion with risk stated.
+
+### Correction of the manager's framing (2026-11-02)
+The reviewer is right, and the 207-3d entry above is withdrawn in this respect: dev22 (def flavour-only 2e-15) was
+run in 207-3c **as a control**; the "detection limit stated before 207-3d" was written after dev22's +0.181 was known
+and was derived from it. What happened: at 0.15 correct variants missed the margin (+0.018, z 1.9); the bound was
+**raised after seeing the data** to 0.20; that costs detection of flavour-only defects at 2e-15 (dev22, run as a
+control, is no longer killed); the control was resized to 4e-15 and passes on two fresh sets. Cost in numbers:
+reliable flavour-only detection moves from ≈ 2.8e-15 (0.15, which would also need longer runs to give correct
+variants margin) to ≈ 3.4e-15 (0.20); 50 % point ≈ 2.2e-15. dev22 is **not** added to `PROBES`; the generated
+summary keeps "DOES NOT SEPARATE" for that run. This is within decision 37 (nothing is pre-registered), but it is a
+bound relaxation and is put to the owner.
+Alternative not taken: more points per flavour (pooling 4 instead of 2 main runs per path at T2) lowers the
+correct-variant spread (4-run pooled correct max +0.092 at def flavour max) but does not make the 2e-15 control
+reliable (single-run control margin +0.031 at 0.15), so it buys ≈ 0.6e-15 of detection for ≈ 2 more main runs per
+path and β.
