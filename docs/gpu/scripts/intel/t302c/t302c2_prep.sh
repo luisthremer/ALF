@@ -3,8 +3,8 @@
 # acceptance/207.draft.json into t302c-2/runs/<SET>, exactly as t207_3_prep.sh / t207_d5_prep.sh on nividia (same seed rotation, so
 # devN here has the same seeds file as devN there).  SET = base or devN (dev seeds rotated by 37*N lines).
 #   usage: t302c2_prep.sh SET CONFIG [CONFIG ...]      e.g. t302c2_prep.sh dev1 hub12x12_cb_p hub12x12_cb_b10_p
-W=${T302C2_W:-$HOME/alf-gpu/work/t302c-2}   # round 2: T302C2_W=$HOME/alf-gpu/work/t302c-2b (only these two)
-case "$W" in "$HOME/alf-gpu/work/t302c-2"|"$HOME/alf-gpu/work/t302c-2b") ;; *) echo "refusing work dir $W"; exit 1;; esac
+W=${T302C2_W:-$HOME/alf-gpu/work/t302c-2}   # round 2: T302C2_W=$HOME/alf-gpu/work/t302c-2b, round 3: .../t302c-2c (only these three)
+case "$W" in "$HOME/alf-gpu/work/t302c-2"|"$HOME/alf-gpu/work/t302c-2b"|"$HOME/alf-gpu/work/t302c-2c") ;; *) echo "refusing work dir $W"; exit 1;; esac
 :; export TMPDIR=$W/tmp
 SET=$1; shift
 case "$SET" in base|dev[0-9]*) ;; *) echo "bad set $SET"; exit 1;; esac

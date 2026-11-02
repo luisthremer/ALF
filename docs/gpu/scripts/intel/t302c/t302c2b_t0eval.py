@@ -2,10 +2,10 @@
 """Ticket 302c-2 round 2 (development only): summary of the T0 runs t302c-2b/runs/t0<RUN>_* generated from their run.log / info /
 stamp.txt (no hand-made table).  Per run: rc, self-test verdict line (PASSED / FAILED), the largest self-test value with its tolerance
 line ('right after CGR2_2', 'CGR2_2 alone ...'), refusal / error lines, Precision tau (mean, max) from info.
-usage: t302c2b_t0eval.py RUN"""
+usage: t302c2b_t0eval.py RUN [WORKDIR]   (round 3: WORKDIR ~/alf-gpu/work/t302c-2c; default t302c-2b)"""
 import glob, os, re, sys
 
-W = os.path.expanduser('~/alf-gpu/work/t302c-2b')
+W = os.path.expanduser(sys.argv[2] if len(sys.argv) > 2 else '~/alf-gpu/work/t302c-2b')
 R = sys.argv[1]
 num = re.compile(r'[0-9]\.[0-9]{3}E[+-][0-9]{2}')
 for d in sorted(glob.glob(os.path.join(W, 'runs', 't0%s_*' % R, '*'))):

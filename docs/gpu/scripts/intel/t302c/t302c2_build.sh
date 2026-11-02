@@ -4,8 +4,8 @@
 #     intel: oneAPI of ~/alf-gpu/env/intel.sh (ifx 2026.2, oneMKL 2026.2); gnu: system gfortran 15.2 + OpenBLAS (-llapack -lblas)
 # Result: bin/ALF_<NAME>.out (+ .sha256, .srctree = hash of the Prog/Libraries sources, .srcstate = HEAD/diff of the laptop worktree);
 #         tree_<NAME> (build tree, removable; its objects are the CPU oracle of the offline program for gnu_*); logs/{conf,make,env}_<NAME>.
-W=${T302C2_W:-$HOME/alf-gpu/work/t302c-2}   # round 2: T302C2_W=$HOME/alf-gpu/work/t302c-2b (only these two)
-case "$W" in "$HOME/alf-gpu/work/t302c-2"|"$HOME/alf-gpu/work/t302c-2b") ;; *) echo "refusing work dir $W"; exit 1;; esac
+W=${T302C2_W:-$HOME/alf-gpu/work/t302c-2}   # round 2: T302C2_W=$HOME/alf-gpu/work/t302c-2b, round 3: .../t302c-2c (only these three)
+case "$W" in "$HOME/alf-gpu/work/t302c-2"|"$HOME/alf-gpu/work/t302c-2b"|"$HOME/alf-gpu/work/t302c-2c") ;; *) echo "refusing work dir $W"; exit 1;; esac
 :; export TMPDIR=$W/tmp; mkdir -p $TMPDIR $W/logs $W/bin
 NAME=$1; TOOL=$2; shift 2
 case "$NAME" in ""|*..*|*/*) echo "refusing unsafe name: [$NAME]"; exit 1;; esac; : "${HOME:?}"

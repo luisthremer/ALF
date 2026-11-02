@@ -9,8 +9,8 @@
 #   (CLAUDE.md, intel is shared): uptime and the top processes are logged; if a process of another user uses > 50 % CPU the script
 #   waits (polling every 60 s, up to 60 min) and then refuses.  No fixed run-time limit (decision 16); a 2 h guard timeout only stops a
 #   hung run.
-W=${T302C2_W:-$HOME/alf-gpu/work/t302c-2}   # round 2: T302C2_W=$HOME/alf-gpu/work/t302c-2b (only these two)
-case "$W" in "$HOME/alf-gpu/work/t302c-2"|"$HOME/alf-gpu/work/t302c-2b") ;; *) echo "refusing work dir $W"; exit 1;; esac
+W=${T302C2_W:-$HOME/alf-gpu/work/t302c-2}   # round 2: T302C2_W=$HOME/alf-gpu/work/t302c-2b, round 3: .../t302c-2c (only these three)
+case "$W" in "$HOME/alf-gpu/work/t302c-2"|"$HOME/alf-gpu/work/t302c-2b"|"$HOME/alf-gpu/work/t302c-2c") ;; *) echo "refusing work dir $W"; exit 1;; esac
 :; export TMPDIR=$W/tmp
 N=$1; C=$2; shift 2
 . ~/alf-gpu/env/intel.sh 2>/dev/null
