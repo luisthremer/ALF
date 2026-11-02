@@ -25,10 +25,22 @@ ALF_GPU_NOUPDATE=1 everything stays eager as today):
 Expected: no G traffic in equilibration; in measurement 1 D->H per slice (needed until 208-2) instead of 2 H->D + 2 D->H.
 
 ## Current step
-Design written. Implementing in Prog (gpu_update_mod, gpu_stab_mod, gpu_tau_mod, main.F90 call sites).
+DONE (2026-11-02, decision 42): 208-1 closed. Implemented as designed (per-flavour g_dev_ok/g_host_ok in gpu_state_mod, lazy g_in/g_out,
+gpu_g_host / gpu_g_host_wrote in gpu_update_mod, gpu_stab_cgr(lazy=), tau_begin D2D, main.F90 call sites, Wrapgr_mod self-test).
+Merged into gpu-port, pushed to fork.
+
+## Results (work/t208-1 on nividia and intel; scripts docs/gpu/scripts/t208_1/)
+1 Builds: nividia 5 built (nv_def_pp, nv_def, nv_log, nvn_*), intel 5 built: PASS.
+2 Self-tests (=4): nividia PASS def+LOG; intel PASS def+LOG.
+3 Same-seed hub6x6_cb_fd max dev: nividia 1.70e-10 / 2.54e-10, intel 2.32e-10 / 2.90e-10 (def / LOG): PASS, identical to 207 to the digit.
+4 Observables hub12x12_cb vs CPU ref: nividia sum t^2 = 9.2 (p 0.60) both paths; intel 141.7 (the accepted 207 Szz(pi,pi) group), identical to 207.
+  Wall (nividia): def 791 -> 696 s, LOG 920 -> 812 s; intel 430/418 -> 423/413 s.
+5 GPU=none ctest (GNU): candidate 53/53, upstream master 39/39: PASS.
+Traffic (intel obs_def, INTERIM 205 counter): G copies H->D 96000 -> 0, D->H 96000 unchanged (host measurement until 208-2); bytes 63.70 -> 31.85 GB.
 
 ## Next step
-Implement; build nv (GPU=nvidia nvhpc noMPI HDF5) and in (GPU=intel); then checks 1-5; report interim byte counters before/after.
+208-2 (equal-time Hubbard observables on the device) when the owner says continue. Each of the later G readers (Obser) removes
+the remaining D->H of G per slice.
 
 ## Running
 Nothing.

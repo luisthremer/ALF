@@ -127,7 +127,7 @@ Unsupported inputs are refused at setup (H4).
 | 207-6 | Pre-registration of `207.json` on both GPUs (decision 36) ([ticket](tickets/207-6-preregistration.md)) | 207-1 … 207-5, 302c-1, 302c-2 |
 | 207-7 | Candidate, T1, T2, verification, merge ([ticket](tickets/207-7-acceptance.md)) | 207-6 |
 | 208 | Measurements on the device. Split (decision 34; ticket files when each starts; each sub-ticket that changes production code has its own pre-registered acceptance): | 205, 207 |
-| 208-1 | G device-authoritative: remove the 206 interim per-CGR G round trip; host copy of G only where a host reader needs it | 207 |
+| 208-1 | **DONE 2026-11-02 (decision 42)** G device-authoritative: remove the 206 interim per-CGR G round trip; host copy of G only where a host reader needs it | 207 |
 | 208-2 | Equal-time Hubbard observables (`Obser`) on the device | 208-1 |
 | 208-3 | τ-resolved observables (`OBSERT`) on the device; removes 207's per-slice interim copies | 208-2 |
 | 209 | Validation suite (split: 209-1 test_vs_ed on the GPU; 209-2 same-compiler trajectory test, first-divergence sweep; 209-3 one runnable suite collecting kernel tests, statistics vs references and precision numbers): kernel tests, same-compiler trajectory test (NVHPC CPU vs GPU, first-divergence sweep), test_vs_ed on GPU, statistical compare vs references (106), precision numbers | 205–208 |
