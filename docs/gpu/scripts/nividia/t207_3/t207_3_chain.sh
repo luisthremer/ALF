@@ -28,13 +28,24 @@ r() { local tag=$1 set=$2 bin=$3 cfg=$4; shift 4
       echo "df / $(df -B1M --output=avail / | tail -1 | tr -d ' ') MB free before $tag (waiting for the lock and the disk check)" >> $out
       MINFREE_MB=${MINFREE_MB:-6700} SET=$set TAG=$tag bash $W/t207_3_run.sh $bin $cfg "$@" 9>&- >> $out 2>&1; }
 # HOLDLOCK=1 (fix round t207-3c): every run and its processing hold gpu.lock together (fd 9 of this shell; t207_3_run.sh gets
-# T207_3_LOCKED=1), so no other agent's GPU run (and its ~1-1.6 GB of dumps) starts while this run's dumps are on disk: with ~7.4 GB
+# T207_3_LOCKED=1; while the disk is below the floor the lock is given up and retaken, t207-3e), so no other agent's GPU run (and its ~1-1.6 GB of dumps) starts while this run's dumps are on disk: with ~7.4 GB
 # free without dumps, two dump sets at once would take / below the 5 GB floor.  The lock is released after the thinning.
-rp() { local tag=$1 path=$2; shift 2
+rp() { local tag=$1 path=$2 tw0 dw; shift 2; tw0=$(date +%s)
        if [ "$HOLDLOCK" = 1 ]; then
-         exec 9> "$HOME/alf-gpu/gpu.lock"; flock 9; echo "gpu.lock taken for $tag + processing $(date -Is)" >> $out
-         export T207_3_LOCKED=1; r $tag "$@"; pr $tag $path; unset T207_3_LOCKED
-         flock -u 9; exec 9>&-; echo "gpu.lock released after $tag $(date -Is)" >> $out
+         while :; do
+           exec 9> "$HOME/alf-gpu/gpu.lock"; flock 9; echo "gpu.lock taken for $tag + processing $(date -Is)" >> $out
+           export T207_3_LOCKED=1
+           dw=${DISKWAIT_S:-28800}; [ $(( $(date +%s) - tw0 )) -ge "$dw" ] && dw=0     # last attempt: t207_3_run.sh gives up (rc 8) instead of flagging
+           DISKWAIT_S=$dw r $tag "$@"
+           # t207-3e: a failed disk check leaves the flag $W/runs/$tag/hub12x12_cb_p/.diskwait (nothing run): give the lock up while waiting
+           if [ -f $W/runs/$tag/hub12x12_cb_p/.diskwait ]; then
+             unset T207_3_LOCKED; flock -u 9; exec 9>&-; echo "gpu.lock released for $tag (disk wait, retry in 300 s) $(date -Is)" >> $out
+             sleep 300; continue
+           fi
+           pr $tag $path; unset T207_3_LOCKED
+           flock -u 9; exec 9>&-; echo "gpu.lock released after $tag $(date -Is)" >> $out
+           break
+         done
        else
          r $tag "$@"; pr $tag $path
        fi; }

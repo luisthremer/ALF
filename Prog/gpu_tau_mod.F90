@@ -167,7 +167,7 @@ Module gpu_tau_mod
   ! ticket 207-3: ALF_GPU_FAULT_TAU=eps:<x> outside the SELFTEST=4 / TAUTIME hooks (a declared control run; ticket 212 refuses the
   ! variable in production runs) perturbs the four outputs of every production CGR2_2 on the device (fault_eps_out)
   Logical, Save :: eps_tau_prod = .false.
-  Integer, Save :: eps_at_nst = 0, eps_at_nfe = 0               ! ALF_GPU_FAULT_TAU_AT=<nst>:<nfe>: only that position (0: every nst / nfe)
+  Integer, Save :: eps_at_nst = 0, eps_at_nfe = 0               ! ALF_GPU_FAULT_TAU_AT=<nst>:<nfe>: only that position (nst 0: every nst; nfe >= 1)
   Logical, Save :: prec_report = .true.                       ! .false. in the tests: the Control counters are not touched
   Real (Kind=Kind(0.d0)), Save :: last_prec(2,4) = 0.d0       ! last reduction: (max, sum) of the four pairs of tau_stab_cgr
   Integer(int64), Save :: n_pass = 0, n_branch(2) = 0, n_cgr = 0
@@ -1972,13 +1972,15 @@ Contains
     ! (1..N_FL_eff) of every pass (a localized defect); nst = 0 means every stabilization point of flavour nfe (a flavour-only defect,
     ! review of 207-3); only with eps:<x> acting in the sweep, else refused
     if (gpu_env_get('ALF_GPU_FAULT_TAU_AT', f)) then
+       ! exactly one ':' with non-empty digit fields on both sides (no sign, blank or second ':')
        ib = index(f, ':')
        ios = 1
-       if (ib > 1) then
+       if (ib > 1 .and. ib < len_trim(f) .and. verify(trim(f), '0123456789:') == 0 .and. index(f(ib+1:), ':') == 0) then
+          ios = 0
           read(f(1:ib-1),*,iostat=ios) eps_at_nst
           if (ios == 0) read(f(ib+1:),*,iostat=ios) eps_at_nfe
        endif
-       if (ios /= 0 .or. .not. eps_tau_prod .or. verify(trim(f), '0123456789:') /= 0) call env_bad('ALF_GPU_FAULT_TAU_AT', f)
+       if (ios /= 0 .or. .not. eps_tau_prod) call env_bad('ALF_GPU_FAULT_TAU_AT', f)
        if (eps_at_nst < 0 .or. eps_at_nst > t_nstm .or. eps_at_nfe < 1 .or. eps_at_nfe > t_nfe) call env_bad('ALF_GPU_FAULT_TAU_AT', f)
        if (eps_at_nst == 0) then
           write(line,'(A,I0,A)') 'GPU fault armed (production sweep): ALF_GPU_FAULT_TAU eps only at every nst of flavour ', eps_at_nfe, &
