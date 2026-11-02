@@ -4,21 +4,21 @@ Decision 41 (DECISIONS.md): 207 closes on functional checks only. No agents, no 
 long jobs detached on the remote machine, then end the turn.
 
 ## Current step
-Builds (check 1) running detached on both machines. Source = git archive of gpu-port-207-final (9c35b3b5) in
-~/alf-gpu/work/t207-final/src; scripts docs/gpu/scripts/t207_final/{build,builds_nvidia,builds_intel}.sh.
+Check 1 (builds) PASSED on both machines (nv_def/nv_log/nvn_*; in_def/in_log/inn_*; logs/builds.txt). T0 (checks 2+3) started
+detached on both: scripts/t0.sh (docs/gpu/scripts/t207_final/t0.sh) -> ~/alf-gpu/work/t207-final/logs/t0.txt (ends T0_DONE),
+runs/t0_*/. Self-test uses the production builds (no -DQR_PREPIVOT): if it FAILS only because of that, rebuild *_pp.
 
 ## Next step
-When logs/builds.txt ends with BUILDS_DONE and four `built` lines: T0 self-test (ALF_GPU_SELFTEST=4) and same-seed 6x6
-vs GPU=none (nv*_n / inn_*), both paths. Then production-size observables runs; GPU=none ctest (GNU, nividia).
+Read logs/t0.txt on both. Then check 4 (production-size observables vs CPU reference, compare.py/compare2.py) and check 5
+(GNU ctest on nividia).
 
 ## Running
-nividia: scripts/builds_nvidia.sh -> nv_def, nv_log, nvn_def, nvn_log (log ~/alf-gpu/work/t207-final/logs/builds.txt, make_*.log)
-intel:   scripts/builds_intel.sh  -> in_def, in_log, inn_def, inn_log (same paths); 302c-2d queue also runs there (J=6)
+nividia and intel: t0.sh (self-test + same-seed, def and LOG).
 
 ## Functional checks (per GPU, default and LOG)
 Scripts: docs/gpu/scripts/nividia/t207_3/t207_3_t0.sh; docs/gpu/scripts/intel/t302c/t302c2c_t0.sh + t302c2b_t0eval.py;
 testsuite/gpu_reference/{prep,compare,compare2,summarize}.py.
-1. Build:            nividia -, intel -
+1. Build:            nividia PASS (4 built), intel PASS (4 built)
 2. Self-tests (=4):  nividia -, intel -
 3. Same-seed ≤1e-9:  nividia - (def/LOG), intel - (def/LOG)
 4. Observables χ²:   nividia - (def/LOG), intel - (def/LOG)
