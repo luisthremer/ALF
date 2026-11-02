@@ -4,25 +4,20 @@ Decision 41 (DECISIONS.md): 207 closes on functional checks only. No agents, no 
 long jobs detached on the remote machine, then end the turn.
 
 ## Current step
-Check 1 PASS both. T0: LOG self-test PASSED on both (B580 and NVIDIA). Default-path self-test needs a -DQR_PREPIVOT build
-(refusal printed by the code), so nv_def_pp / in_def_pp are building (logs/build_pp.txt). Same-seed (t0.sh) still running on nividia
-(bash -x chain, logs/t0.txt, dbg in logs/dbg.txt); intel chain results in logs/t0.txt were from a mixed-up attempt: redo intel.
-Lesson: never overwrite a running script; never pkill -f without brackets; don't run scripts in the foreground.
+Checks 1, 2, 3 DONE on both GPUs. Check 5 (GNU ctest, candidate vs upstream master, nividia) running detached:
+scripts/ctest.sh -> ~/alf-gpu/work/t207-final/logs/ctest_cand.txt, ctest_up.txt (ends CTEST_DONE).
 
 ## Next step
-1. When *_pp built: run default self-test (ALF_GPU_DEBUG=1 ALF_GPU_EXIT=1 ALF_GPU_SELFTEST=4) with nv_def_pp / in_def_pp (t0.sh needs the
-   st_def line to use ${P}_def_pp; edit only when no chain is running).
-2. intel: wipe runs/t0_*, rerun same-seed + selftest cleanly. 3. check 4 and 5.
+Check 4: production-size observables per GPU and path vs CPU reference (compare.py / compare2.py, report chi2). Need to find
+the reference data (testsuite/gpu_reference, refcache on nividia) and a production-size config; read narrowly.
 
 ## Running
-nividia: t0.sh chain (same-seed etc.); nv_def_pp build. intel: in_def_pp build.
+nividia: ctest.sh (4 cores). intel: nothing.
 
 ## Functional checks (per GPU, default and LOG)
-Scripts: docs/gpu/scripts/nividia/t207_3/t207_3_t0.sh; docs/gpu/scripts/intel/t302c/t302c2c_t0.sh + t302c2b_t0eval.py;
-testsuite/gpu_reference/{prep,compare,compare2,summarize}.py.
-1. Build:            nividia PASS (4 built), intel PASS (4 built)
-2. Self-tests (=4):  nividia -, intel -
-3. Same-seed ≤1e-9:  nividia - (def/LOG), intel - (def/LOG)
+1. Build:            nividia PASS (4+1 built), intel PASS (4+1 built)
+2. Self-tests (=4):  nividia PASS def+LOG; intel PASS def+LOG (hub6x6_cb, work/t207-final/runs/t0_st_*)
+3. Same-seed ≤1e-9 (hub6x6_cb_fd, 60 bins, max dev): nividia def 1.70e-10, LOG 2.54e-10; intel def 2.32e-10, LOG 2.90e-10 -> PASS
 4. Observables χ²:   nividia - (def/LOG), intel - (def/LOG)
 5. GPU=none ctest = upstream (GNU, nividia): -
 
