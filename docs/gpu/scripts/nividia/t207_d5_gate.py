@@ -1,209 +1,794 @@
 #!/usr/bin/env python3
-"""Ticket 207-2: verdict of the accuracy test against the quad reference from the aggregate of t207_d5_agg.py.
+"""Ticket 207-2: accuracy gate against the quad reference, recomputed from the evidence (design 3, fix round 5 after review 207-2e).
 
-usage: t207_d5_gate.py --bound B --expect-points N --qs Q [--qs Q ...] [--prog-sha SHA256] [--require-controls] AGG.json   (agg run, measure pTT)
-Verdict on the pooled statistic S_ens(pTT) of the runs in AGG.json (one path):
-  INPUT_ERROR (exit 2)  the file is not a complete aggregate or not the accepted configuration: wrong measure, a run whose points used
-                        differ from the number derived from its parameters or from --expect-points, runs with different member lists,
-                        missing or non-finite numbers, pooled counts that are not the sum of the runs, a main run without 'dev'; with
-                        --require-controls: no control member.  Per run (inputs[*].args and env, written by t207_d5_agg.py):
-                          cover == 1 (every dump processed) and no version 1 dump; qs equal to one of the --qs values and > 0; 0 in the
-                          null codes and the null codes contain the reference list; the reference list is exactly the frozen list of
-                          the run's path; the env (ALF_GPU_*) is exactly the allowed one for its role (main / ctl, see t207_d5_qparse.py);
-                          no run twice (qref.txt sha256, run.log sha256, role+seeds+parameters); with --prog-sha every run's program hash
-                          equals it.
-                        Any exception (a structurally broken file) is INPUT_ERROR too: the line 'GATE FAIL' is printed only on a real FAIL
-  FAIL (exit 1)         the device S_ens (member 'dev' of the main runs) is > B, or a control present in the file (the stand-in
-                        'var8' of the main runs, 'ctl_dev' of production control runs) has S_ens <= B
-  PASS (exit 0)         otherwise
-The bound is an argument and is not stored in the aggregate.  Every number of the decision is printed.
+usage: t207_d5_gate.py --spec SPEC.json --spec-sha SHA256 --prog QREF_BINARY --report OUT.json RUNDIR [RUNDIR ...]
+
+  --spec-sha  the sha256 of the pre-registered spec (from the acceptance file): a spec file with another sha256 is refused before it is parsed;
+  --prog      the offline program t207_d5_qref.F90 built for the spec's path (qref_pp.out / qref_log.out); its sha256 on disk must be the
+              spec's prog_sha.  The gate re-runs it on every kept dump of every run (authenticity, step 9 below).
+
+The gate decides only on numbers it computes itself from the run directories; no aggregate is ever an input.  For every RUNDIR (the
+directory holding the run's records, qref.txt and the processing records of t207_d5_proc.sh):
+  1. qref_spec.json re-derived from the run's own records (parameters, info, run.log, stamp.txt, provenance.json); the run's path
+     (from info) is the spec's path;
+  2. qref_proc.json (t207_d5_qparse.proc_record): rc 0, check_rc 0, the arguments of qref_spec.json, the program sha256 = spec prog_sha,
+     the program source sha256 = spec src_sha, qref_sha256 = the sha256 of the qref.txt bytes the gate parses, manifest_sha256 = the
+     sha256 of the manifest bytes the gate parses;
+  3. the dump evidence (t207_d5_qparse.verify_dumps): the manifest lists exactly the covered dumps, the kept dumps match it; every kept dump
+     is a dump of this run at its place (t207_d5_qparse.check_dump_headers: magic, version 2, file / pass / nst / nfe / br of run.log, N,
+     path, QVAR masks, QHOST, TAUDIAG, hasb, exact size as the program checks it; a text file posing as a dump is refused);
+  4. its processing arguments qs, nul, cover, keep, hostin are the spec's (keep pinned: the share of qref.txt lines that step 9 re-computes
+     is the spec's, not the run producer's choice), and it keeps at least the spec's min_reprocessed dumps for step 9; its role is the row of
+     the env table that equals its ALF_GPU_* env exactly;
+  5. qref.txt is loaded by the strict parser (version 1 dumps never accepted, every number checked; the eF invariant is a sanity check
+     only) with the spec's member list of the role (exactly those members, in that order);
+  6. per gate measure, the per-point log ratios S_ens (and S_cpu, report only) by t207_d5_agg.per_run; the number of points used must equal
+     the spec's expect_points for that measure (pTT: points with B, emax / eF: all points).
+Across the runs: 7. the same parameters; no run twice (directory, qref.txt sha256, run.log sha256, seeds, a dump sha256 or a QREF data
+line shared by two runs); the number of runs per role equals the spec's n_runs.  8. Pinning: every run's ALF binary (provenance.json
+binary_sha256 = stamp.txt) is the spec's binary_sha256, its parameters sha256 the spec's parameters_sha256, and the seed sets per role are
+exactly the spec's seeds (set equality; no run chosen out of a larger set, no other seed set).  9. Authenticity: the program (--prog) is run
+on the kept dumps of every run with the run's processing arguments; its output must equal the run's qref.txt lines of those dumps (headers
+except the timing tq exactly, member names and order exactly, every number exactly, i.e. bit identity of the printed text: the pinned
+program is bit-identical across dump list order, subsets and thread counts (reviewer probe P1 of round 4), every kept dev5 dump re-processed
+to equal numbers, and VERIFICATION section 7 demands bit identity where it holds).
+WHAT THIS GATE DOES NOT PROVE (left to the harness, ticket 207-5): the run directory is under the control of whoever produced it.  The gate
+proves that the numbers of the kept dumps are what the pinned program computes from those dumps, that those dumps are consistent with the
+run's records, and that the records are internally consistent.  It does not prove:
+  - that the dumps, run.log, provenance.json, the qref.txt lines of deleted dumps (only every KEEP-th dump is kept and re-computed, KEEP
+    pinned in the spec; keep 40 is refused at stride 3 by the keep rule; any KEEP > 1 leaves KEEP-1 of KEEP lines not re-computed),
+    qref_proc.json or the manifest were produced by the stamped run: that needs the stamps of the records, of qref.txt, of the processing
+    record and of the manifest in the attempt log outside the run directory (207-5), checked against the files the gate reads;
+  - anything about environment variables other than ALF_GPU_*: the run's env is read from the info line 'GPU debug env', and the provenance
+    env is read as ALF_GPU_ tokens only (t207_d5_qparse.derive_run; the run records carry no other variable).  ALF_LA_TEST_*, ALFSH_*, OMP_TARGET_OFFLOAD (DISABLED
+    would make 'dev' a host result) and every other variable are invisible here and must be refused by the harness's env checks (207-5);
+  - that the ALF binary (binary_sha256) was built from the source the candidate names: the pairing prog_sha <-> src_sha of the offline
+    program (and of the ALF binary with its source) is the spec's claim, not checked here (207-5 task 2: rebuild with provenance); the
+    gate checks prog_sha against the file given and src_sha against the t207_d5_qref.F90 next to this script, each on its own.
+This gate alone is not forgery-proof.
+
+Code-enforced spec content (not left to the spec writer):
+  - env_roles.main is exactly {ALF_GPU_DEBUG=1, ALF_GPU_TAUDIAG_QHOST=1, ALF_GPU_TAUDIAG_QVAR=8, ALF_GPU_TAUDIAG_QREF=<int>=1..,
+    ALF_GPU_TAUDIAG_FROM=<int>}; a control role may omit only ALF_GPU_TAUDIAG_QVAR and adds at least one fault from the table FAULTS
+    (ALF_GPU_TAU_NS=0 default path, ALF_GPU_TAUSWAP=8 LOG path, ALF_GPU_FAULT_TAU=eps:<x>[@<nst>[:<nfe>]] both paths);
+  - refs equal the frozen list of the path (FROZEN_REFS, host member = host_member) unless the spec is marked test_only; var<m>, u<k>,
+    dev, n0 and the diagnostic members are never references.
+Decision, per gate {name, measure, statistic, pool, bound}:
+  statistic: S_ens (mean of the per-point values), S_ens_q95 (their 95th percentile, linear interpolation), S_ens_max (their maximum);
+  pool 'pooled'    : the statistic over the per-point values of all runs of the role (every point weighs the same);
+  pool 'each_run'  : the statistic of every run on its own (device: the largest run value must be <= bound; control: the smallest run value
+                     must be > bound, i.e. every run detects it);
+  pool 'by_stratum': the statistic over the points of every stratum = call-cycle position (nst, nfe, br), pooled over the runs of the role
+                     (device: every stratum must be <= bound, i.e. the largest stratum value; control: killed if the largest stratum value is
+                     > bound, i.e. the gate rejects it; must_not_trip: the largest stratum value <= bound).  The per-stratum point counts are
+                     reported.  Which of these become gates and with which bounds is decided in 207-3 (decision 37), not here.
+  device (member 'dev' of the main runs): FAIL if its decisive value > bound.
+  control (every control of the spec, always required): 'variant' = a member of the main runs (e.g. var8), 'run' = member 'dev' of the
+  runs whose env is the control's role; judged on the statistic, pool and bound of the gate named in 'trips' and must exceed the bound
+  (killed); for every gate in its optional 'must_not_trip' list it must stay <= that gate's bound.  Otherwise FAIL.
+  Always reported (not decisive unless a gate uses them): per measure and per judged member the pooled mean / q95 / max, the per-run values
+  and the per-stratum means with their point counts (section 'localized' of the report).
+Verdicts and exit codes (printed as the last line 'GATE <VERDICT>...'; the report carries the same verdict and exit code):
+  PASS 0        every gate passes, every control behaves as declared, every gate is tripped by at least one control, spec not test_only
+  FAIL 1        a gate's own criterion caught something: device above a bound, a control not killed, or tripping a gate it must not trip
+  INPUT_ERROR 2 the gate could not be evaluated: a bad or incomplete spec, a spec hash or program hash other than required, a missing or
+                inconsistent file, a count differing from the spec, a pin not met, a reprocessing mismatch, any refusal above, or any
+                unexpected exception (never a FAIL, never a detection)
+  DEV-ONLY 3    the spec declares no control, or a gate no control trips: the numbers are computed and reported, never a PASS
+  TEST-ONLY 4   all criteria met, but the spec is marked test_only (e.g. the kept dev5 subset, cover != 1): not an acceptance verdict
+The report (--report, must not exist) holds the spec and its sha256 (of the bytes parsed), the sha256 of this script, t207_d5_agg.py,
+t207_d5_qparse.py and t207_d5_qref.F90, per run the identities (ALF binary, parameters, seeds, qref.txt, manifest), the authenticity check,
+per-member statistics, every decisive number, the verdict and the exit code.  It is written in every case where the report path is usable
+(also for INPUT_ERROR) and is never read by the gate.
+
+Spec file (JSON object, no duplicate keys, no NaN / Infinity; every key below required unless marked optional, no other key):
+  spec_version 1; path 'def' | 'log'; host_member: the label the offline program prints for the in-run host CGR2_2 of QHOST=1
+  (it depends on the build of the offline program, e.g. the NVIDIA and the Intel builds print different labels; no label is hard-coded in
+  the gate, qparse or agg: the spec's host_member is used everywhere, and FROZEN_REFS hold the placeholder H for it); members: {role: [the exact ordered statistical members of that role's runs]}
+  for main and the roles of the run controls; refs: the frozen reference list of the path (another list only with test_only);
+  qs: one integer > 0; nul: the null codes of the processing (distinct integers >= 0, with 0 and the codes of refs); cover: 1 (another
+  value only with test_only); keep: the processing's KEEP (integer >= 0; 0 = no thinning, every covered dump kept), equal in every run;
+  hostin: the processing's HOSTIN (0 or 1), equal in every run; min_reprocessed: integer >= 1, the least number of kept dumps per run
+  that step 9 re-computes (a run with fewer is INPUT_ERROR); test_only (optional): a non-empty reason; expect_points: {measure: integer >= 1} for exactly the measures of
+  the gates; prog_sha, src_sha: sha256 of the offline program and of t207_d5_qref.F90 (src_sha = the file next to this script);
+  binary_sha256: the ALF binary of every run (provenance.json); parameters_sha256: the parameters file of every run;
+  seeds: {role: [seeds_sha256, ...]} for main and exactly the roles of the run controls, distinct across all roles (control seed sets are
+  not main seed sets); env_roles: {'main': {VAR: value, ...}, ROLE: {'extra_env': {...}, 'omit_env': [...]}, ...} (see above);
+  n_runs: {'main': N, ROLE: N, ...}; gates: [{name, measure (pTT | emax | eF), statistic (S_ens | S_ens_q95 | S_ens_max),
+  pool ('pooled' | 'each_run' | 'by_stratum'), bound}, ...];
+  controls: [{name, kind 'variant', member (a member of main, not dev, not a reference), trips, must_not_trip (optional)} |
+             {name, kind 'run', role, trips, must_not_trip (optional)}, ...].
+  allow_v1 is refused in any form.
 """
-import importlib.util, json, math, os, sys
+import hashlib, importlib.util, json, math, os, re, statistics, subprocess, sys
 sys.dont_write_bytecode = True      # the loader below imports a sibling script by path: no __pycache__ in the scripts directory
-_spec = importlib.util.spec_from_file_location('t207_d5_qparse', os.path.join(os.path.dirname(os.path.abspath(__file__)), 't207_d5_qparse.py'))
-QP = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(QP)
+HERE = os.path.dirname(os.path.abspath(__file__))
+_s = importlib.util.spec_from_file_location('t207_d5_agg', os.path.join(HERE, 't207_d5_agg.py'))
+AGG = importlib.util.module_from_spec(_s)
+_s.loader.exec_module(AGG)
+QP = AGG.QP                                  # one instance of the parser module, the one the aggregation uses
+QError = QP.QError
+
+EXIT = {'PASS': 0, 'FAIL': 1, 'INPUT_ERROR': 2, 'DEV-ONLY': 3, 'TEST-ONLY': 4}
+MEASURES = ('pTT', 'emax', 'eF')             # measures of qref.txt the gate accepts (t207_d5_agg.meas); anything else is refused
+STATISTICS = ('S_ens', 'S_ens_q95', 'S_ens_max')     # decision statistics of the per-point S_ens values; S_cpu is reported only
+POOLS = ('pooled', 'each_run', 'by_stratum')
+SPEC_REQUIRED = {'spec_version', 'path', 'host_member', 'members', 'refs', 'qs', 'nul', 'cover', 'keep', 'hostin', 'min_reprocessed',
+                 'expect_points', 'prog_sha', 'src_sha', 'binary_sha256', 'parameters_sha256', 'seeds', 'env_roles', 'n_runs', 'gates', 'controls'}
+SPEC_OPTIONAL = {'test_only'}
+GATE_KEYS = {'name', 'measure', 'statistic', 'pool', 'bound'}
+NAME = re.compile(r'^[A-Za-z0-9_.-]+$')
+HEX64 = QP.HEX64
+# The frozen reference ensembles (decision 33, ticket 207-2 task 3); 'H' stands for the spec's host_member.  A spec with another list is
+# refused unless marked test_only (it can then never PASS).
+FROZEN_REFS = {'def': ['cpu', 'H', 'n4', 'n100004', 'n1', 'n100001', 'n2', 'n1608', 'n4808', 'n5', 'n100005'],
+               'log': ['cpu', 'H', 'n4', 'n100004', 'n1', 'n100001', 'n2', 'n5', 'n100005']}
+NEVER_REF = re.compile(r'^(dev|n0|var[0-9]+|u[0-9]+)$')
+# The env of the main runs (the device under test) and the faults a control role may add: fixed here, not in the spec.
+MAIN_ENV_FIXED = {'ALF_GPU_DEBUG': '1', 'ALF_GPU_TAUDIAG_QHOST': '1', 'ALF_GPU_TAUDIAG_QVAR': '8'}
+MAIN_ENV_INT = {'ALF_GPU_TAUDIAG_QREF': 1, 'ALF_GPU_TAUDIAG_FROM': 0}          # name -> smallest value
+CONTROL_MAY_OMIT = ('ALF_GPU_TAUDIAG_QVAR',)
+_EPS = r'(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eEdD][-+]?[0-9]+)?'
+# fault variable -> (paths, value regex, meaning).  ALF_GPU_FAULT_TAU=eps:<x> is the graded fault of 207-3 (x > 0, < 1e300, as
+# gpu_state_mod validates it); '@<nst>[:<nfe>]' restricts it to one block (and flavour) position.  207-3 defines the position syntax: if it
+# differs from this, this table is the one place to change (QUESTION in the 207-2 report).
+FAULTS = {'ALF_GPU_TAU_NS': (('def',), re.compile(r'^0$'), 'default path forced (no pre-pivot): NS=0 control'),
+          'ALF_GPU_TAUSWAP': (('log',), re.compile(r'^8$'), 'LOG path: device CGR2_2 step swapped (mask 8)'),
+          'ALF_GPU_FAULT_TAU': (('def', 'log'), re.compile(r'^eps:(' + _EPS + r')(?:@[1-9][0-9]*(?::[1-9][0-9]*)?)?$'),
+                                'graded fault of 207-3 on the device CGR2_2 output')}
+MEMO = {}       # reprocessing results within ONE process (the self-test calls main() in-process); see reprocess()
 
 
 class InputError(Exception):
     pass
 
 
-def need(d, k, what):
-    if not isinstance(d, dict) or k not in d:
-        raise InputError('%s: key %r missing' % (what, k))
-    return d[k]
+def isint(x):
+    return isinstance(x, int) and not isinstance(x, bool)
 
 
-def fin(x, what):
-    if not isinstance(x, (int, float)) or isinstance(x, bool) or not math.isfinite(x):
-        raise InputError('%s: %r is not a finite number' % (what, x))
-    return x
+def isnum(x):
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
 
 
-def check_run(lab, i, refs, qs_ok, expect, progsha):
-    """the configuration of one run (review fixes 1 to 3, 7): refuse unless it is the accepted one"""
-    a = need(i, 'args', 'input ' + lab)
-    if need(i, 'v1', lab) is not False:
-        raise InputError('run %s: contains version 1 dumps' % lab)
-    cover = need(a, 'cover', lab + ' args')
-    if not (isinstance(cover, int) and not isinstance(cover, bool) and cover == 1):
-        raise InputError('run %s: cover %r: not every dump of the run was processed (qref.txt must cover all of them)' % (lab, cover))
-    qs = need(a, 'qs', lab + ' args')
-    if not (isinstance(qs, int) and not isinstance(qs, bool) and qs > 0 and qs in qs_ok):
-        raise InputError('run %s: qs %r is not > 0 and one of the --qs values %s' % (lab, qs, sorted(qs_ok)))
-    nul = need(a, 'nul', lab + ' args')
-    if not isinstance(nul, list) or not all(isinstance(c, int) and not isinstance(c, bool) for c in nul) or 0 not in nul:
-        raise InputError('run %s: null codes %r (must be a list of integers containing 0)' % (lab, nul))
-    path = need(i, 'variant', lab)
-    if path not in ('def', 'log'):
-        raise InputError('run %s: path %r' % (lab, path))
-    if need(a, 'path', lab + ' args') != path:
-        raise InputError('run %s: args path %r differs from variant %r' % (lab, a['path'], path))
-    if refs != (QP.REF_DEF if path == 'def' else QP.REF_LOG).split(','):
-        raise InputError('run %s: the reference list %s is not the frozen list of the %s path' % (lab, refs, path))
+def sha(p):
+    return QP.sha256_file(p)
+
+
+def frozen_refs(path, host):
+    return [host if r == 'H' else r for r in FROZEN_REFS[path]]
+
+
+# ------------------------------------------------------------------------------------------------------------------- spec
+
+def load_spec(path, want_sha):
+    """the spec from the bytes of the file, refused unless their sha256 is want_sha; returns (spec, env table, sha256)"""
+    if not os.path.isfile(path):
+        raise InputError('gate spec missing: %s' % path)
+    with open(path, 'rb') as f:
+        raw = f.read()
+    got = hashlib.sha256(raw).hexdigest()
+    if got != want_sha:
+        raise InputError('gate spec %s: sha256 %s differs from --spec-sha %s (only the pre-registered spec is evaluated)' % (path, got, want_sha))
+    try:
+        s = QP.loads_strict(raw, 'gate spec', path)
+    except QError as e:
+        raise InputError(str(e))
+    s, table = check_spec(s)
+    return s, table, got
+
+
+def check_spec(s):
+    if not isinstance(s, dict):
+        raise InputError('gate spec: not a JSON object')
+    if 'allow_v1' in s:
+        raise InputError('gate spec: allow_v1 is refused (version 1 dumps have no B, Bi; the gate never accepts them), value %r' % (s['allow_v1'],))
+    unknown = sorted(set(s) - SPEC_REQUIRED - SPEC_OPTIONAL)
+    missing = sorted(SPEC_REQUIRED - set(s))
+    if unknown or missing:
+        raise InputError('gate spec: unknown keys %s, missing keys %s' % (unknown, missing))
+    if not (isint(s['spec_version']) and s['spec_version'] == 1):
+        raise InputError('gate spec: spec_version %r (1 expected)' % (s['spec_version'],))
+    if s['path'] not in ('def', 'log'):
+        raise InputError('gate spec: path %r (def or log)' % (s['path'],))
+    try:
+        QP.check_host(s['host_member'], 'gate spec: host_member (the label the offline program prints for the in-run host CGR2_2, QHOST)')
+    except QError as e:
+        raise InputError(str(e))
+    if 'test_only' in s and not (isinstance(s['test_only'], str) and s['test_only'].strip()):
+        raise InputError('gate spec: test_only must be a non-empty reason')
+    refs = s['refs']
+    if not (isinstance(refs, list) and len(refs) >= 2 and all(isinstance(r, str) for r in refs)):
+        raise InputError('gate spec: refs %r is not a list of at least two names' % (refs,))
+    if len(set(refs)) != len(refs):
+        raise InputError('gate spec: refs %s: duplicate name' % refs)
     for r in refs:
-        if r not in ('cpu', 'nvh') and int(r[1:]) not in nul:      # refs equal the frozen list: names are cpu, nvh, n<code>
-            raise InputError('run %s: reference member %s: null code %s is not in the null codes %s' % (lab, r, r[1:], nul))
-    if need(i, 'n_used', lab) != expect:
-        raise InputError('run %s: %r points used, --expect-points is %d' % (lab, i['n_used'], expect))
+        if NEVER_REF.match(r) or r in QP.DIAG_NAMES:
+            raise InputError('gate spec: refs: %r is not a reference member (dev is the device under test; n0 is the oracle cpu by '
+                             'construction and would count twice; var<m> are device variants and u<k> input-sensitivity members, never '
+                             'references; %s are diagnostics)' % (r, ', '.join(QP.DIAG_NAMES)))
+    fz = frozen_refs(s['path'], s['host_member'])
+    if refs != fz and 'test_only' not in s:
+        raise InputError('gate spec: refs %s differ from the frozen reference list of the %s path %s (decision 33; host member %s); another '
+                         'list only in a spec marked test_only' % (refs, s['path'], fz, s['host_member']))
+    if not (isint(s['qs']) and s['qs'] > 0):
+        raise InputError('gate spec: qs %r: one integer > 0 expected (one qs per gate run)' % (s['qs'],))
+    nul = s['nul']
+    if not (isinstance(nul, list) and all(isint(c) and c >= 0 for c in nul) and len(set(nul)) == len(nul) and 0 in nul):
+        raise InputError('gate spec: nul %r: a list of distinct integers >= 0 containing 0 expected' % (nul,))
+    if not (isint(s['cover']) and s['cover'] >= 1):
+        raise InputError('gate spec: cover %r: an integer >= 1 expected' % (s['cover'],))
+    if s['cover'] != 1 and 'test_only' not in s:
+        raise InputError('gate spec: cover %d: qref.txt must cover every dump of the run (cover 1); another cover only in a spec marked '
+                         'test_only' % s['cover'])
+    if not (isint(s['keep']) and s['keep'] >= 0):
+        raise InputError('gate spec: keep %r: the processing KEEP, an integer >= 0 (0: no thinning) expected' % (s['keep'],))
+    if not (isint(s['hostin']) and s['hostin'] in (0, 1)):
+        raise InputError('gate spec: hostin %r: the processing HOSTIN, 0 or 1 expected' % (s['hostin'],))
+    if not (isint(s['min_reprocessed']) and s['min_reprocessed'] >= 1):
+        raise InputError('gate spec: min_reprocessed %r: an integer >= 1 expected (the least number of kept dumps per run that the gate '
+                         're-computes)' % (s['min_reprocessed'],))
+    for k in ('prog_sha', 'src_sha', 'binary_sha256', 'parameters_sha256'):
+        if not (isinstance(s[k], str) and HEX64.match(s[k])):
+            raise InputError('gate spec: %s %r is not a sha256 (64 lower-case hex digits)' % (k, s[k]))
+    here_src = sha(os.path.join(HERE, 't207_d5_qref.F90'))
+    if s['src_sha'] != here_src:
+        raise InputError('gate spec: src_sha %s differs from the sha256 %s of the t207_d5_qref.F90 next to the gate' % (s['src_sha'], here_src))
     try:
-        role = QP.env_role(need(i, 'env', lab), path)
-    except QP.QError as e:
-        raise InputError('run %s: %s' % (lab, e))
-    if role != i['role']:
-        raise InputError('run %s: role %s, but its env is that of a %s run' % (lab, i['role'], role))
-    if progsha is not None and need(i, 'prog_sha256', lab) != progsha:
-        raise InputError('run %s: program sha256 %r differs from --prog-sha' % (lab, i['prog_sha256']))
+        table = QP.env_table(s['env_roles'])
+    except QError as e:
+        raise InputError('gate spec: %s' % e)
+    # gates
+    gates = s['gates']
+    if not (isinstance(gates, list) and gates):
+        raise InputError('gate spec: gates must be a non-empty list')
+    gnames = []
+    for i, g in enumerate(gates):
+        if not isinstance(g, dict) or set(g) != GATE_KEYS:
+            raise InputError('gate spec: gates[%d]: a dictionary with exactly the keys %s expected, got %r' % (i, sorted(GATE_KEYS), g))
+        if not (isinstance(g['name'], str) and NAME.match(g['name'])) or g['name'] in gnames:
+            raise InputError('gate spec: gates[%d]: name %r is not a unique name' % (i, g['name']))
+        gnames.append(g['name'])
+        if g['measure'] not in MEASURES:
+            raise InputError('gate spec: gate %s: unknown measure %r (the gate supports %s)' % (g['name'], g['measure'], ', '.join(MEASURES)))
+        if g['statistic'] not in STATISTICS:
+            raise InputError('gate spec: gate %s: statistic %r is not a decision statistic (%s)' % (g['name'], g['statistic'], ', '.join(STATISTICS)))
+        if g['pool'] not in POOLS:
+            raise InputError('gate spec: gate %s: pool %r (%s)' % (g['name'], g['pool'], ' | '.join(POOLS)))
+        if not isnum(g['bound']):
+            raise InputError('gate spec: gate %s: bound %r is not a finite number' % (g['name'], g['bound']))
+    ep = s['expect_points']
+    want_m = sorted(set(g['measure'] for g in gates))
+    if not isinstance(ep, dict) or sorted(ep) != want_m:
+        raise InputError('gate spec: expect_points %r must have exactly the measures of the gates %s' % (ep, want_m))
+    for m, n in ep.items():
+        if not (isint(n) and n >= 1):
+            raise InputError('gate spec: expect_points %s: %r is not an integer >= 1' % (m, n))
+    # member lists: the exact ordered statistical members of the runs of each role
+    mem = s['members']
+    if not isinstance(mem, dict) or 'main' not in mem:
+        raise InputError('gate spec: members must be a dictionary {role: [member, ...]} with main')
+    for role, lst in mem.items():
+        if not (isinstance(lst, list) and lst and all(isinstance(x, str) and NAME.match(x) for x in lst) and len(set(lst)) == len(lst)):
+            raise InputError('gate spec: members.%s %r: a list of distinct names expected' % (role, lst))
+        if 'dev' not in lst or any(r not in lst for r in refs) or any(x in QP.DIAG_NAMES for x in lst):
+            raise InputError('gate spec: members.%s must contain dev and every reference member %s and no diagnostic member %s'
+                             % (role, refs, QP.DIAG_NAMES))
+        if s['host_member'] not in lst:
+            raise InputError('gate spec: members.%s does not contain host_member %s' % (role, s['host_member']))
+    # controls
+    ctl = s['controls']
+    if not isinstance(ctl, list):
+        raise InputError('gate spec: controls must be a list')
+    cnames = []
+    run_roles = set()
+    try:                                         # a malformed QVAR of main is refused here (the parser would refuse every run)
+        QP.parse_int_list(table['main'].get('ALF_GPU_TAUDIAG_QVAR', ''), 'env_roles.main ALF_GPU_TAUDIAG_QVAR')
+    except QError as e:
+        raise InputError('gate spec: %s' % e)
+    for i, c in enumerate(ctl):
+        if not isinstance(c, dict):
+            raise InputError('gate spec: controls[%d] is not a dictionary' % i)
+        kind = c.get('kind')
+        keys = {'name', 'kind', 'trips'} | ({'member'} if kind == 'variant' else {'role'} if kind == 'run' else set())
+        if kind not in ('variant', 'run') or not (keys <= set(c) <= keys | {'must_not_trip'}):
+            raise InputError('gate spec: controls[%d]: kind variant (keys name, kind, member, trips) or run (keys name, kind, role, trips), '
+                             'optional must_not_trip; got %r' % (i, c))
+        if not (isinstance(c['name'], str) and NAME.match(c['name'])) or c['name'] in cnames:
+            raise InputError('gate spec: controls[%d]: name %r is not a unique name' % (i, c['name']))
+        cnames.append(c['name'])
+        if c['trips'] not in gnames:
+            raise InputError('gate spec: control %s: trips %r is not a gate of the spec %s' % (c['name'], c['trips'], gnames))
+        mnt = c.get('must_not_trip', [])
+        if not (isinstance(mnt, list) and all(x in gnames for x in mnt) and len(set(mnt)) == len(mnt) and c['trips'] not in mnt):
+            raise InputError('gate spec: control %s: must_not_trip %r must be a list of distinct gates other than %s' % (c['name'], mnt, c['trips']))
+        if kind == 'variant':
+            if c['member'] == 'dev':
+                raise InputError('gate spec: control %s: member dev is the device under test, not a control member' % c['name'])
+            if c['member'] in refs:
+                raise InputError('gate spec: control %s: member %r is a reference member (a control member is judged against the references, '
+                                 'it cannot be one of them)' % (c['name'], c['member']))
+            if c['member'] not in mem['main']:
+                raise InputError('gate spec: control %s: member %r must be a member of main in members' % (c['name'], c['member']))
+        else:
+            if c['role'] not in table or c['role'] == 'main':
+                raise InputError('gate spec: control %s: role %r is not a control role of env_roles %s' % (c['name'], c['role'], sorted(table)))
+            run_roles.add(c['role'])
+    unused = sorted(set(table) - {'main'} - run_roles)
+    if unused:
+        raise InputError('gate spec: env_roles %s are used by no control' % unused)
+    roles = {'main'} | run_roles
+    if set(mem) != roles:
+        raise InputError('gate spec: members %s must have exactly the roles %s' % (sorted(mem), sorted(roles)))
+    nr = s['n_runs']
+    if not isinstance(nr, dict) or set(nr) != roles:
+        raise InputError('gate spec: n_runs %r must have exactly the roles %s' % (nr, sorted(roles)))
+    for r, n in nr.items():
+        if not (isint(n) and n >= 1):
+            raise InputError('gate spec: n_runs %s: %r is not an integer >= 1' % (r, n))
+    # seeds: the exact seed sets per role, distinct across roles (decision 33: control seed sets are not main seed sets)
+    sd = s['seeds']
+    if not isinstance(sd, dict) or set(sd) != roles:
+        raise InputError('gate spec: seeds %r must be a dictionary with exactly the roles %s' % (sd, sorted(roles)))
+    allseeds = {}
+    for r, lst in sd.items():
+        if not (isinstance(lst, list) and lst and all(isinstance(x, str) and HEX64.match(x) for x in lst) and len(set(lst)) == len(lst)):
+            raise InputError('gate spec: seeds.%s %r: a non-empty list of distinct seeds_sha256 values (64 lower-case hex digits) expected' % (r, lst))
+        for x in lst:
+            if x in allseeds:
+                raise InputError('gate spec: seeds: %s is listed for role %s and role %s (control seed sets must differ from main seed sets '
+                                 'and from each other, decision 33)' % (x[:16], allseeds[x], r))
+            allseeds[x] = r
+    check_env_rules(s, table, run_roles)
+    return s, table
 
 
-def decide(agg, bound, require_controls, expect, qs_ok, progsha=None):
-    out = []
-    if need(agg, 'measure', 'aggregate') != 'pTT':
-        raise InputError('measure is %r, the gate uses pTT' % agg['measure'])
-    refs = need(agg, 'refs', 'aggregate')
-    inputs = need(agg, 'inputs', 'aggregate')
-    runs = need(agg, 'runs', 'aggregate')
-    pooled = need(agg, 'pooled', 'aggregate')
-    if not isinstance(refs, list) or 'cpu' not in refs or len(refs) < 2 or len(set(refs)) != len(refs):
-        raise InputError('bad reference list %r' % (refs,))
-    if not inputs or set(inputs) != set(runs):
-        raise InputError('runs and inputs differ')
-    main = [l for l, i in inputs.items() if need(i, 'role', 'input ' + l) == 'main']
-    if not main:
-        raise InputError('no main run')
-    members0 = None
-    variants = set()
+def check_env_rules(s, table, run_roles):
+    """the code-enforced env: main exactly MAIN_ENV_FIXED plus QREF / FROM integers; a control role = main minus at most CONTROL_MAY_OMIT
+    plus at least one fault of FAULTS for the spec's path, nothing else"""
+    main = s['env_roles']['main']
+    want = set(MAIN_ENV_FIXED) | set(MAIN_ENV_INT)
+    if set(main) != want or any(main[k] != v for k, v in MAIN_ENV_FIXED.items()) or \
+            any(not re.match(r'^[0-9]+$', main[k]) or int(main[k]) < lo for k, lo in MAIN_ENV_INT.items()):
+        raise InputError('gate spec: env_roles.main %s must be exactly %s plus ALF_GPU_TAUDIAG_QREF=<integer >= 1> and ALF_GPU_TAUDIAG_FROM='
+                         '<integer >= 0> (fixed by the gate: any other variable could change what the device result is)' % (
+                             ' '.join('%s=%s' % kv for kv in sorted(main.items())), ' '.join('%s=%s' % kv for kv in sorted(MAIN_ENV_FIXED.items()))))
+    for role in sorted(run_roles):
+        r = s['env_roles'][role]
+        bad_omit = [k for k in r['omit_env'] if k not in CONTROL_MAY_OMIT]
+        if bad_omit:
+            raise InputError('gate spec: env_roles.%s.omit_env %s: a control may omit only %s' % (role, bad_omit, list(CONTROL_MAY_OMIT)))
+        if not r['extra_env']:
+            raise InputError('gate spec: env_roles.%s adds no fault (extra_env empty): a control role adds at least one fault of %s' % (role, sorted(FAULTS)))
+        for k, v in sorted(r['extra_env'].items()):
+            f = FAULTS.get(k)
+            ok = f is not None and s['path'] in f[0] and f[1].match(v)
+            if ok and k == 'ALF_GPU_FAULT_TAU':
+                x = float(f[1].match(v).group(1).replace('d', 'e').replace('D', 'e'))
+                ok = 0 < x < 1e300
+            if not ok:
+                raise InputError('gate spec: env_roles.%s.extra_env %s=%s is not a fault of the fixed list for the %s path (%s)' % (
+                    role, k, v, s['path'], '; '.join('%s %s (%s)' % (n, t[1].pattern, '/'.join(t[0])) for n, t in sorted(FAULTS.items()))))
+
+
+# ------------------------------------------------------------------------------------------------------------------- runs
+
+def load_run(rundir, s, table):
+    d = os.path.abspath(rundir)
+    what = 'run %s' % d
+    if not os.path.isdir(d):
+        raise InputError('%s: not a directory' % what)
+    qt = os.path.join(d, 'qref.txt')
+    if not os.path.isfile(qt):
+        raise InputError('%s: qref.txt missing' % what)
+    try:
+        rspec = QP.load_spec(d)                      # re-derived from the run's records and compared with the stored one
+        if rspec['run']['variant'] != s['path'] or rspec['args']['path'] != s['path']:
+            raise InputError('%s: a %s-path run (info), processed as %s; the spec is for the %s path' % (
+                what, rspec['run']['variant'], rspec['args']['path'], s['path']))
+        # the processing arguments are the spec's (fix round 5: keep and hostin pinned too), checked before qref.txt, the manifest and the dumps are read
+        for k in ('qs', 'nul', 'cover', 'keep', 'hostin'):
+            if type(rspec['args'][k]) is not type(s[k]) or rspec['args'][k] != s[k]:
+                raise InputError('%s: processed with %s %r, the spec says %r' % (what, k, rspec['args'][k], s[k]))
+        nkept = len(QP.kept_dumps(rspec))
+        if nkept < s['min_reprocessed']:
+            raise InputError('%s: %d kept dumps to re-process, the spec requires at least min_reprocessed %d' % (what, nkept, s['min_reprocessed']))
+        with open(qt, 'rb') as f:
+            raw = f.read()                           # the bytes hashed here are the bytes parsed below (qref.txt is not read again)
+        qsha = hashlib.sha256(raw).hexdigest()
+        mparsed = QP.read_manifest_sha(d)            # likewise the manifest
+        pr = QP.proc_record(d, rspec, prog=s['prog_sha'], src=s['src_sha'], qref_sha256=qsha, manifest_sha256=mparsed[1])
+        manifest, msha = QP.verify_dumps(d, rspec, parsed=mparsed)
+        ndh = QP.check_dump_headers(d, rspec)
+        role = QP.role_of_env(rspec['run']['env'], table)
+        run = QP.load(qt, allow_v1=False, members=s['members'][role], host=s['host_member'], raw=raw)
+        r = run.spec['run']
+        res = {}
+        for m in sorted(set(g['measure'] for g in s['gates'])):
+            res[m], n_exp = AGG.per_run(run, m, s['refs'])
+            n = res[m]['cpu']['n']
+            if not (isint(n) and n == n_exp == s['expect_points'][m]):
+                raise InputError('%s: %r points used for measure %s (derived from the run %r), the spec expects %d' % (what, n, m, n_exp, s['expect_points'][m]))
+    except QError as e:
+        raise InputError('%s: %s' % (what, e))
+    return dict(dir=d, real=os.path.realpath(d), role=role, run=run, res=res, proc=pr, manifest=manifest, lines=run.lines, kept=QP.kept_dumps(rspec),
+                n_headers=ndh, qref_sha256=qsha, run_log_sha256=r['records_sha256']['run.log'], seeds_sha256=r['seeds_sha256'],
+                parameters_sha256=r['parameters_sha256'], binary_sha256=r['binary_sha256'], manifest_sha256=msha)
+
+
+def cross_checks(runs, s):
+    if len(set(x['parameters_sha256'] for x in runs)) != 1:
+        raise InputError('the runs have different parameters (parameters sha256 %s)' % sorted(set(x['parameters_sha256'][:16] for x in runs)))
     seen = {}
-    for lab, i in inputs.items():
-        nu, ne, npt = need(i, 'n_used', lab), need(i, 'n_expected', lab), need(i, 'n_points', lab)
-        if not (isinstance(nu, int) and nu == ne and nu > 0 and npt >= nu):
-            raise InputError('run %s: %r points used, %r derived from its parameters (of %r points)' % (lab, nu, ne, npt))
-        check_run(lab, i, refs, qs_ok, expect, progsha)
-        for what, key in (('qref.txt sha256', need(i, 'qref_sha256', lab)), ('run.log sha256', need(i, 'run_log_sha256', lab)),
-                          ('run record (role, seeds, parameters)', (i['role'], need(i, 'seeds_sha256', lab), need(i, 'parameters_sha256', lab)))):
-            if (what, str(key)) in seen:
-                raise InputError('run %s is the same run as %s (same %s)' % (lab, seen[(what, str(key))], what))
-            seen[(what, str(key))] = lab
-        mem = need(i, 'members', lab)
-        for r in refs:
-            if r not in mem:
-                raise InputError('run %s: reference member %s missing' % (lab, r))
-        if i['role'] == 'main':
-            if 'dev' not in mem:
-                raise InputError('main run %s has no member dev' % lab)
-            if members0 is None:
-                members0 = mem
-            elif mem != members0:
-                raise InputError('main runs %s and %s have different member lists' % (main[0], lab))
-        variants.add(need(i, 'variant', lab))
-        out.append('run %-8s %-4s points %d used %d expected %d' % (lab, i['role'], npt, nu, ne))
-    if len(variants) != 1:
-        raise InputError('runs of different paths: %s' % sorted(variants))
-
-    def pooled_s(name):
-        e = need(need(pooled, name, 'pooled'), 'S_ens', 'pooled ' + name)
-        mean, n = fin(need(e, 'mean', name), name + ' mean'), need(e, 'n', name)
-        nexp = sum(runs[l][name]['S_ens']['n'] for l in runs if name in runs[l])
-        if n != nexp or n < 1:
-            raise InputError('pooled %s: n %r, sum over the runs %r' % (name, n, nexp))
-        for l in runs:
-            if name in runs[l]:
-                fin(runs[l][name]['S_ens']['mean'], '%s %s mean' % (l, name))
-        return mean, n
-
-    dev, ndev = pooled_s('dev')
-    if ndev != sum(inputs[l]['n_used'] for l in main):
-        raise InputError('pooled dev n %d differs from the points of the main runs' % ndev)
-    ctl = [n for n in ('var8', 'ctl_dev') if n in pooled]
-    if require_controls and not ctl:
-        raise InputError('--require-controls: no control member (var8, ctl_dev) in the aggregate')
-    verdict = 'PASS'
-    reasons = []
-    out.append('device S_ens(pTT) pooled over %d points: %+.4f  (bound %+.4f)' % (ndev, dev, bound))
-    if not dev <= bound:
-        verdict = 'FAIL'; reasons.append('device S_ens %+.4f > bound %+.4f' % (dev, bound))
-    for c in ctl:
-        v, n = pooled_s(c)
-        ok = v > bound
-        out.append('control %-7s S_ens(pTT) pooled over %d points: %+.4f  (must be > %+.4f): %s' % (c, n, v, bound, 'killed' if ok else 'NOT KILLED'))
-        if not ok:
-            verdict = 'FAIL'; reasons.append('control %s S_ens %+.4f <= bound %+.4f' % (c, v, bound))
-    return verdict, reasons, out
+    for x in runs:
+        keys = [('directory', x['real']), ('qref.txt sha256', x['qref_sha256']), ('run.log sha256', x['run_log_sha256']),
+                ('seeds (control seed sets must differ from main seed sets, decision 33)', x['seeds_sha256'])]
+        keys += [('dump sha256', h) for h in x['manifest'].values()]
+        keys += [('QREF data line', ln.split(' | ', 1)[1]) for ln in x['lines']]
+        own = set()
+        for what, k in keys:
+            if (what, k) in own:
+                continue
+            own.add((what, k))
+            if (what, k) in seen:
+                raise InputError('run %s is the same run as %s (same %s): a run may enter once' % (x['dir'], seen[(what, k)], what))
+        for wk in own:
+            seen[wk] = x['dir']
+    cnt = {}
+    for x in runs:
+        cnt[x['role']] = cnt.get(x['role'], 0) + 1
+    for c in s['controls']:
+        if c['kind'] == 'run' and c['role'] not in cnt:
+            raise InputError('control %s is declared in the spec, but no run has its role %s (controls are always required)' % (c['name'], c['role']))
+    if 'main' not in cnt:
+        raise InputError('no main run (the device under test)')
+    if cnt != s['n_runs']:
+        raise InputError('runs per role %s, the spec expects %s' % (dict(sorted(cnt.items())), dict(sorted(s['n_runs'].items()))))
 
 
-def main():
-    a = sys.argv[1:]
-    req = '--require-controls' in a
-    a = [x for x in a if x != '--require-controls']
-    bound = expect = progsha = None
-    qs_ok = set()
-    files = []
+def pins(runs, s):
+    """the runs are the pre-registered ones: ALF binary, parameters, and per role exactly the spec's seed sets"""
+    for x in runs:
+        if x['binary_sha256'] != s['binary_sha256']:
+            raise InputError('run %s: ALF binary sha256 %s (provenance.json), the spec requires binary_sha256 %s' % (x['dir'], x['binary_sha256'], s['binary_sha256']))
+        if x['parameters_sha256'] != s['parameters_sha256']:
+            raise InputError('run %s: parameters sha256 %s, the spec requires parameters_sha256 %s' % (x['dir'], x['parameters_sha256'], s['parameters_sha256']))
+    for role, want in sorted(s['seeds'].items()):
+        have = sorted(x['seeds_sha256'] for x in runs if x['role'] == role)
+        if set(have) != set(want) or len(have) != len(want):
+            raise InputError('role %s: the runs have the seed sets %s, the spec requires exactly %s (no run may be left out, added or replaced)'
+                             % (role, [h[:16] for h in have], sorted(w[:16] for w in want)))
+
+
+# ------------------------------------------------------------------------------------------------------------------- authenticity
+
+def compare_line(old, new, what):
+    """(numbers, equal) of the run's qref.txt line old against the re-computed line new: header equal except the timing tq, member names,
+    order and every number token exactly equal (bit identity of the printed text, fix round 5); InputError on any difference"""
+    so, sn = old.split(' | '), new.split(' | ')
+    ho, hn = so[0].split(), sn[0].split()
+    if len(ho) != len(hn) or 'tq' not in ho or ho.index('tq') != len(ho) - 2 or hn.index('tq') != len(hn) - 2 or ho[:-1] != hn[:-1]:
+        raise InputError('%s: header %r, re-computed %r (tq aside, they must be equal)' % (what, so[0], sn[0]))
+    if len(so) != len(sn):
+        raise InputError('%s: %d members in qref.txt, %d re-computed' % (what, len(so) - 1, len(sn) - 1))
+    nnum = neq = 0
+    for a, b in zip(so[1:], sn[1:]):
+        ta, tb = a.split(), b.split()
+        if not ta or not tb or ta[0] != tb[0] or len(ta) != len(tb):
+            raise InputError('%s: member %r in qref.txt where the program prints %r' % (what, a[:40], b[:40]))
+        for x, y in zip(ta[1:], tb[1:]):
+            nnum += 1
+            if x != y:
+                raise InputError('%s: member %s: %s in qref.txt, %s re-computed by the program (exact equality required)' % (what, ta[0], x, y))
+            neq += 1
+    return nnum, neq
+
+
+def program_env():
+    """the minimal environment of the offline program: PATH and HOME of the caller, OMP_NUM_THREADS of the caller if set (else 4, the
+    per-agent core limit on nividia; the output does not depend on it, reviewer probe P1 of round 4), OPENBLAS_NUM_THREADS=1 as in
+    t207_d5_proc.sh (the binary links the system libopenblas).  No LD_LIBRARY_PATH: the binary built by t207_d5_qbuild.sh loads with the
+    system loader alone (ldd under env -i PATH=/usr/bin:/bin on nividia, 2026-11-01: liblapack, libblas, libgfortran, libgomp, libopenblas
+    from /lib/x86_64-linux-gnu).  A caller env with LD_PRELOAD is refused (code injected into every process the gate starts)."""
+    if 'LD_PRELOAD' in os.environ:
+        raise InputError('LD_PRELOAD is set in the environment of the gate (%r): refused (the re-processing would run injected code)'
+                         % os.environ['LD_PRELOAD'][:200])
+    e = {k: os.environ[k] for k in ('PATH', 'HOME') if k in os.environ}
+    e['OMP_NUM_THREADS'] = os.environ.get('OMP_NUM_THREADS', '4')
+    e['OPENBLAS_NUM_THREADS'] = '1'
+    return e
+
+
+def reprocess(x, s, prog):
+    """the program's output lines for the kept dumps of run x.  The MEMO key is the program sha256 verified in this call, the processing
+    arguments and the (name, sha256) of every kept dump, verified against the manifest in this call: a result is re-used only for the same
+    program on the same bytes with the same arguments, and only within one process (one CLI call never meets the same dumps twice; the
+    self-test's in-process calls do)."""
+    a = x['run'].spec['args']
+    names = [QP.dump_name(k) for (k, p, nst, nfe, br) in x['kept']]
+    key = (s['prog_sha'], a['qs'], tuple(a['nul']), a['hostin'], tuple((nm, x['manifest'][nm]) for nm in names))
+    if key in MEMO:
+        return MEMO[key], 'memo'
+    nul = ','.join(str(c) for c in a['nul']) if a['nul'] else '-'
     try:
-        i = 0
-        while i < len(a):
-            if a[i] in ('--bound', '--expect-points', '--qs', '--prog-sha') and i + 1 < len(a):
-                v = a[i + 1]
-                if a[i] == '--bound':
-                    bound = float(v)
-                    if not math.isfinite(bound):
-                        raise ValueError('--bound is not finite')
-                elif a[i] == '--expect-points':
-                    expect = int(v)
-                    if expect < 1:
-                        raise ValueError('--expect-points < 1')
-                elif a[i] == '--qs':
-                    qs_ok.add(int(v))
-                else:
-                    progsha = v
-                    if len(v) != 64 or any(c not in '0123456789abcdef' for c in v):
-                        raise ValueError('--prog-sha is not a sha256')
+        p = subprocess.run([prog, str(a['qs']), nul, str(a['hostin'])], input=''.join(nm + '\n' for nm in names), cwd=x['dir'],
+                           capture_output=True, text=True, env=program_env(), timeout=24 * 3600)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise InputError('run %s: the program %s could not be run: %s: %s' % (x['dir'], prog, type(e).__name__, e))
+    lines = p.stdout.split('\n')
+    if p.returncode != 0 or not p.stdout.endswith('\n'):
+        raise InputError('run %s: re-processing of the kept dumps: program exit status %d (%s)' % (
+            x['dir'], p.returncode, ' / '.join(l[:200] for l in lines if l.startswith('QREFERR'))[:600] or p.stderr.strip()[-300:]))
+    lines = lines[:-1]
+    want_end = 'QREFEND dumps %d ok %d err 0' % (len(names), len(names))
+    if len(lines) != len(names) + 1 or lines[-1] != want_end:
+        raise InputError('run %s: re-processing printed %d lines ending %r, expected %d QREF lines and %r' % (
+            x['dir'], len(lines), lines[-1][:80] if lines else '', len(names), want_end))
+    MEMO[key] = lines[:-1]
+    return lines[:-1], 'program'
+
+
+def authenticate(runs, s, prog):
+    """step 9: the program re-run on the kept dumps of every run; the run's qref.txt lines of those dumps must be what it prints"""
+    out = []
+    for x in runs:
+        new, src = reprocess(x, s, prog)
+        bynum = {}
+        for ln in x['lines']:
+            bynum[int(ln.split()[2])] = ln
+        tot = [0, 0]
+        for (k, p, nst, nfe, br), ln in zip(x['kept'], new):
+            if not ln.startswith('QREF file %d ' % k):
+                raise InputError('run %s: re-processing line for dump %d is %r' % (x['dir'], k, ln[:60]))
+            if k not in bynum:
+                raise InputError('run %s: kept dump %d has no line in qref.txt' % (x['dir'], k))
+            c = compare_line(bynum[k], ln, 'run %s dump %d (re-processing check)' % (x['dir'], k))
+            tot = [t + v for t, v in zip(tot, c)]
+        out.append(dict(dir=x['dir'], dumps=len(new), numbers=tot[0], equal=tot[1], source=src))
+    return out
+
+
+# ------------------------------------------------------------------------------------------------------------------- decision
+
+def stat_of(name, v):
+    if not v:
+        raise InputError('statistic %s of an empty set' % name)
+    if name == 'S_ens':
+        return statistics.fmean(v)
+    if name == 'S_ens_q95':
+        return AGG.q(v, 0.95)
+    if name == 'S_ens_max':
+        return max(v)
+    raise InputError('unknown statistic %s' % name)
+
+
+def points_of(group, member, measure):
+    """[(run index, (nst, nfe, br), S_ens value)] of member over the runs of group"""
+    out = []
+    for i, x in enumerate(group):
+        if member not in x['res'][measure]:
+            raise InputError('run %s (%s): member %s missing (members: %s)' % (x['dir'], x['role'], member, ' '.join(sorted(x['res'][measure]))))
+        d = x['res'][measure][member]
+        out += [(i, tuple(p), v) for p, v in zip(d['pos'], d['re'])]
+    return out
+
+
+def values(group, member, g):
+    """pooled value, per-run values, per-stratum {pos: (n, value)} of the gate's statistic, and all values"""
+    pts = points_of(group, member, g['measure'])
+    allv = [v for i, p, v in pts]
+    st = g['statistic']
+    pooled = stat_of(st, allv)
+    per = [stat_of(st, [v for i, p, v in pts if i == j]) for j in range(len(group))]
+    strata = {}
+    for i, p, v in pts:
+        strata.setdefault(p, []).append(v)
+    strata = {p: (len(v), stat_of(st, v)) for p, v in sorted(strata.items())}
+    for v in [pooled] + per + [t[1] for t in strata.values()]:
+        if not math.isfinite(v):
+            raise InputError('%s %s: statistic not finite' % (member, g['name']))
+    return pooled, per, strata, allv
+
+
+def judge(pooled, per, strata, g, as_control):
+    """the decisive value (see the doc string): pooled; each_run: smallest run value for a control that must trip, else the largest;
+    by_stratum: the largest stratum value"""
+    if g['pool'] == 'pooled':
+        return pooled
+    if g['pool'] == 'each_run':
+        return min(per) if as_control else max(per)
+    return max(t[1] for t in strata.values())
+
+
+def pool_text(g, must):
+    if g['pool'] == 'pooled':
+        return 'pooled'
+    if g['pool'] == 'each_run':
+        return ('smallest' if must else 'largest') + ' run value'
+    return 'largest stratum value'
+
+
+def strata_text(strata):
+    return ' '.join('(%d,%d,%d):%d:%+.3f' % (p + (n, v)) for p, (n, v) in strata.items())
+
+
+def decide(runs, s):
+    main = [x for x in runs if x['role'] == 'main']
+    gates = {g['name']: g for g in s['gates']}
+    out, reasons, rep_g, rep_c = [], [], [], []
+    verdict = 'PASS'
+    for g in s['gates']:
+        v, per, strata, allv = values(main, 'dev', g)
+        dv = judge(v, per, strata, g, False)
+        b = AGG.summ(allv); b.pop('boot')
+        ok = dv <= g['bound']
+        out.append('gate %s: device %s(%s) %s = %+.4f (pooled %+.4f over %d points, mean %+.4f [%+.4f, %+.4f]; runs %s; %d strata, points '
+                   'per stratum %d..%d), bound %+.4f: %s' % (
+                       g['name'], g['statistic'], g['measure'], pool_text(g, False), dv, v, b['n'], b['mean'], b['lo'], b['hi'],
+                       ' '.join('%+.4f' % p for p in per), len(strata), min(t[0] for t in strata.values()), max(t[0] for t in strata.values()),
+                       g['bound'], 'pass' if ok else 'FAIL'))
+        if g['pool'] == 'by_stratum':
+            out.append('  strata (nst,nfe,br):points:value  ' + strata_text(strata))
+        rep_g.append(dict(name=g['name'], measure=g['measure'], statistic=g['statistic'], pool=g['pool'], bound=g['bound'], device_value=dv,
+                          device_pooled_value=v, device_pooled=b, device_run_values=per, device_run_means=per if g['statistic'] == 'S_ens' else None,
+                          device_strata=[dict(nst=p[0], nfe=p[1], br=p[2], n=n, value=val) for p, (n, val) in strata.items()], passed=ok))
+        if not ok:
+            verdict = 'FAIL'
+            reasons.append('gate %s: device %+.4f > bound %+.4f' % (g['name'], dv, g['bound']))
+    for c in s['controls']:
+        if c['kind'] == 'variant':
+            group, member = main, c['member']
+        else:
+            group, member = [x for x in runs if x['role'] == c['role']], 'dev'
+        rc = dict(name=c['name'], kind=c['kind'], member=member, role=c.get('role', 'main'), checks=[])
+        for gname, must in [(c['trips'], True)] + [(x, False) for x in c.get('must_not_trip', [])]:
+            g = gates[gname]
+            v, per, strata, allv = values(group, member, g)
+            cv = judge(v, per, strata, g, must)
+            hit = cv > g['bound']
+            ok = hit if must else not hit
+            out.append('control %s (%s %s): gate %s %s(%s) %s = %+.4f (runs %s), must be %s %+.4f: %s' % (
+                c['name'], c['kind'], member if c['kind'] == 'variant' else c['role'], gname, g['statistic'], g['measure'],
+                pool_text(g, must), cv, ' '.join('%+.4f' % p for p in per),
+                '>' if must else '<=', g['bound'], ('killed' if must else 'not tripped') if ok else ('NOT KILLED' if must else 'TRIPPED')))
+            rc['checks'].append(dict(gate=gname, must_trip=must, value=cv, pooled=v, run_values=per, run_means=per if g['statistic'] == 'S_ens' else None,
+                                     strata=[dict(nst=p[0], nfe=p[1], br=p[2], n=n, value=val) for p, (n, val) in strata.items()], n=len(allv), ok=ok))
+            if not ok:
+                verdict = 'FAIL'
+                reasons.append('control %s %s gate %s (%+.4f %s bound %+.4f)' % (c['name'], 'not killed by' if must else 'trips', gname, cv,
+                                                                                '<=' if must else '>', g['bound']))
+        rep_c.append(rc)
+    uncovered = [g['name'] for g in s['gates'] if not any(c['trips'] == g['name'] for c in s['controls'])]
+    if verdict == 'PASS':
+        if not s['controls'] or uncovered:
+            verdict = 'DEV-ONLY'
+            reasons.append('no control declared' if not s['controls'] else 'gates without a control that trips them: %s' % uncovered)
+        elif 'test_only' in s:
+            verdict = 'TEST-ONLY'
+            reasons.append('spec marked test_only (%s): not an acceptance verdict' % s['test_only'])
+    return verdict, reasons, out, rep_g, rep_c
+
+
+def localized(runs, s):
+    """the localized statistics (fix round 4), always reported, decisive only where a gate uses them: per measure of the gates and per judged
+    member (dev of main, every variant control member, dev of every run-control role): pooled mean / q95 / max, per-run mean / q95 / max, and
+    per stratum (nst, nfe, br) the number of points, mean, q95, max"""
+    main = [x for x in runs if x['role'] == 'main']
+    who = [('main', 'dev', main)] + [('main', c['member'], main) for c in s['controls'] if c['kind'] == 'variant'] + \
+          [(c['role'], 'dev', [x for x in runs if x['role'] == c['role']]) for c in s['controls'] if c['kind'] == 'run']
+    out, lines = {}, []
+    for m in sorted(set(g['measure'] for g in s['gates'])):
+        out[m] = []
+        for role, member, group in who:
+            pts = points_of(group, member, m)
+            allv = [v for i, p, v in pts]
+            three = lambda v: dict(n=len(v), mean=statistics.fmean(v), q95=AGG.q(v, 0.95), max=max(v))       # noqa: E731
+            st = {}
+            for i, p, v in pts:
+                st.setdefault(p, []).append(v)
+            e = dict(role=role, member=member, pooled=three(allv), runs=[three([v for i, p, v in pts if i == j]) for j in range(len(group))],
+                     strata=[dict(nst=p[0], nfe=p[1], br=p[2], **three(v)) for p, v in sorted(st.items())])
+            out[m].append(e)
+            sm = max(e['strata'], key=lambda z: z['mean'])
+            lines.append('localized %s %s %s: pooled mean %+.4f q95 %+.4f max %+.4f; %d strata (points %d..%d), largest stratum mean %+.4f at '
+                         '(nst %d, nfe %d, br %d, %d points)' % (m, role, member, e['pooled']['mean'], e['pooled']['q95'], e['pooled']['max'],
+                                                                len(e['strata']), min(z['n'] for z in e['strata']), max(z['n'] for z in e['strata']),
+                                                                sm['mean'], sm['nst'], sm['nfe'], sm['br'], sm['n']))
+    return out, lines
+
+
+def run_report(x, s):
+    rr = dict(dir=x['dir'], role=x['role'], binary_sha256=x['binary_sha256'], parameters_sha256=x['parameters_sha256'], seeds_sha256=x['seeds_sha256'],
+              qref_sha256=x['qref_sha256'], run_log_sha256=x['run_log_sha256'], manifest_sha256=x['manifest_sha256'], prog=x['proc']['prog'],
+              prog_src=x['proc']['prog_src'], args=x['run'].spec['args'], env=x['run'].spec['run']['env'], n_points=len(x['run'].points),
+              kept_dumps_header_checked=x['n_headers'], measures={})
+    for m, res in x['res'].items():
+        rr['measures'][m] = {mem: dict(n=d['n'], S_ens_mean=statistics.fmean(d['re']), S_ens_sd=statistics.pstdev(d['re']),
+                                       S_cpu_mean=statistics.fmean(d['rc'])) for mem, d in res.items()}
+    return rr
+
+
+LIMITS = ('This gate re-computes, with the pinned program and demanding exact equality, the numbers of the kept dumps: every KEEP-th dump '
+          '(KEEP pinned in the spec, at least min_reprocessed per run; keep 40 is refused at stride 3 by the keep rule), and checks the run '
+          'records for consistency and against the pinned binary, parameters and seed sets.  It does not prove that the run directory (dumps, '
+          'records, qref.txt lines of deleted dumps, qref_proc.json, manifest) was produced by the stamped run: that is the harness (207-5: stamps '
+          'of the records, qref.txt, qref_proc.json and qref_manifest.txt in the attempt log outside the run directory).  It sees only the '
+          'ALF_GPU_* variables of a run (info line; the provenance env is read as ALF_GPU_ tokens only): ALF_LA_TEST_*, ALFSH_*, '
+          'OMP_TARGET_OFFLOAD (DISABLED would make dev a host result) and all other variables are invisible to it and must be refused by the '
+          'harness env checks (207-5).  The pairing prog_sha <-> src_sha (a binary built from that source) is the spec\'s claim, not checked here '
+          '(207-5 task 2, rebuild with provenance).  Not forgery-proof on its own.')
+
+
+def main(argv):
+    rep = dict(tool='t207_d5_gate.py (207-2 design 3, fix round 5)', argv=argv, limits=LIMITS,
+               scripts={f: sha(os.path.join(HERE, f)) for f in ('t207_d5_gate.py', 't207_d5_agg.py', 't207_d5_qparse.py', 't207_d5_qref.F90')})
+    report = None
+    try:
+        opts, dirs, i = {}, [], 0
+        while i < len(argv):
+            a = argv[i]
+            if a in ('--spec', '--spec-sha', '--prog', '--report'):
+                if a in opts or i + 1 >= len(argv):
+                    raise InputError('%s given twice or without a value' % a)
+                opts[a] = argv[i + 1]
                 i += 2
+            elif a.startswith('-'):
+                raise InputError('unknown option %r' % a)
             else:
-                files.append(a[i]); i += 1
-        if bound is None or expect is None or not qs_ok or len(files) != 1:
-            raise InputError('usage: t207_d5_gate.py --bound B --expect-points N --qs Q [--qs Q ...] [--prog-sha SHA256] [--require-controls] AGG.json '
-                             '(all of --bound, --expect-points, --qs and the file are required; see the header of the script)')
-        with open(files[0]) as f:
-            agg = json.load(f)
-        verdict, reasons, lines = decide(agg, bound, req, expect, qs_ok, progsha)
+                dirs.append(a)
+                i += 1
+        if any(k not in opts for k in ('--spec', '--spec-sha', '--prog', '--report')) or not dirs:
+            raise InputError('usage: t207_d5_gate.py --spec SPEC.json --spec-sha SHA256 --prog QREF_BINARY --report OUT.json RUNDIR [RUNDIR ...]')
+        if os.path.lexists(opts['--report']) or not os.path.isdir(os.path.dirname(os.path.abspath(opts['--report']))):
+            raise InputError('report %s exists or its directory does not (reports are never overwritten)' % opts['--report'])
+        report = opts['--report']
+        rep['spec_path'] = os.path.abspath(opts['--spec'])
+        if not HEX64.match(opts['--spec-sha']):
+            raise InputError('--spec-sha %r is not a sha256 (64 lower-case hex digits)' % opts['--spec-sha'])
+        s, table, rep['spec_sha256'] = load_spec(opts['--spec'], opts['--spec-sha'])
+        rep['spec'] = s
+        prog = os.path.abspath(opts['--prog'])
+        if not (os.path.isfile(prog) and os.access(prog, os.X_OK)):
+            raise InputError('program %s: not an executable file' % prog)
+        psha = sha(prog)
+        rep['prog'] = dict(path=prog, sha256=psha)
+        if psha != s['prog_sha']:
+            raise InputError('program %s: sha256 %s differs from the required prog_sha %s of the spec' % (prog, psha, s['prog_sha']))
+        rep['program_env'] = program_env()          # checked before any run is read (LD_PRELOAD refused); the env the program gets
+        runs = [load_run(d, s, table) for d in dirs]
+        cross_checks(runs, s)
+        pins(runs, s)
+        rep['runs'] = [run_report(x, s) for x in runs]
+        rep['authenticity'] = authenticate(runs, s, prog)
+        for x, au in zip(runs, rep['authenticity']):
+            print('  run %s: role %s, binary %s, %s; re-processing: %d kept dumps, %d numbers, %d equal (%s)' % (
+                x['dir'], x['role'], x['binary_sha256'][:16], ', '.join('%s %d points' % (m, x['res'][m]['cpu']['n']) for m in sorted(x['res'])),
+                au['dumps'], au['numbers'], au['equal'], au['source']))
+        rep['localized'], llines = localized(runs, s)
+        verdict, reasons, lines, rep['gates'], rep['controls'] = decide(runs, s)
+        for ln in lines + llines:
+            print('  ' + ln)
     except InputError as e:
-        print('GATE INPUT_ERROR: %s' % e)
-        sys.exit(2)
-    except Exception as e:                      # every other exception (broken file, wrong types, a bug) is not a verdict (review fix 4)
-        print('GATE INPUT_ERROR: %s: %s' % (type(e).__name__, e))
-        sys.exit(2)
-    for l in lines:
-        print('  ' + l)
+        verdict, reasons = 'INPUT_ERROR', [str(e)]
+    except Exception as e:                       # anything unforeseen (a bug, an unreadable file): not a verdict, never a FAIL
+        verdict, reasons = 'INPUT_ERROR', ['%s: %s' % (type(e).__name__, e)]
+    code = EXIT[verdict]
+    rep.update(verdict=verdict, reasons=reasons, exit_code=code)
+    if report is not None:
+        try:
+            with open(report, 'x') as f:
+                json.dump(rep, f, indent=1, allow_nan=False)
+        except Exception as e:
+            print('GATE INPUT_ERROR: report %s could not be written: %s: %s' % (report, type(e).__name__, e))
+            return EXIT['INPUT_ERROR']
     print('GATE %s%s' % (verdict, (': ' + '; '.join(reasons)) if reasons else ''))
-    sys.exit(0 if verdict == 'PASS' else 1)
+    return code
 
 
 if __name__ == '__main__':
     try:
-        main()
-    except SystemExit:
-        raise
-    except BaseException as e:                  # nothing escapes as a traceback with another exit status
+        rc = main(sys.argv[1:])
+    except BaseException as e:                   # nothing escapes as a traceback with another exit status
         print('GATE INPUT_ERROR: %s: %s' % (type(e).__name__, e))
-        sys.exit(2)
+        rc = EXIT['INPUT_ERROR']
+    sys.exit(rc)

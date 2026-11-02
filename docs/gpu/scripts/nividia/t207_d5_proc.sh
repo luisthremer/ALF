@@ -14,12 +14,23 @@
 #     6. only if the program exited 0 and the check passed and KEEP > 0: t207_d5_qparse.py thin deletes the dumps that are not every
 #        KEEP-th of the covered ones, only files listed in the manifest whose sha256 still matches and that are not symbolic links
 #        (list in qref_thinned.txt).  Kept: records, manifest, full qref.txt, every KEEP-th dump.  Exit status: 0 only if all passed.
-#   Program hash: the sha256 of the binary is computed and must equal the one in its .sha256 file (else refusal); it is recorded in
-#   qref_proc.json ('prog'), and t207_d5_agg.py / t207_d5_gate.py can require a given value (--prog-sha).  KEEP > 0 must satisfy the keep rule of
+#   Program hash: the sha256 of the binary is computed and must equal the one in its .sha256 file, and the .src.sha256 file must name the
+#   source t207_d5_qref.F90 next to this script (else refusal); the binary hash is recorded in qref_proc.json ('prog'; 'prog_src' = the
+#   verified source hash); t207_d5_agg.py needs the record for every run and t207_d5_gate.py requires the value of its spec (prog_sha, src_sha).  KEEP > 0 must satisfy the keep rule of
 #   qparse (gcd(cover*KEEP, P) = 1); the kept dumps allow pointwise re-checking only, the recomputable result is the full qref.txt plus the manifest.
-#   The gate (t207_d5_gate.py) refuses a run processed with DUMP_COVER != 1 or ALLOW_V1 (it reads cover and the dump version from the aggregate).
+#   qref_proc.json also records qref_sha256 (the sha256 of qref.txt after the check): agg and the gate refuse a qref.txt that differs from it;
+#   and manifest_sha256 (fix round 4: the sha256 of qref_manifest.txt), which the gate requires to equal the hash of the manifest it parses.
+#   These records sit in the run directory and can be rewritten together with what they describe: they detect accidents, not forgery.  The
+#   gate re-runs the program on the kept dumps (authenticity of the numbers of those dumps); binding qref.txt, qref_proc.json and the manifest
+#   to the run beyond that is the harness's job (207-5: stamps of all of them in the attempt log outside the run directory).
+#   The gate (t207_d5_gate.py) refuses a run processed with DUMP_COVER != 1 (unless its spec is marked test_only) or ALLOW_V1 (always),
+#   and (fix round 5) a run whose QS, NULCODES, HOSTIN or KEEP differ from its spec or that keeps fewer dumps than the spec's min_reprocessed;
+#   it re-computes the kept dumps and demands the qref.txt lines of them exactly (timing tq aside).
 #   4 OpenMP threads, OpenBLAS 1 thread.
-W=${D5W:-$HOME/alf-gpu/work/t207/dev5}; export TMPDIR=$W/tmp; . ~/alf-gpu/env/gnu.sh > /dev/null
+#   Environment: ~/alf-gpu/env/gnu.sh is sourced only if it exists (it does on nividia; the intel machine has no such file, there the
+#   caller's environment is used as it is; the program binary itself needs no LD_LIBRARY_PATH on nividia, see program_env in the gate).
+W=${D5W:-$HOME/alf-gpu/work/t207/dev5}; export TMPDIR=$W/tmp
+if [ -f ~/alf-gpu/env/gnu.sh ]; then . ~/alf-gpu/env/gnu.sh > /dev/null; fi
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 R=$1; P=$2; QS=$3; NUL=$4; HI=$5; KEEP=$6; COVER=${DUMP_COVER:-1}; V1=""; [ -n "$ALLOW_V1" ] && V1=--allow-v1
 PY=~/alf-gpu/venv/bin/python3
@@ -34,6 +45,9 @@ case "$COVER" in ''|*[!0-9]*|0) echo "DUMP_COVER must be a positive integer"; ex
 # the program that runs is the one its .sha256 file names (review fix 7): compute, compare, record
 PROGSHA=$(sha256sum "$B" | cut -d' ' -f1); WANTSHA=$(cut -d' ' -f1 "$B.sha256" 2>/dev/null)
 [ -n "$PROGSHA" ] && [ "$PROGSHA" = "$WANTSHA" ] || { echo "refusing: sha256 of $B is '$PROGSHA', $B.sha256 says '$WANTSHA'"; exit 1; }
+# prog_src in qref_proc.json is only recorded if the .src.sha256 file names the source that sits next to this script (fix round 2)
+SRCSHA=$(cut -d' ' -f1 "${B%.out}.src.sha256" 2>/dev/null); HERESRC=$(sha256sum "$HERE/t207_d5_qref.F90" 2>/dev/null | cut -d' ' -f1)
+[ -n "$SRCSHA" ] && [ "$SRCSHA" = "$HERESRC" ] || { echo "refusing: ${B%.out}.src.sha256 says '$SRCSHA', $HERE/t207_d5_qref.F90 has '$HERESRC' (the binary was not built from this source)"; exit 1; }
 cd "$R" || exit 1
 for f in qref.txt qref_spec.json qref_proc.json qref_check.txt qref_thinned.txt; do [ -e $f ] && { echo "refusing: $R/$f exists"; exit 1; }; done
 $PY -I $HERE/t207_d5_qparse.py spec "$R" --path $P --qs "$QS" --nul "$NUL" --hostin "$HI" --cover "$COVER" --keep "$KEEP" || { echo "proc FAILED: spec"; exit 2; }
@@ -51,13 +65,14 @@ $B "$QS" "$NUL" "$HI" < qref_list.txt > qref.txt 2> qref_err.txt; rc=$?
 e=$(date +%s)
 $PY -I $HERE/t207_d5_qparse.py check "$R" $V1 > qref_check.txt 2>&1; crc=$?
 $PY -I - "$R" "$B" "$P" "$QS" "$NUL" "$HI" "$COVER" "$KEEP" $rc $crc $((e-s)) "$PROGSHA" <<'PY'
-import json, sys, os
+import hashlib, json, sys, os
 R, B, P, QS, NUL, HI, COVER, KEEP, rc, crc, wall, progsha = sys.argv[1:13]
 def first(p):
     return open(p).read().split()[0]
 json.dump(dict(ticket='207-2 pipeline (development evidence, dev seeds)', run=R, prog=progsha,
                prog_src=first(B.replace('.out', '.src.sha256')), args=dict(path=P, qs=int(QS), nul=NUL, hostin=int(HI), cover=int(COVER), keep=int(KEEP)),
-               rc=int(rc), check_rc=int(crc), check=open('qref_check.txt').read().strip(), wall_s=int(wall),
+               rc=int(rc), check_rc=int(crc), qref_sha256=hashlib.sha256(open('qref.txt', 'rb').read()).hexdigest(),
+               manifest_sha256=hashlib.sha256(open('qref_manifest.txt', 'rb').read()).hexdigest(), check=open('qref_check.txt').read().strip(), wall_s=int(wall),
                lines=sum(1 for l in open('qref.txt') if l.startswith('QREF file')),
                dumps=sum(1 for l in open('qref_list.txt'))), open('qref_proc.json', 'w'), indent=1)
 PY

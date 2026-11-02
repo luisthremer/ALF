@@ -8,17 +8,23 @@ of the CGR2_2 output as the next precision check receives it; emax: pointwise ma
                                                                   point; leave-one-out for a member)
 with a bootstrap 95 % interval over points, and the share of bootstrap means above each candidate bound.
 
-usage: t207_d5_agg.py OUT.json MEASURE --ref def|log|LIST [--allow-v1] [--prog-sha SHA256] ROLE:LABEL=path/qref.txt ...
+usage: t207_d5_agg.py OUT.json MEASURE --ref def|log|LIST [--host LABEL] [--allow-v1] [--prog-sha SHA256] ROLE:LABEL=path/qref.txt ...
   ROLE: main (device = 'dev', stand-in control = 'var8') | ctl (production control run: its 'dev' is the defect)
-  --ref: the reference ensemble, an explicit list (ticket 207-2): 'def' = cpu,nvh,n4,n100004,n1,n100001,n2,n1608,n4808,n5,n100005,
-         'log' = cpu,nvh,n4,n100004,n1,n100001,n2,n5,n100005, or a comma list of names cpu, nvh, n<code> (code != 0).  An unknown
-         name, a duplicate, or a listed name missing from any run is an error (no method is ever treated as correct by default).
+  --ref: the reference ensemble, an explicit list (ticket 207-2): 'def' = cpu,H,n4,n100004,n1,n100001,n2,n1608,n4808,n5,n100005,
+         'log' = cpu,H,n4,n100004,n1,n100001,n2,n5,n100005 (H: the host member label), or a comma list of names cpu, the host label,
+         n<code> (code != 0).  An unknown name, a duplicate, or a listed name missing from any run is an error (no method is ever treated
+         as correct by default).
+  --host: the label of the in-run host CGR2_2 member (it depends on the build of the offline program, e.g. nvh NVIDIA, ifh Intel);
+         default: the label the runs carry at the host position (t207_d5_qparse.load), which must be the same in every run.
   ROLE is tied to the run's own env (ticket 207-2, review): a main run has exactly ALF_GPU_{DEBUG=1, TAUDIAG_QREF, TAUDIAG_FROM,
          TAUDIAG_QHOST=1, TAUDIAG_QVAR=8}, a ctl run the same plus TAU_NS=0 (default path) or TAUSWAP=8 (LOG path) (QVAR optional); any
          other ALF_GPU_* variable, or a role that does not match the env, is an error.
   The same run twice (same qref.txt sha256, same run.log sha256, or the same role + seeds + parameters) is an error.
-  --prog-sha: the sha256 of the offline program; every run's qref_proc.json (written by t207_d5_proc.sh, which checks the binary against
-         its .sha256 file) must carry it, else error.  A qref_proc.json next to qref.txt must say rc 0, check_rc 0 and the arguments of the spec.
+  Every run needs a qref_proc.json next to its qref.txt (written by t207_d5_proc.sh, which checks the binary against its .sha256 file),
+         checked by t207_d5_qparse.proc_record: rc 0, check_rc 0, the arguments of the spec, valid program and source sha256, and the
+         sha256 of qref.txt as it is now; a run without it is an error.  --prog-sha (optional here): every run's program hash must equal it.
+This script is a development and report tool: the accuracy gate (t207_d5_gate.py) does not read its output; it imports ref_list, per_run,
+pool_values and summ from here and recomputes everything from the run directories (one implementation of the statistics).
 Input is read through the strict parser t207_d5_qparse.py (every point, every member, every number checked); any deviation ends the
 run with an error and no output file.  Measures pTT / pmax use the points with B (their number must equal the number derived from
 the run parameters); emax / eF use all points.  An error number that is zero or not finite is an error (no clamping).
@@ -30,16 +36,17 @@ _spec = importlib.util.spec_from_file_location('t207_d5_qparse', os.path.join(os
 QP = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(QP)
 QError = QP.QError
-REFS = {'def': QP.REF_DEF, 'log': QP.REF_LOG}
 
 
-def ref_list(arg):
-    """the explicit reference ensemble: validated names, in the given order"""
-    names = REFS.get(arg, arg).split(',')
+def ref_list(arg, host):
+    """the explicit reference ensemble: validated names, in the given order; 'def' / 'log' are the frozen lists with the host member
+    labelled host (t207_d5_qparse.ref_names)"""
+    QP.check_host(host)
+    names = QP.ref_names(arg, host) if arg in ('def', 'log') else arg.split(',')
     seen = set()
     for n in names:
-        if not (n in ('cpu', 'nvh') or re.match(r'^n[1-9][0-9]*$', n)):
-            raise QError('--ref: %r is not a reference name (allowed: cpu, nvh, n<code> with code != 0)' % n)
+        if not (n in ('cpu', host) or re.match(r'^n[1-9][0-9]*$', n)):
+            raise QError('--ref: %r is not a reference name (allowed: cpu, the host label %s, n<code> with code != 0)' % (n, host))
         if n in seen:
             raise QError('--ref: duplicate name %s' % n)
         seen.add(n)
@@ -101,31 +108,32 @@ def logs(run, which):
 
 
 def proc_record(qref_txt, spec, progsha):
-    """qref_proc.json of the processing: must say rc 0, check_rc 0 and the arguments of the spec; returns the recorded program sha256 (or None
-    if there is no qref_proc.json and no --prog-sha was asked for)"""
-    pj = os.path.join(os.path.dirname(os.path.abspath(qref_txt)), 'qref_proc.json')
+    """qref_proc.json of the processing (always required): must say rc 0, check_rc 0 and the arguments of the spec and carry a valid program
+    sha256 (equal to --prog-sha if given); returns the recorded program sha256"""
+    rundir = os.path.dirname(os.path.abspath(qref_txt))
+    pj = os.path.join(rundir, 'qref_proc.json')
     if not os.path.isfile(pj):
-        if progsha is not None:
-            raise QError('--prog-sha given, but %s is missing' % pj)
-        return None
-    with open(pj) as f:
-        pr = json.load(f)
-    a = spec['args']
-    pa = pr.get('args') if isinstance(pr, dict) else None
-    if not isinstance(pa, dict) or pr.get('rc') != 0 or pr.get('check_rc') != 0 or pa.get('path') != a['path'] or pa.get('qs') != a['qs'] \
-            or pa.get('hostin') != a['hostin'] or pa.get('cover') != a['cover'] or pa.get('keep') != a['keep'] \
-            or pa.get('nul') != ','.join(str(c) for c in a['nul']):
-        raise QError('%s: not a passing processing of the arguments in qref_spec.json (rc, check_rc, args)' % pj)
-    prog = pr.get('prog')
-    if not (isinstance(prog, str) and re.match(r'^[0-9a-f]{64}$', prog)):
-        raise QError('%s: no valid program sha256' % pj)
-    if progsha is not None and prog != progsha:
-        raise QError('%s: program sha256 %s differs from --prog-sha %s' % (pj, prog, progsha))
-    return prog
+        raise QError('%s is missing: every run needs the record of its processing (t207_d5_proc.sh) with the program hash' % pj)
+    try:
+        pr = QP.proc_record(rundir, spec)              # the one implementation of the record check (qparse; also used by thin and the gate)
+    except QError as e:
+        raise QError('%s: not a passing processing of the arguments in qref_spec.json (rc, check_rc, args, hashes): %s' % (pj, e))
+    if progsha is not None and pr['prog'] != progsha:
+        raise QError('%s: program sha256 %s differs from --prog-sha %s' % (pj, pr['prog'], progsha))
+    return pr['prog']
+
+
+def positions(run, which):
+    """per point used by measure which (same order as logs()): its position (nst, nfe, br) in the call cycle (fix round 4: strata)"""
+    return [(pt.hd['nst'], pt.hd['nfe'], pt.hd['br']) for pt in run.points if not (which in ('pTT', 'pmax') and not pt.hasb)]
 
 
 def per_run(run, which, refs):
+    """per member: n, rc (S_cpu per point), re (S_ens per point) and pos (the (nst, nfe, br) of every point, for per-stratum statistics)"""
     L, n_exp = logs(run, which)
+    pos = positions(run, which)
+    if len(pos) != len(L):
+        raise QError('positions: %d points, %d values' % (len(pos), len(L)))
     methods = list(L[0])
     for p in L:
         if list(p) != methods:
@@ -138,8 +146,21 @@ def per_run(run, which, refs):
         members = [k for k in refs if k != m]
         rc = [p[m] - p['cpu'] for p in L]
         re_ = [p[m] - sum(p[k] for k in members) / len(members) for p in L]
-        res[m] = dict(n=len(rc), rc=rc, re=re_)
+        res[m] = dict(n=len(rc), rc=rc, re=re_, pos=list(pos))
     return res, n_exp
+
+
+STATISTICS = {'S_cpu': 'rc', 'S_ens': 're'}       # statistic name -> per-point list of per_run()
+
+
+def pool_values(results, member, statistic):
+    """the per-point values of a statistic of one member, concatenated over the per_run() results of several runs (the pooled statistic is
+    their mean: every point weighs the same)"""
+    key = STATISTICS[statistic]
+    out = []
+    for res in results:
+        out += res[member][key]
+    return out
 
 
 def summ(v):
@@ -152,6 +173,7 @@ def main():
     allow_v1 = False
     progsha = None
     refarg = None
+    host = None
     rest = []
     i = 0
     while i < len(args):
@@ -165,13 +187,16 @@ def main():
             if i + 1 >= len(args):
                 raise QError('--ref needs a value')
             refarg = args[i + 1]; i += 1
+        elif args[i] == '--host':
+            if i + 1 >= len(args):
+                raise QError('--host needs a value')
+            host = QP.check_host(args[i + 1], '--host'); i += 1
         else:
             rest.append(args[i])
         i += 1
     if refarg is None or len(rest) < 3 or rest[1] not in ('pTT', 'pmax', 'emax', 'eF', 'eTT'):
         raise QError('usage: t207_d5_agg.py OUT.json pTT|pmax|emax|eF|eTT --ref def|log|LIST [--allow-v1] ROLE:LABEL=path/qref.txt ...')
     outf, which = rest[0], rest[1]
-    refs = ref_list(refarg)
     runs = []
     seen = set()
     for a in rest[2:]:
@@ -186,6 +211,14 @@ def main():
         role_env = QP.env_role(run.spec['run']['env'], run.spec['run']['variant'])
         if role_env != m.group(1):
             raise QError('run %s: role %s given, but its env is that of a %s run' % (m.group(2), m.group(1), role_env))
+    labels = sorted(set(r[3].host for r in runs if r[3].host is not None))
+    if host is None:
+        if len(labels) != 1:
+            raise QError('host member label: the runs carry %s; one label expected (or give --host)' % (labels or 'none'))
+        host = labels[0]
+    elif labels and labels != [host]:
+        raise QError('host member label: the runs carry %s, --host says %s' % (labels, host))
+    refs = ref_list(refarg, host)
     table = {}
     pooled = {}
     inputs = {}
@@ -202,7 +235,7 @@ def main():
             dup[(what, key)] = lab
         inputs[lab] = dict(role=role, path=fn, qref_sha256=keys[0][1], run_log_sha256=keys[1][1], seeds_sha256=r['seeds_sha256'],
                            parameters_sha256=r['parameters_sha256'], prog_sha256=prog, n_points=len(run.points), n_used=res['cpu']['n'],
-                           n_expected=n_exp, v1=any(p.hd['ver'] == 1 for p in run.points), variant=r['variant'], args=run.spec['args'],
+                           n_expected=n_exp, nstm=r['nstm'], nfl=r['nfl'], stride=r['stride'], v1=any(p.hd['ver'] == 1 for p in run.points), variant=r['variant'], args=run.spec['args'],
                            env=r['env'], members=sorted(res))
         table[lab] = {}
         for m, d in res.items():
@@ -213,13 +246,12 @@ def main():
                 continue                            # the other methods of a control run are not part of the calibration
             sc, se = summ(d['rc']), summ(d['re'])
             table[lab][name] = dict(S_cpu=sc, S_ens=se)
-            pooled.setdefault(name, dict(rc=[], re=[]))
-            pooled[name]['rc'] += d['rc']; pooled[name]['re'] += d['re']
+            pooled.setdefault(name, []).append({name: d})
     corr_all = set(refs)
-    pool = {m: dict(S_cpu=summ(d['rc']), S_ens=summ(d['re'])) for m, d in pooled.items()}
+    pool = {m: dict(S_cpu=summ(pool_values(rs, m, 'S_cpu')), S_ens=summ(pool_values(rs, m, 'S_ens'))) for m, rs in pooled.items()}
     # print
     labs = [lab for _, lab, _, _ in runs]
-    order = ['dev', 'var8', 'ctl_dev', 'cpu', 'nvh'] + sorted(m for m in pool if m.startswith('n') and m not in ('nvh', 'n0')) + ['u1', 'u2']
+    order = ['dev', 'var8', 'ctl_dev', 'cpu', host] + sorted(m for m in pool if re.match(r'^n[1-9][0-9]*$', m)) + ['u1', 'u2']
     for ref in ('S_cpu', 'S_ens'):
         print('== measure %s, statistic %s (mean log10 ratio; [95%% bootstrap interval over points])' % (which, ref))
         print('  %-9s' % 'method' + ''.join('%24s' % l for l in labs) + '%24s' % 'pooled')
@@ -258,7 +290,7 @@ def main():
     for m in pool:
         for ref in ('S_cpu', 'S_ens'):
             pool[m][ref].pop('boot')
-    json.dump(dict(measure=which, refs=refs, allow_v1=allow_v1, prog_sha_required=progsha, inputs=inputs, runs=table, pooled=pool), open(outf, 'w'), indent=1)
+    json.dump(dict(measure=which, refs=refs, host_member=host, allow_v1=allow_v1, prog_sha_required=progsha, inputs=inputs, runs=table, pooled=pool), open(outf, 'w'), indent=1)
 
 
 if __name__ == '__main__':
