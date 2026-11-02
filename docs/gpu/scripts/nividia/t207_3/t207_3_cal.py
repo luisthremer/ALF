@@ -16,16 +16,40 @@ Statistic, per measure M in (pTT, emax, eF) and point p:  r_m(p) = log10 M_m(p) 
 for a member); S_ens(m) = mean over points (pTT: points with B; emax, eF: all points).  Flavour subsets nfe = 1 / 2 of the same points.
 Printed (and in OUT.json): per run and pooled over the main runs, S_ens of dev, var8, every reference member (correct variants),
 the controls' dev; pair pooling (every pair of main runs, as a gate on two seed sets would pool); bootstrap 95 % intervals (4000 draws).
+Strata and tails (fix round t207-3c): per group 'main' (all main runs pooled), 'run:<label>' (each main run), 'pair:<l1>+<l2>' (every
+pair of main runs) and each control run.  Minimum stratum size rule (one rule for this script and t207_3_summary.py, the rule of the
+approved gate t207_d5_gate.py 4118a1de): none, every stratum (nst, nfe) or (nst, nfe, br) with at least MIN_STRATUM_PTS = 1 point enters
+the by_stratum maximum (before t207-3c this script left out strata with < 8 points, the summary none); every group records its smallest
+stratum (the summary reports the smallest one seen) and the strata the rule left out (none can be: kept as a field).
 """
-import importlib.util, itertools, json, math, os, random, re, statistics, sys
+import hashlib, importlib.util, itertools, json, math, os, random, re, statistics, sys
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 QPDIR = os.environ.get('T207_3_QPDIR', HERE)      # directory of the strict reader to use (e.g. the 305488ec copy in g3/)
-_spec = importlib.util.spec_from_file_location('t207_d5_qparse', os.path.join(QPDIR, 't207_d5_qparse.py'))
-QP = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(QP)
+# T207_3_QPDIR_V3 (optional, follow-up t207-3b): a second strict reader for runs whose qref_spec.json has that reader's SPEC_VERSION (runs
+# processed by the approved pipeline 4118a1de, spec version 3, which the 305488ec reader (version 2) refuses, and vice versa); each run is
+# read by the reader of its own spec version, unchanged; the reader of every run is recorded.
+QPDIR3 = os.environ.get('T207_3_QPDIR_V3')
+
+
+def _reader(d, name):
+    sp = importlib.util.spec_from_file_location(name, os.path.join(d, 't207_d5_qparse.py'))
+    mod = importlib.util.module_from_spec(sp)
+    sp.loader.exec_module(mod)
+    return mod
+
+
+QP = _reader(QPDIR, 't207_d5_qparse')
 QError = QP.QError
+READERS = {QP.SPEC_VERSION: (QP, QPDIR)}
+if QPDIR3:
+    _qp3 = _reader(QPDIR3, 't207_d5_qparse_v3')
+    if _qp3.SPEC_VERSION in READERS or _qp3.DIAG_NAMES != QP.DIAG_NAMES:
+        raise SystemExit('t207_3_cal: the two readers have the same spec version or different DIAG_NAMES')
+    READERS[_qp3.SPEC_VERSION] = (_qp3, QPDIR3)
+ERRORS = tuple(set(m.QError for m, _ in READERS.values()))
 MEASURES = ('pTT', 'emax', 'eF')
+MIN_STRATUM_PTS = 1          # the one minimum stratum size rule = the approved gate's (no minimum); t207_3_summary.py reads it from the JSON
 CTL = {'def': ('ALF_GPU_TAU_NS', '0'), 'log': ('ALF_GPU_TAUSWAP', '8')}
 
 
@@ -74,19 +98,26 @@ def summ(v):
 
 def load(rundir, path):
     q = os.path.join(rundir, 'qref.txt')
-    run = QP.load(q)
+    with open(os.path.join(rundir, 'qref_spec.json')) as f:
+        ver = json.load(f).get('version')
+    if ver not in READERS:
+        raise QError('%s: qref_spec.json version %r: no reader for it (readers: %s)' % (rundir, ver, sorted(READERS)))
+    rd, rdir = READERS[ver]
+    run = rd.load(q)
     with open(os.path.join(rundir, 'qref_proc.json')) as f:
         pr = json.load(f)
     a = run.spec['args']
     if pr.get('rc') != 0 or pr.get('check_rc') != 0 or a['cover'] != 1 or a['path'] != path or run.spec['run']['variant'] != path:
         raise QError('%s: processing not passing / cover != 1 / wrong path' % rundir)
-    refs = (QP.REF_DEF if path == 'def' else QP.REF_LOG).split(',')
+    refs = (rd.REF_DEF if path == 'def' else rd.REF_LOG).split(',')
     refs = ['nvh' if r == 'H' else r for r in refs]      # the approved reader (4118a1de) writes the host member as 'H'
     for r in refs:
         if r not in ('cpu', 'nvh') and int(r[1:]) not in a['nul']:
             raise QError('%s: reference %s not processed' % (rundir, r))
     role, x = role_of(run.spec['run']['env'], path)
-    return run, refs, role, x, pr.get('prog')
+    qpf = os.path.join(rdir, 't207_d5_qparse.py')
+    reader = '%s sha256 %s' % (qpf, hashlib.sha256(open(qpf, 'rb').read()).hexdigest()[:16])
+    return run, refs, role, x, pr.get('prog'), reader
 
 
 def ratios(run, refs, which, nfe=None):
@@ -132,21 +163,26 @@ def q(v, p):
     return v[i] + (v[j] - v[i]) * (k - i)
 
 
-def strata(runs, refs, which, minpts=8):
-    """per-stratum means (strata (nst, nfe) and (nst, nfe, br), pooled over the runs of one role) and tail statistics (q90, q95 of
-    the per-point values) for dev, var8, every reference member (leave-one-out) and each control run's dev"""
+def strata(runs, refs, which, minpts=MIN_STRATUM_PTS):
+    """per-stratum means (strata (nst, nfe) and (nst, nfe, br), pooled over the runs of one group) and tail statistics (q90, q95 of
+    the per-point values) for dev, var8, every reference member (leave-one-out) and each control run's dev; groups: all main runs,
+    each main run, every pair of main runs, each control run"""
     res = {}
     mains = [r for r in runs if r['role'] == 'main']
     groups = [('main', mains)] + ([('run:' + r['label'], [r]) for r in mains] if len(mains) > 1 else []) + \
+             ([('pair:%s+%s' % (a['label'], b['label']), [a, b]) for a, b in itertools.combinations(mains, 2)] if len(mains) > 1 else []) + \
              [(r['label'], [r]) for r in runs if r['role'] in ('ctl', 'flt')]
+    cache = {}
     for gname, rs in groups:
         if not rs:
             continue
         vals = {}
         for r in rs:
-            for m, lst in ratios_pos(r['run'], refs, which).items():
+            if r['label'] not in cache:
+                cache[r['label']] = ratios_pos(r['run'], refs, which)
+            for m, lst in cache[r['label']].items():
                 vals.setdefault(m, []).extend(lst)
-        methods = [m for m in vals if m in refs or m in ('dev', 'var8')] if gname == 'main' or gname.startswith('run:') else ['dev']
+        methods = [m for m in vals if m in refs or m in ('dev', 'var8')] if gname == 'main' or gname.startswith(('run:', 'pair:')) else ['dev']
         g = {}
         for m in methods:
             lst = vals[m]
@@ -159,6 +195,8 @@ def strata(runs, refs, which, minpts=8):
                 d[lev] = {'%s' % ('.'.join(str(x) for x in k)): (statistics.fmean(v), len(v)) for k, v in sorted(st.items())}
                 ok = [mv for mv, n in d[lev].values() if n >= minpts]
                 d[lev + '_max'] = max(ok) if ok else None
+                d[lev + '_min_pts'] = min(n for _, n in d[lev].values())
+                d[lev + '_excluded'] = sorted(k for k, (_, n) in d[lev].items() if n < minpts)
             g[m] = d
         res[gname] = g
     return res
@@ -174,16 +212,19 @@ def main():
         m = re.match(r'^(main|ctl|flt|attr):([A-Za-z0-9_.-]+)=(.+)$', arg)
         if not m:
             raise QError('bad argument %r' % arg)
-        run, refs, role, x, prog = load(m.group(3), path)
+        run, refs, role, x, prog, reader = load(m.group(3), path)
         if role != m.group(1):
             raise QError('%s: given role %s, env says %s' % (m.group(2), m.group(1), role))
-        runs.append(dict(label=m.group(2), dir=m.group(3), role=role, x=x, run=run, refs=refs, prog=prog,
+        runs.append(dict(label=m.group(2), dir=m.group(3), role=role, x=x, run=run, refs=refs, prog=prog, reader=reader,
                          seeds=run.spec['run']['seeds_sha256'], npts=len(run.points), nb=run.n_with_b))
     progs = set(r['prog'] for r in runs)
     if len(progs) != 1:
         raise QError('runs processed by different programs: %s' % progs)
     refs = runs[0]['refs']
-    res = dict(path=path, refs=refs, prog=progs.pop(), runs=[{k: v for k, v in r.items() if k != 'run'} for r in runs], tables={})
+    if any(r['refs'] != refs for r in runs):
+        raise QError('runs with different reference lists: %s' % set(','.join(r['refs']) for r in runs))
+    reader = ' | '.join(sorted(set(r['reader'] for r in runs)))
+    res = dict(path=path, refs=refs, prog=progs.pop(), reader=reader, min_stratum_pts=MIN_STRATUM_PTS, runs=[{k: v for k, v in r.items() if k != 'run'} for r in runs], tables={})
     for which in MEASURES:
         for nfe in (None, 1, 2):
             key = '%s%s' % (which, '' if nfe is None else '_nfe%d' % nfe)
@@ -212,9 +253,10 @@ def main():
     res['strata'] = {w: strata(runs, refs, w) for w in MEASURES}
     json.dump(res, open(outf, 'w'), indent=1)
     # ---- text report (generated from res)
-    print('207-3 calibration, path %s, program %s, refs %s' % (path, res['prog'][:16], ','.join(refs)))
+    print('207-3 calibration, path %s, program %s, refs %s, reader %s' % (path, res['prog'][:16], ','.join(refs), reader))
     for r in res['runs']:
-        print('  run %-22s role %-4s x %-8s seeds %s points %d (with B %d)  %s' % (r['label'], r['role'], r['x'], r['seeds'][:16], r['npts'], r['nb'], r['dir']))
+        print('  run %-22s role %-4s x %-8s seeds %s points %d (with B %d)  %s  reader %s' % (r['label'], r['role'], r['x'], r['seeds'][:16], r['npts'],
+                                                                                         r['nb'], r['dir'], r['reader'].split()[-1]))
     for key, t in res['tables'].items():
         mains = [r['label'] for r in res['runs'] if r['role'] == 'main']
         print('== S_ens(%s)  mean [95%% bootstrap]' % key)
@@ -250,9 +292,10 @@ def main():
 def print_strata(res):
     refs = res['refs']
     for w, st in res['strata'].items():
-        print('== strata and tail, measure %s (per-stratum means over the pooled points of the role; strata with < 8 points not in max)' % w)
+        print('== strata and tail, measure %s (per-stratum means over the pooled points of the role; strata with < %d points not in max)' % (
+            w, res['min_stratum_pts']))
         for gname, g in st.items():
-            if gname.startswith('run:'):
+            if gname.startswith(('run:', 'pair:')):
                 continue
             for m, d in g.items():
                 tag = gname if gname != 'main' else ('main ' + m + (' (corr)' if m in refs else ''))
@@ -278,6 +321,6 @@ if __name__ == '__main__':
         main()
         if os.environ.get('T207_3_STRATA') == '1':
             print_strata(json.load(open(sys.argv[1])))
-    except QError as e:
+    except ERRORS as e:
         sys.stderr.write('t207_3_cal ERROR: %s\n' % e)
         sys.exit(1)
