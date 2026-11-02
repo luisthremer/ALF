@@ -30,9 +30,24 @@ run of 208-1) disappears.
 5. Self-test (ALF_GPU_DEBUG=1, ALF_GPU_SELFTEST=5): on the first measurement slice run host Obser into scratch copies and the device path;
    compare to <= 1e-10 relative; planted fault (ALF_GPU_FAULT_OBS) must be caught.
 ## Current step
-Survey and design written; nothing edited.
+DONE (2026-11-02, decision 42): 208-2 closed; merged into gpu-port, pushed to fork.
+Implemented as designed in Prog/gpu_obs_mod.F90 (setup from Alloc_obs of the Hubbard module, gpu_obs_measure from Obser, gpu_obs_flush before
+Pr_obs in main.F90; Obs_scal/Obs_eq made public for ALF_GPU builds in Hamiltonian_main_mod). Fallback to the host Obser when unsupported or
+ALF_GPU_NOOBS=1. No separate self-test (decision 42: the same-seed check compares all 'obser' datasets).
+Lesson (nvfortran): a complex scalar (the sign/phase weight) inside the device loops was read as garbage (real part NaN); passed as two real
+scalars it works. Complex private temporaries and reductions were fine.
+
+## Results (work/t208-2 on nividia and intel; scripts docs/gpu/scripts/t208_2/)
+1 Builds: nividia 5, intel 5: PASS (after the name clash inv/jc/uo with MyMats and the PGI-only public Obs_* were fixed).
+2 Self-tests (=4): PASS on both, def and LOG.
+3 Same-seed hub6x6_cb_fd max dev: nividia 1.70e-10 / 2.54e-10, intel 2.32e-10 / 2.90e-10 (def / LOG): PASS, identical to 207 and 208-1.
+4 Observables hub12x12_cb vs CPU ref: nividia sum t^2 = 9.2 (p 0.60) def and LOG; intel 141.7 (the accepted 207 Szz(pi,pi) group): same as 207.
+  Wall: nividia def 703 s, LOG 841 s (208-1: 696 / 812), intel 419 / 409 s (423 / 413): no speed gain at this size.
+5 GPU=none ctest (GNU): candidate 53/53, upstream master 39/39: PASS.
+Traffic (INTERIM 205 counter, obs_def): G copies D->H 96000 -> 1200 (the tau pass, once per sweep), H->D 0; bytes 31.85 GB -> 0.40 GB.
+
 ## Next step
-Implement steps 1-3 (scalars + Green + Den first, then SpinMz/SpinSUN), build both GPUs, self-test, then checks 1-5 as 208-1
-(scripts docs/gpu/scripts/t208_1/, work dir t208-2 via sed).
+208-3 (tau-resolved observables OBSERT on the device; removes 207's per-slice GT0/G0T/GTT D->H) when the owner says continue.
+
 ## Running
 Nothing.
