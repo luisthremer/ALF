@@ -15,14 +15,24 @@ makes tau_obs call the device routine and skips tau_download and the G00 D->H. S
 Lesson 208-2 kept: complex weight as two real scalars wr, wi inside the loops.
 
 ## Current step
-Device tau observables written and built; first chain (work/t208-3) showed same-seed/obs numbers identical to 208-2 (nividia wall def 625 s,
-LOG 696 s; ctest 53/53) but the self-test failed because tau_begin switched to device observables inside the self-test; fixed (tobs_dev needs
-prec_report). One launch for everything left: docs/gpu/scripts/t208_3/launch_final.sh -> work/t208-3f on both machines, logs/SUMMARY.txt
-(ends FINAL_DONE) = builds, T0, observables, transfers, ctest.
+DONE (2026-11-03, decision 42): 208-3 closed; merged into gpu-port, pushed to fork. Evidence: work/t208-3f/logs/SUMMARY.txt on nividia and intel
+(one launch, docs/gpu/scripts/t208_3/launch_final.sh; the first chain in work/t208-3 had the same numbers but a self-test failure, fixed by
+requiring prec_report for the device tau observables).
 
-## Next step (owner says "continue")
-Read logs/SUMMARY.txt on nividia and intel; if all pass (self-tests PASSED, same-seed <= 1e-9, sum t^2 9.2 nividia / 141.7 intel, ctest 53/53):
-write results here, mark 208-3 done in PLAN.md, merge gpu-port-208-3 into gpu-port (ff via determined-burnell worktree, then main checkout), push to fork.
+## Results
+1 Builds: nividia 5, intel 5: PASS.
+2 Self-tests (=4): PASS on both, def and LOG.
+3 Same-seed hub6x6_cb_fd max dev (incl. the 5 tau-resolved datasets): nividia 1.70e-10 / 2.54e-10, intel 2.32e-10 / 2.90e-10 (def / LOG): PASS,
+  identical to 207, 208-1, 208-2.
+4 Observables hub12x12_cb vs CPU ref: nividia sum t^2 = 9.2 (p 0.60) def and LOG; intel 141.7 (the accepted 207 Szz(pi,pi) group): same as 207.
+  Wall: nividia def 625 s (208-2: 703), LOG 707 s (841); intel 412 / 402 s (419 / 409).
+5 GPU=none ctest (GNU, nividia): candidate 53/53, upstream master 39/39: PASS.
+Transfers (obs_def): INTERIM 207 (tau pass) H->D 0 and D->H 0 (before: GT0/G0T/GTT per slice and G00 per stabilization point);
+INTERIM 205 G copies H->D 0, D->H 1200 (398 MB per run, the host copy for the tau pass; was 31.85 GB in 208-1).
+
+## Next step
+Phase 2 remainder (PLAN.md): 209 validation suite (209-1 test_vs_ed on the GPU, 209-2 same-compiler trajectory test, 209-3 one runnable suite),
+210 BENCHMARKS.md, 211 CPU regression gate, 213 STABLOG same-seed excess. Owner decides the order and the process (decision 42 covers 208 only).
 
 ## Running
-final.sh on nividia and intel (started 2026-11-03).
+Nothing.
