@@ -19,3 +19,4 @@ testsuite/tests/
 .deps.mk
 Prog/.echo_compile_mods
 Prog/.parse_parameters
+docs/cluster/blas/*.txt
