@@ -155,6 +155,7 @@ Program Main
              &                   gpu_stab_wrapul, gpu_stab_exchange, gpu_stab_store_l, gpu_stab_cgr, gpu_stab_reset_l, &
              &                   gpu_stab_reset_r, gpu_stab_reset_st
         use gpu_tau_mod,   only: gpu_tau_on, gpu_tau_setup, gpu_tau_finalize, gpu_tau_hook
+        use gpu_lowrank_mod, only: gpu_lr_finalize
 #endif
 #ifdef ALF_TIMERS
         use Timers_mod
@@ -1229,6 +1230,7 @@ Program Main
         endif
         DEALLOCATE(udvl, udvr, udvst)
 #ifdef ALF_GPU
+        call gpu_lr_finalize()
         call gpu_tau_finalize()
         call gpu_stab_finalize()
         call gpu_obs_finalize()

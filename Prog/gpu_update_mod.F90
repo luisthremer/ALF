@@ -71,6 +71,7 @@ Module gpu_update_mod
   Use Random_Wrap
   Use gpu_state_mod
   Use gpu_wrap_mod
+  Use gpu_lowrank_mod
 
   Implicit none
 
@@ -338,6 +339,13 @@ Contains
   Subroutine site_wrap(nf, n, t, dir)
     Implicit none
     Integer, intent(in) :: nf, n, t, dir
+    if (gpu_lr_mode() /= 0) then
+       if (V_meta(1,n,nf) == 1) then
+          call gpu_lr_wrap(nf, n, t, dir)       ! pending delayed / submatrix state follows the wrap
+          return
+       endif
+       call gpu_lr_flush(nf, 2)                 ! N > 1 vertex: the general wrap needs a flushed G
+    endif
     if (V_meta(1,n,nf) == 1) then
        call k_site_wrap(G_d(1,1,nf), Ndim, Ndim, n, t, dir, Op_V(n,nf)%P(1), V_meta(3,n,nf), V_type(n))
        upd_cnt(3) = upd_cnt(3) + 1
@@ -362,8 +370,12 @@ Contains
     Complex (Kind=Kind(0.d0)) :: Z, D_Mat, myexp, g_loc, Mat11, vii, xv, Zg
     Real (Kind=Kind(0.d0)) :: Weight
     Integer :: nf, nf_eff, op_dim_nf, p1
+    Logical :: lr
 
     toggle = .false.
+    lr = ( gpu_lr_mode() /= 0 )
+    if (lr) lr = gpu_lr_site_ok(N_op)
+    if (.not. lr) call gpu_lr_flush_all(2)       ! standard rank-1 update of this site: G_d must be current
     if (.not. nsigma_new_made) then
        Call nsigma_new%make(1,1)
        nsigma_new_made = .true.
@@ -387,9 +399,14 @@ Contains
           p1 = Op_V(n_op,nf)%P(1)
           ! The ratio needs one element of G on the host, G(P(1),P(1),nf): 16 bytes D->H per flavour and site (unavoidable
           ! while the decision is on the host, ADR-001 section 5).
-          !$omp target update from(G_d(p1,p1,nf))
-          upd_cnt(5) = upd_cnt(5) + 1
-          gpp(nf_eff) = G_d(p1,p1,nf)
+          if (lr) then
+             ! delayed / submatrix (gpu_lowrank_mod): G(p,p) of G0 + pending update, one device region, one D->H
+             call gpu_lr_gpp(nf, p1, gpp(nf_eff))
+          else
+             !$omp target update from(G_d(p1,p1,nf))
+             upd_cnt(5) = upd_cnt(5) + 1
+             gpp(nf_eff) = G_d(p1,p1,nf)
+          endif
           myexp = exp( Z1* Op_V(n_op,nf)%E(1) )
           Z = myexp - 1.d0
           Delta(nf_eff) = Z
@@ -419,10 +436,14 @@ Contains
              vii = 1.d0 - gpp(nf_eff)
              xv  = Delta(nf_eff)/(1.d0 + vii*Delta(nf_eff))
              Zg  = - xv
-             if (fault_upd) Zg = Zg * (1.d0 + 1.d-6)        ! negative control (ALF_GPU_FAULT=upd)
-             call k_upd_prep(G_d(1,1,nf), Ndim, Ndim, p1, scr_vec(1,1), scr_vec(1,2))
-             call k_upd_geru(G_d(1,1,nf), Ndim, Ndim, real(Zg), aimag(Zg), scr_vec(1,1), scr_vec(1,2))
-             upd_cnt(4) = upd_cnt(4) + 2
+             if (lr) then
+                call gpu_lr_accept(nf, p1, xv)
+             else
+                if (fault_upd) Zg = Zg * (1.d0 + 1.d-6)        ! negative control (ALF_GPU_FAULT=upd)
+                call k_upd_prep(G_d(1,1,nf), Ndim, Ndim, p1, scr_vec(1,1), scr_vec(1,2))
+                call k_upd_geru(G_d(1,1,nf), Ndim, Ndim, real(Zg), aimag(Zg), scr_vec(1,1), scr_vec(1,2))
+                upd_cnt(4) = upd_cnt(4) + 2
+             endif
           endif
        enddo
        ! Flip the spin: host field, and the device copy that the wrap kernels read
@@ -489,6 +510,7 @@ Contains
        Endif
        ! Op_Wrapup with N_Type 2: nothing for diagonal operators
     Enddo
+    call gpu_lr_flush_all(2)                    ! delayed / submatrix: G_d must be current at the end of the slice
     call g_out(GR)
   end Subroutine gpu_wrapgrup
 
@@ -535,6 +557,7 @@ Contains
           call site_wrap(nf, n, ntau, -1)
        enddo
     Enddo
+    call gpu_lr_flush_all(2)                    ! delayed / submatrix: flush before the hopping wrap
     Do nf_eff = 1,N_FL_eff
        nf=Calc_Fl_map(nf_eff)
        call gpu_mmthl   (G_d(1,1,nf), Ndim, Ndim, nf)
