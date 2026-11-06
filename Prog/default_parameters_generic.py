@@ -58,7 +58,20 @@ _PARAMS_GENERIC = OrderedDict([
                    'value': 10},
          'Propose_S0': {'comment': 'Proposes single spin flip moves with '
                                    'probability exp(-S0).',
-                        'value': False}}),
+                        'value': False},
+         'Sequential_scheme': {'comment': 'Sequential update scheme: '
+                                          '"standard", "delayed" or '
+                                          '"submatrix".',
+                               'value': 'standard'},
+         'N_delay': {'comment': 'Delayed/submatrix: bound on the pending '
+                                'rank before a flush. >= 1 fixed, 0 '
+                                'automatic (default), -1 automatic with '
+                                'warm-up timing.',
+                     'value': 0},
+         'Lowrank_cross_slice': {'comment': 'Cross-slice delay (research '
+                                            'prototype); not available with '
+                                            'N_global_tau > 0.',
+                                 'value': False}}),
     ('VAR_errors',
         {'N_Back': {'comment': 'If set to 1, substract background in '
                                'correlation functions. Is ignored in '

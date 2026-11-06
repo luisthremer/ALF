@@ -28,6 +28,10 @@
 ! 
 !     - If you make substantial changes to the program we require you to either consider contributing
 !       to the ALF project or to mark your material in a reasonable way as different from the original version.
+!
+!  Modified 2026 on the delayed/submatrix research branch (feature/delayed-submatrix): VAR_QMC
+!  keys Sequential_scheme, N_delay, Lowrank_cross_slice with their validation. See
+!  docs/algorithm-notes.md.
 
 Module QMC_runtime_var
         
@@ -52,6 +56,9 @@ Module QMC_runtime_var
         Integer :: Nt_sequential_start, Nt_sequential_end, mpi_per_parameter_set
         Integer :: N_Global_tau
         Logical :: Sequential
+        Character (len=64) :: Sequential_scheme  !  "standard", "delayed" or "submatrix"; validated in validate_sequential_scheme and Lowrank_init
+        Integer :: N_delay                        !  bound on the pending rank before a flush (delayed/submatrix): >= 1 fixed, 0 automatic (default), -1 automatic with warm-up timing
+        Logical :: Lowrank_cross_slice            !  cross-slice delay prototype (delayed/submatrix; spec D10); default .false.
         real (Kind=Kind(0.d0)) ::  Amplitude  !    Needed for  update of  type  3  and  4  fields.
 
         Character (len=64) :: ham_name
@@ -74,7 +81,8 @@ Module QMC_runtime_var
               &               Propose_S0,Global_moves,  N_Global, Global_tau_moves, &
               &               Nt_sequential_start, Nt_sequential_end, N_Global_tau, &
               &               sequential, Langevin, HMC, Delta_t_Langevin_HMC, &
-              &               Max_Force, Leapfrog_steps, N_HMC_sweeps, Amplitude
+              &               Max_Force, Leapfrog_steps, N_HMC_sweeps, Amplitude, &
+              &               Sequential_scheme, N_delay, Lowrank_cross_slice
        
         NAMELIST /VAR_HAM_NAME/ ham_name
 
@@ -92,6 +100,7 @@ Module QMC_runtime_var
     public :: read_and_broadcast_TEMPERING_var
 #endif
     public :: read_and_broadcast_QMC_var_and_ham_name
+    public :: validate_sequential_scheme
 
     public :: lock_QMC_runtime_settings
 
@@ -119,6 +128,10 @@ Module QMC_runtime_var
     public :: get_Delta_t_Langevin_HMC, set_Delta_t_Langevin_HMC
     public :: get_Amplitude,         set_Amplitude
     public :: get_ham_name,          set_ham_name
+    public :: get_Sequential_scheme, set_Sequential_scheme
+    public :: get_N_delay,           set_N_delay
+    public :: get_Lowrank_cross_slice, set_Lowrank_cross_slice
+    public :: validate_lowrank_cross_slice
     public :: get_mpi_per_parameter_set, set_mpi_per_parameter_set
     public :: get_Tempering_calc_det, set_Tempering_calc_det
 #if defined(TEMPERING)
@@ -148,6 +161,7 @@ Module QMC_runtime_var
             Global_tau_moves = .false.; sequential = .true.; Langevin = .false. ; HMC =.false.
             Delta_t_Langevin_HMC = 0.d0;  Max_Force = 0.d0 ; Leapfrog_steps = 0; N_HMC_sweeps = 1
             Nt_sequential_start = 1 ;  Nt_sequential_end  = 0;  N_Global_tau  = 0;  Amplitude = 1.d0
+            Sequential_scheme = "standard";  N_delay = 0;  Lowrank_cross_slice = .false.
             settings_locked = .false.
 
         end subroutine set_QMC_runtime_default_var
@@ -528,6 +542,36 @@ Module QMC_runtime_var
             call ensure_settings_unlocked("set_ham_name")
             ham_name = val
         end subroutine set_ham_name
+
+        character(len=64) function get_Sequential_scheme() result(val)
+            val = Sequential_scheme
+        end function get_Sequential_scheme
+
+        subroutine set_Sequential_scheme(val)
+            character(len=*), intent(in) :: val
+            call ensure_settings_unlocked("set_Sequential_scheme")
+            Sequential_scheme = val
+        end subroutine set_Sequential_scheme
+
+        integer function get_N_delay() result(val)
+            val = N_delay
+        end function get_N_delay
+
+        subroutine set_N_delay(val)
+            integer, intent(in) :: val
+            call ensure_settings_unlocked("set_N_delay")
+            N_delay = val
+        end subroutine set_N_delay
+
+        logical function get_Lowrank_cross_slice() result(val)
+            val = Lowrank_cross_slice
+        end function get_Lowrank_cross_slice
+
+        subroutine set_Lowrank_cross_slice(val)
+            logical, intent(in) :: val
+            call ensure_settings_unlocked("set_Lowrank_cross_slice")
+            Lowrank_cross_slice = val
+        end subroutine set_Lowrank_cross_slice
      
 
 !--------------------------------------------------------------------
@@ -571,6 +615,9 @@ Module QMC_runtime_var
             CALL MPI_BCAST(Max_Force            ,1 ,MPI_REAL8    ,0,MPI_COMM_i,ierr)
             CALL MPI_BCAST(Delta_t_Langevin_HMC ,1 ,MPI_REAL8    ,0,MPI_COMM_i,ierr)
             CALL MPI_BCAST(Amplitude            ,1 ,MPI_REAL8    ,0,MPI_COMM_i,ierr)
+            CALL MPI_BCAST(Sequential_scheme    ,64,MPI_CHARACTER,0,MPI_COMM_i,ierr)
+            CALL MPI_BCAST(N_delay              ,1 ,MPI_INTEGER  ,0,MPI_COMM_i,ierr)
+            CALL MPI_BCAST(Lowrank_cross_slice  ,1 ,MPI_LOGICAL  ,0,MPI_COMM_i,ierr)
 
         end subroutine broadcast_QMC_runtime_var
 #endif           
@@ -654,7 +701,82 @@ Module QMC_runtime_var
            call broadcast_QMC_runtime_var(MPI_COMM_i)
            CALL MPI_BCAST(ham_name,64,MPI_CHARACTER,0,MPI_COMM_i,ierr)
 #endif
+           ! Fail before the (possibly long) Hamiltonian setup, not at the first sweep
+           call validate_sequential_scheme()
 
         end subroutine read_and_broadcast_QMC_var_and_ham_name
+
+!--------------------------------------------------------------------
+!> @brief
+!> Terminates if Sequential_scheme is not "standard", "delayed" or "submatrix" (case-insensitive),
+!> or if N_delay < -1 for a non-standard scheme (>= 1 fixed, 0 automatic, -1 automatic with warm-up
+!> timing; Lowrank_update_mod). Lowrank_init repeats the check.
+!--------------------------------------------------------------------
+        subroutine validate_sequential_scheme()
+
+          implicit none
+
+          Character (len=64) :: name
+
+          name = scheme_upper()
+          select case (trim(name))
+          case ("STANDARD")
+          case ("DELAYED", "SUBMATRIX")
+             if (N_delay < -1) then
+                write(error_unit,'(A,I0,A)') ' VAR_QMC: N_delay = ', N_delay, &
+                     & ' must be >= 1 (fixed), 0 (automatic) or -1 (automatic with warm-up timing)'
+                call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+             endif
+          case default
+             write(error_unit,*) 'VAR_QMC: unknown Sequential_scheme "', trim(Sequential_scheme), &
+                  &              '" (allowed: standard, delayed, submatrix)'
+             call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+          end select
+
+        end subroutine validate_sequential_scheme
+
+!--------------------------------------------------------------------
+!> @brief
+!> Cross-slice delay (spec D10): terminates if Lowrank_cross_slice = .T. with a low-rank scheme
+!> (delayed, submatrix) and N_Global_tau > 0 (after the Hamiltonian's override of the Global_tau
+!> parameters). No effect for Sequential_scheme = "standard" or Lowrank_cross_slice = .F.
+!> Lowrank_init repeats the check.
+!--------------------------------------------------------------------
+        subroutine validate_lowrank_cross_slice()
+
+          implicit none
+
+          Character (len=64) :: name
+
+          if (.not. Lowrank_cross_slice) return
+          name = scheme_upper()
+          if (trim(name) == "STANDARD") return
+          if (N_Global_tau > 0) then
+             write(error_unit,'(A,A,A,I0,A)') ' VAR_QMC: Lowrank_cross_slice = .T. with Sequential_scheme = ', &
+                  & trim(name), ' is not supported with Global_tau moves (N_Global_tau = ', N_Global_tau, &
+                  & ' > 0); set Lowrank_cross_slice = .F.'
+             call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+          endif
+
+        end subroutine validate_lowrank_cross_slice
+
+!--------------------------------------------------------------------
+!> @brief
+!> Sequential_scheme, left-adjusted and in upper case (ASCII), for the validation routines.
+!--------------------------------------------------------------------
+        function scheme_upper() result(name)
+
+          implicit none
+
+          Character (len=64) :: name
+          Integer :: i, ic
+
+          name = adjustl(Sequential_scheme)
+          do i = 1, len_trim(name)
+             ic = iachar(name(i:i))
+             if (ic >= iachar('a') .and. ic <= iachar('z')) name(i:i) = achar(ic - 32)
+          enddo
+
+        end function scheme_upper
         
 end Module QMC_runtime_var

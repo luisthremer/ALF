@@ -28,6 +28,10 @@
 !
 !     - If you make substantial changes to the program we require you to either consider contributing
 !       to the ALF project or to mark your material in a reasonable way as different from the original version.
+!
+!  Modified 2026 on the delayed/submatrix research branch (feature/delayed-submatrix): low-rank
+!  read points, automatic N_delay tuning calls, and scheme/N_delay provenance in data.h5. See
+!  docs/algorithm-notes.md.
 
 
 !--------------------------------------------------------------------
@@ -130,6 +134,8 @@ Program Main
         Use Global_mod
         Use UDV_State_mod
         Use Wrapgr_mod
+        use Lowrank_update_mod, only: Lowrank_read_point, Lowrank_autotune_finish, Lowrank_report_final, &
+             &                        Lowrank_current_N_delay
         Use Fields_mod
         Use WaveFunction_mod
         use entanglement_mod
@@ -150,6 +156,9 @@ Program Main
              &                   gpu_stab_reset_r, gpu_stab_reset_st
         use gpu_tau_mod,   only: gpu_tau_on, gpu_tau_setup, gpu_tau_finalize, gpu_tau_hook
 #endif
+#ifdef ALF_TIMERS
+        use Timers_mod
+#endif
          
 #ifdef HDF5
         use hdf5
@@ -164,8 +173,13 @@ Program Main
         COMPLEX (Kind=Kind(0.d0)), Dimension(:)  , Allocatable   :: Phase_array
        
         Integer :: NBC, NSW
+        ! Completed sweeps across bins, saturating at 4 (automatic N_delay: Lowrank_autotune_finish)
+        Integer (Kind=Kind(0_8)) :: N_sweeps_done
         Integer :: NTAU, NTAU1
         Character (len=64) :: file_seeds, file_info, file_git_info
+#ifdef ALF_TIMERS
+        Character (len=64) :: file_timers
+#endif
         Integer :: Seed_in
         Complex (Kind=Kind(0.d0)) , allocatable, dimension(:,:) :: Initial_field
 
@@ -176,6 +190,7 @@ Program Main
 #ifdef HDF5
         INTEGER(HID_T) :: file_id
         Logical :: file_exists
+        Integer :: nd_buf(1)       ! delayed/submatrix provenance attributes of data.h5
 #endif
          
         !General
@@ -302,6 +317,13 @@ Program Main
         file_info = "info"
         file_git_info = "info_git"
 #endif
+#ifdef ALF_TIMERS
+#if defined(TEMPERING)
+        write(file_timers,'(A,I0,A)') "Temp_",igroup,"/timers.txt"
+#else
+        file_timers = "timers.txt"
+#endif
+#endif
 
 #if defined(MPI)
         if ( Irank_g == 0 ) then
@@ -400,6 +422,8 @@ Program Main
            call set_Nt_sequential_end(tmp_Nt_sequential_end)
            call set_N_Global_tau(tmp_N_Global_tau)
         endif
+        ! Cross-slice delay (Lowrank_cross_slice, spec D10): refused with Global_tau moves
+        call validate_lowrank_cross_slice()
         
         call nsigma%make(N_op, Ltrot)
         Do n = 1,N_op
@@ -443,6 +467,15 @@ Program Main
             call h5fclose_f(file_id, ierr)
           endif
           call ham%write_parameters_hdf5(file_dat)
+          ! Delayed/submatrix branch provenance: requested scheme and N_delay as attributes of '/'
+          ! (only for a non-standard scheme, so that standard runs keep the baseline data.h5)
+          if (str_to_upper(trim(adjustl(get_Sequential_scheme()))) /= "STANDARD") then
+             CALL h5fopen_f(file_dat, H5F_ACC_RDWR_F, file_id, ierr)
+             call h5ltset_attribute_string_f(file_id, '/', 'Sequential_scheme', trim(adjustl(get_Sequential_scheme())), ierr)
+             nd_buf(1) = get_N_delay()
+             call h5ltset_attribute_int_f(file_id, '/', 'N_delay_requested', nd_buf, int(1,size_t), ierr)
+             call h5fclose_f(file_id, ierr)
+          endif
 
 #if defined(MPI)
         endif
@@ -590,6 +623,9 @@ Program Main
            Write(50,*) 'Tempering frequency  ', get_N_Tempering_frequency()
            Write(50,*) 'Tempering Calc_det   ', get_Tempering_calc_det()
 #endif
+#ifdef ALF_TIMERS
+           Write(50,*) 'Timing split: see timers.txt (ALF_TIMERS)'
+#endif
            close(50)
 #if defined(MPI)
         endif
@@ -694,11 +730,15 @@ Program Main
 
         Call Control_init(Group_Comm)
 
+        N_sweeps_done = 0
         DO  NBC = 1, get_NBin()
            ! Here, you have the green functions on time slice 1.
            ! Set bin observables to zero.
 
            call system_clock(count_bin_start)
+#ifdef ALF_TIMERS
+           call timer_bin_begin()
+#endif
 
            Call ham%Init_obs(get_Ltau())
 #if defined(TEMPERING)
@@ -706,18 +746,40 @@ Program Main
 #endif
 
            DO NSW = 1, get_NSweep()
+#ifdef ALF_TIMERS
+              ! Timing split: sweep frame (exclusive time = "other"), closed after Lowrank_autotune_finish
+              call timer_sweep_begin()
+#endif
 
 #if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
               IF (MOD(NSW,get_N_Tempering_frequency()) == 0) then
                  !Write(6,*) "Irank, Call tempering", Irank, NSW, get_N_exchange_steps()
+#ifdef ALF_TIMERS
+                 call timer_push(T_GLOBAL)
+#endif
+                 If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Exchange_Step", .true.)
                  CALL Exchange_Step(Phase,GR,udvr, udvl,Stab_nt, udvst, get_N_exchange_steps(), get_Tempering_calc_det())
+#ifdef ALF_TIMERS
+                 call timer_pop(T_GLOBAL)
+#endif
               endif
 #endif
               ! Global updates
+#ifdef ALF_TIMERS
+              call timer_push(T_GLOBAL)
+#endif
+              If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Global_Updates", .true.)
               If ( get_Global_moves() ) Call Global_Updates(Phase, GR, udvr, udvl, Stab_nt, udvst, get_N_Global() )
+#ifdef ALF_TIMERS
+              call timer_pop(T_GLOBAL)
+#endif
 
 
               If ( str_to_upper(Langevin_HMC%get_Update_scheme()) == "LANGEVIN" )  then
+#ifdef ALF_TIMERS
+                 call timer_push(T_LANGEVIN_HMC)
+#endif
+                 If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Langevin update", .true.)
                  !  Carry out a Langevin update and calculate equal time observables.
                  Call Langevin_HMC%update(Phase, GR, GR_Tilde, Test, udvr, udvl, Stab_nt, udvst, &
                       &                   get_LOBS_ST(), get_LOBS_EN(), get_Ltau())
@@ -732,9 +794,16 @@ Program Main
                        call Langevin_HMC%set_L_Forces(.true.)
                     endif
                  endif
+#ifdef ALF_TIMERS
+                 call timer_pop(T_LANGEVIN_HMC)
+#endif
               endif
 
               If (  str_to_upper(Langevin_HMC%get_Update_scheme()) == "HMC" )  then
+#ifdef ALF_TIMERS
+                 call timer_push(T_LANGEVIN_HMC)
+#endif
+                 If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "HMC update", .true.)
                  if ( get_sequential() ) call Langevin_HMC%set_L_Forces(.False.)
                  Do n=1, get_N_HMC_sweeps()
                      !  Carry out a Langevin update and calculate equal time observables.
@@ -764,6 +833,9 @@ Program Main
                     endif
                     call Langevin_HMC%set_L_Forces(.true.)
                  endif
+#ifdef ALF_TIMERS
+                 call timer_pop(T_LANGEVIN_HMC)
+#endif
               endif
 
               If ( get_sequential() )  then 
@@ -787,6 +859,10 @@ Program Main
                     CALL WRAPGRUP(GR,NTAU,PHASE,get_Propose_S0(), get_Nt_sequential_start(), get_Nt_sequential_end(), get_N_Global_tau())
                     
                     If (NTAU1 == Stab_nt(NST) ) then
+#ifdef ALF_TIMERS
+                       call timer_push(T_STAB)
+#endif
+                       If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "CGR (up sweep)", .false.)
                        NT1 = Stab_nt(NST-1)
 #ifdef ALF_GPU
                        if (gpu_stab_on) then
@@ -830,9 +906,16 @@ Program Main
                        Call Control_PrecisionP(Z,Phase)
                        Phase = Z
                        NST = NST + 1
+#ifdef ALF_TIMERS
+                       call timer_pop(T_STAB)
+#endif
                     ENDIF
                     
                     IF (NTAU1.GE. get_LOBS_ST() .AND. NTAU1.LE. get_LOBS_EN() ) THEN
+#ifdef ALF_TIMERS
+                       call timer_push(T_MEAS)
+#endif
+                       If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Obser (up sweep)", .false.)
                        !Call  Global_tau_mod_Test(Gr,ntau1)
                        !Stop
                        !write(*,*) "GR before obser sum: ",sum(GR(:,:,1))
@@ -851,8 +934,13 @@ Program Main
                           If (reconstruction_needed) Call ham%GR_reconstruction( GR )
                           CALL ham%Obser( GR, PHASE, Ntau1, Mc_step_weight  )
                        endif
+#ifdef ALF_TIMERS
+                       call timer_pop(T_MEAS)
+#endif
                     ENDIF
                  ENDDO
+                 ! End of the up sweep (NTAU1 = LTROT is a stabilisation point, so G is flushed)
+                 If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "end of the up sweep", .true.)
                  
                  Do nf_eff = 1,N_FL_eff
                     nf=Calc_Fl_map(nf_eff)
@@ -871,6 +959,10 @@ Program Main
                     NTAU1 = NTAU - 1
                     CALL WRAPGRDO(GR,NTAU, PHASE,get_Propose_S0(),get_Nt_sequential_start(), get_Nt_sequential_end(), get_N_Global_tau())
                     IF (NTAU1.GE. get_LOBS_ST() .AND. NTAU1.LE. get_LOBS_EN() ) THEN
+#ifdef ALF_TIMERS
+                       call timer_push(T_MEAS)
+#endif
+                       If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Obser (down sweep)", .false.)
                        !write(*,*) "GR before obser sum: ",sum(GR(:,:,1))
                        !write(*,*) "Phase before obser : ",phase
 #ifdef ALF_GPU
@@ -887,8 +979,15 @@ Program Main
                           If (reconstruction_needed) Call ham%GR_reconstruction( GR )
                           CALL ham%Obser( GR, PHASE, Ntau1,Mc_step_weight )
                        endif
+#ifdef ALF_TIMERS
+                       call timer_pop(T_MEAS)
+#endif
                     ENDIF
                     IF ( Stab_nt(NST) == NTAU1 .AND. NTAU1.NE.0 ) THEN
+#ifdef ALF_TIMERS
+                       call timer_push(T_STAB)
+#endif
+                       If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "CGR (down sweep)", .false.)
                        NT1 = Stab_nt(NST+1)
                        !Write(6,*) 'Wrapul : ', NT1, NTAU1
 #ifdef ALF_GPU
@@ -934,7 +1033,14 @@ Program Main
                        Z=Z**N_SUN
                        Call Control_PrecisionP(Z,Phase)
                        Phase = Z
+#ifdef ALF_TIMERS
+                       call timer_pop(T_STAB)
+#endif
                        IF( get_Ltau() == 1 .and. Projector .and. Stab_nt(NST)<=THTROT+1 .and. THTROT+1<Stab_nt(NST+1) ) then
+#ifdef ALF_TIMERS
+                          call timer_push(T_MEAS)
+#endif
+                          If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Tau_p (projector, down sweep)", .true.)
 #ifdef ALF_GPU
                           call gpu_g_host(GR)
 #endif
@@ -942,11 +1048,19 @@ Program Main
 #ifdef ALF_GPU
                           call gpu_g_host_wrote()
 #endif
+#ifdef ALF_TIMERS
+                          call timer_pop(T_MEAS)
+#endif
                        endif
                        NST = NST -1
                     ENDIF
                  ENDDO
                  
+#ifdef ALF_TIMERS
+                 call timer_push(T_STAB)
+#endif
+                 ! End of the down sweep: the last WRAPGRDO may return a pending state (time slice 0)
+                 If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "CGR (time slice 0, end of the down sweep)", .false.)
                  !Calculate and compare green functions on time slice 0.
                  NT1 = Stab_nt(0)
                  NT  = Stab_nt(1)
@@ -1007,12 +1121,22 @@ Program Main
                     if (gpu_stab_on) call gpu_stab_reset_st(NST, nf_eff)
 #endif
                  enddo
+#ifdef ALF_TIMERS
+                 call timer_pop(T_STAB)
+#endif
                  
                  IF ( get_Ltau() == 1 .and. .not. Projector ) then
+#ifdef ALF_TIMERS
+                    call timer_push(T_MEAS)
+#endif
+                    If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Tau_m", .true.)
 #ifdef ALF_GPU
                     call gpu_g_host(GR)          ! ticket 208-1: tau_begin builds the host shadows of the tau = 0 matrices from GR
 #endif
                     Call TAU_M( udvst, GR, PHASE, NSTM, get_Nwrap(), STAB_NT, get_LOBS_ST(), get_LOBS_EN() )
+#ifdef ALF_TIMERS
+                    call timer_pop(T_MEAS)
+#endif
                  endif
                  ! When Nwrap > Thtrot+1, the smallest Stab_nt(1)=Nwrap already exceeds
                  ! THTROT+1, so the backward-loop condition Stab_nt(NST)<=THTROT+1 was
@@ -1022,16 +1146,30 @@ Program Main
                  ! udvst(1..Nstm) contains fresh left propagations from the backward
                  ! sweep, so calling tau_p with NST_IN=0 is correct here.
                  IF ( get_LTAU() == 1 .and. Projector .and. Stab_nt(1) > THTROT+1 ) then
+#ifdef ALF_TIMERS
+                    call timer_push(T_MEAS)
+#endif
+                    If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Tau_p (projector, end of the sweep)", .true.)
 #ifdef ALF_GPU
                     call gpu_g_host(GR)
 #endif
                     Call tau_p ( udvl, udvr, udvst, GR, PHASE, NSTM, STAB_NT, 0, get_LOBS_ST(), get_LOBS_EN() )
 #ifdef ALF_GPU
-                    call gpu_g_host_wrote()
+                          call gpu_g_host_wrote()
+#endif
+#ifdef ALF_TIMERS
+                    call timer_pop(T_MEAS)
 #endif
                  endif
               endif
 
+              ! Automatic N_delay (N_delay = -1): on every rank after every sweep; timing starts after sweep 1, the
+              ! decision after sweep 3 contains the only MPI collective (Group_Comm). No-op otherwise.
+              If (N_sweeps_done < 4_8) N_sweeps_done = N_sweeps_done + 1_8
+              Call Lowrank_autotune_finish(N_sweeps_done)
+#ifdef ALF_TIMERS
+              call timer_sweep_end()   ! asserts that only the sweep frame is open (stack depth 0 afterwards)
+#endif
            ENDDO
 #ifdef ALF_GPU
            call gpu_obs_flush()         ! ticket 208-2: device accumulators -> host Obs_eq before Pr_obs normalises
@@ -1044,6 +1182,10 @@ Program Main
            Call nsigma%out(Group_Comm)
 
            call system_clock(count_bin_end)
+#ifdef ALF_TIMERS
+           ! Timing split: collective on Group_Comm (every rank), group rank 0 appends the bin to timers.txt
+           call timer_bin_end(NBC, Group_Comm, file_timers)
+#endif
            prog_truncation = .false.
            if ( abs(get_CPU_MAX()) > Zero ) then
               Call make_truncation(prog_truncation,get_CPU_MAX(),count_bin_start,count_bin_end,group_comm)
@@ -1053,6 +1195,23 @@ Program Main
               exit !exit the loop over the bin index, labelled NBC.
            Endif
         Enddo
+        ! Automatic N_delay: "tuning incomplete" if the run ended before the decision (no-op otherwise)
+        Call Lowrank_report_final()
+#if defined(HDF5)
+        ! Delayed/submatrix branch provenance: the N_delay in use at the end of the run (resolved auto value)
+#if defined(MPI)
+        if ( Irank_g == 0 ) then
+#endif
+          if (str_to_upper(trim(adjustl(get_Sequential_scheme()))) /= "STANDARD") then
+             CALL h5fopen_f(file_dat, H5F_ACC_RDWR_F, file_id, ierr)
+             nd_buf(1) = Lowrank_current_N_delay()
+             call h5ltset_attribute_int_f(file_id, '/', 'N_delay_used', nd_buf, int(1,size_t), ierr)
+             call h5fclose_f(file_id, ierr)
+          endif
+#if defined(MPI)
+        endif
+#endif
+#endif
 
         ! Deallocate things
         DO nf_eff = 1, N_FL_eff

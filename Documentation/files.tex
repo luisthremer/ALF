@@ -117,6 +117,13 @@ N_HMC_sweeps         = 1    ! Number of hybrid molecular dynamic  updates betwee
 Leapfrog_steps       = 0    ! Number of leapfrog iterations 
 Amplitude            = 1.0  ! Width of the box distribution for update of 
                             ! type t=3,4 fields.  Defaults  to 1.0.
+Sequential_scheme    = "standard" ! Sequential update scheme: "standard", "delayed"
+                            ! or "submatrix" (see the text below)
+N_delay              = 0    ! Delayed/submatrix: bound on the pending rank before the
+                            ! Green function is flushed. >= 1 fixed, 0 automatic
+                            ! (default), -1 automatic with warm-up timing
+Lowrank_cross_slice  = .F.  ! Cross-slice delay (research prototype); not available
+                            ! together with N_Global_tau > 0
 
 /
 
@@ -182,6 +189,10 @@ ham_Tperp  = 1.d0           ! For bilayer systems
 
 The program allows for a number of different  updating schemes.  If no other variables are specified in the \texttt{VAR\_QMC} name space, then the program will run in its default mode, namely the sequential single spin-flip mode.
 In particular, note that if \texttt{Nt\_sequential\_start}  and \texttt{Nt\_sequential\_end}  are not specified and that the variable \texttt{Global\_tau\_moves}  is set to true, then  the program will  carry out only global moves, by setting \texttt{Nt\_sequential\_start=1}  and \texttt{Nt\_sequential\_end=0}. 
+
+The sequential single spin-flip sweep can be carried out with three equivalent update schemes, selected by \texttt{Sequential\_scheme} in the \texttt{VAR\_QMC} name space. The default \texttt{"standard"} updates the equal-time Green function after every accepted move at a cost of $\mathcal{O}(N_\mathrm{dim}^2)$. The schemes \texttt{"delayed"} and \texttt{"submatrix"} implement the low-rank (delayed) updates of Refs.~\cite{Sun24,Sun25}: accepted moves are collected and the Green function is brought up to date by a single matrix-matrix product once the pending rank would exceed \texttt{N\_delay} (rank-$N$ vertices are supported), which trades matrix-vector for matrix-matrix operations and is faster on large lattices. The delayed scheme stores the pending corrections as a low-rank product, $G = G_0 - X Y^T$, and evaluates the entries needed for the next acceptance ratio from it; the submatrix scheme stores them as a small matrix on the sites of the pending vertices (Woodbury form) and keeps only diagonal content in that form. Both schemes sample the same Markov chain as the standard scheme (up to round-off in near-ties of the Metropolis decision), By default the Green function is flushed at the end of each time slice (not with \texttt{Lowrank\_cross\_slice}, see below), and always before any operation that reads it, such as a global move, a stabilisation or a measurement. Vertices whose support exceeds eight sites are updated with the standard scheme, and the \texttt{info} file reports how many there are. As a rule of thumb, \texttt{"delayed"} is recommended for models with non-diagonal (bond) vertices, and \texttt{"submatrix"} for diagonal Hubbard-type models.
+
+The parameter \texttt{N\_delay} bounds the pending rank before a flush. A value $\geq 1$ fixes it; \texttt{N\_delay=0} (the default) chooses it automatically from $N_\mathrm{dim}$ with a static rule, which is deterministic; and \texttt{N\_delay=-1} additionally times the first sweeps and may adjust the value accordingly. The scheme and the chosen value are written to the \texttt{info} file. Values below $-1$ are rejected, and \texttt{N\_delay} has no effect for the standard scheme. With \texttt{Lowrank\_cross\_slice=.T.} the pending updates are carried over from one time slice to the next; this is an opt-in research prototype that is refused for \texttt{N\_Global\_tau > 0} and showed no measurable gain in our tests, so it is not recommended. Details of the algorithms, the validation and the benchmarks are given in the notes of the research branch, \path{docs/algorithm-notes.md} and \path{docs/benchmarks/report.md} (not part of the ALF distribution).
 
 %If the program is not compiled with the parallel tempering flag, then the \texttt{VAR\_TEMP} name space can be omitted from the parameter file.
 
