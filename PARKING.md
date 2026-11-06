@@ -3,8 +3,8 @@
 Parked work for the GPU delayed/submatrix branch (`gpu-port-delayed-submatrix-speedup`), written 2026-11-06.
 Nothing here has been run yet. The simulation list at the end is to be run later exactly as written.
 
-Column `x`: the feature or optimisation behind the item is NOT implemented yet (code has to be written first). A blank means the code
-exists and the item only needs testing, measuring or documentation.
+Column `x`: the feature or optimisation behind the item is NOT implemented yet (code has to be written first), or (item 14) there is no
+access yet. A blank means the code exists and the item only needs testing, measuring or documentation.
 
 ## Task numbering (global priority, 1 = highest)
 
@@ -27,7 +27,7 @@ previous (per-group) list.
 | 11 |  | D (36) | Larger `N_delay` at large N (about 128, scanned): update 17 s -> 6–7 s at N = 4096; then host O(k²) algebra needs BLAS or a device version |
 | 12 | x | C (9) | Stabilization latency (about 1 ms per small QR): batch flavours, separate streams, device-side pivot sort |
 | 13 |  | E (30) | Validation on Ponte Vecchio (SuperMUC-NG Phase 2); ticket 306 (host vs device per routine on PVC) |
-| 14 |  | E (31) | Helma and SuperMUC builds (NVHPC missing on julia2; only built on `nividia` and `intel` so far) |
+| 14 | x | E (31) | Helma and SuperMUC builds (NVHPC missing on julia2; only built on `nividia` and `intel` so far) |
 | 15 | x | B (17) | Rank > 1 and non-diagonal vertices (407): opens tV, Kondo, Spin_Peierls |
 | 16 | x | B (18) | Flavour-symmetry reconstruction (`Calc_Fl`): opens Plain_Vanilla, Spin_Peierls |
 | 17 | x | C (10) | Block mode for the delayed scheme (about 2× slower than submatrix now) |
@@ -91,7 +91,7 @@ The 6×6 numbers are rough. The B580 numbers are from 12×12 and 20×20 runs. Th
 | 11 |  | `N_delay` scan: 5 values × 20×20, 32×32, 48×48 (2 sweeps each) | 30–40 min |
 | 12 | x | Stabilization-latency variants (batching, streams, device pivot): timing runs | about 1 h per variant |
 | 13 |  | PVC validation on SuperMUC Phase 2: correctness plus a scaling run | 2–4 node-hours, plus queue time (unknown) |
-| 14 |  | First runs on Helma and SuperMUC after the builds work | about 30 min per system |
+| 14 | x | First runs on Helma and SuperMUC after the builds work | about 30 min per system |
 | 15 | x | Rank > 1 vertices: ED validation on tV and Kondo at 4×4, tens of thousands of sweeps | 2–4 GPU-h per model |
 | 16 | x | Flavour reconstruction: validation on Plain_Vanilla (and Spin_Peierls) | 2–3 GPU-h per model |
 | 17 | x | Delayed block mode: benchmark plus a small validation | about 2 h |
@@ -127,3 +127,56 @@ Items 8 and 37 (documentation) need no simulation.
 The biggest simulation costs are the ED validations (items 1, 15, 21, 29, 30, 44), where the A30 and B580 time per case is mostly set by the B580's slower speed. The queue-bound items on SuperMUC, items 13, 20 and 41, may take days of waiting regardless of the machine time.
 
 All "GPU-h" estimates assume one chain on one GPU. MPS with 2–4 chains (item 9) could divide the validation items by about 2–3 once it works.
+
+
+## Results of the first minimal test round (2026-11-06)
+
+Branches: `gpu-port-delayed-submatrix-speedup` (fixes) and `gpu-port-delayed-submatrix-speedup-master` (the same plus the master merge).
+`x` as above (not implemented, or no access). Tests that failed on the first attempt and were fixed: see the Result column of items 1, 2, 3, 5, 7.
+
+| # | Group | x | Short description | Result |
+|---:|---|:-:|---|---|
+| 1 | A Correctness |  | Acceptance test of new schemes vs ED | PASS. 4-site chain vs ED: A30 10k sweeps -1.479±0.007 (0.96σ), B580 -1.470±0.007 (0.41σ), CPU 20k sweeps -1.477±0.005 (0.87σ); delayed = submatrix = standard bin for bin |
+| 2 | A Correctness |  | GPU=none regression gate | PASS. Old vs new CPU: 14/14 observable files bit-identical, 12x12 not slower (3.6 s vs 2.8 s); unit tests 53/53 (before and after the master merge) |
+| 3 | B Coverage |  | Every Hamiltonian on the GPU | PASS. Only Hubbard runs on the device; Plain_Vanilla (flavour reconstruction), Kondo/Z2_Matter/Spin_Peierls/tV/LR_Jz_Test (non-diagonal vertices), LRC (field type 3) are refused with a reason and run on the CPU path. tV aborts at Nwrap 10 on every build (numerics), fine at Nwrap 4 |
+| 4 | A Correctness |  | CPU vs A30 vs B580 statistics | PASS. 6x6, 200 sweeps: energy -29.64±0.11 / -29.52±0.08 / -29.67±0.14; kinetic and potential parts differ up to 2σ (20 bins only) |
+| 5 | A Correctness |  | 24 extra configurations | PASS after 2 fixes. Found: dense hopping + Symm crashed on the device (hop auxiliaries held 2 of 4 matrices), cross-slice key silently ignored (now refused). Nwrap 20: schemes differ 1e-7 on CPU too (precision-limited). Global moves refused (Hubbard has none) |
+| 6 | A Correctness |  | nvfortran miscompile bisect | DONE. Reproducible at -O2 and above even without -fast; -O1 correct; vect/unroll/inline/LRE/PRE off do not help; root pass not isolated; ifx unaffected |
+| 7 | A Correctness |  | Merge with master | DONE. New branch gpu-port-delayed-submatrix-speedup-master: 5 conflicts resolved (MALA vertices use the standard path; GPU refuses MALA); builds with GNU, nvfortran, ifx; CPU and GPU smoke OK; unit tests 53/53 |
+| 8 | B Coverage |  | Update stale FEATURES.md | not run (no simulation) |
+| 9 | C Perf small/medium N | x | Several chains per GPU | not run (not implemented) |
+| 10 | D Perf large N | x | Sparse Symm | not run (not implemented) |
+| 11 | D Perf large N |  | Larger N_delay scan | DONE. Best N_delay 32-64; default 32 is within 6% (20x20) and 16% (32x32) of the best update time; 128 is slower (host O(k²)) |
+| 12 | C Perf small/medium N | x | Stabilization latency | not run (not implemented) |
+| 13 | E Intel/portability |  | PVC validation | PARTIAL. No PVC access; on the B580: all 3 schemes correct at 12x12 and 20x20, bin-identical |
+| 14 | E Intel/portability | x | Helma / SuperMUC builds | not run: no access yet |
+| 15 | B Coverage | x | Rank > 1 / non-diagonal vertices | not run (not implemented) |
+| 16 | B Coverage | x | Flavour reconstruction | not run (not implemented) |
+| 17 | C Perf small/medium N | x | Delayed block mode | not run (not implemented) |
+| 18 | D Perf large N |  | 56x56 run and memory limit | DONE. 56x56: sweep about 73 s (predicted 70 s); 60x60 peaks at 21,265 MiB, 62x62 at 23,967 MiB (fits, 192 s); 63x63 cannot fit |
+| 19 | B Coverage | x | Device observables, other models | not run (not implemented) |
+| 20 | B Coverage | x | MPI together with GPU | not run (not implemented) |
+| 21 | E Intel/portability | x | Unified accuracy gates | not run (not implemented) |
+| 22 | C Perf small/medium N | x | Per-bin output (Pr_obs) | not run (not implemented); measured 38 s per bin at 56x56 |
+| 23 | A Correctness |  | Instrumentation behind a flag | DONE. Everything is under #ifdef TIMING; builds with and without it pass on A30 and B580 |
+| 24 | F Housekeeping | x | Validation suite and benchmarks | not run (not implemented) |
+| 25 | D Perf large N | x | Memory footprint | not run (not implemented); memory model confirmed within 1% |
+| 26 | D Perf large N |  | Nwrap / parameter choices | DONE. Nwrap 10: Green error 1e-10; Nwrap 20: 2e-4; Nwrap 30: aborts. Not a free speed-up |
+| 27 | E Intel/portability |  | B580 FP64 and QR micro-benchmarks | DONE. Raw FP64 5.1 TFlop/s (A30 5.0), FP32 22 vs 9.9; zgemm 0.18/0.70/0.89 TFlop/s at N 144/400/1024, zgeqrf 1.0/7.4/47 ms. Corrects my earlier "emulated FP64": the matrix work is slow, not raw FP64 |
+| 28 | C Perf small/medium N | x | Launch overhead | not run (not implemented) |
+| 29 | B Coverage | x | Field types 3 and 4 | not run (not implemented) |
+| 30 | B Coverage | x | Global moves | not run (not implemented) |
+| 31 | B Coverage | x | Propose_S0 | not run (not implemented) |
+| 32 | C Perf small/medium N | x | Device accept decision | not run (not implemented) |
+| 33 | B Coverage | x | Time-dependent couplings | not run (not implemented) |
+| 34 | B Coverage | x | STAB1/2/3, QRREF | not run (not implemented) |
+| 35 | D Perf large N |  | Dense-hop threshold | not run |
+| 36 | C Perf small/medium N | x | Start-up | not run (not implemented); measured 7.7 s at 56x56 |
+| 37 | F Housekeeping |  | Docs for new parameters | not run (no simulation) |
+| 38 | E Intel/portability |  | ifx equivalent of the -O1 pin | ANSWERED. ifx -O3 on the B580 needs no pin in any run so far |
+| 39 | B Coverage | x | Cross-slice delay on the GPU | not run (not implemented); GPU path now refuses the key |
+| 40 | D Perf large N | x | CGR2_2 block structure | not run (not implemented) |
+| 41 | B Coverage | x | Parallel tempering | not run (not implemented) |
+| 42 | B Coverage | x | Projector | not run (not implemented) |
+| 43 | D Perf large N | x | Cholesky-QR | not run (not implemented) |
+| 44 | B Coverage | x | Langevin / HMC | not run (not implemented) |
