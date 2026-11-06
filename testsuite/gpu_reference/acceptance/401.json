@@ -1,0 +1,59 @@
+{
+  "schema": "alf-acc/1-light",
+  "ticket": "401",
+  "title": "GPU: flavour reconstruction (Calc_Fl), non-diagonal / rank>1 vertices, type 4 (ADR-003)",
+  "created": "2026-11-06",
+  "_status": "PRE-REGISTERED before any implementation result. LIGHT version: not run through verdict.py --lint / acc_driver.py (those tools expect a ticket-specific harness config); criteria below are evaluated by testsuite/gpu_reference/rank_nd/check_401.py written to implement exactly these gates. Deviation from VERIFICATION.md stated in docs/gpu/ADR-003 and in the final report.",
+  "approvals": [
+    "owner 2026-11-06 (quote): 'implementiere das einfach alles, und sag mir am ende wie du es gemacht hast. Notfalls musst du halt was in PARKING.md schreiben.' -> Q1 type 4 included, Q2 ED references written, Q3 rank-r delayed only if measured need, Q4 branch left"
+  ],
+  "machines": {"nvidia": "nividia (A30, nvfortran)", "intel": "intel (Arc B580, ifx)"},
+  "tolerances_never_relaxed": true,
+  "gates": [
+    {"id": "K1_wrap", "level": "kernel",
+     "what": "fixed HS fields; device Op_Wrapup/Op_Wrapdo N_Type 1 and 2 for non-diagonal ops (tV, Kondo, Spin_Peierls vertex sets) and device Op_mmultL/R vs host routines on random complex G",
+     "stat": "max |dev-host| / max|host|", "threshold": 1e-12,
+     "_reason": "same arithmetic, only summation order differs (1e-15 class); 1e-12 leaves 3 orders margin, planted defects are O(1e-3) or larger"},
+    {"id": "K2_update", "level": "kernel",
+     "what": "rank-r ratio and accept on device vs Upgrade2 on host, random G and Hs_new, r = 1,2,4",
+     "stat": "max relative diff of ratio and of G after accept", "threshold": 1e-10},
+    {"id": "K3_G", "level": "kernel",
+     "what": "fixed fields, G of every computed flavour (and reconstructed flavour for Plain_Vanilla) GPU vs CPU after one wrap, after stabilization, after a sweep segment (one WRAPGRUP+WRAPGRDO of fixed accept pattern via ALF_GPU_TRACE replay / same-seed short run before first divergence)",
+     "stat": "max rel diff", "threshold": 1e-10},
+    {"id": "K4_schemes", "level": "kernel",
+     "what": "standard, delayed, submatrix GPU runs, same seed, same build: observables bin for bin",
+     "stat": "max rel diff per bin", "threshold": 1e-9,
+     "_reason": "as before for Hubbard (DELAYED_SUBMATRIX.md: 1e-13 observed)"},
+    {"id": "O1_ed", "level": "observable",
+     "what": "total energy vs exact diagonalisation (new ED references testsuite/gpu_reference/rank_nd/ed_*.py, validated against the CPU build first), models Plain_Vanilla (half filling, Hubbard value -1.47261997), tV, Kondo, Spin_Peierls; A30 and B580",
+     "stat": "|E_gpu - E_ED| / sigma", "threshold": 3.0, "report": "chi^2 over all measured observables with ED value",
+     "_reason": "brief: within 3 sigma; sigma from jackknife with autocorrelation-corrected bins (>= 30 bins)"},
+    {"id": "O2_cpu", "level": "observable",
+     "what": "GPU vs CPU reference with error bars (CPU statistics >= 10x or errors in quadrature), all Obs_eq and Obs_tau scalars the model writes",
+     "stat": "|d| / sqrt(s1^2+s2^2)", "threshold": 3.0, "report": "chi^2; Holm correction over the compared observables, alpha 0.01"},
+    {"id": "P_precision", "level": "report",
+     "what": "Precision Green / Phase mean and max reported next to CPU values; no gate on max (VERIFICATION.md section 6)"},
+    {"id": "N_gpunone", "level": "regression",
+     "what": "GPU=none build: unit tests 53/53 and 'git diff' of non-gpu_* Prog files limited to nothing outside #ifdef ALF_GPU; CPU run bit-identical (compare_dirs.py) to base 2ac9d670",
+     "threshold": "identical"},
+    {"id": "R_refusal", "level": "behaviour",
+     "what": "every case still unsupported is refused with a reason line in info and the run uses the CPU path: LRC (type 3), operator N > 8, g_t with non-diagonal, Calc_Fl with device Hubbard observables",
+     "threshold": "reason line present, run completes"}
+  ],
+  "positive_controls_must_fail": [
+    {"gate": "K1_wrap", "defects": ["drop N_Type 2 rotation", "U instead of U^H", "wrong sp sign in V_exp index", "swap U column order"]},
+    {"gate": "K2_update", "defects": ["W transposed", "stale nsigma_d after accept", "G(P,P) block read transposed"]},
+    {"gate": "K3_G", "defects": ["skip weight_reconstruction", "swap nf_calc / nf_reconst in reconstruction", "skip reconstruction of G0T/GT0 shadows"]},
+    {"gate": "O1_ed", "defects": ["scale one bond coupling by 1.02 in the GPU mirror only (energy shifts > 5 sigma)"]},
+    {"gate": "O2_cpu", "defects": ["same as O1 control, compared against CPU"]}
+  ],
+  "null_control": "O2_cpu run CPU vs CPU on two fresh seed sets must pass",
+  "models_and_parameters": {
+    "Plain_Vanilla": "4-site chain, U=4, chem=0, beta=2 (same as hubbard_finT_chain), Nwrap 5, Symm on/off",
+    "tV": "4-site chain / 2x2, Nwrap 4 (Nwrap 10 numerically marginal on every build, Known_issues)",
+    "Kondo": "2x2 bilayer, smallest Hamiltonian_Kondo parameters that run",
+    "Spin_Peierls": "4-site / 2x2 square as the model allows, SU(2) symmetric (Ham_h = 0)"
+  },
+  "sweeps": "NSweep/NBin chosen so that >= 30 independent bins and sigma(E) <= 0.01 are reached; fixed in prep files before runs; seeds: dev seeds for development, fresh seeds (secrets.randbits) for the final comparison run",
+  "forbidden": "re-running a statistical gate until green; relaxing any threshold above without the owner's quoted approval"
+}
