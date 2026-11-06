@@ -59,6 +59,20 @@ previous (per-group) list.
 | 43 | x | D (42) | Cholesky-QR variants (about 2× cheaper; stability doubtful, experiment only) |
 | 44 | x | B (29) | Langevin and HMC (a separate port: forces, solvers) |
 
+## Parked (owner decision 2026-11-06)
+
+Not worked on now. Marked as parked at the owner's request; nothing was removed from the list above.
+
+- **#9 several chains per GPU** and **#20 MPI together with GPU**: parked. They raise throughput, not the speed of the algorithm. Owner: "ich will nicht das MPI machen, sondern wirklich einfach bar algorithm speedup".
+- **Algorithm speed-ups discussed 2026-11-06**, all parked for now, in the order recommended:
+  1. #10 sparse `Symm` (about -37 s per sweep at N = 4096, about 240·N² bytes less memory)
+  2. #11 larger `N_delay` at large N (update 17 s -> 6-7 s at N = 4096; needs BLAS or a device version of the host O(k²) algebra)
+  3. #26 parameter choices (`Nwrap` 20, τ pass every 4th sweep, `Ltau = 0`): the owner's decision; together with 1 and 2 about 3x to 7.6x at N = 4096
+  4. #40 `CGR2_2` block structure (1.5-2x, research)
+  5. #12 stabilization latency (batching, streams, device pivot sort)
+  6. #28 launch overhead and #32 device-side accept decision
+  7. #17 block mode for the delayed scheme
+
 ## Simulation time estimates (full version, to be run later exactly as written)
 
 These are estimates of machine time for the simulations only. They do not include writing or debugging the code, or queue waits on shared systems. They are scaled from the speeds I measured, listed below.
