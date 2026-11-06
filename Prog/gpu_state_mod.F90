@@ -512,6 +512,9 @@ Contains
     if (get_Propose_S0()) then
        reason = 'Propose_S0 is not supported on the GPU path'; return
     endif
+    if (get_Sequential_MALA() .or. get_Global_MALA_moves() .or. get_Global_tau_MALA_moves() .or. get_N_Global_tau_MALA() > 0) then
+       reason = 'MALA updates are not supported on the GPU path'; return
+    endif
     if (get_Lowrank_cross_slice()) then
        reason = 'Lowrank_cross_slice (cross-slice delay) is not supported on the GPU path'; return
     endif
