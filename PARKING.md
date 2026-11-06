@@ -143,7 +143,7 @@ Branches: `gpu-port-delayed-submatrix-speedup` (fixes) and `gpu-port-delayed-sub
 | 5 | A Correctness |  | 24 extra configurations | PASS after 2 fixes. Found: dense hopping + Symm crashed on the device (hop auxiliaries held 2 of 4 matrices), cross-slice key silently ignored (now refused). Nwrap 20: schemes differ 1e-7 on CPU too (precision-limited). Global moves refused (Hubbard has none) |
 | 6 | A Correctness |  | nvfortran miscompile bisect | DONE. Reproducible at -O2 and above even without -fast; -O1 correct; vect/unroll/inline/LRE/PRE off do not help; root pass not isolated; ifx unaffected |
 | 7 | A Correctness |  | Merge with master | DONE. New branch gpu-port-delayed-submatrix-speedup-master: 5 conflicts resolved (MALA vertices use the standard path; GPU refuses MALA); builds with GNU, nvfortran, ifx; CPU and GPU smoke OK; unit tests 53/53 |
-| 8 | B Coverage |  | Update stale FEATURES.md | not run (no simulation) |
+| 8 | B Coverage |  | Update stale FEATURES.md | DONE (2026-11-06). Rewritten from the actual state (what `gpu_supported` refuses, what was validated) |
 | 9 | C Perf small/medium N | x | Several chains per GPU | not run (not implemented) |
 | 10 | D Perf large N | x | Sparse Symm | not run (not implemented) |
 | 11 | D Perf large N |  | Larger N_delay scan | DONE. Best N_delay 32-64; default 32 is within 6% (20x20) and 16% (32x32) of the best update time; 128 is slower (host O(k²)) |
