@@ -156,6 +156,8 @@ Program Main
              &                   gpu_stab_reset_r, gpu_stab_reset_st
         use gpu_tau_mod,   only: gpu_tau_on, gpu_tau_setup, gpu_tau_finalize, gpu_tau_hook
         use gpu_lowrank_mod, only: gpu_lr_finalize
+        use gpu_update_mod, only: gpu_upd_time
+        use gpu_state_mod, only: info_line
 #endif
 #ifdef ALF_TIMERS
         use Timers_mod
@@ -1230,6 +1232,11 @@ Program Main
         endif
         DEALLOCATE(udvl, udvr, udvst)
 #ifdef ALF_GPU
+        block
+          character(len=100) :: tl
+          write(tl,'(A,F10.3,A)') 'GPU time in sequential updates (WRAPGRUP/DO): ', gpu_upd_time(), ' s'
+          call info_line(trim(tl))
+        end block
         call gpu_lr_finalize()
         call gpu_tau_finalize()
         call gpu_stab_finalize()

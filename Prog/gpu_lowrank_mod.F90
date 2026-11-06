@@ -68,6 +68,7 @@ Module gpu_lowrank_mod
   Private
   Public :: gpu_lr_mode, gpu_lr_init, gpu_lr_finalize, gpu_lr_site_ok, gpu_lr_pending, gpu_lr_flush_all, gpu_lr_flush
   Public :: gpu_lr_wrap, gpu_lr_gpp, gpu_lr_accept
+  Public :: gpu_lr_fast, gpu_lr_step_up, gpu_lr_step_down, gpu_lr_defer, gpu_lr_commit, gpu_lr_sync
 
   Integer, parameter :: LR_STD = 0, LR_DELAYED = 1, LR_SUBMATRIX = 2
   Complex (Kind=Kind(0.d0)), parameter :: czero_c = (0.d0,0.d0)
@@ -86,6 +87,20 @@ Module gpu_lowrank_mod
   Integer, Allocatable, Save :: S_d(:)                          ! (nd) device copy of S of one flavour
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: M_h(:,:,:)   ! (nd, nd, N_FL) host
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: M_d(:,:)     ! (nd, nd) device copy of M of one flavour (flush)
+  ! ---- fast path (all flavours in one launch, no host->device transfer per accept) ----
+  Logical, Save :: fast = .false., stepped = .false.
+  Integer, Save :: gs = 0                                      ! gbuf stride per flavour (2 nd + 1)
+  Integer, Allocatable, Save :: slot_d(:,:)                    ! (Ndim, N_FL) device: site -> position in S (kept by the kernels)
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: M_pk(:)      ! (nd*nd) device/host packed M of one flavour (flush)
+  ! deferred work, applied by the next launch (arguments of the kernel, not transfers)
+  Logical, Save :: dfr_wrap = .false.
+  Integer, Save :: dfr_n = 0, dfr_t = 0, dfr_rw(2) = 0, dfr_pp(2) = 0, dfr_pk(2) = 0
+  Real (Kind=Kind(0.d0)), Save :: dfr_vr = 0.d0, dfr_vi = 0.d0
+  Complex (Kind=Kind(0.d0)), Save :: dfr_za(2), dfr_zb(2)
+  Integer, Save :: dfr_pn(2) = 0                                ! gather site of the step per flavour
+  Integer, Save :: acc_p(2) = 0, acc_flag(2) = 0                ! delayed: accepts collected for gpu_lr_commit
+  Complex (Kind=Kind(0.d0)), Save :: acc_z(2)
+  Integer(int64), Save :: n_fused = 0
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: W_h(:,:), grow_h(:,:)   ! cached proposal data (nd, N_FL) host, per flavour
   Integer, Allocatable, Save :: prop_p(:), prop_k(:)          ! site and pending count of the cached proposal, per flavour
 
@@ -169,7 +184,9 @@ Contains
     allocate( jc(N_FL), S_h(nd,N_FL), slot_h(Ndim,N_FL), M_h(nd,nd,N_FL), W_h(nd,N_FL), grow_h(nd,N_FL), prop_p(N_FL), prop_k(N_FL) )
     prop_p = 0; prop_k = -1
     jc = 0; S_h = 0; slot_h = 0; M_h = cmplx(0.d0,0.d0,kind(0.d0))
-    allocate( gbuf(2*nd+1), res2(2), S_d(nd), M_d(nd,nd) )
+    gs = 2*nd + 1
+    allocate( gbuf(N_FL*gs), res2(2), S_d(nd), M_d(nd,nd), slot_d(Ndim,N_FL), M_pk(nd*nd) )
+    slot_d = 0; M_pk = cmplx(0.d0,0.d0,kind(0.d0))
     gbuf = cmplx(0.d0,0.d0,kind(0.d0)); res2 = 0.d0; S_d = 0; M_d = cmplx(0.d0,0.d0,kind(0.d0))
     if (mode == LR_DELAYED) then
        allocate( X_d(Ndim,nd,N_FL), Y_d(Ndim,nd,N_FL) )
@@ -180,7 +197,9 @@ Contains
        X_d = cmplx(0.d0,0.d0,kind(0.d0)); Y_d = X_d(1,1,1)
        !$omp target enter data map(alloc: X_d)
     endif
-    !$omp target enter data map(alloc: gbuf, res2, S_d, M_d)
+    !$omp target enter data map(alloc: gbuf, res2, S_d, M_d, M_pk)
+    !$omp target enter data map(to: slot_d)
+    call fast_check()
     if (mode == LR_DELAYED) then
        write(line,'(A,I0,A,I0,A)') 'GPU delayed update (test branch): N_delay = ', nd, ', Ndim = ', Ndim, &
             & ', G = G0 - X Y^T on the device, one ZGEMM per flush'
@@ -197,15 +216,15 @@ Contains
     Character (len=200) :: line
     if (.not. inited) return
     if (mode /= LR_STD) then
-       write(line,'(A,I0,A,I0,A,I0,A,I0,A,I0)') 'GPU low-rank update counts: proposals ', n_prop, ', accepted ', n_acc, &
-            & ', flushes ', n_flush(3), ' (capacity ', n_flush(1), ', forced ', n_flush(2)
+       write(line,'(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0)') 'GPU low-rank update counts: proposals ', n_prop, ', accepted ', n_acc, &
+            & ', fused steps ', n_fused, ', flushes ', n_flush(3), ' (capacity ', n_flush(1), ', forced ', n_flush(2)
        call info_line(trim(line)//')')
-       !$omp target exit data map(delete: gbuf, res2, S_d, M_d)
+       !$omp target exit data map(delete: gbuf, res2, S_d, M_d, M_pk, slot_d)
        !$omp target exit data map(delete: X_d)
        if (mode == LR_DELAYED) then
           !$omp target exit data map(delete: Y_d)
        endif
-       deallocate( jc, S_h, slot_h, M_h, W_h, grow_h, prop_p, prop_k, gbuf, res2, S_d, M_d, X_d, Y_d )
+       deallocate( jc, S_h, slot_h, M_h, W_h, grow_h, prop_p, prop_k, gbuf, res2, S_d, M_d, X_d, Y_d, slot_d, M_pk )
     endif
     inited = .false.; mode = LR_STD
   end subroutine gpu_lr_finalize
@@ -304,10 +323,10 @@ Contains
     enddo
   end subroutine k_dly_accept
 
-!> submatrix gather for a proposal at p: buf(1) = G(p,p), buf(1+m) = G(S(m),p), buf(1+k+m) = G(p,S(m))
-  Subroutine k_sub_gather(G, ld, S, k, p, buf)
+!> submatrix gather for a proposal at p: buf(1) = G(p,p), buf(1+m) = G(S(m),p), buf(1+nd+m) = G(p,S(m))
+  Subroutine k_sub_gather(G, ld, S, k, nd_, p, buf)
     Implicit none
-    Integer, intent(in) :: ld, k, p
+    Integer, intent(in) :: ld, k, nd_, p
     Integer, intent(in) :: S(*)
     Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,*)
     Complex (Kind=Kind(0.d0)), intent(inout) :: buf(*)
@@ -317,16 +336,16 @@ Contains
        if (m == 0) then
           buf(1) = G(p,p)
        else
-          buf(1+m)   = G(S(m),p)
-          buf(1+k+m) = G(p,S(m))
+          buf(1+m)     = G(S(m),p)
+          buf(1+nd_+m) = G(p,S(m))
        endif
     enddo
   end subroutine k_sub_gather
 
-!> flush gathers: C(:,m) = G(:,S(m)),  Qt(:,m) = e_{S(m)} - G(S(m),:)^T
-  Subroutine k_sub_flush_gather(G, ld, nrow, S, k, C, Qt)
+!> flush gathers: C(:,m) = G(:,S(m)),  Qt(:,m) = e_{S(m)} - G(S(m),:)^T;  slot_d of the flushed sites is cleared
+  Subroutine k_sub_flush_gather(G, ld, nrow, S, k, nf, C, Qt)
     Implicit none
-    Integer, intent(in) :: ld, nrow, k
+    Integer, intent(in) :: ld, nrow, k, nf
     Integer, intent(in) :: S(*)
     Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,*)
     Complex (Kind=Kind(0.d0)), intent(inout) :: C(ld,*), Qt(ld,*)
@@ -336,7 +355,10 @@ Contains
        do i = 1, nrow
           C(i,m)  = G(i,S(m))
           Qt(i,m) = - G(S(m),i)
-          if (i == S(m)) Qt(i,m) = Qt(i,m) + 1.d0
+          if (i == S(m)) then
+             Qt(i,m) = Qt(i,m) + 1.d0
+             slot_d(i,nf) = 0
+          endif
        enddo
     enddo
   end subroutine k_sub_flush_gather
@@ -349,26 +371,27 @@ Contains
     Implicit none
     Integer, intent(in) :: nf
     Integer, intent(in) :: reason          ! 1 capacity, 2 forced
-    Integer :: k, m
+    Integer :: k, m, b
     Complex (Kind=Kind(0.d0)), parameter :: cone = (1.d0,0.d0), cmone = (-1.d0,0.d0), czero = (0.d0,0.d0)
     if (.not. inited .or. mode == LR_STD) return
     k = jc(nf)
     if (k == 0) return
+    if (fast) call gpu_lr_sync()                    ! deferred wrap / field / slot work first: G0 must be current
     n_flush(reason) = n_flush(reason) + 1
     n_flush(3) = n_flush(3) + 1
     if (mode == LR_DELAYED) then
        call la_gemm(LA_N, LA_T, Ndim, Ndim, k, cmone, X_d(1,1,nf), Ndim, Y_d(1,1,nf), Ndim, cone, G_d(1,1,nf), Ndim)
        upd_cnt(4) = upd_cnt(4) + 1
     else
-       ! S, M to the device (k ints, k*k complex), gather C = G0(:,S), Qt = E_S - G0(S,:)^T, Y = Qt M^T, G0 -= C Y^T
+       ! S, M (packed k x k) to the device, gather C = G0(:,S), Qt = E_S - G0(S,:)^T, Y = Qt M^T, G0 -= C Y^T
        S_d(1:k) = S_h(1:k,nf)
-       M_d(1:k,1:k) = M_h(1:k,1:k,nf)
        !$omp target update to(S_d(1:k))
        do m = 1, k
-          !$omp target update to(M_d(1:k,m))
+          M_pk((m-1)*k+1:m*k) = M_h(1:k,m,nf)
        enddo
-       call k_sub_flush_gather(G_d(1,1,nf), Ndim, Ndim, S_d, k, X_d(1,1,nf), scr_c(1,1,1))
-       call la_gemm(LA_N, LA_T, Ndim, k, k, cone, scr_c(1,1,1), Ndim, M_d, nd, czero, scr_c(1,1,2), Ndim)
+       !$omp target update to(M_pk(1:k*k))
+       call k_sub_flush_gather(G_d(1,1,nf), Ndim, Ndim, S_d, k, nf, X_d(1,1,nf), scr_c(1,1,1))
+       call la_gemm(LA_N, LA_T, Ndim, k, k, cone, scr_c(1,1,1), Ndim, M_pk, k, czero, scr_c(1,1,2), Ndim)
        call la_gemm(LA_N, LA_T, Ndim, Ndim, k, cmone, X_d(1,1,nf), Ndim, scr_c(1,1,2), Ndim, cone, G_d(1,1,nf), Ndim)
        upd_cnt(4) = upd_cnt(4) + 3
        do m = 1, k
@@ -385,6 +408,7 @@ Contains
     Integer, intent(in) :: reason
     Integer :: nf_eff
     if (.not. inited .or. mode == LR_STD) return
+    if (fast) call gpu_lr_sync()
     do nf_eff = 1, N_FL_eff
        call gpu_lr_flush(Calc_Fl_map(nf_eff), reason)
     enddo
@@ -443,42 +467,51 @@ Contains
 
 !--------------------------------------------------------------------
 !> G(p,p) of the current (G0 + pending) Green function of flavour nf, for the ratio of a proposal at site p
-  Subroutine gpu_lr_gpp(nf, p, gpp)
+  Subroutine gpu_lr_gpp(nf, nf_eff, p, gpp)
     Implicit none
-    Integer, intent(in) :: nf, p
+    Integer, intent(in) :: nf, nf_eff, p
     Complex (Kind=Kind(0.d0)), intent(out) :: gpp
-    Integer :: k, a, m, i
-    Complex (Kind=Kind(0.d0)) :: s, wa
+    Integer :: k, a, m, i, base
+    Complex (Kind=Kind(0.d0)) :: s
     n_prop = n_prop + 1
-    if (mode == LR_DELAYED) then
-       call k_dly_gpp(G_d(1,1,nf), X_d(1,1,nf), Y_d(1,1,nf), Ndim, jc(nf), p, res2)
-       !$omp target update from(res2)
+    base = 0
+    if (fast .and. stepped) then
+       base = (nf_eff-1)*gs
+       if (mode == LR_DELAYED) then
+          gpp = gbuf(base+1)                 ! G(p,p) of G0 + pending, from the fused step kernel
+          return
+       endif
+    else
+       if (mode == LR_DELAYED) then
+          call k_dly_gpp(G_d(1,1,nf), X_d(1,1,nf), Y_d(1,1,nf), Ndim, jc(nf), p, res2)
+          !$omp target update from(res2)
+          upd_cnt(5) = upd_cnt(5) + 1
+          gpp = cmplx(res2(1), res2(2), kind(0.d0))
+          return
+       endif
+       k = jc(nf)
+       S_d(1:k) = S_h(1:k,nf)
+       if (k > 0) then
+          !$omp target update to(S_d(1:k))
+       endif
+       call k_sub_gather(G_d(1,1,nf), Ndim, S_d, k, nd, p, gbuf)
        upd_cnt(5) = upd_cnt(5) + 1
-       gpp = cmplx(res2(1), res2(2), kind(0.d0))
-       return
+       !$omp target update from(gbuf(1:2*nd+1))
     endif
-    ! submatrix
+    ! submatrix: G(p,p) = G0(p,p) - G0(p,S) W,  W = M (J - G0(S,p))   (host, O(k^2))
     k = jc(nf)
-    S_d(1:k) = S_h(1:k,nf)
-    if (k > 0) then
-       !$omp target update to(S_d(1:k))
-    endif
-    call k_sub_gather(G_d(1,1,nf), Ndim, S_d, k, p, gbuf)
-    upd_cnt(5) = upd_cnt(5) + 1
-    !$omp target update from(gbuf(1:2*k+1))
-    gpp = gbuf(1)
+    gpp = gbuf(base+1)
     prop_p(nf) = p; prop_k(nf) = k
     if (k == 0) return
-    ! W = M (J - G0(S,p)),  G = G0(p,p) - G0(p,S) W
     i = slot_h(p,nf)
     do a = 1, k
        s = czero_c
        do m = 1, k
-          s = s - M_h(a,m,nf) * gbuf(1+m)
+          s = s - M_h(a,m,nf) * gbuf(base+1+m)
        enddo
        if (i /= 0) s = s + M_h(a,i,nf)
        W_h(a,nf) = s
-       grow_h(a,nf) = gbuf(1+k+a)
+       grow_h(a,nf) = gbuf(base+1+nd+a)
     enddo
     s = czero_c
     do a = 1, k
@@ -489,14 +522,19 @@ Contains
 
 !--------------------------------------------------------------------
 !> Accept at site p in flavour nf with z = Delta/d.  Must follow gpu_lr_gpp for the same (nf, p).
-  Subroutine gpu_lr_accept(nf, p, z)
+  Subroutine gpu_lr_accept(nf, nf_eff, p, z)
     Implicit none
-    Integer, intent(in) :: nf, p
+    Integer, intent(in) :: nf, nf_eff, p
     Complex (Kind=Kind(0.d0)), intent(in) :: z
     Integer :: j, k, a, b, i, kp
+    Logical :: padded
     Complex (Kind=Kind(0.d0)) :: av(nd+1), bt(nd+1)
-    if (nf == 1) n_acc = n_acc + 1
+    if (nf_eff == 1) n_acc = n_acc + 1
     if (mode == LR_DELAYED) then
+       if (fast) then
+          acc_p(nf_eff) = p; acc_z(nf_eff) = z; acc_flag(nf_eff) = 1     ! launched together by gpu_lr_commit
+          return
+       endif
        if (jc(nf) + 1 > nd) call gpu_lr_flush(nf, 1)
        j = jc(nf)
        call k_dly_accept(G_d(1,1,nf), X_d(1,1,nf), Y_d(1,1,nf), Ndim, Ndim, j, p, real(z), aimag(z))
@@ -510,6 +548,7 @@ Contains
     k = jc(nf)
     i = slot_h(p,nf)
     kp = k
+    padded = .false.
     if (i == 0) then
        kp = k + 1
        S_h(kp,nf) = p
@@ -517,6 +556,7 @@ Contains
        M_h(1:kp,kp,nf) = czero_c
        M_h(kp,1:kp,nf) = czero_c
        i = kp
+       padded = .true.
     endif
     ! a = J - [W; 0],  b^T = J^T + [G0(p,S) M, 0]  (k = 0 after a flush: a = b = e_i; W, G0(p,S) are then not used)
     av(1:kp) = czero_c
@@ -539,8 +579,532 @@ Contains
        enddo
     enddo
     jc(nf) = kp
-    if (kp >= nd) call gpu_lr_flush(nf, 1)
+    if (kp >= nd) then
+       call gpu_lr_flush(nf, 1)          ! (fast: syncs the deferred work first; this accept's pad is dropped, the flush clears slot_d)
+    elseif (fast .and. padded) then
+       dfr_pp(nf_eff) = p; dfr_pk(nf_eff) = kp           ! slot_d(p) := kp, applied by the next launch
+    endif
   end subroutine gpu_lr_accept
+
+
+!====================================================================
+!  Fast path: all flavours in ONE launch per site, the gathered data copied back by the same region (one
+!  synchronisation per site), no host->device transfer per accept.  Work that does not need a decision is deferred and
+!  passed as scalar arguments of the next launch: the field write nsigma_d(n,t), the slot_d entry of a newly pending site,
+!  and (WRAPGRDO) the wrap of the site just updated.
+!  Conditions (fast_check): N_FL_eff <= 2, every vertex a single-site operator in every computed flavour, and the site
+!  P(1) of different vertices distinct (so a deferred wrap never touches the next gather site).
+!====================================================================
+  Subroutine fast_check()
+    Implicit none
+    Logical, Allocatable :: seen(:,:)
+    Integer :: n, fl, nf
+    fast = (N_FL_eff <= 2)
+    if (.not. fast) return
+    allocate( seen(Ndim,N_FL) )
+    seen = .false.
+    do n = 1, size(Op_V,1)
+       do fl = 1, N_FL_eff
+          nf = Calc_Fl_map(fl)
+          if (V_meta(1,n,nf) /= 1) then
+             fast = .false.
+          else
+             if (seen(Op_V(n,nf)%P(1),nf)) fast = .false.
+             seen(Op_V(n,nf)%P(1),nf) = .true.
+          endif
+       enddo
+    enddo
+    deallocate(seen)
+  end subroutine fast_check
+
+  Logical function gpu_lr_fast()
+    Implicit none
+    if (.not. inited) call gpu_lr_init()
+    gpu_lr_fast = (mode /= LR_STD) .and. fast
+  end function gpu_lr_fast
+
+!--------------------------------------------------------------------
+!> UP, submatrix: wrap of site r (old field), gather of G(r,r), G(S,r), G(r,S) of the wrapped G, deferred field / slot work.
+  Subroutine k_sub_up(nfl, nfa, nfb, ld, nd_, gs_, n, t, nt, ra, rb, eoa, eob, dpa, dka, dpb, dkb, dn, dt, dvr, dvi)
+    Implicit none
+    Integer, intent(in) :: nfl, nfa, nfb, ld, nd_, gs_, n, t, nt, ra, rb, eoa, eob, dpa, dka, dpb, dkb, dn, dt
+    Real (Kind=Kind(0.d0)), intent(in) :: dvr, dvi
+    Integer :: fl, j, nf, r, eo, sl, base, dp, dk, sp
+    Complex (Kind=Kind(0.d0)) :: za, zb, gv
+    !$omp target teams distribute parallel do collapse(2) private(nf, r, eo, sl, base, dp, dk, sp, za, zb, gv)
+    do fl = 1, nfl
+       do j = 1, ld
+          if (fl == 1) then
+             nf = nfa; r = ra; eo = eoa; dp = dpa; dk = dka
+          else
+             nf = nfb; r = rb; eo = eob; dp = dpb; dk = dkb
+          endif
+          base = (fl-1)*gs_
+          sp = nint(real(nsigma_d(n,t)))
+          za = V_exp(eo + 1 + (sp + nt))
+          zb = V_exp(eo + 1 + (-sp + nt))
+          sl = slot_d(j,nf)
+          if (dk > 0 .and. j == dp) then
+             sl = dk
+             slot_d(j,nf) = dk
+          endif
+          if (j == r) then
+             gv = zb * ( za * G_d(r,r,nf) )
+             G_d(r,r,nf) = gv
+             gbuf(base+1) = gv
+             if (sl > 0) then
+                gbuf(base+1+sl) = gv
+                gbuf(base+1+nd_+sl) = gv
+             endif
+          else
+             G_d(r,j,nf) = za * G_d(r,j,nf)
+             G_d(j,r,nf) = zb * G_d(j,r,nf)
+             if (sl > 0) then
+                gbuf(base+1+sl) = G_d(j,r,nf)
+                gbuf(base+1+nd_+sl) = G_d(r,j,nf)
+             endif
+          endif
+          if (fl == 1 .and. j == 1 .and. dn > 0) nsigma_d(dn,dt) = cmplx(dvr, dvi, kind(0.d0))
+       enddo
+    enddo
+    !$omp target update from(gbuf(1:nfl*gs_))
+  end subroutine k_sub_up
+
+!> DOWN, submatrix: deferred wrap of site rw (factors za_w, zb_w), gather at site pn of the wrapped G, deferred field / slot work.
+  Subroutine k_sub_down(nfl, nfa, nfb, ld, nd_, gs_, wv, pna, pnb, rwa, rwb, &
+       &                zar, zai, zbr, zbi, zcr, zci, zdr, zdi, dpa, dka, dpb, dkb, dn, dt, dvr, dvi)
+    Implicit none
+    Integer, intent(in) :: nfl, nfa, nfb, ld, nd_, gs_, wv, pna, pnb, rwa, rwb, dpa, dka, dpb, dkb, dn, dt
+    Real (Kind=Kind(0.d0)), intent(in) :: zar, zai, zbr, zbi, zcr, zci, zdr, zdi, dvr, dvi
+    Integer :: fl, j, nf, pn, rw, sl, slrw, base, dp, dk
+    Complex (Kind=Kind(0.d0)) :: za, zb
+    !$omp target teams distribute parallel do collapse(2) private(nf, pn, rw, sl, slrw, base, dp, dk, za, zb)
+    do fl = 1, nfl
+       do j = 1, ld
+          if (fl == 1) then
+             nf = nfa; pn = pna; rw = rwa; dp = dpa; dk = dka
+             za = cmplx(zar, zai, kind(0.d0)); zb = cmplx(zbr, zbi, kind(0.d0))
+          else
+             nf = nfb; pn = pnb; rw = rwb; dp = dpb; dk = dkb
+             za = cmplx(zcr, zci, kind(0.d0)); zb = cmplx(zdr, zdi, kind(0.d0))
+          endif
+          base = (fl-1)*gs_
+          sl = slot_d(j,nf)
+          if (dk > 0 .and. j == dp) then
+             sl = dk
+             slot_d(j,nf) = dk
+          endif
+          if (wv /= 0) then
+             if (j == rw) then
+                G_d(rw,rw,nf) = zb * ( za * G_d(rw,rw,nf) )
+             else
+                G_d(rw,j,nf) = za * G_d(rw,j,nf)
+                G_d(j,rw,nf) = zb * G_d(j,rw,nf)
+             endif
+          endif
+          if (j == pn) then
+             gbuf(base+1) = G_d(pn,pn,nf)
+             if (sl > 0) then
+                gbuf(base+1+sl) = G_d(pn,pn,nf)
+                gbuf(base+1+nd_+sl) = G_d(pn,pn,nf)
+             endif
+             if (wv /= 0) then
+                ! the entries (rw,pn), (pn,rw) are written by this thread: gather them here (no read of data another thread writes)
+                if (dk > 0 .and. rw == dp) then
+                   slrw = dk
+                else
+                   slrw = slot_d(rw,nf)
+                endif
+                if (slrw > 0) then
+                   gbuf(base+1+slrw) = G_d(rw,pn,nf)
+                   gbuf(base+1+nd_+slrw) = G_d(pn,rw,nf)
+                endif
+             endif
+          else
+             if (sl > 0) then
+                if (.not. (wv /= 0 .and. j == rw)) then
+                   gbuf(base+1+sl) = G_d(j,pn,nf)
+                   gbuf(base+1+nd_+sl) = G_d(pn,j,nf)
+                endif
+             endif
+          endif
+          if (fl == 1 .and. j == 1 .and. dn > 0) nsigma_d(dn,dt) = cmplx(dvr, dvi, kind(0.d0))
+       enddo
+    enddo
+    !$omp target update from(gbuf(1:nfl*gs_))
+  end subroutine k_sub_down
+
+!> apply the deferred work only (sync): wrap of rw, slot pad, field write
+  Subroutine k_apply(nfl, nfa, nfb, ld, wv, rwa, rwb, zar, zai, zbr, zbi, zcr, zci, zdr, zdi, dpa, dka, dpb, dkb, dn, dt, dvr, dvi)
+    Implicit none
+    Integer, intent(in) :: nfl, nfa, nfb, ld, wv, rwa, rwb, dpa, dka, dpb, dkb, dn, dt
+    Real (Kind=Kind(0.d0)), intent(in) :: zar, zai, zbr, zbi, zcr, zci, zdr, zdi, dvr, dvi
+    Integer :: fl, j, nf, rw, dp, dk
+    Complex (Kind=Kind(0.d0)) :: za, zb
+    !$omp target teams distribute parallel do collapse(2) private(nf, rw, dp, dk, za, zb)
+    do fl = 1, nfl
+       do j = 1, ld
+          if (fl == 1) then
+             nf = nfa; rw = rwa; dp = dpa; dk = dka
+             za = cmplx(zar, zai, kind(0.d0)); zb = cmplx(zbr, zbi, kind(0.d0))
+          else
+             nf = nfb; rw = rwb; dp = dpb; dk = dkb
+             za = cmplx(zcr, zci, kind(0.d0)); zb = cmplx(zdr, zdi, kind(0.d0))
+          endif
+          if (dk > 0 .and. j == dp) slot_d(j,nf) = dk
+          if (wv /= 0) then
+             if (j == rw) then
+                G_d(rw,rw,nf) = zb * ( za * G_d(rw,rw,nf) )
+             else
+                G_d(rw,j,nf) = za * G_d(rw,j,nf)
+                G_d(j,rw,nf) = zb * G_d(j,rw,nf)
+             endif
+          endif
+          if (fl == 1 .and. j == 1 .and. dn > 0) nsigma_d(dn,dt) = cmplx(dvr, dvi, kind(0.d0))
+       enddo
+    enddo
+  end subroutine k_apply
+
+!> UP, delayed: wrap of site r (G0 row/column, rows r of X and Y), G(r,r) of G0 + pending, deferred field write
+  Subroutine k_dly_up(nfl, nfa, nfb, ld, gs_, n, t, nt, ra, rb, eoa, eob, jca, jcb, dn, dt, dvr, dvi)
+    Implicit none
+    Integer, intent(in) :: nfl, nfa, nfb, ld, gs_, n, t, nt, ra, rb, eoa, eob, jca, jcb, dn, dt
+    Real (Kind=Kind(0.d0)), intent(in) :: dvr, dvi
+    Integer :: fl, j, nf, r, eo, jcn, base, sp, k
+    Complex (Kind=Kind(0.d0)) :: za, zb, gv, s, xk, yk
+    !$omp target teams distribute parallel do collapse(2) private(nf, r, eo, jcn, base, sp, k, za, zb, gv, s, xk, yk)
+    do fl = 1, nfl
+       do j = 1, ld
+          if (fl == 1) then
+             nf = nfa; r = ra; eo = eoa; jcn = jca
+          else
+             nf = nfb; r = rb; eo = eob; jcn = jcb
+          endif
+          base = (fl-1)*gs_
+          sp = nint(real(nsigma_d(n,t)))
+          za = V_exp(eo + 1 + (sp + nt))
+          zb = V_exp(eo + 1 + (-sp + nt))
+          if (j == r) then
+             gv = zb * ( za * G_d(r,r,nf) )
+             G_d(r,r,nf) = gv
+             s = gv
+             do k = 1, jcn
+                xk = za * X_d(r,k,nf)
+                yk = zb * Y_d(r,k,nf)
+                X_d(r,k,nf) = xk
+                Y_d(r,k,nf) = yk
+                s = s - xk * yk
+             enddo
+             gbuf(base+1) = s
+          else
+             G_d(r,j,nf) = za * G_d(r,j,nf)
+             G_d(j,r,nf) = zb * G_d(j,r,nf)
+          endif
+          if (fl == 1 .and. j == 1 .and. dn > 0) nsigma_d(dn,dt) = cmplx(dvr, dvi, kind(0.d0))
+       enddo
+    enddo
+    !$omp target update from(gbuf(1:(nfl-1)*gs_+1))
+  end subroutine k_dly_up
+
+!> DOWN, delayed: deferred wrap of rw, G(pn,pn) of G0 + pending, deferred field write
+  Subroutine k_dly_down(nfl, nfa, nfb, ld, gs_, wv, pna, pnb, rwa, rwb, jca, jcb, &
+       &                zar, zai, zbr, zbi, zcr, zci, zdr, zdi, dn, dt, dvr, dvi)
+    Implicit none
+    Integer, intent(in) :: nfl, nfa, nfb, ld, gs_, wv, pna, pnb, rwa, rwb, jca, jcb, dn, dt
+    Real (Kind=Kind(0.d0)), intent(in) :: zar, zai, zbr, zbi, zcr, zci, zdr, zdi, dvr, dvi
+    Integer :: fl, j, nf, pn, rw, jcn, base, k
+    Complex (Kind=Kind(0.d0)) :: za, zb, s
+    !$omp target teams distribute parallel do collapse(2) private(nf, pn, rw, jcn, base, k, za, zb, s)
+    do fl = 1, nfl
+       do j = 1, ld
+          if (fl == 1) then
+             nf = nfa; pn = pna; rw = rwa; jcn = jca
+             za = cmplx(zar, zai, kind(0.d0)); zb = cmplx(zbr, zbi, kind(0.d0))
+          else
+             nf = nfb; pn = pnb; rw = rwb; jcn = jcb
+             za = cmplx(zcr, zci, kind(0.d0)); zb = cmplx(zdr, zdi, kind(0.d0))
+          endif
+          base = (fl-1)*gs_
+          if (wv /= 0) then
+             if (j == rw) then
+                G_d(rw,rw,nf) = zb * ( za * G_d(rw,rw,nf) )
+                do k = 1, jcn
+                   X_d(rw,k,nf) = za * X_d(rw,k,nf)
+                   Y_d(rw,k,nf) = zb * Y_d(rw,k,nf)
+                enddo
+             else
+                G_d(rw,j,nf) = za * G_d(rw,j,nf)
+                G_d(j,rw,nf) = zb * G_d(j,rw,nf)
+             endif
+          endif
+          if (j == pn) then
+             s = G_d(pn,pn,nf)
+             do k = 1, jcn
+                s = s - X_d(pn,k,nf) * Y_d(pn,k,nf)
+             enddo
+             gbuf(base+1) = s
+          endif
+          if (fl == 1 .and. j == 1 .and. dn > 0) nsigma_d(dn,dt) = cmplx(dvr, dvi, kind(0.d0))
+       enddo
+    enddo
+    !$omp target update from(gbuf(1:(nfl-1)*gs_+1))
+  end subroutine k_dly_down
+
+!> apply deferred work, delayed: wrap of rw (G0, X, Y rows), field write
+  Subroutine k_dly_apply(nfl, nfa, nfb, ld, wv, rwa, rwb, jca, jcb, zar, zai, zbr, zbi, zcr, zci, zdr, zdi, dn, dt, dvr, dvi)
+    Implicit none
+    Integer, intent(in) :: nfl, nfa, nfb, ld, wv, rwa, rwb, jca, jcb, dn, dt
+    Real (Kind=Kind(0.d0)), intent(in) :: zar, zai, zbr, zbi, zcr, zci, zdr, zdi, dvr, dvi
+    Integer :: fl, j, nf, rw, jcn, k
+    Complex (Kind=Kind(0.d0)) :: za, zb
+    !$omp target teams distribute parallel do collapse(2) private(nf, rw, jcn, k, za, zb)
+    do fl = 1, nfl
+       do j = 1, ld
+          if (fl == 1) then
+             nf = nfa; rw = rwa; jcn = jca
+             za = cmplx(zar, zai, kind(0.d0)); zb = cmplx(zbr, zbi, kind(0.d0))
+          else
+             nf = nfb; rw = rwb; jcn = jcb
+             za = cmplx(zcr, zci, kind(0.d0)); zb = cmplx(zdr, zdi, kind(0.d0))
+          endif
+          if (wv /= 0) then
+             if (j == rw) then
+                G_d(rw,rw,nf) = zb * ( za * G_d(rw,rw,nf) )
+                do k = 1, jcn
+                   X_d(rw,k,nf) = za * X_d(rw,k,nf)
+                   Y_d(rw,k,nf) = zb * Y_d(rw,k,nf)
+                enddo
+             else
+                G_d(rw,j,nf) = za * G_d(rw,j,nf)
+                G_d(j,rw,nf) = zb * G_d(j,rw,nf)
+             endif
+          endif
+          if (fl == 1 .and. j == 1 .and. dn > 0) nsigma_d(dn,dt) = cmplx(dvr, dvi, kind(0.d0))
+       enddo
+    enddo
+  end subroutine k_dly_apply
+
+!> accepts of both flavours in one launch (delayed): column jcn+1 of X and Y, as k_dly_accept
+  Subroutine k_dly_accept2(nfl, nfa, nfb, ld, pa, pb, ja, jb, fa, fb, zar, zai, zbr, zbi)
+    Implicit none
+    Integer, intent(in) :: nfl, nfa, nfb, ld, pa, pb, ja, jb, fa, fb
+    Real (Kind=Kind(0.d0)), intent(in) :: zar, zai, zbr, zbi
+    Integer :: fl, i, k, nf, p, jn, fg
+    Complex (Kind=Kind(0.d0)) :: c, rr, z
+    !$omp target teams distribute parallel do collapse(2) private(nf, p, jn, fg, k, c, rr, z)
+    do fl = 1, nfl
+       do i = 1, ld
+          if (fl == 1) then
+             nf = nfa; p = pa; jn = ja; fg = fa; z = cmplx(zar, zai, kind(0.d0))
+          else
+             nf = nfb; p = pb; jn = jb; fg = fb; z = cmplx(zbr, zbi, kind(0.d0))
+          endif
+          if (fg /= 0) then
+             c  = G_d(i,p,nf)
+             rr = G_d(p,i,nf)
+             do k = 1, jn
+                c  = c  - X_d(i,k,nf) * Y_d(p,k,nf)
+                rr = rr - X_d(p,k,nf) * Y_d(i,k,nf)
+             enddo
+             X_d(i,jn+1,nf) = z * c
+             Y_d(i,jn+1,nf) = - rr
+             if (i == p) Y_d(i,jn+1,nf) = Y_d(i,jn+1,nf) + 1.d0
+          endif
+       enddo
+    enddo
+  end subroutine k_dly_accept2
+
+!--------------------------------------------------------------------
+!> wrap factors of vertex n, flavour nf, at slice t with the field currently in nsigma_d (host copy)
+  Subroutine wrap_factors(nf, n, t, dir, za, zb)
+    Implicit none
+    Integer, intent(in) :: nf, n, t, dir
+    Complex (Kind=Kind(0.d0)), intent(out) :: za, zb
+    Integer :: sp, eo, nt
+    sp = nint(real(nsigma_d(n,t)))
+    eo = V_meta(3,n,nf)
+    nt = V_type(n)
+    za = V_exp(eo + 1 + (dir*sp + nt))
+    zb = V_exp(eo + 1 + (-dir*sp + nt))
+  end subroutine wrap_factors
+
+  Subroutine scale_M(nf, r, za, zb)
+    Implicit none
+    Integer, intent(in) :: nf, r
+    Complex (Kind=Kind(0.d0)), intent(in) :: za, zb
+    Integer :: m
+    if (mode /= LR_SUBMATRIX) return
+    if (jc(nf) == 0) return
+    m = slot_h(r,nf)
+    if (m == 0) return
+    M_h(m,1:jc(nf),nf) = za * M_h(m,1:jc(nf),nf)
+    M_h(1:jc(nf),m,nf) = zb * M_h(1:jc(nf),m,nf)
+  end subroutine scale_M
+
+  Subroutine clear_deferred()
+    Implicit none
+    dfr_wrap = .false.; dfr_n = 0; dfr_pp = 0; dfr_pk = 0; dfr_rw = 0
+  end subroutine clear_deferred
+
+!--------------------------------------------------------------------
+!> WRAPGRUP step at vertex n, slice t: one launch for all flavours (wrap, gather / G(p,p)), one synchronisation
+  Subroutine gpu_lr_step_up(n, t)
+    Implicit none
+    Integer, intent(in) :: n, t
+    Integer :: fl, nf, nfm(2), r(2), eo(2), jcv(2)
+    Complex (Kind=Kind(0.d0)) :: za, zb
+    nfm = 0; r = 1; eo = 0; jcv = 0
+    do fl = 1, N_FL_eff
+       nf = Calc_Fl_map(fl)
+       nfm(fl) = nf; r(fl) = Op_V(n,nf)%P(1); eo(fl) = V_meta(3,n,nf); jcv(fl) = jc(nf)
+    enddo
+    if (N_FL_eff == 1) then
+       nfm(2) = nfm(1); r(2) = r(1); eo(2) = eo(1); jcv(2) = jcv(1)
+    endif
+    if (mode == LR_SUBMATRIX) then
+       call k_sub_up(N_FL_eff, nfm(1), nfm(2), Ndim, nd, gs, n, t, V_type(n), r(1), r(2), eo(1), eo(2), &
+            & dfr_pp(1), dfr_pk(1), dfr_pp(2), dfr_pk(2), dfr_n, dfr_t, dfr_vr, dfr_vi)
+    else
+       call k_dly_up(N_FL_eff, nfm(1), nfm(2), Ndim, gs, n, t, V_type(n), r(1), r(2), eo(1), eo(2), jcv(1), jcv(2), &
+            & dfr_n, dfr_t, dfr_vr, dfr_vi)
+    endif
+    upd_cnt(3) = upd_cnt(3) + 1
+    n_fused = n_fused + 1
+    do fl = 1, N_FL_eff
+       nf = Calc_Fl_map(fl)
+       call wrap_factors(nf, n, t, 1, za, zb)
+       call scale_M(nf, r(fl), za, zb)          ! submatrix: M <- L_S M R_S for the wrapped site
+    enddo
+    call clear_deferred()
+    stepped = .true.
+  end subroutine gpu_lr_step_up
+
+!> WRAPGRDO step at vertex n, slice t: the deferred wrap of the previous vertex, then gather / G(p,p) at n, one launch
+  Subroutine gpu_lr_step_down(n, t)
+    Implicit none
+    Integer, intent(in) :: n, t
+    Integer :: fl, nf, nfm(2), pn(2), rw(2), jcv(2), wv
+    Real (Kind=Kind(0.d0)) :: z(8)
+    nfm = 0; pn = 1; rw = 1; jcv = 0; z = 0.d0
+    wv = 0
+    if (dfr_wrap) wv = 1
+    do fl = 1, N_FL_eff
+       nf = Calc_Fl_map(fl)
+       nfm(fl) = nf; pn(fl) = Op_V(n,nf)%P(1); jcv(fl) = jc(nf)
+       rw(fl) = max(dfr_rw(fl), 1)
+       if (wv /= 0) then
+          z(4*fl-3) = real(dfr_za(fl)); z(4*fl-2) = aimag(dfr_za(fl))
+          z(4*fl-1) = real(dfr_zb(fl)); z(4*fl)   = aimag(dfr_zb(fl))
+       endif
+    enddo
+    if (N_FL_eff == 1) then
+       nfm(2) = nfm(1); pn(2) = pn(1); rw(2) = rw(1); jcv(2) = jcv(1)
+    endif
+    if (mode == LR_SUBMATRIX) then
+       call k_sub_down(N_FL_eff, nfm(1), nfm(2), Ndim, nd, gs, wv, pn(1), pn(2), rw(1), rw(2), &
+            & z(1), z(2), z(3), z(4), z(5), z(6), z(7), z(8), dfr_pp(1), dfr_pk(1), dfr_pp(2), dfr_pk(2), dfr_n, dfr_t, dfr_vr, dfr_vi)
+    else
+       call k_dly_down(N_FL_eff, nfm(1), nfm(2), Ndim, gs, wv, pn(1), pn(2), rw(1), rw(2), jcv(1), jcv(2), &
+            & z(1), z(2), z(3), z(4), z(5), z(6), z(7), z(8), dfr_n, dfr_t, dfr_vr, dfr_vi)
+    endif
+    upd_cnt(3) = upd_cnt(3) + 1
+    n_fused = n_fused + 1
+    call clear_deferred()
+    stepped = .true.
+  end subroutine gpu_lr_step_down
+
+!> End of the site: record the deferred work.  accepted: the field of (n,t) changed (nsigma_d host copy is current);
+!> down: WRAPGRDO, the wrap of vertex n (final field) follows and is deferred to the next launch.
+  Subroutine gpu_lr_defer(n, t, accepted, down)
+    Implicit none
+    Integer, intent(in) :: n, t
+    Logical, intent(in) :: accepted, down
+    Integer :: fl, nf
+    Complex (Kind=Kind(0.d0)) :: za, zb
+    stepped = .false.
+    if (accepted) then
+       dfr_n = n; dfr_t = t
+       dfr_vr = real(nsigma_d(n,t)); dfr_vi = aimag(nsigma_d(n,t))
+    endif
+    if (down) then
+       dfr_wrap = .true.
+       do fl = 1, N_FL_eff
+          nf = Calc_Fl_map(fl)
+          dfr_rw(fl) = Op_V(n,nf)%P(1)
+          call wrap_factors(nf, n, t, -1, za, zb)
+          dfr_za(fl) = za; dfr_zb(fl) = zb
+          call scale_M(nf, dfr_rw(fl), za, zb)
+       enddo
+       if (N_FL_eff == 1) then
+          dfr_rw(2) = dfr_rw(1); dfr_za(2) = dfr_za(1); dfr_zb(2) = dfr_zb(1)
+       endif
+    endif
+  end subroutine gpu_lr_defer
+
+!> delayed: launch the accepts collected by gpu_lr_accept (both flavours in one kernel), flush at capacity
+  Subroutine gpu_lr_commit()
+    Implicit none
+    Integer :: fl, nf, nfm(2), pv(2), jv(2), fg(2)
+    Complex (Kind=Kind(0.d0)) :: zz(2)
+    if (.not. (fast .and. mode == LR_DELAYED)) return
+    if (acc_flag(1) == 0 .and. acc_flag(2) == 0) return
+    nfm = 1; pv = 1; jv = 0; fg = 0; zz = (0.d0,0.d0)
+    do fl = 1, N_FL_eff
+       nf = Calc_Fl_map(fl)
+       if (acc_flag(fl) /= 0 .and. jc(nf) + 1 > nd) call gpu_lr_flush(nf, 1)     ! capacity
+    enddo
+    do fl = 1, N_FL_eff
+       nf = Calc_Fl_map(fl)
+       nfm(fl) = nf; pv(fl) = acc_p(fl); jv(fl) = jc(nf); fg(fl) = acc_flag(fl); zz(fl) = acc_z(fl)
+    enddo
+    if (N_FL_eff == 1) then
+       nfm(2) = nfm(1); pv(2) = pv(1); jv(2) = jv(1); fg(2) = 0
+    endif
+    call k_dly_accept2(N_FL_eff, nfm(1), nfm(2), Ndim, pv(1), pv(2), jv(1), jv(2), fg(1), fg(2), &
+         & real(zz(1)), aimag(zz(1)), real(zz(2)), aimag(zz(2)))
+    upd_cnt(4) = upd_cnt(4) + 1
+    do fl = 1, N_FL_eff
+       nf = Calc_Fl_map(fl)
+       if (acc_flag(fl) /= 0) jc(nf) = jc(nf) + 1
+    enddo
+    acc_flag = 0
+    do fl = 1, N_FL_eff
+       nf = Calc_Fl_map(fl)
+       if (jc(nf) >= nd) call gpu_lr_flush(nf, 1)
+    enddo
+  end subroutine gpu_lr_commit
+
+!> apply the deferred work now (before a flush, an end-of-slice hop, or any host reader of G_d)
+  Subroutine gpu_lr_sync()
+    Implicit none
+    Integer :: fl, nf, nfm(2), rw(2), jcv(2), wv
+    Real (Kind=Kind(0.d0)) :: z(8)
+    if (.not. (dfr_wrap .or. dfr_n > 0 .or. any(dfr_pk > 0))) return
+    nfm = 0; rw = 1; jcv = 0; z = 0.d0
+    wv = 0
+    if (dfr_wrap) wv = 1
+    do fl = 1, N_FL_eff
+       nf = Calc_Fl_map(fl)
+       nfm(fl) = nf; jcv(fl) = jc(nf); rw(fl) = max(dfr_rw(fl), 1)
+       if (wv /= 0) then
+          z(4*fl-3) = real(dfr_za(fl)); z(4*fl-2) = aimag(dfr_za(fl))
+          z(4*fl-1) = real(dfr_zb(fl)); z(4*fl)   = aimag(dfr_zb(fl))
+       endif
+    enddo
+    if (N_FL_eff == 1) then
+       nfm(2) = nfm(1); rw(2) = rw(1); jcv(2) = jcv(1)
+    endif
+    if (mode == LR_SUBMATRIX) then
+       call k_apply(N_FL_eff, nfm(1), nfm(2), Ndim, wv, rw(1), rw(2), z(1), z(2), z(3), z(4), z(5), z(6), z(7), z(8), &
+            & dfr_pp(1), dfr_pk(1), dfr_pp(2), dfr_pk(2), dfr_n, dfr_t, dfr_vr, dfr_vi)
+    else
+       call k_dly_apply(N_FL_eff, nfm(1), nfm(2), Ndim, wv, rw(1), rw(2), jcv(1), jcv(2), z(1), z(2), z(3), z(4), z(5), z(6), z(7), z(8), &
+            & dfr_n, dfr_t, dfr_vr, dfr_vi)
+    endif
+    upd_cnt(4) = upd_cnt(4) + 1
+    call clear_deferred()
+    stepped = .false.
+  end subroutine gpu_lr_sync
 
 end Module gpu_lowrank_mod
 #endif

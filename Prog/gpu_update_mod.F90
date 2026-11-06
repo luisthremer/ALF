@@ -78,7 +78,8 @@ Module gpu_update_mod
   Private
   Public :: gpu_upd_host_only, gpu_upd_enabled, gpu_upd_override, gpu_upd_resync_fields, gpu_upd_check_fields, gpu_upd_selftest_due, gpu_upd_fault_set, gpu_upd_fault_clear
   Public :: gpu_g_host, gpu_g_host_wrote
-  Public :: gpu_wrapgrup, gpu_wrapgrdo, gpu_trace_on, gpu_trace_begin, gpu_trace_end
+  Public :: gpu_wrapgrup, gpu_wrapgrdo, gpu_trace_on, gpu_trace_begin, gpu_trace_end, gpu_upd_time
+  Real (Kind=Kind(0.d0)), Save :: t_up = 0.d0
 
   Logical, Save :: checked = .false., enabled = .false., forced = .false., forced_val = .false.
   Logical, Save :: fault_upd = .false., fault_nsig = .false., test_host_only = .false.
@@ -370,11 +371,12 @@ Contains
     Complex (Kind=Kind(0.d0)) :: Z, D_Mat, myexp, g_loc, Mat11, vii, xv, Zg
     Real (Kind=Kind(0.d0)) :: Weight
     Integer :: nf, nf_eff, op_dim_nf, p1
-    Logical :: lr
+    Logical :: lr, lrf
 
     toggle = .false.
     lr = ( gpu_lr_mode() /= 0 )
     if (lr) lr = gpu_lr_site_ok(N_op)
+    lrf = lr .and. gpu_lr_fast()
     if (.not. lr) call gpu_lr_flush_all(2)       ! standard rank-1 update of this site: G_d must be current
     if (.not. nsigma_new_made) then
        Call nsigma_new%make(1,1)
@@ -401,7 +403,7 @@ Contains
           ! while the decision is on the host, ADR-001 section 5).
           if (lr) then
              ! delayed / submatrix (gpu_lowrank_mod): G(p,p) of G0 + pending update, one device region, one D->H
-             call gpu_lr_gpp(nf, p1, gpp(nf_eff))
+             call gpu_lr_gpp(nf, nf_eff, p1, gpp(nf_eff))
           else
              !$omp target update from(G_d(p1,p1,nf))
              upd_cnt(5) = upd_cnt(5) + 1
@@ -437,7 +439,7 @@ Contains
              xv  = Delta(nf_eff)/(1.d0 + vii*Delta(nf_eff))
              Zg  = - xv
              if (lr) then
-                call gpu_lr_accept(nf, p1, xv)
+                call gpu_lr_accept(nf, nf_eff, p1, xv)
              else
                 if (fault_upd) Zg = Zg * (1.d0 + 1.d-6)        ! negative control (ALF_GPU_FAULT=upd)
                 call k_upd_prep(G_d(1,1,nf), Ndim, Ndim, p1, scr_vec(1,1), scr_vec(1,2))
@@ -446,10 +448,13 @@ Contains
              endif
           endif
        enddo
+       if (lrf) call gpu_lr_commit()           ! delayed fast path: both flavours' accepts in one launch
        ! Flip the spin: host field, and the device copy that the wrap kernels read
        nsigma%f(n_op,nt) = nsigma_new%f(1,1)
        nsigma_d(n_op,nt) = nsigma%f(n_op,nt)
-       if (.not. fault_nsig) then
+       if (lrf) then
+          continue                              ! the device copy is written by the next launch (gpu_lr_defer)
+       elseif (.not. fault_nsig) then
           ! one scalar H->D: the device copy of the field must follow the accepted flip (no stale nsigma_d reads)
           !$omp target update to(nsigma_d(n_op,nt))
           upd_cnt(6) = upd_cnt(6) + 1
@@ -474,10 +479,13 @@ Contains
     Integer :: nf, nf_eff, NTAU1, n
     Complex (Kind=Kind(0.d0)) :: HS_New
     Real (Kind=Kind(0.d0)) :: T0_proposal, T0_Proposal_ratio, S0_ratio
-    Logical :: Acc, toggle1
+    Logical :: Acc, toggle1, fast_lr
+    Real (Kind=Kind(0.d0)) :: t0w
 
     if (N_Global_tau > 0) call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
     upd_cnt(10) = upd_cnt(10) + 1
+    t0w = omp_get_wtime()
+    fast_lr = gpu_lr_fast()
     NTAU1 = NTAU + 1
     call g_in(GR)
     ! Wrap up with B(tau1)
@@ -487,10 +495,14 @@ Contains
        call gpu_mmthl_m1(G_d(1,1,nf), Ndim, Ndim, nf)
     Enddo
     Do n = Nt_sequential_start,Nt_sequential_end
-       Do nf_eff = 1, N_FL_eff
-          nf=Calc_Fl_map(nf_eff)
-          call site_wrap(nf, n, ntau1, 1)           ! Op_Wrapup, N_Type 1 (reads nsigma_d(n,ntau1), the old field)
-       enddo
+       if (fast_lr) then
+          call gpu_lr_step_up(n, ntau1)             ! wrap + gather / G(p,p) of all flavours, one launch (old field)
+       else
+          Do nf_eff = 1, N_FL_eff
+             nf=Calc_Fl_map(nf_eff)
+             call site_wrap(nf, n, ntau1, 1)           ! Op_Wrapup, N_Type 1 (reads nsigma_d(n,ntau1), the old field)
+          enddo
+       endif
        nf = 1
        T0_proposal       = 1.5D0
        T0_Proposal_ratio = 1.D0
@@ -502,16 +514,19 @@ Contains
              T0_Proposal_ratio = 1.d0/S0_ratio
           endif
        Endif
+       Acc = .false.
        If ( T0_proposal > ranf_wrap() ) Then
           call site_update(n, ntau1, PHASE, HS_new, S0_ratio, T0_Proposal_ratio, Acc)
        else
           toggle1 = .false.
           Call Control_upgrade_eff(toggle1)
        Endif
+       if (fast_lr) call gpu_lr_defer(n, ntau1, Acc, .false.)
        ! Op_Wrapup with N_Type 2: nothing for diagonal operators
     Enddo
     call gpu_lr_flush_all(2)                    ! delayed / submatrix: G_d must be current at the end of the slice
     call g_out(GR)
+    t_up = t_up + (omp_get_wtime() - t0w)
   end Subroutine gpu_wrapgrup
 
 !--------------------------------------------------------------------
@@ -527,13 +542,17 @@ Contains
     Integer :: nf, nf_eff, n
     Complex (Kind=Kind(0.d0)) :: HS_New
     Real (Kind=Kind(0.d0)) :: T0_proposal, T0_Proposal_ratio, S0_ratio
-    Logical :: Acc, toggle1
+    Logical :: Acc, toggle1, fast_lr
+    Real (Kind=Kind(0.d0)) :: t0w
 
     if (N_Global_tau > 0) call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
     upd_cnt(10) = upd_cnt(10) + 1
+    t0w = omp_get_wtime()
+    fast_lr = gpu_lr_fast()
     call g_in(GR)
     Do n =  Nt_sequential_end, Nt_sequential_start, -1
        ! Op_Wrapdo with N_Type 2: nothing for diagonal operators
+       if (fast_lr) call gpu_lr_step_down(n, ntau)   ! deferred wrap of the previous vertex + gather / G(p,p), one launch
        nf = 1
        T0_proposal       = 1.5D0
        T0_Proposal_ratio = 1.D0
@@ -545,6 +564,7 @@ Contains
              T0_Proposal_ratio = 1.d0/S0_ratio
           endif
        Endif
+       Acc = .false.
        If ( T0_proposal > ranf_wrap() ) Then
           call site_update(n, ntau, PHASE, HS_new, S0_ratio, T0_Proposal_ratio, Acc)
        else
@@ -552,10 +572,14 @@ Contains
           Call Control_upgrade_eff(toggle1)
        Endif
        ! the field has changed after the update: Op_Wrapdo N_Type 1 reads the new nsigma_d(n,ntau)
-       Do nf_eff = 1, N_FL_eff
-          nf=Calc_Fl_map(nf_eff)
-          call site_wrap(nf, n, ntau, -1)
-       enddo
+       if (fast_lr) then
+          call gpu_lr_defer(n, ntau, Acc, .true.)     ! the wrap follows in the next launch (or the end-of-slice sync)
+       else
+          Do nf_eff = 1, N_FL_eff
+             nf=Calc_Fl_map(nf_eff)
+             call site_wrap(nf, n, ntau, -1)
+          enddo
+       endif
     Enddo
     call gpu_lr_flush_all(2)                    ! delayed / submatrix: flush before the hopping wrap
     Do nf_eff = 1,N_FL_eff
@@ -564,7 +588,13 @@ Contains
        call gpu_mmthr_m1(G_d(1,1,nf), Ndim, Ndim, nf)
     enddo
     call g_out(GR)
+    t_up = t_up + (omp_get_wtime() - t0w)
   end Subroutine gpu_wrapgrdo
+
+  Real (Kind=Kind(0.d0)) function gpu_upd_time()
+    Implicit none
+    gpu_upd_time = t_up
+  end function gpu_upd_time
 
 end Module gpu_update_mod
 #endif
