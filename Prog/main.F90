@@ -156,7 +156,7 @@ Program Main
              &                   gpu_stab_reset_r, gpu_stab_reset_st
         use gpu_tau_mod,   only: gpu_tau_on, gpu_tau_setup, gpu_tau_finalize, gpu_tau_hook
         use gpu_lowrank_mod, only: gpu_lr_finalize
-        use gpu_update_mod, only: gpu_upd_time
+        use gpu_update_mod, only: gpu_upd_time, gpu_tacc, gpu_tget
         use gpu_state_mod, only: info_line
 #endif
 #ifdef ALF_TIMERS
@@ -935,7 +935,13 @@ Program Main
                        else
                           !reconstruction of NOT calculated block!!!
                           If (reconstruction_needed) Call ham%GR_reconstruction( GR )
+#ifdef ALF_GPU
+                    call gpu_tacc(1,-1.d0)
+#endif
                           CALL ham%Obser( GR, PHASE, Ntau1, Mc_step_weight  )
+#ifdef ALF_GPU
+                    call gpu_tacc(1,1.d0)
+#endif
                        endif
 #ifdef ALF_TIMERS
                        call timer_pop(T_MEAS)
@@ -980,7 +986,13 @@ Program Main
                        else
                           !reconstruction of NOT calculated block!!!
                           If (reconstruction_needed) Call ham%GR_reconstruction( GR )
+#ifdef ALF_GPU
+                    call gpu_tacc(1,-1.d0)
+#endif
                           CALL ham%Obser( GR, PHASE, Ntau1,Mc_step_weight )
+#ifdef ALF_GPU
+                    call gpu_tacc(1,1.d0)
+#endif
                        endif
 #ifdef ALF_TIMERS
                        call timer_pop(T_MEAS)
@@ -1136,7 +1148,13 @@ Program Main
 #ifdef ALF_GPU
                     call gpu_g_host(GR)          ! ticket 208-1: tau_begin builds the host shadows of the tau = 0 matrices from GR
 #endif
+#ifdef ALF_GPU
+                    call gpu_tacc(2,-1.d0)
+#endif
                     Call TAU_M( udvst, GR, PHASE, NSTM, get_Nwrap(), STAB_NT, get_LOBS_ST(), get_LOBS_EN() )
+#ifdef ALF_GPU
+                    call gpu_tacc(2,1.d0)
+#endif
 #ifdef ALF_TIMERS
                     call timer_pop(T_MEAS)
 #endif
@@ -1235,6 +1253,8 @@ Program Main
         block
           character(len=100) :: tl
           write(tl,'(A,F10.3,A)') 'GPU time in sequential updates (WRAPGRUP/DO): ', gpu_upd_time(), ' s'
+          call info_line(trim(tl))
+          write(tl,'(A,F10.3,A,F10.3,A)') 'GPU time in Obser (eq): ', gpu_tget(1), ' s, in TAU_M: ', gpu_tget(2), ' s'
           call info_line(trim(tl))
         end block
         call gpu_lr_finalize()

@@ -56,11 +56,12 @@
 Module gpu_lowrank_mod
 
   Use iso_fortran_env, only: output_unit, error_unit, int64
+  Use omp_lib, only: omp_get_wtime
   Use runtime_error_mod
   Use Files_mod, only: str_to_upper
-  Use Hamiltonian_main, only: Ndim, N_FL, N_FL_eff, Calc_Fl_map, Op_V
+  Use Hamiltonian_main, only: Ndim, N_FL, N_FL_eff, Calc_Fl_map, Op_V, nsigma
   Use QMC_runtime_var, only: get_Sequential_scheme, get_N_delay
-  Use alf_la_mod, only: la_gemm, LA_N, LA_T
+  Use alf_la_mod, only: la_gemm, la_sync, LA_N, LA_T
   Use gpu_state_mod
 
   Implicit none
@@ -68,6 +69,7 @@ Module gpu_lowrank_mod
   Private
   Public :: gpu_lr_mode, gpu_lr_init, gpu_lr_finalize, gpu_lr_site_ok, gpu_lr_pending, gpu_lr_flush_all, gpu_lr_flush
   Public :: gpu_lr_wrap, gpu_lr_gpp, gpu_lr_accept
+  Public :: gpu_lr_blockmode, gpu_lr_blk_enter, gpu_lr_blk_leave
   Public :: gpu_lr_fast, gpu_lr_step_up, gpu_lr_step_down, gpu_lr_defer, gpu_lr_commit, gpu_lr_sync
 
   Integer, parameter :: LR_STD = 0, LR_DELAYED = 1, LR_SUBMATRIX = 2
@@ -100,7 +102,12 @@ Module gpu_lowrank_mod
   Integer, Save :: dfr_pn(2) = 0                                ! gather site of the step per flavour
   Integer, Save :: acc_p(2) = 0, acc_flag(2) = 0                ! delayed: accepts collected for gpu_lr_commit
   Complex (Kind=Kind(0.d0)), Save :: acc_z(2)
-  Integer(int64), Save :: n_fused = 0
+  Integer(int64), Save :: n_fused = 0, n_blocks = 0
+  ! block mode (submatrix): host copy of the principal block G0(B,B) per flavour
+  Logical, Save :: blk_open = .false.
+  Integer, Save :: blk_v1 = 0, blk_dv = 1, blk_b = 0, blk_cnt = 0, blk_a = 0
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: Gb(:,:,:), zab_h(:,:,:), gbd(:,:,:), cbuf(:,:)
+  Integer, Allocatable, Save :: bidx(:,:), bs_h(:,:), bsd(:,:), bS_d(:,:)
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: W_h(:,:), grow_h(:,:)   ! cached proposal data (nd, N_FL) host, per flavour
   Integer, Allocatable, Save :: prop_p(:), prop_k(:)          ! site and pending count of the cached proposal, per flavour
 
@@ -179,6 +186,7 @@ Contains
        nd = nreq
     else
        nd = static_nd(mode == LR_SUBMATRIX, Ndim, n_nz)
+       if (mode == LR_SUBMATRIX) nd = max(nd, min(32, n_nz))     ! GPU: larger blocks amortise the device round trips
     endif
     nd = max(1, min(nd, Ndim))
     allocate( jc(N_FL), S_h(nd,N_FL), slot_h(Ndim,N_FL), M_h(nd,nd,N_FL), W_h(nd,N_FL), grow_h(nd,N_FL), prop_p(N_FL), prop_k(N_FL) )
@@ -216,13 +224,17 @@ Contains
     Character (len=200) :: line
     if (.not. inited) return
     if (mode /= LR_STD) then
-       write(line,'(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0)') 'GPU low-rank update counts: proposals ', n_prop, ', accepted ', n_acc, &
-            & ', fused steps ', n_fused, ', flushes ', n_flush(3), ' (capacity ', n_flush(1), ', forced ', n_flush(2)
+       write(line,'(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0)') 'GPU low-rank update counts: proposals ', n_prop, ', accepted ', n_acc, &
+            & ', fused steps ', n_fused, ', blocks ', n_blocks, ', flushes ', n_flush(3), ' (capacity ', n_flush(1), ', forced ', n_flush(2)
        call info_line(trim(line)//')')
        !$omp target exit data map(delete: gbuf, res2, S_d, M_d, M_pk, slot_d)
        !$omp target exit data map(delete: X_d)
        if (mode == LR_DELAYED) then
           !$omp target exit data map(delete: Y_d)
+       endif
+       if (allocated(Gb)) then
+          !$omp target exit data map(delete: bsd, bS_d, gbd, cbuf)
+          deallocate( Gb, bidx, bs_h, zab_h, bsd, bS_d, gbd, cbuf )
        endif
        deallocate( jc, S_h, slot_h, M_h, W_h, grow_h, prop_p, prop_k, gbuf, res2, S_d, M_d, X_d, Y_d, slot_d, M_pk )
     endif
@@ -384,6 +396,7 @@ Contains
        upd_cnt(4) = upd_cnt(4) + 1
     else
        ! S, M (packed k x k) to the device, gather C = G0(:,S), Qt = E_S - G0(S,:)^T, Y = Qt M^T, G0 -= C Y^T
+       call la_sync()                               ! asynchronous library calls of a previous flush still read S_d / M_pk
        S_d(1:k) = S_h(1:k,nf)
        !$omp target update to(S_d(1:k))
        do m = 1, k
@@ -475,6 +488,10 @@ Contains
     Complex (Kind=Kind(0.d0)) :: s
     n_prop = n_prop + 1
     base = 0
+    if (blk_open) then
+       call blk_gpp(nf, nf_eff, p, gpp)
+       return
+    endif
     if (fast .and. stepped) then
        base = (nf_eff-1)*gs
        if (mode == LR_DELAYED) then
@@ -544,6 +561,10 @@ Contains
        return
     endif
     ! submatrix, host only
+    if (blk_open .and. slot_h(p,nf) == 0 .and. jc(nf) + 1 > nd) then
+       write(error_unit,*) 'gpu_lr_accept: pending sites exceed N_delay inside a block'
+       call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+    endif
     if (slot_h(p,nf) == 0 .and. jc(nf) + 1 > nd) call gpu_lr_flush(nf, 1)
     k = jc(nf)
     i = slot_h(p,nf)
@@ -579,9 +600,11 @@ Contains
        enddo
     enddo
     jc(nf) = kp
-    if (kp >= nd) then
+    if (blk_open) then
+       continue                          ! block mode: flushed by blk_end
+    elseif (kp >= nd) then
        call gpu_lr_flush(nf, 1)          ! (fast: syncs the deferred work first; this accept's pad is dropped, the flush clears slot_d)
-    elseif (fast .and. padded) then
+    elseif (fast .and. padded .and. .not. blk_open) then
        dfr_pp(nf_eff) = p; dfr_pk(nf_eff) = kp           ! slot_d(p) := kp, applied by the next launch
     endif
   end subroutine gpu_lr_accept
@@ -1105,6 +1128,244 @@ Contains
     call clear_deferred()
     stepped = .false.
   end subroutine gpu_lr_sync
+
+
+!====================================================================
+!  Block mode (submatrix, fast): a block of b <= N_delay consecutive vertices is handled entirely on the host.
+!  Between flushes G0 changes only by the diagonal wrap scalings, and a proposal at p needs G0(p,p), G0(p,S), G0(S,p) with
+!  S inside the block: the principal block Gb = G0(B,B) is copied ONCE (b x b per flavour), scaled on the host by every wrap,
+!  and used for all b proposals.  At the end of the block the device applies the scalings to G0 (rows, then columns of the
+!  block sites) and flushes M (S, M uploaded once).  Device round trips: ~12 per block instead of ~2 per site; k <= b <= N_delay,
+!  so no capacity flush can happen inside a block.
+!====================================================================
+  Logical function gpu_lr_blockmode()
+    Implicit none
+    if (.not. inited) call gpu_lr_init()
+    gpu_lr_blockmode = (mode == LR_SUBMATRIX) .and. fast
+  end function gpu_lr_blockmode
+
+  Subroutine blk_alloc()
+    Implicit none
+    if (allocated(Gb)) return
+    allocate( Gb(nd,nd,2), bidx(Ndim,N_FL), bs_h(nd,2), zab_h(nd,2,2) )
+    allocate( bsd(nd,2), bS_d(nd,2), gbd(nd,nd,2), cbuf(2*nd+nd*nd,2) )
+    bidx = 0; bs_h = 0; Gb = czero_c; zab_h = czero_c
+    bsd = 0; bS_d = 0; gbd = czero_c; cbuf = czero_c
+    !$omp target enter data map(alloc: bsd, bS_d, gbd, cbuf)
+  end subroutine blk_alloc
+
+!> k_blk_gather: gbd(a,c,fl) = G(s(a),s(c)) for the block sites
+  Subroutine k_blk_gather(nfl, nfa, nfb, ld, b)
+    Implicit none
+    Integer, intent(in) :: nfl, nfa, nfb, ld, b
+    Integer :: fl, a, c, nf
+    !$omp target teams distribute parallel do collapse(3) private(nf)
+    do fl = 1, nfl
+       do c = 1, b
+          do a = 1, b
+             nf = nfa
+             if (fl == 2) nf = nfb
+             gbd(a,c,fl) = G_d(bsd(a,fl),bsd(c,fl),nf)
+          enddo
+       enddo
+    enddo
+  end subroutine k_blk_gather
+
+!> rows then columns of G(:,:,nf) scaled by the block's wrap factors (cbuf: za(1:b), zb(1:b) of flavour fl)
+  Subroutine k_blk_scale_rows(nf, fl, ld, b)
+    Implicit none
+    Integer, intent(in) :: nf, fl, ld, b
+    Integer :: a, j
+    !$omp target teams distribute parallel do collapse(2)
+    do a = 1, b
+       do j = 1, ld
+          G_d(bsd(a,fl),j,nf) = cbuf(a,fl) * G_d(bsd(a,fl),j,nf)
+       enddo
+    enddo
+  end subroutine k_blk_scale_rows
+
+  Subroutine k_blk_scale_cols(nf, fl, ld, b, nd_)
+    Implicit none
+    Integer, intent(in) :: nf, fl, ld, b, nd_
+    Integer :: a, i
+    !$omp target teams distribute parallel do collapse(2)
+    do a = 1, b
+       do i = 1, ld
+          G_d(i,bsd(a,fl),nf) = cbuf(nd_+a,fl) * G_d(i,bsd(a,fl),nf)
+       enddo
+    enddo
+  end subroutine k_blk_scale_cols
+
+!> open a block at vertex v1 (v1, v1 + dv, ...), b vertices
+  Subroutine blk_begin(v1, dv, b)
+    Implicit none
+    Integer, intent(in) :: v1, dv, b
+    Integer :: fl, nf, a, v, nfm(2)
+    call blk_alloc()
+    call la_sync()          ! previous flush (asynchronous library calls) before the new uploads
+    blk_open = .true.; blk_v1 = v1; blk_dv = dv; blk_b = b; blk_cnt = 0
+    do fl = 1, N_FL_eff
+       nf = Calc_Fl_map(fl); nfm(fl) = nf
+       bsd(1:nd,fl) = 0
+       do a = 1, b
+          v = v1 + dv*(a-1)
+          bs_h(a,fl) = Op_V(v,nf)%P(1)
+          bsd(a,fl) = bs_h(a,fl)
+          bidx(bs_h(a,fl),nf) = a
+       enddo
+       zab_h(1:nd,1:2,fl) = (1.d0,0.d0)
+    enddo
+    if (N_FL_eff == 1) nfm(2) = nfm(1)
+    !$omp target update to(bsd)
+    call k_blk_gather(N_FL_eff, nfm(1), nfm(2), Ndim, b)
+    !$omp target update from(gbd)
+    do fl = 1, N_FL_eff
+       Gb(1:b,1:b,fl) = gbd(1:b,1:b,fl)
+    enddo
+    n_blocks = n_blocks + 1
+    upd_cnt(3) = upd_cnt(3) + 1
+  end subroutine blk_begin
+
+!> block end: scalings of G0, flush of M, field values to the device
+!> NOTE: nvfortran 26.9 at -O2/-O3 mis-compiles this routine (wrong G after the first stabilisation; -O1 and -O0 are correct,
+!> found by bisecting the optimisation level per routine).  Kept at -O1 until the cause is understood.
+!pgi$r opt=1
+  Subroutine blk_end(t)
+    Implicit none
+    Integer, intent(in) :: t
+    Integer :: fl, nf, a, k, b, m, v, vmin, vmax
+    b = blk_b
+    call la_sync()          ! the previous block's flush (cuBLAS) is asynchronous: it must be done before cbuf / bS_d are overwritten
+    ! cbuf: za, zb of every block site (1 if not wrapped), M packed after them; bS_d: pending sites
+    do fl = 1, N_FL_eff
+       nf = Calc_Fl_map(fl)
+       k = jc(nf)
+       cbuf(1:b,fl) = zab_h(1:b,1,fl)
+       cbuf(nd+1:nd+b,fl) = zab_h(1:b,2,fl)
+       bS_d(1:nd,fl) = 0
+       if (k > 0) then
+          bS_d(1:k,fl) = S_h(1:k,nf)
+          do m = 1, k
+             cbuf(2*nd+(m-1)*k+1:2*nd+m*k,fl) = M_h(1:k,m,nf)
+          enddo
+          if (k == 1 .and. nd >= 2) then          ! k = 1: flush as k = 2 with a zero row / column (see blk_flush)
+             bS_d(2,fl) = S_h(1,nf)
+             cbuf(2*nd+1:2*nd+4,fl) = czero_c
+             cbuf(2*nd+1,fl) = M_h(1,1,nf)
+          endif
+       endif
+    enddo
+    !$omp target update to(cbuf, bS_d)
+    do fl = 1, N_FL_eff
+       nf = Calc_Fl_map(fl)
+       call k_blk_scale_rows(nf, fl, Ndim, b)
+       call k_blk_scale_cols(nf, fl, Ndim, b, nd)
+       upd_cnt(4) = upd_cnt(4) + 2
+       if (jc(nf) > 0) then
+          call blk_flush(nf, fl)
+       endif
+       do a = 1, b
+          bidx(bs_h(a,fl),nf) = 0
+       enddo
+    enddo
+    vmin = min(blk_v1, blk_v1 + blk_dv*(b-1)); vmax = max(blk_v1, blk_v1 + blk_dv*(b-1))
+    !$omp target update to(nsigma_d(vmin:vmax,t))
+    upd_cnt(6) = upd_cnt(6) + 1
+    blk_open = .false.; blk_cnt = 0
+  end subroutine blk_end
+
+!> flush from the already uploaded S and packed M (bS_d, cbuf): same device sequence as gpu_lr_flush, no further uploads
+  Subroutine blk_flush(nf, fl)
+    Implicit none
+    Integer, intent(in) :: nf, fl
+    Integer :: k, m, kk
+    Complex (Kind=Kind(0.d0)), parameter :: cone = (1.d0,0.d0), cmone = (-1.d0,0.d0), czero = (0.d0,0.d0)
+    k = jc(nf)
+    kk = k
+    if (k == 1 .and. nd >= 2) kk = 2
+    n_flush(3) = n_flush(3) + 1; n_flush(2) = n_flush(2) + 1
+    call k_sub_flush_gather(G_d(1,1,nf), Ndim, Ndim, bS_d(1,fl), kk, nf, X_d(1,1,nf), scr_c(1,1,1))
+    call la_gemm(LA_N, LA_T, Ndim, kk, kk, cone, scr_c(1,1,1), Ndim, cbuf(2*nd+1,fl), kk, czero, scr_c(1,1,2), Ndim)
+    call la_gemm(LA_N, LA_T, Ndim, Ndim, kk, cmone, X_d(1,1,nf), Ndim, scr_c(1,1,2), Ndim, cone, G_d(1,1,nf), Ndim)
+    upd_cnt(4) = upd_cnt(4) + 3
+    do m = 1, k
+       slot_h(S_h(m,nf),nf) = 0
+       S_h(m,nf) = 0
+    enddo
+    M_h(1:k,1:k,nf) = czero
+    jc(nf) = 0
+  end subroutine blk_flush
+
+!> vertex n of the sequence n, n + dv, ... up to nlast, slice t: opens a block if none is open; dv = +1 (WRAPGRUP):
+!> the wrap of vertex n (old field) is applied to the host copy before the proposal
+  Subroutine gpu_lr_blk_enter(n, nlast, dv, t, wrap_first)
+    Implicit none
+    Integer, intent(in) :: n, nlast, dv, t
+    Logical, intent(in) :: wrap_first
+    Integer :: b, fl, nf
+    if (.not. blk_open) then
+       b = min(nd, abs(nlast - n) + 1)
+       call blk_begin(n, dv, b)
+    endif
+    blk_a = abs(n - blk_v1) + 1
+    if (wrap_first) call blk_wrap_vertex(n, t, 1)
+  end subroutine gpu_lr_blk_enter
+
+!> end of the vertex: WRAPGRDO applies the wrap after the update (final field); closes the block when it is complete
+  Subroutine gpu_lr_blk_leave(n, t, wrap_after)
+    Implicit none
+    Integer, intent(in) :: n, t
+    Logical, intent(in) :: wrap_after
+    if (wrap_after) call blk_wrap_vertex(n, t, -1)
+    blk_cnt = blk_cnt + 1
+    if (blk_cnt >= blk_b) call blk_end(t)
+  end subroutine gpu_lr_blk_leave
+
+  Subroutine blk_wrap_vertex(n, t, dir)
+    Implicit none
+    Integer, intent(in) :: n, t, dir
+    Integer :: fl, nf, a
+    Complex (Kind=Kind(0.d0)) :: za, zb
+    a = blk_a
+    do fl = 1, N_FL_eff
+       nf = Calc_Fl_map(fl)
+       call wrap_factors(nf, n, t, dir, za, zb)
+       Gb(a,1:blk_b,fl) = za * Gb(a,1:blk_b,fl)
+       Gb(1:blk_b,a,fl) = zb * Gb(1:blk_b,a,fl)
+       zab_h(a,1,fl) = za; zab_h(a,2,fl) = zb
+       call scale_M(nf, bs_h(a,fl), za, zb)
+    enddo
+  end subroutine blk_wrap_vertex
+
+!> G(p,p) of the current G from the host block (submatrix, block mode): p = bs_h(blk_a, fl)
+  Subroutine blk_gpp(nf, nf_eff, p, gpp)
+    Implicit none
+    Integer, intent(in) :: nf, nf_eff, p
+    Complex (Kind=Kind(0.d0)), intent(out) :: gpp
+    Integer :: k, a, m, i, ap, bm
+    Complex (Kind=Kind(0.d0)) :: s
+    k = jc(nf)
+    ap = blk_a
+    gpp = Gb(ap,ap,nf_eff)
+    prop_p(nf) = p; prop_k(nf) = k
+    if (k == 0) return
+    i = slot_h(p,nf)
+    do a = 1, k
+       s = czero_c
+       do m = 1, k
+          bm = bidx(S_h(m,nf),nf)
+          s = s - M_h(a,m,nf) * Gb(bm,ap,nf_eff)
+       enddo
+       if (i /= 0) s = s + M_h(a,i,nf)
+       W_h(a,nf) = s
+       grow_h(a,nf) = Gb(ap,bidx(S_h(a,nf),nf),nf_eff)
+    enddo
+    s = czero_c
+    do a = 1, k
+       s = s + grow_h(a,nf) * W_h(a,nf)
+    enddo
+    gpp = gpp - s
+  end subroutine blk_gpp
 
 end Module gpu_lowrank_mod
 #endif

@@ -78,7 +78,8 @@ Module gpu_update_mod
   Private
   Public :: gpu_upd_host_only, gpu_upd_enabled, gpu_upd_override, gpu_upd_resync_fields, gpu_upd_check_fields, gpu_upd_selftest_due, gpu_upd_fault_set, gpu_upd_fault_clear
   Public :: gpu_g_host, gpu_g_host_wrote
-  Public :: gpu_wrapgrup, gpu_wrapgrdo, gpu_trace_on, gpu_trace_begin, gpu_trace_end, gpu_upd_time
+  Public :: gpu_wrapgrup, gpu_wrapgrdo, gpu_trace_on, gpu_trace_begin, gpu_trace_end, gpu_upd_time, gpu_tacc, gpu_tget
+  Real (Kind=Kind(0.d0)), Save :: t_acc(8) = 0.d0
   Real (Kind=Kind(0.d0)), Save :: t_up = 0.d0
 
   Logical, Save :: checked = .false., enabled = .false., forced = .false., forced_val = .false.
@@ -479,13 +480,14 @@ Contains
     Integer :: nf, nf_eff, NTAU1, n
     Complex (Kind=Kind(0.d0)) :: HS_New
     Real (Kind=Kind(0.d0)) :: T0_proposal, T0_Proposal_ratio, S0_ratio
-    Logical :: Acc, toggle1, fast_lr
+    Logical :: Acc, toggle1, fast_lr, bm
     Real (Kind=Kind(0.d0)) :: t0w
 
     if (N_Global_tau > 0) call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
     upd_cnt(10) = upd_cnt(10) + 1
     t0w = omp_get_wtime()
     fast_lr = gpu_lr_fast()
+    bm = gpu_lr_blockmode()
     NTAU1 = NTAU + 1
     call g_in(GR)
     ! Wrap up with B(tau1)
@@ -495,7 +497,9 @@ Contains
        call gpu_mmthl_m1(G_d(1,1,nf), Ndim, Ndim, nf)
     Enddo
     Do n = Nt_sequential_start,Nt_sequential_end
-       if (fast_lr) then
+       if (bm) then
+          call gpu_lr_blk_enter(n, Nt_sequential_end, 1, ntau1, .true.)   ! submatrix block mode: host block, wrap on the host copy
+       elseif (fast_lr) then
           call gpu_lr_step_up(n, ntau1)             ! wrap + gather / G(p,p) of all flavours, one launch (old field)
        else
           Do nf_eff = 1, N_FL_eff
@@ -521,7 +525,11 @@ Contains
           toggle1 = .false.
           Call Control_upgrade_eff(toggle1)
        Endif
-       if (fast_lr) call gpu_lr_defer(n, ntau1, Acc, .false.)
+       if (bm) then
+          call gpu_lr_blk_leave(n, ntau1, .false.)
+       elseif (fast_lr) then
+          call gpu_lr_defer(n, ntau1, Acc, .false.)
+       endif
        ! Op_Wrapup with N_Type 2: nothing for diagonal operators
     Enddo
     call gpu_lr_flush_all(2)                    ! delayed / submatrix: G_d must be current at the end of the slice
@@ -542,17 +550,22 @@ Contains
     Integer :: nf, nf_eff, n
     Complex (Kind=Kind(0.d0)) :: HS_New
     Real (Kind=Kind(0.d0)) :: T0_proposal, T0_Proposal_ratio, S0_ratio
-    Logical :: Acc, toggle1, fast_lr
+    Logical :: Acc, toggle1, fast_lr, bm
     Real (Kind=Kind(0.d0)) :: t0w
 
     if (N_Global_tau > 0) call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
     upd_cnt(10) = upd_cnt(10) + 1
     t0w = omp_get_wtime()
     fast_lr = gpu_lr_fast()
+    bm = gpu_lr_blockmode()
     call g_in(GR)
     Do n =  Nt_sequential_end, Nt_sequential_start, -1
        ! Op_Wrapdo with N_Type 2: nothing for diagonal operators
-       if (fast_lr) call gpu_lr_step_down(n, ntau)   ! deferred wrap of the previous vertex + gather / G(p,p), one launch
+       if (bm) then
+          call gpu_lr_blk_enter(n, Nt_sequential_start, -1, ntau, .false.)
+       elseif (fast_lr) then
+          call gpu_lr_step_down(n, ntau)   ! deferred wrap of the previous vertex + gather / G(p,p), one launch
+       endif
        nf = 1
        T0_proposal       = 1.5D0
        T0_Proposal_ratio = 1.D0
@@ -572,7 +585,9 @@ Contains
           Call Control_upgrade_eff(toggle1)
        Endif
        ! the field has changed after the update: Op_Wrapdo N_Type 1 reads the new nsigma_d(n,ntau)
-       if (fast_lr) then
+       if (bm) then
+          call gpu_lr_blk_leave(n, ntau, .true.)      ! host wrap (final field); the block closes after its last vertex
+       elseif (fast_lr) then
           call gpu_lr_defer(n, ntau, Acc, .true.)     ! the wrap follows in the next launch (or the end-of-slice sync)
        else
           Do nf_eff = 1, N_FL_eff
@@ -590,6 +605,18 @@ Contains
     call g_out(GR)
     t_up = t_up + (omp_get_wtime() - t0w)
   end Subroutine gpu_wrapgrdo
+
+  Subroutine gpu_tacc(i, sgn)       ! stopwatch: call with -1 before, +1 after
+    Implicit none
+    Integer, intent(in) :: i
+    Real (Kind=Kind(0.d0)), intent(in) :: sgn
+    t_acc(i) = t_acc(i) + sgn*omp_get_wtime()
+  end subroutine gpu_tacc
+  Real (Kind=Kind(0.d0)) function gpu_tget(i)
+    Implicit none
+    Integer, intent(in) :: i
+    gpu_tget = t_acc(i)
+  end function gpu_tget
 
   Real (Kind=Kind(0.d0)) function gpu_upd_time()
     Implicit none
