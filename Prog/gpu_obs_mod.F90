@@ -35,11 +35,14 @@ Module gpu_obs_mod
   Use gpu_state_mod
   Use gpu_update_mod, only: gpu_upd_enabled
   Use gpu_update_mod, only: gpu_tacc
-  Use gpu_wrap_mod, only: gpu_symm
+  Use gpu_wrap_mod, only: gpu_symm, gpu_symm_build
+  Use alf_la_mod, only: la_gemm, LA_N
   Implicit none
   Private
   Logical, Save :: o_symm = .false.
-  Complex (Kind=Kind(0.d0)), Allocatable, Save :: Gsv(:,:,:), Ts(:,:,:,:)
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: Gsv(:,:,:), Ts(:,:,:,:), Asy(:,:,:), Bsy(:,:,:), Tmp(:,:)
+  Logical, Save :: symm_built = .false.
+  Integer, Save :: k_b = 0
   Public :: gpu_obs_setup, gpu_obs_active, gpu_obs_measure, gpu_obs_flush, gpu_obs_finalize, gpu_obs_symm
   Public :: gpu_obs_tau_active, gpu_obs_tau_measure
 
@@ -169,6 +172,24 @@ Contains
     gpu_obs_symm = o_symm .and. gpu_obs_active()
   End Function gpu_obs_symm
 
+  !> out = Symm(in) = A in B  (A, B built once from the hop elements); in and out must be different arrays
+  Subroutine symm_apply(inn, out, nf)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(inout) :: inn(*), out(*)
+    Integer, intent(in) :: nf
+    Complex (Kind=Kind(0.d0)), parameter :: cone = (1.d0,0.d0), czero = (0.d0,0.d0)
+    if (.not. symm_built) then
+       allocate(Asy(o_Ndim,o_Ndim,o_NFL), Bsy(o_Ndim,o_Ndim,o_NFL), Tmp(o_Ndim,o_Ndim))
+       !$omp target enter data map(alloc: Asy, Bsy, Tmp)
+       do k_b = 1, o_NFL
+          call gpu_symm_build(Asy(1,1,k_b), Bsy(1,1,k_b), o_Ndim, o_Ndim, k_b)
+       enddo
+       symm_built = .true.
+    endif
+    call la_gemm(LA_N, LA_N, o_Ndim, o_Ndim, o_Ndim, cone, Asy(1,1,nf), o_Ndim, inn, o_Ndim, czero, Tmp, o_Ndim)
+    call la_gemm(LA_N, LA_N, o_Ndim, o_Ndim, o_Ndim, cone, Tmp, o_Ndim, Bsy(1,1,nf), o_Ndim, czero, out, o_Ndim)
+  end subroutine symm_apply
+
   Subroutine k_cpy(nel, a, b)
     Implicit none
     Integer, intent(in) :: nel
@@ -221,7 +242,7 @@ Contains
        endif
        do nf = 1, o_NFL
           call k_cpy(o_Ndim*o_Ndim, G_d(1,1,nf), Gsv(1,1,nf))
-          call gpu_symm(G_d(1,1,nf), o_Ndim, o_Ndim, nf)
+          call symm_apply(Gsv(1,1,nf), G_d(1,1,nf), nf)
        enddo
     endif
     ZP = Phase/Real(Phase, kind(0.D0))
@@ -434,6 +455,11 @@ Contains
        !$omp target exit data map(delete: Ts)
        deallocate(Ts)
     endif
+    if (symm_built) then
+       !$omp target exit data map(delete: Asy, Bsy, Tmp)
+       deallocate(Asy, Bsy, Tmp)
+       symm_built = .false.
+    endif
     if (o_tdev) then
        !$omp target exit data map(delete: tacc, tacc0)
        deallocate(tacc, tacc0)
@@ -489,14 +515,10 @@ Contains
           !$omp target enter data map(alloc: Ts)
        endif
        do nf = 1, o_NFL
-          call k_cpy(o_Ndim*o_Ndim, GT0(1,1,nf), Ts(1,1,nf,1))
-          call k_cpy(o_Ndim*o_Ndim, G0T(1,1,nf), Ts(1,1,nf,2))
-          call k_cpy(o_Ndim*o_Ndim, G00(1,1,nf), Ts(1,1,nf,3))
-          call k_cpy(o_Ndim*o_Ndim, GTT(1,1,nf), Ts(1,1,nf,4))
-          call gpu_symm(Ts(1,1,nf,1), o_Ndim, o_Ndim, nf)
-          call gpu_symm(Ts(1,1,nf,2), o_Ndim, o_Ndim, nf)
-          call gpu_symm(Ts(1,1,nf,3), o_Ndim, o_Ndim, nf)
-          call gpu_symm(Ts(1,1,nf,4), o_Ndim, o_Ndim, nf)
+          call symm_apply(GT0(1,1,nf), Ts(1,1,nf,1), nf)
+          call symm_apply(G0T(1,1,nf), Ts(1,1,nf,2), nf)
+          call symm_apply(G00(1,1,nf), Ts(1,1,nf,3), nf)
+          call symm_apply(GTT(1,1,nf), Ts(1,1,nf,4), nf)
        enddo
        do k = 1, o_nobs
           if (o_kind(k) == 4 .and. k /= 2) cycle

@@ -82,7 +82,8 @@ Module gpu_wrap_mod
   Implicit none
 
   Private
-  Public :: gpu_mmthr, gpu_mmthr_m1, gpu_mmthlc, gpu_mmthl, gpu_mmthl_m1, gpu_symm
+  Public :: gpu_mmthr, gpu_mmthr_m1, gpu_mmthlc, gpu_mmthl, gpu_mmthl_m1, gpu_symm, gpu_symm_build
+  Public :: gpu_mmthr_d, gpu_mmthl_m1_d, gpu_mmthl_d, gpu_mmthr_m1_d, gpu_hopd_on
   Public :: gpu_Vop_R, gpu_Vop_L, gpu_Vop_wrap, gpu_Vslice_R, gpu_Vslice_L, gpu_Vwrap_all
   Public :: gpu_wrapur_slices, gpu_wrapul_slices, gpu_wrapgr_up, gpu_wrapgr_do
   Public :: gpu_wrap_hook, gpu_wrap_selftest, gpu_wrap_timing
@@ -96,6 +97,10 @@ Module gpu_wrap_mod
   Complex (Kind=Kind(0.d0)), Parameter :: z1 = (1.d0, 0.d0), z0 = (0.d0, 0.d0)
 
   Logical, Parameter :: la_available = .true.
+
+  Integer, parameter :: HOPD_NMAX = 800
+  Logical, Save :: hopd_built = .false.
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: Hd(:,:,:,:)
 
 Contains
 
@@ -111,6 +116,9 @@ Contains
     Implicit none
     Integer, intent(in) :: ld, ncol, nf
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
+    if (ld == Ndim .and. ncol == Ndim .and. gpu_hopd_on()) then
+       call hopd_left(M, nf, 1); return
+    endif
     call hop_left(M, ld, ncol, nf, 1, .true.)
   end subroutine gpu_mmthr
 
@@ -118,6 +126,9 @@ Contains
     Implicit none
     Integer, intent(in) :: ld, ncol, nf
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
+    if (ld == Ndim .and. ncol == Ndim .and. gpu_hopd_on()) then
+       call hopd_left(M, nf, 4); return
+    endif
     call hop_left(M, ld, ncol, nf, 2, .false.)
   end subroutine gpu_mmthr_m1
 
@@ -132,6 +143,9 @@ Contains
     Implicit none
     Integer, intent(in) :: ld, nrow, nf
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
+    if (ld == Ndim .and. nrow == Ndim .and. gpu_hopd_on()) then
+       call hopd_right(M, nf, 3); return
+    endif
     call hop_right(M, ld, nrow, nf, 1, .false.)
   end subroutine gpu_mmthl
 
@@ -139,6 +153,9 @@ Contains
     Implicit none
     Integer, intent(in) :: ld, nrow, nf
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
+    if (ld == Ndim .and. nrow == Ndim .and. gpu_hopd_on()) then
+       call hopd_right(M, nf, 2); return
+    endif
     call hop_right(M, ld, nrow, nf, 2, .true.)
   end subroutine gpu_mmthl_m1
 
@@ -170,6 +187,144 @@ Contains
        endif
     enddo
   end subroutine gpu_symm
+
+!--------------------------------------------------------------------
+!  Dense hopping products (small and medium N): every hop sequence is a fixed linear map, M -> Bl M or M -> M Br.  The four matrices
+!  are the sequences applied to the identity (the same kernels), built once; applying one is a GEMM plus a copy instead of one launch
+!  per checkerboard group.  Used for Ndim <= HOPD_NMAX; above that the group kernels are cheaper.
+!    1 mmthr (left, mat, desc)   2 mmthl_m1 (right, invmat, desc)   3 mmthl (right, mat, asc)   4 mmthr_m1 (left, invmat, asc)
+!--------------------------------------------------------------------
+  Logical Function gpu_hopd_on()
+    Implicit none
+    gpu_hopd_on = (Ndim <= HOPD_NMAX)
+  end function gpu_hopd_on
+
+  Subroutine hopd_build()
+    Implicit none
+    Integer :: nf, w, i, nfl
+    Complex (Kind=Kind(0.d0)), allocatable :: Id(:,:)
+    if (hopd_built) return
+    nfl = size(G_d,3)
+    allocate(Hd(Ndim,Ndim,nfl,4))
+    !$omp target enter data map(alloc: Hd)
+    allocate(Id(Ndim,Ndim)); Id = (0.d0,0.d0)
+    do i = 1, Ndim
+       Id(i,i) = (1.d0,0.d0)
+    enddo
+    do nf = 1, nfl
+       do w = 1, 4
+          call k_set_c(Ndim*Ndim, Id, Hd(1,1,nf,w))
+       enddo
+       call hop_left (Hd(1,1,nf,1), Ndim, Ndim, nf, 1, .true.)
+       call hop_right(Hd(1,1,nf,2), Ndim, Ndim, nf, 2, .true.)
+       call hop_right(Hd(1,1,nf,3), Ndim, Ndim, nf, 1, .false.)
+       call hop_left (Hd(1,1,nf,4), Ndim, Ndim, nf, 2, .false.)
+    enddo
+    deallocate(Id)
+    hopd_built = .true.
+  end subroutine hopd_build
+
+  Subroutine hopd_left(M, nf, w)          ! M <- Hd(w) M
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(Ndim,*)
+    Integer, intent(in) :: nf, w
+    call hopd_build()
+    call la_gemm(LA_N, LA_N, Ndim, Ndim, Ndim, z1, Hd(1,1,nf,w), Ndim, M, Ndim, z0, scr_c(1,1,1), Ndim)
+    call k_cpy_n(Ndim*Ndim, scr_c(1,1,1), M)
+  end subroutine hopd_left
+
+  Subroutine hopd_right(M, nf, w)         ! M <- M Hd(w)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(Ndim,*)
+    Integer, intent(in) :: nf, w
+    call hopd_build()
+    call la_gemm(LA_N, LA_N, Ndim, Ndim, Ndim, z1, M, Ndim, Hd(1,1,nf,w), Ndim, z0, scr_c(1,1,1), Ndim)
+    call k_cpy_n(Ndim*Ndim, scr_c(1,1,1), M)
+  end subroutine hopd_right
+
+  Subroutine k_cpy_n(nel, a, b)
+    Implicit none
+    Integer, intent(in) :: nel
+    Complex (Kind=Kind(0.d0)), intent(in) :: a(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: b(*)
+    Integer :: i
+    !$omp target teams distribute parallel do
+    do i = 1, nel
+       b(i) = a(i)
+    enddo
+  end subroutine k_cpy_n
+
+  Subroutine gpu_mmthr_d(M, nf)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(Ndim,*)
+    Integer, intent(in) :: nf
+    call hopd_left(M, nf, 1)
+  end subroutine gpu_mmthr_d
+  Subroutine gpu_mmthl_m1_d(M, nf)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(Ndim,*)
+    Integer, intent(in) :: nf
+    call hopd_right(M, nf, 2)
+  end subroutine gpu_mmthl_m1_d
+  Subroutine gpu_mmthl_d(M, nf)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(Ndim,*)
+    Integer, intent(in) :: nf
+    call hopd_right(M, nf, 3)
+  end subroutine gpu_mmthl_d
+  Subroutine gpu_mmthr_m1_d(M, nf)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(Ndim,*)
+    Integer, intent(in) :: nf
+    call hopd_left(M, nf, 4)
+  end subroutine gpu_mmthr_m1_d
+
+!> Symm(M) = A M B for every n x n matrix M: A (left factors) and B (right factors) are the sequences of gpu_symm applied to the
+!> identity (the lefts and rights commute).  A and B must be device-resident n x n arrays with leading dimension ld; they are
+!> set here (the identity is written by the host and uploaded).
+  Subroutine gpu_symm_build(A, B, ld, n, nf)
+    Implicit none
+    Integer, intent(in) :: ld, n, nf
+    Complex (Kind=Kind(0.d0)), intent(inout) :: A(ld,*), B(ld,*)
+    Integer :: ga, gb, g, e, i
+    Complex (Kind=Kind(0.d0)), allocatable :: Id(:,:)
+    allocate(Id(ld,n)); Id = (0.d0,0.d0)
+    do i = 1, n
+       Id(i,i) = (1.d0,0.d0)
+    enddo
+    call k_set_c(ld*n, Id, A)
+    call k_set_c(ld*n, Id, B)
+    deallocate(Id)
+    ga = hop_gstart(nf); gb = hop_gstart(nf+1) - 1
+    if (gb < ga) return
+    do g = gb, ga, -1
+       if (.not. hop_big(nf)) then
+          call k_cb_left_g(A, ld, n, g, 3, gpu_tl)
+          call k_cb_right_g(B, ld, n, g, 4, gpu_tr)
+       else
+          e = hop_gptr(g)
+          if (hop_meta(2,e) > 8) then
+             call dense_left(A, ld, n, e, 3)
+             call dense_right(B, ld, n, e, 4)
+          else
+             call k_cb_left_g(A, ld, n, g, 3, gpu_tl)
+             call k_cb_right_g(B, ld, n, g, 4, gpu_tr)
+          endif
+       endif
+    enddo
+  end subroutine gpu_symm_build
+
+  Subroutine k_set_c(nel, src, dst)
+    Implicit none
+    Integer, intent(in) :: nel
+    Complex (Kind=Kind(0.d0)), intent(in) :: src(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: dst(*)
+    Integer :: i
+    !$omp target teams distribute parallel do map(to: src(1:nel))
+    do i = 1, nel
+       dst(i) = src(i)
+    enddo
+  end subroutine k_set_c
 
 !--------------------------------------------------------------------
   Subroutine hop_left(M, ld, ncol, nf, k, desc)
