@@ -87,7 +87,7 @@
 !>    hop_aux(1:2,e)      (xoff, pident): pident = 1 iff P = (1,2,...,nd); xoff = offset (0-based) into hop_At/hop_Ac for
 !>                        real elements with nd > 8, else -1.
 !>    hop_At(xoff + (k-1)*nd*nd + j + (i-1)*nd) = A_k(i,j) (transposed copy, real), hop_Ac(xoff + (k-1)*nd*nd + i +
-!>                        (j-1)*nd) = A_k(i,j) as complex; k = 1 (mat), 2 (invmat) only.  Used by the dense left
+!>                        (j-1)*nd) = A_k(i,j) as complex; k = 1 (mat), 2 (invmat), 3 (mat_1D2), 4 (invmat_1D2).  Used by the dense left
 !>                        multiplication variants of gpu_wrap_mod.
 !>    complex elements with nd > 8: the imaginary part of the diagonal is zeroed (ZHEMM, which ALF calls there, ignores
 !>                        it; the nd <= 8 loops use it, but a Hermitian matrix has none).
@@ -512,6 +512,9 @@ Contains
     if (get_Propose_S0()) then
        reason = 'Propose_S0 is not supported on the GPU path'; return
     endif
+    if (get_Lowrank_cross_slice()) then
+       reason = 'Lowrank_cross_slice (cross-slice delay) is not supported on the GPU path'; return
+    endif
     if (reconstruction_needed) then
        reason = 'Calc_Fl with weight reconstruction (ham%weight_reconstruction) is not supported on the GPU path'; return
     endif
@@ -784,7 +787,7 @@ Contains
     ! dense auxiliaries
     nx = 0
     do e = 1, g_nel
-       if (hop_meta(1,e) == 1 .and. hop_meta(2,e) > 8) nx = nx + 2*hop_meta(2,e)**2
+       if (hop_meta(1,e) == 1 .and. hop_meta(2,e) > 8) nx = nx + 4*hop_meta(2,e)**2     ! all four matrices (mat, invmat, mat_1D2, invmat_1D2): the device Symm uses the half steps
     enddo
     allocate(hop_At(max(nx,1)), hop_Ac(max(nx,1)))
     hop_At = 0.d0; hop_Ac = cmplx(0.d0,0.d0,kind(0.d0))
@@ -798,7 +801,7 @@ Contains
        enddo
        if (hop_meta(1,e) == 1 .and. nd > 8) then
           hop_aux(1,e) = xo
-          do k = 1, 2
+          do k = 1, 4
              mo = hop_meta(4,e) + (k-1)*nd*nd
              do j = 1, nd
                 do i = 1, nd
@@ -807,7 +810,7 @@ Contains
                 enddo
              enddo
           enddo
-          xo = xo + 2*nd*nd
+          xo = xo + 4*nd*nd
        endif
     enddo
     deallocate(mark)
