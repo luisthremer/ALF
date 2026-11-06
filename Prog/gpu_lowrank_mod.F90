@@ -86,8 +86,8 @@ Module gpu_lowrank_mod
   Integer, Allocatable, Save :: S_d(:)                          ! (nd) device copy of S of one flavour
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: M_h(:,:,:)   ! (nd, nd, N_FL) host
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: M_d(:,:)     ! (nd, nd) device copy of M of one flavour (flush)
-  Complex (Kind=Kind(0.d0)), Allocatable, Save :: W_h(:), grow_h(:)   ! cached proposal data (nd) host
-  Integer, Save :: prop_nf = 0, prop_p = 0, prop_k = 0
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: W_h(:,:), grow_h(:,:)   ! cached proposal data (nd, N_FL) host, per flavour
+  Integer, Allocatable, Save :: prop_p(:), prop_k(:)          ! site and pending count of the cached proposal, per flavour
 
 Contains
 
@@ -166,7 +166,8 @@ Contains
        nd = static_nd(mode == LR_SUBMATRIX, Ndim, n_nz)
     endif
     nd = max(1, min(nd, Ndim))
-    allocate( jc(N_FL), S_h(nd,N_FL), slot_h(Ndim,N_FL), M_h(nd,nd,N_FL), W_h(nd), grow_h(nd) )
+    allocate( jc(N_FL), S_h(nd,N_FL), slot_h(Ndim,N_FL), M_h(nd,nd,N_FL), W_h(nd,N_FL), grow_h(nd,N_FL), prop_p(N_FL), prop_k(N_FL) )
+    prop_p = 0; prop_k = -1
     jc = 0; S_h = 0; slot_h = 0; M_h = cmplx(0.d0,0.d0,kind(0.d0))
     allocate( gbuf(2*nd+1), res2(2), S_d(nd), M_d(nd,nd) )
     gbuf = cmplx(0.d0,0.d0,kind(0.d0)); res2 = 0.d0; S_d = 0; M_d = cmplx(0.d0,0.d0,kind(0.d0))
@@ -204,7 +205,7 @@ Contains
        if (mode == LR_DELAYED) then
           !$omp target exit data map(delete: Y_d)
        endif
-       deallocate( jc, S_h, slot_h, M_h, W_h, grow_h, gbuf, res2, S_d, M_d, X_d, Y_d )
+       deallocate( jc, S_h, slot_h, M_h, W_h, grow_h, prop_p, prop_k, gbuf, res2, S_d, M_d, X_d, Y_d )
     endif
     inited = .false.; mode = LR_STD
   end subroutine gpu_lr_finalize
@@ -466,7 +467,7 @@ Contains
     upd_cnt(5) = upd_cnt(5) + 1
     !$omp target update from(gbuf(1:2*k+1))
     gpp = gbuf(1)
-    prop_nf = nf; prop_p = p; prop_k = k
+    prop_p(nf) = p; prop_k(nf) = k
     if (k == 0) return
     ! W = M (J - G0(S,p)),  G = G0(p,p) - G0(p,S) W
     i = slot_h(p,nf)
@@ -476,12 +477,12 @@ Contains
           s = s - M_h(a,m,nf) * gbuf(1+m)
        enddo
        if (i /= 0) s = s + M_h(a,i,nf)
-       W_h(a) = s
-       grow_h(a) = gbuf(1+k+a)
+       W_h(a,nf) = s
+       grow_h(a,nf) = gbuf(1+k+a)
     enddo
     s = czero_c
     do a = 1, k
-       s = s + grow_h(a) * W_h(a)
+       s = s + grow_h(a,nf) * W_h(a,nf)
     enddo
     gpp = gpp - s
   end subroutine gpu_lr_gpp
@@ -520,13 +521,13 @@ Contains
     ! a = J - [W; 0],  b^T = J^T + [G0(p,S) M, 0]  (k = 0 after a flush: a = b = e_i; W, G0(p,S) are then not used)
     av(1:kp) = czero_c
     bt(1:kp) = czero_c
-    if (k > 0 .and. prop_k == k .and. prop_nf == nf .and. prop_p == p) then
+    if (k > 0 .and. prop_k(nf) == k .and. prop_p(nf) == p) then
        do a = 1, k
-          av(a) = - W_h(a)
+          av(a) = - W_h(a,nf)
        enddo
        do b = 1, k
           do a = 1, k
-             bt(b) = bt(b) + grow_h(a) * M_h(a,b,nf)
+             bt(b) = bt(b) + grow_h(a,nf) * M_h(a,b,nf)
           enddo
        enddo
     endif
