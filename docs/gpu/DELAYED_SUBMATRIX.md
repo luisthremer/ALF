@@ -22,7 +22,7 @@ Scope = what the GPU path supports: rank-1 vertices, diagonal operators. Other v
 |---|---|---:|---:|---|
 | 6x6, 400 | standard | 204 | 2 470 712 | 617 678 / 1 440 000 |
 | 6x6, 400 | delayed (N_delay 16) | 234 | 1 344 192 | same |
-| 6x6, 400 | submatrix (16) | 259 | 1 344 192 low-rank flushes only | same |
+| 6x6, 400 | submatrix (16) | 259 | n/a | same |
 | 12x12, 20 | standard / delayed / submatrix | 42.8 / 51.5 / 48.1 | | |
 | 20x20, 10 | standard | 79.2 | 690 340 | 172 585 / 400 000 |
 | 20x20, 10 | delayed (16) | 87.6 | 367 686 | same |
