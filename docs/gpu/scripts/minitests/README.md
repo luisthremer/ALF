@@ -18,7 +18,7 @@ The scripts that produced the results in `PARKING.md` and `docs/gpu/DELAYED_SUBM
 | 2 | `t2.sed`, `t2b.sed` (old `srcP` vs new `srcC` on the CPU) |
 | 3 | `t3.sed`, `t3run.sh MACH` |
 | 4 | `t4.sed` |
-| 5 | `t5run.sh MACH` (22 configurations); global-move cases are `t5g.sed`, `t5g2.sed` (Hubbard has no global moves: expected failure) |
+| 5 | `t5run.sh MACH` (23 configurations); global-move cases are `t5g.sed`, `t5g2.sed` (Hubbard has no global moves: expected failure) |
 | 6 | `test6.sh`, `t6.sed` |
 | 7 | merge check: `mm_a.sed`, `mm_b.sed` (without and with `Sequential_MALA`) |
 | 11 | `t11.sh` |
