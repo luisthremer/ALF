@@ -175,7 +175,8 @@ Contains
   !> out = Symm(in) = A in B  (A, B built once from the hop elements); in and out must be different arrays
   Subroutine symm_apply(inn, out, nf)
     Implicit none
-    Complex (Kind=Kind(0.d0)), intent(inout) :: inn(*), out(*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: inn(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: out(*)
     Integer, intent(in) :: nf
     Complex (Kind=Kind(0.d0)), parameter :: cone = (1.d0,0.d0), czero = (0.d0,0.d0)
     if (.not. symm_built) then
