@@ -79,7 +79,7 @@ Module gpu_update_mod
   Public :: gpu_upd_host_only, gpu_upd_enabled, gpu_upd_override, gpu_upd_resync_fields, gpu_upd_check_fields, gpu_upd_selftest_due, gpu_upd_fault_set, gpu_upd_fault_clear
   Public :: gpu_g_host, gpu_g_host_wrote
   Public :: gpu_wrapgrup, gpu_wrapgrdo, gpu_trace_on, gpu_trace_begin, gpu_trace_end, gpu_upd_time, gpu_tacc, gpu_tget
-  Real (Kind=Kind(0.d0)), Save :: t_acc(8) = 0.d0
+  Real (Kind=Kind(0.d0)), Save :: t_acc(16) = 0.d0
   Real (Kind=Kind(0.d0)), Save :: t_up = 0.d0
 
   Logical, Save :: checked = .false., enabled = .false., forced = .false., forced_val = .false.

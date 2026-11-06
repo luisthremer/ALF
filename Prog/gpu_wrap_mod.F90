@@ -82,7 +82,7 @@ Module gpu_wrap_mod
   Implicit none
 
   Private
-  Public :: gpu_mmthr, gpu_mmthr_m1, gpu_mmthlc, gpu_mmthl, gpu_mmthl_m1
+  Public :: gpu_mmthr, gpu_mmthr_m1, gpu_mmthlc, gpu_mmthl, gpu_mmthl_m1, gpu_symm
   Public :: gpu_Vop_R, gpu_Vop_L, gpu_Vop_wrap, gpu_Vslice_R, gpu_Vslice_L, gpu_Vwrap_all
   Public :: gpu_wrapur_slices, gpu_wrapul_slices, gpu_wrapgr_up, gpu_wrapgr_do
   Public :: gpu_wrap_hook, gpu_wrap_selftest, gpu_wrap_timing
@@ -141,6 +141,35 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
     call hop_right(M, ld, nrow, nf, 2, .true.)
   end subroutine gpu_mmthl_m1
+
+!--------------------------------------------------------------------
+!> Hop_mod_Symm on the device: M <- B^{1/2}-similarity, per element (descending) left mat_1D2 then right invmat_1D2.  The elements of a
+!> group commute, so a group is applied as all lefts then all rights.  M is an n x n matrix (ld = leading dimension).
+  Subroutine gpu_symm(M, ld, n, nf)
+    Implicit none
+    Integer, intent(in) :: ld, n, nf
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
+    Integer :: ga, gb, g, e
+    ga = hop_gstart(nf); gb = hop_gstart(nf+1) - 1
+    if (gb < ga .or. n <= 0) return
+    do g = gb, ga, -1
+       if (.not. hop_big(nf)) then
+          call k_cb_left_g(M, ld, n, g, 3, gpu_tl)
+          call k_cb_right_g(M, ld, n, g, 4, gpu_tr)
+          gpu_n_launch = gpu_n_launch + 2
+       else
+          e = hop_gptr(g)
+          if (hop_meta(2,e) > 8) then
+             call dense_left(M, ld, n, e, 3)
+             call dense_right(M, ld, n, e, 4)
+          else
+             call k_cb_left_g(M, ld, n, g, 3, gpu_tl)
+             call k_cb_right_g(M, ld, n, g, 4, gpu_tr)
+             gpu_n_launch = gpu_n_launch + 2
+          endif
+       endif
+    enddo
+  end subroutine gpu_symm
 
 !--------------------------------------------------------------------
   Subroutine hop_left(M, ld, ncol, nf, k, desc)

@@ -150,7 +150,7 @@ Program Main
         use gpu_state_mod, only: gpu_state_setup, gpu_state_finalize, gpu_active
         use gpu_wrap_mod,  only: gpu_wrap_hook
         use gpu_update_mod, only: gpu_upd_enabled, gpu_g_host, gpu_g_host_wrote
-        use gpu_obs_mod, only: gpu_obs_active, gpu_obs_flush, gpu_obs_finalize
+        use gpu_obs_mod, only: gpu_obs_active, gpu_obs_flush, gpu_obs_finalize, gpu_obs_symm
         use gpu_stab_mod,  only: gpu_stab_on, gpu_stab_setup, gpu_stab_finalize, gpu_stab_hook, gpu_stab_wrapur, &
              &                   gpu_stab_wrapul, gpu_stab_exchange, gpu_stab_store_l, gpu_stab_cgr, gpu_stab_reset_l, &
              &                   gpu_stab_reset_r, gpu_stab_reset_st
@@ -201,6 +201,7 @@ Program Main
         Integer :: I, nf, nf_eff, nst, n, n1, N_op, NBin_eff
         Integer :: tmp_Nt_sequential_start, tmp_Nt_sequential_end, tmp_N_Global_tau
         Logical :: Toggle,  Toggle1
+        Logical :: dev_symm
         Complex (Kind=Kind(0.d0)) :: Phase, Z, Z1
         Real    (Kind=Kind(0.d0)) :: ZERO = 10D-8
         Real    (Kind=Kind(0.d0)) :: Mc_step_weight
@@ -927,11 +928,22 @@ Program Main
                        if (.not. gpu_obs_active()) call gpu_g_host(GR)   ! 208-1: host measurement reads GR (208-2: not with the device Obser)
 #endif
                        Mc_step_weight = 1.d0
-                       If (Symm) then
+#ifdef ALF_GPU
+                       dev_symm = gpu_obs_symm()   ! the device measurement applies Hop_mod_Symm itself (gpu_symm)
+#else
+                       dev_symm = .false.
+#endif
+                       If (Symm .and. .not. dev_symm) then
+#ifdef ALF_GPU
+                          call gpu_tacc(1,-1.d0)
+#endif
                           Call Hop_mod_Symm(GR_Tilde,GR,ntau1)
                           !reconstruction of NOT calculated block!!!
                           If (reconstruction_needed) Call ham%GR_reconstruction( GR_Tilde )
                           CALL ham%Obser( GR_Tilde, PHASE, Ntau1, Mc_step_weight )
+#ifdef ALF_GPU
+                          call gpu_tacc(1,1.d0)
+#endif
                        else
                           !reconstruction of NOT calculated block!!!
                           If (reconstruction_needed) Call ham%GR_reconstruction( GR )
@@ -978,7 +990,12 @@ Program Main
                        if (.not. gpu_obs_active()) call gpu_g_host(GR)   ! 208-1: host measurement reads GR (208-2: not with the device Obser)
 #endif
                        Mc_step_weight = 1.d0
-                       If (Symm) then
+#ifdef ALF_GPU
+                       dev_symm = gpu_obs_symm()   ! the device measurement applies Hop_mod_Symm itself (gpu_symm)
+#else
+                       dev_symm = .false.
+#endif
+                       If (Symm .and. .not. dev_symm) then
                           Call Hop_mod_Symm(GR_Tilde,GR,ntau1)
                           !reconstruction of NOT calculated block!!!
                           If (reconstruction_needed) Call ham%GR_reconstruction( GR_Tilde )
@@ -1255,6 +1272,10 @@ Program Main
           write(tl,'(A,F10.3,A)') 'GPU time in sequential updates (WRAPGRUP/DO): ', gpu_upd_time(), ' s'
           call info_line(trim(tl))
           write(tl,'(A,F10.3,A,F10.3,A)') 'GPU time in Obser (eq): ', gpu_tget(1), ' s, in TAU_M: ', gpu_tget(2), ' s'
+          call info_line(trim(tl))
+          write(tl,'(A,F8.3,A,F8.3,A,F8.3,A)') 'GPU TAU_M parts: tau_slice ', gpu_tget(3), ' s, tau_obs ', gpu_tget(4), ' s, stab/CGR2_2 ', gpu_tget(5), ' s'
+          call info_line(trim(tl))
+          write(tl,'(A,F8.3,5F8.3)') 'GPU tau_obs: measure ', gpu_tget(6), gpu_tget(7), gpu_tget(8), gpu_tget(9), gpu_tget(10), gpu_tget(11)
           call info_line(trim(tl))
         end block
         call gpu_lr_finalize()

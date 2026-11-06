@@ -34,9 +34,13 @@ Module gpu_obs_mod
   Use Hamiltonian_main, only: Obs_scal, Obs_eq, Obs_tau
   Use gpu_state_mod
   Use gpu_update_mod, only: gpu_upd_enabled
+  Use gpu_update_mod, only: gpu_tacc
+  Use gpu_wrap_mod, only: gpu_symm
   Implicit none
   Private
-  Public :: gpu_obs_setup, gpu_obs_active, gpu_obs_measure, gpu_obs_flush, gpu_obs_finalize
+  Logical, Save :: o_symm = .false.
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: Gsv(:,:,:), Ts(:,:,:,:)
+  Public :: gpu_obs_setup, gpu_obs_active, gpu_obs_measure, gpu_obs_flush, gpu_obs_finalize, gpu_obs_symm
   Public :: gpu_obs_tau_active, gpu_obs_tau_measure
 
   Logical, Save :: o_set = .false.         ! model data stored (gpu_obs_setup called)
@@ -78,7 +82,8 @@ Contains
     o_set = .true.; o_ok = .false.; o_tau = .false.
     call get_environment_variable('ALF_GPU_NOOBS', s)
     o_off = (trim(s) == '1')
-    if (Symm_ .or. Projector_) return
+    o_symm = Symm_
+    if (Projector_) return          ! Symm is handled on the device (gpu_symm)
     if (abs(h0) >= Eps_small) return
     if (N_FL /= 1 .and. N_FL /= 2) return
     if (N_FL == 2 .and. N_SUN /= 1) return
@@ -158,6 +163,24 @@ Contains
     endif
   End Subroutine gpu_obs_setup
 
+  !> .true. when the device measurement also applies the symmetrisation Hop_mod_Symm (the host must then skip it)
+  Logical Function gpu_obs_symm()
+    Implicit none
+    gpu_obs_symm = o_symm .and. gpu_obs_active()
+  End Function gpu_obs_symm
+
+  Subroutine k_cpy(nel, a, b)
+    Implicit none
+    Integer, intent(in) :: nel
+    Complex (Kind=Kind(0.d0)), intent(in) :: a(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: b(*)
+    Integer :: i
+    !$omp target teams distribute parallel do
+    do i = 1, nel
+       b(i) = a(i)
+    enddo
+  end subroutine k_cpy
+
   !> .true. when the device measurement replaces ham%Obser
   Logical Function gpu_obs_active()
     Implicit none
@@ -191,6 +214,16 @@ Contains
           g_dev_ok(nf) = .true.
        endif
     enddo
+    if (o_symm) then                  ! measure on the symmetrised G: save G_d, transform in place, restore at the end
+       if (.not. allocated(Gsv)) then
+          allocate(Gsv(o_Ndim,o_Ndim,o_NFL))
+          !$omp target enter data map(alloc: Gsv)
+       endif
+       do nf = 1, o_NFL
+          call k_cpy(o_Ndim*o_Ndim, G_d(1,1,nf), Gsv(1,1,nf))
+          call gpu_symm(G_d(1,1,nf), o_Ndim, o_Ndim, nf)
+       enddo
+    endif
     ZP = Phase/Real(Phase, kind(0.D0))
     ZS = Real(Phase, kind(0.D0))/Abs(Real(Phase, kind(0.D0)))
     ZS = ZS*Mc_step_weight
@@ -248,6 +281,11 @@ Contains
        if (kind_k == 4 .and. k /= 2) cycle        ! SpinMz fills Obs_eq(2:4) from k = 2
        call corr(k, kind_k, ZW, N, Norb, NFL, NSUN, sq3)
     enddo
+    if (o_symm) then
+       do nf = 1, o_NFL
+          call k_cpy(o_Ndim*o_Ndim, Gsv(1,1,nf), G_d(1,1,nf))
+       enddo
+    endif
   End Subroutine gpu_obs_measure
 
   Subroutine corr(k, kind_k, ZW, N, Norb, NFL, NSUN, sq3)
@@ -262,10 +300,11 @@ Contains
     ns = dble(NSUN)
     wr = real(ZW); wi = aimag(ZW)
     if (kind_k == 1) then            ! Green
-       !$omp target teams distribute parallel do private(imj,no,no2,I,J,i1,j1,nf,s1,z,a)
+       !$omp target teams distribute private(imj,no,no2,s1)
        do m = 0, N*Norb*Norb - 1
           imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
                 s1 = (0.d0, 0.d0)
+                !$omp parallel do private(I,J,i1,j1,nf,z,a) reduction(+:s1)
                 do I = 1, N
                    J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
                    z = (0.d0, 0.d0)
@@ -275,25 +314,29 @@ Contains
                    enddo
                    s1 = s1 + z*ns
                 enddo
+                !$omp end parallel do
                 acc(imj,1,no,no2,k) = acc(imj,1,no,no2,k) + s1*cmplx(wr,wi,kind(0.d0))
        enddo
     elseif (kind_k == 2) then        ! SpinSUN (N_FL = 1)
-       !$omp target teams distribute parallel do private(imj,no,no2,I,J,i1,j1,s1,a)
+       !$omp target teams distribute private(imj,no,no2,s1)
        do m = 0, N*Norb*Norb - 1
           imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
                 s1 = (0.d0, 0.d0)
+                !$omp parallel do private(I,J,i1,j1,a) reduction(+:s1)
                 do I = 1, N
                    J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
                    a = -G_d(j1,i1,1); if (i1 == j1) a = a + (1.d0, 0.d0)
                    s1 = s1 + a*G_d(i1,j1,1)*ns
                 enddo
+                !$omp end parallel do
                 acc(imj,1,no,no2,k) = acc(imj,1,no,no2,k) + s1*cmplx(wr,wi,kind(0.d0))
        enddo
     elseif (kind_k == 3) then        ! Den
-       !$omp target teams distribute parallel do private(imj,no,no2,I,J,i1,j1,nf,s1,z,zi,zj,a)
+       !$omp target teams distribute private(imj,no,no2,s1)
        do m = 0, N*Norb*Norb - 1
           imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
                 s1 = (0.d0, 0.d0)
+                !$omp parallel do private(I,J,i1,j1,nf,z,zi,zj,a) reduction(+:s1)
                 do I = 1, N
                    J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
                    zi = (0.d0, 0.d0); zj = (0.d0, 0.d0); z = (0.d0, 0.d0)
@@ -305,6 +348,7 @@ Contains
                    enddo
                    s1 = s1 + (zi*ns)*(zj*ns) + z*ns
                 enddo
+                !$omp end parallel do
                 acc(imj,1,no,no2,k) = acc(imj,1,no,no2,k) + s1*cmplx(wr,wi,kind(0.d0))
        enddo
        !$omp target teams distribute parallel do private(I,i1,zi,nf,zs0)
@@ -320,10 +364,11 @@ Contains
           acc0(no,k) = acc0(no,k) + zs0*cmplx(wr,wi,kind(0.d0))
        enddo
     else                             ! SpinMz (N_FL = 2, N_SUN = 1): Obs_eq(k) = SpinZ, k+1 = SpinXY, k+2 = SpinT
-       !$omp target teams distribute parallel do private(imj,no,no2,I,J,i1,j1,s1,s2,s3,zxy,zz,a,b,zi,zj)
+       !$omp target teams distribute private(imj,no,no2,s1,s2,s3)
        do m = 0, N*Norb*Norb - 1
           imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
                 s1 = (0.d0, 0.d0); s2 = (0.d0, 0.d0); s3 = (0.d0, 0.d0)
+                !$omp parallel do private(I,J,i1,j1,zxy,zz,a,b,zi,zj) reduction(+:s1,s2,s3)
                 do I = 1, N
                    J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
                    ! GRC1 = c11 = delta - G(j1,i1,1) etc.
@@ -337,6 +382,7 @@ Contains
                    s2 = s2 + zxy
                    s3 = s3 + (2.d0*zxy + zz)/3.d0
                 enddo
+                !$omp end parallel do
                 acc(imj,1,no,no2,k)   = acc(imj,1,no,no2,k)   + s1*cmplx(wr,wi,kind(0.d0))
                 acc(imj,1,no,no2,k+1) = acc(imj,1,no,no2,k+1) + s2*cmplx(wr,wi,kind(0.d0))
                 acc(imj,1,no,no2,k+2) = acc(imj,1,no,no2,k+2) + s3*cmplx(wr,wi,kind(0.d0))
@@ -380,6 +426,14 @@ Contains
 
   Subroutine gpu_obs_finalize()
     Implicit none
+    if (allocated(Gsv)) then
+       !$omp target exit data map(delete: Gsv)
+       deallocate(Gsv)
+    endif
+    if (allocated(Ts)) then
+       !$omp target exit data map(delete: Ts)
+       deallocate(Ts)
+    endif
     if (o_tdev) then
        !$omp target exit data map(delete: tacc, tacc0)
        deallocate(tacc, tacc0)
@@ -406,7 +460,7 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: Phase
     Real (Kind=Kind(0.d0)), intent(in) :: Mc_step_weight
     Complex (Kind=Kind(0.d0)) :: ZP, ZS, ZW
-    Integer :: I, k
+    Integer :: I, k, nf
     Real (Kind=Kind(0.d0)) :: rs, wr, wi
 
     if (.not. o_tdev) then
@@ -428,10 +482,35 @@ Contains
           Obs_tau(I)%Ave_sign = Obs_tau(I)%Ave_sign + rs
        enddo
     endif
-    do k = 1, o_nobs
-       if (o_kind(k) == 4 .and. k /= 2) cycle
-       call tcorr(k, o_kind(k), nt, wr, wi, GT0, G0T, G00, GTT)
-    enddo
+    call gpu_tacc(6, -1.d0)
+    if (o_symm) then                  ! symmetrised copies of the four matrices (Hop_mod_Symm of tau_obs on the host before)
+       if (.not. allocated(Ts)) then
+          allocate(Ts(o_Ndim,o_Ndim,o_NFL,4))
+          !$omp target enter data map(alloc: Ts)
+       endif
+       do nf = 1, o_NFL
+          call k_cpy(o_Ndim*o_Ndim, GT0(1,1,nf), Ts(1,1,nf,1))
+          call k_cpy(o_Ndim*o_Ndim, G0T(1,1,nf), Ts(1,1,nf,2))
+          call k_cpy(o_Ndim*o_Ndim, G00(1,1,nf), Ts(1,1,nf,3))
+          call k_cpy(o_Ndim*o_Ndim, GTT(1,1,nf), Ts(1,1,nf,4))
+          call gpu_symm(Ts(1,1,nf,1), o_Ndim, o_Ndim, nf)
+          call gpu_symm(Ts(1,1,nf,2), o_Ndim, o_Ndim, nf)
+          call gpu_symm(Ts(1,1,nf,3), o_Ndim, o_Ndim, nf)
+          call gpu_symm(Ts(1,1,nf,4), o_Ndim, o_Ndim, nf)
+       enddo
+       do k = 1, o_nobs
+          if (o_kind(k) == 4 .and. k /= 2) cycle
+          call tcorr(k, o_kind(k), nt, wr, wi, Ts(:,:,:,1), Ts(:,:,:,2), Ts(:,:,:,3), Ts(:,:,:,4))
+       enddo
+    else
+       do k = 1, o_nobs
+          if (o_kind(k) == 4 .and. k /= 2) cycle
+          call gpu_tacc(6+k, -1.d0)
+          call tcorr(k, o_kind(k), nt, wr, wi, GT0, G0T, G00, GTT)
+          call gpu_tacc(6+k, 1.d0)
+       enddo
+    endif
+    call gpu_tacc(6, 1.d0)
   End Subroutine gpu_obs_tau_measure
 
   Subroutine tcorr(k, kind_k, nt, wr, wi, GT0, G0T, G00, GTT)
@@ -446,10 +525,11 @@ Contains
     N = o_N; Norb = o_Norb; NFL = o_NFL; it = nt + 1
     ns = dble(o_NSUN); rn = 1.d0/dble(o_NFL); sq3 = sqrt(3.d0)
     if (kind_k == 1) then            ! Green: sum_nf GT0 / N_FL
-       !$omp target teams distribute parallel do private(imj,no,no2,I,J,i1,j1,nf,s1,z)
+       !$omp target teams distribute private(imj,no,no2,s1)
        do m = 0, N*Norb*Norb - 1
           imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
           s1 = (0.d0, 0.d0)
+          !$omp parallel do private(I,J,i1,j1,nf,z) reduction(+:s1)
           do I = 1, N
              J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
              z = (0.d0, 0.d0)
@@ -458,24 +538,28 @@ Contains
              enddo
              s1 = s1 + z*rn
           enddo
+          !$omp end parallel do
           tacc(imj,it,no,no2,k) = tacc(imj,it,no,no2,k) + s1*cmplx(wr,wi,kind(0.d0))
        enddo
     elseif (kind_k == 2) then        ! SpinSUN (N_FL = 1): - N_SUN G0T(J1,I1,1) GT0(I1,J1,1)
-       !$omp target teams distribute parallel do private(imj,no,no2,I,J,i1,j1,s1)
+       !$omp target teams distribute private(imj,no,no2,s1)
        do m = 0, N*Norb*Norb - 1
           imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
           s1 = (0.d0, 0.d0)
+          !$omp parallel do private(I,J,i1,j1) reduction(+:s1)
           do I = 1, N
              J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
              s1 = s1 - ns*G0T(j1,i1,1)*GT0(i1,j1,1)
           enddo
+          !$omp end parallel do
           tacc(imj,it,no,no2,k) = tacc(imj,it,no,no2,k) + s1*cmplx(wr,wi,kind(0.d0))
        enddo
     elseif (kind_k == 3) then        ! Den
-       !$omp target teams distribute parallel do private(imj,no,no2,I,J,i1,j1,nf,s1,z,zi,zj)
+       !$omp target teams distribute private(imj,no,no2,s1)
        do m = 0, N*Norb*Norb - 1
           imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
           s1 = (0.d0, 0.d0)
+          !$omp parallel do private(I,J,i1,j1,nf,z,zi,zj) reduction(+:s1)
           do I = 1, N
              J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
              zi = (0.d0, 0.d0); zj = (0.d0, 0.d0); z = (0.d0, 0.d0)
@@ -486,6 +570,7 @@ Contains
              enddo
              s1 = s1 + (zi*ns)*(zj*ns) + z*ns
           enddo
+          !$omp end parallel do
           tacc(imj,it,no,no2,k) = tacc(imj,it,no,no2,k) + s1*cmplx(wr,wi,kind(0.d0))
        enddo
        !$omp target teams distribute parallel do private(I,i1,zi,nf,zs0)
@@ -501,10 +586,11 @@ Contains
           tacc0(no,k) = tacc0(no,k) + zs0*cmplx(wr,wi,kind(0.d0))
        enddo
     else                             ! SpinMz (N_FL = 2, N_SUN = 1): k = SpinZ, k+1 = SpinXY, k+2 = SpinT
-       !$omp target teams distribute parallel do private(imj,no,no2,I,J,i1,j1,s1,s2,s3,zxy,zz)
+       !$omp target teams distribute private(imj,no,no2,s1,s2,s3)
        do m = 0, N*Norb*Norb - 1
           imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
           s1 = (0.d0, 0.d0); s2 = (0.d0, 0.d0); s3 = (0.d0, 0.d0)
+          !$omp parallel do private(I,J,i1,j1,zxy,zz) reduction(+:s1,s2,s3)
           do I = 1, N
              J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
              zz  = (GTT(i1,i1,1) - GTT(i1,i1,2))*(G00(j1,j1,1) - G00(j1,j1,2)) &
@@ -514,6 +600,7 @@ Contains
              s2 = s2 + zxy
              s3 = s3 + (2.d0*zxy + zz)/3.d0
           enddo
+          !$omp end parallel do
           tacc(imj,it,no,no2,k)   = tacc(imj,it,no,no2,k)   + s1*cmplx(wr,wi,kind(0.d0))
           tacc(imj,it,no,no2,k+1) = tacc(imj,it,no,no2,k+1) + s2*cmplx(wr,wi,kind(0.d0))
           tacc(imj,it,no,no2,k+2) = tacc(imj,it,no,no2,k+2) + s3*cmplx(wr,wi,kind(0.d0))
