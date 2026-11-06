@@ -125,7 +125,9 @@ Module gpu_tau_mod
   Use gpu_wrap_mod, only: gpu_mmthr, gpu_mmthl_m1, gpu_Vslice_R, gpu_Vslice_L
   Use gpu_stab_mod
   Use gpu_obs_mod, only: gpu_obs_tau_active, gpu_obs_tau_measure
+#ifdef TIMING
   Use gpu_update_mod, only: gpu_tacc
+#endif
   Use Random_Wrap, only: Get_seed_Len, Ranget
 
   Implicit none
@@ -348,16 +350,26 @@ Contains
     NST = 1
     do NT = 0, LTROT - 1
        NT1 = NT + 1
+#ifdef TIMING
        call gpu_tacc(3, -1.d0)
+#endif
        call tau_slice(NT1)
+#ifdef TIMING
        call gpu_tacc(3, 1.d0)
+#endif
        if (diag_on) call diag_slice(NT1)
        call tau_download(.false.)
+#ifdef TIMING
        call gpu_tacc(4, -1.d0)
+#endif
        call tau_obs(NT1, PHASE, Mc_step_Weight)
+#ifdef TIMING
        call gpu_tacc(4, 1.d0)
+#endif
        if (STAB_NT(NST) == NT1) then
+#ifdef TIMING
           call gpu_tacc(5, -1.d0)
+#endif
           NTST = STAB_NT(NST-1)
           if (diag_on) call diag_prewrap(NTST, NT1)
           call gpu_stab_wrapur(NTST, NT1)             ! WRAPUR(NTST, NT1, udvr) of TAU_M: device slot udvr, decompose, scale test
@@ -368,7 +380,9 @@ Contains
              if (diag_on) call diag_post(nfe, NST, GR)
           enddo
           NST = NST + 1
+#ifdef TIMING
           call gpu_tacc(5, 1.d0)
+#endif
        endif
     enddo
     call tau_end()

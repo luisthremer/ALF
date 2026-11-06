@@ -156,8 +156,10 @@ Program Main
              &                   gpu_stab_reset_r, gpu_stab_reset_st
         use gpu_tau_mod,   only: gpu_tau_on, gpu_tau_setup, gpu_tau_finalize, gpu_tau_hook
         use gpu_lowrank_mod, only: gpu_lr_finalize
+#ifdef TIMING
         use gpu_update_mod, only: gpu_upd_time, gpu_tacc, gpu_tget
         use gpu_state_mod, only: info_line
+#endif
 #endif
 #ifdef ALF_TIMERS
         use Timers_mod
@@ -234,7 +236,9 @@ Program Main
         If (  Irank == 0 ) then
 #endif
 #ifdef ALF_GPU
+#ifdef TIMING
            call gpu_tacc(16,-1.d0)
+#endif
 #endif
            write (*,*) "ALF Copyright (C) 2016 - 2022 The ALF project contributors"
            write (*,*) "This Program comes with ABSOLUTELY NO WARRANTY; for details see license.GPL"
@@ -355,11 +359,15 @@ Program Main
         Call Alloc_Ham(get_ham_name())
         leap_frog_bulk = .false.
 #ifdef ALF_GPU
+#ifdef TIMING
         call gpu_tacc(17,-1.d0)
+#endif
 #endif
         Call ham%Ham_set()
 #ifdef ALF_GPU
+#ifdef TIMING
         call gpu_tacc(17,1.d0)
+#endif
 #endif
         Call Validate_Ham_Variables()
         ! Test  if  user  has  specified  correct  array  size  for time dependent Hamiltonians
@@ -664,7 +672,9 @@ Program Main
         enddo
 
 #ifdef ALF_GPU
+#ifdef TIMING
         call gpu_tacc(18,-1.d0)
+#endif
         ! GPU mirror (ticket 203): flat device copy of the constant data + device buffers; decides GPU path active/inactive
 #if defined(MPI)
         call gpu_state_setup(nsigma, NSTM, file_info, Irank_g == 0)
@@ -680,7 +690,9 @@ Program Main
         ! ticket 207: tau pass (TAU_M) on the device (Ltau = 1): udvst is read from the device slots, no export.  Hook: ALF_GPU_SELFTEST=4 / ALF_GPU_TAUTIME=1.
         call gpu_tau_setup(Stab_nt, NSTM)
         if (gpu_tau_on) call gpu_tau_hook()
+#ifdef TIMING
         call gpu_tacc(18,1.d0)
+#endif
 #endif
 
         DO NST = NSTM-1,1,-1
@@ -747,7 +759,9 @@ Program Main
 
         N_sweeps_done = 0
 #ifdef ALF_GPU
+#ifdef TIMING
         call gpu_tacc(16,1.d0)
+#endif
 #endif
         DO  NBC = 1, get_NBin()
            ! Here, you have the green functions on time slice 1.
@@ -759,11 +773,15 @@ Program Main
 #endif
 
 #ifdef ALF_GPU
+#ifdef TIMING
            call gpu_tacc(12,-1.d0)
+#endif
 #endif
            Call ham%Init_obs(get_Ltau())
 #ifdef ALF_GPU
+#ifdef TIMING
            call gpu_tacc(12,1.d0)
+#endif
 #endif
 #if defined(TEMPERING)
            Call Global_Tempering_init_obs
@@ -955,24 +973,32 @@ Program Main
 #endif
                        If (Symm .and. .not. dev_symm) then
 #ifdef ALF_GPU
+#ifdef TIMING
                           call gpu_tacc(1,-1.d0)
+#endif
 #endif
                           Call Hop_mod_Symm(GR_Tilde,GR,ntau1)
                           !reconstruction of NOT calculated block!!!
                           If (reconstruction_needed) Call ham%GR_reconstruction( GR_Tilde )
                           CALL ham%Obser( GR_Tilde, PHASE, Ntau1, Mc_step_weight )
 #ifdef ALF_GPU
+#ifdef TIMING
                           call gpu_tacc(1,1.d0)
+#endif
 #endif
                        else
                           !reconstruction of NOT calculated block!!!
                           If (reconstruction_needed) Call ham%GR_reconstruction( GR )
 #ifdef ALF_GPU
+#ifdef TIMING
                     call gpu_tacc(1,-1.d0)
+#endif
 #endif
                           CALL ham%Obser( GR, PHASE, Ntau1, Mc_step_weight  )
 #ifdef ALF_GPU
+#ifdef TIMING
                     call gpu_tacc(1,1.d0)
+#endif
 #endif
                        endif
 #ifdef ALF_TIMERS
@@ -1024,11 +1050,15 @@ Program Main
                           !reconstruction of NOT calculated block!!!
                           If (reconstruction_needed) Call ham%GR_reconstruction( GR )
 #ifdef ALF_GPU
+#ifdef TIMING
                     call gpu_tacc(1,-1.d0)
+#endif
 #endif
                           CALL ham%Obser( GR, PHASE, Ntau1,Mc_step_weight )
 #ifdef ALF_GPU
+#ifdef TIMING
                     call gpu_tacc(1,1.d0)
+#endif
 #endif
                        endif
 #ifdef ALF_TIMERS
@@ -1186,11 +1216,15 @@ Program Main
                     call gpu_g_host(GR)          ! ticket 208-1: tau_begin builds the host shadows of the tau = 0 matrices from GR
 #endif
 #ifdef ALF_GPU
+#ifdef TIMING
                     call gpu_tacc(2,-1.d0)
+#endif
 #endif
                     Call TAU_M( udvst, GR, PHASE, NSTM, get_Nwrap(), STAB_NT, get_LOBS_ST(), get_LOBS_EN() )
 #ifdef ALF_GPU
+#ifdef TIMING
                     call gpu_tacc(2,1.d0)
+#endif
 #endif
 #ifdef ALF_TIMERS
                     call timer_pop(T_MEAS)
@@ -1230,25 +1264,37 @@ Program Main
 #endif
            ENDDO
 #ifdef ALF_GPU
+#ifdef TIMING
            call gpu_tacc(13,-1.d0)
+#endif
            call gpu_obs_flush()         ! ticket 208-2: device accumulators -> host Obs_eq before Pr_obs normalises
+#ifdef TIMING
            call gpu_tacc(13,1.d0)
+#endif
+#ifdef TIMING
            call gpu_tacc(14,-1.d0)
+#endif
 #endif
            Call ham%Pr_obs(get_Ltau())
 #ifdef ALF_GPU
+#ifdef TIMING
            call gpu_tacc(14,1.d0)
+#endif
 #endif
 #if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
            Call Global_Tempering_Pr
 #endif
 
 #ifdef ALF_GPU
+#ifdef TIMING
            call gpu_tacc(15,-1.d0)
+#endif
 #endif
            Call nsigma%out(Group_Comm)
 #ifdef ALF_GPU
+#ifdef TIMING
            call gpu_tacc(15,1.d0)
+#endif
 #endif
 
            call system_clock(count_bin_end)
@@ -1299,6 +1345,7 @@ Program Main
         endif
         DEALLOCATE(udvl, udvr, udvst)
 #ifdef ALF_GPU
+#ifdef TIMING
         block
           character(len=240) :: tl
           write(tl,'(A,F10.3,A)') 'GPU time in sequential updates (WRAPGRUP/DO): ', gpu_upd_time(), ' s'
@@ -1312,6 +1359,7 @@ Program Main
           write(tl,'(A,9F9.4)') 'GPU PHASES startup,Ham_set,gpusetup,Init_obs,obsflush,Pr_obs,nsigma_out,tauslice,tauobs: ', gpu_tget(16), gpu_tget(17), gpu_tget(18), gpu_tget(12), gpu_tget(13), gpu_tget(14), gpu_tget(15), gpu_tget(3), gpu_tget(4)
           call info_line(trim(tl))
         end block
+#endif
         call gpu_lr_finalize()
         call gpu_tau_finalize()
         call gpu_stab_finalize()
