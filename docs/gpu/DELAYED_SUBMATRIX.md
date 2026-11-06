@@ -81,3 +81,17 @@ Overall the submatrix run is 4.9x faster than the *old standard* run and 2.9x fa
 - Fixed costs: ~0.6 s start-up (mirror, first stabilisation) and the per-bin output (0.1 s at 12x12, 0.7 s at 20x20 per bin; amortised
   over more sweeps per bin in real runs).
 - The N > 1 / non-diagonal vertices still take the standard path (flush first), as before.
+
+---
+
+# Minimal test round (2026-11-06) - findings
+
+- Delayed and submatrix reproduce the standard update bin for bin on A30 and B580, and agree with ED (4-site chain) within 1 sigma.
+- Bugs found and fixed: dense hopping with the device `Symm` read past the dense auxiliaries (now all four matrices are stored); the
+  GPU path silently ignored `Lowrank_cross_slice` (now refused); nvfortran miscompiles `blk_end` at -O2 and above (pinned to -O1; ifx unaffected).
+- `N_delay` scan: 32-64 is best at N = 400 and 1024; the default 32 is within 6-16% of the best update time.
+- Memory model confirmed (about 0.4 GB + 1650 N^2 bytes at beta = 5): 62x62 fits the A30 (23,967 MiB), 63x63 does not.
+- `Nwrap` 20 is not a free speed-up: the Green-function error rises from 1e-10 to 2e-4 at 12x12 (30 aborts).
+- B580: raw FP64 throughput equals the A30's (5.1 TFlop/s); oneMKL `zgemm` (0.9 TFlop/s) and `zgeqrf` (47 ms at N = 1024) are what is slow.
+- Instrumentation (stopwatches, timing `info` lines) is compiled only with `-DTIMING`.
+- Master (MALA) merged on branch `gpu-port-delayed-submatrix-speedup-master`; MALA vertices use the standard path, the GPU path refuses MALA.
