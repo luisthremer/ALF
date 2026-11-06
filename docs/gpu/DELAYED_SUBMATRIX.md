@@ -50,7 +50,7 @@ the host-device round trips, not by kernels.
 | # | Bottleneck | Measured | Fix |
 |---|---|---|---|
 | 1 | **Per-site device round trips** in the submatrix update: per vertex and flavour a wrap launch, an H->D copy of S, a gather launch, a D->H copy (about 8 synchronous operations per site) | 117 us per proposal, 5.0 s of 7.9 s | **Block mode** (`gpu_lowrank_mod`: `blk_*`): a block of N_delay consecutive vertices is handled on the host. Between flushes G0 changes only by the diagonal wrap scalings, so the host copies the principal block G0(B,B) once, scales it with every wrap, and decides all proposals/accepts from it. At the block end the device applies the scalings to G0 and flushes M (one upload of S, M, factors). About 12 device operations per block instead of ~2 per site: 0.53 s (10x) |
-| 2 | Same for **delayed**: wrap, G(p,p), accept were separate synchronous regions per flavour | 4.6 us... 38 us per site | **Fused step** (`k_dly_up/down`): wrap + G(p,p) of all flavours in one launch with one synchronisation; accept of both flavours in one launch; field / wrap work deferred into the next launch's arguments (no H->D copy per accept): 1.9 s -> 1.6 s update time at 12x12 |
+| 2 | Same for **delayed**: wrap, G(p,p), accept were separate synchronous regions per flavour | about 38 us per site | **Fused step** (`k_dly_up/down`): wrap + G(p,p) of all flavours in one launch with one synchronisation; accept of both flavours in one launch; field / wrap work deferred into the next launch's arguments (no H->D copy per accept): update time at 12x12: 1.9 s (fused step, first version) -> 1.65 s |
 | 3 | **Host symmetrisation of the measurements** (`Symm = .T.`, the default parameter file): `gpu_obs_setup` refused the device measurement with Symm, so G was copied to the host every slice and the 4 tau matrices every tau slice | 0.8 s of 3.3 s | **`gpu_symm`**: Hop_mod_Symm on the device; observables work on the symmetrised matrices. Symm(M) = A M B with fixed A, B built once from the hop elements: 2 GEMMs instead of ~14 launches per matrix |
 | 4 | **Launch-bound hop products** (`mmthr`, `mmthl_m1`, ... one launch per checkerboard group, ~8 per product, 4 per matrix per slice) | tau_slice 0.17 s, hops in every slice | **Dense hop matrices** (`hopd_*`): each sequence is a fixed linear map, built once by applying the kernels to the identity; one GEMM + copy (Ndim <= 800) |
 | 5 | tau observables kernels: 144 threads each with a serial sum over 144 terms | small | nested `parallel do reduction` over the sum (no measurable gain at N = 144; helps larger N) |
@@ -69,8 +69,8 @@ Same inputs, same seeds; acceptance is identical in every run and `Pot_scal` agr
 | delayed (N_delay auto) | 46.5 s | 15.5 s | 3.0x |
 | submatrix (N_delay auto, 32) | 49.7 s | **8.7 s** | **5.7x** |
 
-12x12, 3 sweeps: submatrix 7.9 s -> 1.9 s (4.1x), delayed 4.6 s -> 3.2 s, standard 6.5 s -> 5.0 s. Sequential-update time alone at 12x12:
-standard 3.3 s, delayed 1.7 s, submatrix 0.39 s (before: 3.7 / 1.9 / 5.0 s, i.e. submatrix is 13x faster in the update).
+12x12, 3 sweeps: submatrix 7.9 s -> 1.9 s (4.1x), standard 6.5 s -> 5.0 s, delayed now 3.2 s. Sequential-update time alone at 12x12 (3 sweeps):
+submatrix 5.0 s -> 0.39 s (13x), standard 3.7 s -> 3.3 s, delayed now 1.65 s.
 
 Overall the submatrix run is 4.9x faster than the *old standard* run and 2.9x faster than the *new standard* run.
 
