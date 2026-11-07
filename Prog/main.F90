@@ -1131,7 +1131,7 @@ Program Main
                          &        get_N_Global_tau(), &
                          &        get_Sequential_MALA(), get_Delta_t_MALA_sequential(), get_Max_Force_MALA_sequential(), &
                          &        get_N_Global_tau_MALA(), get_delta_t_MALA_global_tau(), get_Max_Force_MALA_global_tau())
-                    IF (NTAU1.GE. get_LOBS_ST() .AND. NTAU1.LE. get_LOBS_EN() ) THEN
+                    IF (NTAU.GE. get_LOBS_ST() .AND. NTAU.LE. get_LOBS_EN() ) THEN
 #ifdef ALF_TIMERS
                        call timer_push(T_MEAS)
 #endif
@@ -1151,7 +1151,7 @@ Program Main
                           Call Hop_mod_Symm(GR_Tilde,GR,ntau1)
                           !reconstruction of NOT calculated block!!!
                           If (reconstruction_needed) Call ham%GR_reconstruction( GR_Tilde )
-                          CALL ham%Obser( GR_Tilde, PHASE, Ntau1, Mc_step_weight )
+                          CALL ham%Obser( GR_Tilde, PHASE, Ntau, Mc_step_weight )
                        else
                           !reconstruction of NOT calculated block!!!
                           If (reconstruction_needed) Call ham%GR_reconstruction( GR )
@@ -1160,7 +1160,7 @@ Program Main
                     call gpu_tacc(1,-1.d0)
 #endif
 #endif
-                          CALL ham%Obser( GR, PHASE, Ntau1,Mc_step_weight )
+                          CALL ham%Obser( GR, PHASE, Ntau,Mc_step_weight )
 #ifdef ALF_GPU
 #ifdef TIMING
                     call gpu_tacc(1,1.d0)

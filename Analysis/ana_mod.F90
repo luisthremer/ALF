@@ -1332,7 +1332,7 @@ Subroutine ana_local(name, sgn, bins_raw, Latt, Latt_unit)
    Integer :: N_skip, N_rebin, N_Cov, N_Back, N_auto
    Integer :: Nbins, N_BZ_Zones
    Logical :: Extended_Zone
-   Integer :: n, nb, no, ierr
+   Integer :: i, n, nb, no, nt, no1, ierr
    Complex (Kind=Kind(0.d0)), allocatable :: Phase(:)
    Complex (Kind=Kind(0.d0)), allocatable :: V_help(:)
    Real    (Kind=Kind(0.d0)) :: Xr_p(2)
@@ -1373,13 +1373,15 @@ Subroutine ana_local(name, sgn, bins_raw, Latt, Latt_unit)
    Do n = 1,Latt%N
       Xr_p = dble(Latt%list (n,1))*Latt%a1_p + dble(Latt%list (n,2))*Latt%a2_p
       Write(34, '(2(E26.17E3))')  Xr_p(1), Xr_p(2)
-      Do no = 1,Latt_unit%Norb
-         do nb = 1, Nbins 
-            V_help(nb) = bins_raw(n,1,no,nb + N_skip) 
+      Do nt = 1,size(Bins_raw,2)
+         Do no = 1,Latt_unit%Norb
+            do nb = 1, Nbins 
+               V_help(nb) = bins_raw(n,nt,no,nb + N_skip) 
+            enddo
+            call ERRCALCJ( V_help, Phase, XMean, XERR, N_rebin)
+            Write(34, "((I11), 4(E26.17E3))") &
+                  &  no, dble(XMean), dble(XERR), aimag(XMean), aimag(XERR)
          enddo
-         call ERRCALCJ( V_help, Phase, XMean, XERR, N_rebin)
-         Write(34, "((I11), 4(E26.17E3))") &
-               &  no, dble(XMean), dble(XERR), aimag(XMean), aimag(XERR)
       enddo
    enddo
    Close(34)

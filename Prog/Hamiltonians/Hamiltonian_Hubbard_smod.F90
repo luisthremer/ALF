@@ -387,7 +387,7 @@
           Integer, allocatable ::   N_Phi_vec(:)
 
           ! Use predefined stuctures or set your own hopping
-          Integer :: i 
+          Integer :: n,nth, i, nf, Nb, no_I, no_J, n_1, n_2, J, Z, I1, J1, L, pin_site
           ! Indices of pinned vertices. Shape [N_pinned_vertices, 2]
           Integer,  allocatable                    :: pinned_vertices(:,:)
           ! Factor, by which the vertex matrix elements will get multiplied. Shape [N_pinned_vertices, N_FL]
@@ -438,25 +438,87 @@
              CALL Terminate_on_error(ERROR_HAMILTONIAN,__FILE__,__LINE__)
           end Select
 
-          If (N_FL == 2) then
-            ! Set pinning field
-            x_p = 0.d0 
-            i = invlist(Inv_R(x_p,Latt),1) 
-            allocate(pinning_factor(1,2), pinned_vertices(1,2), pinning_offset(1,2) ) 
-            pinned_vertices(1,1) = i 
-            pinned_vertices(1,2) = i 
-            pinning_factor(1,1) =   1.d0 
-            pinning_factor(1,2) =   1.d0 
-            pinning_offset(1,1) =   ham_h0
-            pinning_offset(1,2) =  -ham_h0 
-          
-
-            Call  Predefined_Hoppings_set_OPT(Hopping_Matrix,List,Invlist,Latt,  Latt_unit,  Dtau, Checkerboard, Symm, OP_T,  & 
-                                          & pinned_vertices, pinning_factor, pinning_offset) 
-            Deallocate (pinned_vertices, pinning_factor, pinning_offset)
+         if (abs(ham_h0) >= 1.D-10 .and. N_FL == 2) then
+            allocate(Op_T(2,N_FL))
+            ! Op_T(1,nf) contains the bare hopping matrix, Op_T(2,nf) is the pinning Hamiltonian
+            do nf = 1,N_FL
+               Call Op_make(Op_T(1,nf),Ndim)   
+               Call Op_make(Op_T(2,nf),Ndim)
+               N_Phi     = Hopping_Matrix(nf)%N_Phi
+               Phi_X     = Hopping_Matrix(nf)%Phi_X
+               Phi_Y     = Hopping_Matrix(nf)%Phi_Y
+               Bulk      = Hopping_Matrix(nf)%Bulk
+               DO I = 1, Latt%N
+                  do Nb = 1, Hopping_Matrix(nf)%N_bonds
+                     no_I = Hopping_Matrix(nf)%list(Nb,1)
+                     no_J = Hopping_Matrix(nf)%list(Nb,2)
+                     n_1  = Hopping_Matrix(nf)%list(Nb,3)
+                     n_2  = Hopping_Matrix(nf)%list(Nb,4)
+                     J    = Latt%nnlist(I,n_1,n_2)
+                     Z    = Generic_hopping(I,no_I, n_1, n_2, no_J, N_Phi, Phi_x,Phi_y, Bulk, Latt, Latt_Unit)
+                     I1   = Invlist(I,no_I)
+                     J1   = Invlist(J,no_J)
+                     Op_T(1,nf)%O(I1,J1) = Hopping_Matrix(nf)%T(Nb)*Z
+                     Op_T(1,nf)%O(J1,I1) = Conjg(Hopping_Matrix(nf)%T(Nb)*Z)
+                  enddo
+                  Do no_I = 1, Latt_Unit%Norb
+                     I1   = Invlist(I,no_I)
+                     Z = Hopping_Matrix(nf)%T_Loc(no_I) 
+                     Op_T(1,nf)%O(I1,I1) = Z
+                  Enddo
+               enddo
+               Do I = 1,Ndim
+                  Op_T(1,nf)%P(i) = i
+                  Op_T(2,nf)%P(i) = i
+               Enddo
+               Op_T(1,nf)%g = -Dtau
+               Allocate (Op_T(2,nf)%g_t(Ltrot))
+               L = nint(sqrt(dble(Latt%N)))
+               pin_site = Latt%N/2 - L/2
+               Do I = 1, Latt%N
+                  if (I == pin_site) then
+                     do no_I = 1, Latt_Unit%Norb
+                        I1 = Invlist(I, no_I)
+                        if (nf == 1) then
+                           Op_T(2,nf)%O(I1, I1) = cmplx(-Ham_h0, 0.d0)
+                        elseif (nf == 2) then
+                           Op_T(2,nf)%O(I1, I1) = cmplx(Ham_h0, 0.d0)
+                        endif
+                     enddo
+                  endif
+               enddo
+               Op_T(2,nf)%g_t = 0.d0
+               Op_T(2,nf)%g_t(Ltrot/2) = -0.5d0
+               Op_T(2,nf)%g_t(Ltrot/2+1) = -0.5d0
+               Op_T(1,nf)%alpha  =  cmplx(0.d0,0.d0, kind(0.D0))
+               Op_T(2,nf)%alpha  =  cmplx(0.d0,0.d0, kind(0.D0))
+               Call Op_set(Op_T(1,nf))
+               Call Op_set(Op_T(2,nf))
+            Enddo
           else
             Call  Predefined_Hoppings_set_OPT(Hopping_Matrix,List,Invlist,Latt,  Latt_unit,  Dtau, Checkerboard, Symm, OP_T )
           endif
+
+
+          !If (N_FL == 2) then
+          ! ! Set pinning field
+          !  x_p = 0.d0 
+          !  i = invlist(Inv_R(x_p,Latt),1) 
+          !  allocate(pinning_factor(1,2), pinned_vertices(1,2), pinning_offset(1,2) ) 
+          !  pinned_vertices(1,1) = i 
+          !  pinned_vertices(1,2) = i 
+          !  pinning_factor(1,1) =   1.d0 
+          !  pinning_factor(1,2) =   1.d0 
+          !  pinning_offset(1,1) =   ham_h0
+          !  pinning_offset(1,2) =  -ham_h0 
+          !
+          !
+          ! Call  Predefined_Hoppings_set_OPT(Hopping_Matrix,List,Invlist,Latt,  Latt_unit,  Dtau, Checkerboard, Symm, OP_T,  & 
+          !                               & pinned_vertices, pinning_factor, pinning_offset) 
+          !  Deallocate (pinned_vertices, pinning_factor, pinning_offset)
+          !else
+          !  Call  Predefined_Hoppings_set_OPT(Hopping_Matrix,List,Invlist,Latt,  Latt_unit,  Dtau, Checkerboard, Symm, OP_T )
+          !endif
 
           Deallocate (Ham_T_vec, Ham_T2_vec, Ham_Tperp_vec, Ham_Chem_vec, Phi_X_vec, Phi_Y_vec, &
                &                                   N_Phi_vec,  Ham_Lambda_vec )
@@ -595,11 +657,17 @@
              Call Obser_Vec_make(Obs_scal(I),N,Filename)
           enddo
           ! Local quantities 
-          If (abs(ham_h0) >= Eps_small ) then
-            Allocate ( Obs_local(1) )
+          If (abs(ham_h0) >= 1.D-10 ) then
+            Allocate ( Obs_local(2) )
+            Nt = 1
+          !If (abs(ham_h0) >= Eps_small ) then
+           ! Allocate ( Obs_local(1) )
             Filename = "SpinZ"
             Channel = "--"
-            Call Obser_Latt_Local_make(Obs_local(1), 1, Filename, Latt, Latt_unit, Channel, dtau)
+            Call Obser_Latt_Local_make(Obs_local(1), Nt, Filename, Latt, Latt_unit, Channel, dtau)
+            Nt = Ltrot - 2*Thtrot
+            Channel = 'P'
+            Call Obser_Latt_Local_make(Obs_local(2), Nt, Filename, Latt, Latt_unit, Channel, dtau)
           endif
           ! Equal time correlators
           If ( N_FL == 2 ) Then
@@ -802,14 +870,18 @@
 
           If (abs(ham_h0) >= Eps_small ) then
             ! Compute local observables.
-            Do I = 1,Size(Obs_local,1)
-               Obs_local(I)%N         =  Obs_local(I)%N + 1
-               Obs_local(I)%Ave_sign  =  Obs_local(I)%Ave_sign + Real(ZS,kind(0.d0))
-            Enddo
+            Obs_local(1)%N         =  Obs_local(1)%N + 1
+            Obs_local(1)%Ave_sign  =  Obs_local(1)%Ave_sign + Real(ZS,kind(0.d0))
+            If (Ntau == Ltrot/2) then
+               Obs_local(2)%N = Obs_local(2)%N + 1
+               Obs_local(2)%Ave_sign = Obs_local(2)%Ave_sign + Real(ZS,kind(0.d0))
+            Endif
             Do I = 1,Latt%N
                do no_I = 1,Latt_unit%Norb
                   I1 = Invlist(I,no_I)
                   Obs_Local(1)%Obs_Latt(I,1,no_I) = Obs_Local(1)%Obs_Latt(I,1,no_I)  + & 
+                  &       (Grc(i1,i1,1)  -  Grc(i1,i1, dec))*ZP*ZS 
+                  Obs_Local(2)%Obs_Latt(I,Ntau - Thtrot,no_I) = Obs_Local(2)%Obs_Latt(I,Ntau - Thtrot,no_I)  + & 
                   &       (Grc(i1,i1,1)  -  Grc(i1,i1, dec))*ZP*ZS 
                enddo
             Enddo
