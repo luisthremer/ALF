@@ -67,8 +67,8 @@ the right (no averaging; `t = 0` means `Ltrot`). In `Hop_mod_mm*` the time-depen
 |---|---|---|---|
 | WP1/WP2/WP3/WP5 | time-dependent hopping on the device (equal time, tau pass, Symm), support reduction, `t` argument | `Hop_mod.F90`, `gpu_state_mod.F90`, `gpu_wrap_mod.F90`, `gpu_update_mod.F90`, `gpu_tau_mod.F90` | b676b1da |
 | WP4 | device observables for the defect, N_SUN handling, `nt_obs` label fix | `gpu_obs_mod.F90`, `main.F90`, `Hamiltonian_main_mod.F90`, `gpu_state_mod.F90` | 975b7b21 |
-| tests | `td_selftest` (+ negative control) in `ALF_GPU_SELFTEST=2` | `gpu_wrap_mod.F90` | see `git log` |
-| docs/scripts | this file, `TUNING_DEFECT.md`, `FEATURES.md`, `scripts/defect/` | `docs/gpu/**` | see `git log` |
+| tests | `td_selftest` (+ negative control) in `ALF_GPU_SELFTEST=2` | `gpu_wrap_mod.F90` | 52c4d172 |
+| docs/scripts | this file, `TUNING_DEFECT.md`, `FEATURES.md`, `scripts/defect/` (drivers, parameter files, benchmark data) | `docs/gpu/**` | a8e67977, 8f88bc2f |
 
 ## 5. Verification (A30 `nividia`, nvfortran 26.9; CPU reference = same source, `GPU=none`, nvfortran, default stabilisation)
 
@@ -122,7 +122,9 @@ one): diff 6.6e-2, the test fails if it were below 1e-9. `ALF_GPU_SELFTEST=1` pa
    `Nwrap = 4..5` for `Mz = .T.` (not needed for production, `Mz = .F.`).
 3. In `Hamiltonian_Hubbard_smod` `N_SUN` is halved for `N_FL = 2` (file value 2 means 1 per flavour); the device SpinMz formula of `gpu_obs_mod` is for
    `N_SUN = 1` and the host routine measures nothing for `N_SUN /= 1`; `gpu_obs_measure` mirrors this (counts only).
-4. `Obs_local` was private in `Hamiltonian_main` (public only for PGI/GPU builds in the list of the observables); now public for all builds.
+4. **`Op_set` fails for Ndim = 4096 (L = 64)**: `Det_C` of the eigenvector matrix underflows (`|det| = 0`, "Cannot normalize to SU(N)"), on CPU and GPU, for the dense `Op_T(1)`
+   of the defect model. Not fixed (outside this task); see TUNING_DEFECT.md.
+5. `Obs_local` was private in `Hamiltonian_main` (public only for PGI/GPU builds in the list of the observables); now public for all builds.
 
 ## 7. Still on the host, refused or untested
 
