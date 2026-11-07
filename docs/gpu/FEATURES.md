@@ -30,7 +30,8 @@ have not been run. The GPU path is taken only if every check passes; otherwise t
 | Checkerboard hopping | supported | supported | supported | custom group kernels (and a dense matrix for Ndim <= 800, see `Known_issues.md`) |
 | Dense hopping | supported | supported | supported | GEMM |
 | Symmetric Trotter (`Symm`) | supported | supported | supported | `Hop_mod_Symm` on the device (dense A·M·B, see `Known_issues.md`) |
-| Time-dependent couplings and hoppings | supported | refused | refused | |
+| Time-dependent hoppings (`Op_T` with `g_t`, `OpT_time_dependent`) | supported | supported on branch `gpu-delayed-submatrix-defect-fullgpu` (equal time, `Ltau = 0/1`, all update schemes) | supported (same) | the time-dependent elements must follow all static ones in `Op_T(:,nf)`; see `TIMEDEP_HOPPING.md` |
+| Time-dependent couplings of `Op_V` (`g_t`) | supported | refused | refused | |
 | Flavour symmetry reconstruction | supported | refused | refused | |
 | Stabilization default | supported | supported | supported | pre-pivoted QR on the device |
 | Stabilization LOG | supported | supported | supported | host QR with pivoting |

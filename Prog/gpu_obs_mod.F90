@@ -221,10 +221,14 @@ Contains
 
   Subroutine alloc_dev()
     Implicit none
+    Character (len=256) :: line
     allocate(acc(o_N,1,o_Norb,o_Norb,o_nobs), acc0(o_Norb,o_nobs))
     acc = (0.d0, 0.d0); acc0 = (0.d0, 0.d0)
     !$omp target enter data map(to: o_inv, o_jc, o_uo, hk_i, hk_j, hk_f, hk_c, acc, acc0)
     o_dev = .true.
+    write(line,'(A,I0,A,I0,A,L1,A,L1,A,L1)') 'GPU observables: device equal-time measurement ACTIVE (N_FL ', o_NFL, ', N_SUN ', o_NSUN, &
+         & ', Symm ', o_symm, ', point-defect local observables ', o_loc, ', tau-resolved on device ', o_tau
+    call info_line(line)
   End Subroutine alloc_dev
 
   !> ham%Obser on the device.  GR (host) is read only when the device copy of a flavour is not current.

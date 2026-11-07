@@ -137,8 +137,9 @@
     
     private
     public :: Alloc_Ham, ham_base, ham, LOG_T0_REJECTED, Validate_Ham_Variables
+    public :: Obs_local      ! main.F90 (down-sweep time label for the tau-resolved local observables) and gpu_obs_mod
 #if defined(__PGI) || defined(ALF_GPU)
-    public :: Obs_scal, Obs_eq, Obs_tau, Obs_local
+    public :: Obs_scal, Obs_eq, Obs_tau
 #endif
       
       ! Sentinel value for rejected global moves in log scale

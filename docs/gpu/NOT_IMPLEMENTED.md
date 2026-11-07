@@ -14,7 +14,7 @@ Nothing open.
 - HS field types 3 and 4 (#29)
 - Global-in-τ and global space-time moves (#30)
 - `Propose_S0` (#31)
-- Time-dependent couplings and hoppings (#33)
+- Time-dependent couplings of `Op_V` (#33); time-dependent hoppings: done, see `TIMEDEP_HOPPING.md`
 - STAB1/2/3 and QRREF stabilization (#34)
 - Cross-slice delay on the GPU (#39)
 - Parallel tempering (#41)
