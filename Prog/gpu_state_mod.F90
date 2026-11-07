@@ -494,8 +494,9 @@ Contains
     Integer :: n, nf, nc, nh, ek
     Logical :: act, is_td, symm_el, seen_td
     Integer, allocatable :: P(:)
-    Real    (Kind=Kind(0.d0)), allocatable :: rm(:,:,:), Etd(:)
-    Complex (Kind=Kind(0.d0)), allocatable :: cm(:,:,:), Utd(:,:), gtd(:)
+    Real    (Kind=Kind(0.d0)), allocatable :: rm(:,:,:), Etd(:), Es(:)
+    Complex (Kind=Kind(0.d0)), allocatable :: cm(:,:,:), Utd(:,:), gtd(:), Us(:,:)
+    Integer, allocatable :: Ps(:)
     Real    (Kind=Kind(0.d0)) :: zero_td
 
     gpu_supported = .false.
@@ -582,7 +583,8 @@ Contains
              if (size(gtd,1) /= Ltrot) then
                 reason = 'time-dependent hopping: size(g_t) /= Ltrot'; return
              endif
-             ! memory of the per-slice matrices: 2 kinds x 4 matrices x nh^2 per active slice
+             call td_reduce(P, Utd, Etd, nh, Ps, Us, Es)
+             ! memory of the per-slice matrices (reduced support): 2 kinds x 4 matrices x nh^2 per slice
              if (16.d0*8.d0*real(nh,kind(0.d0))**2*real(Ltrot,kind(0.d0)) > 2.d9) then
                 reason = 'time-dependent hopping element too large (matrices per slice exceed 2 GB)'; return
              endif
@@ -700,8 +702,9 @@ Contains
     Integer :: nel_td, npv_td, ncv_td, ntdmax, ntdf, t, kd, j
     Logical :: is_td, symm_el
     Real    (Kind=Kind(0.d0)) :: zero_td
-    Real    (Kind=Kind(0.d0)), allocatable :: Etd(:)
-    Complex (Kind=Kind(0.d0)), allocatable :: Utd(:,:), gtd(:), Atd(:,:)
+    Real    (Kind=Kind(0.d0)), allocatable :: Etd(:), Es(:)
+    Complex (Kind=Kind(0.d0)), allocatable :: Utd(:,:), gtd(:), Atd(:,:), Us(:,:)
+    Integer, allocatable :: Ps(:)
 
     ncheck = Hop_mod_gpu_ncheck()
     allocate(hop_start(N_FL+1))
@@ -715,7 +718,9 @@ Contains
           if (ek == 3) then
              call Hop_mod_gpu_td_element(nf, nc, is_td, nh, symm_el, zero_td, P, Utd, Etd, gtd)
              ntdf = ntdf + 1
+             call td_reduce(P, Utd, Etd, nh, Ps, Us, Es)
              do t = 1, g_Ltrot
+                if (nh == 0) exit
                 do kd = 1, 2
                    if (td_active(gtd, t, kd, symm_el, zero_td)) then
                       nel_td = nel_td + 1; npv_td = npv_td + nh; ncv_td = ncv_td + 4*nh*nh
@@ -797,24 +802,26 @@ Contains
           if (ek /= 3) cycle
           j = j + 1
           call Hop_mod_gpu_td_element(nf, nc, is_td, nh, symm_el, zero_td, P, Utd, Etd, gtd)
+          call td_reduce(P, Utd, Etd, nh, Ps, Us, Es)
+          if (nh == 0) cycle
           allocate(Atd(nh,nh))
           do t = 1, g_Ltrot
              do kd = 1, 2
                 if (.not. td_active(gtd, t, kd, symm_el, zero_td)) cycle
                 e = e + 1
                 hop_meta(1,e) = 2; hop_meta(2,e) = nh; hop_meta(3,e) = npv; hop_meta(4,e) = ncv
-                hop_P(npv+1:npv+nh) = P
+                hop_P(npv+1:npv+nh) = Ps
                 npv = npv + nh
                 if (kd == 1) then
-                   call td_matrix(Utd, Etd, td_g(gtd, t, 1, symm_el), 1.d0, Atd);   hop_Cval(ncv+1:ncv+nh*nh) = reshape(Atd,(/nh*nh/))
-                   call td_matrix(Utd, Etd, td_g(gtd, t, 1, symm_el), -1.d0, Atd);  hop_Cval(ncv+nh*nh+1:ncv+2*nh*nh) = reshape(Atd,(/nh*nh/))
-                   call td_matrix(Utd, Etd, td_g(gtd, t, 1, symm_el), 0.5d0, Atd);  hop_Cval(ncv+2*nh*nh+1:ncv+3*nh*nh) = reshape(Atd,(/nh*nh/))
-                   call td_matrix(Utd, Etd, td_g(gtd, t, 1, symm_el), -0.5d0, Atd); hop_Cval(ncv+3*nh*nh+1:ncv+4*nh*nh) = reshape(Atd,(/nh*nh/))
+                   call td_matrix(Us, Es, td_g(gtd, t, 1, symm_el), 1.d0, Atd);   hop_Cval(ncv+1:ncv+nh*nh) = reshape(Atd,(/nh*nh/))
+                   call td_matrix(Us, Es, td_g(gtd, t, 1, symm_el), -1.d0, Atd);  hop_Cval(ncv+nh*nh+1:ncv+2*nh*nh) = reshape(Atd,(/nh*nh/))
+                   call td_matrix(Us, Es, td_g(gtd, t, 1, symm_el), 0.5d0, Atd);  hop_Cval(ncv+2*nh*nh+1:ncv+3*nh*nh) = reshape(Atd,(/nh*nh/))
+                   call td_matrix(Us, Es, td_g(gtd, t, 1, symm_el), -0.5d0, Atd); hop_Cval(ncv+3*nh*nh+1:ncv+4*nh*nh) = reshape(Atd,(/nh*nh/))
                 else
-                   call td_matrix(Utd, Etd, gtd(t), 1.d0, Atd);   hop_Cval(ncv+1:ncv+nh*nh) = reshape(Atd,(/nh*nh/))
-                   call td_matrix(Utd, Etd, gtd(t), -1.d0, Atd);  hop_Cval(ncv+nh*nh+1:ncv+2*nh*nh) = reshape(Atd,(/nh*nh/))
-                   call td_matrix(Utd, Etd, gtd(t), 0.5d0, Atd);  hop_Cval(ncv+2*nh*nh+1:ncv+3*nh*nh) = reshape(Atd,(/nh*nh/))
-                   call td_matrix(Utd, Etd, gtd(t), -0.5d0, Atd); hop_Cval(ncv+3*nh*nh+1:ncv+4*nh*nh) = reshape(Atd,(/nh*nh/))
+                   call td_matrix(Us, Es, gtd(t), 1.d0, Atd);   hop_Cval(ncv+1:ncv+nh*nh) = reshape(Atd,(/nh*nh/))
+                   call td_matrix(Us, Es, gtd(t), -1.d0, Atd);  hop_Cval(ncv+nh*nh+1:ncv+2*nh*nh) = reshape(Atd,(/nh*nh/))
+                   call td_matrix(Us, Es, gtd(t), 0.5d0, Atd);  hop_Cval(ncv+2*nh*nh+1:ncv+3*nh*nh) = reshape(Atd,(/nh*nh/))
+                   call td_matrix(Us, Es, gtd(t), -0.5d0, Atd); hop_Cval(ncv+3*nh*nh+1:ncv+4*nh*nh) = reshape(Atd,(/nh*nh/))
                    td_symm_active = .true.
                 endif
                 ncv = ncv + 4*nh*nh
@@ -853,20 +860,73 @@ Contains
     td_active = ( dble( g * conjg(g) ) > zero )
   end function td_active
 
-  !> A = U diag(exp(fac * g * E)) U^dagger  (what the host applies from the left and from the right)
+  !> Reduction of a time-dependent element to its support.  The host applies A(g) = U exp(g E) U^dagger on the Ndim sites P, with a
+  !> full Ndim x Ndim U even for the point defect (one nonzero eigenvalue, all others 0).  A(g) - 1 = sum_k (exp(g E_k) - 1) u_k u_k^dagger
+  !> only involves the eigenvectors with E_k /= 0, and only the rows where those are nonzero.  Return the nK eigenpairs with
+  !> |E_k| > 1e-13 max|E| and the nS rows (sites PS, vectors US(nS,nK)) on which they are supported (|u| > 1e-13).  The reduced
+  !> matrix 1 + sum_k (exp(fac g E_k) - 1) u_k u_k^dagger acts as A on these rows and as the identity elsewhere (exact up to ~1e-13).
+  Subroutine td_reduce(P, U, E, nS, PS, US, ES)
+    Implicit none
+    Integer, intent(in) :: P(:)
+    Complex (Kind=Kind(0.d0)), intent(in) :: U(:,:)
+    Real    (Kind=Kind(0.d0)), intent(in) :: E(:)
+    Integer, intent(out) :: nS
+    Integer, allocatable, intent(out) :: PS(:)
+    Complex (Kind=Kind(0.d0)), allocatable, intent(out) :: US(:,:)
+    Real    (Kind=Kind(0.d0)), allocatable, intent(out) :: ES(:)
+    Integer :: i, k, nK, ki
+    Integer, allocatable :: kidx(:)
+    Logical, allocatable :: row(:)
+    Real (Kind=Kind(0.d0)) :: emax
+    Real (Kind=Kind(0.d0)), parameter :: tol = 1.d-13
+    emax = maxval(abs(E))
+    allocate(kidx(size(E)), row(size(P)))
+    nK = 0; row = .false.
+    do k = 1, size(E)
+       if (abs(E(k)) > tol*emax) then
+          nK = nK + 1; kidx(nK) = k
+          do i = 1, size(P)
+             if (abs(U(i,k)) > tol) row(i) = .true.
+          enddo
+       endif
+    enddo
+    nS = count(row)
+    allocate(PS(nS), US(nS,max(nK,1)), ES(max(nK,1)))
+    PS = 0; US = (0.d0,0.d0); ES = 0.d0
+    if (nS == 0 .or. nK == 0) then
+       nS = 0; return
+    endif
+    ki = 0
+    do i = 1, size(P)
+       if (row(i)) then
+          ki = ki + 1; PS(ki) = P(i)
+          do k = 1, nK
+             US(ki,k) = U(i,kidx(k))
+          enddo
+       endif
+    enddo
+    do k = 1, nK
+       ES(k) = E(kidx(k))
+    enddo
+  end subroutine td_reduce
+
+  !> Reduced matrix A = 1 + sum_k (exp(fac*g*E_k) - 1) u_k u_k^dagger  (nS x nS)
   Subroutine td_matrix(U, E, g, fac, A)
     Implicit none
     Complex (Kind=Kind(0.d0)), intent(in)  :: U(:,:), g
     Real    (Kind=Kind(0.d0)), intent(in)  :: E(:), fac
     Complex (Kind=Kind(0.d0)), intent(out) :: A(:,:)
-    Integer :: i, j, k, nh
+    Integer :: i, j, k, nS
     Complex (Kind=Kind(0.d0)) :: ex
-    nh = size(E,1)
+    nS = size(U,1)
     A = (0.d0, 0.d0)
-    do k = 1, nh
-       ex = exp(fac*g*E(k))
-       do j = 1, nh
-          do i = 1, nh
+    do i = 1, nS
+       A(i,i) = (1.d0, 0.d0)
+    enddo
+    do k = 1, size(E,1)
+       ex = exp(fac*g*E(k)) - (1.d0, 0.d0)
+       do j = 1, nS
+          do i = 1, nS
              A(i,j) = A(i,j) + U(i,k) * ex * conjg(U(j,k))
           enddo
        enddo

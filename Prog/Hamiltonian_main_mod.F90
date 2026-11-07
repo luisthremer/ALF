@@ -138,7 +138,7 @@
     private
     public :: Alloc_Ham, ham_base, ham, LOG_T0_REJECTED, Validate_Ham_Variables
 #if defined(__PGI) || defined(ALF_GPU)
-    public :: Obs_scal, Obs_eq, Obs_tau
+    public :: Obs_scal, Obs_eq, Obs_tau, Obs_local
 #endif
       
       ! Sentinel value for rejected global moves in log scale

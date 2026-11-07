@@ -82,7 +82,7 @@ Module gpu_wrap_mod
   Implicit none
 
   Private
-  Public :: gpu_mmthr, gpu_mmthr_m1, gpu_mmthlc, gpu_mmthl, gpu_mmthl_m1, gpu_symm, gpu_symm_build
+  Public :: gpu_mmthr, gpu_mmthr_m1, gpu_mmthlc, gpu_mmthl, gpu_mmthl_m1, gpu_symm, gpu_symm_build, gpu_symm_td
   Public :: gpu_mmthr_d, gpu_mmthl_m1_d, gpu_mmthl_d, gpu_mmthr_m1_d, gpu_hopd_on
   Public :: gpu_Vop_R, gpu_Vop_L, gpu_Vop_wrap, gpu_Vslice_R, gpu_Vslice_L, gpu_Vwrap_all
   Public :: gpu_wrapur_slices, gpu_wrapul_slices, gpu_wrapgr_up, gpu_wrapgr_do
@@ -336,13 +336,22 @@ Contains
   end subroutine gpu_mmthr_m1_d
 
 !> Symm(M) = A M B for every n x n matrix M: A (left factors) and B (right factors) are the sequences of gpu_symm applied to the
-!> identity (the lefts and rights commute).  A and B must be device-resident n x n arrays with leading dimension ld; they are
+!> identity (the lefts and rights commute).  STATIC elements only: the time-dependent ones depend on the slice and are applied to the
+!> data by gpu_symm_td (Symm(M) = A (A_td M B_td) B).  A and B must be device-resident n x n arrays with leading dimension ld; they are
 !> set here (the identity is written by the host and uploaded).
-  Subroutine gpu_symm_build(A, B, ld, n, nf, t1, t2)
+  !> Time-dependent part of Hop_mod_Symm at slice t (t = 0 means Ltrot): M <- A_td(t) M B_td(t), in place; nothing if no element is active.
+  Subroutine gpu_symm_td(M, ld, n, nf, t)
+    Implicit none
+    Integer, intent(in) :: ld, n, nf, t
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
+    if (.not. td_any) return
+    call td_apply(M, ld, n, nf, t, 2, 3, .true., .true.)
+    call td_apply(M, ld, n, nf, t, 2, 4, .false., .true.)
+  end subroutine gpu_symm_td
+
+  Subroutine gpu_symm_build(A, B, ld, n, nf)
     Implicit none
     Integer, intent(in) :: ld, n, nf
-    Integer, intent(in), optional :: t1, t2
-    Integer :: tr
     Complex (Kind=Kind(0.d0)), intent(inout) :: A(ld,*), B(ld,*)
     Integer :: ga, gb, g, e, i
     Complex (Kind=Kind(0.d0)), allocatable :: Id(:,:)
@@ -353,14 +362,6 @@ Contains
     call k_set_c(ld*n, Id, A)
     call k_set_c(ld*n, Id, B)
     deallocate(Id)
-    if (td_any) then
-       ! the matrices depend on the slice(s) when a time-dependent element exists
-       if (.not. present(t1)) call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
-       tr = t1
-       if (present(t2)) tr = t2
-       call td_apply(A, ld, n, nf, t1, 2, 3, .true., .true.)
-       call td_apply(B, ld, n, nf, tr, 2, 4, .false., .true.)
-    endif
     ga = hop_gstart(nf); gb = hop_gstart(nf+1) - 1
     if (gb < ga) return
     do g = gb, ga, -1

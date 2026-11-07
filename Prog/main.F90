@@ -180,7 +180,7 @@ Program Main
         Integer :: NBC, NSW
         ! Completed sweeps across bins, saturating at 4 (automatic N_delay: Lowrank_autotune_finish)
         Integer (Kind=Kind(0_8)) :: N_sweeps_done
-        Integer :: NTAU, NTAU1
+        Integer :: NTAU, NTAU1, nt_obs
         Character (len=64) :: file_seeds, file_info, file_git_info
 #ifdef ALF_TIMERS
         Character (len=64) :: file_timers
@@ -1127,11 +1127,16 @@ Program Main
                  NST = NSTM-1
                  DO NTAU = LTROT,1,-1
                     NTAU1 = NTAU - 1
+                    ! GR is at time slice NTAU1 = NTAU-1 after WRAPGRDO.  For Hamiltonians with tau-resolved local observables
+                    ! (Obs_local, the space-time point defect) slice 0 is stored as slice LTROT (G(0) = G(beta) at finite T), so that every
+                    ! slice 1..LTROT is measured once in each sweep direction (otherwise slice LTROT carries half the weight).
+                    nt_obs = NTAU1
+                    If ( allocated(Obs_local) .and. .not. Projector .and. NTAU1 == 0 ) nt_obs = LTROT
                     CALL WRAPGRDO(GR,NTAU, PHASE,get_Propose_S0(),get_Nt_sequential_start(), get_Nt_sequential_end(), & 
                          &        get_N_Global_tau(), &
                          &        get_Sequential_MALA(), get_Delta_t_MALA_sequential(), get_Max_Force_MALA_sequential(), &
                          &        get_N_Global_tau_MALA(), get_delta_t_MALA_global_tau(), get_Max_Force_MALA_global_tau())
-                    IF (NTAU1.GE. get_LOBS_ST() .AND. NTAU1.LE. get_LOBS_EN() ) THEN
+                    IF (nt_obs.GE. get_LOBS_ST() .AND. nt_obs.LE. get_LOBS_EN() ) THEN
 #ifdef ALF_TIMERS
                        call timer_push(T_MEAS)
 #endif
@@ -1151,7 +1156,7 @@ Program Main
                           Call Hop_mod_Symm(GR_Tilde,GR,ntau1)
                           !reconstruction of NOT calculated block!!!
                           If (reconstruction_needed) Call ham%GR_reconstruction( GR_Tilde )
-                          CALL ham%Obser( GR_Tilde, PHASE, Ntau1, Mc_step_weight )
+                          CALL ham%Obser( GR_Tilde, PHASE, nt_obs, Mc_step_weight )
                        else
                           !reconstruction of NOT calculated block!!!
                           If (reconstruction_needed) Call ham%GR_reconstruction( GR )
@@ -1160,7 +1165,7 @@ Program Main
                     call gpu_tacc(1,-1.d0)
 #endif
 #endif
-                          CALL ham%Obser( GR, PHASE, Ntau1,Mc_step_weight )
+                          CALL ham%Obser( GR, PHASE, nt_obs, Mc_step_weight )
 #ifdef ALF_GPU
 #ifdef TIMING
                     call gpu_tacc(1,1.d0)
