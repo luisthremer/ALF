@@ -2,7 +2,7 @@
 # Ticket 401-B, tier T0, on nividia or intel (from work/t401b/src): same-seed GPU vs CPU path of the SAME binary (ALF_GPU_DISABLE=1),
 # standard / delayed / submatrix, Symm T/F, Ltau 0/1, then the scheme comparison on the GPU.
 #   usage: t0.sh BIN        (BIN = nv | ifx; gpu lock taken on nividia)
-W=$HOME/alf-gpu/work/t401b; R=$W/src/testsuite/gpu_reference/rank_nd; B=$1
+W=$HOME/alf-gpu/work/${T401:-t401b}; R=$W/src/testsuite/gpu_reference/rank_nd; B=$1
 if [ -d /opt/nvidia ]; then . ~/alf-gpu/env/gnu.sh; else . ~/alf-gpu/env/intel.sh; fi
 . ~/alf-gpu/venv/bin/activate 2>/dev/null; export TMPDIR=$W/tmp; cd $W || exit 1
 LK=0; [ -d /opt/nvidia ] && LK=1

@@ -2,7 +2,7 @@
 # Ticket 401-B (development seeds only: the committed pyALF default seeds rotated by --seed-offset): statistical runs.
 #   usage: stat.sh GPUBIN CPUBIN      (e.g. stat.sh nv cpu)    4 independent runs per Symm, NBin 60 x NSweep 20, Ltau 1
 # GPU runs: seed offsets 0..3 (gpu lock on nividia); CPU runs: seed offsets 10..13.  Dirs runs/st_<bin>/pvs<Symm>_k<i>.
-W=$HOME/alf-gpu/work/t401b; R=$W/src/testsuite/gpu_reference/rank_nd; G=$1; C=$2
+W=$HOME/alf-gpu/work/${T401:-t401b}; R=$W/src/testsuite/gpu_reference/rank_nd; G=$1; C=$2
 if [ -d /opt/nvidia ]; then . ~/alf-gpu/env/gnu.sh; LK=1; else . ~/alf-gpu/env/intel.sh; LK=0; fi
 . ~/alf-gpu/venv/bin/activate 2>/dev/null; export TMPDIR=$W/tmp; cd $W || exit 1
 for s in 1 0; do for k in 0 1 2 3; do

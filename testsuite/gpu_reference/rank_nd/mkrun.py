@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Ticket 401: create run directories (parameters + seeds) with pyALF, only_prep.  Run inside the pyALF venv.
-usage: mkrun.py ALF_SRC OUTDIR NAME [--ham Hubbard_Plain_Vanilla] [--seed-offset N] key=value ...
+usage: mkrun.py ALF_SRC OUTDIR NAME [--ham Hubbard_Plain_Vanilla | --model tV_chain4] [--seed-offset N] key=value ...
 Defaults are the 4-site chain of ADR-003 / 401.json: Square L1=4 L2=1, U=4, chem 0, beta 2, dtau 0.1, Nwrap 5.
 Key values are parsed as python literals (True/False/numbers) else kept as strings."""
 import argparse, ast, os, sys
@@ -20,9 +20,14 @@ if __name__ == "__main__":
     p.add_argument("alf_dir"); p.add_argument("outdir"); p.add_argument("name")
     p.add_argument("--ham", default="Hubbard_Plain_Vanilla")
     p.add_argument("--seed-offset", type=int, default=0)
+    p.add_argument("--model", help="401-A: start from models.MODELS[NAME] (ham_name and parameters) instead of the Plain_Vanilla defaults")
     p.add_argument("kv", nargs="*")
-    a = p.parse_args()
+    a = p.parse_intermixed_args()
     d = dict(DEFAULT)
+    if a.model:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import models
+        d = dict(models.MODELS[a.model]["parameters"]); a.ham = models.MODELS[a.model]["ham_name"]
     for kv in a.kv:
         k, v = kv.split("=", 1); d[k] = lit(v)
     # keys of the Hubbard model that Plain_Vanilla does not know are dropped by pyALF's parameter check; keep them minimal

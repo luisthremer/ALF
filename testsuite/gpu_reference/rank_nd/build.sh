@@ -3,7 +3,7 @@
 #   usage: build.sh NAME TOOL [configure args...]     TOOL = gnu | nvhpc | intel
 #   e.g.   build.sh nv nvhpc PGI noMPI GPU=nvidia   |   build.sh cpu gnu GNU noMPI   |   build.sh ifx intel IntelLLVM noMPI GPU=intel
 # ALF_FLAGS_EXT from the caller is kept (planted-defect builds: -DALF_PLANT_...).  Result: bin/ALF_<NAME>.out, tree_<NAME>.
-W=$HOME/alf-gpu/work/t401b; export TMPDIR=$W/tmp; mkdir -p $TMPDIR $W/logs $W/bin
+W=$HOME/alf-gpu/work/${T401:-t401b}; export TMPDIR=$W/tmp; mkdir -p $TMPDIR $W/logs $W/bin
 NAME=$1; TOOL=$2; shift 2
 safe() { case "$1" in ""|*..*|*/*) echo "refusing unsafe name: [$1]" >&2; exit 1;; esac; }
 case $TOOL in gnu) . ~/alf-gpu/env/gnu.sh;; nvhpc) . ~/alf-gpu/env/nvhpc.sh;; intel) . ~/alf-gpu/env/intel.sh;; *) echo bad tool; exit 1;; esac
