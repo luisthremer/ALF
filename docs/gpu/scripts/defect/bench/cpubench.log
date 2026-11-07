@@ -1,0 +1,7 @@
+cpub_12 cpu: rc=0 wall=2.0s
+L=12 1 thread (nvfortran CPU, submatrix N_delay=8)   CPU Time                   :     1.678501800000000     
+cpub_16 cpu: rc=0 wall=14.8s
+L=16 1 thread (nvfortran CPU, submatrix N_delay=8)   CPU Time                   :     12.73239990000000     
+cpub_24 cpu: rc=0 wall=170.8s
+L=24 1 thread (nvfortran CPU, submatrix N_delay=8)   CPU Time                   :     148.5756891000000     
+CPUBENCH_DONE

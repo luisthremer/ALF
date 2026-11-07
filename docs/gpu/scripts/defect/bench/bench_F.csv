@@ -1,0 +1,3 @@
+config,s_per_sweep,peak_gpu_MiB,precG_mean,precG_max,acceptance,gpu_active,wall_s
+L=48 mz=F scheme=submatrix ndelay=32 nsweep=1,179.2638322,19647,6.1135824651503288E-013,6.8817978541623715E-010,0.3212881582754630,True,430.3
+L=64 beta=16.d0 mz=F scheme=submatrix ndelay=32 nsweep=1,nan,0,nan,nan,nan,False,143.4
