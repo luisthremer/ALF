@@ -474,14 +474,14 @@ Contains
     do nfe = 1, t_nfe
        nf = Calc_Fl_map(nfe)
        ! PROPR: B_T from the left, then Op_mmultR('n') for n = 1..N_op
-       call gpu_mmthr(GT0_d(1,1,nf), N, N, nf)
+       call gpu_mmthr(GT0_d(1,1,nf), N, N, nf, nt1)
        call gpu_Vslice_R(GT0_d(1,1,nf), N, N, nf, nt1, 'n', .false.)
        ! PROPRM1: B_T^-1 from the right, then Op_mmultL('n', sign = -1) for n = 1..N_op
-       call gpu_mmthl_m1(G0T_d(1,1,nf), N, N, nf)
+       call gpu_mmthl_m1(G0T_d(1,1,nf), N, N, nf, nt1)
        call gpu_Vslice_L(G0T_d(1,1,nf), N, N, nf, nt1, 'n', -1, .false.)
-       call gpu_mmthl_m1(GTT_d(1,1,nf), N, N, nf)
+       call gpu_mmthl_m1(GTT_d(1,1,nf), N, N, nf, nt1)
        call gpu_Vslice_L(GTT_d(1,1,nf), N, N, nf, nt1, 'n', -1, .false.)
-       call gpu_mmthr(GTT_d(1,1,nf), N, N, nf)
+       call gpu_mmthr(GTT_d(1,1,nf), N, N, nf, nt1)
        call gpu_Vslice_R(GTT_d(1,1,nf), N, N, nf, nt1, 'n', .false.)
        if (fault == 2 .and. nt1 == 2) call k_fault_scale(GT0_d(1,1,nf))    ! negative control: wrong propagation
     enddo
@@ -804,9 +804,9 @@ Contains
        ! how each method's error is carried to the next precision check (scratch t_S, after the variants)
        call k_ident(n, t_S(1,1,1), n); call k_ident(n, t_S(1,1,2), n)
        do nt = t_nt(nst) + 1, t_nt(nst+1)
-          call gpu_mmthr(t_S(1,1,1), n, n, nf)
+          call gpu_mmthr(t_S(1,1,1), n, n, nf, nt)
           call gpu_Vslice_R(t_S(1,1,1), n, n, nf, nt, 'n', .false.)
-          call gpu_mmthl_m1(t_S(1,1,2), n, n, nf)
+          call gpu_mmthl_m1(t_S(1,1,2), n, n, nf, nt)
           call gpu_Vslice_L(t_S(1,1,2), n, n, nf, nt, 'n', -1, .false.)
        enddo
        call la_sync()

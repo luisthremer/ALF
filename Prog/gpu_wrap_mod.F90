@@ -112,47 +112,56 @@ Contains
 !--------------------------------------------------------------------
   ! 1 mmthr: left, mat, elements descending;  2 mmthr_m1: left, invmat, ascending;  3 mmthl: right, mat, ascending;
   ! 4 mmthlc: left, mat, ascending;  5 mmthl_m1: right, invmat, descending
-  Subroutine gpu_mmthr(M, ld, ncol, nf)
+  ! Time-dependent elements (td_grp, gpu_state_mod) are the LAST operators of a flavour (gpu_supported): the host applies them first in
+  ! the descending sequences (mmthr, mmthl_m1) and last in the ascending ones.  t = time slice (the host argument t of Hop_mod_mm*).
+  Subroutine gpu_mmthr(M, ld, ncol, nf, t)
     Implicit none
-    Integer, intent(in) :: ld, ncol, nf
+    Integer, intent(in) :: ld, ncol, nf, t
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
+    if (td_any) call td_apply(M, ld, ncol, nf, t, 1, 1, .true., .true.)
     if (ld == Ndim .and. ncol == Ndim .and. gpu_hopd_on()) then
        call hopd_left(M, nf, 1); return
     endif
     call hop_left(M, ld, ncol, nf, 1, .true.)
   end subroutine gpu_mmthr
 
-  Subroutine gpu_mmthr_m1(M, ld, ncol, nf)
+  Subroutine gpu_mmthr_m1(M, ld, ncol, nf, t)
     Implicit none
-    Integer, intent(in) :: ld, ncol, nf
+    Integer, intent(in) :: ld, ncol, nf, t
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
     if (ld == Ndim .and. ncol == Ndim .and. gpu_hopd_on()) then
-       call hopd_left(M, nf, 4); return
+       call hopd_left(M, nf, 4)
+    else
+       call hop_left(M, ld, ncol, nf, 2, .false.)
     endif
-    call hop_left(M, ld, ncol, nf, 2, .false.)
+    if (td_any) call td_apply(M, ld, ncol, nf, t, 1, 2, .true., .false.)
   end subroutine gpu_mmthr_m1
 
-  Subroutine gpu_mmthlc(M, ld, ncol, nf)
+  Subroutine gpu_mmthlc(M, ld, ncol, nf, t)
     Implicit none
-    Integer, intent(in) :: ld, ncol, nf
+    Integer, intent(in) :: ld, ncol, nf, t
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
     call hop_left(M, ld, ncol, nf, 1, .false.)
+    if (td_any) call td_apply(M, ld, ncol, nf, t, 1, 1, .true., .false.)
   end subroutine gpu_mmthlc
 
-  Subroutine gpu_mmthl(M, ld, nrow, nf)
+  Subroutine gpu_mmthl(M, ld, nrow, nf, t)
     Implicit none
-    Integer, intent(in) :: ld, nrow, nf
+    Integer, intent(in) :: ld, nrow, nf, t
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
     if (ld == Ndim .and. nrow == Ndim .and. gpu_hopd_on()) then
-       call hopd_right(M, nf, 3); return
+       call hopd_right(M, nf, 3)
+    else
+       call hop_right(M, ld, nrow, nf, 1, .false.)
     endif
-    call hop_right(M, ld, nrow, nf, 1, .false.)
+    if (td_any) call td_apply(M, ld, nrow, nf, t, 1, 1, .false., .false.)
   end subroutine gpu_mmthl
 
-  Subroutine gpu_mmthl_m1(M, ld, nrow, nf)
+  Subroutine gpu_mmthl_m1(M, ld, nrow, nf, t)
     Implicit none
-    Integer, intent(in) :: ld, nrow, nf
+    Integer, intent(in) :: ld, nrow, nf, t
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
+    if (td_any) call td_apply(M, ld, nrow, nf, t, 1, 2, .false., .true.)
     if (ld == Ndim .and. nrow == Ndim .and. gpu_hopd_on()) then
        call hopd_right(M, nf, 2); return
     endif
@@ -160,13 +169,60 @@ Contains
   end subroutine gpu_mmthl_m1
 
 !--------------------------------------------------------------------
+!> The time-dependent elements of flavour nf at slice t (kind kd: 1 = propagation, 2 = Symm half step; t = 0 means Ltrot as in the
+!> host adjointaction), matrix k, from the left (M <- A M, M has n columns) or from the right (M <- M A, n rows), in ascending
+!> or descending operator order.  Inactive slices apply nothing (the host skips |g|^2 <= Zero).  Host-side dispatch only.
+  Subroutine td_apply(M, ld, n, nf, t, kd, k, left, desc)
+    Implicit none
+    Integer, intent(in) :: ld, n, nf, t, kd, k
+    Logical, intent(in) :: left, desc
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
+    Integer :: j, j1, j2, js, tt, g, e
+    if (td_n(nf) == 0 .or. n <= 0) return
+    tt = t
+    if (tt == 0) tt = Ltrot
+    if (tt < 1 .or. tt > Ltrot) call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+    if (desc) then
+       j1 = td_n(nf); j2 = 1; js = -1
+    else
+       j1 = 1; j2 = td_n(nf); js = 1
+    endif
+    do j = j1, j2, js
+       g = td_grp(tt,kd,j,nf)
+       if (g == 0) cycle
+       e = hop_gptr(g)
+       if (left) then
+          if (hop_meta(2,e) > 8) then
+             call dense_left(M, ld, n, e, k)
+          else
+             call k_cb_left_g(M, ld, n, g, k, gpu_tl); gpu_n_launch = gpu_n_launch + 1
+          endif
+       else
+          if (hop_meta(2,e) > 8) then
+             call dense_right(M, ld, n, e, k)
+          else
+             call k_cb_right_g(M, ld, n, g, k, gpu_tr); gpu_n_launch = gpu_n_launch + 1
+          endif
+       endif
+    enddo
+  end subroutine td_apply
+
+!--------------------------------------------------------------------
 !> Hop_mod_Symm on the device: M <- B^{1/2}-similarity, per element (descending) left mat_1D2 then right invmat_1D2.  The elements of a
 !> group commute, so a group is applied as all lefts then all rights.  M is an n x n matrix (ld = leading dimension).
-  Subroutine gpu_symm(M, ld, n, nf)
+  Subroutine gpu_symm(M, ld, n, nf, t1, t2)
     Implicit none
-    Integer, intent(in) :: ld, n, nf
+    Integer, intent(in) :: ld, n, nf, t1
+    Integer, intent(in), optional :: t2
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
-    Integer :: ga, gb, g, e
+    Integer :: ga, gb, g, e, tr
+    tr = t1
+    if (present(t2)) tr = t2
+    ! host order: elements descending, so the (last) time-dependent ones first: left A(g_t(t1)/2), right A(-g_t(t2)/2)
+    if (td_any) then
+       call td_apply(M, ld, n, nf, t1, 2, 3, .true., .true.)
+       call td_apply(M, ld, n, nf, tr, 2, 4, .false., .true.)
+    endif
     ga = hop_gstart(nf); gb = hop_gstart(nf+1) - 1
     if (gb < ga .or. n <= 0) return
     do g = gb, ga, -1
@@ -282,9 +338,11 @@ Contains
 !> Symm(M) = A M B for every n x n matrix M: A (left factors) and B (right factors) are the sequences of gpu_symm applied to the
 !> identity (the lefts and rights commute).  A and B must be device-resident n x n arrays with leading dimension ld; they are
 !> set here (the identity is written by the host and uploaded).
-  Subroutine gpu_symm_build(A, B, ld, n, nf)
+  Subroutine gpu_symm_build(A, B, ld, n, nf, t1, t2)
     Implicit none
     Integer, intent(in) :: ld, n, nf
+    Integer, intent(in), optional :: t1, t2
+    Integer :: tr
     Complex (Kind=Kind(0.d0)), intent(inout) :: A(ld,*), B(ld,*)
     Integer :: ga, gb, g, e, i
     Complex (Kind=Kind(0.d0)), allocatable :: Id(:,:)
@@ -295,6 +353,14 @@ Contains
     call k_set_c(ld*n, Id, A)
     call k_set_c(ld*n, Id, B)
     deallocate(Id)
+    if (td_any) then
+       ! the matrices depend on the slice(s) when a time-dependent element exists
+       if (.not. present(t1)) call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+       tr = t1
+       if (present(t2)) tr = t2
+       call td_apply(A, ld, n, nf, t1, 2, 3, .true., .true.)
+       call td_apply(B, ld, n, nf, tr, 2, 4, .false., .true.)
+    endif
     ga = hop_gstart(nf); gb = hop_gstart(nf+1) - 1
     if (gb < ga) return
     do g = gb, ga, -1
@@ -1116,7 +1182,7 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: U(ld,*)
     Integer :: t
     do t = ntau + 1, ntau1
-       call gpu_mmthr(U, ld, ncol, nf)
+       call gpu_mmthr(U, ld, ncol, nf, t)
        call gpu_Vslice_R(U, ld, ncol, nf, t, 'n', .false.)
     enddo
   end subroutine gpu_wrapur_slices
@@ -1129,7 +1195,7 @@ Contains
     Integer :: t
     do t = ntau1, ntau + 1, -1
        call gpu_Vslice_R(U, ld, ncol, nf, t, 'c', .true.)
-       call gpu_mmthlc(U, ld, ncol, nf)
+       call gpu_mmthlc(U, ld, ncol, nf, t)
     enddo
   end subroutine gpu_wrapul_slices
 
@@ -1138,8 +1204,8 @@ Contains
     Implicit none
     Integer, intent(in) :: ld, nf, ntau
     Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,*)
-    call gpu_mmthr(G, ld, Ndim, nf)
-    call gpu_mmthl_m1(G, ld, Ndim, nf)
+    call gpu_mmthr(G, ld, Ndim, nf, ntau + 1)
+    call gpu_mmthl_m1(G, ld, Ndim, nf, ntau + 1)
     call gpu_Vwrap_all(G, ld, nf, ntau + 1, 1)
   end subroutine gpu_wrapgr_up
 
@@ -1149,8 +1215,8 @@ Contains
     Integer, intent(in) :: ld, nf, ntau
     Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,*)
     call gpu_Vwrap_all(G, ld, nf, ntau, -1)
-    call gpu_mmthl(G, ld, Ndim, nf)
-    call gpu_mmthr_m1(G, ld, Ndim, nf)
+    call gpu_mmthl(G, ld, Ndim, nf, ntau)
+    call gpu_mmthr_m1(G, ld, Ndim, nf, ntau)
   end subroutine gpu_wrapgr_do
 
 !====================================================================
@@ -1275,11 +1341,11 @@ Contains
     Integer, intent(in) :: op, nf, ld, nn
     Complex (Kind=Kind(0.d0)), intent(inout) :: D(ld,*)
     select case (op)
-    case (1); call gpu_mmthr   (D, ld, nn, nf)
-    case (2); call gpu_mmthr_m1(D, ld, nn, nf)
-    case (3); call gpu_mmthl   (D, ld, nn, nf)
-    case (4); call gpu_mmthlc  (D, ld, nn, nf)
-    case (5); call gpu_mmthl_m1(D, ld, nn, nf)
+    case (1); call gpu_mmthr   (D, ld, nn, nf, 1)
+    case (2); call gpu_mmthr_m1(D, ld, nn, nf, 1)
+    case (3); call gpu_mmthl   (D, ld, nn, nf, 1)
+    case (4); call gpu_mmthlc  (D, ld, nn, nf, 1)
+    case (5); call gpu_mmthl_m1(D, ld, nn, nf, 1)
     end select
   end subroutine dev_hop
 
@@ -1457,7 +1523,7 @@ Contains
     if (.not. hop_big(1)) then
        allocate(Dt(Ndim,Ndim)); Dt = z1
        !$omp target enter data map(to: Dt)
-       l0 = gpu_n_launch; call gpu_mmthr(Dt, Ndim, Ndim, 1)
+       l0 = gpu_n_launch; call gpu_mmthr(Dt, Ndim, Ndim, 1, 1)
        write(line,'(A,I0,A)') 'GPU wrap structure: launches per B_T (mmthr): ', gpu_n_launch - l0, ' (= number of groups)'
        call say(line)
        !$omp target exit data map(delete: Dt)
@@ -2234,8 +2300,8 @@ Contains
     do while (omp_get_wtime() - t0 < 0.5d0)
        call gpu_Vslice_R(D, Ndim, Ndim, 1, 1, 'n', .false.)
        call gpu_Vslice_R(D, Ndim, Ndim, 1, 1, 'n', .true.)
-       call gpu_mmthr(D, Ndim, Ndim, 1); call gpu_mmthl_m1(D, Ndim, Ndim, 1)
-       call gpu_mmthr_m1(D, Ndim, Ndim, 1); call gpu_mmthl(D, Ndim, Ndim, 1)
+       call gpu_mmthr(D, Ndim, Ndim, 1, 1); call gpu_mmthl_m1(D, Ndim, Ndim, 1, 1)
+       call gpu_mmthr_m1(D, Ndim, Ndim, 1, 1); call gpu_mmthl(D, Ndim, Ndim, 1, 1)
        !$omp target update from(D)       ! synchronise (and keeps the values bounded by the caller's restore)
        D = Hs
        !$omp target update to(D)
@@ -2351,7 +2417,7 @@ Contains
     tc = median5(tt)
     D = Hs
     !$omp target update to(D)
-    call gpu_mmthr(D,Ndim,Ndim,1); call gpu_mmthl_m1(D,Ndim,Ndim,1); call gpu_mmthr_m1(D,Ndim,Ndim,1); call gpu_mmthl(D,Ndim,Ndim,1)
+    call gpu_mmthr(D,Ndim,Ndim,1, 1); call gpu_mmthl_m1(D,Ndim,Ndim,1, 1); call gpu_mmthr_m1(D,Ndim,Ndim,1, 1); call gpu_mmthl(D,Ndim,Ndim,1, 1)
     call la_sync_if()
     nrep = 100
     do itr = 1, 5
@@ -2359,8 +2425,8 @@ Contains
        !$omp target update to(D)
        t0 = omp_get_wtime()
        do irep = 1, nrep
-          call gpu_mmthr(D,Ndim,Ndim,1); call gpu_mmthl_m1(D,Ndim,Ndim,1)
-          call gpu_mmthr_m1(D,Ndim,Ndim,1); call gpu_mmthl(D,Ndim,Ndim,1)
+          call gpu_mmthr(D,Ndim,Ndim,1, 1); call gpu_mmthl_m1(D,Ndim,Ndim,1, 1)
+          call gpu_mmthr_m1(D,Ndim,Ndim,1, 1); call gpu_mmthl(D,Ndim,Ndim,1, 1)
        enddo
        call la_sync_if()
        t1 = omp_get_wtime()

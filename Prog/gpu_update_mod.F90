@@ -500,8 +500,8 @@ Contains
     ! Wrap up with B(tau1)
     Do nf_eff = 1,N_FL_eff
        nf=Calc_Fl_map(nf_eff)
-       call gpu_mmthr   (G_d(1,1,nf), Ndim, Ndim, nf)
-       call gpu_mmthl_m1(G_d(1,1,nf), Ndim, Ndim, nf)
+       call gpu_mmthr   (G_d(1,1,nf), Ndim, Ndim, nf, ntau1)
+       call gpu_mmthl_m1(G_d(1,1,nf), Ndim, Ndim, nf, ntau1)
     Enddo
     Do n = Nt_sequential_start,Nt_sequential_end
        if (bm) then
@@ -612,8 +612,8 @@ Contains
     call gpu_lr_flush_all(2)                    ! delayed / submatrix: flush before the hopping wrap
     Do nf_eff = 1,N_FL_eff
        nf=Calc_Fl_map(nf_eff)
-       call gpu_mmthl   (G_d(1,1,nf), Ndim, Ndim, nf)
-       call gpu_mmthr_m1(G_d(1,1,nf), Ndim, Ndim, nf)
+       call gpu_mmthl   (G_d(1,1,nf), Ndim, Ndim, nf, ntau)
+       call gpu_mmthr_m1(G_d(1,1,nf), Ndim, Ndim, nf, ntau)
     enddo
     call g_out(GR)
 #ifdef TIMING

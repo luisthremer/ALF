@@ -118,6 +118,7 @@ Module gpu_state_mod
   Public :: gpu_state_setup, gpu_state_finalize, gpu_supported, gpu_active, gpu_reason, gpu_scratch_lwork
   Public :: hop_start, hop_meta, hop_P, hop_Rval, hop_Cval
   Public :: hop_gstart, hop_gptr, hop_big, hop_aux, hop_At, hop_Ac, vr_ptr, vr_ent, g_ngroups
+  Public :: td_grp, td_n, td_any, td_symm_active
   Public :: rnd, rand_mat, rel_diff, is_finite, finite_c, selftest_fail, info_line, same_bits_c
   Public :: V_meta, V_type, V_P, V_exp, nsigma_d, nsigma_t
   Public :: G_d, g_dev_ok, g_host_ok, udv_U, udv_V, udv_D, udv_L, udw_U, udw_V, udw_D, udw_L
@@ -131,6 +132,16 @@ Module gpu_state_mod
 
   Integer, Save :: g_NFL = 0, g_Ndim = 0, g_Nop = 0, g_Ltrot = 0, g_NSTM = 0, g_NFLeff = 0
   Integer, Save :: g_nel = 0, g_ngroups = 0
+  Integer, Save :: g_nstat = 0           ! number of static (non time-dependent) hopping elements; time-dependent ones follow them
+  ! ---- time-dependent hopping elements (OpT_time_dependent), see docs/gpu/TIMEDEP_HOPPING.md ----
+  !   td_n(nf)                  number of time-dependent elements of flavour nf (they follow all static ones in operator order)
+  !   td_grp(t,kind,j,nf)       group index (one element) of the j-th td element of flavour nf at slice t, 0 = inactive (skipped,
+  !                             exactly as the host skips it when |g|^2 <= Zero).  kind 1: propagation coupling (mat k=1 = A(g),
+  !                             invmat k=2 = A(-g), g = g_t(t) or the Symm average); kind 2: Symm half steps (k=3 = A(g_t(t)/2),
+  !                             k=4 = A(-g_t(t)/2)).  Host-side table, the matrices live in hop_Cval like any complex element.
+  Integer, Allocatable, Save :: td_grp(:,:,:,:), td_n(:)
+  Logical, Save :: td_any = .false.
+  Logical, Save :: td_symm_active = .false.   ! some td element has a Symm half step that is active at some slice
 
   ! ---- constant data, built once from the host objects ----
   Integer,                 Allocatable, Save :: hop_start(:), hop_meta(:,:), hop_P(:)
@@ -481,10 +492,11 @@ Contains
     Character (len=*), intent(out) :: reason
 
     Integer :: n, nf, nc, nh, ek
-    Logical :: act
+    Logical :: act, is_td, symm_el, seen_td
     Integer, allocatable :: P(:)
-    Real    (Kind=Kind(0.d0)), allocatable :: rm(:,:,:)
-    Complex (Kind=Kind(0.d0)), allocatable :: cm(:,:,:)
+    Real    (Kind=Kind(0.d0)), allocatable :: rm(:,:,:), Etd(:)
+    Complex (Kind=Kind(0.d0)), allocatable :: cm(:,:,:), Utd(:,:), gtd(:)
+    Real    (Kind=Kind(0.d0)) :: zero_td
 
     gpu_supported = .false.
     reason = ''
@@ -556,11 +568,31 @@ Contains
     enddo
     nc = Hop_mod_gpu_ncheck()
     do nf = 1, N_FL
+       seen_td = .false.
        do n = 1, nc
           call Hop_mod_gpu_element(nf, n, ek, nh, act, P, rm, cm)
-          if (ek /= 1 .and. ek /= 2) then
+          if (ek == 3) then
+             call Hop_mod_gpu_td_element(nf, n, is_td, nh, symm_el, zero_td, P, Utd, Etd, gtd)
+             if (.not. is_td) then
+                write(reason,'(A,A,A,I0,A,I0,A)') 'Hamiltonian ', trim(get_ham_name()), &
+                     & ': hopping element (', n, ',', nf, ') is of unknown type'
+                return
+             endif
+             seen_td = .true.
+             if (size(gtd,1) /= Ltrot) then
+                reason = 'time-dependent hopping: size(g_t) /= Ltrot'; return
+             endif
+             ! memory of the per-slice matrices: 2 kinds x 4 matrices x nh^2 per active slice
+             if (16.d0*8.d0*real(nh,kind(0.d0))**2*real(Ltrot,kind(0.d0)) > 2.d9) then
+                reason = 'time-dependent hopping element too large (matrices per slice exceed 2 GB)'; return
+             endif
+          else if (ek /= 1 .and. ek /= 2) then
              write(reason,'(A,A,A,I0,A,I0,A)') 'Hamiltonian ', trim(get_ham_name()), &
-                  & ': hopping element (', n, ',', nf, ') is time dependent or of unknown type'
+                  & ': hopping element (', n, ',', nf, ') is of unknown type'
+             return
+          else if (seen_td) then
+             write(reason,'(A,A,A,I0,A,I0,A)') 'Hamiltonian ', trim(get_ham_name()), &
+                  & ': static hopping element (', n, ',', nf, ') follows a time-dependent one (GPU path requires time-dependent elements last)'
              return
           endif
        enddo
@@ -627,6 +659,11 @@ Contains
     call info_line(line)
     call report_layout()
     ! timing of setup includes the host->device copies, not the self-test
+    if (td_any) then
+       write(line,'(A,I0,A,I0,A)') 'GPU mirror: time-dependent hopping: ', g_nel - g_nstat, ' per-slice element(s) in ', &
+            & count(td_n > 0), ' flavour(s)'
+       call info_line(line)
+    endif
     write(line,'(A,F10.4,A)') 'GPU mirror setup time (incl. host->device copies): ', tsetup, ' s'
     call info_line(line)
     write(output_unit,'(A,F10.4,A)') ' GPU mirror setup time (incl. host->device copies): ', tsetup, ' s'
@@ -659,22 +696,47 @@ Contains
     Real    (Kind=Kind(0.d0)), allocatable :: rm(:,:,:)
     Complex (Kind=Kind(0.d0)), allocatable :: cm(:,:,:)
     Integer :: ncheck
+    ! time-dependent elements
+    Integer :: nel_td, npv_td, ncv_td, ntdmax, ntdf, t, kd, j
+    Logical :: is_td, symm_el
+    Real    (Kind=Kind(0.d0)) :: zero_td
+    Real    (Kind=Kind(0.d0)), allocatable :: Etd(:)
+    Complex (Kind=Kind(0.d0)), allocatable :: Utd(:,:), gtd(:), Atd(:,:)
 
     ncheck = Hop_mod_gpu_ncheck()
     allocate(hop_start(N_FL+1))
     nel = 0; npv = 0; nrv = 0; ncv = 0
+    nel_td = 0; npv_td = 0; ncv_td = 0; ntdmax = 0
+    allocate(td_n(N_FL)); td_n = 0
     do nf = 1, N_FL
+       ntdf = 0
        do nc = 1, ncheck
           call Hop_mod_gpu_element(nf, nc, ek, nh, act, P, rm, cm)
+          if (ek == 3) then
+             call Hop_mod_gpu_td_element(nf, nc, is_td, nh, symm_el, zero_td, P, Utd, Etd, gtd)
+             ntdf = ntdf + 1
+             do t = 1, g_Ltrot
+                do kd = 1, 2
+                   if (td_active(gtd, t, kd, symm_el, zero_td)) then
+                      nel_td = nel_td + 1; npv_td = npv_td + nh; ncv_td = ncv_td + 4*nh*nh
+                   endif
+                enddo
+             enddo
+          endif
           if (act) then
              nel = nel + 1; npv = npv + nh
              if (ek == 1) nrv = nrv + 4*nh*nh
              if (ek == 2) ncv = ncv + 4*nh*nh
           endif
        enddo
+       td_n(nf) = ntdf
+       ntdmax = max(ntdmax, ntdf)
     enddo
-    g_nel = nel
-    allocate(hop_meta(4,max(nel,1)), hop_P(max(npv,1)), hop_Rval(max(nrv,1)), hop_Cval(max(ncv,1)))
+    g_nstat = nel
+    g_nel = nel + nel_td
+    td_any = (nel_td > 0)
+    allocate(td_grp(g_Ltrot,2,max(ntdmax,1),N_FL)); td_grp = 0
+    allocate(hop_meta(4,max(g_nel,1)), hop_P(max(npv+npv_td,1)), hop_Rval(max(nrv,1)), hop_Cval(max(ncv+ncv_td,1)))
     hop_meta = 0; hop_P = 0; hop_Rval = 0.d0; hop_Cval = cmplx(0.d0,0.d0,kind(0.d0))
     e = 0; npv = 0; nrv = 0; ncv = 0
     do nf = 1, N_FL
@@ -726,14 +788,97 @@ Contains
        enddo
     enddo
     hop_start(N_FL+1) = e + 1
+
+    ! ---- time-dependent elements: after all static ones; one element per (flavour, td element, slice, kind) that is active ----
+    do nf = 1, N_FL
+       j = 0
+       do nc = 1, ncheck
+          call Hop_mod_gpu_element(nf, nc, ek, nh, act, P, rm, cm)
+          if (ek /= 3) cycle
+          j = j + 1
+          call Hop_mod_gpu_td_element(nf, nc, is_td, nh, symm_el, zero_td, P, Utd, Etd, gtd)
+          allocate(Atd(nh,nh))
+          do t = 1, g_Ltrot
+             do kd = 1, 2
+                if (.not. td_active(gtd, t, kd, symm_el, zero_td)) cycle
+                e = e + 1
+                hop_meta(1,e) = 2; hop_meta(2,e) = nh; hop_meta(3,e) = npv; hop_meta(4,e) = ncv
+                hop_P(npv+1:npv+nh) = P
+                npv = npv + nh
+                if (kd == 1) then
+                   call td_matrix(Utd, Etd, td_g(gtd, t, 1, symm_el), 1.d0, Atd);   hop_Cval(ncv+1:ncv+nh*nh) = reshape(Atd,(/nh*nh/))
+                   call td_matrix(Utd, Etd, td_g(gtd, t, 1, symm_el), -1.d0, Atd);  hop_Cval(ncv+nh*nh+1:ncv+2*nh*nh) = reshape(Atd,(/nh*nh/))
+                   call td_matrix(Utd, Etd, td_g(gtd, t, 1, symm_el), 0.5d0, Atd);  hop_Cval(ncv+2*nh*nh+1:ncv+3*nh*nh) = reshape(Atd,(/nh*nh/))
+                   call td_matrix(Utd, Etd, td_g(gtd, t, 1, symm_el), -0.5d0, Atd); hop_Cval(ncv+3*nh*nh+1:ncv+4*nh*nh) = reshape(Atd,(/nh*nh/))
+                else
+                   call td_matrix(Utd, Etd, gtd(t), 1.d0, Atd);   hop_Cval(ncv+1:ncv+nh*nh) = reshape(Atd,(/nh*nh/))
+                   call td_matrix(Utd, Etd, gtd(t), -1.d0, Atd);  hop_Cval(ncv+nh*nh+1:ncv+2*nh*nh) = reshape(Atd,(/nh*nh/))
+                   call td_matrix(Utd, Etd, gtd(t), 0.5d0, Atd);  hop_Cval(ncv+2*nh*nh+1:ncv+3*nh*nh) = reshape(Atd,(/nh*nh/))
+                   call td_matrix(Utd, Etd, gtd(t), -0.5d0, Atd); hop_Cval(ncv+3*nh*nh+1:ncv+4*nh*nh) = reshape(Atd,(/nh*nh/))
+                   td_symm_active = .true.
+                endif
+                ncv = ncv + 4*nh*nh
+                td_grp(t,kd,j,nf) = e          ! element index; build_groups turns it into the group index
+             enddo
+          enddo
+          deallocate(Atd)
+       enddo
+    enddo
   end subroutine build_hopping
+
+  !> Coupling the host routines use at slice t: kind 1 (lmult/rmult family) g_t(t), Symm: 0.5*(g_t(t)+g_t(t-1)), t-1 = Ltrot for t = 1;
+  !> kind 2 (adjointaction) the raw g_t(t).
+  Complex (Kind=Kind(0.d0)) Function td_g(gt, t, kd, symm_el)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in) :: gt(:)
+    Integer, intent(in) :: t, kd
+    Logical, intent(in) :: symm_el
+    Integer :: t1
+    td_g = gt(t)
+    if (kd == 1 .and. symm_el) then
+       t1 = t - 1
+       if (t == 1) t1 = size(gt,1)
+       td_g = 0.5d0 * (gt(t) + gt(t1))
+    endif
+  end function td_g
+
+  Logical Function td_active(gt, t, kd, symm_el, zero)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in) :: gt(:)
+    Integer, intent(in) :: t, kd
+    Logical, intent(in) :: symm_el
+    Real (Kind=Kind(0.d0)), intent(in) :: zero
+    Complex (Kind=Kind(0.d0)) :: g
+    g = td_g(gt, t, kd, symm_el)
+    td_active = ( dble( g * conjg(g) ) > zero )
+  end function td_active
+
+  !> A = U diag(exp(fac * g * E)) U^dagger  (what the host applies from the left and from the right)
+  Subroutine td_matrix(U, E, g, fac, A)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in)  :: U(:,:), g
+    Real    (Kind=Kind(0.d0)), intent(in)  :: E(:), fac
+    Complex (Kind=Kind(0.d0)), intent(out) :: A(:,:)
+    Integer :: i, j, k, nh
+    Complex (Kind=Kind(0.d0)) :: ex
+    nh = size(E,1)
+    A = (0.d0, 0.d0)
+    do k = 1, nh
+       ex = exp(fac*g*E(k))
+       do j = 1, nh
+          do i = 1, nh
+             A(i,j) = A(i,j) + U(i,k) * ex * conjg(U(j,k))
+          enddo
+       enddo
+    enddo
+  end subroutine td_matrix
 
 !--------------------------------------------------------------------
 !> Checkerboard groups and dense auxiliaries (ticket 204), from the flat element list.
 !--------------------------------------------------------------------
   Subroutine build_groups()
     Implicit none
-    Integer :: nf, e, e1, e2, ng, pass, nd, po, l, nx, xo, k, i, j, mo
+    Integer :: nf, e, e1, e2, ng, pass, nd, po, l, nx, xo, k, i, j, mo, ntdg
     Integer, allocatable :: mark(:), gp(:)
     Logical :: ok
 
@@ -782,10 +927,17 @@ Contains
        enddo
        if (pass == 2) then
           hop_gstart(g_NFL+1) = ng + 1
-          gp(ng+1) = g_nel + 1
+          gp(ng+1) = g_nstat + 1
        endif
     enddo
-    allocate(hop_gptr(ng+1)); hop_gptr = gp; deallocate(gp)
+    ! time-dependent elements: one single-element group each, appended after the static groups (not part of any hop_gstart range)
+    ntdg = g_nel - g_nstat
+    allocate(hop_gptr(ng+1+ntdg)); hop_gptr(1:ng+1) = gp
+    do i = 1, ntdg
+       hop_gptr(ng+1+i) = g_nstat + 1 + i
+    enddo
+    deallocate(gp)
+    where (td_grp > 0) td_grp = td_grp - g_nstat + ng
 
     ! dense auxiliaries
     nx = 0
@@ -975,6 +1127,8 @@ Contains
     deallocate(G_d, g_dev_ok, g_host_ok, udv_U, udv_V, udw_U, udw_V, nsigma_d, nsigma_t)
     deallocate(V_meta, V_type, V_P, V_exp, hop_start, hop_meta, hop_P, hop_Rval, hop_Cval)
     deallocate(hop_gstart, hop_gptr, hop_big, hop_aux, hop_At, hop_Ac, vr_ptr, vr_ent)
+    deallocate(td_grp, td_n)
+    td_any = .false.; td_symm_active = .false.
     gpu_active = .false.
   end subroutine gpu_state_finalize
 
