@@ -100,6 +100,7 @@ Module gpu_wrap_mod
 
   Integer, parameter :: HOPD_NMAX = 800
   Logical, Save :: hopd_built = .false.
+  Integer, Save :: st_t = 1                    ! slice used by the self-test hop calls (cpu_hop / dev_hop)
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: Hd(:,:,:,:)
 
 Contains
@@ -1329,11 +1330,11 @@ Contains
     Integer, intent(in) :: op, nf
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(:,:)
     select case (op)
-    case (1); call Hop_mod_mmthr   (M, nf, 1)
-    case (2); call Hop_mod_mmthr_m1(M, nf, 1)
-    case (3); call Hop_mod_mmthl   (M, nf, 1)
-    case (4); call Hop_mod_mmthlc  (M, nf, 1)
-    case (5); call Hop_mod_mmthl_m1(M, nf, 1)
+    case (1); call Hop_mod_mmthr   (M, nf, st_t)
+    case (2); call Hop_mod_mmthr_m1(M, nf, st_t)
+    case (3); call Hop_mod_mmthl   (M, nf, st_t)
+    case (4); call Hop_mod_mmthlc  (M, nf, st_t)
+    case (5); call Hop_mod_mmthl_m1(M, nf, st_t)
     end select
   end subroutine cpu_hop
 
@@ -1342,13 +1343,105 @@ Contains
     Integer, intent(in) :: op, nf, ld, nn
     Complex (Kind=Kind(0.d0)), intent(inout) :: D(ld,*)
     select case (op)
-    case (1); call gpu_mmthr   (D, ld, nn, nf, 1)
-    case (2); call gpu_mmthr_m1(D, ld, nn, nf, 1)
-    case (3); call gpu_mmthl   (D, ld, nn, nf, 1)
-    case (4); call gpu_mmthlc  (D, ld, nn, nf, 1)
-    case (5); call gpu_mmthl_m1(D, ld, nn, nf, 1)
+    case (1); call gpu_mmthr   (D, ld, nn, nf, st_t)
+    case (2); call gpu_mmthr_m1(D, ld, nn, nf, st_t)
+    case (3); call gpu_mmthl   (D, ld, nn, nf, st_t)
+    case (4); call gpu_mmthlc  (D, ld, nn, nf, st_t)
+    case (5); call gpu_mmthl_m1(D, ld, nn, nf, st_t)
     end select
   end subroutine dev_hop
+
+  !> Time-dependent hopping elements against the host routines (Hop_mod_mm*, Hop_mod_Symm) at every slice where one is active,
+  !> plus slice 1 and Ltrot (t-1 wrap of the Symm average), all five hop routines and Symm (t1 = t2 and t1 /= t2).
+  Subroutine td_selftest(s, tol)
+    Implicit none
+    Integer(int64), intent(inout) :: s
+    Real (Kind=Kind(0.d0)), intent(in) :: tol
+    Integer :: nf, t, tt(3), it, op, j, ntest, nbad, t2
+    Real (Kind=Kind(0.d0)) :: dmax(5), dsy, d, dctl
+    Complex (Kind=Kind(0.d0)), allocatable :: A0(:,:), A1(:,:), Dt(:,:), S0(:,:,:), S1(:,:,:)
+    Character (len=10), parameter :: opname(5) = (/ 'mmthr     ', 'mmthr_m1  ', 'mmthl     ', 'mmthlc    ', 'mmthl_m1  ' /)
+    Character (len=256) :: line
+    dmax = 0.d0; dsy = 0.d0; ntest = 0
+    allocate(A0(Ndim,Ndim), A1(Ndim,Ndim), Dt(Ndim,Ndim), S0(Ndim,Ndim,N_FL), S1(Ndim,Ndim,N_FL))
+    !$omp target enter data map(alloc: Dt)
+    do t = 1, Ltrot
+       ! slices where some element is active (propagation or Symm kind) plus the boundaries
+       if (t /= 1 .and. t /= Ltrot) then
+          if (.not. any(td_grp(t,:,:,:) > 0)) cycle
+       endif
+       do nf = 1, N_FL
+          do op = 1, 5
+             st_t = t
+             call rand_mat(A0, s)
+             A1 = A0
+             call cpu_hop(op, nf, A1)
+             Dt = A0
+             !$omp target update to(Dt)
+             call dev_hop(op, nf, Dt, Ndim, Ndim)
+             !$omp target update from(Dt)
+             d = frob_rel(Dt, A1)
+             if (d > dmax(op)) dmax(op) = d
+             ntest = ntest + 1
+          enddo
+          ! Symm: t1 = t2 = t, and (t, Ltrot) / (t, 0 -> Ltrot) combinations of the tau-displaced calls
+          do it = 1, 3
+             t2 = t
+             if (it == 2) t2 = Ltrot
+             if (it == 3) t2 = 1
+             call rand_mat(A0, s)
+             S0(:,:,1) = A0
+             do j = 2, N_FL
+                S0(:,:,j) = A0
+             enddo
+             call Hop_mod_Symm(S1, S0, t, t2)
+             Dt = A0
+             !$omp target update to(Dt)
+             call gpu_symm(Dt, Ndim, Ndim, nf, t, t2)
+             !$omp target update from(Dt)
+             d = frob_rel(Dt, S1(:,:,nf))
+             if (d > dsy) dsy = d
+             ntest = ntest + 1
+          enddo
+       enddo
+    enddo
+    ! negative control: the device at a slice where nothing is active against the host at an active slice must differ clearly
+    dctl = 0.d0
+    do t = 2, Ltrot - 1
+       if (all(td_grp(t,:,:,1) == 0)) then
+          tt(1) = t; exit
+       endif
+    enddo
+    do t = 1, Ltrot
+       if (any(td_grp(t,1,:,1) > 0)) then
+          tt(2) = t; exit
+       endif
+    enddo
+    call rand_mat(A0, s)
+    A1 = A0
+    st_t = tt(2); call cpu_hop(1, 1, A1)
+    Dt = A0
+    !$omp target update to(Dt)
+    st_t = tt(1); call dev_hop(1, 1, Dt, Ndim, Ndim)
+    !$omp target update from(Dt)
+    dctl = frob_rel(Dt, A1)
+    st_t = 1
+    !$omp target exit data map(delete: Dt)
+    deallocate(A0, A1, Dt, S0, S1)
+    nbad = 0
+    write(line,'(A,ES10.3,A)') 'GPU wrap self-test time-dependent hopping negative control (device at an inactive slice vs host at an active one): diff ', dctl, ' (must exceed tol)'
+    call say(line)
+    if (.not. dctl > 10.d0*tol) call selftest_fail('time-dependent hopping: the self-test is blind to the slice')
+    do op = 1, 5
+       write(line,'(A,A,A,ES10.3,A,ES8.1)') 'GPU wrap self-test time-dependent hopping ', opname(op), ': max rel Frobenius diff ', dmax(op), ' (tol ', tol
+       call say(line)
+       if (.not. dmax(op) <= tol) nbad = nbad + 1
+    enddo
+    write(line,'(A,ES10.3,A,I0,A)') 'GPU wrap self-test time-dependent hopping Symm: max rel Frobenius diff ', dsy, ' (', ntest, ' cases)'
+    call say(line)
+    if (.not. dsy <= tol) nbad = nbad + 1
+    if (nbad > 0) call selftest_fail('time-dependent hopping')
+  end subroutine td_selftest
 
   Subroutine gpu_wrap_selftest()
     Implicit none
@@ -1431,6 +1524,7 @@ Contains
        if (.not. (dh(op,1) <= tol .and. dh(op,2) <= tol)) call selftest_fail('hopping '//trim(opname(op)))
     enddo
     if (.not. la_available) call say('GPU wrap self-test: dense hopping paths SKIPPED (alf_la backend for this build not available)')
+    if (td_any) call td_selftest(s, tol)
 
     ! ---- Op_V: per operator ----
     call test_vop(s, dv, dwa, dwo, dskip, nsp, nops)
