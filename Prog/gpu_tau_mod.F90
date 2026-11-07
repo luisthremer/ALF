@@ -34,7 +34,7 @@
 !> GPU port, ticket 207 (ADR-001 section 4, ADR-002): the time-displaced pass TAU_M of the finite-temperature code on the
 !> device.  Compiled only with -DALF_GPU.  Called from the guarded early branch in TAU_M (tau_m_mod) when gpu_tau_on.
 !>
-!> What runs on the device (Ltau = 1, no projector, no Langevin/HMC, no weight reconstruction: all refused by gpu_supported):
+!> What runs on the device (Ltau = 1, no projector, no Langevin/HMC: refused by gpu_supported; Calc_Fl reconstruction of the observable inputs on the host, ticket 401-B):
 !>   * the four Green functions GT0, G0T, GTT, G00 (gpu_state_mod GT0_d, G0T_d, GTT_d and this module's G00_d; the arrays are the host shadows
 !>     of the device arrays) stay on the device during the pass;
 !>   * the per-slice propagation PROPR / PROPRM1 (ticket 204 kernels: hopping mmthr / mmthl_m1 and the fused Op_V slice
@@ -247,8 +247,8 @@ Contains
     if (.not. gpu_stab_on) return
     if (get_Ltau() /= 1) call tau_off_refuse('Ltau /= 1')
     if (get_Ltau() /= 1) return
-    if (Projector .or. reconstruction_needed) call tau_off_refuse('Projector or reconstruction')
-    if (Projector .or. reconstruction_needed) return
+    if (Projector) call tau_off_refuse('Projector')
+    if (Projector) return
     t_N = Ndim; t_N2 = 2*Ndim; t_nfe = N_FL_eff; t_nstm = NSTM
     n = t_N; n2 = t_N2
     allocate(t_nt(0:NSTM)); t_nt = Stab_nt
@@ -333,7 +333,7 @@ Contains
   end subroutine gpu_tau_finalize
 
 !====================================================================
-!  The pass (what TAU_M does, without the Langevin / HMC / reconstruction parts, which gpu_supported refuses)
+!  The pass (what TAU_M does, without the Langevin / HMC parts, which gpu_supported refuses; the flavour reconstruction is in tau_obs)
 !====================================================================
   Subroutine gpu_tau_pass(GR, PHASE, NSTM, STAB_NT)
     Implicit none
@@ -405,8 +405,19 @@ Contains
           Call Hop_mod_Symm(GTT_T,GTT_d,nt)
           Call Hop_mod_Symm(G0T_T,G0T_d,nt)
           Call Hop_mod_Symm(GT0_T,GT0_d,nt)
+          ! ticket 401-B: non-calculated flavour blocks (host shadows; tau_m_mod.F90, tau = 0)
+          if (reconstruction_needed) then
+             Call ham%GR_reconstruction( G00_T )
+             Call ham%GR_reconstruction( GTT_T )
+             Call ham%GRT_reconstruction( GT0_T, G0T_T )
+          endif
           CALL ham%OBSERT(nt, GT0_T,G0T_T,G00_T,GTT_T, PHASE, Mc_step_Weight)
        else
+          if (reconstruction_needed) then
+             Call ham%GR_reconstruction( G00_d )
+             Call ham%GR_reconstruction( GTT_d )
+             Call ham%GRT_reconstruction( GT0_d, G0T_d )
+          endif
           CALL ham%OBSERT(nt, GT0_d,G0T_d,G00_d,GTT_d, PHASE, Mc_step_Weight)
        endif
     else
@@ -415,8 +426,18 @@ Contains
           Call Hop_mod_Symm(GTT_T,GTT_d,nt)
           Call Hop_mod_Symm(G0T_T,G0T_d,Ltrot,nt)
           Call Hop_mod_Symm(GT0_T,GT0_d,nt,Ltrot)
+          if (reconstruction_needed) then
+             Call ham%GR_reconstruction( G00_T )
+             Call ham%GR_reconstruction( GTT_T )
+             Call ham%GRT_reconstruction( GT0_T, G0T_T )
+          endif
           CALL ham%OBSERT(nt, GT0_T,G0T_T,G00_T,GTT_T,PHASE, Mc_step_Weight)
        else
+          if (reconstruction_needed) then
+             Call ham%GR_reconstruction( G00_d )
+             Call ham%GR_reconstruction( GTT_d )
+             Call ham%GRT_reconstruction( GT0_d, G0T_d )
+          endif
           CALL ham%OBSERT(nt, GT0_d,G0T_d,G00_d,GTT_d,PHASE, Mc_step_Weight)
        endif
     endif

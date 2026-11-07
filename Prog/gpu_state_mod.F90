@@ -71,7 +71,7 @@
 !>  Notes for ticket 205 (updates): the determinant ratio contains exp(Z1*Op_V%alpha) (upgrade_mod.F90:193) and
 !>  alpha is not in the mirror; nsigma_d is a copy made at setup and goes stale as soon as updates run (205 must keep
 !>  it in sync); N and P of an operator may differ between flavours (V_meta is per (n,nf)).  gpu_supported refuses
-!>  runs with Propose_S0 or reconstruction_needed (ham%weight_reconstruction).
+!>  runs with Propose_S0 (reconstruction_needed is supported since ticket 401-B).
 !>  Ticket 205 (done, gpu_update_mod): alpha is used on the host (Op_V%alpha); nsigma_d is updated per accepted flip (host
 !>  copy + one scalar H->D); per-flavour N/P are read from the host Op_V; gpu_supported also refuses N_non_zero > 1 (the
 !>  device update is rank 1).
@@ -518,9 +518,9 @@ Contains
     if (get_Lowrank_cross_slice()) then
        reason = 'Lowrank_cross_slice (cross-slice delay) is not supported on the GPU path'; return
     endif
-    if (reconstruction_needed) then
-       reason = 'Calc_Fl with weight reconstruction (ham%weight_reconstruction) is not supported on the GPU path'; return
-    endif
+    ! ticket 401-B: Calc_Fl / reconstruction_needed is supported: only the N_FL_eff calculated flavours live on the device, the ratio
+    ! of the others comes from ham%weight_reconstruction (site_update), GR / GT0 / G0T from ham%GR(T)_reconstruction on the host
+    ! (main, tau pass).  The device Hubbard observables are refused in gpu_obs_setup (they read G of every flavour).
     if (omp_get_num_devices() < 1) then
        reason = 'no OpenMP offload device found'; return
     endif

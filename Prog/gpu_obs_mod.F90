@@ -31,7 +31,7 @@ Module gpu_obs_mod
   Use Natural_Constants, only: Eps_small
   Use Lattices_v3
   Use Predefined_Hoppings
-  Use Hamiltonian_main, only: Obs_scal, Obs_eq, Obs_tau
+  Use Hamiltonian_main, only: Obs_scal, Obs_eq, Obs_tau, reconstruction_needed
   Use gpu_state_mod
   Use gpu_update_mod, only: gpu_upd_enabled
 #ifdef TIMING
@@ -89,6 +89,7 @@ Contains
     o_off = (trim(s) == '1')
     o_symm = Symm_
     if (Projector_) return          ! Symm is handled on the device (gpu_symm)
+    if (reconstruction_needed) return   ! ticket 401-B: the device measurement reads G of every flavour; with Calc_Fl the host measures
     if (abs(h0) >= Eps_small) return
     if (N_FL /= 1 .and. N_FL /= 2) return
     if (N_FL == 2 .and. N_SUN /= 1) return

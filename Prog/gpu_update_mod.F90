@@ -423,6 +423,9 @@ Contains
        Ratio(nf) =  D_Mat * exp( Z1*Op_V(n_op,nf)%alpha )
     Enddo
 
+    ! ticket 401-B: fill the ratio of the flavours that are not calculated (as upgrade_mod: before Product(Ratio))
+    if (reconstruction_needed) call ham%weight_reconstruction(Ratio)
+
     Ratiotot = Product(Ratio)
     nf = 1
     Ratiotot = (Ratiotot**dble(N_SUN)) * nsigma_new%Gama(1,1)/nsigma%Gama(n_op,nt)
