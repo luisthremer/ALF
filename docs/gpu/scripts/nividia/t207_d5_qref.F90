@@ -685,7 +685,7 @@ program t207_d5_qref
      if (iand(i, 8) /= 0) then
         if (islog .or. iand(i, 2) /= 0 .or. ib < 1) error stop 'invalid null code (flag 8: default path only, nb >= 1, not with 2)'
      else if (ib /= 0) then
-        error stop 'invalid null code (nb without flag 8)'
+        write(*,*) 'invalid null code (nb without flag 8)'; call exit(1)
      endif
      do i = 1, k - 1
         if (nul(i) == nul(k)) error stop 'duplicate null code'

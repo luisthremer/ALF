@@ -151,7 +151,8 @@ contains
     logical :: ok
     t = tol
     if (is_host()) t = 0.d0
-    ok = ieee_is_finite(val) .and. (val <= t)
+    ok = .false.
+    if (ieee_is_finite(val)) ok = (val <= t)   ! no ordered comparison on NaN/Inf (it signals under -ffpe-trap=invalid)
     nchk = nchk + 1
     if (ieee_is_finite(val)) maxval_seen = max(maxval_seen, val)
     if (.not. ok) then
@@ -164,9 +165,12 @@ contains
   subroutine check_inv(label, val, tol)
     character(len=*), intent(in) :: label
     real(8), intent(in) :: val, tol
+    logical :: ok
     nchk = nchk + 1
     if (ieee_is_finite(val)) maxval_seen = max(maxval_seen, val)
-    if (.not. (ieee_is_finite(val) .and. val <= tol)) then
+    ok = .false.
+    if (ieee_is_finite(val)) ok = (val <= tol)
+    if (.not. ok) then
       nfail = nfail + 1
       write(*,'(A,A,A,ES10.3,A,ES9.2)') '  FAIL ', trim(label), ' value ', val, ' > tol ', tol
     end if
