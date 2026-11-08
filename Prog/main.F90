@@ -150,7 +150,7 @@ Program Main
         use gpu_state_mod, only: gpu_state_setup, gpu_state_finalize, gpu_active
         use gpu_wrap_mod,  only: gpu_wrap_hook
         use gpu_update_mod, only: gpu_upd_enabled, gpu_g_host, gpu_g_host_wrote
-        use gpu_obs_mod, only: gpu_obs_active, gpu_obs_flush, gpu_obs_finalize, gpu_obs_symm
+        use gpu_obs_mod, only: gpu_obs_active, gpu_obs_flush, gpu_obs_finalize, gpu_obs_symm, gpu_obs_set_tsymm
         use gpu_stab_mod,  only: gpu_stab_on, gpu_stab_setup, gpu_stab_finalize, gpu_stab_hook, gpu_stab_wrapur, &
              &                   gpu_stab_wrapul, gpu_stab_exchange, gpu_stab_store_l, gpu_stab_cgr, gpu_stab_reset_l, &
              &                   gpu_stab_reset_r, gpu_stab_reset_st
@@ -984,6 +984,9 @@ Program Main
 #ifdef ALF_GPU
                        if (.not. gpu_obs_active()) call gpu_g_host(GR)   ! 208-1: host measurement reads GR (208-2: not with the device Obser)
 #endif
+#ifdef ALF_GPU
+                       call gpu_obs_set_tsymm(-1)   ! up sweep: label = physical slice
+#endif
                        Mc_step_weight = 1.d0
 #ifdef ALF_GPU
                        dev_symm = gpu_obs_symm()   ! the device measurement applies Hop_mod_Symm itself (gpu_symm)
@@ -1028,11 +1031,10 @@ Program Main
                  NST = NSTM-1
                  DO NTAU = LTROT,1,-1
                     NTAU1 = NTAU - 1
-                    ! GR is at time slice NTAU1 = NTAU-1 after WRAPGRDO.  For Hamiltonians with tau-resolved local observables
-                    ! (Obs_local, the space-time point defect) slice 0 is stored as slice LTROT (G(0) = G(beta) at finite T), so that every
-                    ! slice 1..LTROT is measured once in each sweep direction (otherwise slice LTROT carries half the weight).
-                    nt_obs = NTAU1
-                    If ( allocated(Obs_local) .and. .not. Projector .and. NTAU1 == 0 ) nt_obs = LTROT
+                    ! OLD-NTAU VARIANT (branch ...-old-Ntau): the down sweep is measured and labelled with NTAU as before the NTAU1 fix,
+                    ! although GR is at slice NTAU1 = NTAU-1.  Hop_mod_Symm keeps using the physical slice ntau1; the device Symm
+                    ! is told the physical slice through gpu_obs_set_tsymm.
+                    nt_obs = NTAU
                     CALL WRAPGRDO(GR,NTAU, PHASE,get_Propose_S0(),get_Nt_sequential_start(), get_Nt_sequential_end(), & 
                          &        get_N_Global_tau(), &
                          &        get_Sequential_MALA(), get_Delta_t_MALA_sequential(), get_Max_Force_MALA_sequential(), &
@@ -1043,6 +1045,9 @@ Program Main
                        !write(*,*) "Phase before obser : ",phase
 #ifdef ALF_GPU
                        if (.not. gpu_obs_active()) call gpu_g_host(GR)   ! 208-1: host measurement reads GR (208-2: not with the device Obser)
+#endif
+#ifdef ALF_GPU
+                       call gpu_obs_set_tsymm( merge(LTROT, NTAU1, NTAU1 == 0) )
 #endif
                        Mc_step_weight = 1.d0
 #ifdef ALF_GPU

@@ -47,7 +47,8 @@ Module gpu_obs_mod
   Logical, Save :: symm_built = .false.
   Integer, Save :: k_b = 0
   Public :: gpu_obs_setup, gpu_obs_active, gpu_obs_measure, gpu_obs_flush, gpu_obs_finalize, gpu_obs_symm
-  Public :: gpu_obs_tau_active, gpu_obs_tau_measure
+  Public :: gpu_obs_tau_active, gpu_obs_tau_measure, gpu_obs_set_tsymm
+  Integer, Save :: o_tsymm = -1   ! physical slice for the time-dependent Symm half step; -1: use the Ntau argument
 
   Logical, Save :: o_set = .false.         ! model data stored (gpu_obs_setup called)
   Logical, Save :: o_ok = .false.          ! the model is supported
@@ -174,6 +175,11 @@ Contains
   End Subroutine gpu_obs_setup
 
   !> .true. when the device measurement also applies the symmetrisation Hop_mod_Symm (the host must then skip it)
+  Subroutine gpu_obs_set_tsymm(t)
+    Integer, intent(in) :: t
+    o_tsymm = t
+  End Subroutine gpu_obs_set_tsymm
+
   Logical Function gpu_obs_symm()
     Implicit none
     gpu_obs_symm = o_symm .and. gpu_obs_active()
@@ -256,7 +262,7 @@ Contains
           call k_cpy(o_Ndim*o_Ndim, G_d(1,1,nf), Gsv(1,1,nf))
           if (td_symm_active) then
              ! Hop_mod_Symm applies the (last) time-dependent elements first: G_d <- A_td(t) G B_td(t) (slice Ntau; 0 = Ltrot), then the static A, B
-             call gpu_symm_td(G_d(1,1,nf), o_Ndim, o_Ndim, nf, Ntau)
+             call gpu_symm_td(G_d(1,1,nf), o_Ndim, o_Ndim, nf, merge(o_tsymm, Ntau, o_tsymm >= 0))
              call k_cpy(o_Ndim*o_Ndim, G_d(1,1,nf), Gw(1,1,nf))
              call symm_apply(Gw(1,1,nf), G_d(1,1,nf), nf)
           else
