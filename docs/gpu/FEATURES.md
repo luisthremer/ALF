@@ -26,7 +26,7 @@ have not been run. The GPU path is taken only if every check passes; otherwise t
 | Langevin / HMC | supported | refused | refused | |
 | MALA (sequential, global, global-τ) | supported | refused | refused | merged from master; MALA vertices use the standard path on the CPU |
 | Parallel tempering | supported (MPI) | refused | refused | |
-| MPI independent walkers | supported | refused (MPI builds) | refused (MPI builds) | run independent single-process chains per GPU instead |
+| MPI independent walkers | supported | supported (NVIDIA, tested 2026-11-08; rank mod number of devices) | refused (MPI builds) | one rank per GPU keeps the time per chain; more ranks per GPU share it, see [MPI_GPU.md](MPI_GPU.md) |
 | Checkerboard hopping | supported | supported | supported | custom group kernels (and a dense matrix for Ndim <= 800, see `Known_issues.md`) |
 | Dense hopping | supported | supported | supported | GEMM |
 | Symmetric Trotter (`Symm`) | supported | supported | supported | `Hop_mod_Symm` on the device (dense A·M·B, see `Known_issues.md`) |
