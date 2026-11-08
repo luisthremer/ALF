@@ -66,7 +66,7 @@ contains
       rjj = abs(Aref(oi+j-1, oj+j-1))
       dmax = fmax(dmax, abs(abs(A(oi+j-1, oj+j-1)) - rjj) / rjj)
     end do
-    call check(trim(lab)//' |Rjj|', dmax, TOL_CUDA)
+    if (.not. is_host()) call check(trim(lab)//' |Rjj|', dmax, TOL_CUDA)   ! host: A and tau are required bit-identical above
     ! invariants from the device factors: Q by host ZUNGQR
     Q = A
     call zungqr(m, n2, n2, Q(oi,oj), lda, tau, wq, -1, info)

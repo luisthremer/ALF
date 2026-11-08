@@ -31,7 +31,7 @@ program t302a_guard
     write(*,'(A,I0)') 'present(unmapped B) = ', omp_target_is_present(c_loc(B(1,1)), omp_get_default_device())
     !$omp target exit data map(delete: A)
     write(*,'(A,I0)') 'present(A after delete) = ', omp_target_is_present(c_loc(A(1,1)), omp_get_default_device())
-    stop 0
+    call exit(0)
   end if
   call la_init()
   if (trim(mode) == 'neg_ipiv' .or. trim(mode) == 'neg_ipvt') then
@@ -45,7 +45,7 @@ program t302a_guard
     call la_sync()
     write(*,'(A)') 'FAILED guard: the call returned although ipiv/ipvt is not mapped'
     call la_finalize()
-    stop 0
+    call exit(0)
   end if
   if (trim(mode) == 'pos' .or. trim(which) /= 'A') then
     !$omp target enter data map(to: A)

@@ -203,7 +203,7 @@ contains
     character(len=*), intent(in) :: what
     if (st /= 0) then
       write(*,*) 'LA backend error ', st, ' in ', what
-      error stop 2
+      call exit(2)
     end if
   end subroutine
 
