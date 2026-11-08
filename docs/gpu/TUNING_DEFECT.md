@@ -16,7 +16,7 @@ static hopping as a dense matrix too, so it is much slower than a checkerboard C
 | `Nwrap` | **10** (use 4-5 for `Mz = .T.`) | `Nwrap` 20 gives -7% time with 5e-11 Green precision (usable), 40 gives 1.6e-8 (not recommended); 5 costs +19% and +45% memory |
 | `Checkerboard` | irrelevant | ignored for `h0 /= 0` on CPU and GPU (the static hopping is the dense `Op_T(1)`) |
 | `Ltau` | 0 | `SpinZ_localtau` comes from the equal-time pass; `Ltau = 1` works (tau pass on device, host `ObserT`) but is slower |
-| MPI | not available with GPU | one single-process chain per GPU; a second process on the same GPU is time-sliced (13-15x slower each, `CLAUDE.md`); MPS with 2 clients not measured for this model |
+| MPI | `PGI MPI GPU=nvidia` works; one rank per GPU | a second rank on the same A30 makes every chain 15-17 % slower (L = 16, MPS), 16 ranks 3.7x slower (aggregate 4.5x); see [MPI_GPU.md](MPI_GPU.md) |
 | `CPU_MAX` | 23.8 (hours) | bins are written every 10 sweeps, so the run ends at the first bin boundary after `CPU_MAX`; lose at most one bin of 10 sweeps (see "time per bin") |
 
 Environment: `OMP_TARGET_OFFLOAD=MANDATORY` (otherwise a failed device init silently runs on the CPU), one GPU process at a time. Check the

@@ -25,7 +25,7 @@ make -j8 all
 ## Known limits
 - No Fortran source change yet: the GPU flags alone do not change numerics (6x6 Hubbard run bit-identical in all
   datasets, see ticket 201 report). `-DALF_GPU`/`-DALF_LA_*` are unused until ticket 202 and later.
-- MPI + GPU is not covered (`PGI MPI GPU=nvidia` configures but is untested). AOT/PVC (`spir64_gen`) is ticket 301.
+- MPI + GPU: `. ./configure.sh PGI MPI GPU=nvidia HDF5 NO-INTERACTIVE` builds and runs (NVIDIA only, see MPI_GPU.md). AOT/PVC (`spir64_gen`) is ticket 301.
 - `GPU=intel` runs on a GPU only with a level-zero device; select it with `ONEAPI_DEVICE_SELECTOR=level_zero:N`
   (on the `intel` test machine `level_zero:0` is the B580, `level_zero:1` the iGPU). `OMP_TARGET_OFFLOAD=MANDATORY`
   makes a missing device an error instead of a host fallback.

@@ -10,7 +10,7 @@ Nothing open.
 - Rank > 1 and non-diagonal vertices (#15): would open tV, Kondo, Spin_Peierls
 - Flavour-symmetry reconstruction `Calc_Fl` (#16): would open Plain_Vanilla, Spin_Peierls
 - Device observables for other models, entanglement, custom observables (#19)
-- MPI together with GPU, HDF5 with GPU untested (#20, parked)
+- MPI together with GPU: plain MPI (independent chains) works on NVIDIA (see MPI_GPU.md); MPI with several ranks on one GPU does not scale per chain; tempering with GPU still refused. HDF5 with GPU: used (L16 run, 2026-11-08)
 - HS field types 3 and 4 (#29)
 - Global-in-τ and global space-time moves (#30)
 - `Propose_S0` (#31)
