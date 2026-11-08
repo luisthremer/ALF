@@ -504,9 +504,8 @@ Contains
     if (gpu_env_is('ALF_GPU_DISABLE', '1')) then
        reason = 'disabled by ALF_GPU_DISABLE=1'; return
     endif
-#if defined(MPI)
-    reason = 'MPI build: GPU path not supported with MPI yet'; return
-#endif
+! Plain MPI (independent chains, one Markov chain per rank, bins averaged over the group on the host) is supported: each rank
+! owns its own device mirror and uses the host random numbers; the only MPI traffic stays the host-side observable reduction.
 #if defined(TEMPERING)
     reason = 'tempering is not supported on the GPU path'; return
 #endif
@@ -537,6 +536,9 @@ Contains
     if (omp_get_num_devices() < 1) then
        reason = 'no OpenMP offload device found'; return
     endif
+    ! several MPI ranks on one node: spread the ranks over the devices (rank mod number of devices); with one device every
+    ! rank uses device 0 (the ranks share it, best with the CUDA MPS daemon).  Without MPI env_rank = 0.
+    Call omp_set_default_device(Mod(env_rank, omp_get_num_devices()))
     do nf = 1, N_FL
        do n = 1, size(Op_V,1)
           if (.not. Op_V(n,nf)%diag) then
