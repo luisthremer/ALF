@@ -79,11 +79,6 @@ Module gpu_update_mod
   Public :: gpu_upd_host_only, gpu_upd_enabled, gpu_upd_override, gpu_upd_resync_fields, gpu_upd_check_fields, gpu_upd_selftest_due, gpu_upd_fault_set, gpu_upd_fault_clear
   Public :: gpu_g_host, gpu_g_host_wrote
   Public :: gpu_wrapgrup, gpu_wrapgrdo, gpu_trace_on, gpu_trace_begin, gpu_trace_end
-#ifdef TIMING
-  Public :: gpu_upd_time, gpu_tacc, gpu_tget
-  Real (Kind=Kind(0.d0)), Save :: t_acc(24) = 0.d0
-  Real (Kind=Kind(0.d0)), Save :: t_up = 0.d0
-#endif
 
   Logical, Save :: checked = .false., enabled = .false., forced = .false., forced_val = .false.
   Logical, Save :: fault_upd = .false., fault_nsig = .false., test_host_only = .false.
@@ -484,15 +479,9 @@ Contains
     Complex (Kind=Kind(0.d0)) :: HS_New
     Real (Kind=Kind(0.d0)) :: T0_proposal, T0_Proposal_ratio, S0_ratio
     Logical :: Acc, toggle1, fast_lr, bm
-#ifdef TIMING
-    Real (Kind=Kind(0.d0)) :: t0w
-#endif
 
     if (N_Global_tau > 0) call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
     upd_cnt(10) = upd_cnt(10) + 1
-#ifdef TIMING
-    t0w = omp_get_wtime()
-#endif
     fast_lr = gpu_lr_fast()
     bm = gpu_lr_blockmode()
     NTAU1 = NTAU + 1
@@ -541,9 +530,6 @@ Contains
     Enddo
     call gpu_lr_flush_all(2)                    ! delayed / submatrix: G_d must be current at the end of the slice
     call g_out(GR)
-#ifdef TIMING
-    t_up = t_up + (omp_get_wtime() - t0w)
-#endif
   end Subroutine gpu_wrapgrup
 
 !--------------------------------------------------------------------
@@ -560,15 +546,9 @@ Contains
     Complex (Kind=Kind(0.d0)) :: HS_New
     Real (Kind=Kind(0.d0)) :: T0_proposal, T0_Proposal_ratio, S0_ratio
     Logical :: Acc, toggle1, fast_lr, bm
-#ifdef TIMING
-    Real (Kind=Kind(0.d0)) :: t0w
-#endif
 
     if (N_Global_tau > 0) call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
     upd_cnt(10) = upd_cnt(10) + 1
-#ifdef TIMING
-    t0w = omp_get_wtime()
-#endif
     fast_lr = gpu_lr_fast()
     bm = gpu_lr_blockmode()
     call g_in(GR)
@@ -616,29 +596,8 @@ Contains
        call gpu_mmthr_m1(G_d(1,1,nf), Ndim, Ndim, nf, ntau)
     enddo
     call g_out(GR)
-#ifdef TIMING
-    t_up = t_up + (omp_get_wtime() - t0w)
-#endif
   end Subroutine gpu_wrapgrdo
 
-#ifdef TIMING
-  Subroutine gpu_tacc(i, sgn)       ! stopwatch: call with -1 before, +1 after
-    Implicit none
-    Integer, intent(in) :: i
-    Real (Kind=Kind(0.d0)), intent(in) :: sgn
-    t_acc(i) = t_acc(i) + sgn*omp_get_wtime()
-  end subroutine gpu_tacc
-  Real (Kind=Kind(0.d0)) function gpu_tget(i)
-    Implicit none
-    Integer, intent(in) :: i
-    gpu_tget = t_acc(i)
-  end function gpu_tget
-
-  Real (Kind=Kind(0.d0)) function gpu_upd_time()
-    Implicit none
-    gpu_upd_time = t_up
-  end function gpu_upd_time
-#endif
 
 end Module gpu_update_mod
 #endif

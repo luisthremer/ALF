@@ -135,10 +135,6 @@
 module Lowrank_update_mod
    use runtime_error_mod
    use iso_fortran_env, only: output_unit, error_unit
-#ifdef ALF_TIMERS
-   use Timers_mod, only: timer_flush_reason, FR_CAPACITY, FR_READ_POINT, timer_flush_begin, timer_flush_end, &
-        &                timer_flush_skip
-#endif
    implicit none
    private
 
@@ -1269,9 +1265,6 @@ contains
       call Accept_capacity(nd_here, ncap)
       if (any(n_cols > 0 .and. n_cols + r_add > ncap)) then
          mode_before = lr_mode
-#ifdef ALF_TIMERS
-         timer_flush_reason = FR_CAPACITY
-#endif
          call Lowrank_flush(GR)
          ! Cross-slice: the flush may have returned a converted (delayed-form) block to the submatrix form
          ! (lr_mode = lr_scheme), so this accept now takes the submatrix branch: the capacity, including the
@@ -1498,9 +1491,6 @@ contains
       call Lowrank_debug_check(GR, n_op, nt, "Lowrank_accept")
 #endif
       ! Flush when a flavour's pending rank reaches N_delay (delayed: or the capacity)
-#ifdef ALF_TIMERS
-      timer_flush_reason = FR_CAPACITY
-#endif
       if (maxval(n_cols) >= ncap) call Lowrank_flush(GR)
 #ifdef ALF_LOWRANK_DEBUG
       call Dbg_check_nd_guard(n_op, nt, "Lowrank_accept")
@@ -1863,9 +1853,6 @@ contains
 
       ! Submatrix capacity (D5): flush after the padding and transform if a pending rank reached N_delay
       if (lr_mode == SCHEME_SUBMATRIX) then
-#ifdef ALF_TIMERS
-         timer_flush_reason = FR_CAPACITY
-#endif
          if (blk_nondiag) then
             if (maxval(n_cols) >= min(lr_N_delay, K_ND)) call Lowrank_flush(GR)
          else
@@ -2023,9 +2010,6 @@ contains
 #ifdef ALF_LOWRANK_DEBUG
       call Lowrank_debug_summary()
 #endif
-#ifdef ALF_TIMERS
-      call timer_flush_end()
-#endif
 
    end subroutine Lowrank_flush
 
@@ -2099,9 +2083,6 @@ contains
       Logical,                   Intent(In)    :: expect_flushed
 #ifdef ALF_LOWRANK_DEBUG
       if (expect_flushed) call Lowrank_assert_flushed(where)
-#endif
-#ifdef ALF_TIMERS
-      timer_flush_reason = FR_READ_POINT
 #endif
       call Lowrank_flush(GR)
 #ifdef ALF_LOWRANK_DEBUG

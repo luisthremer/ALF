@@ -156,13 +156,6 @@ Program Main
              &                   gpu_stab_reset_r, gpu_stab_reset_st
         use gpu_tau_mod,   only: gpu_tau_on, gpu_tau_setup, gpu_tau_finalize, gpu_tau_hook
         use gpu_lowrank_mod, only: gpu_lr_finalize
-#ifdef TIMING
-        use gpu_update_mod, only: gpu_upd_time, gpu_tacc, gpu_tget
-        use gpu_state_mod, only: info_line
-#endif
-#endif
-#ifdef ALF_TIMERS
-        use Timers_mod
 #endif
          
 #ifdef HDF5
@@ -182,9 +175,6 @@ Program Main
         Integer (Kind=Kind(0_8)) :: N_sweeps_done
         Integer :: NTAU, NTAU1, nt_obs
         Character (len=64) :: file_seeds, file_info, file_git_info
-#ifdef ALF_TIMERS
-        Character (len=64) :: file_timers
-#endif
         Integer :: Seed_in
         Complex (Kind=Kind(0.d0)) , allocatable, dimension(:,:) :: Initial_field
 
@@ -236,9 +226,6 @@ Program Main
         If (  Irank == 0 ) then
 #endif
 #ifdef ALF_GPU
-#ifdef TIMING
-           call gpu_tacc(16,-1.d0)
-#endif
 #endif
            write (*,*) "ALF Copyright (C) 2016 - 2026 The ALF project contributors"
            write (*,*) "This Program comes with ABSOLUTELY NO WARRANTY; for details see license.GPL"
@@ -328,13 +315,6 @@ Program Main
         file_info = "info"
         file_git_info = "info_git"
 #endif
-#ifdef ALF_TIMERS
-#if defined(TEMPERING)
-        write(file_timers,'(A,I0,A)') "Temp_",igroup,"/timers.txt"
-#else
-        file_timers = "timers.txt"
-#endif
-#endif
 
 #if defined(MPI)
         if ( Irank_g == 0 ) then
@@ -359,15 +339,9 @@ Program Main
         Call Alloc_Ham(get_ham_name())
         leap_frog_bulk = .false.
 #ifdef ALF_GPU
-#ifdef TIMING
-        call gpu_tacc(17,-1.d0)
-#endif
 #endif
         Call ham%Ham_set()
 #ifdef ALF_GPU
-#ifdef TIMING
-        call gpu_tacc(17,1.d0)
-#endif
 #endif
         Call Validate_Ham_Variables()
         If ( allocated(Calc_Fl) ) then
@@ -696,9 +670,6 @@ Program Main
            Write(50,*) 'Tempering frequency  ', get_N_Tempering_frequency()
            Write(50,*) 'Tempering Calc_det   ', get_Tempering_calc_det()
 #endif
-#ifdef ALF_TIMERS
-           Write(50,*) 'Timing split: see timers.txt (ALF_TIMERS)'
-#endif
            close(50)
 #if defined(MPI)
         endif
@@ -724,9 +695,6 @@ Program Main
         enddo
 
 #ifdef ALF_GPU
-#ifdef TIMING
-        call gpu_tacc(18,-1.d0)
-#endif
         ! GPU mirror (ticket 203): flat device copy of the constant data + device buffers; decides GPU path active/inactive
 #if defined(MPI)
         call gpu_state_setup(nsigma, NSTM, file_info, Irank_g == 0)
@@ -742,9 +710,6 @@ Program Main
         ! ticket 207: tau pass (TAU_M) on the device (Ltau = 1): udvst is read from the device slots, no export.  Hook: ALF_GPU_SELFTEST=4 / ALF_GPU_TAUTIME=1.
         call gpu_tau_setup(Stab_nt, NSTM)
         if (gpu_tau_on) call gpu_tau_hook()
-#ifdef TIMING
-        call gpu_tacc(18,1.d0)
-#endif
 #endif
 
         DO NST = NSTM-1,1,-1
@@ -811,68 +776,37 @@ Program Main
 
         N_sweeps_done = 0
 #ifdef ALF_GPU
-#ifdef TIMING
-        call gpu_tacc(16,1.d0)
-#endif
 #endif
         DO  NBC = 1, get_NBin()
            ! Here, you have the green functions on time slice 1.
            ! Set bin observables to zero.
 
            call system_clock(count_bin_start)
-#ifdef ALF_TIMERS
-           call timer_bin_begin()
-#endif
 
 #ifdef ALF_GPU
-#ifdef TIMING
-           call gpu_tacc(12,-1.d0)
-#endif
 #endif
            Call ham%Init_obs(get_Ltau())
 #ifdef ALF_GPU
-#ifdef TIMING
-           call gpu_tacc(12,1.d0)
-#endif
 #endif
 #if defined(TEMPERING)
            Call Global_Tempering_init_obs
 #endif
 
            DO NSW = 1, get_NSweep()
-#ifdef ALF_TIMERS
-              ! Timing split: sweep frame (exclusive time = "other"), closed after Lowrank_autotune_finish
-              call timer_sweep_begin()
-#endif
 
 #if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
               IF (MOD(NSW,get_N_Tempering_frequency()) == 0) then
                  !Write(6,*) "Irank, Call tempering", Irank, NSW, get_N_exchange_steps()
-#ifdef ALF_TIMERS
-                 call timer_push(T_GLOBAL)
-#endif
                  If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Exchange_Step", .true.)
                  CALL Exchange_Step(Phase,GR,udvr, udvl,Stab_nt, udvst, get_N_exchange_steps(), get_Tempering_calc_det())
-#ifdef ALF_TIMERS
-                 call timer_pop(T_GLOBAL)
-#endif
               endif
 #endif
               ! Global updates
-#ifdef ALF_TIMERS
-              call timer_push(T_GLOBAL)
-#endif
               If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Global_Updates", .true.)
               If ( get_Global_moves() ) Call Global_Updates(Phase, GR, udvr, udvl, Stab_nt, udvst, get_N_Global() )
-#ifdef ALF_TIMERS
-              call timer_pop(T_GLOBAL)
-#endif
 
 
               If ( str_to_upper(Langevin_HMC%get_Update_scheme()) == "LANGEVIN" )  then
-#ifdef ALF_TIMERS
-                 call timer_push(T_LANGEVIN_HMC)
-#endif
                  If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Langevin update", .true.)
                  !  Carry out a Langevin update and calculate equal time observables.
                  Call Langevin_HMC%update(Phase, GR, GR_Tilde, Test, udvr, udvl, Stab_nt, udvst, &
@@ -888,15 +822,9 @@ Program Main
                        call Langevin_HMC%set_L_Forces(.true.)
                     endif
                  endif
-#ifdef ALF_TIMERS
-                 call timer_pop(T_LANGEVIN_HMC)
-#endif
               endif
 
               If (  str_to_upper(Langevin_HMC%get_Update_scheme()) == "HMC" )  then
-#ifdef ALF_TIMERS
-                 call timer_push(T_LANGEVIN_HMC)
-#endif
                  If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "HMC update", .true.)
 
                  ! A preceding MALA sweep may have changed both the forces and determinants.
@@ -929,9 +857,6 @@ Program Main
                     endif
                     call Langevin_HMC%set_L_Forces(.true.)
                  endif
-#ifdef ALF_TIMERS
-                 call timer_pop(T_LANGEVIN_HMC)
-#endif
               endif
 
               If (  str_to_upper(Metropolis_Langevin%get_Update_scheme()) == "MALA" )  then
@@ -1004,9 +929,6 @@ Program Main
                          &        get_N_Global_tau_MALA(), get_delta_t_MALA_global_tau(), get_Max_Force_MALA_global_tau())
                     
                     If (NTAU1 == Stab_nt(NST) ) then
-#ifdef ALF_TIMERS
-                       call timer_push(T_STAB)
-#endif
                        If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "CGR (up sweep)", .false.)
                        NT1 = Stab_nt(NST-1)
 #ifdef ALF_GPU
@@ -1051,15 +973,9 @@ Program Main
                        Call Control_PrecisionP(Z,Phase)
                        Phase = Z
                        NST = NST + 1
-#ifdef ALF_TIMERS
-                       call timer_pop(T_STAB)
-#endif
                     ENDIF
                     
                     IF (NTAU1.GE. get_LOBS_ST() .AND. NTAU1.LE. get_LOBS_EN() ) THEN
-#ifdef ALF_TIMERS
-                       call timer_push(T_MEAS)
-#endif
                        If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Obser (up sweep)", .false.)
                        !Call  Global_tau_mod_Test(Gr,ntau1)
                        !Stop
@@ -1076,37 +992,22 @@ Program Main
 #endif
                        If (Symm .and. .not. dev_symm) then
 #ifdef ALF_GPU
-#ifdef TIMING
-                          call gpu_tacc(1,-1.d0)
-#endif
 #endif
                           Call Hop_mod_Symm(GR_Tilde,GR,ntau1)
                           !reconstruction of NOT calculated block!!!
                           If (reconstruction_needed) Call ham%GR_reconstruction( GR_Tilde )
                           CALL ham%Obser( GR_Tilde, PHASE, Ntau1, Mc_step_weight )
 #ifdef ALF_GPU
-#ifdef TIMING
-                          call gpu_tacc(1,1.d0)
-#endif
 #endif
                        else
                           !reconstruction of NOT calculated block!!!
                           If (reconstruction_needed) Call ham%GR_reconstruction( GR )
 #ifdef ALF_GPU
-#ifdef TIMING
-                    call gpu_tacc(1,-1.d0)
-#endif
 #endif
                           CALL ham%Obser( GR, PHASE, Ntau1, Mc_step_weight  )
 #ifdef ALF_GPU
-#ifdef TIMING
-                    call gpu_tacc(1,1.d0)
-#endif
 #endif
                        endif
-#ifdef ALF_TIMERS
-                       call timer_pop(T_MEAS)
-#endif
                     ENDIF
                  ENDDO
                  ! End of the up sweep (NTAU1 = LTROT is a stabilisation point, so G is flushed)
@@ -1137,9 +1038,6 @@ Program Main
                          &        get_Sequential_MALA(), get_Delta_t_MALA_sequential(), get_Max_Force_MALA_sequential(), &
                          &        get_N_Global_tau_MALA(), get_delta_t_MALA_global_tau(), get_Max_Force_MALA_global_tau())
                     IF (nt_obs.GE. get_LOBS_ST() .AND. nt_obs.LE. get_LOBS_EN() ) THEN
-#ifdef ALF_TIMERS
-                       call timer_push(T_MEAS)
-#endif
                        If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Obser (down sweep)", .false.)
                        !write(*,*) "GR before obser sum: ",sum(GR(:,:,1))
                        !write(*,*) "Phase before obser : ",phase
@@ -1161,25 +1059,13 @@ Program Main
                           !reconstruction of NOT calculated block!!!
                           If (reconstruction_needed) Call ham%GR_reconstruction( GR )
 #ifdef ALF_GPU
-#ifdef TIMING
-                    call gpu_tacc(1,-1.d0)
-#endif
 #endif
                           CALL ham%Obser( GR, PHASE, nt_obs, Mc_step_weight )
 #ifdef ALF_GPU
-#ifdef TIMING
-                    call gpu_tacc(1,1.d0)
-#endif
 #endif
                        endif
-#ifdef ALF_TIMERS
-                       call timer_pop(T_MEAS)
-#endif
                     ENDIF
                     IF ( Stab_nt(NST) == NTAU1 .AND. NTAU1.NE.0 ) THEN
-#ifdef ALF_TIMERS
-                       call timer_push(T_STAB)
-#endif
                        If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "CGR (down sweep)", .false.)
                        NT1 = Stab_nt(NST+1)
                        !Write(6,*) 'Wrapul : ', NT1, NTAU1
@@ -1226,13 +1112,7 @@ Program Main
                        Z=Z**N_SUN
                        Call Control_PrecisionP(Z,Phase)
                        Phase = Z
-#ifdef ALF_TIMERS
-                       call timer_pop(T_STAB)
-#endif
                        IF( get_Ltau() == 1 .and. Projector .and. Stab_nt(NST)<=THTROT+1 .and. THTROT+1<Stab_nt(NST+1) ) then
-#ifdef ALF_TIMERS
-                          call timer_push(T_MEAS)
-#endif
                           If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Tau_p (projector, down sweep)", .true.)
 #ifdef ALF_GPU
                           call gpu_g_host(GR)
@@ -1241,17 +1121,11 @@ Program Main
 #ifdef ALF_GPU
                           call gpu_g_host_wrote()
 #endif
-#ifdef ALF_TIMERS
-                          call timer_pop(T_MEAS)
-#endif
                        endif
                        NST = NST -1
                     ENDIF
                  ENDDO
                  
-#ifdef ALF_TIMERS
-                 call timer_push(T_STAB)
-#endif
                  ! End of the down sweep: the last WRAPGRDO may return a pending state (time slice 0)
                  If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "CGR (time slice 0, end of the down sweep)", .false.)
                  !Calculate and compare green functions on time slice 0.
@@ -1314,31 +1188,16 @@ Program Main
                     if (gpu_stab_on) call gpu_stab_reset_st(NST, nf_eff)
 #endif
                  enddo
-#ifdef ALF_TIMERS
-                 call timer_pop(T_STAB)
-#endif
                  
                  IF ( get_Ltau() == 1 .and. .not. Projector ) then
-#ifdef ALF_TIMERS
-                    call timer_push(T_MEAS)
-#endif
                     If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Tau_m", .true.)
 #ifdef ALF_GPU
                     call gpu_g_host(GR)          ! ticket 208-1: tau_begin builds the host shadows of the tau = 0 matrices from GR
 #endif
 #ifdef ALF_GPU
-#ifdef TIMING
-                    call gpu_tacc(2,-1.d0)
-#endif
 #endif
                     Call TAU_M( udvst, GR, PHASE, NSTM, get_Nwrap(), STAB_NT, get_LOBS_ST(), get_LOBS_EN() )
 #ifdef ALF_GPU
-#ifdef TIMING
-                    call gpu_tacc(2,1.d0)
-#endif
-#endif
-#ifdef ALF_TIMERS
-                    call timer_pop(T_MEAS)
 #endif
                  endif
                  ! When Nwrap > Thtrot+1, the smallest Stab_nt(1)=Nwrap already exceeds
@@ -1349,9 +1208,6 @@ Program Main
                  ! udvst(1..Nstm) contains fresh left propagations from the backward
                  ! sweep, so calling tau_p with NST_IN=0 is correct here.
                  IF ( get_LTAU() == 1 .and. Projector .and. Stab_nt(1) > THTROT+1 ) then
-#ifdef ALF_TIMERS
-                    call timer_push(T_MEAS)
-#endif
                     If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Tau_p (projector, end of the sweep)", .true.)
 #ifdef ALF_GPU
                     call gpu_g_host(GR)
@@ -1360,9 +1216,6 @@ Program Main
 #ifdef ALF_GPU
                           call gpu_g_host_wrote()
 #endif
-#ifdef ALF_TIMERS
-                    call timer_pop(T_MEAS)
-#endif
                  endif
               endif
 
@@ -1370,49 +1223,24 @@ Program Main
               ! decision after sweep 3 contains the only MPI collective (Group_Comm). No-op otherwise.
               If (N_sweeps_done < 4_8) N_sweeps_done = N_sweeps_done + 1_8
               Call Lowrank_autotune_finish(N_sweeps_done)
-#ifdef ALF_TIMERS
-              call timer_sweep_end()   ! asserts that only the sweep frame is open (stack depth 0 afterwards)
-#endif
            ENDDO
 #ifdef ALF_GPU
-#ifdef TIMING
-           call gpu_tacc(13,-1.d0)
-#endif
            call gpu_obs_flush()         ! ticket 208-2: device accumulators -> host Obs_eq before Pr_obs normalises
-#ifdef TIMING
-           call gpu_tacc(13,1.d0)
-#endif
-#ifdef TIMING
-           call gpu_tacc(14,-1.d0)
-#endif
 #endif
            Call ham%Pr_obs(get_Ltau())
 #ifdef ALF_GPU
-#ifdef TIMING
-           call gpu_tacc(14,1.d0)
-#endif
 #endif
 #if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
            Call Global_Tempering_Pr
 #endif
 
 #ifdef ALF_GPU
-#ifdef TIMING
-           call gpu_tacc(15,-1.d0)
-#endif
 #endif
            Call nsigma%out(Group_Comm)
 #ifdef ALF_GPU
-#ifdef TIMING
-           call gpu_tacc(15,1.d0)
-#endif
 #endif
 
            call system_clock(count_bin_end)
-#ifdef ALF_TIMERS
-           ! Timing split: collective on Group_Comm (every rank), group rank 0 appends the bin to timers.txt
-           call timer_bin_end(NBC, Group_Comm, file_timers)
-#endif
            prog_truncation = .false.
            if ( abs(get_CPU_MAX()) > Zero ) then
               Call make_truncation(prog_truncation,get_CPU_MAX(),count_bin_start,count_bin_end,group_comm)
@@ -1456,21 +1284,6 @@ Program Main
         endif
         DEALLOCATE(udvl, udvr, udvst)
 #ifdef ALF_GPU
-#ifdef TIMING
-        block
-          character(len=240) :: tl
-          write(tl,'(A,F10.3,A)') 'GPU time in sequential updates (WRAPGRUP/DO): ', gpu_upd_time(), ' s'
-          call info_line(trim(tl))
-          write(tl,'(A,F10.3,A,F10.3,A)') 'GPU time in Obser (eq): ', gpu_tget(1), ' s, in TAU_M: ', gpu_tget(2), ' s'
-          call info_line(trim(tl))
-          write(tl,'(A,F8.3,A,F8.3,A,F8.3,A)') 'GPU TAU_M parts: tau_slice ', gpu_tget(3), ' s, tau_obs ', gpu_tget(4), ' s, stab/CGR2_2 ', gpu_tget(5), ' s'
-          call info_line(trim(tl))
-          write(tl,'(A,F8.3,5F8.3)') 'GPU tau_obs: measure ', gpu_tget(6), gpu_tget(7), gpu_tget(8), gpu_tget(9), gpu_tget(10), gpu_tget(11)
-          call info_line(trim(tl))
-          write(tl,'(A,9F9.4)') 'GPU PHASES startup,Ham_set,gpusetup,Init_obs,obsflush,Pr_obs,nsigma_out,tauslice,tauobs: ', gpu_tget(16), gpu_tget(17), gpu_tget(18), gpu_tget(12), gpu_tget(13), gpu_tget(14), gpu_tget(15), gpu_tget(3), gpu_tget(4)
-          call info_line(trim(tl))
-        end block
-#endif
         call gpu_lr_finalize()
         call gpu_tau_finalize()
         call gpu_stab_finalize()

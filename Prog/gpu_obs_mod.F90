@@ -34,9 +34,6 @@ Module gpu_obs_mod
   Use Hamiltonian_main, only: Obs_scal, Obs_eq, Obs_tau, Obs_local, Thtrot, Ltrot
   Use gpu_state_mod
   Use gpu_update_mod, only: gpu_upd_enabled
-#ifdef TIMING
-  Use gpu_update_mod, only: gpu_tacc
-#endif
   Use gpu_wrap_mod, only: gpu_symm, gpu_symm_build, gpu_symm_td
   Use alf_la_mod, only: la_gemm, LA_N
   Implicit none
@@ -581,9 +578,6 @@ Contains
           Obs_tau(I)%Ave_sign = Obs_tau(I)%Ave_sign + rs
        enddo
     endif
-#ifdef TIMING
-    call gpu_tacc(6, -1.d0)
-#endif
     if (o_symm) then                  ! symmetrised copies of the four matrices (Hop_mod_Symm of tau_obs on the host before)
        if (.not. allocated(Ts)) then
           allocate(Ts(o_Ndim,o_Ndim,o_NFL,4))
@@ -602,18 +596,9 @@ Contains
     else
        do k = 1, o_nobs
           if (o_kind(k) == 4 .and. k /= 2) cycle
-#ifdef TIMING
-          call gpu_tacc(6+k, -1.d0)
-#endif
           call tcorr(k, o_kind(k), nt, wr, wi, GT0, G0T, G00, GTT)
-#ifdef TIMING
-          call gpu_tacc(6+k, 1.d0)
-#endif
        enddo
     endif
-#ifdef TIMING
-    call gpu_tacc(6, 1.d0)
-#endif
   End Subroutine gpu_obs_tau_measure
 
   Subroutine tcorr(k, kind_k, nt, wr, wi, GT0, G0T, G00, GTT)
