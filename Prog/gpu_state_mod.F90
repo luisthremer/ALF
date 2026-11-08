@@ -699,7 +699,7 @@ Contains
     Complex (Kind=Kind(0.d0)), allocatable :: cm(:,:,:)
     Integer :: ncheck
     ! time-dependent elements
-    Integer :: nel_td, npv_td, ncv_td, ntdmax, ntdf, t, kd, j
+    Integer :: nel_td, npv_td, ncv_td, ntdmax, ntdf, t, kd
     Logical :: is_td, symm_el
     Real    (Kind=Kind(0.d0)) :: zero_td
     Real    (Kind=Kind(0.d0)), allocatable :: Etd(:), Es(:)
