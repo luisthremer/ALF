@@ -370,7 +370,8 @@
           Integer, allocatable ::   N_Phi_vec(:)
 
           ! Use predefined stuctures or set your own hopping
-          Integer :: n,nth, i, nf, Nb, no_I, no_J, n_1, n_2, J, Z, I1, J1, L, pin_site
+          Integer :: n,nth, i, nf, Nb, no_I, no_J, n_1, n_2, J, I1, J1, L, pin_site
+          Complex (Kind=Kind(0.d0)) :: Z
           ! Indices of pinned vertices. Shape [N_pinned_vertices, 2]
           Integer,  allocatable                    :: pinned_vertices(:,:)
           ! Factor, by which the vertex matrix elements will get multiplied. Shape [N_pinned_vertices, N_FL]
@@ -463,9 +464,9 @@
                      do no_I = 1, Latt_Unit%Norb
                         I1 = Invlist(I, no_I)
                         if (nf == 1) then
-                           Op_T(2,nf)%O(I1, I1) = cmplx(-Ham_h0, 0.d0)
+                           Op_T(2,nf)%O(I1, I1) = cmplx(-Ham_h0, 0.d0, kind(0.d0))
                         elseif (nf == 2) then
-                           Op_T(2,nf)%O(I1, I1) = cmplx(Ham_h0, 0.d0)
+                           Op_T(2,nf)%O(I1, I1) = cmplx(Ham_h0, 0.d0, kind(0.d0))
                         endif
                      enddo
                   endif
