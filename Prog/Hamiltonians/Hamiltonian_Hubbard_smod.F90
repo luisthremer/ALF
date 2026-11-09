@@ -665,7 +665,7 @@
             Filename = "SpinZ"
             Channel = "--"
             Call Obser_Latt_Local_make(Obs_local(1), Nt, Filename, Latt, Latt_unit, Channel, dtau)
-            Nt = Ltrot - 2*Thtrot
+            Nt = Ltrot + 1 - 2*Thtrot
             Channel = 'P'
             Call Obser_Latt_Local_make(Obs_local(2), Nt, Filename, Latt, Latt_unit, Channel, dtau)
           endif
@@ -793,6 +793,8 @@
           Integer, INTENT(IN)          :: Ntau
           Real    (Kind=Kind(0.d0)), INTENT(IN) :: Mc_step_weight
 
+          Real(Kind=Kind(0.d0)) :: wt  
+
           !Local
           Complex (Kind=Kind(0.d0)), allocatable :: GRC(:,:,:)
           Complex (Kind=Kind(0.d0)) :: Zrho, Zkin, ZPot, ZP,ZS
@@ -876,13 +878,17 @@
                Obs_local(2)%N = Obs_local(2)%N + 1
                Obs_local(2)%Ave_sign = Obs_local(2)%Ave_sign + Real(ZS,kind(0.d0))
             Endif
+            ! The endpoints tau=0 and tau=beta are visited only half as often as the
+            ! interior points, so they are given weight 2 to compensate.
+            wt = 1.d0
+            If (Ntau == Thtrot .or. Ntau == Ltrot - Thtrot) wt = 2.d0
             Do I = 1,Latt%N
                do no_I = 1,Latt_unit%Norb
                   I1 = Invlist(I,no_I)
-                  Obs_Local(1)%Obs_Latt(I,1,no_I) = Obs_Local(1)%Obs_Latt(I,1,no_I)  + & 
-                  &       (Grc(i1,i1,1)  -  Grc(i1,i1, dec))*ZP*ZS 
-                  Obs_Local(2)%Obs_Latt(I,Ntau - Thtrot,no_I) = Obs_Local(2)%Obs_Latt(I,Ntau - Thtrot,no_I)  + & 
-                  &       (Grc(i1,i1,1)  -  Grc(i1,i1, dec))*ZP*ZS 
+                  Obs_Local(1)%Obs_Latt(I,1,no_I) = Obs_Local(1)%Obs_Latt(I,1,no_I)  + &
+                  &       (Grc(i1,i1,1)  -  Grc(i1,i1, dec))*ZP*ZS
+                  Obs_Local(2)%Obs_Latt(I,Ntau +1 - Thtrot,no_I) = Obs_Local(2)%Obs_Latt(I,Ntau +1 - Thtrot,no_I)  + &
+                  &       wt*(Grc(i1,i1,1)  -  Grc(i1,i1, dec))*ZP*ZS
                enddo
             Enddo
           endif
