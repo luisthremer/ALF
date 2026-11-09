@@ -472,7 +472,7 @@
                   endif
                enddo
                Op_T(2,nf)%g_t = 0.d0
-               Op_T(2,nf)%g_t(Ltrot/2) = -1.d0
+               Op_T(2,nf)%g_t(1) = -1.d0
                Op_T(1,nf)%alpha  =  cmplx(0.d0,0.d0, kind(0.D0))
                Op_T(2,nf)%alpha  =  cmplx(0.d0,0.d0, kind(0.D0))
                Call Op_set(Op_T(1,nf))
