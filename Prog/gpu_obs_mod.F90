@@ -332,7 +332,8 @@ Contains
     endif
   End Subroutine gpu_obs_measure
 
-  !> ham%Obser, local part: Obs_local(1) every slice, Obs_local(2)%Obs_Latt(:,Ntau-Thtrot,:) (Nt = Ltrot - 2 Thtrot slices); counters as the host
+  !> ham%Obser, local part: Obs_local(1) every slice, Obs_local(2)%Obs_Latt(:,Ntau+1-Thtrot,:) (Nt = Ltrot+1-2 Thtrot slices, tau = 0..beta);
+  !> the endpoints Ntau = Thtrot, Ltrot-Thtrot are visited half as often and get weight 2 in Obs_local(2) only; counters as the host
   Subroutine local_obs(ZW, rs, Ntau)
     Implicit none
     Complex (Kind=Kind(0.d0)), intent(in) :: ZW
@@ -340,6 +341,7 @@ Contains
     Integer, intent(in) :: Ntau
     Integer :: I, no, i1, N, Norb, dec, it
     Complex (Kind=Kind(0.d0)) :: d, w
+    Real (Kind=Kind(0.d0)) :: wt
     if (.not. o_ldev) then
        o_lNt = size(Obs_local(2)%Obs_Latt,2)
        allocate(lacc1(o_N,o_Norb), lacc2(o_N,o_lNt,o_Norb))
@@ -353,7 +355,9 @@ Contains
        Obs_local(2)%N = Obs_local(2)%N + 1
        Obs_local(2)%Ave_sign = Obs_local(2)%Ave_sign + rs
     endif
-    it = Ntau - Thtrot
+    it = Ntau + 1 - Thtrot
+    wt = 1.d0
+    if (Ntau == Thtrot .or. Ntau == Ltrot - Thtrot) wt = 2.d0
     if (it < 1 .or. it > o_lNt) call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
     N = o_N; Norb = o_Norb; dec = o_dec; w = ZW
     !$omp target teams distribute parallel do collapse(2) private(i1,d)
@@ -362,7 +366,7 @@ Contains
           i1 = o_inv(I,no)
           d = (G_d(i1,i1,dec) - G_d(i1,i1,1))*w
           lacc1(I,no) = lacc1(I,no) + d
-          lacc2(I,it,no) = lacc2(I,it,no) + d
+          lacc2(I,it,no) = lacc2(I,it,no) + wt*d
        enddo
     enddo
   End Subroutine local_obs

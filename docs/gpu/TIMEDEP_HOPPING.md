@@ -4,6 +4,12 @@ Branch `gpu-delayed-submatrix-defect-fullgpu` (from `gpu-delayed-submatrix-defec
 merged `Point_Pin_updated`, NTAU1 fix at 58fc5372). Work done 2026-11-07. Scripts: `docs/gpu/scripts/defect/`.
 Tuning guide and parameter files: [TUNING_DEFECT.md](TUNING_DEFECT.md).
 
+> **Update 2026-11-09 (merge of `JAKOB_BACKUP` 3852a5f6..7e40b650 into production):** the pin is now one slice, `g_t(1) = -1`
+> (tau = 0), not `-0.5` on `Ltrot/2, Ltrot/2+1`. The down sweep measures and labels `NTAU1` (0..Ltrot-1), default `LOBS_ST = 0`;
+> the slice-0-as-`Ltrot` remapping described below is removed. `SpinZ_localtau` has `Ltrot+1-2*Thtrot` columns (tau = 0..beta),
+> index `Ntau+1-Thtrot`, endpoints weighted 2 (host `Hamiltonian_Hubbard_smod.F90` and device `gpu_obs_mod.F90:local_obs`).
+> Statements below about a pulse at beta/2 and the `Ltrot`-column grid describe the state before this merge.
+
 ## 1. Starting state
 
 - `gpu-delayed-submatrix-defect` (58fc5372): defect merged, down sweep passes `NTAU1`. A GPU run with `ham_h0 /= 0` was **refused**

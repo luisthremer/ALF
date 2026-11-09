@@ -1028,11 +1028,9 @@ Program Main
                  NST = NSTM-1
                  DO NTAU = LTROT,1,-1
                     NTAU1 = NTAU - 1
-                    ! GR is at time slice NTAU1 = NTAU-1 after WRAPGRDO.  For Hamiltonians with tau-resolved local observables
-                    ! (Obs_local, the space-time point defect) slice 0 is stored as slice LTROT (G(0) = G(beta) at finite T), so that every
-                    ! slice 1..LTROT is measured once in each sweep direction (otherwise slice LTROT carries half the weight).
+                    ! GR is at time slice NTAU1 = NTAU-1 after WRAPGRDO: measure and label with NTAU1 (slices 0..LTROT-1 in the
+                    ! down sweep, 1..LTROT in the up sweep).  Tau-resolved local observables weight the endpoints in ham%Obser.
                     nt_obs = NTAU1
-                    If ( allocated(Obs_local) .and. .not. Projector .and. NTAU1 == 0 ) nt_obs = LTROT
                     CALL WRAPGRDO(GR,NTAU, PHASE,get_Propose_S0(),get_Nt_sequential_start(), get_Nt_sequential_end(), & 
                          &        get_N_Global_tau(), &
                          &        get_Sequential_MALA(), get_Delta_t_MALA_sequential(), get_Max_Force_MALA_sequential(), &

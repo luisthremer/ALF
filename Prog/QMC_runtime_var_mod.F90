@@ -250,7 +250,7 @@ Module QMC_runtime_var
                 endif
             else
                 if ( LOBS_ST == 0  ) then
-                    LOBS_ST = 1
+                    LOBS_ST = 0
                 endif
                 if ( LOBS_EN == 0) then
                     LOBS_EN =  Ltrot
