@@ -69,6 +69,8 @@ Program MaxEnt_Wrapper
        Real (Kind=Kind(0.d0)), Allocatable :: A_mean(:,:), A_M2(:,:)
        Real (Kind=Kind(0.d0))              :: u, v, welford_delta, welford_delta2
        logical                             :: initial_checkpoint, N_boot_checkpoint = .false.
+       logical                             :: Do_bootstrap, Reference_run
+       integer                             :: N_runs
        integer                             :: ia
        Real (Kind=Kind(0.d0))              :: A_err
       !  Character (len=64)     :: temp, temp2
@@ -271,8 +273,22 @@ Program MaxEnt_Wrapper
        Allocate(A_mean(Ndis, N_alpha_1), A_M2(Ndis, N_alpha_1)) !Allocate arrays for Welford online algorithm
        A_mean = 0.d0; A_M2 = 0.d0; A_err = 0.d0
 
-       Call Diag(XCOV_st, U_cov, Sigma_cov)        !Considering the usual sizes of Ntau this will mostlikely not be a bottlneck
+       ! Bootstrap only for stochastic MaxEnt with N_boot > 1. The bootstrap samples are followed
+       ! by one reference run on the unperturbed data, which provides energies, Best_fit, Data_out,
+       ! Aom_ps_* and Green. N_boot <= 1 reproduces the original single run on the original data.
+       Do_bootstrap = Stochastic .and. N_boot > 1
+       If (Do_bootstrap) then
+          N_runs = N_boot + 1
+       else
+          N_runs = 1
+       endif
+       If (.not. Stochastic .and. N_boot > 1) &
+            & Write(50,"(A)") 'N_boot > 1 ignored: bootstrap is only implemented for stochastic MaxEnt'
+       If (Do_bootstrap) Write(50,12) "N_boot", N_boot
 
+       If (Do_bootstrap) Call Diag(XCOV_st, U_cov, Sigma_cov)  !Considering the usual sizes of Ntau this will mostlikely not be a bottlneck
+
+       If (Do_bootstrap) then
        Do nt1 = 1, Ntau
 
          !! ---------------------------------------------------------
@@ -289,6 +305,7 @@ Program MaxEnt_Wrapper
                CALL Terminate_on_error(ERROR_MAXENT,__FILE__,__LINE__)
            Endif
        End Do
+       End If
 
        initial_checkpoint = Checkpoint
        ! MaxEnt_stoch resets the random number generator to a fixed seed by default. Since the
@@ -297,7 +314,11 @@ Program MaxEnt_Wrapper
        If (N_boot > 1) MaxEnt_stoch_reset_seed = .false.
 
       ! 1. Box-Mueller Covariance Resampling
-       Do iboot = 1, N_boot
+       Do iboot = 1, N_runs
+            Reference_run = (iboot == N_runs)
+            XQMC = XQMC_st
+            XCOV = XCOV_st
+            If (.not. Reference_run) then
             Do nt = 1, Ntau !For each tau point we get a different noise
                Do! U \in (0,1]
                    u = ranf_wrap()
@@ -312,19 +333,18 @@ Program MaxEnt_Wrapper
             End Do
 
             !Apply noise to data
-            XQMC = XQMC_st
             Do nt = 1, Ntau
                Do nt1 = 1, Ntau
                   XQMC(nt) = XQMC(nt) + U_cov(nt, nt1) * sqrt(Sigma_cov(nt1)) * Z_sample(nt1) !sqrt(max(Sigma_cov(nt1), 0.d0)) * Z_sample(nt1)   !Safe-guard for rounding error eigenvalues.
                End Do
             End Do
-            XCOV = XCOV_st 
+            End If
          
             !2. Warmup & File Caching Logic
             !   A dump of a previous run (Checkpoint at iboot=1, or the previous bootstrap
             !   sample if N_boot_checkpoint) is only used as starting configuration: the data
             !   differ, so accumulated histograms must not be reused and the warmup is kept.
-            If (Stochastic .and. N_boot > 1) then
+            If (Do_bootstrap) then
                If (iboot == 1) then
                   If (.not. Initial_Checkpoint) Call EXECUTE_COMMAND_LINE("rm -f dump*")
                Else If (.not. N_boot_checkpoint) then
@@ -406,7 +426,7 @@ Program MaxEnt_Wrapper
        !Injection Part 2: Welford Online Algorithm (No data is written yet!)
        !TODO: Implement welford in MaxEnt_stpcj directly. -> Write files only after last N_boot
        !TODO: Also bootstrap A_om
-       If (Stochastic) then
+       If (Do_bootstrap .and. .not. Reference_run) then
          Do ia=1, N_alpha_1
             write(file2, '(A,"_",I0)') "Aom_ps", ia
             Open(Unit=66, File=file2, status="old")
@@ -432,6 +452,7 @@ Program MaxEnt_Wrapper
 
          !INJECTION 3
          !Calculate Bootstrap error from variance.
+         If (Do_bootstrap) Then
          Do ia = 1, N_alpha_1
             write(file_boot, '(A,"_",I0)') "Aom_ps_boot", ia
             open (Unit=12, File=file_boot, Status="unknown", action="write") 
@@ -442,6 +463,7 @@ Program MaxEnt_Wrapper
             End Do
             Close(12)
          End Do
+         End If
 
          !INJECTION 3 END
       
