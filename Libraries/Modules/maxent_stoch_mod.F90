@@ -104,6 +104,8 @@ Module MaxEnt_stoch_mod
            Allocate (Xn(Ngamma,2))
            Allocate (Xn_m(NDis), Xn_e(NDis), A(Ndis) )
            Om_st_1 = OM_st; Om_en_1 = OM_en
+           
+           
            ! Setup table for the Kernel
            Ndis_table   = 50000
            Dx_table     =  1.d0 /dble(Ndis_table)
@@ -119,6 +121,12 @@ Module MaxEnt_stoch_mod
                  Xker_table(nt,nw) = Xker(tau,om,beta)
               enddo
            enddo
+
+
+
+
+
+
            ! Normalize  the  data
            xqmc = xqmc / XMOM1
            cov  = cov / ((XMOM1)**2)

@@ -74,27 +74,27 @@ Program MaxEnt_Wrapper
       !  Character (len=64)     :: temp, temp2
 
        !TODO: 22.06.2026
-       !4. share git with Fakher
        !5. Ask for MPI, numerical stability -> of interpolation table
-       !6. Analyze data on helma
-       !7. (Write port_sac.py properly.)
+       !
+       !9. Finish analysis of data: a) Extract Kappa(T) -> Plot; b) extract \tau(T) -> Plot; c) Plot GF; d) Extract \sigma(T)
+       !10. Analytical continuation for electrical current. What could be the reason, why in Superlattice, I get such an answer, and here this answer. Did I do something wrong? 
+            !=> I make a sanity check for the old simulation, whether I can reproduce the results I had with superlattice.
 
 
 
-      !  Todos: check welford online + check output + bootstraü all files + test whether it works!
+
        !TODO: MPI -> seeds for random number generators
        !TODO: more robust implementation is not to generate the aom files until at last.
-       !TODO: maybe it is better to put the bootstrap in the maxent stoch mod, honestly...
        !The important change is: do not write Aom_ps_*, Best_fit, energies, moments, dump_*, Max_stoch_log during every bootstrap sample. That avoids MPI file collisions and removes a lot of unnecessary I/O.
-       !TODO: Write error to file.
+
        !TODO: old max stoch mod + bootstrap -> new mod -> fallback to old if no bootstrap. -> new does not write the files, but explicitly calculates the cumulative means .> and only in final run writes the files.
-       !TODO: test if everything works -> save all files temporarily ! and then calculate the mean +. error 
-       !TODO: Push to github
+
        !Todo Numerical accuracy will go down with to many ntau -> dynamically check numerical accuracy -> dynamical increase Ndis_table size
        !Todo: better interpolation for kernel table -> sinh (in maxent_stoch_mod)
        !TODO: fallback if kernel goes out of table -> use to see, whether interpolation is actually good
        !TODO: How to use default model + Bootstrapping? Default model for smooth curves. => Best practice would be to start with T1 -> make one bootstrap sample -> T2 -> next bootstrap sample so on and on ..., but this will be slow AF, because parameters have to be read etc.
-
+       !TODO: Average chi^2
+       !TODO: Default model.
        !----
 
        Integer                :: Ngamma, Ndis,  NBins, NSweeps, Nwarm, N_alpha, N_cov
@@ -273,13 +273,15 @@ Program MaxEnt_Wrapper
 
        Call Diag(XCOV_st, U_cov, Sigma_cov)        !Considering the usual sizes of Ntau this will mostlikely not be a bottlneck
 
-       ! ---------------------------------------------------------
-       ! SANITY CHECK: Ensure covariance is positive semi-definite
-       ! We tolerate tiny negative values from numerical round-off,
-       ! but crash if the matrix is fundamentally broken.
-       ! ---------------------------------------------------------
        Do nt1 = 1, Ntau
+
+         !! ---------------------------------------------------------
+         !! SANITY CHECK: Ensure covariance is positive semi-definite
+         !! We tolerate tiny negative values from numerical round-off,
+         !! but crash if the matrix is fundamentally broken.
+         !! ---------------------------------------------------------
            !If (Sigma_cov(nt1) < -1.d-10) then
+
            If (Sigma_cov(nt1) < 0.d0) then
                write(error_unit,*) 'FATAL ERROR: Resampled Covariance matrix has a significantly negative eigenvalue!'
                write(error_unit,*) 'Eigenvalue index: ', nt1, ' Value: ', Sigma_cov(nt1)
