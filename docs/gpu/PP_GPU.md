@@ -30,3 +30,19 @@ GPU path ACTIVE and device measurement ACTIVE; Precision Green 4.5e-15.
 MPS thread share, repeated (9 ranks, `N_delay` 64, 10 sweeps, wall in s, two repeats each): 12 %: 96.5 / 96.4; 25 %: 86.9 / 86.9;
 50 %: 91.2 / 91.1; 100 %: 98.3 / 98.6. The cap is per client (9 x 25 % oversubscribes the device); it reduces contention between the ranks and is
 12 % faster than no cap. Production run: `NSweep = 10` per bin, `N_delay` 64, 25 %, `CPU_MAX` 23.8 h (`scripts/pp/pp_prod.sh`).
+
+## Profile of the production run and optimisation round (2026-11-10, branch `...-production-mpi-pp-opt`)
+
+nsys of all 9 ranks (L = 24, `N_delay` 64, MPS 25 %, 150 s window; `scripts/pp/pp_prod_prof.sh`, `union.py`): at least one kernel is running during 99.97 % of
+the window and on average 5.6 kernels run at the same time, so the device is the limit, not the host. Time of rank 0 in kernels: flush GEMMs ~47 %,
+stabilisation (QR, LU, trsm, ...) ~25 %, measurement kernels ~17 %, block kernels ~6 %, wraps ~5 %; 72 % of the host time is `cuStreamSynchronize`.
+One rank spends ~4300 blocks (`N_delay` 64) and ~44 000 syncs per sweep.
+
+Changes: (1) the scalar density sums in `corr` ran as a serial loop in one GPU thread (760 us per call, 7 % of the kernel time); now a parallel
+reduction. Results identical to round-off (SpinZ_eq 1e-16, Ener_scal 1e-13 vs the baseline) but NO speed-up (88.9 s vs 88.9 s: the kernel occupies one
+thread, the device throughput is what limits). (2) `ALF_GPU_OBS_SKIP=1,3` skips Green_eq and Den_eq on the device (they stay zero); the env guard requires
+`ALF_GPU_DEBUG=1` for it, a production switch is still to be decided.
+
+Wall time for 10 sweeps, 9 ranks, 25 %, `N_delay` 64 (incl. ~8 s start-up): baseline 88.9 / 89.7 s; opt 88.9; opt + skip Green/Den 82.5; opt + `Nwrap` 20 78.5;
+opt + skip + `Nwrap` 20 71.8 (-19 %, -21 % without start-up). Precision Green mean / max, `Nwrap` 10 -> 20: U = 3: 4e-15 / 1.6e-11 -> 9e-14 / 4.4e-10;
+U = 5.25: 2e-14 / 2.6e-11 -> 1.5e-13 / 2.2e-10; U = 8: 1.5e-13 / 5e-10 -> 7.6e-13 / 4.8e-9. Observables after 10 sweeps agree with `Nwrap` 10 to <= 4e-12 relative.

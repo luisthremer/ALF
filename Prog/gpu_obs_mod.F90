@@ -53,6 +53,7 @@ Module gpu_obs_mod
   Logical, Save :: o_ok = .false.          ! the model is supported
   Logical, Save :: o_dev = .false.         ! device arrays allocated
   Logical, Save :: o_off = .false.         ! ALF_GPU_NOOBS=1
+  Logical, Save :: o_skip(4) = .false.     ! ALF_GPU_OBS_SKIP (kinds 1..4)
   Integer, Save :: o_N, o_Norb, o_NFL, o_NSUN, o_Ndim, o_nk, o_nobs
   Integer, Save :: o_kind(8)               ! per Obs_eq: 1 Green, 2 SpinSUN, 3 Den, 4 SpinMz (fills Obs_eq(k:k+2))
   Integer, Allocatable, Save :: o_inv(:,:), o_jc(:,:), hk_i(:), hk_j(:), hk_f(:)
@@ -88,6 +89,13 @@ Contains
     o_set = .true.; o_ok = .false.; o_tau = .false.
     call get_environment_variable('ALF_GPU_NOOBS', s)
     o_off = (trim(s) == '1')
+    ! opt-in: ALF_GPU_OBS_SKIP = comma list of equal-time observable kinds that are not measured on the device
+    ! (1 = Green_eq, 2 = SpinZ_eq of N_FL = 1 (SpinSUN), 3 = Den_eq, 4 = SpinMz); the skipped Obs_eq stay zero.  Default: all measured.
+    o_skip = .false.
+    call get_environment_variable('ALF_GPU_OBS_SKIP', s)
+    do k = 1, 4
+       if (index(',' // trim(s) // ',', ',' // achar(48 + k) // ',') > 0) o_skip(k) = .true.
+    enddo
     o_symm = Symm_
     if (Projector_) return          ! Symm is handled on the device (gpu_symm)
     o_loc = (abs(h0) >= Eps_small)
@@ -321,6 +329,7 @@ Contains
     ! ---- correlations: one gather per output element (imj, no, no2)
     do k = 1, o_nobs
        kind_k = o_kind(k)
+       if (o_skip(kind_k)) cycle                  ! ALF_GPU_OBS_SKIP: observable not measured (stays zero in the output)
        if (kind_k == 4 .and. k /= 2) cycle        ! SpinMz fills Obs_eq(2:4) from k = 2
        if (kind_k == 4 .and. o_NSUN /= 1) cycle   ! host Predefined_Obs_eq_SpinMz_measure measures only N_SUN = 1 (it just counts otherwise)
        call corr(k, kind_k, ZW, N, Norb, NFL, NSUN, sq3)
@@ -434,9 +443,12 @@ Contains
                 !$omp end parallel do
                 acc(imj,1,no,no2,k) = acc(imj,1,no,no2,k) + s1*cmplx(wr,wi,kind(0.d0))
        enddo
-       !$omp target teams distribute parallel do private(I,i1,zi,nf,zs0)
+       ! one team per orbital, the sum over the N sites is a parallel reduction inside the team (it was a serial loop of one
+       ! GPU thread: 760 us per call, 7 % of the kernel time of a production run at L = 24; nsys 2026-11-10)
+       !$omp target teams distribute private(I,i1,zi,nf,zs0)
        do no = 1, Norb
           zs0 = (0.d0, 0.d0)
+          !$omp parallel do private(I,i1,zi,nf) reduction(+:zs0)
           do I = 1, N
              i1 = o_inv(I,no); zi = (0.d0, 0.d0)
              do nf = 1, NFL
@@ -444,6 +456,7 @@ Contains
              enddo
              zs0 = zs0 + zi*ns
           enddo
+          !$omp end parallel do
           acc0(no,k) = acc0(no,k) + zs0*cmplx(wr,wi,kind(0.d0))
        enddo
     else                             ! SpinMz (N_FL = 2, N_SUN = 1): Obs_eq(k) = SpinZ, k+1 = SpinXY, k+2 = SpinT
@@ -470,14 +483,16 @@ Contains
                 acc(imj,1,no,no2,k+1) = acc(imj,1,no,no2,k+1) + s2*cmplx(wr,wi,kind(0.d0))
                 acc(imj,1,no,no2,k+2) = acc(imj,1,no,no2,k+2) + s3*cmplx(wr,wi,kind(0.d0))
        enddo
-       !$omp target teams distribute parallel do private(I,i1,zi,zs0)
+       !$omp target teams distribute private(I,i1,zi,zs0)
        do no = 1, Norb
           zs0 = (0.d0, 0.d0)
+          !$omp parallel do private(I,i1,zi) reduction(+:zs0)
           do I = 1, N
              i1 = o_inv(I,no)
              zi = ((1.d0, 0.d0) - G_d(i1,i1,2)) - ((1.d0, 0.d0) - G_d(i1,i1,1))
              zs0 = zs0 + zi
           enddo
+          !$omp end parallel do
           acc0(no,k)   = acc0(no,k)   + zs0*cmplx(wr,wi,kind(0.d0))
           acc0(no,k+2) = acc0(no,k+2) + zs0*cmplx(wr,wi,kind(0.d0))/sq3
        enddo
