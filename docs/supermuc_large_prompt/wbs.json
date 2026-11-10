@@ -1,0 +1,278 @@
+{
+  "archived" : false,
+  "name" : "SuperMUC-NG Phase 2 Intel GPU: large prompt replication",
+  "nodes" : [
+    {
+      "collapsed" : false,
+      "description" : "",
+      "id" : "special_start",
+      "kind" : "start",
+      "order" : 0,
+      "parentId" : null,
+      "title" : "Start"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Jobs\/storage documented and L=24 beta=5.3 point-defect run verified on Intel GPUs (1 node only).",
+      "id" : "special_goal",
+      "kind" : "goal",
+      "order" : 0,
+      "parentId" : null,
+      "title" : "Goal"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_jk1ajcgo",
+      "order" : 0,
+      "parentId" : null,
+      "title" : "Part 1: Job submission, partitions, queues"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_su21lnay",
+      "order" : 0,
+      "parentId" : "n_jk1ajcgo",
+      "title" : "Read LRZ docs and check on system (sinfo, sacct, module avail)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_1ze0gusr",
+      "order" : 1,
+      "parentId" : "n_jk1ajcgo",
+      "title" : "Report partitions\/QOS, node hardware, limits"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_ug5iwcf4",
+      "order" : 2,
+      "parentId" : "n_jk1ajcgo",
+      "title" : "1-node hello-world GPU job, record wait time and script"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_jk1ajcgo"
+      ],
+      "description" : "",
+      "done" : false,
+      "id" : "n_g2ja43ew",
+      "order" : 1,
+      "parentId" : null,
+      "title" : "Part 2: Storage and environment"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_ootzbxpo",
+      "order" : 0,
+      "parentId" : "n_g2ja43ew",
+      "title" : "Filesystem layout, quotas, purge, backup"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_isix8ant",
+      "order" : 1,
+      "parentId" : "n_g2ja43ew",
+      "title" : "I\/O test inside 1-node job"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_zq5646jk",
+      "order" : 2,
+      "parentId" : "n_g2ja43ew",
+      "title" : "Env variables login node vs job"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_whfn1u57",
+      "order" : 3,
+      "parentId" : "n_g2ja43ew",
+      "title" : "Filesystem recommendation (confirmed vs guessed)"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_g2ja43ew"
+      ],
+      "description" : "",
+      "done" : false,
+      "id" : "n_c1wjrncw",
+      "order" : 2,
+      "parentId" : null,
+      "title" : "Part 3: L=24 beta=5.3 on Intel GPUs"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_pmrlv2tj",
+      "order" : 0,
+      "parentId" : "n_c1wjrncw",
+      "title" : "Find reference session 'master' and parameters"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_85854812",
+      "order" : 1,
+      "parentId" : "n_c1wjrncw",
+      "title" : "Worktree\/branch production-mpi-intel-large-prompt"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_8tk9tz0k",
+      "order" : 2,
+      "parentId" : "n_c1wjrncw",
+      "title" : "Audit existing Intel support (NVIDIA-specific vs portable)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_62dcuu19",
+      "order" : 3,
+      "parentId" : "n_c1wjrncw",
+      "title" : "Modules and env for ifx, MPI, GPU binding"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_jnn59sow",
+      "order" : 4,
+      "parentId" : "n_c1wjrncw",
+      "title" : "Build and unit\/regression tests"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_fnhklw7d",
+      "order" : 5,
+      "parentId" : "n_c1wjrncw",
+      "title" : "Small system Intel GPU vs same-compiler ifx CPU"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_fyn54w52",
+      "order" : 6,
+      "parentId" : "n_c1wjrncw",
+      "title" : "4-rank MPI single node, rank-to-device mapping"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_46tdxer3",
+      "order" : 7,
+      "parentId" : "n_c1wjrncw",
+      "title" : "Short L=24 beta=5.3 run vs NVIDIA reference"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_rudlqsit",
+      "order" : 8,
+      "parentId" : "n_c1wjrncw",
+      "title" : "Timing per sweep"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_yoq7u248",
+      "order" : 9,
+      "parentId" : "n_c1wjrncw",
+      "title" : "Two-node analysis into PARKING.md"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_u27inq1x",
+      "order" : 10,
+      "parentId" : "n_c1wjrncw",
+      "title" : "Local merge into production-mpi and production risk report"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_c1wjrncw"
+      ],
+      "description" : "",
+      "done" : false,
+      "id" : "n_06uoou3g",
+      "order" : 3,
+      "parentId" : null,
+      "title" : "Deliverables"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_ilzlrxzp",
+      "order" : 0,
+      "parentId" : "n_06uoou3g",
+      "title" : "FINDINGS.md"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_0vafixnw",
+      "order" : 1,
+      "parentId" : "n_06uoou3g",
+      "title" : "PARKING.md"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_nyofnhfk",
+      "order" : 2,
+      "parentId" : "n_06uoou3g",
+      "title" : "COMPARISON.md after reading other session"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_eky6c75r",
+      "order" : 3,
+      "parentId" : "n_06uoou3g",
+      "title" : "Memory pointer note"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_iun6xb8s",
+      "order" : 4,
+      "parentId" : "n_06uoou3g",
+      "title" : "Final summary to user"
+    }
+  ],
+  "rev" : 1,
+  "version" : 1
+}
