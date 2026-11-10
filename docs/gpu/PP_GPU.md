@@ -26,3 +26,7 @@ Wall time of 6 sweeps including ~5-8 s start-up (`scripts/pp/pp_bench.sh`):
 One chain at 3 ranks: ~4.1 s per sweep; at 9 ranks (25 %, `N_delay` 64): ~7.6 s per sweep. Three walkers per U give about 1.5x the sweeps per U per
 second of one walker per U, at the price of 9 host cores (project rule: 4) and a 3x slower single chain. All three groups report
 GPU path ACTIVE and device measurement ACTIVE; Precision Green 4.5e-15.
+
+MPS thread share, repeated (9 ranks, `N_delay` 64, 10 sweeps, wall in s, two repeats each): 12 %: 96.5 / 96.4; 25 %: 86.9 / 86.9;
+50 %: 91.2 / 91.1; 100 %: 98.3 / 98.6. The cap is per client (9 x 25 % oversubscribes the device); it reduces contention between the ranks and is
+12 % faster than no cap. Production run: `NSweep = 10` per bin, `N_delay` 64, 25 %, `CPU_MAX` 23.8 h (`scripts/pp/pp_prod.sh`).
