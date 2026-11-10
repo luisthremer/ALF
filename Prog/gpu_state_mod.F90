@@ -506,7 +506,9 @@ Contains
     endif
 ! Plain MPI (independent chains, one Markov chain per rank, bins averaged over the group on the host) is supported: each rank
 ! owns its own device mirror and uses the host random numbers; the only MPI traffic stays the host-side observable reduction.
-#if defined(TEMPERING)
+! Parallel parameters (PARALLEL_PARAMS, "PP"): the groups are independent runs with their own parameter set and no exchange step
+! (main.F90 skips Exchange_Step), so the device mirror needs no change.  Real tempering (state exchange) stays refused.
+#if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
     reason = 'tempering is not supported on the GPU path'; return
 #endif
 #if defined(STAB1) || defined(STAB2) || defined(STAB3)
