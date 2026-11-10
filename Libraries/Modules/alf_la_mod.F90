@@ -134,8 +134,10 @@ include "mkl_blas_omp_offload.f90"
 module alf_la_om_mod
   use iso_c_binding
   use iso_fortran_env, only: error_unit
-  use omp_lib, only: omp_interop_kind, omp_get_interop_ptr, omp_get_interop_int, omp_ipr_fr_id, omp_ipr_targetsync, &
-       omp_interop_none, omp_get_default_device, omp_get_num_devices, omp_target_is_present, omp_ifr_sycl
+  ! omp_get_interop_int/_ptr and the omp_ipr_* constants are missing from omp_lib of ifx <= 2025.3.0 (LRZ SuperMUC-NG
+  ! Phase 2); the runtime exports the C entry points, so they are declared here (OpenMP 5.1 values) instead of imported.
+  use omp_lib, only: omp_interop_kind, omp_interop_none, omp_get_default_device, omp_get_num_devices, &
+       omp_target_is_present, omp_ifr_sycl
   use onemkl_blas_omp_offload_lp64, only: zgemm, dgemm, zgemm_batch_strided, zgeru, ztrsm
   use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
   implicit none
@@ -165,6 +167,21 @@ module alf_la_om_mod
   character(len=16), save :: islot_what(OM_NSLOT)
   logical, save :: islot_tol(OM_NSLOT)
 
+  integer(c_int), parameter :: omp_ipr_fr_id = -1, omp_ipr_targetsync = -9     ! OpenMP 5.1 interop properties
+  interface
+    integer(c_intptr_t) function omp_get_interop_int(interop, property_id, ret_code) bind(C, name='omp_get_interop_int')
+      import :: c_intptr_t, c_int
+      integer(c_intptr_t), value :: interop
+      integer(c_int), value :: property_id
+      integer(c_int), intent(out) :: ret_code
+    end function
+    type(c_ptr) function omp_get_interop_ptr(interop, property_id, ret_code) bind(C, name='omp_get_interop_ptr')
+      import :: c_intptr_t, c_int, c_ptr
+      integer(c_intptr_t), value :: interop
+      integer(c_int), value :: property_id
+      integer(c_int), intent(out) :: ret_code
+    end function
+  end interface
   interface
     integer(c_int) function alfsh_init(q) bind(C, name='alfsh_init')
       import :: c_ptr, c_int
