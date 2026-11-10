@@ -2,14 +2,14 @@
 #SBATCH --job-name=lp_scan
 #SBATCH --output=lp_scan.%j.log
 #SBATCH --error=lp_scan.%j.err
-#SBATCH --time=00:55:00
+#SBATCH --time=01:00:00
 #SBATCH --no-requeue
 #SBATCH --export=NONE
 #SBATCH --get-user-env
 #SBATCH --account=pn93la
 #SBATCH --partition=test
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=32
+#SBATCH --ntasks-per-node=64
 # Task 0: oversubscription scan, L=24 reference parameters, ONE node. usage: sbatch task0_scan.sh "8 16 32" [ccs]
 # Device of rank r = r mod 8 (ALF: omp_set_default_device(rank mod #devices); ZE_AFFINITY_MASK unset, ZE_FLAT_DEVICE_HIERARCHY=FLAT)
 # Aggregate throughput from the marginal cost of 3 extra sweeps (runs of 1 and 4 sweeps per rank, one bin each), so start-up cost cancels.
