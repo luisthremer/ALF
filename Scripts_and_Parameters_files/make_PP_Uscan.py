@@ -101,6 +101,7 @@ ap.add_argument("--n-delay", type=int, default=128)
 ap.add_argument("--cpu-max", type=float, default=47.0, help="hours; the run writes its last bin and stops (0 = use NBin)")
 ap.add_argument("--seed0", type=int, default=1000)
 ap.add_argument("--mz", default="F", choices=["F", "T"])
+ap.add_argument("--ranks-per-node", type=int, default=8, help="8 = one rank per GPU tile; 16/32 = 2/4 ranks per tile")
 ap.add_argument("--jobfile", help="jobscript template with ##VAR## placeholders to fill in")
 ap.add_argument("--var", action="append", default=[], help="NAME=value for a ##NAME## placeholder (repeatable)")
 a = ap.parse_args()
@@ -120,7 +121,9 @@ open(os.path.join(a.outdir, "seeds"), "w").write("".join("%d\n" % (a.seed0 + r) 
 print("L=%d, %d parameter sets (U = %s), %d ranks per set, %d ranks in total" % (a.L, len(a.U), " ".join(a.U), a.ranks_per_set, nranks))
 if a.jobfile:
     kv = dict(v.split("=", 1) for v in a.var)
-    kv.setdefault("Nnodes", str(-(-nranks // 8)))
+    kv.setdefault("NtaskPnode", str(a.ranks_per_node))
+    kv.setdefault("Nthreads", str(112 // a.ranks_per_node))
+    kv.setdefault("Nnodes", str(-(-nranks // a.ranks_per_node)))
     kv.setdefault("CPUMAX", str(a.cpu_max))
     out = []
     for l in open(a.jobfile).read().split("\n"):

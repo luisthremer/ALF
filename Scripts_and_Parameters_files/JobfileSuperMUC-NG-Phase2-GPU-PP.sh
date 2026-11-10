@@ -8,11 +8,13 @@
 # then submit THIS script from inside that directory (the job runs in the submission directory):  cd runL28; sbatch ../JobfileSuperMUC-NG-Phase2-GPU-PP.sh
 #
 # The following jobscript contains a few 'variables' marked by the ##...## pattern.
-#  Nnodes = (number of U values * ranks per set) / 8, e.g. 10 * 16 / 8 = 20.    CPUMAX (hours) must be smaller than TIME (the run stops
+#  NtaskPnode = ranks per node: 8 (one per GPU tile, 14 threads), 16 or 32 (2 or 4 chains per tile, 7 or 3 threads; cheaper in GPU-h but each chain is
+#  2-3x slower, see docs/gpu/SUPERMUC_NG2.md).  Nthreads = 112 / NtaskPnode.  Nnodes = (number of U values * ranks per set) / NtaskPnode, e.g. 10 * 16 / 8 = 20.
+#  make_PP_Uscan.py --ranks-per-node N --jobfile ... fills NtaskPnode, Nthreads and Nnodes in.    CPUMAX (hours) must be smaller than TIME (the run stops
 #  after writing its last bin; leave 10 to 15 minutes for the start-up and the final bin).
 #
-# Layout (measured, docs/gpu/SUPERMUC_NG2.md): ONE MPI rank per GPU tile, 8 ranks and 14 cores per rank on a node of 4 GPUs (8 tiles);
-# oversubscribing a tile gives no gain (no MPS on PVC, time slicing). Use N_delay = 128. One node costs 4 GPU-h per hour.
+# Layout (measured, docs/gpu/SUPERMUC_NG2.md): ONE MPI rank per GPU tile (8 ranks, 14 cores each) gives the shortest wall time; 2 or 4 ranks per tile
+# (no MPS on PVC, time slicing) raise the node throughput by 0-27 % but slow every chain down 2-3x. Use N_delay = 128. One node costs 4 GPU-h per hour.
 #
 # Time per sweep and chain on a full node (8 ranks), N_delay = 128:   L = 24: 8.2 s,  L = 28: 16.0 s,  L = 32: 26.3 s.
 #
@@ -33,8 +35,8 @@
 #available partitions: test (<= 4 nodes, 1 h), general (<= 96 nodes, 2 d)
 #SBATCH --partition=##PARTITION##
 #SBATCH --nodes=##Nnodes##
-#SBATCH --ntasks-per-node=8
-#SBATCH --cpus-per-task=14
+#SBATCH --ntasks-per-node=##NtaskPnode##
+#SBATCH --cpus-per-task=##Nthreads##
 
 #Important
 module load slurm_setup

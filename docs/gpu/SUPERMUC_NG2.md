@@ -56,14 +56,36 @@ L = 32: 26.3 s/sweep, 0.30 sweeps/s per node, 2.49 GB per rank (a tile has 64 GB
 `Scripts_and_Parameters_files/make_PP_Uscan.py` writes `parameters`, `Temp_<i>/parameters`, `seeds` (and a filled `job.sh` from
 `JobfileSuperMUC-NG-Phase2-GPU-PP.sh`, never submitted). Tested on 2 nodes: 4 U values x 4 ranks, L = 28 (every group GPU ACTIVE, output in `Temp_<i>/`).
 
-### Sizing of the U scan (L = 28 and 32, 10 U values, 16 ranks per set)
-10 sets x 16 ranks = 160 ranks = **20 nodes per lattice size** (40 nodes if both run together, limit of `general` is 96). One rank per tile keeps all tiles busy;
-fewer nodes (more ranks per tile) only time-slice. A job of T hours on N nodes costs 4 N T GPU-h, so the 900 GPU-h of `pn93la` (225 node-h) are the limit,
-not the node count: 20 nodes for 4 h = 320 GPU-h.
-| L | s/sweep | 20 nodes, T h | GPU-h | sweeps per chain | sweeps per U (16 chains) |
+### Benchmark matrix: L x ranks per tile (one node, AOT, `N_delay` 128, threads = 112 / ranks, `I_MPI_PIN_DOMAIN=auto`, 2 sweeps, `throughput`-style runs)
+Pinning matters: `I_MPI_PIN_DOMAIN=omp:compact` was 35 % slower at 1 rank per tile than `auto`.
+| L | ranks (per tile) | threads | start-up s | s/sweep per chain | aggregate sweeps/s | per-chain sweeps/s |
+|---|---|---|---|---|---|---|
+| 24 | 8 (1) | 14 | 29 | 8.25 | 0.97 | 0.121 |
+| 24 | 16 (2) | 7 | 11 | 17.4 | 0.92 | 0.057 |
+| 24 | 32 (4) | 3 | 14 | 30.9 | 1.04 | 0.032 |
+| 28 | 8 (1) | 14 | 13 | 16.2 | 0.49 | 0.062 |
+| 28 | 16 (2) | 7 | 17 | 32.0 | 0.50 | 0.031 |
+| 28 | 32 (4) | 3 | 29 | 57.3 | 0.56 | 0.018 |
+| 32 | 8 (1) | 14 | 23 | 26.3 | 0.30 | 0.038 |
+| 32 | 16 (2) | 7 | 34 | 48.9 | 0.33 | 0.020 |
+| 32 | 32 (4) | 3 | 60 | 84.5 | 0.38 | 0.012 |
+Start-up (wall minus the measured run time; AOT; includes mirror set-up and HDF5) is 10-60 s, negligible against a run. Oversubscribing a tile raises the node
+throughput by only 0-27 % (largest at L = 32) while every chain gets 2-3x slower; at L = 24 it does not help at all. A30 (REPORT_2026-11-10 section 4, L = 24,
+N_delay 32): 0.175 sweeps/s for 1 chain, 0.371 total for 4 chains (0.093 per chain), 0.433 for 8 (0.054 per chain), i.e. one A30 per 4 chains; one PVC tile
+chain does 0.121 sweeps/s (1.3x the A30 per chain at 4 chains per GPU, 0.7x the single-chain A30), a PVC card with 2 chains 0.24, a node (4 cards, 8 chains) 0.97 sweeps/s.
+
+### Sizing of the U scan (L = 28 and 32, 10 U values, 16 ranks per set = 160 ranks per lattice size)
+Every chain needs its own warm-up (about 1000 sweeps at L = 24, an assumption for L = 28/32), so with M measured sweeps per chain the run takes
+start-up + (1000 + M) x s/sweep, and the cost is 4 x nodes x wall GPU-h. Usable sweeps per U point S = 16 M. Nodes for 10 sets: 20 (1 rank per tile), 10 (2), 5 (4).
+| L | S per U | ranks/tile | nodes | wall (h) | GPU-h |
 |---|---|---|---|---|---|
-| 28 | 16.0 | 4 | 320 | 900 | 14 400 |
-| 32 | 26.3 | 6.5 | 520 | 890 | 14 200 |
-The 840 GPU-h of both rows leave 60 GPU-h for tests. The L = 24 reference run has about 15 000 usable sweeps per U in total, but its chains ran about 4 800 sweeps each (1000 sweeps of
-warm-up, MASTER report of 2026-11-10); with 900 sweeps per chain the warm-up would eat the whole run. More budget (the projects `pn73xu` and `pr94vu` also show 900 GPU-h),
-fewer U values or fewer chains with longer runs, or warm starts from `confout` of a shorter run are the options.
+| 28 | 5 000 | 1 / 2 / 4 | 20 / 10 / 5 | 5.9 / 11.7 / 20.9 | 473 / 467 / 418 |
+| 28 | 10 000 | 1 / 2 / 4 | 20 / 10 / 5 | 7.3 / 14.4 / 25.9 | 586 / 578 / 517 |
+| 32 | 5 000 | 1 / 2 / 4 | 20 / 10 / 5 | 9.6 / 17.8 / 30.8 | 769 / 713 / 616 |
+| 32 | 10 000 | 1 / 2 / 4 | 20 / 10 / 5 | 11.9 / 22.1 / 38.1 | 952 / 883 / 763 |
+(L = 24 for comparison, S = 10 000: 3.7 h / 7.9 h / 14.0 h, 299 / 315 / 279 GPU-h.) Warm-up is 76 % (S = 5 000) or 62 % (S = 10 000) of every chain.
+Conclusions: (1) more ranks per tile saves 8-20 % of the GPU-h but stretches the wall time 2-3.5x; all variants fit into the 2 days of `general`, none into the budget
+with both lattice sizes at S = 5 000 (1242 / 1180 / 1034 GPU-h > 840 GPU-h available of the 900). (2) With the budget of `pn93la` alone (840 GPU-h for both sizes)
+the best choice (4 ranks per tile, 5 nodes per lattice size) reaches only M = 64, S = 1 000 usable sweeps per U point, i.e. nothing beyond the warm-up. (3) Options: more
+budget (`pn73xu` and `pr94vu` also show 900 GPU-h), one lattice size at a time (L = 28 with S = 10 000 costs 517 GPU-h), fewer U values, or warm-starting
+the chains from `confout` of a shorter run so that the warm-up shrinks. The jobscripts take `--ranks-per-node 8|16|32`.
