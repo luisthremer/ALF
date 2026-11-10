@@ -293,17 +293,17 @@ Program MaxEnt_Wrapper
 
          !! ---------------------------------------------------------
          !! SANITY CHECK: Ensure covariance is positive semi-definite
-         !! We tolerate tiny negative values from numerical round-off,
+         !! We tolerate tiny negative values from numerical round-off
+         !! (relative to the largest eigenvalue) and set them to zero,
          !! but crash if the matrix is fundamentally broken.
          !! ---------------------------------------------------------
-           !If (Sigma_cov(nt1) < -1.d-10) then
-
-           If (Sigma_cov(nt1) < 0.d0) then
+           If (Sigma_cov(nt1) < -1.d-10*maxval(abs(Sigma_cov))) then
                write(error_unit,*) 'FATAL ERROR: Resampled Covariance matrix has a significantly negative eigenvalue!'
                write(error_unit,*) 'Eigenvalue index: ', nt1, ' Value: ', Sigma_cov(nt1)
                write(error_unit,*) 'Your QMC data may be corrupted, or you have too few bins.'
                CALL Terminate_on_error(ERROR_MAXENT,__FILE__,__LINE__)
            Endif
+           Sigma_cov(nt1) = max(Sigma_cov(nt1), 0.d0)
        End Do
        End If
 
@@ -335,7 +335,7 @@ Program MaxEnt_Wrapper
             !Apply noise to data
             Do nt = 1, Ntau
                Do nt1 = 1, Ntau
-                  XQMC(nt) = XQMC(nt) + U_cov(nt, nt1) * sqrt(Sigma_cov(nt1)) * Z_sample(nt1) !sqrt(max(Sigma_cov(nt1), 0.d0)) * Z_sample(nt1)   !Safe-guard for rounding error eigenvalues.
+                  XQMC(nt) = XQMC(nt) + U_cov(nt, nt1) * sqrt(Sigma_cov(nt1)) * Z_sample(nt1) ! Sigma_cov >= 0 ensured above
                End Do
             End Do
             End If
@@ -459,7 +459,7 @@ Program MaxEnt_Wrapper
             ! Write(12,"(A14,2x,A16,2x,A16)") "# omega", "A_mean", "A_error"
             Do nw = 1, Ndis
                A_err = sqrt(A_M2(nw, ia) / dble(max(1, N_boot - 1)))
-               Write(12,"(F14.7,2x,F16.8,2x,F16.8)") xom(nw), A_mean(nw,ia), A_err
+               Write(12,"(3(1X,E25.17E3))") xom(nw), A_mean(nw,ia), A_err
             End Do
             Close(12)
          End Do
