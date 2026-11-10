@@ -61,6 +61,12 @@ Module MaxEnt_stoch_mod
        !     .false. : the caller's random number stream is continued, so that repeated
        !     calls (and random numbers drawn by the caller in between) are independent.
        Logical, public :: MaxEnt_stoch_reset_seed = .true.
+       ! MaxEnt_stoch_warm_start_only = .false. : (default) an existing dump restarts the
+       !     simulation including all accumulated histograms (checkpointing).
+       !     .true. : the dump only provides the starting configurations. All accumulators are
+       !     reset and the warmup is carried out, as required when the input data changed
+       !     (e.g. a new bootstrap sample).
+       Logical, public :: MaxEnt_stoch_warm_start_only = .false.
        
        contains
 
@@ -79,7 +85,7 @@ Module MaxEnt_stoch_mod
            Integer :: Nsweeps, NBins, Ngamma_1, Ndis_1, nw, nt1
 
            ! Local
-           Integer NSims, ns, nb, nc, Nwarm, nalp1, nalp2, Nex, p_star, Ndis_table, &
+           Integer NSims, ns, nb, nc, Nwarm, Nwarm_eff, nalp1, nalp2, Nex, p_star, Ndis_table, &
                 & io_error, io_error1, i, n, nc1, nx
            Real (Kind=Kind(0.d0)), Allocatable :: Xn_M_tot(:,:), En_M_tot(:), Xn_E_tot(:,:), En_E_tot(:), &
                 & Xn_tot(:,:,:), En_tot(:), Default(:)
@@ -185,8 +191,9 @@ Module MaxEnt_stoch_mod
            File_Aom  = "dump_Aom"
            Open(unit=41,file=File_conf,status='old',action='read', iostat=io_error)
            Open(unit=42,file=File_Aom, status='old',action='read', iostat=io_error1)
+           Nwarm_eff = Nwarm   ! Local copy: do not overwrite the caller's Nwarm
            If (io_error == 0 .and. io_error1 == 0 ) then
-              Nwarm = 0
+              Nwarm_eff = 0
               read(41,*) (Iseed_vec(I), I = 1,size(Iseed_vec,1))
               do ns = 1,Nsims
                  do ng = 1,Ngamma
@@ -202,6 +209,19 @@ Module MaxEnt_stoch_mod
               enddo
               Open (Unit=44,File='Max_stoch_log', Status="unknown", position="append")
               Write(44,*) 'Read from dump: nc = ', nc
+              If (MaxEnt_stoch_warm_start_only) then
+                 ! Keep only the configurations Xn_tot. The data changed, so the accumulated
+                 ! histograms belong to a different problem and a warmup is needed.
+                 Xn_m_tot = 0.d0
+                 En_m_tot = 0.d0
+                 Xn_e_tot = 0.d0
+                 En_e_tot = 0.d0
+                 F_A_m    = 0.d0
+                 F_A_e    = 0.d0
+                 nc       = 0
+                 Nwarm_eff = Nwarm
+                 Write(44,*) 'Warm start: only configurations taken from dump'
+              endif
               close(44)
            else
               !Iseed is already set.
@@ -247,7 +267,7 @@ Module MaxEnt_stoch_mod
                  Open (Unit=44,File='Max_stoch_log', Status="unknown", position="append")
                 Write(44,"('Alpha, En_m, Acc ', E25.17E3, 2x, E25.17E3, 2x, E25.17E3, 2x, E25.17E3, 2x, E25.17E3)") 1.d0/Alpha, En_m, Acc_1, Acc_2
                  close(44)
-                 if (nb.gt.nwarm) then
+                 if (nb.gt.nwarm_eff) then
                     if (ns.eq.1) nc = nc + 1
                     
                     !  Given   Xn_m  =  n(x) dx   with  x =  phi(om)  the  following  loop  sets:

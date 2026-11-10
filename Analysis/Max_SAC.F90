@@ -321,15 +321,17 @@ Program MaxEnt_Wrapper
             XCOV = XCOV_st 
          
             !2. Warmup & File Caching Logic
-            If (Stochastic) then
-               If (iboot == 1 .and. .not. Initial_Checkpoint) then
-                  Call EXECUTE_COMMAND_LINE("rm -f dump*")
-               Else If (N_boot_checkpoint) then
-                  Checkpoint = .true.
-               Else
-                  Checkpoint = .false.
+            !   A dump of a previous run (Checkpoint at iboot=1, or the previous bootstrap
+            !   sample if N_boot_checkpoint) is only used as starting configuration: the data
+            !   differ, so accumulated histograms must not be reused and the warmup is kept.
+            If (Stochastic .and. N_boot > 1) then
+               If (iboot == 1) then
+                  If (.not. Initial_Checkpoint) Call EXECUTE_COMMAND_LINE("rm -f dump*")
+               Else If (.not. N_boot_checkpoint) then
                   Call EXECUTE_COMMAND_LINE("rm -f dump*")
                End If
+               MaxEnt_stoch_warm_start_only = .true.
+               Checkpoint = Initial_Checkpoint .or. N_boot_checkpoint
             End If
        !------Injection_END----
 
