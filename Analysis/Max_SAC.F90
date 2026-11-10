@@ -291,6 +291,10 @@ Program MaxEnt_Wrapper
        End Do
 
        initial_checkpoint = Checkpoint
+       ! MaxEnt_stoch resets the random number generator to a fixed seed by default. Since the
+       ! number of random draws per call does not depend on the data, every bootstrap sample
+       ! would then receive identical Gaussian noise. Continue the global stream instead.
+       If (N_boot > 1) MaxEnt_stoch_reset_seed = .false.
 
       ! 1. Box-Mueller Covariance Resampling
        Do iboot = 1, N_boot

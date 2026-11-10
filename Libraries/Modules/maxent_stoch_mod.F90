@@ -54,6 +54,13 @@ Module MaxEnt_stoch_mod
                                       &   Dx_spectral, Dx_table
        Real (Kind=Kind(0.d0)), allocatable, private :: XQMC1(:)
        Integer, allocatable,  private ::  Phim1_func(:), Phi_func(:)
+
+       ! Control flags for repeated calls (e.g. bootstrap resampling in Max_SAC).
+       ! MaxEnt_stoch_reset_seed = .true. : (default, original behaviour) the random number
+       !     generator is reset to a fixed seed at the beginning of every call.
+       !     .false. : the caller's random number stream is continued, so that repeated
+       !     calls (and random numbers drawn by the caller in between) are independent.
+       Logical, public :: MaxEnt_stoch_reset_seed = .true.
        
        contains
 
@@ -173,7 +180,7 @@ Module MaxEnt_stoch_mod
            Call Get_seed_Len(L_seed)
            Allocate(Iseed_vec(L_seed))
            Iseed_vec = 0
-           Call Ranset(Iseed_vec)
+           If (MaxEnt_stoch_reset_seed) Call Ranset(Iseed_vec)
            File_conf = "dump_conf"
            File_Aom  = "dump_Aom"
            Open(unit=41,file=File_conf,status='old',action='read', iostat=io_error)
