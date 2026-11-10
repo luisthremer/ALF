@@ -134,12 +134,31 @@ include "mkl_blas_omp_offload.f90"
 module alf_la_om_mod
   use iso_c_binding
   use iso_fortran_env, only: error_unit
-  use omp_lib, only: omp_interop_kind, omp_get_interop_ptr, omp_get_interop_int, omp_ipr_fr_id, omp_ipr_targetsync, &
+  use omp_lib, only: omp_interop_kind, &
        omp_interop_none, omp_get_default_device, omp_get_num_devices, omp_target_is_present, omp_ifr_sycl
   use onemkl_blas_omp_offload_lp64, only: zgemm, dgemm, zgemm_batch_strided, zgeru, ztrsm
   use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
   implicit none
   private
+  ! OpenMP 5.1 interop retrieval routines: ifx < 2026 does not declare them in omp_lib (the symbols are in libiomp5), so they
+  ! are declared here (C binding; property ids from omp.h: omp_ipr_fr_id = -1, omp_ipr_targetsync = -9).
+  integer(c_int), parameter :: omp_ipr_fr_id = -1_c_int, omp_ipr_targetsync = -9_c_int
+  interface
+    function omp_get_interop_int(interop, property_id, ret_code) bind(C, name="omp_get_interop_int")
+      import :: c_intptr_t, c_int, omp_interop_kind
+      integer(c_intptr_t) :: omp_get_interop_int
+      integer(omp_interop_kind), value :: interop
+      integer(c_int), value :: property_id
+      integer(c_int), intent(out) :: ret_code
+    end function omp_get_interop_int
+    function omp_get_interop_ptr(interop, property_id, ret_code) bind(C, name="omp_get_interop_ptr")
+      import :: c_ptr, c_int, omp_interop_kind
+      type(c_ptr) :: omp_get_interop_ptr
+      integer(omp_interop_kind), value :: interop
+      integer(c_int), value :: property_id
+      integer(c_int), intent(out) :: ret_code
+    end function omp_get_interop_ptr
+  end interface
   integer, parameter :: OM_NSLOT = 4096                      ! = LA_NSLOT
   public :: om_init, om_finalize, om_sync, om_reserve, om_poison_last
   public :: om_gemm, om_gemm_cr, om_gemm_batched, om_geru, om_trsm
