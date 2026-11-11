@@ -307,6 +307,30 @@ __global__ void k_prec2(int n, const double* pw, const double* pm, const double*
     r[4] = xs; r[3] = xm; r[5] = na; r[6] = nb; }
 }
 
+
+// M(r,j) = (product over the factors of row r, in order) * M(r,j) -- as k_vslice_R of gpu_wrap_mod
+__global__ void k_vslice_r(int nd, int ncol, int ld, int nf, int t, int cj, int desc, int ldptr, int nop, const int* vr_ptr,
+                           const int* vr_ent, const int* V_meta, const int* V_type, const cd* nsig, const cd* V_exp, cd* M) {
+  long tt = (long)blockIdx.x * blockDim.x + threadIdx.x;
+  if (tt >= (long)nd * ncol) return;
+  int r = tt % nd, j = tt / nd;
+  int pa = vr_ptr[r + (long)(nf - 1) * ldptr], pb = vr_ptr[r + 1 + (long)(nf - 1) * ldptr] - 1;
+  if (pb < pa) return;
+  cd x = M[r + (long)j * ld];
+  for (int q = 0; q <= pb - pa; q++) {
+    int p = desc ? pb - q : pa + q;
+    int n = vr_ent[2 * (p - 1)], i = vr_ent[2 * (p - 1) + 1];
+    const int* mt = V_meta + 4L * ((n - 1) + (long)(nf - 1) * nop);
+    if (mt[3] != 1) {
+      int sp = (int)round(nsig[(n - 1) + (long)(t - 1) * nop].r);
+      cd z = V_exp[mt[2] + i + (long)(sp + V_type[n - 1]) * mt[0] - 1];
+      if (cj) z.i = -z.i;
+      x = z * x;
+    }
+  }
+  M[r + (long)j * ld] = x;
+}
+
 extern "C" {
 
 int alfhk_copyz(long n, void* a, void* b) {
@@ -382,6 +406,14 @@ int alfhk_prec(int n, void* A, void* B, void* r) {
   double *pw = pscr, *pm = pscr + n, *pa = pscr + 2L * n, *pb = pscr + 3L * n;
   LAUNCH(k_prec1, nb(n, 64), 64, n, (const cd*)A, (const cd*)B, pw, pm, pa, pb);
   LAUNCH(k_prec2, 1, 256, n, (const double*)pw, (const double*)pm, (const double*)pa, (const double*)pb, (double*)r);
+  return fin();
+}
+
+int alfhk_vslice_r(int nd, int ncol, int ld, int nf, int t, int cj, int desc, int ldptr, int nop, void* vr_ptr, void* vr_ent,
+                   void* V_meta, void* V_type, void* nsig, void* V_exp, void* M) {
+  long tot = (long)nd * ncol; if (tot <= 0) return 0;
+  LAUNCH(k_vslice_r, nb(tot, 256), 256, nd, ncol, ld, nf, t, cj, desc, ldptr, nop, (const int*)vr_ptr, (const int*)vr_ent,
+         (const int*)V_meta, (const int*)V_type, (const cd*)nsig, (const cd*)V_exp, (cd*)M);
   return fin();
 }
 }  // extern "C"

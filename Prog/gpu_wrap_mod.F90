@@ -985,6 +985,10 @@ Contains
     Integer :: jb, nblk, j, j1, j2, r, pa, pb, p, q, n, i, sp, nact
     Complex (Kind=Kind(0.d0)) :: x, z, zq(4)
 
+#if defined(ALF_LA_HIP)
+    call hk_vslice_r(nd, ncol, ld, nf, t, cj, desc, size(vr_ptr,1), size(V_meta,2), vr_ptr(1,1), vr_ent(1,1), V_meta(1,1,1), V_type, nsigma_d(1,1), V_exp, M)
+    return
+#endif
     nblk = (ncol + vb - 1) / vb
     ! thread (r, column block): the factors of row r are looked up once per thread when there are at most 4 of them
     ! (always in the models with one operator per site); more: per element, the same products in the same order

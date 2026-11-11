@@ -9,6 +9,7 @@ module alf_hipk_mod
   private
   public :: hk_copyz, hk_blk_gather, hk_blk_scale_rows, hk_blk_scale_cols, hk_flush_gather, hk_scatter_rows
   public :: hk_corr, hk_scalars, hk_local
+  public :: hk_vslice_r
   public :: hk_divrows, hk_rowdiv, hk_scale_cols, hk_tpup, hk_ns, hk_cgr_phase, hk_prec
 
   interface
@@ -94,6 +95,12 @@ module alf_hipk_mod
       import :: c_ptr, c_int
       integer(c_int), value :: n
       type(c_ptr), value :: a, b, r
+    end function
+    integer(c_int) function alfhk_vslice_r(nd, ncol, ld, nf, t, cj, desc, ldptr, nop, vp, ve, vm, vt, ns, vx, m) &
+         bind(C, name='alfhk_vslice_r')
+      import :: c_ptr, c_int
+      integer(c_int), value :: nd, ncol, ld, nf, t, cj, desc, ldptr, nop
+      type(c_ptr), value :: vp, ve, vm, vt, ns, vx, m
     end function
   end interface
 
@@ -287,6 +294,20 @@ contains
     !$omp end target data
     call chk(rc, 'prec')
   end subroutine hk_prec
+
+  subroutine hk_vslice_r(nd, ncol, ld, nf, t, cj, desc, ldptr, nop, vp, ve, vm, vt, ns, vx, m)
+    integer, intent(in) :: nd, ncol, ld, nf, t, ldptr, nop
+    logical, intent(in) :: cj, desc
+    integer, target :: vp(*), ve(*), vm(*), vt(*)
+    complex(8), target :: ns(*), vx(*), m(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(vp, ve, vm, vt, ns, vx, m)
+    rc = alfhk_vslice_r(int(nd,c_int), int(ncol,c_int), int(ld,c_int), int(nf,c_int), int(t,c_int), merge(1_c_int,0_c_int,cj), &
+         merge(1_c_int,0_c_int,desc), int(ldptr,c_int), int(nop,c_int), c_loc(vp(1)), c_loc(ve(1)), c_loc(vm(1)), c_loc(vt(1)), &
+         c_loc(ns(1)), c_loc(vx(1)), c_loc(m(1)))
+    !$omp end target data
+    call chk(rc, 'vslice_r')
+  end subroutine hk_vslice_r
 
 end module alf_hipk_mod
 #endif
