@@ -21,7 +21,7 @@
 #SBATCH --account=##ACCOUNT##
 #SBATCH --nodes=##NODES##
 #SBATCH --ntasks-per-node=##RANKS_PER_NODE##
-#SBATCH --cpus-per-task=1
+# (no --cpus-per-task: with --cpus-per-task=1 every rank was pinned to ONE logical cpu and ran ~6x slower, jobs 560229-560234)
 
 module load slurm_setup
 module load intel/2025.3.0 intel-mpi/2021.15.0
