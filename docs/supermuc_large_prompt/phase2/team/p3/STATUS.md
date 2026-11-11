@@ -31,3 +31,13 @@ Estimate for SYCL async on top of that knob (blkbench: OMP-sync block 188 us wit
 i.e. ~0.4 s/sweep (~6 % of the 6.6 s sweep); the rest of the block is device execution (scale 22, flush gather 2x15, gemm 2x20 + 2x26 us measured with a
 wait after every op) that async submission cannot hide because the next block's gather depends on the flush (host decisions in between are ~20 us).
 Without the knob, SYCL async would only gain 570 -> 500 us/block (D2H dominates).
+
+# Phase 3b step 3 (SYCL-async block path, ALFSH_ASYNCBLK=1, staging 1 MB for old and new): done
+Mechanism: Libraries/Modules/alf_la_sycl_blk.cpp -> libalfsb.so (sycl-driver-linked shared lib, AOT via ALF_SYCL_BLK_FLAGS, default JIT; configure.sh links
+-lalfsb with rpath) = k_blk_gather / k_blk_scale / k_sub_flush_gather as SYCL kernels + oneMKL column_major::gemm, queued on the interop queue (alfsh_get_queue),
+H2D copies queued, D2H of the gathered block into host USM, ONE wait per block (blk_begin); drain at the end-of-slice flush entry points. Default OFF.
+G1: L=24 update 1.96 -> 1.49 s/sweep (4 pairs), sweep 7.0 -> 6.56. Checks (switch ON): same-seed vs CPU 2.2e-15 / 5.5e-11 / 1.5e-14 (as baseline), confout and
+acceptance identical; bitwise vs team/build_txtnew 0.0 (3x each: L6 Mz=F, L6 Mz=T, L12 Mz=F; L=24 2 sweeps); planted missing wait (host reads the block gather before
+the D2H lands): ALF aborts "Unstable matrix", comparison cannot pass; planted missing drain at slice end still bitwise 0.0 (in-order queue also orders the OpenMP
+kernels; the drain is kept as belt and braces). nvfortran (nividia, make -j4, no GPU run): BUILD_OK. Timing: L=24 sweep 7.0 -> 6.56 (4 pairs), L=32 23.2 -> 21.8
+(2 pairs, update 5.7 -> 4.6), node 32 ranks 2.57 -> 2.65 sweeps/s/node (+3 %); Precision Green identical.
