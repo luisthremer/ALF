@@ -26,8 +26,9 @@ __device__ inline qc operator+(qc a, qc b) { return qc(a.r + b.r, a.i + b.i); }
 __device__ inline qc operator-(qc a, qc b) { return qc(a.r - b.r, a.i - b.i); }
 __device__ inline qc operator*(qc a, qc b) { return qc(a.r * b.r - a.i * b.i, a.r * b.i + a.i * b.r); }
 __device__ inline qc qconj(qc a) { return qc(a.r, -a.i); }
-// wave64 sum with DPP (no LDS crossbar, unlike __shfl_xor): xor-1, xor-2, half-row mirror, row mirror, then the four
-// 16-lane rows are added through readlane (the result is wave-uniform, every lane returns the total)
+// wave64 sum with DPP (no LDS crossbar, unlike __shfl_xor): xor-1, xor-2, half-row mirror, row mirror, then the row sums are
+// combined with the row_bcast15/31 patterns (rows 1 and 3, then 2 and 3, masked-off lanes add 0) and read from lane 63;
+// the result is wave-uniform (a scalar), every lane returns the total
 template <int CTRL>
 __device__ inline double dpp_d(double x) {
   union { double d; int i[2]; } u, v;
@@ -36,19 +37,26 @@ __device__ inline double dpp_d(double x) {
   v.i[1] = __builtin_amdgcn_mov_dpp(u.i[1], CTRL, 0xf, 0xf, false);
   return v.d;
 }
-__device__ inline double rl_d(double x, int lane) {
+template <int CTRL, int ROWMASK>
+__device__ inline double dpp_m(double x) {   // masked rows receive the DPP source, all others 0
   union { double d; int i[2]; } u, v;
   u.d = x;
-  v.i[0] = __builtin_amdgcn_readlane(u.i[0], lane);
-  v.i[1] = __builtin_amdgcn_readlane(u.i[1], lane);
+  v.i[0] = __builtin_amdgcn_update_dpp(0, u.i[0], CTRL, ROWMASK, 0xf, false);
+  v.i[1] = __builtin_amdgcn_update_dpp(0, u.i[1], CTRL, ROWMASK, 0xf, false);
   return v.d;
 }
 __device__ inline double wsum(double x) {
-  x += dpp_d<0xB1>(x);    // quad_perm [1,0,3,2]
-  x += dpp_d<0x4E>(x);    // quad_perm [2,3,0,1]
-  x += dpp_d<0x141>(x);   // row_half_mirror
-  x += dpp_d<0x140>(x);   // row_mirror
-  return (rl_d(x, 0) + rl_d(x, 16)) + (rl_d(x, 32) + rl_d(x, 48));
+  x += dpp_d<0xB1>(x);        // quad_perm [1,0,3,2]
+  x += dpp_d<0x4E>(x);        // quad_perm [2,3,0,1]
+  x += dpp_d<0x141>(x);       // row_half_mirror
+  x += dpp_d<0x140>(x);       // row_mirror
+  x += dpp_m<0x142, 0xa>(x);  // row_bcast:15 -> rows 1, 3
+  x += dpp_m<0x143, 0xc>(x);  // row_bcast:31 -> rows 2, 3
+  union { double d; int i[2]; } u, v;
+  u.d = x;
+  v.i[0] = __builtin_amdgcn_readlane(u.i[0], 63);
+  v.i[1] = __builtin_amdgcn_readlane(u.i[1], 63);
+  return v.d;
 }
 
 extern "C" int alf_hip_fin();
@@ -56,11 +64,21 @@ static int qfin() { return alf_hip_fin(); }
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Panel factorisation. P = A(j0,j0) (mp rows, pw <= NB columns, leading dimension ldp), tau = tau(j0)
+// Per column: (1) the norm of the column below the diagonal (one value: DPP wave sum + LDS exchange of the waves, one
+// barrier) and (2) the dot products of the new reflector with the remaining panel columns (up to 2(NB-1) real values).
+// For (2) a per-value wave reduction costs ~1000 instructions per column, so the partial sums go through the LDS instead:
+// every thread writes its values, thread (v, segment) sums 32 threads' entries of value v, the pairs/waves are combined in
+// two more LDS steps (three barriers, ~100 LDS operations per thread).
 template <int NB, int T, int R>
 __global__ __launch_bounds__(T) void k_qr_panel(int mp, int pw, qc* P, long ldp, qc* tau) {
   constexpr int NW = T / 64;
-  __shared__ double red[2][NW][2 * NB + 2];
+  constexpr int NVMAX = 2 * (NB - 1);
+  constexpr int STR = NVMAX + 1;       // odd stride: conflict-free writes
+  __shared__ double red[2][NW][2];
   __shared__ double alS[2][2];
+  __shared__ double Pl[T * STR];
+  __shared__ double red2[NW][32];
+  __shared__ double totS[32];
   const int t = threadIdx.x, w = t >> 6, ln = t & 63;
   qc a[R][NB];
 #pragma unroll
@@ -73,78 +91,89 @@ __global__ __launch_bounds__(T) void k_qr_panel(int mp, int pw, qc* P, long ldp,
 #pragma unroll
   for (int c = 0; c < NB; c++) {
     if (c < pw) {   // (no 'break': it stops the full unrolling and puts a[][] into scratch memory)
-    // ---- reflector of column c (zlarfg) ----
-    double sq = 0;
+      // ---- reflector of column c (zlarfg) ----
+      double sq = 0;
 #pragma unroll
-    for (int r = 0; r < R; r++) {
-      int i = t + r * T;
-      if (i > c && i < mp) sq += a[r][c].r * a[r][c].r + a[r][c].i * a[r][c].i;
-    }
-    sq = wsum(sq);
-    if (ln == 0) red[rb][w][0] = sq;
-    if (t == c) { alS[rb][0] = a[0][c].r; alS[rb][1] = a[0][c].i; }
-    __syncthreads();
-    double xn2 = 0;
-#pragma unroll
-    for (int q = 0; q < NW; q++) xn2 += red[rb][q][0];
-    const double alr = alS[rb][0], ali = alS[rb][1];
-    rb ^= 1;
-    qc tc(0, 0), sc(1, 0);
-    double beta = alr;
-    if (!(xn2 == 0.0 && ali == 0.0)) {
-      double nrm = sqrt(alr * alr + ali * ali + xn2);
-      beta = (alr >= 0.0) ? -nrm : nrm;
-      tc = qc((beta - alr) / beta, -ali / beta);
-      double dr = alr - beta, d2 = dr * dr + ali * ali;
-      sc = qc(dr / d2, -ali / d2);
-    }
-#pragma unroll
-    for (int r = 0; r < R; r++) {
-      int i = t + r * T;
-      if (i > c && i < mp) a[r][c] = a[r][c] * sc;
-    }
-    if (t == c) { a[0][c] = qc(beta, 0.0); tau[c] = tc; }
-    // ---- apply H^H = I - conj(tau) v v^H to the remaining panel columns ----
-    if (c + 1 < pw) {
-#pragma unroll
-      for (int k = c + 1; k < NB; k++) {
-        if (k < pw) {
-          double xr = 0, xi = 0;
-#pragma unroll
-          for (int r = 0; r < R; r++) {
-            int i = t + r * T;
-            if (i >= c && i < mp) {
-              qc v = (i == c) ? qc(1, 0) : a[r][c];
-              xr += v.r * a[r][k].r + v.i * a[r][k].i;
-              xi += v.r * a[r][k].i - v.i * a[r][k].r;
-            }
-          }
-          xr = wsum(xr);
-          xi = wsum(xi);
-          if (ln == 0) { red[rb][w][2 * k] = xr; red[rb][w][2 * k + 1] = xi; }
-        }
+      for (int r = 0; r < R; r++) {
+        int i = t + r * T;
+        if (i > c) sq += a[r][c].r * a[r][c].r + a[r][c].i * a[r][c].i;     // rows >= mp hold zeros
       }
+      sq = wsum(sq);
+      if (ln == 0) red[rb][w][0] = sq;
+      if (t == c) { alS[rb][0] = a[0][c].r; alS[rb][1] = a[0][c].i; }
       __syncthreads();
-      const qc ct = qconj(tc);
+      double xn2 = 0;
 #pragma unroll
-      for (int k = c + 1; k < NB; k++) {
-        if (k < pw) {
-          qc s(0, 0);
+      for (int q = 0; q < NW; q++) xn2 += red[rb][q][0];
+      const double alr = alS[rb][0], ali = alS[rb][1];
+      rb ^= 1;
+      qc tc(0, 0), sc(1, 0);
+      double beta = alr;
+      if (!(xn2 == 0.0 && ali == 0.0)) {
+        double nrm = sqrt(alr * alr + ali * ali + xn2);
+        beta = (alr >= 0.0) ? -nrm : nrm;
+        tc = qc((beta - alr) / beta, -ali / beta);
+        double dr = alr - beta, d2 = dr * dr + ali * ali;
+        sc = qc(dr / d2, -ali / d2);
+      }
 #pragma unroll
-          for (int q = 0; q < NW; q++) s = s + qc(red[rb][q][2 * k], red[rb][q][2 * k + 1]);
-          qc coef = ct * s;
+      for (int r = 0; r < R; r++) {
+        int i = t + r * T;
+        if (i > c) a[r][c] = a[r][c] * sc;
+      }
+      if (t == c) { a[0][c] = qc(beta, 0.0); tau[c] = tc; }
+      // ---- apply H^H = I - conj(tau) v v^H to the remaining panel columns ----
+      if (c + 1 < pw) {
+        qc vv[R];     // the reflector, masked: 0 above the diagonal, 1 on it (no predicates in the loops below)
 #pragma unroll
-          for (int r = 0; r < R; r++) {
-            int i = t + r * T;
-            if (i >= c && i < mp) {
-              qc v = (i == c) ? qc(1, 0) : a[r][c];
-              a[r][k] = a[r][k] - v * coef;
+        for (int r = 0; r < R; r++) {
+          int i = t + r * T;
+          vv[r] = (i == c) ? qc(1, 0) : ((i > c) ? a[r][c] : qc(0, 0));
+        }
+#pragma unroll
+        for (int k = c + 1; k < NB; k++) {
+          if (k < pw) {
+            double xr = 0, xi = 0;
+#pragma unroll
+            for (int r = 0; r < R; r++) {
+              xr += vv[r].r * a[r][k].r + vv[r].i * a[r][k].i;
+              xi += vv[r].r * a[r][k].i - vv[r].i * a[r][k].r;
             }
+            Pl[t * STR + 2 * (k - c - 1)] = xr;
+            Pl[t * STR + 2 * (k - c - 1) + 1] = xi;
+          }
+        }
+        __syncthreads();
+        const int nv = 2 * (pw - 1 - c);
+        {
+          const int v = t & 31, sg = t >> 5;
+          double part = 0;
+          if (v < nv) {
+#pragma unroll 8
+            for (int q = 0; q < 32; q++) part += Pl[(sg * 32 + q) * STR + v];
+          }
+          part += __shfl_xor(part, 32, 64);
+          if (ln < 32) red2[w][v] = part;
+        }
+        __syncthreads();
+        if (t < 32) {
+          double tot = 0;
+#pragma unroll
+          for (int q = 0; q < NW; q++) tot += red2[q][t];
+          totS[t] = tot;
+        }
+        __syncthreads();
+        const qc ct = qconj(tc);
+#pragma unroll
+        for (int k = c + 1; k < NB; k++) {
+          if (k < pw) {
+            qc s(totS[2 * (k - c - 1)], totS[2 * (k - c - 1) + 1]);
+            qc coef = ct * s;
+#pragma unroll
+            for (int r = 0; r < R; r++) a[r][k] = a[r][k] - vv[r] * coef;
           }
         }
       }
-      rb ^= 1;
-    }
     }
   }
 #pragma unroll
