@@ -238,6 +238,160 @@
       "order" : 3,
       "parentId" : "n_g4twgzat",
       "title" : "ISSUE_INTEL_VS_A30.md, commits, node-h and usage"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_g4twgzat"
+      ],
+      "description" : "Worktree ALF_wt_lp_team_async, branch production-mpi-intel-large-prompt-team-async, remote team\/p3. Owner 2026-11-11: GPU up to 1000 GPU-h for testing; usage cap 25 % total (from weekly 30 %), max 12.5 % per phase. Branch pushed by owner (push from the session was blocked).",
+      "done" : false,
+      "id" : "n_ip03gk58",
+      "order" : 5,
+      "parentId" : null,
+      "title" : "Phase 3: asynchronous update phase (Intel)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_2pw4ggdn",
+      "order" : 0,
+      "parentId" : "n_ip03gk58",
+      "title" : "Gate A: async microbenchmark <= 0.5x sync per kernel"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_mmraam8s",
+      "order" : 1,
+      "parentId" : "n_ip03gk58",
+      "title" : "Implement nowait\/depend in the submatrix update path"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_oje6bbc7",
+      "order" : 2,
+      "parentId" : "n_ip03gk58",
+      "title" : "Checks: same seed vs CPU, bitwise vs GPU x3, planted missing dependency, nvfortran compile"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_64yz0wj0",
+      "order" : 3,
+      "parentId" : "n_ip03gk58",
+      "title" : "Timing old vs new (L24, L32, node)"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_g4twgzat"
+      ],
+      "description" : "Worktree ALF_wt_lp_team_sycqr, branch production-mpi-intel-large-prompt-team-sycqr, remote team\/p4. Switch ALFSH_DEVQR=1.",
+      "done" : false,
+      "id" : "n_vg8vag8d",
+      "order" : 6,
+      "parentId" : null,
+      "title" : "Phase 4: device-only SYCL Householder QR (shim)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_fnb19x04",
+      "order" : 0,
+      "parentId" : "n_vg8vag8d",
+      "title" : "Gate A: correctness vs host LAPACK (R, V, tau <= 1e-13, orthogonality)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_tpcema2g",
+      "order" : 1,
+      "parentId" : "n_vg8vag8d",
+      "title" : "Gate B: per call <= 0.5x oneMKL hybrid in ALF"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_7ulfjn4m",
+      "order" : 2,
+      "parentId" : "n_vg8vag8d",
+      "title" : "Checks: same seed vs CPU, Precision Green, planted defect"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_afxoe8hz",
+      "order" : 3,
+      "parentId" : "n_vg8vag8d",
+      "title" : "Timing old vs new (L24, L32, node)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_cd9c88g1",
+      "order" : 4,
+      "parentId" : "n_vg8vag8d",
+      "title" : "Optional: device ZGETRF"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_ip03gk58",
+        "n_vg8vag8d"
+      ],
+      "description" : "Merge both branches into a combined branch, same checks, before\/after vs A30 target, fresh numerics review.",
+      "done" : false,
+      "id" : "n_mo4rpe72",
+      "order" : 7,
+      "parentId" : null,
+      "title" : "Phase 3+4 combined"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_pyqq3ctv",
+      "order" : 0,
+      "parentId" : "n_mo4rpe72",
+      "title" : "Merge and build"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_7uyk379j",
+      "order" : 1,
+      "parentId" : "n_mo4rpe72",
+      "title" : "Checks and fresh numerics review"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_331eda4l",
+      "order" : 2,
+      "parentId" : "n_mo4rpe72",
+      "title" : "Before\/after timing vs A30"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_xoa52f6l",
+      "order" : 3,
+      "parentId" : "n_mo4rpe72",
+      "title" : "Update ISSUE_INTEL_VS_A30.md and report"
     }
   ],
   "rev" : 1,
