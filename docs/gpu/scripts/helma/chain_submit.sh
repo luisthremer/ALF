@@ -8,7 +8,7 @@ SL=/hnvme/workspace/b133ae29-ALF_GPU/slurm; mkdir -p $SL
 name=$(basename $RUNDIR); prev=""
 for i in $(seq 1 $N); do
   dep=""; [ -n "$prev" ] && dep="--dependency=afterany:$prev"
-  id=$(sbatch --parsable -p $PART --gres=gpu:h100:$NGPU --cpus-per-task=$((32*NGPU)) -t $WT -J $name $dep -o $SL/${name}_%j.out \
+  id=$(sbatch --parsable -D /hnvme/workspace/b133ae29-ALF_GPU/slurm -p $PART --gres=gpu:h100:$NGPU --cpus-per-task=$((32*NGPU)) -t $WT -J $name $dep -o $SL/${name}_%j.out \
         $HERE/prod_job.sh $RUNDIR $NGPU $RPG $PCT $MARGIN) || exit 1
   echo "$name link$i $id $PART gpus=$NGPU $WT" | tee -a $RUNDIR/chain.log
   prev=$id
