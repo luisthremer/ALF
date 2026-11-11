@@ -48,6 +48,11 @@ rc_sets() {
   return 0
 }
 
+# IMPORTANT: every read of an HDF5 file that ALF may have open goes through this wrapper. With HDF5's default file locking a concurrent
+# h5ls holds a read lock and makes ALF's next H5Fopen(RDWR) of data.h5 fail ("unable to lock the file") -> ALF aborts (seen on SuperMUC-NG).
+# Without locking, a reader cannot disturb ALF; a read of a file in the middle of a write simply fails or looks inconsistent and is retried / discarded.
+rc_h5ls() { HDF5_USE_FILE_LOCKING=FALSE h5ls "$@"; }
+
 rc_require_h5() {
   if ! command -v h5ls >/dev/null 2>&1; then
     rc_log "FATAL: h5ls not found (module load hdf5/1.14.5-intel25); refusing to judge any file"
@@ -63,7 +68,7 @@ rc_info() {
   RC_MIN=0; RC_MAX=0
   local f=$1 out res
   [ -f "$f" ] || return 2
-  out=$(h5ls -r "$f" 2>/dev/null) || return 1
+  out=$(rc_h5ls -r "$f" 2>/dev/null) || return 1
   res=$(printf '%s\n' "$out" | awk '
     /Dataset/ && match($0, /\{[0-9]+/) {
       name = $1
@@ -170,7 +175,7 @@ rc_snap_why() {   # log a blocking reason only when it changes (per set, state i
 
 # one snapshot attempt for one set; always returns 0
 rc_snap_try() {
-  local d=$1 w first last_t="" last_b=0 now nowf dm cm n nconf f confs="" sig1 sig2 tmp slot seq t0 qd qc slack iv
+  local d=$1 w first last_t="" last_b=0 now nowf dm cm n nconf f confs="" sig1 sig2 tmp slot seq t0 qd qc slack iv off omin="" omax=""
   iv=${SNAP_INTERVAL:-1800}; qd=${SNAP_QUIET_DATA:-10}; qc=${SNAP_QUIET_CONF:-5}; slack=${SNAP_CONF_SLACK:-0}
   [ -f "$d/data.h5" ] || return 0
   w=$(rc_walkers)
@@ -191,6 +196,9 @@ rc_snap_try() {
   for f in $confs; do
     cm=$(rc_mtime "$f")
     rc_ge "$(awk -v a="$nowf" -v b="$cm" 'BEGIN { print a - b }')" "$qc" || return 0
+    off=$(awk -v a="$cm" -v b="$dm" 'BEGIN { printf "%.4f", a - b }')     # confout mtime minus data.h5 mtime (diagnostic)
+    omin=$(awk -v x="$omin" -v y="$off" 'BEGIN { print (x == "" || y + 0 < x + 0) ? y : x }')
+    omax=$(awk -v x="$omax" -v y="$off" 'BEGIN { print (x == "" || y + 0 > x + 0) ? y : x }')
     if ! rc_ge "$cm" "$(awk -v a="$dm" -v b="$slack" 'BEGIN { print a - b }')"; then
       rc_snap_why "$d" "${f##*/} is older than data.h5 (bin not complete, or ranks write confout before rank 0 finishes data.h5: raise SNAP_CONF_SLACK)"
       return 0
@@ -199,7 +207,7 @@ rc_snap_try() {
   n=$(rc_bins "$d/data.h5")
   if [ "$n" -lt 1 ]; then rc_snap_why "$d" "data.h5 bin count is $n (unreadable or datasets disagree)"; return 0; fi
   [ "$n" -gt "$last_b" ] || return 0
-  for f in $confs; do h5ls -r "$f" >/dev/null 2>&1 || { rc_snap_why "$d" "${f##*/} unreadable"; return 0; }; done
+  for f in $confs; do rc_h5ls -r "$f" >/dev/null 2>&1 || { rc_snap_why "$d" "${f##*/} unreadable"; return 0; }; done
   # copy
   mkdir -p "$d/.snap" || return 0
   tmp=$d/.snap/tmp; rm -rf "$tmp"; mkdir "$tmp" || return 0
@@ -212,7 +220,7 @@ rc_snap_try() {
   if [ "$sig1" != "$sig2" ]; then rc_snap_log "$d | bins=$n | DISCARDED: sources changed during the copy"; rm -rf "$tmp"; return 0; fi
   if [ "$(rc_bins "$tmp/data.h5")" != "$n" ]; then rc_snap_log "$d | bins=$n | DISCARDED: copied data.h5 does not have $n bins"; rm -rf "$tmp"; return 0; fi
   for f in "$tmp"/confout_*.h5; do
-    h5ls -r "$f" >/dev/null 2>&1 || { rc_snap_log "$d | bins=$n | DISCARDED: copy of ${f##*/} unreadable"; rm -rf "$tmp"; return 0; }
+    rc_h5ls -r "$f" >/dev/null 2>&1 || { rc_snap_log "$d | bins=$n | DISCARDED: copy of ${f##*/} unreadable"; rm -rf "$tmp"; return 0; }
   done
   seq=0
   for slot in A B; do if rc_slot_meta "$d/.snap/$slot" && [ "$M_SEQ" -gt "$seq" ]; then seq=$M_SEQ; fi; done
@@ -222,7 +230,7 @@ rc_snap_try() {
   rm -rf "$d/.snap/$slot"
   mv "$tmp" "$d/.snap/$slot" || return 0
   rm -f "$d/.snap/why"
-  rc_snap_log "$d | bins=$n | slot=$slot seq=$seq | took $((SECONDS - t0)) s"
+  rc_snap_log "$d | bins=$n | slot=$slot seq=$seq | took $((SECONDS - t0)) s | confout-minus-data.h5 mtime: min $omin max $omax s"
   return 0
 }
 
@@ -247,7 +255,7 @@ rc_restore_slot() {   # $1 = Temp_i, $2 = slot dir ; return 0 if restored from i
   [ "$b" = "$M_BINS" ] || { rc_log "$s: data.h5 has $b bins, marker says $M_BINS"; return 1; }
   for f in "$s"/confout_*.h5; do
     [ -e "$f" ] || continue
-    h5ls -r "$f" >/dev/null 2>&1 || { rc_log "$s: ${f##*/} unreadable"; return 1; }
+    rc_h5ls -r "$f" >/dev/null 2>&1 || { rc_log "$s: ${f##*/} unreadable"; return 1; }
     n=$((n + 1))
   done
   [ "$n" = "$M_W" ] || { rc_log "$s: $n confout files, marker says $M_W"; return 1; }
@@ -298,7 +306,7 @@ rc_recover() {
     fi
     for f in "$d"/confout_*.h5; do
       [ -e "$f" ] || continue
-      h5ls -r "$f" >/dev/null 2>&1 || bad="${bad:+$bad; }${f##*/} unreadable"
+      rc_h5ls -r "$f" >/dev/null 2>&1 || bad="${bad:+$bad; }${f##*/} unreadable"
     done
     if [ -n "$bad" ]; then
       rc_log "$d: DAMAGED ($bad)"

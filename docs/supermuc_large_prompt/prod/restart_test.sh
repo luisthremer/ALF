@@ -48,7 +48,7 @@ if ! command -v h5ls >/dev/null || ! command -v h5dump >/dev/null; then echo "FA
 source "$PROD/recover.sh"
 echo "restart_test: bin=$GPU_PP_BIN work=$W NBIN=$NBIN NSWEEP=$NSWEEP ranks=$NTASKS host=$(hostname) $(date)"
 
-SUMMARY=""; NFAIL=0
+SUMMARY=""; NFAIL=0; KILL_LEFT=0; KILL_LEFT2=0
 res() {   # res NAME STATUS(PASS|FAIL|INFO) DETAIL
   SUMMARY="$SUMMARY
 $(printf '%-5s %-50s %s' "$2" "$1" "$3")"
@@ -108,12 +108,15 @@ killed_run() {   # killed_run DIR [MODE]
     if [ $((SECONDS - t0)) -gt "$TIMEOUT" ]; then echo "timeout waiting for the kill point"; kill -9 $pid $lpid 2>/dev/null; return 3; fi
     sleep 0.05
   done
-  pids="$(kill_tree $pid) $(pgrep -f "$GPU_PP_BIN" 2>/dev/null | tr '\n' ' ')"
+  pids="$(kill_tree $pid)"                       # the mpiexec process tree only (what a plain kill of the launcher reaches)
   if [ -n "$lpid" ]; then pids="$pids $(kill_tree $lpid)"; fi
   kill -9 $pids 2>/dev/null
   wait $pid 2>/dev/null
   sleep 3
-  if pgrep -f "$GPU_PP_BIN" >/dev/null 2>&1; then pkill -9 -f "$GPU_PP_BIN"; sleep 2; fi
+  KILL_LEFT=$(pgrep -f "$GPU_PP_BIN" 2>/dev/null | wc -l)    # ranks / proxies that survived the tree kill (MPI launcher decoupled from mpiexec?)
+  if [ "$KILL_LEFT" -gt 0 ]; then pkill -9 -f "$GPU_PP_BIN"; sleep 3; fi    # then kill them like Slurm's preemption would
+  KILL_LEFT2=$(pgrep -f "$GPU_PP_BIN" 2>/dev/null | wc -l)
+  echo "processes left after kill -9 of the mpiexec tree: $KILL_LEFT; after pkill -9: $KILL_LEFT2"
   echo "killed with kill -9 (mode $mode), bins per set: $(cd "$D" && rc_bins_all)"
   [ -e "$D/RUNNING" ] || { echo "RUNNING is gone after the kill (run had finished?)"; return 2; }
   return 0
@@ -172,7 +175,7 @@ mkdirs kill
 cmp -s "$W/ref/seeds" "$W/kill/seeds"; res "(b) same seeds as reference" "$(pf $?)" ""
 killed_run "$W/kill"; krc=$?
 if [ $krc -ne 0 ]; then res "(b) kill during run" FAIL "not killed cleanly (code $krc): inconclusive, try a larger NSWEEP"; else
-  res "(b) kill during run" PASS "bins per set at kill: $(cd "$W/kill" && rc_bins_all)"
+  res "(b) kill during run" PASS "bins per set at kill: $(cd "$W/kill" && rc_bins_all); survivors of the tree kill: $KILL_LEFT, after pkill: $KILL_LEFT2"
   recover_and_finish "$W/kill" "(b)"
   compare_runs "(b)" "$W/kill"
 fi
@@ -183,7 +186,7 @@ mkdirs corrupt
 cmp -s "$W/ref/seeds" "$W/corrupt/seeds"; res "(c) same seeds as reference" "$(pf $?)" ""
 killed_run "$W/corrupt"; krc=$?
 if [ $krc -ne 0 ]; then res "(c) kill during run" FAIL "not killed cleanly (code $krc): inconclusive"; else
-  res "(c) kill during run" PASS "bins per set at kill: $(cd "$W/corrupt" && rc_bins_all)"
+  res "(c) kill during run" PASS "bins per set at kill: $(cd "$W/corrupt" && rc_bins_all); survivors of the tree kill: $KILL_LEFT, after pkill: $KILL_LEFT2"
   cf="$W/corrupt/Temp_0/confout_3.h5"
   if [ -f "$cf" ]; then
     head -c 100 "$cf" > "$cf.tmp" && mv "$cf.tmp" "$cf"; res "(c) truncated Temp_0/confout_3.h5" INFO "now $(wc -c < "$cf") bytes"
@@ -219,7 +222,7 @@ snap_case() {   # snap_case TAG DIRNAME MODE
   cmp -s "$W/ref/seeds" "$W/$name/seeds"; res "$tag same seeds as reference" "$(pf $?)" ""
   killed_run "$W/$name" "$mode"; krc=$?
   if [ $krc -ne 0 ]; then res "$tag kill during run" FAIL "not killed cleanly (code $krc): inconclusive (no snapshot taken? see snapshots.log; try larger NSWEEP or smaller SNAP_QUIET_*)"; return; fi
-  res "$tag kill during run" PASS "bins per set at kill: $(cd "$W/$name" && rc_bins_all)"
+  res "$tag kill during run" PASS "bins per set at kill: $(cd "$W/$name" && rc_bins_all); survivors of the tree kill: $KILL_LEFT, after pkill: $KILL_LEFT2"
   if [ "$mode" = snapcopy ]; then
     if any_tmp "$W/$name"; then res "$tag kill landed during a snapshot copy" PASS ".snap/tmp left behind"; else res "$tag kill landed during a snapshot copy" FAIL "no .snap/tmp"; fi
   fi

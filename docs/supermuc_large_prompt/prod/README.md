@@ -60,6 +60,10 @@ Caveat: ALF writes the `confout` of ranks other than rank 0 possibly *before* ra
 The job script therefore allows a slack of 5 s (a production bin lasts far longer, so a confout of the previous bin is still rejected). If `snapshots.log` says "... is older than data.h5", raise `SNAP_CONF_SLACK`;
 if no line `slot=` appears at all, snapshots are not being taken: look at the reason lines.
 
+**HDF5 file locking (found on SuperMUC-NG, restart test 2026-11-11):** a plain `h5ls`/`h5dump` on `data.h5` while ALF is running takes a read lock and makes ALF's next `H5Fopen(RDWR)` fail
+("unable to lock the file"), which aborts the run. All reads in `recover.sh` therefore go through `rc_h5ls` (`HDF5_USE_FILE_LOCKING=FALSE`). Do the same by hand: never run bare `h5ls`/`h5dump` on a live `data.h5`
+(use `HDF5_USE_FILE_LOCKING=FALSE h5ls ...`, or copy the file first).
+
 **Disk overhead** per set: live `data.h5` + `.segbak` (1 copy) + slot A + slot B (1 copy each) + `.snap/tmp` during a copy = 4 copies of `data.h5` in steady state, 5 briefly (the confouts are small). So the 2 snapshot slots cost 2 x `data.h5` per set;
 check the quota first (`du -sh Temp_*/data.h5`).
 
