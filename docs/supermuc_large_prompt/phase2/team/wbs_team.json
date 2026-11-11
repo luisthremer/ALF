@@ -253,8 +253,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "",
-      "done" : false,
+      "description" : "FAILED (C, jobs 560333-35, branch -async commit 2a29034f, p3\/asyncbench.F90): dependent chain of small kernels + dispatched zgemm: sync 11.9-12.7 us\/op, nowait+depend 12.0-12.7 (97-103 %), nowait without depend 34-36 and racy. ifx runs nowait target tasks undeferred (issue time = total time, no overlap with host work). 11 LIBOMPTARGET_LEVEL_ZERO knobs: no effect; immediate command lists off 2.4x worse. No source change; ~0.1 node-h.",
+      "done" : true,
       "id" : "n_2pw4ggdn",
       "order" : 0,
       "parentId" : "n_ip03gk58",
@@ -392,6 +392,15 @@
       "order" : 3,
       "parentId" : "n_mo4rpe72",
       "title" : "Update ISSUE_INTEL_VS_A30.md and report"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C (agent jobs 560361-560370, lead job 560375): SYCL async via interop queue 4.3 us\/op vs OpenMP sync 12.3 (gate A' passed). Real cost of blk_begin = 32 KB D2H of gbd, 380 us with default staging, 22 us with 1 MB. L24 one tile 10.5 -> 7.05 s\/sweep (update 5.5 -> 1.96), L32 31.5 -> 23.4; same seed vs CPU PASS, bitwise identical to default; node 32 ranks 0.513\/card unchanged, 16 ranks 0.421, 8 ranks 7.29 s\/chain. Committed to the Phase 2 jobfiles (b2343b98). Next: SYCL-async block path (est. -0.4 s), gate G1 >= 0.25 s.",
+      "done" : true,
+      "id" : "n_oz0pl1sx",
+      "order" : 4,
+      "parentId" : "n_ip03gk58",
+      "title" : "Phase 3b: staging-buffer finding (LIBOMPTARGET_LEVEL_ZERO_STAGING_BUFFER_SIZE=1 MB)"
     }
   ],
   "rev" : 1,
