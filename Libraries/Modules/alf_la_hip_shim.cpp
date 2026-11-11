@@ -19,6 +19,10 @@ static hipDoubleComplex mkz(double r, double i) { return make_hipDoubleComplex(r
 
 extern "C" {
 
+int alf_hip_fin();            // alf_hip_kernels.hip.cpp: deferred synchronisation (see there)
+int alf_hip_presync();
+int alfhk_register_presync();
+
 int alfhp_init(int dev, char* name, int nname) {
   { hipError_t e = hipSetDevice(dev); if (e != hipSuccess) { fprintf(stderr, "alfhp_init: hipSetDevice(%d): %s\n", dev, hipGetErrorString(e)); return 1; } }
   hipDeviceProp_t pr;
@@ -27,6 +31,7 @@ int alfhp_init(int dev, char* name, int nname) {
   if (hipblasCreate(&hb) != HIPBLAS_STATUS_SUCCESS) return 3;
   if (hipsolverCreate(&hs) != HIPSOLVER_STATUS_SUCCESS) return 4;
   if (hipMalloc((void**)&dinfo, sizeof(int)) != hipSuccess) return 5;
+  alfhk_register_presync();     // no hook in the plugin: alf_hip_fin then simply never gets a presync -> see below
   return 0;
 }
 void alfhp_finalize() {
@@ -35,9 +40,9 @@ void alfhp_finalize() {
   if (hb) hipblasDestroy(hb);
   dinfo = nullptr; hs = nullptr; hb = nullptr;
 }
-int alfhp_wait() { return hipDeviceSynchronize() == hipSuccess ? 0 : 1; }
+int alfhp_wait() { alf_hip_presync(); return hipDeviceSynchronize() == hipSuccess ? 0 : 1; }
 
-#define SYNC_RET(st) do { if ((st) != 0) return 1000 + (int)(st); return hipDeviceSynchronize() == hipSuccess ? 0 : 999; } while (0)
+#define SYNC_RET(st) do { if ((st) != 0) return 1000 + (int)(st); return alf_hip_fin() == 0 ? 0 : 999; } while (0)
 
 int alfhp_zgemm(int ta, int tb, int m, int n, int k, double ar, double ai, void* A, int lda, void* B, int ldb,
                 double br, double bi, void* C, int ldc) {

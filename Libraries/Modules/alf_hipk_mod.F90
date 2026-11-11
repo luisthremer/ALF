@@ -11,6 +11,7 @@ module alf_hipk_mod
   public :: hk_corr, hk_scalars, hk_local
   public :: hk_vslice_r
   public :: hk_divrows, hk_rowdiv, hk_scale_cols, hk_tpup, hk_ns, hk_cgr_phase, hk_prec
+  public :: hk_ident, hk_setd, hk_setl, hk_diagabs, hk_phase, hk_det_phase, hk_scale_row1, hk_scale_col1, hk_triu, hk_perm, hk_perm_vec, hk_ct, hk_colinv, hk_testscale, hk_colnorms, hk_permute_cols
 
   interface
     integer(c_int) function alfhk_copyz(n, a, b) bind(C, name='alfhk_copyz')
@@ -101,6 +102,86 @@ module alf_hipk_mod
       import :: c_ptr, c_int
       integer(c_int), value :: nd, ncol, ld, nf, t, cj, desc, ldptr, nop
       type(c_ptr), value :: vp, ve, vm, vt, ns, vx, m
+    end function
+    integer(c_int) function alfhk_ident(n, ld, U) bind(C, name='alfhk_ident')
+      import :: c_ptr, c_int
+      integer(c_int), value :: n, ld
+      type(c_ptr), value :: U
+    end function
+    integer(c_int) function alfhk_setd(n, D) bind(C, name='alfhk_setd')
+      import :: c_ptr, c_int
+      integer(c_int), value :: n
+      type(c_ptr), value :: D
+    end function
+    integer(c_int) function alfhk_setl(n, L) bind(C, name='alfhk_setl')
+      import :: c_ptr, c_int
+      integer(c_int), value :: n
+      type(c_ptr), value :: L
+    end function
+    integer(c_int) function alfhk_diagabs(n, ld, U, D) bind(C, name='alfhk_diagabs')
+      import :: c_ptr, c_int
+      integer(c_int), value :: n, ld
+      type(c_ptr), value :: U, D
+    end function
+    integer(c_int) function alfhk_phase(n, ld, U, sgn, cj, cs) bind(C, name='alfhk_phase')
+      import :: c_ptr, c_int
+      integer(c_int), value :: n, ld, sgn, cj
+      type(c_ptr), value :: U, cs
+    end function
+    integer(c_int) function alfhk_det_phase(n, ld, A, ipiv, cs) bind(C, name='alfhk_det_phase')
+      import :: c_ptr, c_int
+      integer(c_int), value :: n, ld
+      type(c_ptr), value :: A, ipiv, cs
+    end function
+    integer(c_int) function alfhk_scale_row1(n, ld, U, cs) bind(C, name='alfhk_scale_row1')
+      import :: c_ptr, c_int
+      integer(c_int), value :: n, ld
+      type(c_ptr), value :: U, cs
+    end function
+    integer(c_int) function alfhk_scale_col1(n, U, cs) bind(C, name='alfhk_scale_col1')
+      import :: c_ptr, c_int
+      integer(c_int), value :: n
+      type(c_ptr), value :: U, cs
+    end function
+    integer(c_int) function alfhk_triu(n, ld, U, ldr, R) bind(C, name='alfhk_triu')
+      import :: c_ptr, c_int
+      integer(c_int), value :: n, ld, ldr
+      type(c_ptr), value :: U, R
+    end function
+    integer(c_int) function alfhk_perm(mode, n, X, ldx, perm, W, ldw) bind(C, name='alfhk_perm')
+      import :: c_ptr, c_int
+      integer(c_int), value :: mode, n, ldx, ldw
+      type(c_ptr), value :: X, perm, W
+    end function
+    integer(c_int) function alfhk_perm_vec(n, L, perm, W) bind(C, name='alfhk_perm_vec')
+      import :: c_ptr, c_int
+      integer(c_int), value :: n
+      type(c_ptr), value :: L, perm, W
+    end function
+    integer(c_int) function alfhk_ct(n, A, lda, B, ldb) bind(C, name='alfhk_ct')
+      import :: c_ptr, c_int
+      integer(c_int), value :: n, lda, ldb
+      type(c_ptr), value :: A, B
+    end function
+    integer(c_int) function alfhk_colinv(n, lda, A, D) bind(C, name='alfhk_colinv')
+      import :: c_ptr, c_int
+      integer(c_int), value :: n, lda
+      type(c_ptr), value :: A, D
+    end function
+    integer(c_int) function alfhk_testscale(n, D, r) bind(C, name='alfhk_testscale')
+      import :: c_ptr, c_int
+      integer(c_int), value :: n
+      type(c_ptr), value :: D, r
+    end function
+    integer(c_int) function alfhk_colnorms(m, n, A, lda, nrm) bind(C, name='alfhk_colnorms')
+      import :: c_ptr, c_int
+      integer(c_int), value :: m, n, lda
+      type(c_ptr), value :: A, nrm
+    end function
+    integer(c_int) function alfhk_permute_cols(m, n, A, lda, ipvt) bind(C, name='alfhk_permute_cols')
+      import :: c_ptr, c_int
+      integer(c_int), value :: m, n, lda
+      type(c_ptr), value :: A, ipvt
     end function
   end interface
 
@@ -308,6 +389,173 @@ contains
     !$omp end target data
     call chk(rc, 'vslice_r')
   end subroutine hk_vslice_r
+
+  subroutine hk_ident(n, ld, U)
+    integer, intent(in) :: n, ld
+    complex(8), target :: U(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(U)
+    rc = alfhk_ident(int(n,c_int), int(ld,c_int), c_loc(U(1)))
+    !$omp end target data
+    call chk(rc, 'ident')
+  end subroutine hk_ident
+
+  subroutine hk_setd(n, D)
+    integer, intent(in) :: n
+    complex(8), target :: D(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(D)
+    rc = alfhk_setd(int(n,c_int), c_loc(D(1)))
+    !$omp end target data
+    call chk(rc, 'setd')
+  end subroutine hk_setd
+
+  subroutine hk_setl(n, L)
+    integer, intent(in) :: n
+    real(8), target :: L(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(L)
+    rc = alfhk_setl(int(n,c_int), c_loc(L(1)))
+    !$omp end target data
+    call chk(rc, 'setl')
+  end subroutine hk_setl
+
+  subroutine hk_diagabs(n, ld, U, D)
+    integer, intent(in) :: n, ld
+    complex(8), target :: U(*), D(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(U, D)
+    rc = alfhk_diagabs(int(n,c_int), int(ld,c_int), c_loc(U(1)), c_loc(D(1)))
+    !$omp end target data
+    call chk(rc, 'diagabs')
+  end subroutine hk_diagabs
+
+  subroutine hk_phase(n, ld, U, sgn, cj, cs)
+    integer, intent(in) :: n, ld, sgn
+    logical, intent(in) :: cj
+    complex(8), target :: U(*), cs(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(U, cs)
+    rc = alfhk_phase(int(n,c_int), int(ld,c_int), c_loc(U(1)), int(sgn,c_int), merge(1_c_int,0_c_int,cj), c_loc(cs(1)))
+    !$omp end target data
+    call chk(rc, 'phase')
+  end subroutine hk_phase
+
+  subroutine hk_det_phase(n, ld, A, ipiv, cs)
+    integer, intent(in) :: n, ld
+    complex(8), target :: A(*), cs(*)
+    integer, target :: ipiv(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(A, ipiv, cs)
+    rc = alfhk_det_phase(int(n,c_int), int(ld,c_int), c_loc(A(1)), c_loc(ipiv(1)), c_loc(cs(1)))
+    !$omp end target data
+    call chk(rc, 'det_phase')
+  end subroutine hk_det_phase
+
+  subroutine hk_scale_row1(n, ld, U, cs)
+    integer, intent(in) :: n, ld
+    complex(8), target :: U(*), cs(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(U, cs)
+    rc = alfhk_scale_row1(int(n,c_int), int(ld,c_int), c_loc(U(1)), c_loc(cs(1)))
+    !$omp end target data
+    call chk(rc, 'scale_row1')
+  end subroutine hk_scale_row1
+
+  subroutine hk_scale_col1(n, U, cs)
+    integer, intent(in) :: n
+    complex(8), target :: U(*), cs(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(U, cs)
+    rc = alfhk_scale_col1(int(n,c_int), c_loc(U(1)), c_loc(cs(1)))
+    !$omp end target data
+    call chk(rc, 'scale_col1')
+  end subroutine hk_scale_col1
+
+  subroutine hk_triu(n, ld, U, ldr, R)
+    integer, intent(in) :: n, ld, ldr
+    complex(8), target :: U(*), R(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(U, R)
+    rc = alfhk_triu(int(n,c_int), int(ld,c_int), c_loc(U(1)), int(ldr,c_int), c_loc(R(1)))
+    !$omp end target data
+    call chk(rc, 'triu')
+  end subroutine hk_triu
+
+  subroutine hk_perm(mode, n, X, ldx, perm, W, ldw)
+    integer, intent(in) :: mode, n, ldx, ldw
+    complex(8), target :: X(*), W(*)
+    integer, target :: perm(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(X, perm, W)
+    rc = alfhk_perm(int(mode,c_int), int(n,c_int), c_loc(X(1)), int(ldx,c_int), c_loc(perm(1)), c_loc(W(1)), int(ldw,c_int))
+    !$omp end target data
+    call chk(rc, 'perm')
+  end subroutine hk_perm
+
+  subroutine hk_perm_vec(n, L, perm, W)
+    integer, intent(in) :: n
+    real(8), target :: L(*), W(*)
+    integer, target :: perm(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(L, perm, W)
+    rc = alfhk_perm_vec(int(n,c_int), c_loc(L(1)), c_loc(perm(1)), c_loc(W(1)))
+    !$omp end target data
+    call chk(rc, 'perm_vec')
+  end subroutine hk_perm_vec
+
+  subroutine hk_ct(n, A, lda, B, ldb)
+    integer, intent(in) :: n, lda, ldb
+    complex(8), target :: A(*), B(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(A, B)
+    rc = alfhk_ct(int(n,c_int), c_loc(A(1)), int(lda,c_int), c_loc(B(1)), int(ldb,c_int))
+    !$omp end target data
+    call chk(rc, 'ct')
+  end subroutine hk_ct
+
+  subroutine hk_colinv(n, lda, A, D)
+    integer, intent(in) :: n, lda
+    complex(8), target :: A(*), D(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(A, D)
+    rc = alfhk_colinv(int(n,c_int), int(lda,c_int), c_loc(A(1)), c_loc(D(1)))
+    !$omp end target data
+    call chk(rc, 'colinv')
+  end subroutine hk_colinv
+
+  subroutine hk_testscale(n, D, r)
+    integer, intent(in) :: n
+    complex(8), target :: D(*)
+    real(8), target :: r(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(D, r)
+    rc = alfhk_testscale(int(n,c_int), c_loc(D(1)), c_loc(r(1)))
+    !$omp end target data
+    call chk(rc, 'testscale')
+  end subroutine hk_testscale
+
+  subroutine hk_colnorms(m, n, A, lda, nrm)
+    integer, intent(in) :: m, n, lda
+    complex(8), target :: A(*)
+    real(8), target :: nrm(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(A, nrm)
+    rc = alfhk_colnorms(int(m,c_int), int(n,c_int), c_loc(A(1)), int(lda,c_int), c_loc(nrm(1)))
+    !$omp end target data
+    call chk(rc, 'colnorms')
+  end subroutine hk_colnorms
+
+  subroutine hk_permute_cols(m, n, A, lda, ipvt)
+    integer, intent(in) :: m, n, lda
+    complex(8), target :: A(*)
+    integer, target :: ipvt(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(A, ipvt)
+    rc = alfhk_permute_cols(int(m,c_int), int(n,c_int), c_loc(A(1)), int(lda,c_int), c_loc(ipvt(1)))
+    !$omp end target data
+    call chk(rc, 'permute_cols')
+  end subroutine hk_permute_cols
 
 end module alf_hipk_mod
 #endif

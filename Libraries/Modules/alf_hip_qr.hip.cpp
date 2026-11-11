@@ -51,13 +51,8 @@ __device__ inline double wsum(double x) {
   return (rl_d(x, 0) + rl_d(x, 16)) + (rl_d(x, 32) + rl_d(x, 48));
 }
 
-static int qfin() {
-  hipError_t e = hipGetLastError();
-  if (e != hipSuccess) { fprintf(stderr, "alf_hip_qr: launch error %s\n", hipGetErrorString(e)); return 1; }
-  e = hipDeviceSynchronize();
-  if (e != hipSuccess) { fprintf(stderr, "alf_hip_qr: sync error %s\n", hipGetErrorString(e)); return 2; }
-  return 0;
-}
+extern "C" int alf_hip_fin();
+static int qfin() { return alf_hip_fin(); }
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Panel factorisation. P = A(j0,j0) (mp rows, pw <= NB columns, leading dimension ldp), tau = tau(j0)

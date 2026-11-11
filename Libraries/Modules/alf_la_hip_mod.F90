@@ -11,6 +11,7 @@ module alf_la_hip_mod
   use iso_fortran_env, only: error_unit
   use omp_lib, only: omp_get_default_device, omp_get_num_devices, omp_target_is_present
   use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
+  use alf_hipk_mod, only: hk_colnorms, hk_permute_cols
   implicit none
   private
   integer, parameter :: OM_NSLOT = 4096                      ! = LA_NSLOT
@@ -689,6 +690,9 @@ contains
     integer :: i, j, nf
     real(8) :: mx, s, v
     integer(8) :: b1, b2, mask
+#if defined(ALF_LA_HIP)
+    call hk_colnorms(m, n, A, lda, nrm)
+#else
     mask = int(z'7FF0000000000000', 8)
     !$omp target teams distribute parallel do private(mx, s, v, nf, b1, b2, i) map(tofrom: nrm(1:n))
     do j = 1, n
@@ -715,6 +719,7 @@ contains
         nrm(j) = 0.d0
       end if
     end do
+#endif
   end subroutine k_colnorms
 
   ! ipvt, A and scr are device-resident: om_qrpp checks ipvt and A on the host before calling this (scr is module scratch)
@@ -724,6 +729,9 @@ contains
     integer(c_int), intent(in) :: ipvt(n)
     complex(8), intent(inout) :: scr(m*n)
     integer :: i, j
+#if defined(ALF_LA_HIP)
+    call hk_permute_cols(m, n, A, lda, ipvt)
+#else
     !$omp target teams distribute parallel do collapse(2) map(tofrom: scr(1:m*n))
     do j = 1, n
       do i = 1, m
@@ -736,6 +744,7 @@ contains
         A(i,j) = scr(i + (j-1)*m)
       end do
     end do
+#endif
   end subroutine k_permute_cols
 
   subroutine om_qrpp(m, n, A, lda, ipvt, tau)

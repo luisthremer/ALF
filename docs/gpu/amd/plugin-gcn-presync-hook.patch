@@ -1,0 +1,68 @@
+--- plugin-gcn.c.pre_hook	2026-11-11 16:18:31.125816785 +0100
++++ plugin-gcn.c	2026-11-11 16:18:31.126816792 +0100
+@@ -40,6 +40,17 @@
+ #include <hsa.h>
+ #include <hsa_ext_amd.h>
+ #include <dlfcn.h>
++
++/* ALF: HIP kernels run on their own stream; the application registers a function that waits for them. It is called
++   before every launch of an OpenMP kernel and before every copy/free of device memory, so that the HIP wrappers do not
++   have to synchronise after every launch.  */
++static int (*alf_presync_fn) (void) = NULL;
++void
++alf_gcn_set_presync (int (*f) (void))
++{
++  alf_presync_fn = f;
++}
++#define ALF_PRESYNC() do { if (alf_presync_fn) alf_presync_fn (); } while (0)
+ #include <signal.h>
+ #include "libgomp-plugin.h"
+ #include "config/gcn/libgomp-gcn.h"  /* For struct output.  */
+@@ -4013,6 +4024,7 @@
+ bool
+ GOMP_OFFLOAD_free (int device, void *ptr)
+ {
++  ALF_PRESYNC ();
+   GCN_DEBUG ("Freeing memory on device %d\n", device);
+   pthread_mutex_lock (&alf_small_lock);
+   for (int i = 0; i < alf_small_n; i++)
+@@ -4068,6 +4080,7 @@
+ bool
+ GOMP_OFFLOAD_dev2host (int device, void *dst, const void *src, size_t n)
+ {
++  ALF_PRESYNC ();
+   GCN_DEBUG ("Copying %zu bytes from device %d (%p) to host (%p)\n", n, device,
+ 	     src, dst);
+   hsa_status_t status = hsa_fns.hsa_memory_copy_fn (dst, src, n);
+@@ -4081,6 +4094,7 @@
+ bool
+ GOMP_OFFLOAD_host2dev (int device, void *dst, const void *src, size_t n)
+ {
++  ALF_PRESYNC ();
+   GCN_DEBUG ("Copying %zu bytes from host (%p) to device %d (%p)\n", n, src,
+ 	     device, dst);
+   hsa_memory_copy_wrapper (dst, src, n);
+@@ -4092,6 +4106,7 @@
+ bool
+ GOMP_OFFLOAD_dev2dev (int device, void *dst, const void *src, size_t n)
+ {
++  ALF_PRESYNC ();
+   struct gcn_thread *thread_data = gcn_thread ();
+ 
+   if (thread_data && !async_synchronous_p (thread_data->async))
+@@ -4467,6 +4482,7 @@
+ void
+ GOMP_OFFLOAD_run (int device, void *fn_ptr, void *vars, void **args)
+ {
++  ALF_PRESYNC ();
+   struct agent_info *agent = get_agent_info (device);
+   struct kernel_info *kernel = (struct kernel_info *) fn_ptr;
+   struct GOMP_kernel_launch_attributes def;
+@@ -4492,6 +4508,7 @@
+ GOMP_OFFLOAD_async_run (int device, void *tgt_fn, void *tgt_vars,
+ 			void **args, void *async_data)
+ {
++  ALF_PRESYNC ();
+   GCN_DEBUG ("GOMP_OFFLOAD_async_run invoked\n");
+   struct agent_info *agent = get_agent_info (device);
+   struct kernel_info *kernel = (struct kernel_info *) tgt_fn;
