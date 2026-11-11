@@ -13,7 +13,7 @@
     },
     {
       "collapsed" : false,
-      "description" : "Jobs\/storage documented and L=24 beta=5.3 point-defect run verified on Intel GPUs (1 node only).",
+      "description" : "Phase 1 (done): jobs\/storage documented, L=24 U=5.3 point-defect run verified on Intel GPUs. Phase 2: cut the sync\/launch overhead first, then fill all 8 PVC tiles (100 % busy, high XVE use) with verified numerics, and collect the evidence for a GCS application.",
       "id" : "special_goal",
       "kind" : "goal",
       "order" : 0,
@@ -271,8 +271,320 @@
       "order" : 4,
       "parentId" : "n_06uoou3g",
       "title" : "Final summary to user"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_06uoou3g"
+      ],
+      "description" : "Deliverable: numbers that say how much of a sweep is sync\/launch overhead, so every later change is judged against them. Criterion: docs\/supermuc_large_prompt\/SYNC.md with the baseline table.",
+      "done" : false,
+      "id" : "n_8l3e855k",
+      "order" : 4,
+      "parentId" : null,
+      "title" : "Part 4: Measure the sync overhead (baseline)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Small Fortran test (in jobs\/ or testsuite): empty target region (sync and nowait), target update of 16 bytes D->H and H->D, dispatched zgemm 32x32, alfsh_wait on an empty queue. Report us per op; compare with A30 (BENCHMARKS.md: 12 us empty sync kernel). Run with 2025.1 and 2025.3, 1 rank and 4 ranks per tile with CCS.",
+      "done" : false,
+      "id" : "n_74kam03a",
+      "order" : 0,
+      "parentId" : "n_8l3e855k",
+      "title" : "Latency microbenchmark on one PVC tile"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Count target regions, target updates, la_* calls and la_sync per sweep (existing upd_cnt\/n_flush counters or LIBOMPTARGET_PROFILE=T \/ unitrace if available). Split by phase: block update, wrap, stabilisation, measurement.",
+      "done" : false,
+      "id" : "n_kr6vsf5q",
+      "order" : 1,
+      "parentId" : "n_8l3e855k",
+      "title" : "Count operations per sweep at L=24"
+    },
+    {
+      "collapsed" : false,
+      "description" : "L=24 (ref_L24 parameters) and L=32: s\/sweep per chain and node sweeps\/s for 8 ranks (1 per tile) and 32 ranks (CCS). Marginal cost from runs of 1 and 4 sweeps (wall clock, not CPU time). Record xpu-smi per-tile busy.",
+      "done" : false,
+      "id" : "n_onb0xxgd",
+      "order" : 2,
+      "parentId" : "n_8l3e855k",
+      "title" : "Baseline timing with fixed seeds"
+    },
+    {
+      "collapsed" : false,
+      "description" : "From the counts and the microbenchmark: sync\/launch overhead = ops x cost per op; compare with wall time minus kernel time. Name the top 3 sources of waits by call site (file:line).",
+      "done" : false,
+      "id" : "n_f21ylykh",
+      "order" : 3,
+      "parentId" : "n_8l3e855k",
+      "title" : "Sync-time breakdown"
+    },
+    {
+      "collapsed" : false,
+      "description" : "run_cmp_sng.py\/compare.py against the ifx CPU build; acceptance for every later change: Mz=F <= 1e-13 relative, identical configs, ctest 53\/53. Script it so one command checks a new binary.",
+      "done" : false,
+      "id" : "n_e1ytvcg5",
+      "order" : 4,
+      "parentId" : "n_8l3e855k",
+      "title" : "Same-seed check harness ready"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_8l3e855k"
+      ],
+      "description" : "Deliverable: the best runtime configuration, measured and verified. Criterion: lower s\/sweep than the Part 4 baseline in every row, numerics pass.",
+      "done" : false,
+      "id" : "n_6s8gvtsz",
+      "order" : 5,
+      "parentId" : null,
+      "title" : "Part 5: Cut sync time without code changes"
+    },
+    {
+      "collapsed" : false,
+      "description" : "CCS 4 ranks per tile (32 per node), N_delay 64 and 128, Nwrap 10 and 20, 3-4 host threads, I_MPI_PIN_DOMAIN=auto, AOT build (short-prompt session: ifx_aot wrapper). Nwrap 20 needs the Precision Green check (max <= 2e-9).",
+      "done" : false,
+      "id" : "n_o4n19sdu",
+      "order" : 0,
+      "parentId" : "n_6s8gvtsz",
+      "title" : "Combine both sessions' settings"
+    },
+    {
+      "collapsed" : false,
+      "description" : "First confirm the variable exists (strings on libomptarget.rtl.level0.so, Intel docs). Test sync \/ async \/ async_ordered on L=24; same-seed check is mandatory (async may reorder host reads).",
+      "done" : false,
+      "id" : "n_aetkdhs4",
+      "order" : 1,
+      "parentId" : "n_6s8gvtsz",
+      "title" : "LIBOMPTARGET_LEVEL_ZERO_COMMAND_MODE=async_ordered"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Immediate command lists (LIBOMPTARGET_LEVEL_ZERO_USE_IMMEDIATE_COMMAND_LIST, SYCL_PI\/UR_L0 variants), LIBOMPTARGET_LEVEL_ZERO_MEMORY_POOL, oneAPI 2025.0 vs 2025.1 vs 2025.3. Keep only what repeats (noise +-15 %: repeat twice).",
+      "done" : false,
+      "id" : "n_oe0ufast",
+      "order" : 2,
+      "parentId" : "n_6s8gvtsz",
+      "title" : "Other runtime knobs, one at a time"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Draft (do not send) a service-desk request: NEO 23.43 is from 2023; ask for a newer compute runtime, with the microbenchmark numbers as evidence. The user sends it.",
+      "done" : false,
+      "id" : "n_gp517xoh",
+      "order" : 3,
+      "parentId" : "n_6s8gvtsz",
+      "title" : "Ask LRZ about the GPU driver"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_6s8gvtsz"
+      ],
+      "description" : "Deliverable: commits on production-mpi-intel-large-prompt that remove waits and launches, smallest change first. Criterion per commit: same-seed check passes, ctest 53\/53, timing table updated in SYNC.md. Keep the CUDA path building; changes in shared files need a nividia A30 regression check (one GPU process at a time).",
+      "done" : false,
+      "id" : "n_5l2cga1g",
+      "order" : 6,
+      "parentId" : null,
+      "title" : "Part 6: Cut sync time with small code changes"
+    },
+    {
+      "collapsed" : false,
+      "description" : "oneMKL dispatch and the SYCL shim already finish before returning, so la_sync\/om_sync in blk_begin\/blk_end (gpu_lowrank_mod.F90:1205, 1238) and the ensure_* helpers may be no-ops on ALF_LA_ONEMKL. Measure, then skip them there.",
+      "done" : false,
+      "id" : "n_tld3uyz4",
+      "order" : 0,
+      "parentId" : "n_5l2cga1g",
+      "title" : "Drop redundant waits on the Intel path"
+    },
+    {
+      "collapsed" : false,
+      "description" : "need_z\/guard_gemm call omp_target_is_present for every array of every BLAS call (alf_la_mod.F90 ~550). Compile them only in a debug build for ONEMKL.",
+      "done" : false,
+      "id" : "n_g694w768",
+      "order" : 1,
+      "parentId" : "n_5l2cga1g",
+      "title" : "Make the guard checks debug-only"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Use !$omp dispatch nowait (or the shim with an in-order sycl::queue) for BLAS, and remove wait_and_throw from the shim LAPACK calls; la_sync stays the only wait before host reads (as on CUDA). Check that target regions and the queue are ordered (test hook ALF_LA_TEST_BREAK_ORDER).",
+      "done" : false,
+      "id" : "n_g3mrht1b",
+      "order" : 2,
+      "parentId" : "n_5l2cga1g",
+      "title" : "Asynchronous oneMKL calls on an in-order queue"
+    },
+    {
+      "collapsed" : false,
+      "description" : "In blk_end\/blk_flush: one launch for both flavours (N_FL=2) of k_blk_scale_rows, k_blk_scale_cols and k_sub_flush_gather, or one fused kernel; use om_gemm_batched for the two flush GEMMs of both flavours.",
+      "done" : false,
+      "id" : "n_thuk7lby",
+      "order" : 3,
+      "parentId" : "n_5l2cga1g",
+      "title" : "Fuse the per-block kernels"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Pack bsd, cbuf, bS_d and nsigma_d uploads into one buffer and one target update; keep the single blocking gbd download.",
+      "done" : false,
+      "id" : "n_tbwdxezn",
+      "order" : 4,
+      "parentId" : "n_5l2cga1g",
+      "title" : "Bundle the per-block transfers"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Benchmark oneMKL GPU geqrf+ungqr vs host MKL (multithreaded, with D->H and H->D copy) at N=576, 784, 1024. If the host wins, add a build\/env switch in the Intel branch of alf_la_mod.F90 only.",
+      "done" : false,
+      "id" : "n_zr83obm5",
+      "order" : 5,
+      "parentId" : "n_5l2cga1g",
+      "title" : "QR on the host as an option"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Update SYNC.md: ops per sweep, s\/sweep, node sweeps\/s at L=24 and L=32, numerics result.",
+      "done" : false,
+      "id" : "n_uxtolre5",
+      "order" : 6,
+      "parentId" : "n_5l2cga1g",
+      "title" : "Re-measure after each change"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_5l2cga1g"
+      ],
+      "description" : "Deliverable: a layout and code state where every tile is busy all the time and the compute units do useful work. Criterion: xpu-smi busy >= 95 % on all 8 tiles; VTune XVE active reported; node sweeps\/s maximised.",
+      "done" : false,
+      "id" : "n_wpel4uv8",
+      "order" : 7,
+      "parentId" : null,
+      "title" : "Part 7: Fill the GPU (target 100 % busy, high XVE use)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "xpu-smi dump per tile (busy %) over a full run, VTune GPU offload (busy %, XVE active\/idle) for 1 rank and for 4 ranks per tile with CCS.",
+      "done" : false,
+      "id" : "n_44rqyugy",
+      "order" : 0,
+      "parentId" : "n_wpel4uv8",
+      "title" : "Measure utilisation of the best configuration"
+    },
+    {
+      "collapsed" : false,
+      "description" : "With cheaper host work per rank, more ranks may fit: CCS 2 vs 4, 2\/4\/6\/8 ranks per tile, 1-4 host threads. Find the throughput optimum.",
+      "done" : false,
+      "id" : "n_z2vvie6m",
+      "order" : 1,
+      "parentId" : "n_wpel4uv8",
+      "title" : "Re-scan ranks per tile after the sync cuts"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Use the asynchrony from Part 6 so the next flavour's or block's GPU work runs while the host decides accept\/reject (nowait + depend, or two queues).",
+      "done" : false,
+      "id" : "n_202y55s8",
+      "order" : 2,
+      "parentId" : "n_wpel4uv8",
+      "title" : "Overlap host decisions with GPU work"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Plan for moving the Metropolis decisions of a block (blk_gpp, accept) onto the GPU, removing the gbd round trip; estimate gain and effort before implementing; numerics must stay bit-compatible with the CPU RNG order.",
+      "done" : false,
+      "id" : "n_1bpu3niq",
+      "order" : 3,
+      "parentId" : "n_wpel4uv8",
+      "title" : "Design note: device-side block update"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Plan for one process holding several walkers, each launch serving all of them (extra chain dimension on device arrays). Estimate gain and effort.",
+      "done" : false,
+      "id" : "n_f2s14qd2",
+      "order" : 4,
+      "parentId" : "n_wpel4uv8",
+      "title" : "Design note: batching several chains per process"
+    },
+    {
+      "collapsed" : false,
+      "description" : "After the two design notes, implement the one with the best gain per effort; same verification rules as Part 6.",
+      "done" : false,
+      "id" : "n_hbh4wdwc",
+      "order" : 5,
+      "parentId" : "n_wpel4uv8",
+      "title" : "Implement the better design"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_wpel4uv8"
+      ],
+      "description" : "Deliverable: numbers a GCS regular-project proposal needs (all 4 GPUs used, performance, scaling, GPU-h budget). Criterion: section in FINDINGS.md and a short summary to the user.",
+      "done" : false,
+      "id" : "n_b73iu3iu",
+      "order" : 8,
+      "parentId" : null,
+      "title" : "Part 8: Evidence for the GCS application and report"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Test partition, best configuration, L=24 and L=32; per-chain s\/sweep must stay flat.",
+      "done" : false,
+      "id" : "n_trbsmp72",
+      "order" : 0,
+      "parentId" : "n_b73iu3iu",
+      "title" : "Scaling over 1, 2 and 4 nodes"
+    },
+    {
+      "collapsed" : false,
+      "description" : "ifx CPU build, L=24, N_delay 32: s\/sweep on 1 core and node throughput with 112 ranks.",
+      "done" : false,
+      "id" : "n_p0vqi2n1",
+      "order" : 1,
+      "parentId" : "n_b73iu3iu",
+      "title" : "CPU baseline on SuperMUC"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Table: sweeps per GPU-h (PVC card = 1 GPU-h) vs A30 (REPORT_2026-11-10: 0.371-0.433 sweeps\/s) vs CPU node.",
+      "done" : false,
+      "id" : "n_kvridwxc",
+      "order" : 2,
+      "parentId" : "n_b73iu3iu",
+      "title" : "Throughput per GPU-h vs A30 and CPU"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Recompute PARKING.md P1 with the new rates.",
+      "done" : false,
+      "id" : "n_zdg8ft43",
+      "order" : 3,
+      "parentId" : "n_b73iu3iu",
+      "title" : "Update GPU-h budget for L=28\/32 production"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Commit on production-mpi-intel-large-prompt; push only when finalized and allowed (pushing was blocked from the sandbox: tell the user).",
+      "done" : false,
+      "id" : "n_zvz0xxpx",
+      "order" : 4,
+      "parentId" : "n_b73iu3iu",
+      "title" : "Update FINDINGS.md, PARKING.md, wbs.json, commit"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Numbered sentences: before\/after table, what helped, what did not, open decisions.",
+      "done" : false,
+      "id" : "n_xjtsujzz",
+      "order" : 5,
+      "parentId" : "n_b73iu3iu",
+      "title" : "Final summary to the user"
     }
   ],
-  "rev" : 1,
+  "rev" : 2,
   "version" : 1
 }
