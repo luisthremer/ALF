@@ -339,11 +339,15 @@ Contains
   Subroutine k_sub_gather(G, ld, S, k, nd_, p, buf)
     Implicit none
     Integer, intent(in) :: ld, k, nd_, p
-    Integer, intent(in) :: S(*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: buf(*)
+    Integer, intent(in) :: S(nd_)
+    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,ld)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: buf(2*nd_+1)
     Integer :: m
-    !$omp target teams distribute parallel do
+#if defined(ALF_LA_ONEMKL)
+    !$omp target teams distribute parallel do map(present,alloc: G, S, buf)
+#else
+    !$omp target teams distribute parallel do map(alloc: G, S, buf)
+#endif
     do m = 0, k
        if (m == 0) then
           buf(1) = G(p,p)
@@ -355,21 +359,26 @@ Contains
   end subroutine k_sub_gather
 
 !> flush gathers: C(:,m) = G(:,S(m)),  Qt(:,m) = e_{S(m)} - G(S(m),:)^T;  slot_d of the flushed sites is cleared
-  Subroutine k_sub_flush_gather(G, ld, nrow, S, k, nf, C, Qt)
+  Subroutine k_sub_flush_gather(G, ld, nrow, S, k, nf, C, Qt, slot, nfg)
     Implicit none
-    Integer, intent(in) :: ld, nrow, k, nf
-    Integer, intent(in) :: S(*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: C(ld,*), Qt(ld,*)
+    Integer, intent(in) :: ld, nrow, k, nf, nfg
+    Integer, intent(in) :: S(k)
+    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,ld)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: C(ld,k), Qt(ld,k)
+    Integer, intent(inout) :: slot(ld,nfg)
     Integer :: i, m
-    !$omp target teams distribute parallel do collapse(2)
+#if defined(ALF_LA_ONEMKL)
+    !$omp target teams distribute parallel do collapse(2) map(present,alloc: G, S, C, Qt, slot)
+#else
+    !$omp target teams distribute parallel do collapse(2) map(alloc: G, S, C, Qt, slot)
+#endif
     do m = 1, k
        do i = 1, nrow
           C(i,m)  = G(i,S(m))
           Qt(i,m) = - G(S(m),i)
           if (i == S(m)) then
              Qt(i,m) = Qt(i,m) + 1.d0
-             slot_d(i,nf) = 0
+             slot(i,nf) = 0
           endif
        enddo
     enddo
@@ -403,7 +412,7 @@ Contains
           M_pk((m-1)*k+1:m*k) = M_h(1:k,m,nf)
        enddo
        !$omp target update to(M_pk(1:k*k))
-       call k_sub_flush_gather(G_d(1,1,nf), Ndim, Ndim, S_d, k, nf, X_d(1,1,nf), scr_c(1,1,1))
+       call k_sub_flush_gather(G_d(1,1,nf), Ndim, Ndim, S_d, k, nf, X_d(1,1,nf), scr_c(1,1,1), slot_d, size(slot_d,2))
        call la_gemm(LA_N, LA_T, Ndim, k, k, cone, scr_c(1,1,1), Ndim, M_pk, k, czero, scr_c(1,1,2), Ndim)
        call la_gemm(LA_N, LA_T, Ndim, Ndim, k, cmone, X_d(1,1,nf), Ndim, scr_c(1,1,2), Ndim, cone, G_d(1,1,nf), Ndim)
        upd_cnt(4) = upd_cnt(4) + 3
@@ -648,13 +657,24 @@ Contains
 
 !--------------------------------------------------------------------
 !> UP, submatrix: wrap of site r (old field), gather of G(r,r), G(S,r), G(r,S) of the wrapped G, deferred field / slot work.
-  Subroutine k_sub_up(nfl, nfa, nfb, ld, nd_, gs_, n, t, nt, ra, rb, eoa, eob, dpa, dka, dpb, dkb, dn, dt, dvr, dvi)
+  Subroutine k_sub_up(nfl, nfa, nfb, ld, nd_, gs_, n, t, nt, ra, rb, eoa, eob, dpa, dka, dpb, dkb, dn, dt, dvr, dvi, &
+       &              nfg, ngb, nsn1, nsn2, nve, Gk, gb, slot, nsig, vexp)
     Implicit none
     Integer, intent(in) :: nfl, nfa, nfb, ld, nd_, gs_, n, t, nt, ra, rb, eoa, eob, dpa, dka, dpb, dkb, dn, dt
+    Integer, intent(in) :: nfg, ngb, nsn1, nsn2, nve
     Real (Kind=Kind(0.d0)), intent(in) :: dvr, dvi
+    Complex (Kind=Kind(0.d0)), intent(inout) :: Gk(ld,ld,nfg), gb(ngb), nsig(nsn1,nsn2)
+    Complex (Kind=Kind(0.d0)), intent(in) :: vexp(nve)
+    Integer, intent(inout) :: slot(ld,nfg)
     Integer :: fl, j, nf, r, eo, sl, base, dp, dk, sp
     Complex (Kind=Kind(0.d0)) :: za, zb, gv
-    !$omp target teams distribute parallel do collapse(2) private(nf, r, eo, sl, base, dp, dk, sp, za, zb, gv)
+#if defined(ALF_LA_ONEMKL)
+    !$omp target teams distribute parallel do collapse(2) private(nf, r, eo, sl, base, dp, dk, sp, za, zb, gv) &
+    !$omp&   map(present,alloc: Gk, gb, slot, nsig, vexp)
+#else
+    !$omp target teams distribute parallel do collapse(2) private(nf, r, eo, sl, base, dp, dk, sp, za, zb, gv) &
+    !$omp&   map(alloc: Gk, gb, slot, nsig, vexp)
+#endif
     do fl = 1, nfl
        do j = 1, ld
           if (fl == 1) then
@@ -663,45 +683,55 @@ Contains
              nf = nfb; r = rb; eo = eob; dp = dpb; dk = dkb
           endif
           base = (fl-1)*gs_
-          sp = nint(real(nsigma_d(n,t)))
-          za = V_exp(eo + 1 + (sp + nt))
-          zb = V_exp(eo + 1 + (-sp + nt))
-          sl = slot_d(j,nf)
+          sp = nint(real(nsig(n,t)))
+          za = vexp(eo + 1 + (sp + nt))
+          zb = vexp(eo + 1 + (-sp + nt))
+          sl = slot(j,nf)
           if (dk > 0 .and. j == dp) then
              sl = dk
-             slot_d(j,nf) = dk
+             slot(j,nf) = dk
           endif
           if (j == r) then
-             gv = zb * ( za * G_d(r,r,nf) )
-             G_d(r,r,nf) = gv
-             gbuf(base+1) = gv
+             gv = zb * ( za * Gk(r,r,nf) )
+             Gk(r,r,nf) = gv
+             gb(base+1) = gv
              if (sl > 0) then
-                gbuf(base+1+sl) = gv
-                gbuf(base+1+nd_+sl) = gv
+                gb(base+1+sl) = gv
+                gb(base+1+nd_+sl) = gv
              endif
           else
-             G_d(r,j,nf) = za * G_d(r,j,nf)
-             G_d(j,r,nf) = zb * G_d(j,r,nf)
+             Gk(r,j,nf) = za * Gk(r,j,nf)
+             Gk(j,r,nf) = zb * Gk(j,r,nf)
              if (sl > 0) then
-                gbuf(base+1+sl) = G_d(j,r,nf)
-                gbuf(base+1+nd_+sl) = G_d(r,j,nf)
+                gb(base+1+sl) = Gk(j,r,nf)
+                gb(base+1+nd_+sl) = Gk(r,j,nf)
              endif
           endif
-          if (fl == 1 .and. j == 1 .and. dn > 0) nsigma_d(dn,dt) = cmplx(dvr, dvi, kind(0.d0))
+          if (fl == 1 .and. j == 1 .and. dn > 0) nsig(dn,dt) = cmplx(dvr, dvi, kind(0.d0))
        enddo
     enddo
-    !$omp target update from(gbuf(1:nfl*gs_))
+    !$omp target update from(gb(1:nfl*gs_))
   end subroutine k_sub_up
 
 !> DOWN, submatrix: deferred wrap of site rw (factors za_w, zb_w), gather at site pn of the wrapped G, deferred field / slot work.
   Subroutine k_sub_down(nfl, nfa, nfb, ld, nd_, gs_, wv, pna, pnb, rwa, rwb, &
-       &                zar, zai, zbr, zbi, zcr, zci, zdr, zdi, dpa, dka, dpb, dkb, dn, dt, dvr, dvi)
+       &                zar, zai, zbr, zbi, zcr, zci, zdr, zdi, dpa, dka, dpb, dkb, dn, dt, dvr, dvi, &
+       &                nfg, ngb, nsn1, nsn2, Gk, gb, slot, nsig)
     Implicit none
     Integer, intent(in) :: nfl, nfa, nfb, ld, nd_, gs_, wv, pna, pnb, rwa, rwb, dpa, dka, dpb, dkb, dn, dt
+    Integer, intent(in) :: nfg, ngb, nsn1, nsn2
+    Complex (Kind=Kind(0.d0)), intent(inout) :: Gk(ld,ld,nfg), gb(ngb), nsig(nsn1,nsn2)
+    Integer, intent(inout) :: slot(ld,nfg)
     Real (Kind=Kind(0.d0)), intent(in) :: zar, zai, zbr, zbi, zcr, zci, zdr, zdi, dvr, dvi
     Integer :: fl, j, nf, pn, rw, sl, slrw, base, dp, dk
     Complex (Kind=Kind(0.d0)) :: za, zb
-    !$omp target teams distribute parallel do collapse(2) private(nf, pn, rw, sl, slrw, base, dp, dk, za, zb)
+#if defined(ALF_LA_ONEMKL)
+    !$omp target teams distribute parallel do collapse(2) private(nf, pn, rw, sl, slrw, base, dp, dk, za, zb) &
+    !$omp&   map(present,alloc: Gk, gb, slot, nsig)
+#else
+    !$omp target teams distribute parallel do collapse(2) private(nf, pn, rw, sl, slrw, base, dp, dk, za, zb) &
+    !$omp&   map(alloc: Gk, gb, slot, nsig)
+#endif
     do fl = 1, nfl
        do j = 1, ld
           if (fl == 1) then
@@ -712,59 +742,69 @@ Contains
              za = cmplx(zcr, zci, kind(0.d0)); zb = cmplx(zdr, zdi, kind(0.d0))
           endif
           base = (fl-1)*gs_
-          sl = slot_d(j,nf)
+          sl = slot(j,nf)
           if (dk > 0 .and. j == dp) then
              sl = dk
-             slot_d(j,nf) = dk
+             slot(j,nf) = dk
           endif
           if (wv /= 0) then
              if (j == rw) then
-                G_d(rw,rw,nf) = zb * ( za * G_d(rw,rw,nf) )
+                Gk(rw,rw,nf) = zb * ( za * Gk(rw,rw,nf) )
              else
-                G_d(rw,j,nf) = za * G_d(rw,j,nf)
-                G_d(j,rw,nf) = zb * G_d(j,rw,nf)
+                Gk(rw,j,nf) = za * Gk(rw,j,nf)
+                Gk(j,rw,nf) = zb * Gk(j,rw,nf)
              endif
           endif
           if (j == pn) then
-             gbuf(base+1) = G_d(pn,pn,nf)
+             gb(base+1) = Gk(pn,pn,nf)
              if (sl > 0) then
-                gbuf(base+1+sl) = G_d(pn,pn,nf)
-                gbuf(base+1+nd_+sl) = G_d(pn,pn,nf)
+                gb(base+1+sl) = Gk(pn,pn,nf)
+                gb(base+1+nd_+sl) = Gk(pn,pn,nf)
              endif
              if (wv /= 0) then
                 ! the entries (rw,pn), (pn,rw) are written by this thread: gather them here (no read of data another thread writes)
                 if (dk > 0 .and. rw == dp) then
                    slrw = dk
                 else
-                   slrw = slot_d(rw,nf)
+                   slrw = slot(rw,nf)
                 endif
                 if (slrw > 0) then
-                   gbuf(base+1+slrw) = G_d(rw,pn,nf)
-                   gbuf(base+1+nd_+slrw) = G_d(pn,rw,nf)
+                   gb(base+1+slrw) = Gk(rw,pn,nf)
+                   gb(base+1+nd_+slrw) = Gk(pn,rw,nf)
                 endif
              endif
           else
              if (sl > 0) then
                 if (.not. (wv /= 0 .and. j == rw)) then
-                   gbuf(base+1+sl) = G_d(j,pn,nf)
-                   gbuf(base+1+nd_+sl) = G_d(pn,j,nf)
+                   gb(base+1+sl) = Gk(j,pn,nf)
+                   gb(base+1+nd_+sl) = Gk(pn,j,nf)
                 endif
              endif
           endif
-          if (fl == 1 .and. j == 1 .and. dn > 0) nsigma_d(dn,dt) = cmplx(dvr, dvi, kind(0.d0))
+          if (fl == 1 .and. j == 1 .and. dn > 0) nsig(dn,dt) = cmplx(dvr, dvi, kind(0.d0))
        enddo
     enddo
-    !$omp target update from(gbuf(1:nfl*gs_))
+    !$omp target update from(gb(1:nfl*gs_))
   end subroutine k_sub_down
 
 !> apply the deferred work only (sync): wrap of rw, slot pad, field write
-  Subroutine k_apply(nfl, nfa, nfb, ld, wv, rwa, rwb, zar, zai, zbr, zbi, zcr, zci, zdr, zdi, dpa, dka, dpb, dkb, dn, dt, dvr, dvi)
+  Subroutine k_apply(nfl, nfa, nfb, ld, wv, rwa, rwb, zar, zai, zbr, zbi, zcr, zci, zdr, zdi, dpa, dka, dpb, dkb, dn, dt, dvr, dvi, &
+       &               nfg, nsn1, nsn2, Gk, slot, nsig)
     Implicit none
     Integer, intent(in) :: nfl, nfa, nfb, ld, wv, rwa, rwb, dpa, dka, dpb, dkb, dn, dt
+    Integer, intent(in) :: nfg, nsn1, nsn2
+    Complex (Kind=Kind(0.d0)), intent(inout) :: Gk(ld,ld,nfg), nsig(nsn1,nsn2)
+    Integer, intent(inout) :: slot(ld,nfg)
     Real (Kind=Kind(0.d0)), intent(in) :: zar, zai, zbr, zbi, zcr, zci, zdr, zdi, dvr, dvi
     Integer :: fl, j, nf, rw, dp, dk
     Complex (Kind=Kind(0.d0)) :: za, zb
-    !$omp target teams distribute parallel do collapse(2) private(nf, rw, dp, dk, za, zb)
+#if defined(ALF_LA_ONEMKL)
+    !$omp target teams distribute parallel do collapse(2) private(nf, rw, dp, dk, za, zb) &
+    !$omp&   map(present,alloc: Gk, slot, nsig)
+#else
+    !$omp target teams distribute parallel do collapse(2) private(nf, rw, dp, dk, za, zb) &
+    !$omp&   map(alloc: Gk, slot, nsig)
+#endif
     do fl = 1, nfl
        do j = 1, ld
           if (fl == 1) then
@@ -774,16 +814,16 @@ Contains
              nf = nfb; rw = rwb; dp = dpb; dk = dkb
              za = cmplx(zcr, zci, kind(0.d0)); zb = cmplx(zdr, zdi, kind(0.d0))
           endif
-          if (dk > 0 .and. j == dp) slot_d(j,nf) = dk
+          if (dk > 0 .and. j == dp) slot(j,nf) = dk
           if (wv /= 0) then
              if (j == rw) then
-                G_d(rw,rw,nf) = zb * ( za * G_d(rw,rw,nf) )
+                Gk(rw,rw,nf) = zb * ( za * Gk(rw,rw,nf) )
              else
-                G_d(rw,j,nf) = za * G_d(rw,j,nf)
-                G_d(j,rw,nf) = zb * G_d(j,rw,nf)
+                Gk(rw,j,nf) = za * Gk(rw,j,nf)
+                Gk(j,rw,nf) = zb * Gk(j,rw,nf)
              endif
           endif
-          if (fl == 1 .and. j == 1 .and. dn > 0) nsigma_d(dn,dt) = cmplx(dvr, dvi, kind(0.d0))
+          if (fl == 1 .and. j == 1 .and. dn > 0) nsig(dn,dt) = cmplx(dvr, dvi, kind(0.d0))
        enddo
     enddo
   end subroutine k_apply
@@ -986,7 +1026,8 @@ Contains
     endif
     if (mode == LR_SUBMATRIX) then
        call k_sub_up(N_FL_eff, nfm(1), nfm(2), Ndim, nd, gs, n, t, V_type(n), r(1), r(2), eo(1), eo(2), &
-            & dfr_pp(1), dfr_pk(1), dfr_pp(2), dfr_pk(2), dfr_n, dfr_t, dfr_vr, dfr_vi)
+            & dfr_pp(1), dfr_pk(1), dfr_pp(2), dfr_pk(2), dfr_n, dfr_t, dfr_vr, dfr_vi, &
+            & size(G_d,3), size(gbuf), size(nsigma_d,1), size(nsigma_d,2), size(V_exp), G_d, gbuf, slot_d, nsigma_d, V_exp)
     else
        call k_dly_up(N_FL_eff, nfm(1), nfm(2), Ndim, gs, n, t, V_type(n), r(1), r(2), eo(1), eo(2), jcv(1), jcv(2), &
             & dfr_n, dfr_t, dfr_vr, dfr_vi)
@@ -1025,7 +1066,8 @@ Contains
     endif
     if (mode == LR_SUBMATRIX) then
        call k_sub_down(N_FL_eff, nfm(1), nfm(2), Ndim, nd, gs, wv, pn(1), pn(2), rw(1), rw(2), &
-            & z(1), z(2), z(3), z(4), z(5), z(6), z(7), z(8), dfr_pp(1), dfr_pk(1), dfr_pp(2), dfr_pk(2), dfr_n, dfr_t, dfr_vr, dfr_vi)
+            & z(1), z(2), z(3), z(4), z(5), z(6), z(7), z(8), dfr_pp(1), dfr_pk(1), dfr_pp(2), dfr_pk(2), dfr_n, dfr_t, dfr_vr, dfr_vi, &
+            & size(G_d,3), size(gbuf), size(nsigma_d,1), size(nsigma_d,2), G_d, gbuf, slot_d, nsigma_d)
     else
        call k_dly_down(N_FL_eff, nfm(1), nfm(2), Ndim, gs, wv, pn(1), pn(2), rw(1), rw(2), jcv(1), jcv(2), &
             & z(1), z(2), z(3), z(4), z(5), z(6), z(7), z(8), dfr_n, dfr_t, dfr_vr, dfr_vi)
@@ -1119,7 +1161,8 @@ Contains
     endif
     if (mode == LR_SUBMATRIX) then
        call k_apply(N_FL_eff, nfm(1), nfm(2), Ndim, wv, rw(1), rw(2), z(1), z(2), z(3), z(4), z(5), z(6), z(7), z(8), &
-            & dfr_pp(1), dfr_pk(1), dfr_pp(2), dfr_pk(2), dfr_n, dfr_t, dfr_vr, dfr_vi)
+            & dfr_pp(1), dfr_pk(1), dfr_pp(2), dfr_pk(2), dfr_n, dfr_t, dfr_vr, dfr_vi, &
+            & size(G_d,3), size(nsigma_d,1), size(nsigma_d,2), G_d, slot_d, nsigma_d)
     else
        call k_dly_apply(N_FL_eff, nfm(1), nfm(2), Ndim, wv, rw(1), rw(2), jcv(1), jcv(2), z(1), z(2), z(3), z(4), z(5), z(6), z(7), z(8), &
             & dfr_n, dfr_t, dfr_vr, dfr_vi)
@@ -1154,47 +1197,68 @@ Contains
     !$omp target enter data map(alloc: bsd, bS_d, gbd, cbuf)
   end subroutine blk_alloc
 
-!> k_blk_gather: gbd(a,c,fl) = G(s(a),s(c)) for the block sites
-  Subroutine k_blk_gather(nfl, nfa, nfb, ld, b)
+!> k_blk_gather: gbd(a,c,fl) = G(s(a),s(c)) for the block sites.
+!> All device arrays are explicit-shape dummy arguments (map(present,alloc:); nvfortran 26.9 rejects the OpenMP 5.1 present
+!> modifier, so the CUDA path uses map(alloc:), which moves no data for arrays already mapped by enter data): referencing module allocatables inside the target
+!> region makes ifx allocate and copy their descriptors as first-private data at every launch (measured 16.0 vs 10.7 us/launch).
+  Subroutine k_blk_gather(nfl, nfa, nfb, ld, b, nd_, nfg, gbk, bsk, Gk)
     Implicit none
-    Integer, intent(in) :: nfl, nfa, nfb, ld, b
+    Integer, intent(in) :: nfl, nfa, nfb, ld, b, nd_, nfg
+    Complex (Kind=Kind(0.d0)), intent(inout) :: gbk(nd_,nd_,2), Gk(ld,ld,nfg)
+    Integer, intent(in) :: bsk(nd_,2)
     Integer :: fl, a, c, nf
-    !$omp target teams distribute parallel do collapse(3) private(nf)
+#if defined(ALF_LA_ONEMKL)
+    !$omp target teams distribute parallel do collapse(3) private(nf) map(present,alloc: gbk, bsk, Gk)
+#else
+    !$omp target teams distribute parallel do collapse(3) private(nf) map(alloc: gbk, bsk, Gk)
+#endif
     do fl = 1, nfl
        do c = 1, b
           do a = 1, b
              nf = nfa
              if (fl == 2) nf = nfb
-             gbd(a,c,fl) = G_d(bsd(a,fl),bsd(c,fl),nf)
+             gbk(a,c,fl) = Gk(bsk(a,fl),bsk(c,fl),nf)
           enddo
        enddo
     enddo
   end subroutine k_blk_gather
 
-!> rows then columns of G(:,:,nf) scaled by the block's wrap factors (cbuf: za(1:b), zb(1:b) of flavour fl)
-  Subroutine k_blk_scale_rows(nf, fl, ld, b)
+!> End of a block: rows, then columns of G(:,:,nf) scaled by the block's wrap factors (cbuf: za(1:b), zb(1:b) of each flavour),
+!> both flavours in ONE launch.  Every element is written by exactly one iteration and gets exactly the factors, in exactly the
+!> order, of the two-kernel version (rows kernel, then columns kernel): an element (s(a),j) gets cbuf(a)*G, and if j = s(c) is
+!> itself a block site then cbuf(nd+c)*(cbuf(a)*G); an element (j,s(a)) with j not a block site gets cbuf(nd+a)*G.  The block
+!> sites of one flavour are distinct (gpu_lr fast_check), so "j is a block site" is found by a search over bsk(1:b,fl).
+  Subroutine k_blk_scale(nfl, nfa, nfb, ld, b, nd_, nfg, ldc, Gk, bsk, cbk)
     Implicit none
-    Integer, intent(in) :: nf, fl, ld, b
-    Integer :: a, j
-    !$omp target teams distribute parallel do collapse(2)
-    do a = 1, b
-       do j = 1, ld
-          G_d(bsd(a,fl),j,nf) = cbuf(a,fl) * G_d(bsd(a,fl),j,nf)
+    Integer, intent(in) :: nfl, nfa, nfb, ld, b, nd_, nfg, ldc
+    Complex (Kind=Kind(0.d0)), intent(inout) :: Gk(ld,ld,nfg)
+    Integer, intent(in) :: bsk(nd_,2)
+    Complex (Kind=Kind(0.d0)), intent(in) :: cbk(ldc,2)
+    Integer :: fl, a, j, c, cj, nf, sa
+    Complex (Kind=Kind(0.d0)) :: v
+#if defined(ALF_LA_ONEMKL)
+    !$omp target teams distribute parallel do collapse(3) private(nf, sa, c, cj, v) map(present,alloc: Gk, bsk, cbk)
+#else
+    !$omp target teams distribute parallel do collapse(3) private(nf, sa, c, cj, v) map(alloc: Gk, bsk, cbk)
+#endif
+    do fl = 1, nfl
+       do a = 1, b
+          do j = 1, ld
+             nf = nfa
+             if (fl == 2) nf = nfb
+             sa = bsk(a,fl)
+             cj = 0
+             do c = 1, b
+                if (bsk(c,fl) == j) cj = c
+             enddo
+             v = cbk(a,fl) * Gk(sa,j,nf)                  ! row factor
+             if (cj > 0) v = cbk(nd_+cj,fl) * v           ! column factor of the same element (j is a block site)
+             Gk(sa,j,nf) = v
+             if (cj == 0) Gk(j,sa,nf) = cbk(nd_+a,fl) * Gk(j,sa,nf)
+          enddo
        enddo
     enddo
-  end subroutine k_blk_scale_rows
-
-  Subroutine k_blk_scale_cols(nf, fl, ld, b, nd_)
-    Implicit none
-    Integer, intent(in) :: nf, fl, ld, b, nd_
-    Integer :: a, i
-    !$omp target teams distribute parallel do collapse(2)
-    do a = 1, b
-       do i = 1, ld
-          G_d(i,bsd(a,fl),nf) = cbuf(nd_+a,fl) * G_d(i,bsd(a,fl),nf)
-       enddo
-    enddo
-  end subroutine k_blk_scale_cols
+  end subroutine k_blk_scale
 
 !> open a block at vertex v1 (v1, v1 + dv, ...), b vertices
   Subroutine blk_begin(v1, dv, b)
@@ -1217,7 +1281,7 @@ Contains
     enddo
     if (N_FL_eff == 1) nfm(2) = nfm(1)
     !$omp target update to(bsd)
-    call k_blk_gather(N_FL_eff, nfm(1), nfm(2), Ndim, b)
+    call k_blk_gather(N_FL_eff, nfm(1), nfm(2), Ndim, b, nd, size(G_d,3), gbd, bsd, G_d)
     !$omp target update from(gbd)
     do fl = 1, N_FL_eff
        Gb(1:b,1:b,fl) = gbd(1:b,1:b,fl)
@@ -1233,7 +1297,7 @@ Contains
   Subroutine blk_end(t)
     Implicit none
     Integer, intent(in) :: t
-    Integer :: fl, nf, a, k, b, m, v, vmin, vmax
+    Integer :: fl, nf, a, k, b, m, v, vmin, vmax, nfm(2)
     b = blk_b
     call la_sync()          ! the previous block's flush (cuBLAS) is asynchronous: it must be done before cbuf / bS_d are overwritten
     ! cbuf: za, zb of every block site (1 if not wrapped), M packed after them; bS_d: pending sites
@@ -1257,10 +1321,13 @@ Contains
     enddo
     !$omp target update to(cbuf, bS_d)
     do fl = 1, N_FL_eff
+       nfm(fl) = Calc_Fl_map(fl)
+    enddo
+    if (N_FL_eff == 1) nfm(2) = nfm(1)
+    call k_blk_scale(N_FL_eff, nfm(1), nfm(2), Ndim, b, nd, size(G_d,3), size(cbuf,1), G_d, bsd, cbuf)
+    upd_cnt(4) = upd_cnt(4) + 1
+    do fl = 1, N_FL_eff
        nf = Calc_Fl_map(fl)
-       call k_blk_scale_rows(nf, fl, Ndim, b)
-       call k_blk_scale_cols(nf, fl, Ndim, b, nd)
-       upd_cnt(4) = upd_cnt(4) + 2
        if (jc(nf) > 0) then
           call blk_flush(nf, fl)
        endif
@@ -1284,7 +1351,7 @@ Contains
     kk = k
     if (k == 1 .and. nd >= 2) kk = 2
     n_flush(3) = n_flush(3) + 1; n_flush(2) = n_flush(2) + 1
-    call k_sub_flush_gather(G_d(1,1,nf), Ndim, Ndim, bS_d(1,fl), kk, nf, X_d(1,1,nf), scr_c(1,1,1))
+    call k_sub_flush_gather(G_d(1,1,nf), Ndim, Ndim, bS_d(1,fl), kk, nf, X_d(1,1,nf), scr_c(1,1,1), slot_d, size(slot_d,2))
     call la_gemm(LA_N, LA_T, Ndim, kk, kk, cone, scr_c(1,1,1), Ndim, cbuf(2*nd+1,fl), kk, czero, scr_c(1,1,2), Ndim)
     call la_gemm(LA_N, LA_T, Ndim, Ndim, kk, cmone, X_d(1,1,nf), Ndim, scr_c(1,1,2), Ndim, cone, G_d(1,1,nf), Ndim)
     upd_cnt(4) = upd_cnt(4) + 3
