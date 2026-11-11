@@ -70,11 +70,20 @@ Module gpu_lowrank_mod
   Public :: gpu_lr_mode, gpu_lr_init, gpu_lr_finalize, gpu_lr_site_ok, gpu_lr_pending, gpu_lr_flush_all, gpu_lr_flush
   Public :: gpu_lr_wrap, gpu_lr_gpp, gpu_lr_accept
   Public :: gpu_lr_blockmode, gpu_lr_blk_enter, gpu_lr_blk_leave
+#ifdef ALF_TEAM_TIMERS
+  Public :: p3t, p3n, p3_now
+#endif
   Public :: gpu_lr_fast, gpu_lr_step_up, gpu_lr_step_down, gpu_lr_defer, gpu_lr_commit, gpu_lr_sync
 
   Integer, parameter :: LR_STD = 0, LR_DELAYED = 1, LR_SUBMATRIX = 2
   Complex (Kind=Kind(0.d0)), parameter :: czero_c = (0.d0,0.d0)
 
+#ifdef ALF_TEAM_TIMERS
+  ! Phase 3b timers: 1 blk_begin total, 2 its device part (to bsd, gather, from gbd), 3 blk_end total, 4 its la_sync, 5 its device part
+  ! (uploads, scale, flushes), 6 slice level (g_in, hopping wraps, final flush, g_out); p3n(1) blocks
+  Real (Kind=Kind(0.d0)), Save :: p3t(0:7) = 0.d0
+  Integer(int64), Save :: p3n(0:7) = 0
+#endif
   Logical, Save :: inited = .false.
   Integer, Save :: mode = LR_STD, nd = 0, ndim_ = 0, nfl_ = 0
   Integer, Save :: n_flush(3) = 0       ! flushes: capacity, forced (N>1 vertex or slice end), total
@@ -1187,6 +1196,14 @@ Contains
     gpu_lr_blockmode = (mode == LR_SUBMATRIX) .and. fast
   end function gpu_lr_blockmode
 
+#ifdef ALF_TEAM_TIMERS
+  Real (Kind=Kind(0.d0)) function p3_now()
+    Integer(int64) :: c, r
+    call system_clock(c, r)
+    p3_now = real(c,8)/real(r,8)
+  end function p3_now
+#endif
+
   Subroutine blk_alloc()
     Implicit none
     if (allocated(Gb)) return
@@ -1265,6 +1282,10 @@ Contains
     Implicit none
     Integer, intent(in) :: v1, dv, b
     Integer :: fl, nf, a, v, nfm(2)
+#ifdef ALF_TEAM_TIMERS
+    Real (Kind=Kind(0.d0)) :: ta, tb, tc
+    ta = p3_now()
+#endif
     call blk_alloc()
     call la_sync()          ! previous flush (asynchronous library calls) before the new uploads
     blk_open = .true.; blk_v1 = v1; blk_dv = dv; blk_b = b; blk_cnt = 0
@@ -1280,14 +1301,23 @@ Contains
        zab_h(1:nd,1:2,fl) = (1.d0,0.d0)
     enddo
     if (N_FL_eff == 1) nfm(2) = nfm(1)
+#ifdef ALF_TEAM_TIMERS
+    tb = p3_now()
+#endif
     !$omp target update to(bsd)
     call k_blk_gather(N_FL_eff, nfm(1), nfm(2), Ndim, b, nd, size(G_d,3), gbd, bsd, G_d)
     !$omp target update from(gbd)
+#ifdef ALF_TEAM_TIMERS
+    tc = p3_now(); p3t(2) = p3t(2) + (tc - tb)
+#endif
     do fl = 1, N_FL_eff
        Gb(1:b,1:b,fl) = gbd(1:b,1:b,fl)
     enddo
     n_blocks = n_blocks + 1
     upd_cnt(3) = upd_cnt(3) + 1
+#ifdef ALF_TEAM_TIMERS
+    p3t(1) = p3t(1) + (p3_now() - ta); p3n(1) = p3n(1) + 1
+#endif
   end subroutine blk_begin
 
 !> block end: scalings of G0, flush of M, field values to the device
@@ -1298,8 +1328,15 @@ Contains
     Implicit none
     Integer, intent(in) :: t
     Integer :: fl, nf, a, k, b, m, v, vmin, vmax, nfm(2)
+#ifdef ALF_TEAM_TIMERS
+    Real (Kind=Kind(0.d0)) :: ta, tb, tc
+    ta = p3_now()
+#endif
     b = blk_b
     call la_sync()          ! the previous block's flush (cuBLAS) is asynchronous: it must be done before cbuf / bS_d are overwritten
+#ifdef ALF_TEAM_TIMERS
+    p3t(4) = p3t(4) + (p3_now() - ta)
+#endif
     ! cbuf: za, zb of every block site (1 if not wrapped), M packed after them; bS_d: pending sites
     do fl = 1, N_FL_eff
        nf = Calc_Fl_map(fl)
@@ -1319,6 +1356,9 @@ Contains
           endif
        endif
     enddo
+#ifdef ALF_TEAM_TIMERS
+    tb = p3_now()
+#endif
     !$omp target update to(cbuf, bS_d)
     do fl = 1, N_FL_eff
        nfm(fl) = Calc_Fl_map(fl)
@@ -1339,6 +1379,9 @@ Contains
     !$omp target update to(nsigma_d(vmin:vmax,t))
     upd_cnt(6) = upd_cnt(6) + 1
     blk_open = .false.; blk_cnt = 0
+#ifdef ALF_TEAM_TIMERS
+    tc = p3_now(); p3t(5) = p3t(5) + (tc - tb); p3t(3) = p3t(3) + (tc - ta)
+#endif
   end subroutine blk_end
 
 !> flush from the already uploaded S and packed M (bS_d, cbuf): same device sequence as gpu_lr_flush, no further uploads

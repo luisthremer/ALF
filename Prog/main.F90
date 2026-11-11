@@ -156,6 +156,9 @@ Program Main
              &                   gpu_stab_reset_r, gpu_stab_reset_st
         use gpu_tau_mod,   only: gpu_tau_on, gpu_tau_setup, gpu_tau_finalize, gpu_tau_hook
         use gpu_lowrank_mod, only: gpu_lr_finalize
+#ifdef ALF_TEAM_TIMERS
+        use gpu_lowrank_mod, only: p3t, p3n
+#endif
 #endif
          
 #ifdef HDF5
@@ -1394,6 +1397,7 @@ Program Main
         call gpu_tau_finalize()
 #ifdef ALF_TEAM_TIMERS
         write(*,'(A,I6,7F11.3)') ' TEAM_TIMERS nsw, sweep wrapgrup wrapgrdo stab_wrapur stab_wrapul stab_cgr obser [s]: ', tt_nsw, tt
+        write(*,'(A,I12,7F11.3)') ' P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]: ', p3n(1), p3t(1:7)
 #endif
         call gpu_stab_finalize()
         call gpu_obs_finalize()
