@@ -32,6 +32,9 @@
 #   The loop polls every SNAP_POLL s (30). RC_SNAP_TEST_DELAY (s) sleeps after the first copied file (tests: kill during a copy).
 # Stand-alone:  bash recover.sh RUNDIR prepare|guard|bins|snap   (env TARGET_BINS for guard; exit status of guard: 10 = target reached)
 
+# Override of the stop target for jobs already queued (Slurm keeps its own copy of job.sh, but recover.sh is read from the
+# run directory at job start): a file `target_bins` in the run directory replaces TARGET_BINS.
+if [ -f target_bins ]; then TARGET_BINS=$(tr -dc '0-9' < target_bins); fi
 RC_ACTION=${RC_ACTION:-none}
 RC_LOG_FILE=${RC_LOG_FILE:-segments.log}
 
