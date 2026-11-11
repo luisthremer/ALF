@@ -355,7 +355,7 @@
     },
     {
       "collapsed" : false,
-      "description" : "GPU path ACTIVE, acceptance ~0.32-0.33, Precision Green\/Phase max < 1e-8, s\/bin as in T5, snapshots written, no requeue loop.",
+      "description" : "GPU path ACTIVE, acceptance ~0.32-0.33, Precision Green\/Phase max < 1e-8, s\/bin as in T5, snapshots written, no requeue loop. 2026-11-11 22:30: jobs 560229-560234 ran ~6x too slow: --cpus-per-task=1 pinned every rank to one logical cpu (taskset). Fixed (fa393610), cancelled, resubmitted as 560309 (L24), 560310 (L28), 560311 (L32), 560312 (L32_fast); bins kept via recovery. Check affinity once they run.",
       "done" : false,
       "id" : "n_pgz21fmj",
       "order" : 2,
