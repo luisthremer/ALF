@@ -499,10 +499,11 @@ case $MACHINE in
   #NHR@FAU Helma GPU nodes (H100, nvfortran + OpenMPI-CUDA); build on a login node
   HELMAGPU)
     module load gpu-env/2025
-    # nvhpc version: ALF_HELMA_NVHPC=24.11 (default) or 25.7 (matching openmpi/<..>-cuda module)
-    case "${ALF_HELMA_NVHPC:-24.11}" in
-      25.7) module load nvhpc/25.7; module load openmpi/5.0.8-nvhpc25.7-cuda ;;
-      *)    module load nvhpc/24.11; module load openmpi/5.0.5-nvhpc24.11-cuda ;;
+    # nvhpc version: ALF_HELMA_NVHPC=25.7 (default) or 24.11. 24.11 builds but the L=8 GPU run aborts
+    # ("la_qrpp: NaN or Inf", measured 2026-11-11), so it is not used for production.
+    case "${ALF_HELMA_NVHPC:-25.7}" in
+      24.11) module load nvhpc/24.11; module load openmpi/5.0.5-nvhpc24.11-cuda ;;
+      *)     module load nvhpc/25.7; module load openmpi/5.0.8-nvhpc25.7-cuda; ALF_GPU_CC="${ALF_GPU_CC:-cc90,cuda12.9}" ;;
     esac
     export ALF_GPU_CC="${ALF_GPU_CC:-cc90,cuda12.6}"  # cuda12.6: default CUDA 11.8 libs lack cusolverDnSetDeterministicMode
     F90OPTFLAGS="$PGIOPTFLAGS"
