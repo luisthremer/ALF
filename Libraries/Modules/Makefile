@@ -38,8 +38,12 @@ lib: $(LIB) libfakeintel.so
 # GPU=intel (ALF_GPU=intel, exported by configure.sh): C++ SYCL/oneMKL shim of the alf_la ONEMKL backend (ticket 302a)
 ifeq ($(ALF_GPU),intel)
 SHIMOBJ = alf_la_sycl_shim.o
-alf_la_sycl_shim.o: alf_la_sycl_shim.cpp alf_la_sycl_devqr.hpp
+alf_la_sycl_shim.o: alf_la_sycl_shim.cpp
 	icpx -fsycl -O2 -std=c++17 -I$(MKLROOT)/include -c $<
+# device-only QR (SYCL device code: shared library, loaded by dlopen when ALFSH_DEVQR=1; not needed by the default build)
+lib: libalfdevqr.so
+libalfdevqr.so: alf_la_sycl_devqr.cpp alf_la_sycl_devqr.hpp
+	icpx -fsycl -O2 -std=c++17 -fPIC -shared -I$(MKLROOT)/include $< -o $@ -qmkl -lmkl_sycl_blas
 endif
 
 $(LIB): $(DEPSFILE) $(OBJS) $(SHIMOBJ)
@@ -82,7 +86,7 @@ $(DEPSFILE): $(SRCS) $(DEPSGEN)
 	python3 $(DEPSGEN) $(SRCS) > $(DEPSFILE)
 
 clean: $(DEPSFILE)
-	rm -f $(OBJS) $(MODS) $(LIB) $(DEPSFILE) libfakeintel.so alf_la_sycl_shim.o
+	rm -f $(OBJS) $(MODS) $(LIB) $(DEPSFILE) libfakeintel.so alf_la_sycl_shim.o libalfdevqr.so
 
 #unused modules: histograms histograms_v2 log_mesh natural_constants
 #unused, except for in Prog/FFA_Orginals/: precdef

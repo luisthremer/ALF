@@ -17,7 +17,8 @@
 #include <sycl/sycl.hpp>
 #include <oneapi/mkl/blas.hpp>
 #include <oneapi/mkl/lapack.hpp>
-#include "alf_la_sycl_devqr.hpp"
+#include <dlfcn.h>
+#include <unistd.h>
 #include <atomic>
 #include <chrono>
 #include <complex>
@@ -99,16 +100,37 @@ template <class F> int guarded(const char *what, F &&f) {
 }
 sycl::queue &Q() { return *g_q; }
 
-// Device-only blocked Householder QR (alf_la_sycl_devqr.hpp) instead of oneMKL's hybrid ZGEQRF (panels on the host CPU).
-// Run-time switch ALFSH_DEVQR=1 (read once; default off = oneMKL), block size ALFSH_QRNB (default 32).
+// Device-only blocked Householder QR (alf_la_sycl_devqr.hpp, in libalfdevqr.so because it contains SYCL device code, which a plain
+// host object cannot carry) instead of oneMKL's hybrid ZGEQRF (panels on the host CPU). Run-time switch ALFSH_DEVQR=1 (read once;
+// default off = oneMKL, the library is then never loaded), block size ALFSH_QRNB (default 32), library path ALFSH_DEVQR_LIB (default:
+// ../Libraries/Modules/libalfdevqr.so relative to the directory of the executable, else libalfdevqr.so on the loader path).
 int g_devqr = -1, g_qrnb = 32;
+int64_t (*g_dq_scratch)(int64_t, int64_t, int) = nullptr;
+int (*g_dq_geqrf)(void *, int64_t, int64_t, void *, int64_t, void *, void *, int64_t, int) = nullptr;
+void (*g_dq_bench)(void *, void *) = nullptr;
 bool devqr_on() {
   if (g_devqr < 0) {
     const char *e = std::getenv("ALFSH_DEVQR");
     g_devqr = (e && e[0] == '1') ? 1 : 0;
     const char *b = std::getenv("ALFSH_QRNB");
     if (b && std::atoi(b) > 0) g_qrnb = std::atoi(b);
-    if (g_qrnb > alfdevqr::MAX_NB) g_qrnb = alfdevqr::MAX_NB;
+    if (g_devqr == 1) {
+      std::string path;
+      if (const char *l = std::getenv("ALFSH_DEVQR_LIB")) path = l;
+      else {
+        char buf[4096];
+        ssize_t k = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+        if (k > 0) { buf[k] = 0; std::string d(buf); d = d.substr(0, d.rfind('/')); path = d + "/../Libraries/Modules/libalfdevqr.so"; }
+        if (path.empty() || access(path.c_str(), R_OK) != 0) path = "libalfdevqr.so";
+      }
+      void *h = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
+      if (h) {
+        g_dq_scratch = (int64_t(*)(int64_t, int64_t, int))dlsym(h, "alfdevqr_scratch");
+        g_dq_geqrf = (int (*)(void *, int64_t, int64_t, void *, int64_t, void *, void *, int64_t, int))dlsym(h, "alfdevqr_zgeqrf");
+        g_dq_bench = (void (*)(void *, void *))dlsym(h, "alfdevqr_launch_bench");
+      }
+      if (!g_dq_scratch || !g_dq_geqrf) throw std::runtime_error(std::string("ALFSH_DEVQR=1 but cannot load the device QR library '") + path + "': " + (dlerror() ? dlerror() : "symbol missing"));
+    }
   }
   return g_devqr == 1;
 }
@@ -181,14 +203,17 @@ int alfsh_wait() {
 int alfsh_zgeqrf_ws(int64_t m, int64_t n, int64_t lda, int64_t *ws) {
   return guarded("geqrf_ws", [&] {
     *ws = lp::geqrf_scratchpad_size<cd>(Q(), m, n, lda);
-    if (devqr_on()) *ws = std::max<int64_t>(*ws, alfdevqr::scratch_size(m, n, g_qrnb));   // the device QR uses the caller's scratch too
+    if (devqr_on()) *ws = std::max<int64_t>(*ws, g_dq_scratch(m, n, g_qrnb));   // the device QR uses the caller's scratch too
   });
 }
 int alfsh_zgeqrf(int64_t m, int64_t n, void *a, int64_t lda, void *tau, void *work, int64_t lwork) {
-  return guarded("geqrf", [&] {
-    if (devqr_on() && alfdevqr::geqrf(Q(), m, n, (cd *)a, lda, (cd *)tau, (cd *)work, lwork, g_qrnb, nullptr) == 0) {
-      Q().wait_and_throw();
-      return;
+  return guarded(devqr_on() ? "geqrf_dev" : "geqrf", [&] {
+    if (devqr_on()) {
+      static bool lb = false;   // diagnostic: launch cost on this queue (once)
+      if (!lb && (lb = true) && g_dq_bench && std::getenv("ALFSH_LAUNCHBENCH")) g_dq_bench(&Q(), work);
+      int rc = g_dq_geqrf(&Q(), m, n, a, lda, tau, work, lwork, g_qrnb);
+      if (rc == 0) { Q().wait_and_throw(); return; }
+      if (rc < -1) throw std::runtime_error("device QR failed");
     }
     lp::geqrf(Q(), m, n, (cd *)a, lda, (cd *)tau, (cd *)work, lwork).wait_and_throw();   // oneMKL (default, or the device QR declined)
   });

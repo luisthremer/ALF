@@ -159,7 +159,8 @@ int main(int argc, char **argv) {
   if (argc > 3) std::printf("(timing only)\n");
   // timing: device QR vs oneMKL (hybrid) per call, square random
   for (int n : {576, 1024}) {
-    std::vector<cd> A0; gen(0, n, n, A0, 7);
+    int tty = std::getenv("DEVQR_TTYPE") ? atoi(std::getenv("DEVQR_TTYPE")) : 0;
+    std::vector<cd> A0; gen(tty, n, n, A0, 7);
     int64_t ws = std::max<int64_t>(alfdevqr::scratch_size(n, n, nb), oneapi::mkl::lapack::geqrf_scratchpad_size<cd>(q, n, n, n));
     cd *A = sycl::malloc_device<cd>((size_t)n * n, q), *A00 = sycl::malloc_device<cd>((size_t)n * n, q), *t = sycl::malloc_device<cd>(n, q), *w = sycl::malloc_device<cd>(ws, q);
     q.memcpy(A00, A0.data(), sizeof(cd) * (size_t)n * n).wait();
@@ -173,7 +174,7 @@ int main(int argc, char **argv) {
         double dt = now() - t0;
         if (r >= 2) { tt += dt; tmin = std::min(tmin, dt); }
       }
-      std::printf("TIMING N=%d %-8s mean %8.3f ms  min %8.3f ms\n", n, mode == 0 ? "devqr" : "oneMKL", 1e3 * tt / reps, 1e3 * tmin);
+      std::printf("TIMING(V2: submission time only, NOT kernel time) type=%d N=%d %-8s mean %8.3f ms  min %8.3f ms\n", tty, n, mode == 0 ? "devqr" : "oneMKL", 1e3 * tt / reps, 1e3 * tmin);
     }
   }
   return nfail ? 1 : 0;
