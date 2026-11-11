@@ -48,10 +48,12 @@ ROCM_INC ?= $(if $(ROCM_PATH),$(ROCM_PATH),/opt/rocm)/include
 ifeq ($(ALF_GPU),amd)
 ALF_AMD_ARCH ?= gfx90a
 HIPCC ?= $(if $(ROCM_PATH),$(ROCM_PATH),/opt/rocm)/bin/hipcc
-SHIMOBJ = alf_la_hip_shim.o alf_hip_kernels.o
+SHIMOBJ = alf_la_hip_shim.o alf_hip_kernels.o alf_hip_qr.o
 alf_la_hip_shim.o: alf_la_hip_shim.cpp
 	g++ -O2 -std=c++17 -D__HIP_PLATFORM_AMD__ -I$(ROCM_INC) -c $<
 alf_hip_kernels.o: alf_hip_kernels.hip.cpp
+	$(HIPCC) -O2 --offload-arch=$(ALF_AMD_ARCH) -I$(ROCM_INC) -c $< -o $@
+alf_hip_qr.o: alf_hip_qr.hip.cpp
 	$(HIPCC) -O2 --offload-arch=$(ALF_AMD_ARCH) -I$(ROCM_INC) -c $< -o $@
 endif
 

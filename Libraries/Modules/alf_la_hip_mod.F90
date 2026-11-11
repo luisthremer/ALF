@@ -34,6 +34,7 @@ module alf_la_hip_mod
   complex(8), allocatable, save :: hws(:)                      ! host work of ZGEQP3
   real(8), allocatable, save :: hrws(:)
   integer, save :: oinfo(OM_NSLOT), islot = 0
+  logical, save :: use_hq = .true.                         ! blocked HIP Householder QR / Q-apply (alf_hip_qr.hip.cpp); ALF_HIP_QR=0 -> hipSOLVER
   character(len=16), save :: islot_what(OM_NSLOT)
   logical, save :: islot_tol(OM_NSLOT)
 
@@ -120,6 +121,16 @@ module alf_la_hip_mod
       import :: c_ptr, c_int, c_int64_t
       type(c_ptr), value :: a, ipiv, work
       integer(c_int64_t), value :: m, n, lda, lwork
+    end function
+    integer(c_int) function alfhq_geqrf(m, n, a, lda, tau) bind(C, name='alfhq_geqrf')
+      import :: c_ptr, c_int
+      type(c_ptr), value :: a, tau
+      integer(c_int), value :: m, n, lda
+    end function
+    integer(c_int) function alfhq_unmqr(side, trans, m, n, k, a, lda, tau, c, ldc) bind(C, name='alfhq_unmqr')
+      import :: c_ptr, c_int
+      type(c_ptr), value :: a, tau, c
+      integer(c_int), value :: side, trans, m, n, k, lda, ldc
     end function
     integer(c_int) function alfhp_zgetrs_ws(trans, n, nrhs, lda, ldb, ws) bind(C, name='alfhp_zgetrs_ws')
       import :: c_int, c_int64_t
@@ -233,6 +244,12 @@ contains
     end do
     write(*,'(2A)') ' alf_la: HIP device: ', trim(name)
     islot = 0
+    block
+      character(len=8) :: ev
+      integer :: evl, evs
+      call get_environment_variable('ALF_HIP_QR', ev, evl, evs)
+      if (evs == 0 .and. evl >= 1) use_hq = (ev(1:1) /= '0')
+    end block
     oinited = .true.
   end subroutine om_init
 
@@ -490,16 +507,26 @@ contains
   subroutine om_geqrf(m, n, A, lda, tau, lw)
     integer, intent(in) :: m, n, lda, lw
     complex(8), target :: A(lda,*), tau(*)
-    integer :: s
+    integer :: s, rc
     call ensure_dws(lw)
     call need_z(A, ext2(m, n, lda), 'la_geqrf', 'A')
     call need_z(tau, int(min(m,n),8), 'la_geqrf', 'tau')
     call need_z(dws, int(lw,8), 'la_geqrf', 'work')
     s = next_slot('geqrf', .false.)
-    !$omp target data use_device_addr(A, tau, dws)
-    oinfo(s) = alfhp_zgeqrf(int(m,c_int64_t), int(n,c_int64_t), c_loc(A(1,1)), int(lda,c_int64_t), c_loc(tau(1)), &
-         c_loc(dws(1)), int(lw,c_int64_t))
-    !$omp end target data
+    rc = 3
+    if (use_hq) then
+      !$omp target data use_device_addr(A, tau)
+      rc = alfhq_geqrf(int(m,c_int), int(n,c_int), c_loc(A(1,1)), int(lda,c_int), c_loc(tau(1)))
+      !$omp end target data
+    end if
+    if (rc == 3) then       ! size not supported by the HIP QR (m > 2304) or disabled: hipSOLVER
+      !$omp target data use_device_addr(A, tau, dws)
+      oinfo(s) = alfhp_zgeqrf(int(m,c_int64_t), int(n,c_int64_t), c_loc(A(1,1)), int(lda,c_int64_t), c_loc(tau(1)), &
+           c_loc(dws(1)), int(lw,c_int64_t))
+      !$omp end target data
+    else
+      oinfo(s) = rc
+    end if
   end subroutine om_geqrf
 
   function om_ungqr_lwork(m, n, k, lda) result(lw)
@@ -545,7 +572,7 @@ contains
     integer, intent(in) :: trans, m, n, k, lda, ldc, lw
     complex(8), target :: A(lda,*), tau(*), C(ldc,*)
     integer :: s
-    integer(c_int) :: cs
+    integer(c_int) :: cs, rc
     cs = 0; if (side == 'R' .or. side == 'r') cs = 1
     call ensure_dws(lw)
     if (cs == 0) then
@@ -557,10 +584,21 @@ contains
     call need_z(C, ext2(m, n, ldc), 'la_ormqr', 'C')
     call need_z(dws, int(lw,8), 'la_ormqr', 'work')
     s = next_slot('unmqr', .false.)
-    !$omp target data use_device_addr(A, tau, C, dws)
-    oinfo(s) = alfhp_zunmqr(cs, int(trans,c_int), int(m,c_int64_t), int(n,c_int64_t), int(k,c_int64_t), c_loc(A(1,1)), &
-         int(lda,c_int64_t), c_loc(tau(1)), c_loc(C(1,1)), int(ldc,c_int64_t), c_loc(dws(1)), int(lw,c_int64_t))
-    !$omp end target data
+    rc = 3
+    if (use_hq .and. trans /= 1) then      ! trans = 1 (plain transpose) is not a unitary operation: hipSOLVER rejects it
+      !$omp target data use_device_addr(A, tau, C)
+      rc = alfhq_unmqr(cs, int(trans,c_int), int(m,c_int), int(n,c_int), int(k,c_int), c_loc(A(1,1)), int(lda,c_int), &
+           c_loc(tau(1)), c_loc(C(1,1)), int(ldc,c_int))
+      !$omp end target data
+    end if
+    if (rc == 3) then
+      !$omp target data use_device_addr(A, tau, C, dws)
+      oinfo(s) = alfhp_zunmqr(cs, int(trans,c_int), int(m,c_int64_t), int(n,c_int64_t), int(k,c_int64_t), c_loc(A(1,1)), &
+           int(lda,c_int64_t), c_loc(tau(1)), c_loc(C(1,1)), int(ldc,c_int64_t), c_loc(dws(1)), int(lw,c_int64_t))
+      !$omp end target data
+    else
+      oinfo(s) = rc
+    end if
   end subroutine om_ormqr
 
   ! ---- LU (shim; ipiv: the caller's int32 device array <-> int64 device scratch) -----------------------------------
