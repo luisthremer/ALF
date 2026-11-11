@@ -192,14 +192,15 @@ rc_snap_try() {
     return 0
   fi
   nowf=$(rc_now_f); dm=$(rc_mtime "$d/data.h5")
-  rc_ge "$(awk -v a="$nowf" -v b="$dm" 'BEGIN { print a - b }')" "$qd" || return 0
+  rc_ge "$(awk -v a="$nowf" -v b="$dm" 'BEGIN { printf "%.4f", a - b }')" "$qd" || return 0
   for f in $confs; do
     cm=$(rc_mtime "$f")
-    rc_ge "$(awk -v a="$nowf" -v b="$cm" 'BEGIN { print a - b }')" "$qc" || return 0
+    rc_ge "$(awk -v a="$nowf" -v b="$cm" 'BEGIN { printf "%.4f", a - b }')" "$qc" || return 0
     off=$(awk -v a="$cm" -v b="$dm" 'BEGIN { printf "%.4f", a - b }')     # confout mtime minus data.h5 mtime (diagnostic)
     omin=$(awk -v x="$omin" -v y="$off" 'BEGIN { print (x == "" || y + 0 < x + 0) ? y : x }')
     omax=$(awk -v x="$omax" -v y="$off" 'BEGIN { print (x == "" || y + 0 > x + 0) ? y : x }')
-    if ! rc_ge "$cm" "$(awk -v a="$dm" -v b="$slack" 'BEGIN { print a - b }')"; then
+    # NOTE: never print epoch-sized numbers with awk's default OFMT (%.6g rounds to +-5000 s!); compare small differences only
+    if ! rc_ge "$off" "-$slack"; then
       rc_snap_why "$d" "${f##*/} is older than data.h5 (bin not complete, or ranks write confout before rank 0 finishes data.h5: raise SNAP_CONF_SLACK)"
       return 0
     fi
@@ -209,13 +210,13 @@ rc_snap_try() {
   [ "$n" -gt "$last_b" ] || return 0
   for f in $confs; do rc_h5ls -r "$f" >/dev/null 2>&1 || { rc_snap_why "$d" "${f##*/} unreadable"; return 0; }; done
   # copy
-  mkdir -p "$d/.snap" || return 0
-  tmp=$d/.snap/tmp; rm -rf "$tmp"; mkdir "$tmp" || return 0
+  mkdir -p "$d/.snap" || { rc_snap_log "$d | mkdir .snap FAILED"; return 0; }
+  tmp=$d/.snap/tmp; rm -rf "$tmp"; mkdir "$tmp" || { rc_snap_log "$d | mkdir .snap/tmp FAILED"; return 0; }
   t0=$SECONDS
   sig1=$(rc_sigs "$d")
-  cp -p "$d/data.h5" "$tmp/" || { rm -rf "$tmp"; return 0; }
+  cp -p "$d/data.h5" "$tmp/" || { rc_snap_log "$d | bins=$n | cp of data.h5 FAILED (disk full / quota?), no snapshot"; rm -rf "$tmp"; return 0; }
   if [ -n "${RC_SNAP_TEST_DELAY:-}" ]; then sleep "$RC_SNAP_TEST_DELAY"; fi
-  for f in $confs; do cp -p "$f" "$tmp/" || { rm -rf "$tmp"; return 0; }; done
+  for f in $confs; do cp -p "$f" "$tmp/" || { rc_snap_log "$d | bins=$n | cp of ${f##*/} FAILED (disk full / quota?), no snapshot"; rm -rf "$tmp"; return 0; }; done
   sig2=$(rc_sigs "$d")
   if [ "$sig1" != "$sig2" ]; then rc_snap_log "$d | bins=$n | DISCARDED: sources changed during the copy"; rm -rf "$tmp"; return 0; fi
   if [ "$(rc_bins "$tmp/data.h5")" != "$n" ]; then rc_snap_log "$d | bins=$n | DISCARDED: copied data.h5 does not have $n bins"; rm -rf "$tmp"; return 0; fi
@@ -225,10 +226,10 @@ rc_snap_try() {
   seq=0
   for slot in A B; do if rc_slot_meta "$d/.snap/$slot" && [ "$M_SEQ" -gt "$seq" ]; then seq=$M_SEQ; fi; done
   seq=$((seq + 1))
-  echo "bins=$n time=$(date +%s) seq=$seq walkers=$w" > "$tmp/COMPLETE.new" && mv "$tmp/COMPLETE.new" "$tmp/COMPLETE" || { rm -rf "$tmp"; return 0; }
+  echo "bins=$n time=$(date +%s) seq=$seq walkers=$w" > "$tmp/COMPLETE.new" && mv "$tmp/COMPLETE.new" "$tmp/COMPLETE" || { rc_snap_log "$d | bins=$n | writing the COMPLETE marker FAILED, no snapshot"; rm -rf "$tmp"; return 0; }
   slot=$(rc_snap_target "$d")
   rm -rf "$d/.snap/$slot"
-  mv "$tmp" "$d/.snap/$slot" || return 0
+  mv "$tmp" "$d/.snap/$slot" || { rc_snap_log "$d | bins=$n | mv into slot $slot FAILED"; return 0; }
   rm -f "$d/.snap/why"
   rc_snap_log "$d | bins=$n | slot=$slot seq=$seq | took $((SECONDS - t0)) s | confout-minus-data.h5 mtime: min $omin max $omax s"
   return 0
@@ -236,7 +237,7 @@ rc_snap_try() {
 
 rc_snapshot_loop() {
   local d sp
-  rc_require_h5 || return 1
+  if ! rc_require_h5 >/dev/null; then rc_snap_log "SNAPSHOT LOOP NOT RUNNING: h5ls not found, NO SNAPSHOTS WILL BE TAKEN"; return 1; fi
   trap '[ -n "${sp:-}" ] && kill "$sp" 2>/dev/null; exit 0' TERM INT
   rc_snap_log "snapshot loop started: interval=${SNAP_INTERVAL:-1800}s poll=${SNAP_POLL:-30}s quiet=${SNAP_QUIET_DATA:-10}/${SNAP_QUIET_CONF:-5}s slack=${SNAP_CONF_SLACK:-0}s pid=$$"
   while :; do
@@ -247,44 +248,84 @@ rc_snapshot_loop() {
 }
 
 # ---- restore ---------------------------------------------------------------------------------------------------------------------
-rc_restore_slot() {   # $1 = Temp_i, $2 = slot dir ; return 0 if restored from it
-  local d=$1 s=$2 f b n=0
-  rc_slot_meta "$s" || return 1
-  [ -f "$s/data.h5" ] || return 1
-  b=$(rc_bins "$s/data.h5")
-  [ "$b" = "$M_BINS" ] || { rc_log "$s: data.h5 has $b bins, marker says $M_BINS"; return 1; }
-  for f in "$s"/confout_*.h5; do
+# Restore Temp_i from a source directory: kind "snap" (data.h5 + confout_*.h5, validated against its COMPLETE marker) or "segbak" (optional data.h5 + confin_*).
+# Everything is first copied to temporary names next to the live files; the live data.h5 / confin_* are only replaced (mv) after ALL copies succeeded,
+# so a full disk or a kill during the copy never destroys the live data. Return 0 if restored (RC_RBINS = bins), 1 otherwise (nothing changed).
+rc_restore_from() {   # $1 = Temp_i, $2 = source dir, $3 = snap|segbak
+  local d=$1 s=$2 kind=$3 f k b=0 n=0 pre
+  if [ "$kind" = snap ]; then
+    rc_slot_meta "$s" || return 1
+    [ -f "$s/data.h5" ] || return 1
+    b=$(rc_bins "$s/data.h5")
+    [ "$b" = "$M_BINS" ] || { rc_log "$s: data.h5 has $b bins, marker says $M_BINS"; return 1; }
+    pre=confout
+    for f in "$s"/confout_*.h5; do
+      [ -e "$f" ] || continue
+      rc_h5ls -r "$f" >/dev/null 2>&1 || { rc_log "$s: ${f##*/} unreadable"; return 1; }
+      n=$((n + 1))
+    done
+    [ "$n" = "$M_W" ] || { rc_log "$s: $n confout files, marker says $M_W"; return 1; }
+  else
+    [ -f "$s/COMPLETE" ] || return 1
+    pre=confin
+    if [ -f "$s/data.h5" ]; then b=$(rc_bins "$s/data.h5"); [ "$b" -ge 0 ] || { rc_log "$s: data.h5 unusable ($b)"; return 1; }; fi
+  fi
+  rm -f "$d"/*.rtmp
+  for f in "$s/${pre}"_*; do
     [ -e "$f" ] || continue
-    rc_h5ls -r "$f" >/dev/null 2>&1 || { rc_log "$s: ${f##*/} unreadable"; return 1; }
-    n=$((n + 1))
+    cp -p "$f" "$d/confin_${f##*/${pre}_}.rtmp" || { rc_log "$d: copy of ${f##*/} FAILED (disk full?), nothing changed"; rm -f "$d"/*.rtmp; return 1; }
   done
-  [ "$n" = "$M_W" ] || { rc_log "$s: $n confout files, marker says $M_W"; return 1; }
-  rm -f "$d"/confout_* "$d"/confin_* "$d/data.h5" || return 1
-  for f in "$s"/confout_*.h5; do cp -p "$f" "$d/confin_${f##*/confout_}" || return 1; done
-  cp -p "$s/data.h5" "$d/data.h5" || return 1      # data.h5 last
+  if [ -f "$s/data.h5" ]; then
+    cp -p "$s/data.h5" "$d/data.h5.rtmp" && [ -f "$d/data.h5.rtmp" ] || { rc_log "$d: copy of data.h5 FAILED (disk full?), nothing changed"; rm -f "$d"/*.rtmp; return 1; }
+  fi
+  # all copies are on disk: now switch over
+  for f in "$d"/confin_*.rtmp; do [ -e "$f" ] && { mv -f "$f" "${f%.rtmp}" || return 1; }; done
+  rm -f "$d"/confout_*
+  if [ -f "$d/data.h5.rtmp" ]; then mv -f "$d/data.h5.rtmp" "$d/data.h5" || return 1      # data.h5 last
+  else rm -f "$d/data.h5"; fi
   RC_RBINS=$b
   return 0
 }
 
-# $1 = Temp_i, $2 = bins before the damage ("?" if unreadable). Sets RC_RWHAT (what was used) and RC_RBINS (bins restored).
+# $1 = Temp_i, $2 = bins before the damage ("?" if unreadable). Sources: the valid snapshot slots and .segbak; the one with the most bins wins
+# (ties: snapshot). Sets RC_RWHAT (what was used) and RC_RBINS (bins restored).
 rc_restore_set() {
-  local d=$1 before=${2:-?} b=$1/.segbak f s
+  local d=$1 before=${2:-?} line b p kind name cands
   RC_RWHAT=""; RC_RBINS=0
   : > "$d/.restoring"           # present until the restore is complete: a kill in between makes the next start restore again
-  for s in $(rc_snap_order "$d"); do
-    if rc_restore_slot "$d" "$d/.snap/$s"; then RC_RWHAT="snapshot $s"; break; fi
-    rc_log "$d: snapshot slot $s not usable"
-  done
-  if [ -z "$RC_RWHAT" ]; then
-    if [ ! -f "$b/COMPLETE" ]; then rc_log "FATAL: $d is damaged but there is neither a usable snapshot nor $b/COMPLETE"; return 1; fi
-    rm -f "$d"/confout_* "$d"/confin_* "$d/data.h5" || return 1
-    for f in "$b"/confin_*; do [ -e "$f" ] || continue; cp -p "$f" "$d/" || return 1; done
-    if [ -f "$b/data.h5" ]; then cp -p "$b/data.h5" "$d/data.h5" || return 1; RC_RBINS=$(rc_bins "$d/data.h5"); fi
-    RC_RWHAT="segment-start backup"
-  fi
+  cands=$( {
+    for name in $(rc_snap_order "$d"); do rc_slot_meta "$d/.snap/$name" && echo "$M_BINS 1 $d/.snap/$name snap snapshot-$name"; done
+    if [ -f "$d/.segbak/COMPLETE" ]; then
+      b=0; [ -f "$d/.segbak/data.h5" ] && b=$(rc_bins "$d/.segbak/data.h5"); [ "$b" -ge 0 ] && echo "$b 0 $d/.segbak segbak segment-start-backup"
+    fi
+  } | sort -k1,1nr -k2,2nr )
+  if [ -z "$cands" ]; then rc_log "FATAL: $d is damaged but there is neither a usable snapshot nor a complete $d/.segbak"; return 1; fi
+  while read -r b _ p kind name; do
+    [ -n "$p" ] || continue
+    if rc_restore_from "$d" "$p" "$kind"; then RC_RWHAT="$name"; break; fi
+    rc_log "$d: source $name (bins $b) not usable, trying the next"
+  done <<EOF
+$cands
+EOF
+  if [ -z "$RC_RWHAT" ]; then rc_log "FATAL: $d: no source could be restored"; return 1; fi
   rm -f "$d/.restoring"
   rc_log "$d: restored from $RC_RWHAT: $RC_RBINS bins (before the damage: $before) -> bins lost: $( [ "$before" = "?" ] && echo "unknown (data.h5 unreadable)" || echo $((before - RC_RBINS)) )"
   return 0
+}
+
+# spread of the confout mtimes relative to data.h5 of a set ("min max seconds", confout minus data.h5)
+rc_mtime_spread() {
+  local d=$1 f dm cm off omin="" omax="" n=0
+  [ -f "$d/data.h5" ] || { echo "n/a"; return 0; }
+  dm=$(rc_mtime "$d/data.h5")
+  for f in "$d"/confout_*.h5; do
+    [ -e "$f" ] || continue
+    cm=$(rc_mtime "$f"); n=$((n + 1))
+    off=$(awk -v a="$cm" -v b="$dm" 'BEGIN { printf "%.3f", a - b }')
+    omin=$(awk -v x="$omin" -v y="$off" 'BEGIN { print (x == "" || y + 0 < x + 0) ? y : x }')
+    omax=$(awk -v x="$omax" -v y="$off" 'BEGIN { print (x == "" || y + 0 > x + 0) ? y : x }')
+  done
+  if [ $n -eq 0 ]; then echo "no confout files"; else echo "$n confout files, mtime minus data.h5: min $omin max $omax s"; fi
 }
 
 # b) recovery after a killed segment
@@ -315,6 +356,9 @@ rc_recover() {
       nrest=$((nrest + 1))
     else
       nkept=$((nkept + 1))
+      # kept after a kill: ranks other than rank 0 write confout before rank 0 has appended data.h5, so after a kill the confouts of a set can
+      # belong to different bins (independent walkers: no bias, but recorded)
+      echo "$(rc_ts) | job=${SLURM_JOB_ID:-none} | kept $d after a kill: data.h5 $before bins; $(rc_mtime_spread "$d")" >> "$RC_LOG_FILE"
     fi
   done
   rc_log "previous segment was killed: $nkept set(s) kept as they are, $nrest restored"

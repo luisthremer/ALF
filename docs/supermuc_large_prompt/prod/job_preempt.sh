@@ -27,6 +27,9 @@ module load slurm_setup
 module load intel/2025.3.0 intel-mpi/2021.15.0
 module unload intel-mkl
 module load intel-mkl/2025.3.0 hdf5/1.14.5-intel25
+for tool in h5ls mpiexec; do
+  command -v $tool >/dev/null 2>&1 || { echo "FATAL: $tool not found after the module block (hdf5/1.14.5-intel25, intel-mpi); aborting before touching any file" >&2; exit 2; }
+done
 
 export OMP_TARGET_OFFLOAD=MANDATORY
 export OMP_NUM_THREADS=##OMPT##
@@ -44,6 +47,11 @@ if [ ! -f "$RECOVER_SH" ]; then echo "FATAL: $RECOVER_SH not found (copy prod/re
 source "$RECOVER_SH"
 
 echo "job ${SLURM_JOB_ID:-?} restart_count ${SLURM_RESTART_COUNT:-0} on $(hostname) at $(rc_ts)"
+# requeue cap: a job that keeps dying (crash loop) must not be requeued forever
+if [ "${SLURM_RESTART_COUNT:-0}" -gt "${MAX_RESTARTS:-100}" ]; then
+  echo "$(rc_ts) | job=${SLURM_JOB_ID:-none} | restart_count=${SLURM_RESTART_COUNT:-0} | MAX_RESTARTS=${MAX_RESTARTS:-100} exceeded, exit 4" | tee -a "$RC_LOG_FILE"
+  exit 4
+fi
 if rc_stop_guard; then
   rc_log "stop guard: every Temp_* has >= $TARGET_BINS bins, nothing to do"
   echo "$(rc_ts) | job=${SLURM_JOB_ID:-none} | restart_count=${SLURM_RESTART_COUNT:-0} | stop guard: target $TARGET_BINS bins reached, exit 0 | bins=[$(rc_bins_all)]" >> "$RC_LOG_FILE"
@@ -59,6 +67,8 @@ export SNAP_CONF_SLACK=${SNAP_CONF_SLACK:-5}
 rc_snapshot_loop >> snapshot_loop.out 2>&1 &
 SNAP_PID=$!
 trap 'kill $SNAP_PID 2>/dev/null' EXIT
+sleep 3
+kill -0 $SNAP_PID 2>/dev/null || { echo "$(rc_ts) | SNAPSHOT LOOP NOT RUNNING (died at start, see snapshot_loop.out): NO SNAPSHOTS WILL BE TAKEN" | tee -a snapshots.log >&2; }
 
 mpiexec -n $SLURM_NTASKS ##EXECUTABLE##
 RC_EXIT=$?

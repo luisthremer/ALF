@@ -37,14 +37,24 @@ rerun from the top with the same job id (max 7 days, 40 nodes). These files make
 a. **Stop guard**: if every `Temp_*/data.h5` has >= TARGET_BINS bins, log and `exit 0`.
 b. **RUNNING exists** (the previous segment was killed or crashed): per `Temp_i`, `h5ls -r` must read `data.h5` and every `confout_*.h5`,
    and all bin datasets (`<obs>/sign`, `/obser`, `/back`) of `data.h5` must have the same number of bins (a kill between two appends leaves them different).
-   An undamaged set is not touched. A damaged set is restored from the **newest complete rolling snapshot** (`Temp_i/.snap/A|B`: `data.h5` plus its
-   `confout_*.h5` copied in as `confin_*.h5`, damaged confouts removed), else from the other slot, else from `Temp_i/.segbak/` (segment start, last resort).
-   The slot is re-verified before use (bins of its data.h5 = bins in its COMPLETE marker, number of confouts = walkers, all readable). Log: bins before the damage vs restored = bins lost.
+   An undamaged set is not touched (but see "Kept sets" below). A damaged set is restored from the valid source with the **most bins** among the rolling snapshot slots
+   (`Temp_i/.snap/A|B`: `data.h5` plus its `confout_*.h5` copied in as `confin_*.h5`) and `Temp_i/.segbak/` (segment start); on a tie the snapshot wins; if a source cannot be used the next one is tried.
+   The files are first copied to temporary names (`*.rtmp`) and the live `data.h5` / `confin_*` are replaced by `mv` only after all copies succeeded, so a full disk during a restore changes nothing.
+   A snapshot slot is re-verified before use (bins of its data.h5 = bins in its COMPLETE marker, number of confouts = walkers, all readable). Log: bins before the damage vs restored = bins lost.
    A file `Temp_i/.restoring` marks a restore in progress, so a kill during the restore is repaired again at the next start. With no usable snapshot and no backup the script stops
    (exit 3) and leaves everything for inspection. Then `RUNNING` is removed.
 c. `confout_*` -> `confin_*` per `Temp_i` (refuses if plain and `.h5` confout both exist).
 d. Backup of the segment start: `Temp_i/.segbak/` = `cp -p` of `data.h5` and `confin_*` (old backup cleared first, marker file `COMPLETE` written last).
 e. One line per segment start and end in `segments.log` (date, `SLURM_JOB_ID`, `SLURM_RESTART_COUNT`, bins per set, recovery action, exit code).
+
+## Kept sets, requeue cap, tools
+
+- **Kept sets**: when a set is kept after a kill, its confouts can belong to different bins: ranks other than rank 0 write their confout before rank 0 has appended `data.h5`, so a kill can fall between. The walkers are independent
+  Markov chains, so this introduces no bias (each continues from its own last configuration; `data.h5` may carry one bin more or less than some chains). `segments.log` records per kept set the spread of the confout mtimes
+  relative to `data.h5` ("kept Temp_i after a kill: ... min .. max s").
+- **Requeue cap**: if `SLURM_RESTART_COUNT` > `MAX_RESTARTS` (default 100, edit the job script) the job logs and exits with 4.
+- **Tool check**: right after the module block the job script aborts (exit 2) if `h5ls` or `mpiexec` is missing; if the snapshot loop cannot run or dies at start, a loud line goes to `snapshots.log`.
+- Failures to copy a snapshot (disk full, quota) are logged to `snapshots.log`; the previous slot stays valid.
 
 ## Rolling snapshots (limits the loss of a corrupting kill to about SNAP_INTERVAL = 30 min of one set)
 
