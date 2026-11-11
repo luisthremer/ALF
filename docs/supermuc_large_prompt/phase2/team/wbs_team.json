@@ -145,8 +145,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "",
-      "done" : false,
+      "description" : "Owner 2026-11-11: single-chain speed is the target (per-card throughput already met, 0.51 vs 0.43); Phase C covers both QR\/LU and update-phase latency; preempt partition OK.",
+      "done" : true,
       "id" : "n_a1w6x2on",
       "order" : 3,
       "parentId" : "n_fy5jf2xm",
@@ -166,8 +166,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "",
-      "done" : false,
+      "description" : "oneMKL docs: device geqrf is officially hybrid (part on CPU), no switch. Earlier OpenMP device QR prototypes 55-120 ms at N=576 (their data). Probe job 560206: module-allocatable arrays cost 16.0 us\/launch vs 10.7 us with explicit-shape dummies (C); declare target 1318 us (C, unusable). Standalone SYCL bench unreliable on this system (needs V2 adapter; geqrf 87 ms vs 9.4 ms in ALF; batched results inconsistent).",
+      "done" : true,
       "id" : "n_r87zm40k",
       "order" : 0,
       "parentId" : "n_wn2dza0r",
