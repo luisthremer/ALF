@@ -295,8 +295,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "Count target regions, target updates, la_* calls and la_sync per sweep (existing upd_cnt\/n_flush counters or LIBOMPTARGET_PROFILE=T \/ unitrace if available). Split by phase: block update, wrap, stabilisation, measurement.",
-      "done" : false,
+      "description" : "Count target regions, target updates, la_* calls and la_sync per sweep (existing upd_cnt\/n_flush counters or LIBOMPTARGET_PROFILE=T \/ unitrace if available). Split by phase: block update, wrap, stabilisation, measurement.\nTeam session 2026-11-11 (C, LIBOMPTARGET_DEBUG, L=24 one tile): per sweep ~75,000 kernel launches (60,000 gpu_lowrank_mod), ~40,000 dispatched BLAS with interop sync, ~374,000 small H2D copies, ~168,800 first-private arrays; after commit de3f7306: 49,530 launches, 28,544 first-private arrays. See ISSUE_INTEL_VS_A30.md.",
+      "done" : true,
       "id" : "n_kr6vsf5q",
       "order" : 1,
       "parentId" : "n_8l3e855k",
@@ -304,8 +304,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "L=24 (ref_L24 parameters) and L=32: s\/sweep per chain and node sweeps\/s for 8 ranks (1 per tile) and 32 ranks (CCS). Marginal cost from runs of 1 and 4 sweeps (wall clock, not CPU time). Record xpu-smi per-tile busy.",
-      "done" : false,
+      "description" : "L=24 (ref_L24 parameters) and L=32: s\/sweep per chain and node sweeps\/s for 8 ranks (1 per tile) and 32 ranks (CCS). Marginal cost from runs of 1 and 4 sweeps (wall clock, not CPU time). Record xpu-smi per-tile busy.\nTeam session (C): L=24 one tile 9.0-10.5 s\/sweep (in-loop timer; 10.1-14.6 with wall-difference method), phases update 55 %, CGR 17 %, stab 14 %, obs 12 %; L=32 29-32 s. ISSUE_INTEL_VS_A30.md section 3.",
+      "done" : true,
       "id" : "n_onb0xxgd",
       "order" : 2,
       "parentId" : "n_8l3e855k",
@@ -322,8 +322,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "run_cmp_sng.py\/compare.py against the ifx CPU build; acceptance for every later change: Mz=F <= 1e-13 relative, identical configs, ctest 53\/53. Script it so one command checks a new binary.",
-      "done" : false,
+      "description" : "run_cmp_sng.py\/compare.py against the ifx CPU build; acceptance for every later change: Mz=F <= 1e-13 relative, identical configs, ctest 53\/53. Script it so one command checks a new binary.\nTeam session (C): phase2\/team\/tm_cmp.sh (tol 1e-13 Mz=F) + run_cmp_gg.py (GPU vs GPU bitwise). Controls: eps 1e-12 caught marginally, ALF_GPU_NS=0 not caught at L=12; bitwise GPU-vs-GPU catches 1e-12.",
+      "done" : true,
       "id" : "n_e1ytvcg5",
       "order" : 4,
       "parentId" : "n_8l3e855k",
@@ -343,8 +343,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "Batch 1 and batch 2 (both flavours) at N=576, 784, 1024: time vs geqrf, and check with VTune or gdb sampling whether any host panel runs. If it is device-only and fast, it is the cheapest solution.",
-      "done" : false,
+      "description" : "Batch 1 and batch 2 (both flavours) at N=576, 784, 1024: time vs geqrf, and check with VTune or gdb sampling whether any host panel runs. If it is device-only and fast, it is the cheapest solution.\nTeam session Phase 1 (C, job 560233): geqrf_batch (batch 1) 9.7\/28.9 ms vs plain 10.1\/28.4 ms at L24\/L32 (same hybrid path), getrf_batch 2.6-4x slower. Not host-free in effect; reverted.",
+      "done" : true,
       "id" : "n_se5s9bc5",
       "order" : 0,
       "parentId" : "n_i2c0rsbk",

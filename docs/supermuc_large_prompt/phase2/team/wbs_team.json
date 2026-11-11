@@ -53,7 +53,7 @@
         "n_h0zn35sr"
       ],
       "description" : "Builds, ctest, same-seed comparison against ifx GPU=none, planted-defect control, baseline timings.",
-      "done" : false,
+      "done" : true,
       "id" : "n_z8umbxo0",
       "order" : 1,
       "parentId" : null,
@@ -89,7 +89,7 @@
     {
       "collapsed" : false,
       "description" : "C: eps:1e-12 caught (1.1e-13 > 1e-13, marginal); ALF_GPU_NS=0 NOT caught at L=12 (8e-15). Needs a stronger control or a Precision Green check.",
-      "done" : false,
+      "done" : true,
       "id" : "n_wduq2swm",
       "order" : 3,
       "parentId" : "n_z8umbxo0",
@@ -110,7 +110,7 @@
         "n_z8umbxo0"
       ],
       "description" : "Where the time goes on Max 1550 vs A30, what runs on the host and why.",
-      "done" : false,
+      "done" : true,
       "id" : "n_fy5jf2xm",
       "order" : 2,
       "parentId" : null,
@@ -158,7 +158,7 @@
         "n_fy5jf2xm"
       ],
       "description" : "Same-algorithm options only (Householder QR, partial-pivot LU).",
-      "done" : false,
+      "done" : true,
       "id" : "n_wn2dza0r",
       "order" : 3,
       "parentId" : null,
@@ -176,7 +176,7 @@
     {
       "collapsed" : false,
       "description" : "Phase 1 (A2, job 560233, C): oneMKL geqrf_batch (batch 1) 9.7\/28.9 ms per call at L24\/L32 vs plain 10.1\/28.4 (no gain, same Precision Green); getrf_batch 10.5\/37.0 ms vs 4.0\/8.9 (slower). Same-seed check passed. Gate failed, switch reverted (patch phase1_batch_switch.patch). Run-to-run noise of the L24 sweep ~1 s (10.1-11.5). Phase 2 (B1+B2) next.",
-      "done" : false,
+      "done" : true,
       "id" : "n_671xrazy",
       "order" : 1,
       "parentId" : "n_wn2dza0r",
@@ -184,8 +184,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "",
-      "done" : false,
+      "description" : "Owner: phased plan (A2, then B1+B2), continue past 5 % usage up to 10 %.",
+      "done" : true,
       "id" : "n_ulnuru0c",
       "order" : 2,
       "parentId" : "n_wn2dza0r",
@@ -197,7 +197,7 @@
         "n_wn2dza0r"
       ],
       "description" : "",
-      "done" : false,
+      "done" : true,
       "id" : "n_g4twgzat",
       "order" : 4,
       "parentId" : null,
@@ -205,8 +205,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "",
-      "done" : false,
+      "description" : "Commit de3f7306 (gpu_lowrank_mod dummies + fused k_blk_scale); map(present) Intel-only; CUDA compiles (nvfortran, A30 host), not run.",
+      "done" : true,
       "id" : "n_f8a84eio",
       "order" : 0,
       "parentId" : "n_g4twgzat",
@@ -214,8 +214,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "",
-      "done" : false,
+      "description" : "APPROVE WITH NOTES (static): extents\/slices correct, fused kernel race-free and bit-identical; note: build+run on nvfortran.",
+      "done" : true,
       "id" : "n_qdqkpl5h",
       "order" : 1,
       "parentId" : "n_g4twgzat",
@@ -223,8 +223,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "",
-      "done" : false,
+      "description" : "C: L24 one tile 9.68 -> 9.28 s\/sweep (4 alternating pairs, in-loop timer; prototyper 10.51 -> 9.32); L32 31.6 -> 27.4 (1 pair); per card 0.51 -> 0.52 (A30 0.43). Single-chain target not met (~1.8x \/ ~1.5x).",
+      "done" : true,
       "id" : "n_279szlz2",
       "order" : 2,
       "parentId" : "n_g4twgzat",
@@ -232,8 +232,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "",
-      "done" : false,
+      "description" : "docs\/supermuc_large_prompt\/ISSUE_INTEL_VS_A30.md; commits d2b35605, 5ceb2291, 9ac8cc1e, de3f7306 (+ docs); ~3.0 node-h (E), usage ~6 %.",
+      "done" : true,
       "id" : "n_79rg49gy",
       "order" : 3,
       "parentId" : "n_g4twgzat",

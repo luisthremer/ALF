@@ -23,9 +23,9 @@ case $V in
   nompi)     ARGS="IntelLLVM noMPI GPU=intel HDF5 NO-INTERACTIVE" ;;
   cpu-mpi)   ARGS="IntelLLVM MPI HDF5 NO-INTERACTIVE" ;;
   cpu-nompi) ARGS="IntelLLVM noMPI HDF5 NO-INTERACTIVE" ;;
-  gpu-txt)   ARGS="IntelLLVM MPI GPU=intel NO-INTERACTIVE" ;;   # text observables (no HDF5): same-seed comparisons
+  txtnew|gpu-txt)   ARGS="IntelLLVM MPI GPU=intel NO-INTERACTIVE" ;;   # text observables (no HDF5): same-seed comparisons
   cpu-txt)   ARGS="IntelLLVM MPI NO-INTERACTIVE" ;;
-  aottt|aottim|aot)       ARGS="IntelLLVM MPI GPU=intel HDF5 NO-INTERACTIVE" ;;   # like mpi, but ahead-of-time compiled for PVC (spir64_gen)
+  aotttnew|aotnew|aottt|aottim|aot)       ARGS="IntelLLVM MPI GPU=intel HDF5 NO-INTERACTIVE" ;;   # like mpi, but ahead-of-time compiled for PVC (spir64_gen)
   pp)        ARGS="IntelLLVM PP GPU=intel HDF5 NO-INTERACTIVE" ;;      # PARALLEL_PARAMS production binary (merged -mpi-pp)
   gpu-pptxt) ARGS="IntelLLVM PP GPU=intel NO-INTERACTIVE" ;;
   cpu-pptxt) ARGS="IntelLLVM PP NO-INTERACTIVE" ;;
@@ -47,14 +47,14 @@ echo "configure $ARGS"; date -Is
 source ./configure.sh $ARGS > configure.log 2>&1; tail -12 configure.log   # never pipe a sourced script
 # LRZ HDF5 has separate Fortran C-stub libs (libhdf5_f90cstub.a, libhdf5_hl_f90cstub.a); they must follow libhdf5_fortran.a
 case "$ARGS" in *HDF5*) export ALF_LIB="$ALF_LIB $H5/lib/libhdf5_hl_f90cstub.a $H5/lib/libhdf5_hl.a $H5/lib/libhdf5_f90cstub.a $H5/lib/libhdf5.a -lz -ldl -lm";; esac
-case "$V" in aot|aottim|aottt|pp-aot) AOTB=1;; *) AOTB=0;; esac
+case "$V" in aot|aotttnew|aotnew|aottim|aottt|pp-aot) AOTB=1;; *) AOTB=0;; esac
 if [ "$AOTB" = 1 ]; then   # AOT for PVC instead of JIT: spir64 -> spir64_gen + ocloc device pvc (ocloc: /usr/bin/ocloc)
   for v in ALF_FLAGS_MODULES ALF_FLAGS_ANA ALF_FLAGS_PROG ALF_LIB; do
     eval "export $v=\"\${$v//-fopenmp-targets=spir64/-fopenmp-targets=spir64_gen -Xopenmp-target-backend -device -Xopenmp-target-backend pvc}\""   # no quotes: the Makefiles re-split the flags
   done
   echo "AOT flags: $ALF_FLAGS_PROG" | cut -c1-600
 fi
-[ "$V" = aottt ] && export ALF_FLAGS_PROG="$ALF_FLAGS_PROG -DALF_TEAM_TIMERS"   # opt-in phase timers (main.F90)
+case "$V" in aottt|aotttnew) export ALF_FLAGS_PROG="$ALF_FLAGS_PROG -DALF_TEAM_TIMERS";; esac   # opt-in phase timers (main.F90)
 env | grep ^ALF_ | cut -c1-400
 export OMP_NUM_THREADS=1
 ( time make -j48 all ) 2>&1 | tail -60
