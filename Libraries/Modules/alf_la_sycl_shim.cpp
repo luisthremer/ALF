@@ -109,6 +109,9 @@ int alfsh_init(void *q) {
   });
 }
 
+// The queue handed to alfsh_init (for the asynchronous block path, libalfsb: same in-order queue). nullptr before alfsh_init.
+void *alfsh_get_queue() { return static_cast<void *>(g_q); }
+
 // Opens the gate of the ordering-break test hook (idempotent, async-signal-safe enough: one atomic store). Called by
 // alfsh_wait, alfsh_finalize, the Fortran failure path (om_fail) and at process exit, so that an error exit while the gate
 // is closed cannot leave the host task spinning (the runtime shutdown would wait for it).

@@ -40,7 +40,13 @@ ifeq ($(ALF_GPU),intel)
 SHIMOBJ = alf_la_sycl_shim.o
 alf_la_sycl_shim.o: alf_la_sycl_shim.cpp
 	icpx -fsycl -O2 -std=c++17 -I$(MKLROOT)/include -c $<
+# asynchronous block path: user SYCL kernels need the sycl driver link, hence a shared library (ALF_SYCL_BLK_FLAGS, set by
+# the user for AOT: -fsycl-targets=spir64_gen -Xs "-device pvc"; default JIT)
+SYCLBLK = libalfsb.so
+libalfsb.so: alf_la_sycl_blk.cpp
+	icpx -fsycl -fPIC -shared -O2 -std=c++17 $(ALF_SYCL_BLK_FLAGS) -I$(MKLROOT)/include alf_la_sycl_blk.cpp -o $@ -L$(MKLROOT)/lib -lmkl_sycl_blas -lmkl_intel_ilp64 -lmkl_sequential -lmkl_core
 endif
+lib: $(SYCLBLK)
 
 $(LIB): $(DEPSFILE) $(OBJS) $(SHIMOBJ)
 	ar -r $(LIB) $(OBJS) $(SHIMOBJ)
@@ -82,7 +88,7 @@ $(DEPSFILE): $(SRCS) $(DEPSGEN)
 	python3 $(DEPSGEN) $(SRCS) > $(DEPSFILE)
 
 clean: $(DEPSFILE)
-	rm -f $(OBJS) $(MODS) $(LIB) $(DEPSFILE) libfakeintel.so alf_la_sycl_shim.o
+	rm -f $(OBJS) $(MODS) $(LIB) $(DEPSFILE) libfakeintel.so alf_la_sycl_shim.o libalfsb.so
 
 #unused modules: histograms histograms_v2 log_mesh natural_constants
 #unused, except for in Prog/FFA_Orginals/: precdef

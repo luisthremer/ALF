@@ -14,8 +14,8 @@
 #SBATCH --cpus-per-task=64
 # usage: sbatch build_intel.sh <variant: mpi|nompi|cpu-mpi|cpu-nompi|gpu-txt|cpu-txt|gpu-ser|cpu-ser> [ctest]
 V=${1:-mpi}
-SRC=$SCRATCH/large_prompt/team/p3/src
-BLD=$SCRATCH/large_prompt/team/p3/build_$V
+SRC=${SRC:-$SCRATCH/large_prompt/team/p3/src}
+BLD=${BLD:-$SCRATCH/large_prompt/team/p3/build_$V}
 source $SCRATCH/large_prompt/team/jobs/env_intel_pvc.sh
 module -t list 2>&1; echo MKLROOT=$MKLROOT
 rm -rf $BLD; mkdir -p $BLD; cp -r $SRC/. $BLD/; cd $BLD
@@ -49,7 +49,9 @@ source ./configure.sh $ARGS > configure.log 2>&1; tail -12 configure.log   # nev
 # LRZ HDF5 has separate Fortran C-stub libs (libhdf5_f90cstub.a, libhdf5_hl_f90cstub.a); they must follow libhdf5_fortran.a
 case "$ARGS" in *HDF5*) export ALF_LIB="$ALF_LIB $H5/lib/libhdf5_hl_f90cstub.a $H5/lib/libhdf5_hl.a $H5/lib/libhdf5_f90cstub.a $H5/lib/libhdf5.a -lz -ldl -lm";; esac
 case "$V" in aot|aotttnew|aotnew|aottim|aottt|pp-aot) AOTB=1;; *) AOTB=0;; esac
-if [ "$AOTB" = 1 ]; then   # AOT for PVC instead of JIT: spir64 -> spir64_gen + ocloc device pvc (ocloc: /usr/bin/ocloc)
+if [ "$AOTB" = 1 ]; then
+  export ALF_SYCL_BLK_FLAGS='-fsycl-targets=spir64_gen -Xs "-device pvc"'   # libalfsb.so (async block kernels): AOT too
+  # AOT for PVC instead of JIT: spir64 -> spir64_gen + ocloc device pvc (ocloc: /usr/bin/ocloc)
   for v in ALF_FLAGS_MODULES ALF_FLAGS_ANA ALF_FLAGS_PROG ALF_LIB; do
     eval "export $v=\"\${$v//-fopenmp-targets=spir64/-fopenmp-targets=spir64_gen -Xopenmp-target-backend -device -Xopenmp-target-backend pvc}\""   # no quotes: the Makefiles re-split the flags
   done

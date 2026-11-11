@@ -63,6 +63,9 @@ Module gpu_lowrank_mod
   Use QMC_runtime_var, only: get_Sequential_scheme, get_N_delay
   Use alf_la_mod, only: la_gemm, la_sync, LA_N, LA_T
   Use gpu_state_mod
+#if defined(ALF_LA_ONEMKL)
+  Use iso_c_binding, only: c_ptr, c_int, c_int64_t, c_intptr_t, c_double, c_loc, c_f_pointer, c_associated, c_null_ptr
+#endif
 
   Implicit none
 
@@ -119,6 +122,55 @@ Module gpu_lowrank_mod
   Integer, Allocatable, Save :: bidx(:,:), bs_h(:,:), bsd(:,:), bS_d(:,:)
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: W_h(:,:), grow_h(:,:)   ! cached proposal data (nd, N_FL) host, per flavour
   Integer, Allocatable, Save :: prop_p(:), prop_k(:)          ! site and pending count of the cached proposal, per flavour
+#if defined(ALF_LA_ONEMKL)
+  ! Asynchronous block path (env ALFSH_ASYNCBLK=1, read once in ab_setup): the device sequence of a block as SYCL kernels +
+  ! oneMKL GEMM on the interop queue (libalfsb, Libraries/Modules/alf_la_sycl_blk.cpp), no wait except the D2H of the block gather
+  Logical, Save :: ab_on = .false., ab_pending = .false.
+  Type (c_ptr), Save :: ab_pG, ab_pX, ab_pS, ab_pBs, ab_pBS2, ab_pCb, ab_pSl, ab_pNs, ab_pGb, ab_ph
+  Complex (Kind=Kind(0.d0)), Pointer, Save :: gbh(:,:,:) => null()      ! host-USM landing buffer of the block gather
+  Interface
+    Type (c_ptr) Function alfsh_get_queue() Bind(C, name='alfsh_get_queue')
+      Import :: c_ptr
+    End Function
+    Integer (c_int) Function alfsb_init(q) Bind(C, name='alfsb_init')
+      Import :: c_ptr, c_int
+      Type (c_ptr), Value :: q
+    End Function
+    Type (c_ptr) Function alfsb_alloc_host(nbytes) Bind(C, name='alfsb_alloc_host')
+      Import :: c_ptr, c_int64_t
+      Integer (c_int64_t), Value :: nbytes
+    End Function
+    Integer (c_int) Function alfsb_wait() Bind(C, name='alfsb_wait')
+      Import :: c_int
+    End Function
+    Integer (c_int) Function alfsb_copy(dst, src, nbytes) Bind(C, name='alfsb_copy')
+      Import :: c_ptr, c_int, c_int64_t
+      Type (c_ptr), Value :: dst, src
+      Integer (c_int64_t), Value :: nbytes
+    End Function
+    Integer (c_int) Function alfsb_gather(nfl, nfa, nfb, ld, b, nd, gbk, bsk, Gk) Bind(C, name='alfsb_gather')
+      Import :: c_ptr, c_int
+      Integer (c_int), Value :: nfl, nfa, nfb, ld, b, nd
+      Type (c_ptr), Value :: gbk, bsk, Gk
+    End Function
+    Integer (c_int) Function alfsb_scale(nfl, nfa, nfb, ld, b, nd, ldc, Gk, bsk, cbk) Bind(C, name='alfsb_scale')
+      Import :: c_ptr, c_int
+      Integer (c_int), Value :: nfl, nfa, nfb, ld, b, nd, ldc
+      Type (c_ptr), Value :: Gk, bsk, cbk
+    End Function
+    Integer (c_int) Function alfsb_fgather(G, ld, nrow, S, k, nf, C, Qt, slot) Bind(C, name='alfsb_fgather')
+      Import :: c_ptr, c_int
+      Integer (c_int), Value :: ld, nrow, k, nf
+      Type (c_ptr), Value :: G, S, C, Qt, slot
+    End Function
+    Integer (c_int) Function alfsb_gemm(ta, tb, m, n, k, ar, ai, A, lda, B, ldb, br, bi, C, ldc) Bind(C, name='alfsb_gemm')
+      Import :: c_ptr, c_int, c_double
+      Integer (c_int), Value :: ta, tb, m, n, k, lda, ldb, ldc
+      Real (c_double), Value :: ar, ai, br, bi
+      Type (c_ptr), Value :: A, B, C
+    End Function
+  End Interface
+#endif
 
 Contains
 
@@ -232,6 +284,9 @@ Contains
     Implicit none
     Character (len=200) :: line
     if (.not. inited) return
+#if defined(ALF_LA_ONEMKL)
+    call ab_drain()
+#endif
     if (mode /= LR_STD) then
        write(line,'(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0)') 'GPU low-rank update counts: proposals ', n_prop, ', accepted ', n_acc, &
             & ', fused steps ', n_fused, ', blocks ', n_blocks, ', flushes ', n_flush(3), ' (capacity ', n_flush(1), ', forced ', n_flush(2)
@@ -404,6 +459,9 @@ Contains
     Integer :: k, m, b
     Complex (Kind=Kind(0.d0)), parameter :: cone = (1.d0,0.d0), cmone = (-1.d0,0.d0), czero = (0.d0,0.d0)
     if (.not. inited .or. mode == LR_STD) return
+#if defined(ALF_LA_ONEMKL)
+    call ab_drain()
+#endif
     k = jc(nf)
     if (k == 0) return
     if (fast) call gpu_lr_sync()                    ! deferred wrap / field / slot work first: G0 must be current
@@ -439,6 +497,9 @@ Contains
     Integer, intent(in) :: reason
     Integer :: nf_eff
     if (.not. inited .or. mode == LR_STD) return
+#if defined(ALF_LA_ONEMKL)
+    call ab_drain()
+#endif
     if (fast) call gpu_lr_sync()
     do nf_eff = 1, N_FL_eff
        call gpu_lr_flush(Calc_Fl_map(nf_eff), reason)
@@ -1204,6 +1265,81 @@ Contains
   end function p3_now
 #endif
 
+#if defined(ALF_LA_ONEMKL)
+  Subroutine ab_check(rc, what)
+    Integer (c_int), intent(in) :: rc
+    Character(len=*), intent(in) :: what
+    if (rc /= 0) then
+       write(error_unit,*) 'gpu_lowrank: asynchronous block path (ALFSH_ASYNCBLK) failed: ', what
+       call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+    endif
+  end subroutine ab_check
+
+  Function devz(A) result(p)
+    Complex (Kind=Kind(0.d0)), Target :: A(*)
+    Type (c_ptr) :: p
+    !$omp target data use_device_addr(A)
+    p = c_loc(A(1))
+    !$omp end target data
+  end function devz
+
+  Function devi(A) result(p)
+    Integer, Target :: A(*)
+    Type (c_ptr) :: p
+    !$omp target data use_device_addr(A)
+    p = c_loc(A(1))
+    !$omp end target data
+  end function devi
+
+  Function offp(p, nbytes) result(q)
+    Type (c_ptr), intent(in) :: p
+    Integer (int64), intent(in) :: nbytes
+    Type (c_ptr) :: q
+    q = transfer(transfer(p, 0_c_intptr_t) + int(nbytes, c_intptr_t), q)
+  end function offp
+
+  Subroutine ab_up_z(dev, h, n)       ! host -> device copy, queued
+    Type (c_ptr), intent(in) :: dev
+    Complex (Kind=Kind(0.d0)), Target :: h(*)
+    Integer, intent(in) :: n
+    call ab_check(alfsb_copy(dev, c_loc(h(1)), 16_c_int64_t*n), 'copy z')
+  end subroutine ab_up_z
+
+  Subroutine ab_up_i(dev, h, n)
+    Type (c_ptr), intent(in) :: dev
+    Integer, Target :: h(*)
+    Integer, intent(in) :: n
+    call ab_check(alfsb_copy(dev, c_loc(h(1)), 4_c_int64_t*n), 'copy i')
+  end subroutine ab_up_i
+
+  Subroutine ab_drain()               ! every queued block operation done (before any other device work / host read of G_d)
+    if (.not. ab_pending) return
+    call ab_check(alfsb_wait(), 'wait')
+    ab_pending = .false.
+  end subroutine ab_drain
+
+  Subroutine ab_setup()
+    Character(len=8) :: v
+    Integer :: st
+    Type (c_ptr) :: qh
+    ab_on = .false.
+    v = ''
+    call get_environment_variable('ALFSH_ASYNCBLK', v, status=st)
+    if (st == 0 .and. trim(v) == '1') ab_on = .true.
+    if (.not. ab_on) return
+    qh = alfsh_get_queue()
+    if (.not. c_associated(qh)) call ab_check(-1_c_int, 'no queue (alf_la not initialised)')
+    st = alfsb_init(qh)
+    if (st /= 0) call ab_check(-1_c_int, 'the interop queue is not in-order')
+    ab_pG = devz(G_d); ab_pX = devz(X_d); ab_pS = devz(scr_c); ab_pSl = devi(slot_d); ab_pNs = devz(nsigma_d)
+    ab_pBs = devi(bsd); ab_pBS2 = devi(bS_d); ab_pCb = devz(cbuf); ab_pGb = devz(gbd)
+    ab_ph = alfsb_alloc_host(16_c_int64_t*nd*nd*2)
+    if (.not. c_associated(ab_ph)) call ab_check(-1_c_int, 'host USM allocation')
+    call c_f_pointer(ab_ph, gbh, [nd, nd, 2])
+    write(output_unit,*) ' gpu_lowrank: ALFSH_ASYNCBLK=1, submatrix blocks run asynchronously on the SYCL queue'
+  end subroutine ab_setup
+#endif
+
   Subroutine blk_alloc()
     Implicit none
     if (allocated(Gb)) return
@@ -1212,6 +1348,9 @@ Contains
     bidx = 0; bs_h = 0; Gb = czero_c; zab_h = czero_c
     bsd = 0; bS_d = 0; gbd = czero_c; cbuf = czero_c
     !$omp target enter data map(alloc: bsd, bS_d, gbd, cbuf)
+#if defined(ALF_LA_ONEMKL)
+    call ab_setup()
+#endif
   end subroutine blk_alloc
 
 !> k_blk_gather: gbd(a,c,fl) = G(s(a),s(c)) for the block sites.
@@ -1287,6 +1426,9 @@ Contains
     ta = p3_now()
 #endif
     call blk_alloc()
+#if defined(ALF_LA_ONEMKL)
+    if (.not. ab_on) &
+#endif
     call la_sync()          ! previous flush (asynchronous library calls) before the new uploads
     blk_open = .true.; blk_v1 = v1; blk_dv = dv; blk_b = b; blk_cnt = 0
     do fl = 1, N_FL_eff
@@ -1304,14 +1446,34 @@ Contains
 #ifdef ALF_TEAM_TIMERS
     tb = p3_now()
 #endif
+#if defined(ALF_LA_ONEMKL)
+    if (ab_on) then
+       call ab_up_i(ab_pBs, bsd, size(bsd))
+       call ab_check(alfsb_gather(N_FL_eff, nfm(1), nfm(2), Ndim, b, nd, ab_pGb, ab_pBs, ab_pG), 'gather')
+       call ab_check(alfsb_copy(ab_ph, ab_pGb, 16_c_int64_t*nd*nd*2), 'copy gbd')
+       ab_pending = .true.
+       call ab_drain()      ! the one unavoidable wait of a block: the host needs G0(B,B)
+    else
+#endif
     !$omp target update to(bsd)
     call k_blk_gather(N_FL_eff, nfm(1), nfm(2), Ndim, b, nd, size(G_d,3), gbd, bsd, G_d)
     !$omp target update from(gbd)
+#if defined(ALF_LA_ONEMKL)
+    endif
+#endif
 #ifdef ALF_TEAM_TIMERS
     tc = p3_now(); p3t(2) = p3t(2) + (tc - tb)
 #endif
     do fl = 1, N_FL_eff
+#if defined(ALF_LA_ONEMKL)
+       if (ab_on) then
+          Gb(1:b,1:b,fl) = gbh(1:b,1:b,fl)
+       else
+#endif
        Gb(1:b,1:b,fl) = gbd(1:b,1:b,fl)
+#if defined(ALF_LA_ONEMKL)
+       endif
+#endif
     enddo
     n_blocks = n_blocks + 1
     upd_cnt(3) = upd_cnt(3) + 1
@@ -1333,6 +1495,9 @@ Contains
     ta = p3_now()
 #endif
     b = blk_b
+#if defined(ALF_LA_ONEMKL)
+    if (.not. ab_on) &
+#endif
     call la_sync()          ! the previous block's flush (cuBLAS) is asynchronous: it must be done before cbuf / bS_d are overwritten
 #ifdef ALF_TEAM_TIMERS
     p3t(4) = p3t(4) + (p3_now() - ta)
@@ -1359,12 +1524,28 @@ Contains
 #ifdef ALF_TEAM_TIMERS
     tb = p3_now()
 #endif
+#if defined(ALF_LA_ONEMKL)
+    if (ab_on) then
+       call ab_up_z(ab_pCb, cbuf, size(cbuf)); call ab_up_i(ab_pBS2, bS_d, size(bS_d))
+    else
+#endif
     !$omp target update to(cbuf, bS_d)
+#if defined(ALF_LA_ONEMKL)
+    endif
+#endif
     do fl = 1, N_FL_eff
        nfm(fl) = Calc_Fl_map(fl)
     enddo
     if (N_FL_eff == 1) nfm(2) = nfm(1)
+#if defined(ALF_LA_ONEMKL)
+    if (ab_on) then
+       call ab_check(alfsb_scale(N_FL_eff, nfm(1), nfm(2), Ndim, b, nd, size(cbuf,1), ab_pG, ab_pBs, ab_pCb), 'scale')
+    else
+#endif
     call k_blk_scale(N_FL_eff, nfm(1), nfm(2), Ndim, b, nd, size(G_d,3), size(cbuf,1), G_d, bsd, cbuf)
+#if defined(ALF_LA_ONEMKL)
+    endif
+#endif
     upd_cnt(4) = upd_cnt(4) + 1
     do fl = 1, N_FL_eff
        nf = Calc_Fl_map(fl)
@@ -1376,13 +1557,39 @@ Contains
        enddo
     enddo
     vmin = min(blk_v1, blk_v1 + blk_dv*(b-1)); vmax = max(blk_v1, blk_v1 + blk_dv*(b-1))
+#if defined(ALF_LA_ONEMKL)
+    if (ab_on) then
+       call ab_up_z(offp(ab_pNs, 16_int64*((vmin-1) + int(size(nsigma_d,1),int64)*(t-1))), nsigma_d(vmin,t), vmax-vmin+1)
+       ab_pending = .true.          ! drained by the next blk_begin, or by the flush / sync entry points at the end of the slice
+    else
+#endif
     !$omp target update to(nsigma_d(vmin:vmax,t))
+#if defined(ALF_LA_ONEMKL)
+    endif
+#endif
     upd_cnt(6) = upd_cnt(6) + 1
     blk_open = .false.; blk_cnt = 0
 #ifdef ALF_TEAM_TIMERS
     tc = p3_now(); p3t(5) = p3t(5) + (tc - tb); p3t(3) = p3t(3) + (tc - ta)
 #endif
   end subroutine blk_end
+
+#if defined(ALF_LA_ONEMKL)
+!> the device sequence of blk_flush on the SYCL queue: same kernel, same two GEMMs (shapes, ops, scalars, leading dimensions)
+  Subroutine ab_flush_dev(nf, fl, kk)
+    Integer, intent(in) :: nf, fl, kk
+    Integer (int64) :: oG, oX, oS2, oC, oB
+    oG  = 16_int64*size(G_d,1)*size(G_d,2)*(nf-1)
+    oX  = 16_int64*size(X_d,1)*size(X_d,2)*(nf-1)
+    oS2 = 16_int64*size(scr_c,1)*size(scr_c,2)
+    oC  = 16_int64*(2*nd + int(size(cbuf,1),int64)*(fl-1))
+    oB  = 4_int64*size(bS_d,1)*(fl-1)
+    call ab_check(alfsb_fgather(offp(ab_pG,oG), Ndim, Ndim, offp(ab_pBS2,oB), kk, nf, offp(ab_pX,oX), ab_pS, ab_pSl), 'fgather')
+    call ab_check(alfsb_gemm(0, 1, Ndim, kk, kk, 1.d0, 0.d0, ab_pS, Ndim, offp(ab_pCb,oC), kk, 0.d0, 0.d0, offp(ab_pS,oS2), Ndim), 'gemm1')
+    call ab_check(alfsb_gemm(0, 1, Ndim, Ndim, kk, -1.d0, 0.d0, offp(ab_pX,oX), Ndim, offp(ab_pS,oS2), Ndim, 1.d0, 0.d0, &
+         offp(ab_pG,oG), Ndim), 'gemm2')
+  end subroutine ab_flush_dev
+#endif
 
 !> flush from the already uploaded S and packed M (bS_d, cbuf): same device sequence as gpu_lr_flush, no further uploads
   Subroutine blk_flush(nf, fl)
@@ -1394,9 +1601,17 @@ Contains
     kk = k
     if (k == 1 .and. nd >= 2) kk = 2
     n_flush(3) = n_flush(3) + 1; n_flush(2) = n_flush(2) + 1
+#if defined(ALF_LA_ONEMKL)
+    if (ab_on) then
+       call ab_flush_dev(nf, fl, kk)
+    else
+#endif
     call k_sub_flush_gather(G_d(1,1,nf), Ndim, Ndim, bS_d(1,fl), kk, nf, X_d(1,1,nf), scr_c(1,1,1), slot_d, size(slot_d,2))
     call la_gemm(LA_N, LA_T, Ndim, kk, kk, cone, scr_c(1,1,1), Ndim, cbuf(2*nd+1,fl), kk, czero, scr_c(1,1,2), Ndim)
     call la_gemm(LA_N, LA_T, Ndim, Ndim, kk, cmone, X_d(1,1,nf), Ndim, scr_c(1,1,2), Ndim, cone, G_d(1,1,nf), Ndim)
+#if defined(ALF_LA_ONEMKL)
+    endif
+#endif
     upd_cnt(4) = upd_cnt(4) + 3
     do m = 1, k
        slot_h(S_h(m,nf),nf) = 0
