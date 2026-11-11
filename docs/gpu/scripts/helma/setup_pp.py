@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Create one PARALLEL_PARAMS run directory (stdlib only; replaces pp_setup.py/prepare_sim.py/f90nml).
 
-usage: setup_pp.py DIR L NSWEEP NDELAY CPU_MAX WALKERS U1,U2,...   [--nbin N] [--master TAG]
+usage: setup_pp.py DIR L NSWEEP NDELAY CPU_MAX WALKERS U1,U2,...   [--nbin N] [--master TAG] [--walker0 K]
+(--walker0 K: walker indices K..K+WALKERS-1 enter the seed, so two directories with the same U get different seeds)
 DIR/parameters   top level file (VAR_TEMP with mpi_per_parameter_set = WALKERS; the rest is read from Temp_i/parameters)
 DIR/Temp_i/parameters  one per U (i = position in the list), derived from parameters_ref_L24_U5.3_h1_4w (Jakob's file, /jakob_params)
 DIR/seeds        one integer per MPI rank, rank = i*WALKERS + walker; seed = f(master, L, U, walker) so it is unique and
@@ -10,14 +11,13 @@ Only L1 = L2, Beta = L, N_Phi = L*L/2, NSweep (10), NBin, CPU_MAX, N_delay, ham_
 Existing DIR/Temp_i are never overwritten (restart safety): the script refuses if DIR exists."""
 import sys, os, re, hashlib
 here = os.path.dirname(os.path.abspath(__file__))
-a = [x for x in sys.argv[1:] if not x.startswith("--")]
-opt = dict(zip([x for x in sys.argv[1:] if x.startswith("--")][::1], [None]*9))
-nbin, master = 100000, "helma2026"
+nbin, master, w0 = 100000, "helma2026", 0
 args = sys.argv[1:]
-for k in ("--nbin", "--master"):
+for k in ("--nbin", "--master", "--walker0"):
     if k in args:
         i = args.index(k); v = args[i+1]; del args[i:i+2]
         if k == "--nbin": nbin = int(v)
+        elif k == "--walker0": w0 = int(v)
         else: master = v
 d, L, nsweep, nd, cpumax, nw, us = args[0], int(args[1]), int(args[2]), int(args[3]), args[4], int(args[5]), args[6].split(",")
 if os.path.exists(d): sys.exit("refuse: %s exists" % d)
@@ -40,7 +40,7 @@ for i, u in enumerate(us):
     os.makedirs(os.path.join(d, "Temp_%d" % i))
     open(os.path.join(d, "Temp_%d" % i, "parameters"), "w").write(sub(t, "ham_U", fortran_d(u)))
     for w in range(nw):
-        s = int(hashlib.sha256(("%s|L%d|U%s|w%d" % (master, L, u, w)).encode()).hexdigest()[:8], 16) % (2**30) + 1
+        s = int(hashlib.sha256(("%s|L%d|U%s|w%d" % (master, L, u, w + w0)).encode()).hexdigest()[:8], 16) % (2**30) + 1
         assert s not in used; used.add(s); seeds.append(s)
 open(os.path.join(d, "seeds"), "w").write("\n".join("%d" % s for s in seeds) + "\n")
 print("%s: %d groups x %d walkers = %d ranks, L=%d NSweep=%d N_delay=%d CPU_MAX=%s" % (d, len(us), nw, len(us)*nw, L, nsweep, nd, cpumax))

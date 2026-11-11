@@ -11,6 +11,21 @@ module load gpu-env/2025 nvhpc/25.7 openmpi/5.0.8-nvhpc25.7-cuda
 export OMP_TARGET_OFFLOAD=MANDATORY OMP_NUM_THREADS=1
 export MPS_DIR=${TMPDIR:-/tmp}/mps_${SLURM_JOB_ID:-$$}
 cd "$RUNDIR" || exit 1
+# restart: confout_* -> confin_* (what out_to_in.sh does), per Temp_i; keep the previous confin/data.h5 as .prev/.bak
+# (a kill during an HDF5 write could corrupt a file; data.h5 is validated with h5ls and restored from .bak if unreadable)
+H5LS=${H5LS:-/hnvme/workspace/b133ae29-ALF_GPU/hdf5_257/nvfortran_25.7-0/bin/h5ls}
+for t in Temp_*; do
+  if [ -f $t/data.h5 ]; then
+    if $H5LS $t/data.h5 > /dev/null 2>&1; then cp -f $t/data.h5 $t/data.h5.bak
+    elif [ -f $t/data.h5.bak ]; then echo "WARNING $t/data.h5 unreadable, restoring .bak" >> links.log; cp -f $t/data.h5.bak $t/data.h5; fi
+  fi
+  for c in $t/confout_*.h5; do
+    [ -f "$c" ] || continue
+    i=${c/confout/confin}
+    [ -f "$i" ] && cp -f "$i" "$i.prev"
+    mv -f "$c" "$i"
+  done
+done
 [ -n "$CPUMAX" ] && sed -i -E "s/^(CPU_MAX\s*=\s*).*/\1$CPUMAX/" Temp_*/parameters
 if [ "$MPS_PCT" != 0 ]; then
   for g in $(seq 0 $((NGPU-1))); do
@@ -21,7 +36,7 @@ fi
 nvidia-smi dmon -s um -d 10 -o T > dmon.log 2>&1 &
 DMON=$!
 date +%s.%N > t_start
-mpirun --mca smsc ^knem -n $((NGPU*RPG)) --bind-to core --map-by core "$HERE/rank_wrap.sh" > run.log 2>&1
+${RUN_TIMEOUT:+timeout $RUN_TIMEOUT} mpirun --mca smsc ^knem --oversubscribe --report-bindings -n $((NGPU*RPG)) --bind-to core --map-by core "$HERE/rank_wrap.sh" > run.log 2>&1
 rc=$?
 date +%s.%N > t_end
 echo "rc=$rc" > DONE

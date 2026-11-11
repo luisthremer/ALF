@@ -6,6 +6,7 @@
 #SBATCH --export=NONE
 #SBATCH -J alfbench
 unset SLURM_EXPORT_ENV
+export RUN_TIMEOUT=${RUN_TIMEOUT:-420}   # s per config (no-MPS runs with many ranks are >10x slower)
 NGPU=$1; CFGS=$2; NS=${3:-2}; NB=${4:-3}
 WS=/hnvme/workspace/b133ae29-ALF_GPU; S=$WS/ALF/docs/gpu/scripts/helma
 OUT=$WS/bench/$SLURM_JOB_ID; mkdir -p $OUT
