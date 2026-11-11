@@ -14,3 +14,12 @@ Build only `libgomp-plugin-gcn.la`, put its `.libs` first in `LD_LIBRARY_PATH`.
 `GCN_NUM_THREADS=4` (default 16): parallel-region/reduction startup on GCN scales with thread count; 4 was best at L=16.
 
 ## Measured (L=16, 2 sweeps, 1 process): 66 s CPU stock -> 21 s (plugin + threads + obs kernels)
+
+## HIP kernels (2026-11-11)
+`Libraries/Modules/alf_hip_kernels.hip.cpp` (hipcc) + `alf_hipk_mod.F90` replace the hot small OpenMP-target kernels
+(copies, block gather/scale, flush gather, scatter, correlations, scalar/local observables, stabilisation helpers, slice
+multiplication) under `#if defined(ALF_LA_HIP)`; the OpenMP versions remain for other backends. A HIP launch+sync is ~15 us,
+a libgomp-GCN parallel target region ~150 us. Remaining GPU time is dominated by rocSOLVER's many tiny QR kernels.
+
+Single process, 2 sweeps, CPU time: L=16 66 s -> 6 s; L=24 95 s -> 19 s (A30 reference ~10 s/sweep with 4 ranks).
+4 concurrent L=24 processes: 42 s wall for 2 sweeps each. L=28 ~16.6 s/sweep, L=32 ~28.8 s/sweep (single process).
