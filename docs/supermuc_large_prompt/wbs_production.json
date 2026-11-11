@@ -364,6 +364,15 @@
     },
     {
       "collapsed" : false,
+      "description" : "Owner 2026-11-11: fast L=32 run for all 10 U at 1 walker per tile: 4 walkers\/U, 40 ranks, 5 nodes, 8 ranks\/node, 14 threads, no CCS, seed offset 132 (520 seeds distinct), job 560234.",
+      "done" : true,
+      "id" : "n_63205wu7",
+      "order" : 3,
+      "parentId" : "n_1mbg55ka",
+      "title" : "Extra RUN_L32_fast (1 walker per tile) submitted"
+    },
+    {
+      "collapsed" : false,
       "dependsOn" : [
         "n_1mbg55ka"
       ],
