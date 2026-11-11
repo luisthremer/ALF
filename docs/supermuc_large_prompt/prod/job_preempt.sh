@@ -4,7 +4,7 @@
 # Template: fill the ##...## placeholders (sed, see README.md) and sbatch it from the run directory, which must also contain recover.sh.
 #   ##NAME## ##ACCOUNT## ##NODES## ##RANKS_PER_NODE## ##OMPT## ##CCS## ##TARGET_BINS## ##EXECUTABLE##
 # A preempted job is rerun from the top of this script (same job id, SLURM_RESTART_COUNT incremented): the recovery block below
-# repairs a killed segment, moves confout->confin and ALF continues from the last written configuration, appending to Temp_*/data.h5.
+# repairs a killed segment (from the rolling snapshots), moves confout->confin and ALF continues from the last written configuration, appending to Temp_*/data.h5.
 # Job end by CPU_MAX (clean stop at a bin boundary) does not requeue: sbatch again until every set has ##TARGET_BINS## bins
 # (the stop guard then exits immediately once the target is reached).
 #
@@ -51,7 +51,17 @@ if rc_stop_guard; then
 fi
 rc_prepare || { echo "FATAL: recovery failed, see messages above (run directory left as it is for inspection)" >&2; exit 3; }
 
+# ---- rolling snapshots (see recover.sh): at most ~SNAP_INTERVAL s of one set are lost when a kill corrupts its files ----------------
+# SNAP_CONF_SLACK: ranks other than rank 0 may write their confout a few seconds before rank 0 has finished data.h5, so a confout
+# counts as belonging to the current bin if it is at most this much older than data.h5 (a bin lasts much longer than this).
+export SNAP_INTERVAL=${SNAP_INTERVAL:-1800} SNAP_POLL=${SNAP_POLL:-30} SNAP_QUIET_DATA=${SNAP_QUIET_DATA:-10} SNAP_QUIET_CONF=${SNAP_QUIET_CONF:-5}
+export SNAP_CONF_SLACK=${SNAP_CONF_SLACK:-5}
+rc_snapshot_loop >> snapshot_loop.out 2>&1 &
+SNAP_PID=$!
+trap 'kill $SNAP_PID 2>/dev/null' EXIT
+
 mpiexec -n $SLURM_NTASKS ##EXECUTABLE##
 RC_EXIT=$?
+kill $SNAP_PID 2>/dev/null; wait $SNAP_PID 2>/dev/null
 rc_segment_end $RC_EXIT
 exit $RC_EXIT

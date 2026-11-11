@@ -4,6 +4,10 @@
 #   (a) reference: one uninterrupted run of NBIN bins
 #   (b) same seeds: run, kill -9 the whole mpiexec process tree after about half of the bins, leave RUNNING, recover.sh, rerun the rest
 #   (c) like (b), but one confout_*.h5 of Temp_0 is truncated to 100 bytes before recovery -> recover.sh must restore Temp_0 from .segbak
+#   (d) rolling snapshots (SNAP_INTERVAL=0): run with the snapshot loop, kill -9 after ~half of the bins, truncate data.h5 of Temp_0 to half its size and
+#       one confout of Temp_1, recover (both sets must come back from the newest snapshot), rerun to the full NBin; also the snapshot slots are checked
+#       (bins of the slot's data.h5 == bins in its COMPLETE marker)
+#   (e) like (d), but the kill lands while a snapshot is being copied (RC_SNAP_TEST_DELAY): the previous slot must still be valid
 # Compared with cmp_h5dump.py (data.h5 of both sets, and every final confout_*.h5 where no duplicated bin is involved).
 #
 # Submit from the directory that holds recover.sh and cmp_h5dump.py (this prod/ directory):
@@ -76,25 +80,41 @@ min_bins() {   # smallest bin count over the sets of DIR ($1); -1 if some file c
   echo $m
 }
 
-# start ALF in the background, kill -9 everything as soon as every set has >= NBIN/2 bins; leaves RUNNING behind
-killed_run() {   # killed_run DIR
-  local D=$1 half=$((NBIN / 2)) pid t0=$SECONDS n pids
+snap_sets_ready() {   # every set of DIR has a valid snapshot slot
+  local d
+  for d in $(cd "$1" && rc_sets); do [ -n "$(cd "$1" && rc_snap_order "$d")" ] || return 1; done
+  return 0
+}
+any_tmp() { ls -d "$1"/Temp_*/.snap/tmp >/dev/null 2>&1; }
+
+# start ALF (and, for MODE snap|snapcopy, the snapshot loop) in the background and kill -9 everything:
+#   plain: as soon as every set has >= NBIN/2 bins;  snap: the same and every set has a snapshot;
+#   snapcopy: every set has a snapshot and a snapshot copy is in progress (.snap/tmp exists). RUNNING stays behind.
+killed_run() {   # killed_run DIR [MODE]
+  local D=$1 mode=${2:-plain} half=$((NBIN / 2)) pid lpid="" t0=$SECONDS n pids ok
   ( cd "$D" && rc_prepare ) || { echo "FATAL: rc_prepare failed"; return 1; }
   ( cd "$D" && exec mpiexec -n "$NTASKS" "$GPU_PP_BIN" > alf_seg1_killed.log 2>&1 ) &
   pid=$!
+  if [ "$mode" != plain ]; then ( cd "$D" && rc_snapshot_loop >> snapshot_loop.out 2>&1 ) & lpid=$!; fi
   while :; do
-    n=$(min_bins "$D")
-    if [ "$n" -ge "$half" ]; then break; fi
-    kill -0 $pid 2>/dev/null || { echo "run ended before the kill point (bins=$n)"; return 2; }
-    if [ $((SECONDS - t0)) -gt "$TIMEOUT" ]; then echo "timeout waiting for $half bins"; kill -9 $pid; return 3; fi
-    sleep 0.1
+    n=$(min_bins "$D"); ok=0
+    case "$mode" in
+      plain) [ "$n" -ge "$half" ] && ok=1 ;;
+      snap) [ "$n" -ge "$half" ] && snap_sets_ready "$D" && ok=1 ;;
+      snapcopy) snap_sets_ready "$D" && any_tmp "$D" && ok=1 ;;
+    esac
+    [ $ok -eq 1 ] && break
+    kill -0 $pid 2>/dev/null || { echo "run ended before the kill point (bins=$n)"; [ -n "$lpid" ] && kill $lpid 2>/dev/null; return 2; }
+    if [ $((SECONDS - t0)) -gt "$TIMEOUT" ]; then echo "timeout waiting for the kill point"; kill -9 $pid $lpid 2>/dev/null; return 3; fi
+    sleep 0.05
   done
   pids="$(kill_tree $pid) $(pgrep -f "$GPU_PP_BIN" 2>/dev/null | tr '\n' ' ')"
+  if [ -n "$lpid" ]; then pids="$pids $(kill_tree $lpid)"; fi
   kill -9 $pids 2>/dev/null
   wait $pid 2>/dev/null
   sleep 3
   if pgrep -f "$GPU_PP_BIN" >/dev/null 2>&1; then pkill -9 -f "$GPU_PP_BIN"; sleep 2; fi
-  echo "killed with kill -9, bins per set: $(cd "$D" && rc_bins_all)"
+  echo "killed with kill -9 (mode $mode), bins per set: $(cd "$D" && rc_bins_all)"
   [ -e "$D/RUNNING" ] || { echo "RUNNING is gone after the kill (run had finished?)"; return 2; }
   return 0
 }
@@ -172,6 +192,53 @@ if [ $krc -ne 0 ]; then res "(c) kill during run" FAIL "not killed cleanly (code
   if grep -q "restored Temp_0" "$W/corrupt/segments.log"; then res "(c) recover.sh restored Temp_0 from .segbak" PASS ""; else res "(c) recover.sh restored Temp_0 from .segbak" FAIL "no 'restored Temp_0' in segments.log"; fi
   compare_runs "(c)" "$W/corrupt"
 fi
+
+# ---------------------------------------------------------------- (d), (e) rolling snapshots
+check_snaps() {   # check_snaps TAG DIR : every valid slot: bins of its data.h5 == COMPLETE marker, confout count == walkers; >= 1 valid slot per set
+  local tag=$1 D=$2 d s b nvalid bad=0 nconf
+  for d in $(cd "$D" && rc_sets); do
+    nvalid=0
+    for s in $(cd "$D" && rc_snap_order "$d"); do
+      nvalid=$((nvalid + 1))
+      b=$(cd "$D" && rc_bins "$d/.snap/$s/data.h5")
+      nconf=$(ls "$D/$d/.snap/$s"/confout_*.h5 2>/dev/null | wc -l)
+      ( cd "$D" && rc_slot_meta "$d/.snap/$s" && [ "$b" = "$M_BINS" ] && [ "$nconf" -eq "$M_W" ] ) \
+        && echo "$tag $d slot $s: data.h5 bins=$b = marker, $nconf confout files" \
+        || { bad=$((bad + 1)); echo "$tag $d slot $s INCONSISTENT: data.h5 bins=$b, $(cat "$D/$d/.snap/$s/COMPLETE" 2>/dev/null), $nconf confout files"; }
+    done
+    if [ $nvalid -eq 0 ]; then bad=$((bad + 1)); echo "$tag $d: no valid snapshot slot"; fi
+  done
+  res "$tag snapshot slots consistent, >= 1 valid per set" "$(pf $bad)" "$bad problem(s)"
+}
+
+snap_case() {   # snap_case TAG DIRNAME MODE
+  local tag=$1 name=$2 mode=$3 f sz krc
+  export SNAP_INTERVAL=0 SNAP_POLL=${SNAP_POLL:-0.2} SNAP_QUIET_DATA=${SNAP_QUIET_DATA:-0.3} SNAP_QUIET_CONF=${SNAP_QUIET_CONF:-0.2} SNAP_CONF_SLACK=${SNAP_CONF_SLACK:-0.3}
+  if [ "$mode" = snapcopy ]; then export RC_SNAP_TEST_DELAY=${RC_SNAP_TEST_DELAY:-0.4}; else unset RC_SNAP_TEST_DELAY; fi
+  mkdirs "$name"
+  cmp -s "$W/ref/seeds" "$W/$name/seeds"; res "$tag same seeds as reference" "$(pf $?)" ""
+  killed_run "$W/$name" "$mode"; krc=$?
+  if [ $krc -ne 0 ]; then res "$tag kill during run" FAIL "not killed cleanly (code $krc): inconclusive (no snapshot taken? see snapshots.log; try larger NSWEEP or smaller SNAP_QUIET_*)"; return; fi
+  res "$tag kill during run" PASS "bins per set at kill: $(cd "$W/$name" && rc_bins_all)"
+  if [ "$mode" = snapcopy ]; then
+    if any_tmp "$W/$name"; then res "$tag kill landed during a snapshot copy" PASS ".snap/tmp left behind"; else res "$tag kill landed during a snapshot copy" FAIL "no .snap/tmp"; fi
+  fi
+  check_snaps "$tag" "$W/$name"
+  f="$W/$name/Temp_0/data.h5"; sz=$(wc -c < "$f"); head -c $((sz / 2)) "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+  res "$tag truncated Temp_0/data.h5" INFO "$sz -> $(wc -c < "$f") bytes"
+  f="$W/$name/Temp_1/confout_3.h5"; head -c 100 "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+  res "$tag truncated Temp_1/confout_3.h5" INFO "to $(wc -c < "$f") bytes"
+  recover_and_finish "$W/$name" "$tag"
+  for i in 0 1; do
+    if grep -q "restored Temp_$i from snapshot" "$W/$name/segments.log"; then res "$tag Temp_$i restored from a snapshot (not segbak)" PASS ""; else res "$tag Temp_$i restored from a snapshot (not segbak)" FAIL "see segments.log"; fi
+  done
+  compare_runs "$tag" "$W/$name"
+  echo "---- snapshots.log ($name)"; cat "$W/$name/snapshots.log" 2>/dev/null | head -40
+}
+echo "=== (d) rolling snapshots: kill after ~half of the bins, corrupt data.h5 (Temp_0) and a confout (Temp_1), recover from snapshots, finish"
+snap_case "(d)" snap snap
+echo "=== (e) kill while a snapshot is being copied: the previous slot must stay valid"
+snap_case "(e)" snapcopy snapcopy
 
 echo; echo "================= segments.log (b: kill) ================="; cat "$W/kill/segments.log" 2>/dev/null
 echo "================= segments.log (c: corrupt) =============="; cat "$W/corrupt/segments.log" 2>/dev/null

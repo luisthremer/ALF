@@ -1,0 +1,398 @@
+{
+  "archived" : false,
+  "name" : "SuperMUC-NG Phase 2 production L=24\/28\/32 (preempt)",
+  "nodes" : [
+    {
+      "collapsed" : false,
+      "description" : "",
+      "id" : "special_start",
+      "kind" : "start",
+      "order" : 0,
+      "parentId" : null,
+      "title" : "Start"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Point-defect Hubbard production (Jakob's parameters) at L=24, 28, 32 for U = 5.0-5.6 (10 values), 16 walkers per U, on the preempt partition, verified correct before and during the run.",
+      "id" : "special_goal",
+      "kind" : "goal",
+      "order" : 0,
+      "parentId" : null,
+      "title" : "Goal"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Plan file ~\/.claude\/plans\/okay-following-idea-we-rustling-valiant.md approved 2026-11-11.",
+      "done" : true,
+      "id" : "n_qflgdf87",
+      "order" : 0,
+      "parentId" : null,
+      "title" : "M1 Plan and owner decisions"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Owner: GPU-h are not a constraint (preempt may not be billed).",
+      "done" : true,
+      "id" : "n_93td3fpw",
+      "order" : 0,
+      "parentId" : "n_qflgdf87",
+      "title" : "Accounts: pn93la, then pn73xu, then pr94vu"
+    },
+    {
+      "collapsed" : false,
+      "description" : "L=32 also runs on Helma: independent cross-check.",
+      "done" : true,
+      "id" : "n_cuiwdag9",
+      "order" : 1,
+      "parentId" : "n_qflgdf87",
+      "title" : "All three sizes, 16 walkers per U"
+    },
+    {
+      "collapsed" : false,
+      "description" : "L=32 layout chosen by the owner from the T5b wall-clock table.",
+      "done" : true,
+      "id" : "n_7wg85zo2",
+      "order" : 2,
+      "parentId" : "n_qflgdf87",
+      "title" : "L=24 and L=28 at 4 walkers per tile (5 nodes each)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Owner: losing a segment (days) is not acceptable; script-only snapshots chosen over an ALF code change.",
+      "done" : true,
+      "id" : "n_mp64g4g7",
+      "order" : 3,
+      "parentId" : "n_qflgdf87",
+      "title" : "Kill safety: rolling snapshots, <= 30 min loss"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_qflgdf87"
+      ],
+      "description" : "docs\/supermuc_large_prompt\/prod\/ in ALF_wt_large_prompt, branch production-mpi-intel-large-prompt.",
+      "done" : false,
+      "id" : "n_qlxa2x1f",
+      "order" : 1,
+      "parentId" : null,
+      "title" : "M2 Production scripts"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Commit 469c25a7; tested against a fake ALF only.",
+      "done" : true,
+      "id" : "n_wjxnx5lh",
+      "order" : 0,
+      "parentId" : "n_qlxa2x1f",
+      "title" : "Preempt job template + recovery (RUNNING, corrupt HDF5, stop guard, segments.log)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Commit 469c25a7; planted violations exit 1.",
+      "done" : true,
+      "id" : "n_opxrhebj",
+      "order" : 1,
+      "parentId" : "n_qlxa2x1f",
+      "title" : "check_params.py, check_seeds.py, cmp_h5dump.py, README"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Watcher in the job; recovery restores only damaged sets from the newest complete slot. Implemented (recover.sh rc_snapshot_loop, 2 slots, .restoring marker); local fake-ALF tests (a)-(e) PASS; real-ALF test is T3.",
+      "done" : true,
+      "id" : "n_achl5o83",
+      "order" : 2,
+      "parentId" : "n_qlxa2x1f",
+      "title" : "Rolling snapshots (2 slots per set, <= 30 min)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Only the manager commits.",
+      "done" : false,
+      "id" : "n_f49kh8nb",
+      "order" : 3,
+      "parentId" : "n_qlxa2x1f",
+      "title" : "Commit snapshot version and tag smuc2-prod-2026-11"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_qlxa2x1f"
+      ],
+      "description" : "Source 5667acda shipped to $SCRATCH\/prod_2026-11\/src; build_all in the test partition.",
+      "done" : true,
+      "id" : "n_cd170p3f",
+      "order" : 2,
+      "parentId" : null,
+      "title" : "M3 Build (T0\/T1)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Copy to \/hppfs\/work\/pn93la\/di38zuw\/prod_2026-11\/bin with md5. Done: md5 445f966e9f64ca879c59196b5ebfd0cf, bin\/ALF-pp-intel-5667acda.out (verified by manager).",
+      "done" : true,
+      "id" : "n_mk3v4ca1",
+      "order" : 0,
+      "parentId" : "n_cd170p3f",
+      "title" : "Production binary pp (PP, GPU=intel, HDF5)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "For the same-seed comparison. Done (jobs 560144).",
+      "done" : true,
+      "id" : "n_3krqkofa",
+      "order" : 1,
+      "parentId" : "n_cd170p3f",
+      "title" : "Text binaries gpu-pptxt and cpu-pptxt"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Done: 53\/53 GPU (46 s), 53\/53 CPU (job 560145, verified).",
+      "done" : true,
+      "id" : "n_dtej9tp2",
+      "order" : 2,
+      "parentId" : "n_cd170p3f",
+      "title" : "ctest on gpu-ser and cpu-ser (53\/53 each)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Done: $SCRATCH\/prod_2026-11\/BUILD_PROVENANCE.md.",
+      "done" : true,
+      "id" : "n_7tuwkljy",
+      "order" : 3,
+      "parentId" : "n_cd170p3f",
+      "title" : "BUILD_PROVENANCE.md (sha, modules, md5)"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_cd170p3f"
+      ],
+      "description" : "",
+      "done" : false,
+      "id" : "n_gyzcgav1",
+      "order" : 3,
+      "parentId" : null,
+      "title" : "M4 Correctness checks (T2\/T3\/T4)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "10 U, 32 ranks CCS, 3 threads, NSweep 10, N_delay 64, Nwrap 10; Mz=F <= 1e-13, configs identical; negative control (changed seed) must fail.",
+      "done" : false,
+      "id" : "n_epizb11r",
+      "order" : 0,
+      "parentId" : "n_gyzcgav1",
+      "title" : "T2 same-seed GPU vs CPU, production config at L=8"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Same seeds, Ener_scal via h5dump.",
+      "done" : false,
+      "id" : "n_8q5u3zu6",
+      "order" : 1,
+      "parentId" : "n_gyzcgav1",
+      "title" : "T2b HDF5 production binary equals the text GPU binary"
+    },
+    {
+      "collapsed" : false,
+      "description" : "(a) reference, (b) kill + recover, (c) corrupt confout, (d) snapshots: final data bit-identical except at most one duplicated bin.",
+      "done" : false,
+      "id" : "n_9lhmegr0",
+      "order" : 2,
+      "parentId" : "n_gyzcgav1",
+      "title" : "T3 restart test on real ALF"
+    },
+    {
+      "collapsed" : false,
+      "description" : "check_params.py vs ref_L24\/parameters, check_seeds.py over all 480 seeds.",
+      "done" : false,
+      "id" : "n_h2tfwfbz",
+      "order" : 3,
+      "parentId" : "n_gyzcgav1",
+      "title" : "T4 parameter and seed checks of the run directories"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Fresh agent, not the author.",
+      "done" : false,
+      "id" : "n_ee41a8yy",
+      "order" : 4,
+      "parentId" : "n_gyzcgav1",
+      "title" : "Independent numerics review of T2\/T3 evidence"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_gyzcgav1"
+      ],
+      "description" : "",
+      "done" : false,
+      "id" : "n_3l49m0in",
+      "order" : 4,
+      "parentId" : null,
+      "title" : "M5 Timing and size (T5\/T5b)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Marginal s\/sweep per chain (wall clock), bytes per bin, device memory, Precision Green max < 1e-8.",
+      "done" : false,
+      "id" : "n_8jskpftf",
+      "order" : 0,
+      "parentId" : "n_3l49m0in",
+      "title" : "T5 L=24\/28\/32 at 4 walkers per tile"
+    },
+    {
+      "collapsed" : false,
+      "description" : "1, 2 (CCS 0:2 and 0:4), 4 walkers per tile; projected wall time to 6000 sweeps per walker and nodes needed.",
+      "done" : false,
+      "id" : "n_l7crs7po",
+      "order" : 1,
+      "parentId" : "n_3l49m0in",
+      "title" : "T5b L=32 layout scan with full wall clock"
+    },
+    {
+      "collapsed" : false,
+      "description" : "From bytes per bin x 600 bins x 30 sets plus 2 snapshot slots.",
+      "done" : false,
+      "id" : "n_nc8hcbt1",
+      "order" : 2,
+      "parentId" : "n_3l49m0in",
+      "title" : "Storage decision (WORK 1.05 TB vs SCRATCH)"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_3l49m0in"
+      ],
+      "description" : "",
+      "done" : false,
+      "id" : "n_am1v0f5w",
+      "order" : 5,
+      "parentId" : null,
+      "title" : "M6 Gate report and owner decisions"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_oxldyfkd",
+      "order" : 0,
+      "parentId" : "n_am1v0f5w",
+      "title" : "Report T0-T5b to the owner"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_ndk62nqm",
+      "order" : 1,
+      "parentId" : "n_am1v0f5w",
+      "title" : "Owner picks the L=32 layout"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_q24rrwbi",
+      "order" : 2,
+      "parentId" : "n_am1v0f5w",
+      "title" : "Owner OK to submit"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_am1v0f5w"
+      ],
+      "description" : "",
+      "done" : false,
+      "id" : "n_1mbg55ka",
+      "order" : 6,
+      "parentId" : null,
+      "title" : "M7 Production launch"
+    },
+    {
+      "collapsed" : false,
+      "description" : "\/hppfs\/work\/pn93la\/di38zuw\/prod_2026-11\/; NSweep 10, N_delay 64, Nwrap 10, CPU_MAX 166, target 600 bins.",
+      "done" : false,
+      "id" : "n_xqn24pqv",
+      "order" : 0,
+      "parentId" : "n_1mbg55ka",
+      "title" : "Generate RUN_L24\/28\/32 (make_pp_dirs.py, seed offsets 24\/28\/32)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_bfq1i1yh",
+      "order" : 1,
+      "parentId" : "n_1mbg55ka",
+      "title" : "Fill job templates and submit three preempt jobs"
+    },
+    {
+      "collapsed" : false,
+      "description" : "GPU path ACTIVE, acceptance ~0.32-0.33, Precision Green\/Phase max < 1e-8, s\/bin as in T5, snapshots written, no requeue loop.",
+      "done" : false,
+      "id" : "n_pgz21fmj",
+      "order" : 2,
+      "parentId" : "n_1mbg55ka",
+      "title" : "First 2 h check"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_1mbg55ka"
+      ],
+      "description" : "",
+      "done" : false,
+      "id" : "n_mwcqqc7x",
+      "order" : 7,
+      "parentId" : null,
+      "title" : "M8 Monitoring and physics cross-checks"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_5aliqysn",
+      "order" : 0,
+      "parentId" : "n_mwcqqc7x",
+      "title" : "Daily: segments.log, snapshots.log, bins per set, precision, budget\/account switch"
+    },
+    {
+      "collapsed" : false,
+      "description" : "After warm-up, binned errors, 3 sigma.",
+      "done" : false,
+      "id" : "n_erljytaq",
+      "order" : 1,
+      "parentId" : "n_mwcqqc7x",
+      "title" : "L=24 U=5.3 vs A30 reference E = -505.42 +- 0.40"
+    },
+    {
+      "collapsed" : false,
+      "description" : "After checking that the parameters match.",
+      "done" : false,
+      "id" : "n_ui6wb2ut",
+      "order" : 2,
+      "parentId" : "n_mwcqqc7x",
+      "title" : "L=32 vs Helma run of the same U values"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_go0tqatb",
+      "order" : 3,
+      "parentId" : "n_mwcqqc7x",
+      "title" : "Equilibration and n_skip per size"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_u4i20tls",
+      "order" : 4,
+      "parentId" : "n_mwcqqc7x",
+      "title" : "Analysis: drop bit-identical consecutive bins (preemption duplicates)"
+    }
+  ],
+  "rev" : 1,
+  "version" : 1
+}
