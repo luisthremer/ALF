@@ -44,7 +44,11 @@ alf_la_sycl_shim.o: alf_la_sycl_shim.cpp
 # the user for AOT: -fsycl-targets=spir64_gen -Xs "-device pvc"; default JIT)
 SYCLBLK = libalfsb.so
 libalfsb.so: alf_la_sycl_blk.cpp
-	icpx -fsycl -fPIC -shared -O2 -std=c++17 $(ALF_SYCL_BLK_FLAGS) -I$(MKLROOT)/include alf_la_sycl_blk.cpp -o $@ -L$(MKLROOT)/lib -lmkl_sycl_blas -lmkl_intel_ilp64 -lmkl_sequential -lmkl_core
+	icpx -fsycl -fPIC -shared -O2 -std=c++17 $(ALF_SYCL_BLK_FLAGS) -I$(MKLROOT)/include alf_la_sycl_blk.cpp -o $@ -qmkl -lmkl_sycl_blas
+# device-only QR (SYCL device code: shared library, loaded by dlopen when ALFSH_DEVQR=1; not needed by the default build)
+lib: libalfdevqr.so
+libalfdevqr.so: alf_la_sycl_devqr.cpp alf_la_sycl_devqr.hpp
+	icpx -fsycl -O2 -std=c++17 -fPIC -shared -I$(MKLROOT)/include $< -o $@ -qmkl -lmkl_sycl_blas
 endif
 lib: $(SYCLBLK)
 
@@ -88,7 +92,7 @@ $(DEPSFILE): $(SRCS) $(DEPSGEN)
 	python3 $(DEPSGEN) $(SRCS) > $(DEPSFILE)
 
 clean: $(DEPSFILE)
-	rm -f $(OBJS) $(MODS) $(LIB) $(DEPSFILE) libfakeintel.so alf_la_sycl_shim.o libalfsb.so
+	rm -f $(OBJS) $(MODS) $(LIB) $(DEPSFILE) libfakeintel.so alf_la_sycl_shim.o libalfsb.so libalfdevqr.so
 
 #unused modules: histograms histograms_v2 log_mesh natural_constants
 #unused, except for in Prog/FFA_Orginals/: precdef

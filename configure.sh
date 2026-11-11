@@ -597,7 +597,7 @@ case "$GPU_TARGET" in
     ALF_FLAGS_MODULES="$(echo "${ALF_FLAGS_MODULES} " | sed -e 's/ -static / /g' -e 's/ $//') -fiopenmp -fopenmp-targets=spir64 -I${MKLROOT}/include -DALF_GPU -DALF_LA_ONEMKL"
     ALF_FLAGS_ANA="$(echo "${ALF_FLAGS_ANA} " | sed -e 's/ -static / /g' -e 's/ $//') -fiopenmp -fopenmp-targets=spir64 -I${MKLROOT}/include -DALF_GPU -DALF_LA_ONEMKL"
     ALF_FLAGS_PROG="$(echo "${ALF_FLAGS_PROG} " | sed -e 's/ -static / /g' -e 's/ $//') -fiopenmp -fopenmp-targets=spir64 -I${MKLROOT}/include -DALF_GPU -DALF_LA_ONEMKL"
-    ALF_LIB="${ALF_LIB} -fiopenmp -fopenmp-targets=spir64 -qmkl -lmkl_sycl_blas -lmkl_sycl_lapack -lsycl -lstdc++ -L${ALF_DIR}/Libraries/Modules -lalfsb -Wl,-rpath,${ALF_DIR}/Libraries/Modules"
+    ALF_LIB="${ALF_LIB} -fiopenmp -fopenmp-targets=spir64 -qmkl -lmkl_sycl_blas -lmkl_sycl_lapack -lsycl -lstdc++ -ldl -L${ALF_DIR}/Libraries/Modules -lalfsb -Wl,-rpath,${ALF_DIR}/Libraries/Modules"
     export ALF_GPU="intel"
     printf "\nGPU target: ${GREEN}intel${NC} (ifx, OpenMP offload spir64 JIT, oneMKL)\n"
   ;;
