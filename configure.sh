@@ -13,6 +13,7 @@ Please choose one of the following MACHINEs:
  * JUWELS
  * FRITZ
  * HELMA
+ * HELMAGPU (NHR@FAU Helma H100 nodes: nvhpc/openmpi modules; use with GPU=nvidia)
 Possible MODEs are:
  * MPI (default)
  * noMPI
@@ -28,8 +29,8 @@ Further optional arguments:
   Devel: Compile with additional flags for development and debugging
   HDF5: Compile with HDF5
   GPU=none|nvidia|intel: GPU target (default none = unchanged CPU build)
-               GPU=nvidia: MACHINE PGI only (nvfortran, OpenMP offload, cuBLAS/cuSOLVER);
-                           target compute capability from env ALF_GPU_CC (default cc80, e.g. cc80,cc90)
+               GPU=nvidia: MACHINE PGI or HELMAGPU only (nvfortran, OpenMP offload, cuBLAS/cuSOLVER);
+                           target compute capability from env ALF_GPU_CC (default cc80, e.g. cc80,cc90; HELMAGPU: default cc90)
                GPU=intel:  MACHINE IntelLLVM/IntelX only (ifx, OpenMP offload to spir64 (JIT), oneMKL)
   NO-INTERACTIVE: Do not ask for user confirmation during excution of this script
   NO-FALLBACK: Do not use a fallback option in case of an unknown/no machine,
@@ -495,6 +496,21 @@ case $MACHINE in
       set_hdf5_flags "$INTELCC" ifx "$INTELCXX" || return 1
     fi
   ;;
+  #NHR@FAU Helma GPU nodes (H100, nvfortran + OpenMPI-CUDA); build on a login node
+  HELMAGPU)
+    module load gpu-env/2025
+    module load nvhpc/24.11
+    module load openmpi/5.0.5-nvhpc24.11-cuda
+    export ALF_GPU_CC="${ALF_GPU_CC:-cc90}"
+    F90OPTFLAGS="$PGIOPTFLAGS"
+    F90USEFULFLAGS="$PGIUSEFULFLAGS"
+    ALF_FC="${ALF_FC:-mpifort}"
+    LIB_BLAS_LAPACK="-llapack -lblas"
+    if [ "${HDF5_ENABLED}" = "1" ]; then
+      set_hdf5_flags nvc nvfortran nvc++ || return 1
+    fi
+  ;;
+
   #Default (unknown machine)
   *)
     if [ "$NO_FALLBACK" = "1" ]; then
@@ -526,8 +542,8 @@ esac
 # GPU target: allowed MACHINE check (no fallback)
 case "$GPU_TARGET" in
   nvidia)
-    if [ "$MACHINE" != "PGI" ]; then
-      printf "${RED}Error: GPU=nvidia requires MACHINE PGI (nvfortran); got '%s'.${NC}\n" "$MACHINE" 1>&2
+    if [ "$MACHINE" != "PGI" ] && [ "$MACHINE" != "HELMAGPU" ]; then
+      printf "${RED}Error: GPU=nvidia requires MACHINE PGI or HELMAGPU (nvfortran); got '%s'.${NC}\n" "$MACHINE" 1>&2
       rm -r "$tmpdir"
       return 1
     fi
