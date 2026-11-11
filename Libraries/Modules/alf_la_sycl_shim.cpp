@@ -17,6 +17,7 @@
 #include <sycl/sycl.hpp>
 #include <oneapi/mkl/blas.hpp>
 #include <oneapi/mkl/lapack.hpp>
+#include "alf_la_sycl_devqr.hpp"
 #include <atomic>
 #include <chrono>
 #include <complex>
@@ -97,6 +98,20 @@ template <class F> int guarded(const char *what, F &&f) {
   }
 }
 sycl::queue &Q() { return *g_q; }
+
+// Device-only blocked Householder QR (alf_la_sycl_devqr.hpp) instead of oneMKL's hybrid ZGEQRF (panels on the host CPU).
+// Run-time switch ALFSH_DEVQR=1 (read once; default off = oneMKL), block size ALFSH_QRNB (default 32).
+int g_devqr = -1, g_qrnb = 32;
+bool devqr_on() {
+  if (g_devqr < 0) {
+    const char *e = std::getenv("ALFSH_DEVQR");
+    g_devqr = (e && e[0] == '1') ? 1 : 0;
+    const char *b = std::getenv("ALFSH_QRNB");
+    if (b && std::atoi(b) > 0) g_qrnb = std::atoi(b);
+    if (g_qrnb > alfdevqr::MAX_NB) g_qrnb = alfdevqr::MAX_NB;
+  }
+  return g_devqr == 1;
+}
 }  // namespace
 
 extern "C" {
@@ -164,10 +179,19 @@ int alfsh_wait() {
 
 // ---- QR family -------------------------------------------------------------------------------------------
 int alfsh_zgeqrf_ws(int64_t m, int64_t n, int64_t lda, int64_t *ws) {
-  return guarded("geqrf_ws", [&] { *ws = lp::geqrf_scratchpad_size<cd>(Q(), m, n, lda); });
+  return guarded("geqrf_ws", [&] {
+    *ws = lp::geqrf_scratchpad_size<cd>(Q(), m, n, lda);
+    if (devqr_on()) *ws = std::max<int64_t>(*ws, alfdevqr::scratch_size(m, n, g_qrnb));   // the device QR uses the caller's scratch too
+  });
 }
 int alfsh_zgeqrf(int64_t m, int64_t n, void *a, int64_t lda, void *tau, void *work, int64_t lwork) {
-  return guarded("geqrf", [&] { lp::geqrf(Q(), m, n, (cd *)a, lda, (cd *)tau, (cd *)work, lwork).wait_and_throw(); });
+  return guarded("geqrf", [&] {
+    if (devqr_on() && alfdevqr::geqrf(Q(), m, n, (cd *)a, lda, (cd *)tau, (cd *)work, lwork, g_qrnb, nullptr) == 0) {
+      Q().wait_and_throw();
+      return;
+    }
+    lp::geqrf(Q(), m, n, (cd *)a, lda, (cd *)tau, (cd *)work, lwork).wait_and_throw();   // oneMKL (default, or the device QR declined)
+  });
 }
 int alfsh_zungqr_ws(int64_t m, int64_t n, int64_t k, int64_t lda, int64_t *ws) {
   return guarded("ungqr_ws", [&] { *ws = lp::ungqr_scratchpad_size<cd>(Q(), m, n, k, lda); });
