@@ -499,8 +499,11 @@ case $MACHINE in
   #NHR@FAU Helma GPU nodes (H100, nvfortran + OpenMPI-CUDA); build on a login node
   HELMAGPU)
     module load gpu-env/2025
-    module load nvhpc/24.11
-    module load openmpi/5.0.5-nvhpc24.11-cuda
+    # nvhpc version: ALF_HELMA_NVHPC=24.11 (default) or 25.7 (matching openmpi/<..>-cuda module)
+    case "${ALF_HELMA_NVHPC:-24.11}" in
+      25.7) module load nvhpc/25.7; module load openmpi/5.0.8-nvhpc25.7-cuda ;;
+      *)    module load nvhpc/24.11; module load openmpi/5.0.5-nvhpc24.11-cuda ;;
+    esac
     export ALF_GPU_CC="${ALF_GPU_CC:-cc90,cuda12.6}"  # cuda12.6: default CUDA 11.8 libs lack cusolverDnSetDeterministicMode
     F90OPTFLAGS="$PGIOPTFLAGS"
     F90USEFULFLAGS="$PGIUSEFULFLAGS"
