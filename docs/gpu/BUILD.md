@@ -14,7 +14,7 @@ make -j8 all
 | `GPU=` | MACHINE | compile flags (modules, prog, ana) | added to `ALF_LIB` | defines | exported |
 |---|---|---|---|---|---|
 | none | any | - | - | - | - |
-| nvidia | `PGI` or `HELMAGPU` (loads nvhpc/24.11 + openmpi/5.0.5-nvhpc24.11-cuda, `ALF_GPU_CC` default cc90) | `-mp` replaced by `-mp=gpu -gpu=${ALF_GPU_CC:-cc80}` | `-mp=gpu -gpu=${ALF_GPU_CC:-cc80} -cudalib=cublas,cusolver` | `-DALF_GPU -DALF_LA_CUDA` | `ALF_GPU=nvidia` |
+| nvidia | `PGI` or `HELMAGPU` (loads nvhpc/24.11 + openmpi/5.0.5-nvhpc24.11-cuda, `ALF_GPU_CC` default `cc90,cuda12.6`) | `-mp` replaced by `-mp=gpu -gpu=${ALF_GPU_CC:-cc80}` | `-mp=gpu -gpu=${ALF_GPU_CC:-cc80} -cudalib=cublas,cusolver` | `-DALF_GPU -DALF_LA_CUDA` | `ALF_GPU=nvidia` |
 | intel | `IntelLLVM`/`IntelX` only | `-fiopenmp -fopenmp-targets=spir64`, `-static` removed | `-fiopenmp -fopenmp-targets=spir64 -qmkl` | `-DALF_GPU -DALF_LA_ONEMKL` | `ALF_GPU=intel` |
 
 - Any other MACHINE/GPU combination, or an unknown `GPU=` value, prints an error and `return 1` (no fallback).

@@ -501,7 +501,7 @@ case $MACHINE in
     module load gpu-env/2025
     module load nvhpc/24.11
     module load openmpi/5.0.5-nvhpc24.11-cuda
-    export ALF_GPU_CC="${ALF_GPU_CC:-cc90}"
+    export ALF_GPU_CC="${ALF_GPU_CC:-cc90,cuda12.6}"  # cuda12.6: default CUDA 11.8 libs lack cusolverDnSetDeterministicMode
     F90OPTFLAGS="$PGIOPTFLAGS"
     F90USEFULFLAGS="$PGIUSEFULFLAGS"
     ALF_FC="${ALF_FC:-mpifort}"
