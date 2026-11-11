@@ -100,6 +100,39 @@ __global__ void k_blk_scale_cols(int nf, int fl, int ld, int b, int nd, int cbld
   *p = f * (*p);
 }
 
+// Fused block end for one flavour: rows of the block sites scaled by cbuf(a), then columns by cbuf(nd+a) (same operation order as
+// k_blk_scale_rows followed by k_blk_scale_cols, bit-identical), and the flush gathers C(i,m) = G(i,S(m)), Qt(i,m) = -G(S(m),i) (+1,
+// slot = 0 on the diagonal) from the final values.  The pending sites S are a subset of the block sites, so every element needed by the
+// gather is written here.  Threads [0,b*ld): rows part; [b*ld,2*b*ld): columns part for rows outside the block.
+__global__ void k_blk_end(int nf, int fl, int ld, int b, int nd, int cbld, int kk, int nslot_ld, cd* G, const int* bsd, const cd* cbuf,
+                          const int* S, cd* C, cd* Qt, int* slot) {
+  long t = (long)blockIdx.x * blockDim.x + threadIdx.x;
+  long tot = (long)b * ld;
+  const int* bs = bsd + (long)(fl - 1) * nd;
+  const cd* cb = cbuf + (long)(fl - 1) * cbld;
+  cd* Gf = G + (long)(nf - 1) * ld * ld;
+  if (t < tot) {
+    int a = t % b, j = t / b;
+    int r = bs[a] - 1;
+    cd v = cb[a] * Gf[r + (long)j * ld];
+    for (int q = 0; q < b; ++q) if (bs[q] - 1 == j) { v = cb[nd + q] * v; break; }
+    Gf[r + (long)j * ld] = v;
+    for (int m = 0; m < kk; ++m) {
+      int s = S[m] - 1;
+      if (s == r) { cd w = -v; if (j == r) { w.r += 1.0; slot[j + (long)(nf - 1) * nslot_ld] = 0; } Qt[j + (long)m * ld] = w; }
+      if (s == j) C[r + (long)m * ld] = v;
+    }
+  } else if (t < 2 * tot) {
+    long t2 = t - tot;
+    int i = t2 % ld, a = t2 / ld;
+    for (int q = 0; q < b; ++q) if (bs[q] - 1 == i) return;
+    int c = bs[a] - 1;
+    cd v = cb[nd + a] * Gf[i + (long)c * ld];
+    Gf[i + (long)c * ld] = v;
+    for (int m = 0; m < kk; ++m) if (S[m] - 1 == c) C[i + (long)m * ld] = v;
+  }
+}
+
 // C(i,m) = G(i,S(m)); Qt(i,m) = -G(S(m),i) (+1 if i==S(m), and slot(i,nf) = 0);  C, Qt (ld,*), G (ld,*), slot (nslot_ld, *)
 __global__ void k_flush_gather(int ld, int nrow, int k, int nf, int nslot_ld, const cd* G, const int* S, cd* C, cd* Qt, int* slot) {
   long t = (long)blockIdx.x * blockDim.x + threadIdx.x;
@@ -515,6 +548,11 @@ int alfhk_blk_scale_rows(int nf, int fl, int ld, int b, int nd, int cbld, void* 
 int alfhk_blk_scale_cols(int nf, int fl, int ld, int b, int nd, int cbld, void* G, void* bsd, void* cbuf) {
   long tot = (long)b * ld; if (tot <= 0) return 0;
   LAUNCH(k_blk_scale_cols, nb(tot, 256), 256, nf, fl, ld, b, nd, cbld, (cd*)G, (const int*)bsd, (const cd*)cbuf);
+  return fin();
+}
+int alfhk_blk_end(int nf, int fl, int ld, int b, int nd, int cbld, int kk, int nslot_ld, void* G, void* bsd, void* cbuf, void* S, void* C, void* Qt, void* slot) {
+  long tot = 2L * b * ld; if (tot <= 0) return 0;
+  LAUNCH(k_blk_end, nb(tot, 256), 256, nf, fl, ld, b, nd, cbld, kk, nslot_ld, (cd*)G, (const int*)bsd, (const cd*)cbuf, (const int*)S, (cd*)C, (cd*)Qt, (int*)slot);
   return fin();
 }
 int alfhk_flush_gather(int ld, int nrow, int k, int nf, int nslot_ld, void* G, void* S, void* C, void* Qt, void* slot) {

@@ -1252,7 +1252,7 @@ Contains
   Subroutine blk_end(t)
     Implicit none
     Integer, intent(in) :: t
-    Integer :: fl, nf, a, k, b, m, v, vmin, vmax
+    Integer :: fl, nf, a, k, b, m, v, vmin, vmax, kk
     b = blk_b
     call la_sync()          ! the previous block's flush (cuBLAS) is asynchronous: it must be done before cbuf / bS_d are overwritten
     ! cbuf: za, zb of every block site (1 if not wrapped), M packed after them; bS_d: pending sites
@@ -1277,12 +1277,22 @@ Contains
     !$omp target update to(cbuf, bS_d)
     do fl = 1, N_FL_eff
        nf = Calc_Fl_map(fl)
+#if defined(ALF_LA_HIP)
+       ! one fused kernel: row and column scalings plus the flush gathers (AMD only: launch count)
+       kk = jc(nf)
+       if (kk == 1 .and. nd >= 2) kk = 2
+       call hk_blk_end(nf, fl, Ndim, b, nd, size(cbuf,1), kk, size(slot_d,1), G_d(1,1,1), bsd(1,1), cbuf(1,1), &
+            &          bS_d(1,fl), X_d(1,1,nf), scr_c(1,1,1), slot_d(1,1))
+       upd_cnt(4) = upd_cnt(4) + 1
+       if (jc(nf) > 0) call blk_flush(nf, fl, .true.)
+#else
        call k_blk_scale_rows(nf, fl, Ndim, b)
        call k_blk_scale_cols(nf, fl, Ndim, b, nd)
        upd_cnt(4) = upd_cnt(4) + 2
        if (jc(nf) > 0) then
-          call blk_flush(nf, fl)
+          call blk_flush(nf, fl, .false.)
        endif
+#endif
        do a = 1, b
           bidx(bs_h(a,fl),nf) = 0
        enddo
@@ -1294,16 +1304,17 @@ Contains
   end subroutine blk_end
 
 !> flush from the already uploaded S and packed M (bS_d, cbuf): same device sequence as gpu_lr_flush, no further uploads
-  Subroutine blk_flush(nf, fl)
+  Subroutine blk_flush(nf, fl, gathered)
     Implicit none
     Integer, intent(in) :: nf, fl
+    Logical, intent(in) :: gathered       ! gathers (X, scr 1) already done by hk_blk_end
     Integer :: k, m, kk
     Complex (Kind=Kind(0.d0)), parameter :: cone = (1.d0,0.d0), cmone = (-1.d0,0.d0), czero = (0.d0,0.d0)
     k = jc(nf)
     kk = k
     if (k == 1 .and. nd >= 2) kk = 2
     n_flush(3) = n_flush(3) + 1; n_flush(2) = n_flush(2) + 1
-    call k_sub_flush_gather(G_d(1,1,nf), Ndim, Ndim, bS_d(1,fl), kk, nf, X_d(1,1,nf), scr_c(1,1,1))
+    if (.not. gathered) call k_sub_flush_gather(G_d(1,1,nf), Ndim, Ndim, bS_d(1,fl), kk, nf, X_d(1,1,nf), scr_c(1,1,1))
     call la_gemm(LA_N, LA_T, Ndim, kk, kk, cone, scr_c(1,1,1), Ndim, cbuf(2*nd+1,fl), kk, czero, scr_c(1,1,2), Ndim)
     call la_gemm(LA_N, LA_T, Ndim, Ndim, kk, cmone, X_d(1,1,nf), Ndim, scr_c(1,1,2), Ndim, cone, G_d(1,1,nf), Ndim)
     upd_cnt(4) = upd_cnt(4) + 3

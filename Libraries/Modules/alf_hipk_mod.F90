@@ -7,7 +7,7 @@ module alf_hipk_mod
   use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
   implicit none
   private
-  public :: hk_copyz, hk_blk_gather, hk_blk_scale_rows, hk_blk_scale_cols, hk_flush_gather, hk_scatter_rows
+  public :: hk_blk_end, hk_copyz, hk_blk_gather, hk_blk_scale_rows, hk_blk_scale_cols, hk_flush_gather, hk_scatter_rows
   public :: hk_corr, hk_scalars, hk_local
   public :: hk_vslice_r
   public :: hk_divrows, hk_rowdiv, hk_scale_cols, hk_tpup, hk_ns, hk_cgr_phase, hk_prec
@@ -28,6 +28,11 @@ module alf_hipk_mod
       import :: c_ptr, c_int
       integer(c_int), value :: nf, fl, ld, b, nd, cbld
       type(c_ptr), value :: g, bsd, cbuf
+    end function
+    integer(c_int) function alfhk_blk_end(nf, fl, ld, b, nd, cbld, kk, nsl, g, bsd, cbuf, s, c, qt, slot) bind(C, name='alfhk_blk_end')
+      import :: c_ptr, c_int
+      integer(c_int), value :: nf, fl, ld, b, nd, cbld, kk, nsl
+      type(c_ptr), value :: g, bsd, cbuf, s, c, qt, slot
     end function
     integer(c_int) function alfhk_blk_scale_cols(nf, fl, ld, b, nd, cbld, g, bsd, cbuf) bind(C, name='alfhk_blk_scale_cols')
       import :: c_ptr, c_int
@@ -229,6 +234,18 @@ contains
     !$omp end target data
     call chk(rc, 'blk_scale_rows')
   end subroutine hk_blk_scale_rows
+
+  subroutine hk_blk_end(nf, fl, ld, b, nd, cbld, kk, nsl, g, bsd, cbuf, s, c, qt, slot)
+    integer, intent(in) :: nf, fl, ld, b, nd, cbld, kk, nsl
+    complex(8), target :: g(*), cbuf(*), c(*), qt(*)
+    integer, target :: bsd(*), s(*), slot(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(g, bsd, cbuf, s, c, qt, slot)
+    rc = alfhk_blk_end(int(nf,c_int), int(fl,c_int), int(ld,c_int), int(b,c_int), int(nd,c_int), int(cbld,c_int), &
+         int(kk,c_int), int(nsl,c_int), c_loc(g(1)), c_loc(bsd(1)), c_loc(cbuf(1)), c_loc(s(1)), c_loc(c(1)), c_loc(qt(1)), c_loc(slot(1)))
+    !$omp end target data
+    call chk(rc, 'blk_end')
+  end subroutine hk_blk_end
 
   subroutine hk_blk_scale_cols(nf, fl, ld, b, nd, cbld, g, bsd, cbuf)
     integer, intent(in) :: nf, fl, ld, b, nd, cbld
