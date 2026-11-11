@@ -170,6 +170,14 @@ Projection (arithmetic on section 4.2, not measured in production): 0.232 sweeps
 = 4 000 bins/day. Warm-up of 1000 sweeps per walker (100 bins) takes 1000 x 34.5 s = 9.6 h per chain and costs 16 000 sweeps per U (0.4 days of the two GPUs).
 Four full links per U: ~160 000 sweeps (16 000 bins) of which 16 000 sweeps are warm-up.
 
+### 7a. Change at about 17:00 (priority)
+
+The 80 `preempt` jobs (none had started in ~2 h) were cancelled and the 20 chains resubmitted to **`h100`**: `sprio` priority 165 -> 1157
+(partition term 1 -> 1000; fair-share 157 and job size 1 unchanged, QOS 0). `h100` jobs also cannot be cancelled by other jobs, so a link runs its full 24 h.
+`sbatch --test-only` start estimate for 1 GPU in `h100`: 2026-11-13 17:19. Each running link submits the next one (`afterany` on itself, `prod_job.sh`), so only
+20 jobs are ever pending (Slurm `bf_max_job_user=20`). Priority formula (`scontrol show config`): multifactor, weights QOS 100000, fair-share 10000, partition 10000,
+age 1000, job size 1000, `PriorityFavorSmall=no`; `h100` PriorityTier 100 / `preempt` 1.
+
 ## 8. Open issues
 
 - **Production has not started** at the time of writing (queue full). Start times, bins done per U and GPU-h are to be added from `squeue`/`sacct`/`info`.
