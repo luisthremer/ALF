@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -61,10 +62,23 @@ void async_handler(sycl::exception_list l) {
   }
 }
 
+// Profiling aid (team session 2026-11-11): ALFSH_TIMING=1 accumulates call count and wall time per shim routine and prints
+// them at alfsh_finalize. Off by default (one getenv at the first call); no effect on results.
+struct TimAcc { long long n = 0; double s = 0.0; };
+std::map<std::string, TimAcc> g_tim;
+int g_tim_on = -1;
 template <class F> int guarded(const char *what, F &&f) {
   g_async_err.store(false);
   try {
-    f();
+    if (g_tim_on < 0) { const char *e = std::getenv("ALFSH_TIMING"); g_tim_on = (e && e[0] == '1') ? 1 : 0; }
+    if (g_tim_on == 1) {
+      auto t0 = std::chrono::steady_clock::now();
+      f();
+      auto &a = g_tim[what];
+      a.n++; a.s += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    } else {
+      f();
+    }
     return g_async_err.load() ? -1 : 0;
   } catch (lp::exception &e) {
     // positive info = LAPACK computation error (e.g. exactly singular U in getrf); the data are still complete
@@ -101,6 +115,10 @@ int alfsh_init(void *q) {
 void alfsh_release() { g_release.store(true); }
 
 void alfsh_finalize() {
+  if (g_tim_on == 1)
+    for (auto &kv : g_tim)
+      std::fprintf(stderr, "ALFSH_TIMING %-12s calls %10lld  total %10.3f s  per call %9.3f ms\n", kv.first.c_str(), kv.second.n,
+                   kv.second.s, kv.second.n ? 1e3 * kv.second.s / kv.second.n : 0.0);
   g_release.store(true);
   g_gate.reset();
   g_other.reset();     // the queue destructor waits for its (now released) tasks

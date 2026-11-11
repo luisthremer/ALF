@@ -163,6 +163,12 @@ Program Main
         use h5lt
 #endif
         Implicit none
+#ifdef ALF_TEAM_TIMERS
+        ! team session 2026-11-11: wall time per sweep phase (0 sweep, 1 wrapgrup, 2 wrapgrdo, 3 stab_wrapur, 4 stab_wrapul, 5 stab_exchange+cgr, 6 Obser)
+        Integer(8) :: tt_c0, tt_c1, tt_s0, tt_s1, tt_rate
+        Real(8) :: tt(0:6) = 0.d0
+        Integer :: tt_nsw = 0
+#endif
 
 #include "git.h"
         COMPLEX (Kind=Kind(0.d0)), Dimension(:,:)  , Allocatable   ::  TEST
@@ -718,7 +724,13 @@ Program Main
            !Write(6,*)'Hi', NT1,NT, NST
 #ifdef ALF_GPU
            if (gpu_stab_on) then
+#ifdef ALF_TEAM_TIMERS
+              call system_clock(tt_c0)
+#endif
               CALL gpu_stab_wrapul(NT1, NT)
+#ifdef ALF_TEAM_TIMERS
+              call system_clock(tt_c1); tt(4) = tt(4) + real(tt_c1-tt_c0,8)/real(tt_rate,8)
+#endif
               Do nf_eff = 1,N_FL_eff
                  call gpu_stab_store_l(NST, nf_eff)
               ENDDO
@@ -735,7 +747,13 @@ Program Main
         NT1 = stab_nt(1)
 #ifdef ALF_GPU
         if (gpu_stab_on) then
+#ifdef ALF_TEAM_TIMERS
+           call system_clock(tt_c0)
+#endif
            CALL gpu_stab_wrapul(NT1, 0)
+#ifdef ALF_TEAM_TIMERS
+           call system_clock(tt_c1); tt(4) = tt(4) + real(tt_c1-tt_c0,8)/real(tt_rate,8)
+#endif
         else
 #endif
         CALL WRAPUL(NT1, 0, UDVL)
@@ -793,6 +811,9 @@ Program Main
 #endif
 
            DO NSW = 1, get_NSweep()
+#ifdef ALF_TEAM_TIMERS
+              call system_clock(tt_s0, tt_rate)
+#endif
 
 #if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
               IF (MOD(NSW,get_N_Tempering_frequency()) == 0) then
@@ -923,17 +944,29 @@ Program Main
                  NST = 1
                  DO NTAU = 0, LTROT-1
                     NTAU1 = NTAU + 1
+#ifdef ALF_TEAM_TIMERS
+                    call system_clock(tt_c0)
+#endif
                     CALL WRAPGRUP(GR,NTAU,PHASE,get_Propose_S0(), get_Nt_sequential_start(), get_Nt_sequential_end(), &    
                          &        get_N_Global_tau(), &
                          &        get_Sequential_MALA(), get_Delta_t_MALA_sequential(), get_Max_Force_MALA_sequential(), &
                          &        get_N_Global_tau_MALA(), get_delta_t_MALA_global_tau(), get_Max_Force_MALA_global_tau())
+#ifdef ALF_TEAM_TIMERS
+                    call system_clock(tt_c1); tt(1) = tt(1) + real(tt_c1-tt_c0,8)/real(tt_rate,8)
+#endif
                     
                     If (NTAU1 == Stab_nt(NST) ) then
                        If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "CGR (up sweep)", .false.)
                        NT1 = Stab_nt(NST-1)
 #ifdef ALF_GPU
                        if (gpu_stab_on) then
+#ifdef ALF_TEAM_TIMERS
+                          call system_clock(tt_c0)
+#endif
                           CALL gpu_stab_wrapur(NT1, NTAU1)
+#ifdef ALF_TEAM_TIMERS
+                          call system_clock(tt_c1); tt(3) = tt(3) + real(tt_c1-tt_c0,8)/real(tt_rate,8)
+#endif
                        else
 #endif
                        CALL WRAPUR(NT1, NTAU1, udvr)
@@ -948,8 +981,20 @@ Program Main
                              NVAR = 1
                              IF (NTAU1 .GT. LTROT/2) NVAR = 2
                              ! device: udvl = udvst(NST), udvst(NST) = udvr, CGR and the precision check against the wrapped GR
+#ifdef ALF_TEAM_TIMERS
+                             call system_clock(tt_c0)
+#endif
                              call gpu_stab_exchange(NST, nf_eff, .true., udvst(NST, nf_eff))
+#ifdef ALF_TEAM_TIMERS
+                             call system_clock(tt_c1); tt(5) = tt(5) + real(tt_c1-tt_c0,8)/real(tt_rate,8)
+#endif
+#ifdef ALF_TEAM_TIMERS
+                             call system_clock(tt_c0)
+#endif
                              call gpu_stab_cgr(nf_eff, nf, NVAR, GR, Z1, .true., lazy=gpu_upd_enabled())
+#ifdef ALF_TEAM_TIMERS
+                             call system_clock(tt_c1); tt(5) = tt(5) + real(tt_c1-tt_c0,8)/real(tt_rate,8)
+#endif
                           else
 #endif
                           ! Read from storage left propagation from LTROT to  NTAU1
@@ -996,7 +1041,13 @@ Program Main
                           Call Hop_mod_Symm(GR_Tilde,GR,ntau1)
                           !reconstruction of NOT calculated block!!!
                           If (reconstruction_needed) Call ham%GR_reconstruction( GR_Tilde )
+#ifdef ALF_TEAM_TIMERS
+                          call system_clock(tt_c0)
+#endif
                           CALL ham%Obser( GR_Tilde, PHASE, Ntau1, Mc_step_weight )
+#ifdef ALF_TEAM_TIMERS
+                          call system_clock(tt_c1); tt(6) = tt(6) + real(tt_c1-tt_c0,8)/real(tt_rate,8)
+#endif
 #ifdef ALF_GPU
 #endif
                        else
@@ -1004,7 +1055,13 @@ Program Main
                           If (reconstruction_needed) Call ham%GR_reconstruction( GR )
 #ifdef ALF_GPU
 #endif
+#ifdef ALF_TEAM_TIMERS
+                          call system_clock(tt_c0)
+#endif
                           CALL ham%Obser( GR, PHASE, Ntau1, Mc_step_weight  )
+#ifdef ALF_TEAM_TIMERS
+                          call system_clock(tt_c1); tt(6) = tt(6) + real(tt_c1-tt_c0,8)/real(tt_rate,8)
+#endif
 #ifdef ALF_GPU
 #endif
                        endif
@@ -1031,10 +1088,16 @@ Program Main
                     ! GR is at time slice NTAU1 = NTAU-1 after WRAPGRDO: measure and label with NTAU1 (slices 0..LTROT-1 in the
                     ! down sweep, 1..LTROT in the up sweep).  Tau-resolved local observables weight the endpoints in ham%Obser.
                     nt_obs = NTAU1
+#ifdef ALF_TEAM_TIMERS
+                    call system_clock(tt_c0)
+#endif
                     CALL WRAPGRDO(GR,NTAU, PHASE,get_Propose_S0(),get_Nt_sequential_start(), get_Nt_sequential_end(), & 
                          &        get_N_Global_tau(), &
                          &        get_Sequential_MALA(), get_Delta_t_MALA_sequential(), get_Max_Force_MALA_sequential(), &
                          &        get_N_Global_tau_MALA(), get_delta_t_MALA_global_tau(), get_Max_Force_MALA_global_tau())
+#ifdef ALF_TEAM_TIMERS
+                    call system_clock(tt_c1); tt(2) = tt(2) + real(tt_c1-tt_c0,8)/real(tt_rate,8)
+#endif
                     IF (nt_obs.GE. get_LOBS_ST() .AND. nt_obs.LE. get_LOBS_EN() ) THEN
                        If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Obser (down sweep)", .false.)
                        !write(*,*) "GR before obser sum: ",sum(GR(:,:,1))
@@ -1052,13 +1115,25 @@ Program Main
                           Call Hop_mod_Symm(GR_Tilde,GR,ntau1)
                           !reconstruction of NOT calculated block!!!
                           If (reconstruction_needed) Call ham%GR_reconstruction( GR_Tilde )
+#ifdef ALF_TEAM_TIMERS
+                          call system_clock(tt_c0)
+#endif
                           CALL ham%Obser( GR_Tilde, PHASE, nt_obs, Mc_step_weight )
+#ifdef ALF_TEAM_TIMERS
+                          call system_clock(tt_c1); tt(6) = tt(6) + real(tt_c1-tt_c0,8)/real(tt_rate,8)
+#endif
                        else
                           !reconstruction of NOT calculated block!!!
                           If (reconstruction_needed) Call ham%GR_reconstruction( GR )
 #ifdef ALF_GPU
 #endif
+#ifdef ALF_TEAM_TIMERS
+                          call system_clock(tt_c0)
+#endif
                           CALL ham%Obser( GR, PHASE, nt_obs, Mc_step_weight )
+#ifdef ALF_TEAM_TIMERS
+                          call system_clock(tt_c1); tt(6) = tt(6) + real(tt_c1-tt_c0,8)/real(tt_rate,8)
+#endif
 #ifdef ALF_GPU
 #endif
                        endif
@@ -1069,7 +1144,13 @@ Program Main
                        !Write(6,*) 'Wrapul : ', NT1, NTAU1
 #ifdef ALF_GPU
                        if (gpu_stab_on) then
+#ifdef ALF_TEAM_TIMERS
+                          call system_clock(tt_c0)
+#endif
                           CALL gpu_stab_wrapul(NT1, NTAU1)
+#ifdef ALF_TEAM_TIMERS
+                          call system_clock(tt_c1); tt(4) = tt(4) + real(tt_c1-tt_c0,8)/real(tt_rate,8)
+#endif
                        else
 #endif
                        CALL WRAPUL(NT1, NTAU1, udvl)
@@ -1086,8 +1167,20 @@ Program Main
                              IF (NTAU1 .GT. LTROT/2) NVAR = 2
                              ! device: udvr = udvst(NST), udvst(NST) = udvl (copied to the host object if Ltau = 1: interim),
                              ! CGR and the precision check against the wrapped GR
+#ifdef ALF_TEAM_TIMERS
+                             call system_clock(tt_c0)
+#endif
                              call gpu_stab_exchange(NST, nf_eff, .false., udvst(NST, nf_eff))
+#ifdef ALF_TEAM_TIMERS
+                             call system_clock(tt_c1); tt(5) = tt(5) + real(tt_c1-tt_c0,8)/real(tt_rate,8)
+#endif
+#ifdef ALF_TEAM_TIMERS
+                             call system_clock(tt_c0)
+#endif
                              call gpu_stab_cgr(nf_eff, nf, NVAR, GR, Z1, .true., lazy=gpu_upd_enabled())
+#ifdef ALF_TEAM_TIMERS
+                             call system_clock(tt_c1); tt(5) = tt(5) + real(tt_c1-tt_c0,8)/real(tt_rate,8)
+#endif
                           else
 #endif
                           ! Read from store the right prop. from 1 to LTROT/NWRAP-1
@@ -1131,7 +1224,13 @@ Program Main
                  NT  = Stab_nt(1)
 #ifdef ALF_GPU
                  if (gpu_stab_on) then
+#ifdef ALF_TEAM_TIMERS
+                    call system_clock(tt_c0)
+#endif
                     CALL gpu_stab_wrapul(NT, NT1)
+#ifdef ALF_TEAM_TIMERS
+                    call system_clock(tt_c1); tt(4) = tt(4) + real(tt_c1-tt_c0,8)/real(tt_rate,8)
+#endif
                  else
 #endif
                  CALL WRAPUL(NT, NT1, udvl)
@@ -1156,7 +1255,13 @@ Program Main
 #ifdef ALF_GPU
                     if (gpu_stab_on) then
                        NVAR = 1
+#ifdef ALF_TEAM_TIMERS
+                       call system_clock(tt_c0)
+#endif
                        call gpu_stab_cgr(nf_eff, nf, NVAR, GR, Z1, .true., lazy=gpu_upd_enabled())
+#ifdef ALF_TEAM_TIMERS
+                       call system_clock(tt_c1); tt(5) = tt(5) + real(tt_c1-tt_c0,8)/real(tt_rate,8)
+#endif
                     else
 #endif
                     TEST(:,:) = GR(:,:,nf)
@@ -1220,6 +1325,9 @@ Program Main
               ! Automatic N_delay (N_delay = -1): on every rank after every sweep; timing starts after sweep 1, the
               ! decision after sweep 3 contains the only MPI collective (Group_Comm). No-op otherwise.
               If (N_sweeps_done < 4_8) N_sweeps_done = N_sweeps_done + 1_8
+#ifdef ALF_TEAM_TIMERS
+              call system_clock(tt_s1); tt(0) = tt(0) + real(tt_s1-tt_s0,8)/real(tt_rate,8); tt_nsw = tt_nsw + 1
+#endif
               Call Lowrank_autotune_finish(N_sweeps_done)
            ENDDO
 #ifdef ALF_GPU
@@ -1284,6 +1392,9 @@ Program Main
 #ifdef ALF_GPU
         call gpu_lr_finalize()
         call gpu_tau_finalize()
+#ifdef ALF_TEAM_TIMERS
+        write(*,'(A,I6,7F11.3)') ' TEAM_TIMERS nsw, sweep wrapgrup wrapgrdo stab_wrapur stab_wrapul stab_cgr obser [s]: ', tt_nsw, tt
+#endif
         call gpu_stab_finalize()
         call gpu_obs_finalize()
         call gpu_state_finalize()

@@ -1,0 +1,245 @@
+{
+  "archived" : false,
+  "name" : "Intel Max 1550 >= A30 (team issue)",
+  "nodes" : [
+    {
+      "collapsed" : false,
+      "description" : "",
+      "id" : "special_start",
+      "kind" : "start",
+      "order" : 0,
+      "parentId" : null,
+      "title" : "Start"
+    },
+    {
+      "collapsed" : false,
+      "description" : "At L=24 and L=32, one ALF chain on one Max 1550 tile\/card is no slower than on the A30 (5.25 \/ 18.2 s\/sweep), and sweeps\/s per card is at least that of one A30 (0.37 with 4 chains, 0.43 with 8), with the whole computation on the GPU and numerics unchanged.",
+      "id" : "special_goal",
+      "kind" : "goal",
+      "order" : 0,
+      "parentId" : null,
+      "title" : "Goal"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Plan, GPU-h and usage estimate; owner OK. Worktree ALF_wt_large_prompt_team, branch production-mpi-intel-large-prompt-team.",
+      "done" : true,
+      "id" : "n_h0zn35sr",
+      "order" : 0,
+      "parentId" : null,
+      "title" : "Checkpoint 1: plan"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : true,
+      "id" : "n_htqqjrqj",
+      "order" : 0,
+      "parentId" : "n_h0zn35sr",
+      "title" : "Plan with GPU-h and usage estimate"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : true,
+      "id" : "n_ngbxdk06",
+      "order" : 1,
+      "parentId" : "n_h0zn35sr",
+      "title" : "Owner OK; fresh worktree and branch"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_h0zn35sr"
+      ],
+      "description" : "Builds, ctest, same-seed comparison against ifx GPU=none, planted-defect control, baseline timings.",
+      "done" : false,
+      "id" : "n_z8umbxo0",
+      "order" : 1,
+      "parentId" : null,
+      "title" : "Phase A: baseline and checks"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Job 560146 (preempt), ~3 min.",
+      "done" : true,
+      "id" : "n_qmkfzfdv",
+      "order" : 0,
+      "parentId" : "n_z8umbxo0",
+      "title" : "Builds aot, gpu-txt, cpu-txt, gpu-ser"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C: 53\/53 passed (gpu-ser).",
+      "done" : true,
+      "id" : "n_1enp2iel",
+      "order" : 1,
+      "parentId" : "n_z8umbxo0",
+      "title" : "ctest 53\/53 on GPU"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C: L6 Mz=F 2.2e-15, L6 Mz=T 5.5e-11, L12 Mz=F 1.5e-14; configurations identical.",
+      "done" : true,
+      "id" : "n_0u6h1svx",
+      "order" : 2,
+      "parentId" : "n_z8umbxo0",
+      "title" : "Same-seed comparison passes"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C: eps:1e-12 caught (1.1e-13 > 1e-13, marginal); ALF_GPU_NS=0 NOT caught at L=12 (8e-15). Needs a stronger control or a Precision Green check.",
+      "done" : false,
+      "id" : "n_wduq2swm",
+      "order" : 3,
+      "parentId" : "n_z8umbxo0",
+      "title" : "Planted-defect control"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C (jobs 560147, 560153, AOT, ref params): L=24 one tile 10.6 s\/sweep (2 host threads), 11.3 (8), 13.3-14.6 (1); one card COMPOSITE 17.3-19.4; L=32 one tile 30.7 (8 thr), 50.0 (1). Node: 8 ranks 0.56-0.83, 16 ranks 0.53, 32 ranks + CCS 2.05 sweeps\/s (= 0.51 per card). First-run 4.4 s value was a setup artefact. vs A30: one chain 2.0x (L24) and 1.7x (L32) slower; per-card throughput already above A30 (0.43) with 32 ranks.",
+      "done" : true,
+      "id" : "n_2nx06120",
+      "order" : 4,
+      "parentId" : "n_z8umbxo0",
+      "title" : "Baseline timings L=24, L=32, node throughput"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_z8umbxo0"
+      ],
+      "description" : "Where the time goes on Max 1550 vs A30, what runs on the host and why.",
+      "done" : false,
+      "id" : "n_fy5jf2xm",
+      "order" : 2,
+      "parentId" : null,
+      "title" : "Phase B: own profile"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C: oneMKL geqrf takes geqrf_wy_lookahead_hybrid: panel (zgeqrf, zlarft, ztrmm) and larfb_wy (zgemm) run on the host; geqrf ~53% of main-thread time. VTune gpu-offload collected no GPU data.",
+      "done" : true,
+      "id" : "n_x9lwj6lq",
+      "order" : 0,
+      "parentId" : "n_fy5jf2xm",
+      "title" : "VTune host hotspots, one L=24 chain"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C (in-ALF shim timers ALFSH_TIMING, jobs 560168\/560187): L=24 per sweep 192 geqrf (9.4 ms\/call, 8 thr; 27 ms, 1 thr), 192 unmqr (2.8 ms), 96 getrf (3.9 ms) = 2.43 s; L=32: 9.8 s of 31.4. Standalone SYCL bench unreliable (V2 adapter needed, timings disagree with ALF).",
+      "done" : true,
+      "id" : "n_etxiv7wl",
+      "order" : 1,
+      "parentId" : "n_fy5jf2xm",
+      "title" : "LAPACK per-call microbenchmark N=576\/1024"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C (phase timers ALF_TEAM_TIMERS, job 560187), L=24 per sweep 10.1 s: updates 5.60 (55%), CGR 1.74, stab 1.39, obser 1.18. Host work: oneMKL geqrf_wy_lookahead_hybrid (panel + larfb on CPU), getrf host-assisted. Updates latency-bound: 75k kernel launches, 40k dispatched BLAS with sync, 374k small H2D copies per sweep (LIBOMPTARGET_DEBUG). GPU tracing impossible here: VTune 2025.1\/2025.8 no GPU data, LIBOMPTARGET_PROFILE no output, PTI segfaults.",
+      "done" : true,
+      "id" : "n_2kv1891i",
+      "order" : 2,
+      "parentId" : "n_fy5jf2xm",
+      "title" : "Routine map CUDA vs oneMKL"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_a1w6x2on",
+      "order" : 3,
+      "parentId" : "n_fy5jf2xm",
+      "title" : "Checkpoint 2 report"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_fy5jf2xm"
+      ],
+      "description" : "Same-algorithm options only (Householder QR, partial-pivot LU).",
+      "done" : false,
+      "id" : "n_wn2dza0r",
+      "order" : 3,
+      "parentId" : null,
+      "title" : "Phase C: research and prototypes"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_r87zm40k",
+      "order" : 0,
+      "parentId" : "n_wn2dza0r",
+      "title" : "Research oneMKL, MAGMA, SLATE, reference LAPACK"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_671xrazy",
+      "order" : 1,
+      "parentId" : "n_wn2dza0r",
+      "title" : "Prototype benchmarks"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_ulnuru0c",
+      "order" : 2,
+      "parentId" : "n_wn2dza0r",
+      "title" : "Checkpoint 3: ranked table and recommendation"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_wn2dza0r"
+      ],
+      "description" : "",
+      "done" : false,
+      "id" : "n_g4twgzat",
+      "order" : 4,
+      "parentId" : null,
+      "title" : "Phase D: integration and final report"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_f8a84eio",
+      "order" : 0,
+      "parentId" : "n_g4twgzat",
+      "title" : "Integrate behind ONEMKL backend, CUDA unchanged"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_qdqkpl5h",
+      "order" : 1,
+      "parentId" : "n_g4twgzat",
+      "title" : "Numerics review by fresh agent"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_279szlz2",
+      "order" : 2,
+      "parentId" : "n_g4twgzat",
+      "title" : "Before\/after timings vs A30 target"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_79rg49gy",
+      "order" : 3,
+      "parentId" : "n_g4twgzat",
+      "title" : "ISSUE_INTEL_VS_A30.md, commits, node-h and usage"
+    }
+  ],
+  "rev" : 1,
+  "version" : 1
+}
