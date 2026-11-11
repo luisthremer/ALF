@@ -4,6 +4,7 @@ LIB=modules_90.a
 
 SRCS = Mat_subroutines_mod.F90 \
 	alf_la_mod.F90 \
+	alf_la_hip_mod.F90 \
 	alf_hdf5_mod.F90 \
 	check_omp_num_threads_mod.F90 \
 	entanglement_mod.F90 \
@@ -40,6 +41,14 @@ ifeq ($(ALF_GPU),intel)
 SHIMOBJ = alf_la_sycl_shim.o
 alf_la_sycl_shim.o: alf_la_sycl_shim.cpp
 	icpx -fsycl -O2 -std=c++17 -I$(MKLROOT)/include -c $<
+endif
+
+# GPU=amd (ALF_GPU=amd): C++ hipBLAS/hipSOLVER shim of the alf_la HIP backend
+ROCM_INC ?= $(if $(ROCM_PATH),$(ROCM_PATH),/opt/rocm)/include
+ifeq ($(ALF_GPU),amd)
+SHIMOBJ = alf_la_hip_shim.o
+alf_la_hip_shim.o: alf_la_hip_shim.cpp
+	g++ -O2 -std=c++17 -D__HIP_PLATFORM_AMD__ -I$(ROCM_INC) -c $<
 endif
 
 $(LIB): $(DEPSFILE) $(OBJS) $(SHIMOBJ)

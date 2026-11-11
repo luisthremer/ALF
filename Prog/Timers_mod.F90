@@ -159,7 +159,7 @@ contains
    subroutine timer_fail(msg)
       Character (len=*), intent(in) :: msg
       write(error_unit,'(A)') ' Timers_mod: ' // trim(msg)
-      call exit(1)
+      error stop 1
    end subroutine timer_fail
 
    Character (len=12) function idname(id)

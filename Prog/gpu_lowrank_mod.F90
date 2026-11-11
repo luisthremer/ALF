@@ -268,7 +268,7 @@ Contains
   Subroutine k_dly_wrap(G, X, Y, ld, nd_, jcnt, n, t, dir, r, eo, nt)
     Implicit none
     Integer, intent(in) :: ld, nd_, jcnt, n, t, dir, r, eo, nt
-    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,*), X(ld,*), Y(ld,*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,1), X(ld,1), Y(ld,1)
     Integer :: j, sp, nloop
     Complex (Kind=Kind(0.d0)) :: za, zb
     nloop = max(nd_, jcnt)
@@ -296,8 +296,8 @@ Contains
   Subroutine k_dly_gpp(G, X, Y, ld, jcnt, p, res)
     Implicit none
     Integer, intent(in) :: ld, jcnt, p
-    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,*), X(ld,*), Y(ld,*)
-    Real (Kind=Kind(0.d0)), intent(inout) :: res(*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,1), X(ld,1), Y(ld,1)
+    Real (Kind=Kind(0.d0)), intent(inout) :: res(1)
     Integer :: k
     Complex (Kind=Kind(0.d0)) :: s
     !$omp target private(s)
@@ -316,8 +316,8 @@ Contains
     Implicit none
     Integer, intent(in) :: ld, nrow, jcnt, p
     Real (Kind=Kind(0.d0)), intent(in) :: zr, zi
-    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: X(ld,*), Y(ld,*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: X(ld,1), Y(ld,1)
     Integer :: i, k
     Complex (Kind=Kind(0.d0)) :: c, rr, z
     !$omp target teams distribute parallel do private(k, c, rr, z)
@@ -339,9 +339,9 @@ Contains
   Subroutine k_sub_gather(G, ld, S, k, nd_, p, buf)
     Implicit none
     Integer, intent(in) :: ld, k, nd_, p
-    Integer, intent(in) :: S(*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: buf(*)
+    Integer, intent(in) :: S(1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: buf(1)
     Integer :: m
     !$omp target teams distribute parallel do
     do m = 0, k
@@ -358,9 +358,9 @@ Contains
   Subroutine k_sub_flush_gather(G, ld, nrow, S, k, nf, C, Qt)
     Implicit none
     Integer, intent(in) :: ld, nrow, k, nf
-    Integer, intent(in) :: S(*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: C(ld,*), Qt(ld,*)
+    Integer, intent(in) :: S(1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: C(ld,1), Qt(ld,1)
     Integer :: i, m
     !$omp target teams distribute parallel do collapse(2)
     do m = 1, k
@@ -461,7 +461,7 @@ Contains
   Subroutine k_wrap_g0(G, ld, n, t, dir, r, eo, nt)
     Implicit none
     Integer, intent(in) :: ld, n, t, dir, r, eo, nt
-    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,1)
     Integer :: j, sp
     Complex (Kind=Kind(0.d0)) :: za, zb
     !$omp target teams distribute parallel do private(sp, za, zb)

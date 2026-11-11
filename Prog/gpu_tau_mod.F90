@@ -1676,8 +1676,8 @@ Contains
   Subroutine k_tau_init(n, G00, GT0, GTT, G0T)
     Implicit none
     Integer, intent(in) :: n
-    Complex (Kind=Kind(0.d0)), intent(in) :: G00(n,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: GT0(n,*), GTT(n,*), G0T(n,*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: G00(n,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: GT0(n,1), GTT(n,1), G0T(n,1)
     Integer :: i, j
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
@@ -1711,7 +1711,7 @@ Contains
     Implicit none
     Integer, intent(in) :: n, b
     Real (Kind=Kind(0.d0)), intent(in) :: x
-    Complex (Kind=Kind(0.d0)), intent(inout) :: A(n,*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: A(n,1)
     Integer :: i, j
     Integer(int64) :: k, h
     Real (Kind=Kind(0.d0)) :: r
@@ -1730,7 +1730,7 @@ Contains
   ! fault injection: A(1,1) *= 1 + 1e-6
   Subroutine k_fault_scale(A)
     Implicit none
-    Complex (Kind=Kind(0.d0)), intent(inout) :: A(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: A(1)
     !$omp target
     A(1) = A(1) * (1.d0 + 1.d-6)
     !$omp end target
@@ -1740,9 +1740,9 @@ Contains
   Subroutine k_dm(n, D, s, Dm)
     Implicit none
     Integer, intent(in) :: n
-    Complex (Kind=Kind(0.d0)), intent(in) :: D(*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: D(1)
     Real (Kind=Kind(0.d0)), intent(in) :: s
-    Complex (Kind=Kind(0.d0)), intent(inout) :: Dm(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: Dm(1)
     Integer :: i
     !$omp target teams distribute parallel do
     do i = 1, n
@@ -1754,9 +1754,9 @@ Contains
   Subroutine k_dm_log(n, L, dl, Dm, Rs)
     Implicit none
     Integer, intent(in) :: n
-    Real (Kind=Kind(0.d0)), intent(in) :: L(*), dl
-    Complex (Kind=Kind(0.d0)), intent(inout) :: Dm(*)
-    Real (Kind=Kind(0.d0)), intent(inout) :: Rs(*)
+    Real (Kind=Kind(0.d0)), intent(in) :: L(1), dl
+    Complex (Kind=Kind(0.d0)), intent(inout) :: Dm(1)
+    Real (Kind=Kind(0.d0)), intent(inout) :: Rs(1)
     Integer :: i
     Real (Kind=Kind(0.d0)) :: le
     !$omp target teams distribute parallel do private(le)
@@ -1776,8 +1776,8 @@ Contains
   Subroutine k_rowscale_r(n, A, lda, Rs)
     Implicit none
     Integer, intent(in) :: n, lda
-    Complex (Kind=Kind(0.d0)), intent(inout) :: A(lda,*)
-    Real (Kind=Kind(0.d0)), intent(in) :: Rs(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: A(lda,1)
+    Real (Kind=Kind(0.d0)), intent(in) :: Rs(1)
     Integer :: i, j
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
@@ -1792,8 +1792,8 @@ Contains
   Subroutine k_build_H2(n, br, V1i, U2h, D1m, U1, D2m, V2, H)
     Implicit none
     Integer, intent(in) :: n, br
-    Complex (Kind=Kind(0.d0)), intent(in) :: V1i(n,*), U2h(n,*), D1m(*), U1(n,*), D2m(*), V2(n,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: H(2*n,*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: V1i(n,1), U2h(n,1), D1m(1), U1(n,1), D2m(1), V2(n,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: H(2*n,1)
     Integer :: i, j
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
@@ -1818,9 +1818,9 @@ Contains
   Subroutine k_build_rhs(n, br, ipvt, V1i, U2h, H)
     Implicit none
     Integer, intent(in) :: n, br
-    Integer(c_int), intent(in) :: ipvt(*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: V1i(n,*), U2h(n,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: H(2*n,*)
+    Integer(c_int), intent(in) :: ipvt(1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: V1i(n,1), U2h(n,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: H(2*n,1)
     Integer :: i, j, r
     !$omp target teams distribute parallel do collapse(2) private(r)
     do j = 1, 2*n
@@ -1848,7 +1848,7 @@ Contains
   Subroutine k_ns2(n, A)
     Implicit none
     Integer, intent(in) :: n
-    Complex (Kind=Kind(0.d0)), intent(inout) :: A(n,*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: A(n,1)
     Integer :: i, j
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
@@ -1863,8 +1863,8 @@ Contains
   Subroutine k_rowscale_inv(n, H, ldh, D)
     Implicit none
     Integer, intent(in) :: n, ldh
-    Complex (Kind=Kind(0.d0)), intent(inout) :: H(ldh,*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: D(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: H(ldh,1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: D(1)
     Integer :: i, j
     Real (Kind=Kind(0.d0)) :: sv
     !$omp target teams distribute parallel do collapse(2) private(sv)
@@ -1882,8 +1882,8 @@ Contains
     Implicit none
     Integer, intent(in) :: n, br
     Logical, intent(in) :: swp
-    Complex (Kind=Kind(0.d0)), intent(in) :: H(2*n,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: G00(n,*), GT0(n,*), GTT(n,*), G0T(n,*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: H(2*n,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: G00(n,1), GT0(n,1), GTT(n,1), G0T(n,1)
     Integer :: i, j
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
@@ -2016,7 +2016,7 @@ Contains
        call gpu_stab_finalize()
        call gpu_state_finalize()
        write(output_unit,'(A)') ' GPU tau pass hook: ALF_GPU_EXIT=1, stopping after the test'
-       call exit(0)
+       stop 0
     endif
   end subroutine gpu_tau_hook
 

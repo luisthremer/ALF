@@ -201,8 +201,8 @@ Contains
   Subroutine k_cpy(nel, a, b)
     Implicit none
     Integer, intent(in) :: nel
-    Complex (Kind=Kind(0.d0)), intent(in) :: a(*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: b(*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: a(1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: b(1)
     Integer :: i
     !$omp target teams distribute parallel do
     do i = 1, nel
