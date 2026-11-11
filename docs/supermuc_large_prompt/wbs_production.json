@@ -211,12 +211,39 @@
     },
     {
       "collapsed" : false,
-      "description" : "Fresh agent, not the author.",
-      "done" : false,
+      "description" : "Fresh agent, not the author. Done: T2 OK (metric is file-scale; element-wise ~1e-11 on small entries), T3 OK; concerns: template never run under Slurm, no module check, disk-full paths, restore choice, requeue cap, coverage only L=8.",
+      "done" : true,
       "id" : "n_ee41a8yy",
       "order" : 4,
       "parentId" : "n_gyzcgav1",
       "title" : "Independent numerics review of T2\/T3 evidence"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Module check, loud snapshot failures, copy-then-replace restore, best restore source by bins, requeue cap, mixed-bin confout logging.",
+      "done" : false,
+      "id" : "n_k70meh7l",
+      "order" : 5,
+      "parentId" : "n_gyzcgav1",
+      "title" : "Fix review findings in recover.sh\/job_preempt.sh"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Filled job_preempt.sh, L=8, preempt partition: restart count, appended logs, recovery, snapshots, CPU_MAX end, stop guard.",
+      "done" : false,
+      "id" : "n_kom2mwn4",
+      "order" : 6,
+      "parentId" : "n_gyzcgav1",
+      "title" : "Real template test under Slurm with scontrol requeue"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Production sizes exercise the delayed-update accumulation (N > N_delay); file-scale and element-wise metrics. PASS under decision 43 (compare_large.py): real parts within 10x CPU-vs-CPU spread, confouts\/acceptance identical; Im of scalar observables report-only (summation order of device reductions); planted defects FAIL.",
+      "done" : true,
+      "id" : "n_ywn5mtgt",
+      "order" : 7,
+      "parentId" : "n_gyzcgav1",
+      "title" : "Same-seed GPU vs CPU at L=24 and L=16"
     },
     {
       "collapsed" : false,
