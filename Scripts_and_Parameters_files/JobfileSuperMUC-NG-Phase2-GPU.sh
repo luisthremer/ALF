@@ -41,6 +41,9 @@ module load intel-mkl/2025.3.0 hdf5/1.14.5-intel25
 
 # GPU path: a missing device must stop the run instead of silently running on the CPU
 export OMP_TARGET_OFFLOAD=MANDATORY
+# Level Zero staging buffer 1 MB (default is smaller): the 32 KB D->H block copy of the submatrix update drops from ~380 us
+# to ~22 us; one chain L=24 10.5 -> 7.05 s/sweep, L=32 31.5 -> 23.4, bitwise-identical results (team session 2026-11-12).
+export LIBOMPTARGET_LEVEL_ZERO_STAGING_BUFFER_SIZE=1048576
 # one host thread per walker (all heavy work is on the GPU)
 export OMP_NUM_THREADS=1
 # Rank -> GPU. omp_set_default_device(rank mod #visible devices) is done by ALF itself; to put ranks on different CARDS
