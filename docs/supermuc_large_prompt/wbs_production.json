@@ -13,7 +13,7 @@
     },
     {
       "collapsed" : false,
-      "description" : "Point-defect Hubbard production (Jakob's parameters) at L=24, 28, 32 for U = 5.0-5.6 (10 values), 16 walkers per U, on the preempt partition, verified correct before and during the run.",
+      "description" : "Point-defect Hubbard production (Jakob's parameters) at L=24, 28, 32 (+ L32_fast) for U = 5.0-5.6 (10 values), on general (2-day chains, pn93la), running the full submitted chains (owner 2026-11-11: no early stop; L24\/L32_fast 2 jobs, L28\/L32 3 jobs), verified correct before and during the run. No production above L=36.",
       "id" : "special_goal",
       "kind" : "goal",
       "order" : 0,
@@ -355,7 +355,7 @@
     },
     {
       "collapsed" : false,
-      "description" : "GPU path ACTIVE, acceptance ~0.32-0.33, Precision Green\/Phase max < 1e-8, s\/bin as in T5, snapshots written, no requeue loop. 2026-11-11 22:30: jobs 560229-560234 ran ~6x too slow: --cpus-per-task=1 pinned every rank to one logical cpu (taskset). Fixed (fa393610), cancelled, resubmitted as 560309 (L24), 560310 (L28), 560311 (L32), 560312 (L32_fast); bins kept via recovery. Check affinity once they run. Owner 2026-11-11: 25k GPU-h on pn93la, 5-node runs to general: L24 stays on preempt (560309, running); L28 chain 560319-560321, L32 chain 560322-560324, L32_fast chain 560325-560326 (general, 2-day jobs, afterany, CPU_MAX 47 h). L24 also moved to general (was preempted by our own L28 general job): chain 560327-560328; recovery kept 8 bins per set (Temp_4: 7).",
+      "description" : "GPU path ACTIVE, acceptance ~0.32-0.33, Precision Green\/Phase max < 1e-8, s\/bin as in T5, snapshots written, no requeue loop. 2026-11-11 22:30: jobs 560229-560234 ran ~6x too slow: --cpus-per-task=1 pinned every rank to one logical cpu (taskset). Fixed (fa393610), cancelled, resubmitted as 560309 (L24), 560310 (L28), 560311 (L32), 560312 (L32_fast); bins kept via recovery. Check affinity once they run. Owner 2026-11-11: 25k GPU-h on pn93la, 5-node runs to general: L24 stays on preempt (560309, running); L28 chain 560319-560321, L32 chain 560322-560324, L32_fast chain 560325-560326 (general, 2-day jobs, afterany, CPU_MAX 47 h). L24 also moved to general (was preempted by our own L28 general job): chain 560327-560328; recovery kept 8 bins per set (Temp_4: 7). L28 speed after the fix: 302 s per bin (30.2 s\/sweep, T5: 29.6). Stop target off: target_bins=1000000 in every run dir (de771d49).",
       "done" : false,
       "id" : "n_pgz21fmj",
       "order" : 2,
