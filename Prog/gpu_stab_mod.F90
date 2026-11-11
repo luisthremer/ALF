@@ -88,6 +88,9 @@ Module gpu_stab_mod
   Use cgr1_mod, only: CGR
   Use Control, only: Control_PrecisionG_vals
   Use alf_la_mod
+#if defined(ALF_LA_HIP)
+  Use alf_hipk_mod
+#endif
   Use gpu_state_mod
   Use gpu_update_mod, only: gpu_upd_enabled
   Use gpu_wrap_mod, only: gpu_wrapur_slices, gpu_wrapul_slices
@@ -233,10 +236,14 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: a(1)
     Complex (Kind=Kind(0.d0)), intent(inout) :: b(1)
     Integer :: i
+#if defined(ALF_LA_HIP)
+    call hk_copyz(nel, a, b)
+#else
     !$omp target teams distribute parallel do
     do i = 1, nel
        b(i) = a(i)
     enddo
+#endif
   end subroutine k_copy_c
 
   Subroutine k_copy_r(nel, a, b)
@@ -879,12 +886,16 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: U(ld,1)
     Complex (Kind=Kind(0.d0)), intent(in) :: D(1)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    call hk_scale_cols(n, ld, U, D)
+#else
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
           U(i,j) = U(i,j)*D(j)
        enddo
     enddo
+#endif
   end subroutine k_scale_cols
 
   ! D(i) = |U(i,i)| (complex, zero imaginary part)
@@ -908,6 +919,9 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: D(1)
     Integer :: i, j
     Real (Kind=Kind(0.d0)) :: x
+#if defined(ALF_LA_HIP)
+    call hk_divrows(n, ld, U, D)
+#else
     !$omp target teams distribute parallel do collapse(2) private(x)
     do j = 1, n
        do i = 1, n
@@ -917,6 +931,7 @@ Contains
           endif
        enddo
     enddo
+#endif
   end subroutine k_divrows
 
   ! Phase = prod_i U(i,i), times the permutation sign, conjugated for side L; cs(1) = Phase, cs(2) = 1/Phase.
@@ -1086,12 +1101,16 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: A(lda,1)
     Complex (Kind=Kind(0.d0)), intent(in) :: D(1)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    call hk_rowdiv(n, lda, A, D)
+#else
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
           A(i,j) = A(i,j) / D(i)
        enddo
     enddo
+#endif
   end subroutine k_rowdiv
 
   ! A(i,j) = A(i,j) * (1/Re D(j))
@@ -1118,6 +1137,9 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: T(n,1)
     Complex (Kind=Kind(0.d0)), intent(in) :: R(n,1), Dr(1), Dl(1)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    call hk_tpup(n, T, R, Dr, Dl)
+#else
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
@@ -1125,6 +1147,7 @@ Contains
           T(i,j) = T(i,j) + R(i,j)
        enddo
     enddo
+#endif
   end subroutine k_tpup
 
   ! STABLOG CGR: the four cases of cgr1_mod (exponent signs chosen so that no exp overflows)
@@ -1229,6 +1252,9 @@ Contains
     Complex (Kind=Kind(0.d0)) :: ph, z
     Real (Kind=Kind(0.d0)) :: x
     Integer :: i
+#if defined(ALF_LA_HIP)
+    call hk_cgr_phase(n, ld, T, tau, cs, nvar, sgn, bad)
+#else
     !$omp target
     ph = cs(3)
     if (sgn < 0) ph = -ph
@@ -1249,6 +1275,7 @@ Contains
     if (bad == 1) ph = -ph
     cs(3) = ph
     !$omp end target
+#endif
   end subroutine k_cgr_phase
 
   ! A <- 3/2 - A/2  (A = Q^H Q on input)
@@ -1257,6 +1284,9 @@ Contains
     Integer, intent(in) :: n
     Complex (Kind=Kind(0.d0)), intent(inout) :: A(n,1)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    call hk_ns(n, A)
+#else
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
@@ -1264,6 +1294,7 @@ Contains
           if (i == j) A(i,j) = A(i,j) + 1.5d0
        enddo
     enddo
+#endif
   end subroutine k_ns
 
   ! r(8) = max |A - 1|
@@ -1321,6 +1352,9 @@ Contains
     Integer :: i, j, na, nb
     Real (Kind=Kind(0.d0)) :: xm, xs, d, cs
     Logical :: fa, fb
+#if defined(ALF_LA_HIP)
+    call hk_prec(n, A, B, r)
+#else
     xm = 0.d0; xs = 0.d0; na = 0; nb = 0
     ! ticket 212: the sum has a fixed order: one thread per column sums serially into st_pw(j), then one thread adds the
     ! n column sums in order (max and the integer counts are order independent and stay reductions)
@@ -1352,6 +1386,7 @@ Contains
     r(6) = real(na, kind(0.d0))
     r(7) = real(nb, kind(0.d0))
     !$omp end target
+#endif
   end subroutine k_prec
 
   Logical function isnan_bits(x)

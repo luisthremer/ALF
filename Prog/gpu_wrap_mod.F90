@@ -77,6 +77,9 @@ Module gpu_wrap_mod
   Use QMC_runtime_var
   Use Hop_mod
   Use alf_la_mod
+#if defined(ALF_LA_HIP)
+  Use alf_hipk_mod
+#endif
   Use gpu_state_mod
 
   Implicit none
@@ -305,10 +308,14 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: a(1)
     Complex (Kind=Kind(0.d0)), intent(inout) :: b(1)
     Integer :: i
+#if defined(ALF_LA_HIP)
+    call hk_copyz(nel, a, b)
+#else
     !$omp target teams distribute parallel do
     do i = 1, nel
        b(i) = a(i)
     enddo
+#endif
   end subroutine k_cpy_n
 
   Subroutine gpu_mmthr_d(M, nf)
@@ -767,12 +774,16 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,1)
     Complex (Kind=Kind(0.d0)), intent(in) :: W(ldw,1)
     Integer :: j, l
+#if defined(ALF_LA_HIP)
+    call hk_scatter_rows(nd, ncol, P, M, ld, W, ldw)
+#else
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, ncol
        do l = 1, nd
           M(P(l), j) = W(l,j)
        enddo
     enddo
+#endif
   end subroutine k_scatter_rows
 
   ! W(j,l) = M(P(l), j)   (W is ncol x nd, ld ncol)

@@ -62,6 +62,9 @@ Module gpu_lowrank_mod
   Use Hamiltonian_main, only: Ndim, N_FL, N_FL_eff, Calc_Fl_map, Op_V, nsigma
   Use QMC_runtime_var, only: get_Sequential_scheme, get_N_delay
   Use alf_la_mod, only: la_gemm, la_sync, LA_N, LA_T
+#if defined(ALF_LA_HIP)
+  Use alf_hipk_mod
+#endif
   Use gpu_state_mod
 
   Implicit none
@@ -362,6 +365,9 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,1)
     Complex (Kind=Kind(0.d0)), intent(inout) :: C(ld,1), Qt(ld,1)
     Integer :: i, m
+#if defined(ALF_LA_HIP)
+    call hk_flush_gather(ld, nrow, k, nf, size(slot_d,1), G(1,1), S, C(1,1), Qt(1,1), slot_d(1,1))
+#else
     !$omp target teams distribute parallel do collapse(2)
     do m = 1, k
        do i = 1, nrow
@@ -373,6 +379,7 @@ Contains
           endif
        enddo
     enddo
+#endif
   end subroutine k_sub_flush_gather
 
 !====================================================================
@@ -1159,6 +1166,9 @@ Contains
     Implicit none
     Integer, intent(in) :: nfl, nfa, nfb, ld, b
     Integer :: fl, a, c, nf
+#if defined(ALF_LA_HIP)
+    call hk_blk_gather(nfl, nfa, nfb, b, nd, ld, G_d(1,1,1), bsd(1,1), gbd(1,1,1))
+#else
     !$omp target teams distribute parallel do collapse(3) private(nf)
     do fl = 1, nfl
        do c = 1, b
@@ -1169,6 +1179,7 @@ Contains
           enddo
        enddo
     enddo
+#endif
   end subroutine k_blk_gather
 
 !> rows then columns of G(:,:,nf) scaled by the block's wrap factors (cbuf: za(1:b), zb(1:b) of flavour fl)
@@ -1176,24 +1187,32 @@ Contains
     Implicit none
     Integer, intent(in) :: nf, fl, ld, b
     Integer :: a, j
+#if defined(ALF_LA_HIP)
+    call hk_blk_scale_rows(nf, fl, ld, b, nd, size(cbuf,1), G_d(1,1,1), bsd(1,1), cbuf(1,1))
+#else
     !$omp target teams distribute parallel do collapse(2)
     do a = 1, b
        do j = 1, ld
           G_d(bsd(a,fl),j,nf) = cbuf(a,fl) * G_d(bsd(a,fl),j,nf)
        enddo
     enddo
+#endif
   end subroutine k_blk_scale_rows
 
   Subroutine k_blk_scale_cols(nf, fl, ld, b, nd_)
     Implicit none
     Integer, intent(in) :: nf, fl, ld, b, nd_
     Integer :: a, i
+#if defined(ALF_LA_HIP)
+    call hk_blk_scale_cols(nf, fl, ld, b, nd_, size(cbuf,1), G_d(1,1,1), bsd(1,1), cbuf(1,1))
+#else
     !$omp target teams distribute parallel do collapse(2)
     do a = 1, b
        do i = 1, ld
           G_d(i,bsd(a,fl),nf) = cbuf(nd_+a,fl) * G_d(i,bsd(a,fl),nf)
        enddo
     enddo
+#endif
   end subroutine k_blk_scale_cols
 
 !> open a block at vertex v1 (v1, v1 + dv, ...), b vertices

@@ -36,6 +36,9 @@ Module gpu_obs_mod
   Use gpu_update_mod, only: gpu_upd_enabled
   Use gpu_wrap_mod, only: gpu_symm, gpu_symm_build, gpu_symm_td
   Use alf_la_mod, only: la_gemm, LA_N
+#if defined(ALF_LA_HIP)
+  Use alf_hipk_mod
+#endif
   Implicit none
   Private
   Logical, Save :: o_symm = .false.
@@ -207,10 +210,14 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: a(1)
     Complex (Kind=Kind(0.d0)), intent(inout) :: b(1)
     Integer :: i
+#if defined(ALF_LA_HIP)
+    call hk_copyz(nel, a, b)
+#else
     !$omp target teams distribute parallel do
     do i = 1, nel
        b(i) = a(i)
     enddo
+#endif
   end subroutine k_cpy
 
   !> .true. when the device measurement replaces ham%Obser
@@ -240,7 +247,7 @@ Contains
     Real (Kind=Kind(0.d0)), intent(in) :: Mc_step_weight
     Complex (Kind=Kind(0.d0)) :: ZP, ZS, ZW, Zkin, Zpot, Zrho, zc, zt
     Integer :: I, nf, k, no, no2, imj, I1, J1, kd, N, Norb, NFL, NSUN, dec, kind_k
-    Real (Kind=Kind(0.d0)) :: rs, sq3, rk_r, rk_i, rp_r, rp_i, rr_r, rr_i
+    Real (Kind=Kind(0.d0)) :: rs, sq3, rk_r, rk_i, rp_r, rp_i, rr_r, rr_i, hsc(6)
 
     if (.not. o_dev) call alloc_dev()
     do nf = 1, o_NFL          ! the device copy must be current (it is, except after a host write of GR)
@@ -283,6 +290,12 @@ Contains
     enddo
 
     ! ---- scalars: GRC(i,j,nf) = delta_ij - G(j,i,nf)
+#if defined(ALF_LA_HIP)
+    call hk_scalars(o_nk, hk_i, hk_j, hk_f, hk_c, N, Norb, NFL, dec, size(G_d,1), G_d(1,1,1), o_inv, o_uo, hsc)
+    Zkin = cmplx(hsc(1), hsc(2), kind(0.d0))*dble(NSUN)
+    Zpot = cmplx(hsc(3), hsc(4), kind(0.d0))
+    Zrho = cmplx(hsc(5), hsc(6), kind(0.d0))
+#else
     ! complex reductions are very slow in libgomp-GCN (CAS loops): reduce the real and imaginary parts separately
     rk_r = 0.d0; rk_i = 0.d0
     !$omp target teams distribute parallel do reduction(+:rk_r,rk_i) private(i1,J1,nf,zc)
@@ -318,6 +331,7 @@ Contains
        enddo
     enddo
     Zrho = cmplx(rr_r, rr_i, kind(0.d0))
+#endif
     Zrho = Zrho*dble(NSUN)
     Obs_scal(1)%Obs_vec(1) = Obs_scal(1)%Obs_vec(1) + Zkin*ZP*ZS
     Obs_scal(2)%Obs_vec(1) = Obs_scal(2)%Obs_vec(1) + Zpot*ZP*ZS
@@ -369,6 +383,9 @@ Contains
     if (Ntau == Thtrot .or. Ntau == Ltrot - Thtrot) wt = 2.d0
     if (it < 1 .or. it > o_lNt) call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
     N = o_N; Norb = o_Norb; dec = o_dec; w = ZW
+#if defined(ALF_LA_HIP)
+    call hk_local(N, Norb, o_lNt, it, dec, wt, real(w), aimag(w), size(G_d,1), o_inv, G_d(1,1,1), lacc1, lacc2)
+#else
     !$omp target teams distribute parallel do collapse(2) private(i1,d)
     do no = 1, Norb
        do I = 1, N
@@ -378,6 +395,7 @@ Contains
           lacc2(I,it,no) = lacc2(I,it,no) + wt*d
        enddo
     enddo
+#endif
   End Subroutine local_obs
 
   Subroutine corr(k, kind_k, ZW, N, Norb, NFL, NSUN, sq3)
@@ -389,6 +407,10 @@ Contains
     Complex (Kind=Kind(0.d0)) :: s1, s2, s3, z, zi, zj, zxy, zz, a, b, zs0, w
     Real (Kind=Kind(0.d0)) :: ns
 
+#if defined(ALF_LA_HIP)
+    call hk_corr(kind_k, k, N, Norb, NFL, dble(NSUN), sq3, real(ZW), aimag(ZW), size(G_d,1), G_d(1,1,1), o_jc, o_inv, acc, acc0)
+    return
+#endif
     ns = dble(NSUN)
     w = ZW
     MT = N*Norb*Norb
