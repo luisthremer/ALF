@@ -175,7 +175,7 @@
     },
     {
       "collapsed" : false,
-      "description" : "",
+      "description" : "Phase 1 (A2, job 560233, C): oneMKL geqrf_batch (batch 1) 9.7\/28.9 ms per call at L24\/L32 vs plain 10.1\/28.4 (no gain, same Precision Green); getrf_batch 10.5\/37.0 ms vs 4.0\/8.9 (slower). Same-seed check passed. Gate failed, switch reverted (patch phase1_batch_switch.patch). Run-to-run noise of the L24 sweep ~1 s (10.1-11.5). Phase 2 (B1+B2) next.",
       "done" : false,
       "id" : "n_671xrazy",
       "order" : 1,

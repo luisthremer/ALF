@@ -1,0 +1,51 @@
+diff --git a/Libraries/Modules/alf_la_sycl_shim.cpp b/Libraries/Modules/alf_la_sycl_shim.cpp
+index 85c4802f..bf64ac96 100644
+--- a/Libraries/Modules/alf_la_sycl_shim.cpp
++++ b/Libraries/Modules/alf_la_sycl_shim.cpp
+@@ -17,6 +17,7 @@
+ #include <sycl/sycl.hpp>
+ #include <oneapi/mkl/blas.hpp>
+ #include <oneapi/mkl/lapack.hpp>
++#include <algorithm>
+ #include <atomic>
+ #include <chrono>
+ #include <complex>
+@@ -163,10 +164,23 @@ int alfsh_wait() {
+ }
+ 
+ // ---- QR family -------------------------------------------------------------------------------------------
++// Experiment (team session 2026-11-11, Phase 1): ALFSH_BATCH=1 routes geqrf/getrf through oneMKL's strided batch API with
++// batch size 1 (a different oneMKL implementation; the plain device geqrf/getrf are documented as hybrid, part on the CPU).
++// Off by default; read once.
++static bool use_batch() {
++  static int on = -1;
++  if (on < 0) { const char *e = std::getenv("ALFSH_BATCH"); on = (e && e[0] == '1') ? 1 : 0; }
++  return on == 1;
++}
+ int alfsh_zgeqrf_ws(int64_t m, int64_t n, int64_t lda, int64_t *ws) {
++  if (use_batch())
++    return guarded("geqrf_ws", [&] { *ws = lp::geqrf_batch_scratchpad_size<cd>(Q(), m, n, lda, lda * n, std::min(m, n), 1); });
+   return guarded("geqrf_ws", [&] { *ws = lp::geqrf_scratchpad_size<cd>(Q(), m, n, lda); });
+ }
+ int alfsh_zgeqrf(int64_t m, int64_t n, void *a, int64_t lda, void *tau, void *work, int64_t lwork) {
++  if (use_batch())
++    return guarded("geqrf_batch", [&] {
++      lp::geqrf_batch(Q(), m, n, (cd *)a, lda, lda * n, (cd *)tau, std::min(m, n), 1, (cd *)work, lwork).wait_and_throw(); });
+   return guarded("geqrf", [&] { lp::geqrf(Q(), m, n, (cd *)a, lda, (cd *)tau, (cd *)work, lwork).wait_and_throw(); });
+ }
+ int alfsh_zungqr_ws(int64_t m, int64_t n, int64_t k, int64_t lda, int64_t *ws) {
+@@ -190,9 +204,14 @@ int alfsh_zunmqr(int side, int trans, int64_t m, int64_t n, int64_t k, void *a,
+ 
+ // ---- LU family ---------------------------------------------------------------------------------------------
+ int alfsh_zgetrf_ws(int64_t m, int64_t n, int64_t lda, int64_t *ws) {
++  if (use_batch())
++    return guarded("getrf_ws", [&] { *ws = lp::getrf_batch_scratchpad_size<cd>(Q(), m, n, lda, lda * n, std::min(m, n), 1); });
+   return guarded("getrf_ws", [&] { *ws = lp::getrf_scratchpad_size<cd>(Q(), m, n, lda); });
+ }
+ int alfsh_zgetrf(int64_t m, int64_t n, void *a, int64_t lda, int64_t *ipiv, void *work, int64_t lwork) {
++  if (use_batch())
++    return guarded("getrf_batch", [&] {
++      lp::getrf_batch(Q(), m, n, (cd *)a, lda, lda * n, ipiv, std::min(m, n), 1, (cd *)work, lwork).wait_and_throw(); });
+   return guarded("getrf", [&] { lp::getrf(Q(), m, n, (cd *)a, lda, ipiv, (cd *)work, lwork).wait_and_throw(); });
+ }
+ int alfsh_zgetrs_ws(int trans, int64_t n, int64_t nrhs, int64_t lda, int64_t ldb, int64_t *ws) {
