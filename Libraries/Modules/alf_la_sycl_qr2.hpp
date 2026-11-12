@@ -309,6 +309,7 @@ inline void apply2_t(sycl::queue &q, int nq, int k, int nc, bool asc, bool conjt
       prefetch(0);
       store(0);
       it.barrier(sycl::access::fence_space::local_space);
+      int nex = 0;   // executed (non-skipped) steps: ex parity must alternate per EXECUTED step (review finding 1, 2026-11-12)
       for (int cc = 0; cc < nch; ++cc) {
         const int buf = cc & 1;
         if (cc + 1 < nch) prefetch(cc + 1);
@@ -333,7 +334,7 @@ inline void apply2_t(sycl::queue &q, int nq, int k, int nc, bool asc, bool conjt
 #pragma unroll
           for (int v = 0; v < NV; ++v) red2(sg, dot[v].r, dot[v].i);
           if (G > 1) {
-            const int eb = ((s & 1) * CPW * G + sid) * NV;
+            const int eb = ((nex & 1) * CPW * G + sid) * NV;
             if (lane == 0) {
 #pragma unroll
               for (int v = 0; v < NV; ++v) { ex[2 * (eb + v)] = dot[v].r; ex[2 * (eb + v) + 1] = dot[v].i; }
@@ -343,7 +344,7 @@ inline void apply2_t(sycl::queue &q, int nq, int k, int nc, bool asc, bool conjt
             for (int v = 0; v < NV; ++v) {
               dot[v] = {0.0, 0.0};
 #pragma unroll
-              for (int gg = 0; gg < G; ++gg) { const int ei = ((s & 1) * CPW * G + cg * G + gg) * NV + v; dot[v].r += ex[2 * ei]; dot[v].i += ex[2 * ei + 1]; }
+              for (int gg = 0; gg < G; ++gg) { const int ei = ((nex & 1) * CPW * G + cg * G + gg) * NV + v; dot[v].r += ex[2 * ei]; dot[v].i += ex[2 * ei + 1]; }
             }
           }
           Z coef[NV];
@@ -354,6 +355,7 @@ inline void apply2_t(sycl::queue &q, int nq, int k, int nc, bool asc, bool conjt
 #pragma unroll
             for (int v = 0; v < NV; ++v) { const Z p = zmul(vr[qq], coef[v]); y[v][qq].r -= p.r; y[v][qq].i -= p.i; }
           }
+          ++nex;
         }
         if (cc + 1 < nch) store(buf ^ 1);
         it.barrier(sycl::access::fence_space::local_space);
@@ -398,6 +400,7 @@ inline int geqrf2(sycl::queue &q, int64_t m, int64_t n, cd *A, int64_t lda, cd *
   if (nb < 1) nb = 1;
   if (nb > MAX_NB) nb = MAX_NB;
   if (m > MAX_M || panel2_maxjb(m) == 0) return -1;
+  if (!q.is_in_order()) return -1;   // kernels below rely on in-order execution (no depends_on)
   {
     static const bool limits_ok = [&] {
       auto d = q.get_device();
@@ -441,6 +444,7 @@ inline int unmqr2(sycl::queue &q, int side, int trans, int64_t m, int64_t n, int
   const int64_t nq = side == 0 ? m : n;
   if (nq > APPLY_MAX_NQ || k > nq) return -1;
   if (trans == 1) return -1;
+  if (!q.is_in_order()) return -1;   // kernels below rely on in-order execution (no depends_on)
   if (side == 0) {   // Left,N: Q C = H_0 ... H_{k-1} C: descending, tau;  Left,C: Q^H C: ascending, conj(tau)
     const bool c = trans != 0;
     return apply_left<false>(q, (int)m, (int)k, (int)n, c, c, (const double *)A, lda, (const double *)tau, (double *)C, ldc) ? 0 : -1;
