@@ -1,0 +1,15 @@
+# Runs CMD (a ;-list) and fails unless its exit status equals EXPECTED.
+# Usage: cmake -DCMD=<prog;args> -DEXPECTED=<n> [-DENVVAR=NAME=VALUE] -P expect_exit.cmake
+if(DEFINED ENVVAR)
+  string(FIND "${ENVVAR}" "=" pos)
+  string(SUBSTRING "${ENVVAR}" 0 ${pos} name)
+  math(EXPR pos "${pos} + 1")
+  string(SUBSTRING "${ENVVAR}" ${pos} -1 value)
+  set(ENV{${name}} "${value}")
+endif()
+execute_process(COMMAND ${CMD} RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
+message("${out}${err}")
+if(NOT "${rc}" STREQUAL "${EXPECTED}")
+  message(FATAL_ERROR "exit status '${rc}', expected '${EXPECTED}'")
+endif()
+message("exit status ${rc} as expected")
