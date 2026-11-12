@@ -386,6 +386,7 @@
         "n_1mbg55ka"
       ],
       "description" : "",
+      "done" : false,
       "id" : "n_mwcqqc7x",
       "order" : 7,
       "parentId" : null,
@@ -394,6 +395,7 @@
     {
       "collapsed" : false,
       "description" : "",
+      "done" : false,
       "id" : "n_5aliqysn",
       "order" : 0,
       "parentId" : "n_mwcqqc7x",
@@ -402,6 +404,7 @@
     {
       "collapsed" : false,
       "description" : "After warm-up, binned errors, 3 sigma.",
+      "done" : false,
       "id" : "n_erljytaq",
       "order" : 1,
       "parentId" : "n_mwcqqc7x",
@@ -410,6 +413,7 @@
     {
       "collapsed" : false,
       "description" : "After checking that the parameters match.",
+      "done" : false,
       "id" : "n_ui6wb2ut",
       "order" : 2,
       "parentId" : "n_mwcqqc7x",
@@ -418,6 +422,7 @@
     {
       "collapsed" : false,
       "description" : "",
+      "done" : false,
       "id" : "n_go0tqatb",
       "order" : 3,
       "parentId" : "n_mwcqqc7x",
@@ -426,6 +431,7 @@
     {
       "collapsed" : false,
       "description" : "",
+      "done" : false,
       "id" : "n_u4i20tls",
       "order" : 4,
       "parentId" : "n_mwcqqc7x",
@@ -437,6 +443,7 @@
         "n_1mbg55ka"
       ],
       "description" : "Sporadic 'Unstable matrix' aborts (G difference 10-28) in L24, L32, L32_fast, L44 test. Owner: fix by 12:00. Decisions 44-46.",
+      "done" : false,
       "id" : "n_aztpjo5u",
       "order" : 8,
       "parentId" : null,
@@ -525,7 +532,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "Owner: get rid of the Nwrap 5 run once Nwrap 10 is shown stable. Nwrap 5 costs ~45 % (75 vs 51.9 s\/sweep). Criterion to agree: no abort and Precision Green max at CPU level over N bins.",
+      "description" : "Owner: get rid of the Nwrap 5 run once Nwrap 10 is shown stable. Nwrap 5 costs ~45 % (75 vs 51.9 s\/sweep). Criterion to agree: no abort and Precision Green max at CPU level over N bins. Owner 2026-11-12: run Nwrap 10 in parallel, decide when RUN_L32_nw10 has started.",
+      "done" : false,
       "id" : "n_9dqtyg8a",
       "order" : 9,
       "parentId" : "n_aztpjo5u",
@@ -533,7 +541,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "Then flag the affected sets\/bins (expected: warm-up bins only, L24 bins 1-12 of job 560327 at most) and set n_skip accordingly.",
+      "description" : "Then flag the affected sets\/bins (expected: warm-up bins only, L24 bins 1-12 of job 560327 at most) and set n_skip accordingly. RESULT 2026-11-12 (sacct and eacct unavailable): Slurm node lists are sorted, so a job whose first node sorts after i20r02c06s02 cannot contain it. Excluded: L24 560229 (first i20r05c01s02), 560309 (i20r02c06s08), L28 560230 (i20r05c02s02), 560319 (known list), and all running jobs (known lists). Possible (and consistent with their tile-1 aborts): L24 560327 -> at most bins 9-12 of Temp_2\/Temp_3 (U=5.2, 5.25; ranks 33,41,49,57); L32_fast 560397 -> bins 1-2 of Temp_6 (rank 25); 560323 wrote no bin. All in the warm-up that n_skip discards; L28, L32 (Nwrap 5) and L36 data are not affected.",
+      "done" : true,
       "id" : "n_sblqb4zi",
       "order" : 10,
       "parentId" : "n_aztpjo5u",
@@ -541,7 +550,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "Evidence: work_node tests 560620\/560622\/560623, team stress test 560637-560639; RAS\/ECC counters N\/A for users.",
+      "description" : "Evidence: work_node tests 560620\/560622\/560623, team stress test 560637-560639; RAS\/ECC counters N\/A for users. Owner sent the ticket 2026-11-12 ('They will take care of it. Let's not focus on this anymore.'); Intel team asked to stop its node diagnosis and stress runs.",
+      "done" : true,
       "id" : "n_s3coyl40",
       "order" : 11,
       "parentId" : "n_aztpjo5u",
@@ -550,6 +560,7 @@
     {
       "collapsed" : false,
       "description" : "L32_fast 560651\/560652 held; fast2-4 prepared (Nwrap 5), not submitted.",
+      "done" : false,
       "id" : "n_yu3vvdze",
       "order" : 12,
       "parentId" : "n_aztpjo5u",
