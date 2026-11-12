@@ -71,9 +71,9 @@ as announced, here are the results of our dedicated stress test.
 | Job | Node | Layout | Duration | Iterations per device | Bad iterations |
 |---|---|---|---|---|---|
 | 560640 (positive control: one corrupted entry injected in iteration 5) | **[node]** | 8 ranks, 1 per tile | 2 min | ~1200 | detected on all 8 tiles, exactly iteration 5; all other iterations bit-identical |
-| 560637 | i20r02c06s02 | 8 ranks, 1 per tile | 20 min | **[TO FILL]** | **[TO FILL: per device, first occurrence, size]** |
-| 560638 | i20r02c06s02 | 32 ranks, 4 per tile, CCS 4 | 15 min | **[TO FILL]** | **[TO FILL]** |
-| 560639 | **[control node]** | 8 ranks, 1 per tile | 20 min | **[TO FILL]** | **[TO FILL]** |
+| 560639 (control) | i20r02c02s10 | 8 ranks, 1 per tile | 20 min | 12,524-12,641 (100,711 in total) | 0 on all 8 tiles (all results bit-identical) |
+| 560713 | i20r02c06s02 | 8 ranks: 4 on tile 1, 4 on tile 0, CCS 4 | 3 h | **[TO FILL]** | **[TO FILL: tile 1 vs tile 0, first occurrence, size]** |
+| 560714 (control) | **[node]** | same as 560713 | 3 h | **[TO FILL]** | **[TO FILL]** |
 
 **Conclusion:** **[TO FILL, e.g. "wrong results only on device 1 of i20r02c06s02; all other tiles and the control node bit-identical"]**
 
