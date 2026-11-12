@@ -44,3 +44,15 @@ Gate B target (inside ALF, ALFSH_TIMING, no ASYNCBLK): geqrf <= 0.6 x 7.8 = 4.7 
    reduction round with a per-chunk Gram matrix; apply launch fixed cost ~20 us x 36 per geqrf.
 3. geqrf: panel 2.5 ms of 3.9; overlapping the single-Xe-core panel with the wide trailing apply on a 2nd queue (not done), 2 columns per sub-group in the panel.
 4. Task 4 (device ZGETRF) not started.
+
+## UPDATE after ssh recovered (jobs 560715 daemon, 560721 build, 560722 g1, 560723 g2, 560724 g5, 560725 g6, 560726 g3a, 560727 g3b, 560730 g3c; scripts g*.sh, p5lib.sh here)
+- Gate A planted defects (qr2_test, job 560715): PLANT=1 FAIL (dtau 1e-12), PLANT=2 FAIL (reldiff 1.4), PLANT=3 FAIL (1e-12); clean: 0 failed.
+- Default build (no switches) vs comb build, bitwise L6F/L12F: PASS (0.0) (560722).
+- Gate B in ALF (ALFSH_TIMING, no ASYNCBLK, marginal 4 vs 2 sweeps; 560722), ms/call: L24 geqrf V3(devqr1) 5.48, V5(devqr2) 3.91, V6(+unmqr_dev) 3.98; unmqr oneMKL 2.41/2.61, unmqr_dev 1.37;
+  getrf 3.7-4.0. L32 geqrf V3 16.95, V5 10.36, V6 10.34; unmqr oneMKL 7.63/7.44, unmqr_dev 5.30.
+- Gate C same seed: L6F 2.3e-15, L12F 1.6e-14 PASS; L6T 1.358e-10 FAIL (tol 1e-10); noise study (g4, g5): oneMKL itself fails 2 of 5 seed sets (1.13e-10, 1.84e-10).
+- Single tile PG L24 2.6e-11, L32 2.7e-11; node PG (32 ranks, CCS 4) max 6.5e-10 PASS (V4 5.8e-10).
+- Planted: tau 1e-12: same seed FAIL (4.2e-13 / 2.0e-12), node PG 2.0e-8 FAIL; wrong conj: FAIL (run aborts). Races: single tau slot / single exchange slot / single v buffer NOT caught (PG identical to clean);
+  apply chunk-end barrier removed and single staging buffer: caught in the node config (abort "Unstable matrix").
+- Timing alternating V4 vs V7 (async+staging; devqr1 vs devqr2+devunmqr): L24 5.85-5.91 -> 4.95-4.97 s/sweep (x3); L32 18.70/18.44 -> 16.41/16.42 (x2).
+  Node CPU-time-diff, sweeps/s per card: 32 ranks 4/tile CCS 4 OMP 3: V4 0.812/0.815, V7 0.841/0.846; 8 ranks 1/tile OMP 14: V4 0.315/0.302, V7 0.354/0.361.
