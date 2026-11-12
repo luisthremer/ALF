@@ -47,8 +47,8 @@ libalfsb.so: alf_la_sycl_blk.cpp
 	icpx -fsycl -fPIC -shared -O2 -std=c++17 $(ALF_SYCL_BLK_FLAGS) -I$(MKLROOT)/include alf_la_sycl_blk.cpp -o $@ -qmkl -lmkl_sycl_blas
 # device-only QR (SYCL device code: shared library, loaded by dlopen when ALFSH_DEVQR=1; not needed by the default build)
 lib: libalfdevqr.so
-libalfdevqr.so: alf_la_sycl_devqr.cpp alf_la_sycl_devqr.hpp
-	icpx -fsycl -O2 -std=c++17 -fPIC -shared -I$(MKLROOT)/include $< -o $@ -qmkl -lmkl_sycl_blas
+libalfdevqr.so: alf_la_sycl_devqr.cpp alf_la_sycl_devqr.hpp alf_la_sycl_qr2.hpp
+	icpx -fsycl -O2 -std=c++17 -fPIC -shared $(ALF_SYCL_BLK_FLAGS) -I$(MKLROOT)/include $< -o $@ -qmkl -lmkl_sycl_blas
 endif
 lib: $(SYCLBLK)
 

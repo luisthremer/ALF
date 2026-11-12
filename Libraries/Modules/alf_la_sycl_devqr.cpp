@@ -2,6 +2,7 @@
 // link (icpx -fsycl); the main shim object stays a plain host object that ifx can link, and loads this library by dlopen
 // when ALFSH_DEVQR=1 (see alf_la_sycl_shim.cpp). Build: see Libraries/Modules/Makefile (GPU=intel).
 #include "alf_la_sycl_devqr.hpp"
+#include "alf_la_sycl_qr2.hpp"   // phase 5: T-free panel + apply kernels (ZGEQRF level 2, ZUNMQR)
 #include <chrono>
 #include <cstdio>
 
@@ -68,6 +69,24 @@ int alfdevqr_zgeqrf(void *q, int64_t m, int64_t n, void *a, int64_t lda, void *t
     static bool once = false;
     if (!once && m == 576 && std::getenv("ALFSH_LAUNCHBENCH")) { once = true; alfdevqr_probe(q, a, lda, m, nb); }
     return alfdevqr::geqrf(*static_cast<sycl::queue *>(q), m, n, (alfdevqr::cd *)a, lda, (alfdevqr::cd *)tau, (alfdevqr::cd *)work, lwork, nb, nullptr);
+  } catch (std::exception &e) {
+    std::fprintf(stderr, "alfdevqr: exception: %s\n", e.what());
+    return -2;
+  }
+}
+// Phase 5. ZGEQRF with the T-free panel and the apply kernel (alf_la_sycl_qr2.hpp): no scratch. Same return codes as alfdevqr_zgeqrf.
+int alfdevqr_zgeqrf2(void *q, int64_t m, int64_t n, void *a, int64_t lda, void *tau, int nb) {
+  try {
+    return alfdevqr::geqrf2(*static_cast<sycl::queue *>(q), m, n, (alfdevqr::cd *)a, lda, (alfdevqr::cd *)tau, nb);
+  } catch (std::exception &e) {
+    std::fprintf(stderr, "alfdevqr: exception: %s\n", e.what());
+    return -2;
+  }
+}
+// Phase 5. ZUNMQR (side 0 = L, 1 = R; trans 0 = N, 2 = C). 0 = done (asynchronously on the queue), -1 = declined before any change, -2 = SYCL error.
+int alfdevqr_zunmqr(void *q, int side, int trans, int64_t m, int64_t n, int64_t k, const void *a, int64_t lda, const void *tau, void *c, int64_t ldc) {
+  try {
+    return alfdevqr::unmqr2(*static_cast<sycl::queue *>(q), side, trans, m, n, k, (const alfdevqr::cd *)a, lda, (const alfdevqr::cd *)tau, (alfdevqr::cd *)c, ldc);
   } catch (std::exception &e) {
     std::fprintf(stderr, "alfdevqr: exception: %s\n", e.what());
     return -2;

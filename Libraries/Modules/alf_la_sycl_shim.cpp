@@ -100,40 +100,52 @@ template <class F> int guarded(const char *what, F &&f) {
 }
 sycl::queue &Q() { return *g_q; }
 
-// Device-only blocked Householder QR (alf_la_sycl_devqr.hpp, in libalfdevqr.so because it contains SYCL device code, which a plain
-// host object cannot carry) instead of oneMKL's hybrid ZGEQRF (panels on the host CPU). Run-time switch ALFSH_DEVQR=1 (read once;
-// default off = oneMKL, the library is then never loaded), block size ALFSH_QRNB (default 32), library path ALFSH_DEVQR_LIB (default:
-// ../Libraries/Modules/libalfdevqr.so relative to the directory of the executable, else libalfdevqr.so on the loader path).
-int g_devqr = -1, g_qrnb = 32;
+// Device-only Householder QR / ZUNMQR (alf_la_sycl_devqr.hpp, alf_la_sycl_qr2.hpp; in libalfdevqr.so because they contain SYCL device code, which a plain
+// host object cannot carry) instead of oneMKL's hybrid ZGEQRF (panels on the host CPU) and ZUNMQR. Run-time switches (read once; default off = oneMKL,
+// the library is then never loaded):
+//   ALFSH_DEVQR=1  phase-4 ZGEQRF (panel + ZLARFT in one kernel, ZLARFB by 3 GEMMs)     ALFSH_DEVQR=2  phase-5 ZGEQRF (T-free panel + apply kernel)
+//   ALFSH_DEVUNMQR=1  phase-5 device ZUNMQR (apply kernel; side L/R, trans N/C)
+// block size ALFSH_QRNB (default 32; 16 for level 2 unless set), library path ALFSH_DEVQR_LIB (default: ../Libraries/Modules/libalfdevqr.so relative to
+// the directory of the executable, else libalfdevqr.so on the loader path).
+int g_devqr = -1, g_qrnb = 32, g_devunmqr = 0;
+bool g_qrnb_set = false;
 int64_t (*g_dq_scratch)(int64_t, int64_t, int) = nullptr;
 int (*g_dq_geqrf)(void *, int64_t, int64_t, void *, int64_t, void *, void *, int64_t, int) = nullptr;
+int (*g_dq_geqrf2)(void *, int64_t, int64_t, void *, int64_t, void *, int) = nullptr;
+int (*g_dq_unmqr)(void *, int, int, int64_t, int64_t, int64_t, const void *, int64_t, const void *, void *, int64_t) = nullptr;
 void (*g_dq_bench)(void *, void *) = nullptr;
-bool devqr_on() {
-  if (g_devqr < 0) {
-    const char *e = std::getenv("ALFSH_DEVQR");
-    g_devqr = (e && e[0] == '1') ? 1 : 0;
-    const char *b = std::getenv("ALFSH_QRNB");
-    if (b && std::atoi(b) > 0) g_qrnb = std::atoi(b);
-    if (g_devqr == 1) {
-      std::string path;
-      if (const char *l = std::getenv("ALFSH_DEVQR_LIB")) path = l;
-      else {
-        char buf[4096];
-        ssize_t k = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
-        if (k > 0) { buf[k] = 0; std::string d(buf); d = d.substr(0, d.rfind('/')); path = d + "/../Libraries/Modules/libalfdevqr.so"; }
-        if (path.empty() || access(path.c_str(), R_OK) != 0) path = "libalfdevqr.so";
-      }
-      void *h = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
-      if (h) {
-        g_dq_scratch = (int64_t(*)(int64_t, int64_t, int))dlsym(h, "alfdevqr_scratch");
-        g_dq_geqrf = (int (*)(void *, int64_t, int64_t, void *, int64_t, void *, void *, int64_t, int))dlsym(h, "alfdevqr_zgeqrf");
-        g_dq_bench = (void (*)(void *, void *))dlsym(h, "alfdevqr_launch_bench");
-      }
-      if (!g_dq_scratch || !g_dq_geqrf) throw std::runtime_error(std::string("ALFSH_DEVQR=1 but cannot load the device QR library '") + path + "': " + (dlerror() ? dlerror() : "symbol missing"));
+void devqr_init() {
+  if (g_devqr >= 0) return;
+  const char *e = std::getenv("ALFSH_DEVQR");
+  g_devqr = (e && e[0] == '1') ? 1 : ((e && e[0] == '2') ? 2 : 0);
+  const char *u = std::getenv("ALFSH_DEVUNMQR");
+  g_devunmqr = (u && u[0] == '1') ? 1 : 0;
+  const char *b = std::getenv("ALFSH_QRNB");
+  if (b && std::atoi(b) > 0) { g_qrnb = std::atoi(b); g_qrnb_set = true; }
+  if (g_devqr == 2 && !g_qrnb_set) g_qrnb = 16;
+  if (g_devqr > 0 || g_devunmqr) {
+    std::string path;
+    if (const char *l = std::getenv("ALFSH_DEVQR_LIB")) path = l;
+    else {
+      char buf[4096];
+      ssize_t k = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+      if (k > 0) { buf[k] = 0; std::string d(buf); d = d.substr(0, d.rfind('/')); path = d + "/../Libraries/Modules/libalfdevqr.so"; }
+      if (path.empty() || access(path.c_str(), R_OK) != 0) path = "libalfdevqr.so";
     }
+    void *h = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
+    if (h) {
+      g_dq_scratch = (int64_t(*)(int64_t, int64_t, int))dlsym(h, "alfdevqr_scratch");
+      g_dq_geqrf = (int (*)(void *, int64_t, int64_t, void *, int64_t, void *, void *, int64_t, int))dlsym(h, "alfdevqr_zgeqrf");
+      g_dq_geqrf2 = (int (*)(void *, int64_t, int64_t, void *, int64_t, void *, int))dlsym(h, "alfdevqr_zgeqrf2");
+      g_dq_unmqr = (int (*)(void *, int, int, int64_t, int64_t, int64_t, const void *, int64_t, const void *, void *, int64_t))dlsym(h, "alfdevqr_zunmqr");
+      g_dq_bench = (void (*)(void *, void *))dlsym(h, "alfdevqr_launch_bench");
+    }
+    if (!g_dq_scratch || !g_dq_geqrf || (g_devqr == 2 && !g_dq_geqrf2) || (g_devunmqr && !g_dq_unmqr))
+      throw std::runtime_error(std::string("ALFSH_DEVQR/ALFSH_DEVUNMQR set but cannot load the device QR library '") + path + "': " + (dlerror() ? dlerror() : "symbol missing"));
   }
-  return g_devqr == 1;
 }
+bool devqr_on() { devqr_init(); return g_devqr > 0; }
+bool devunmqr_on() { devqr_init(); return g_devunmqr == 1; }
 }  // namespace
 
 extern "C" {
@@ -214,7 +226,7 @@ int alfsh_zgeqrf(int64_t m, int64_t n, void *a, int64_t lda, void *tau, void *wo
     if (devqr_on()) {
       static bool lb = false;   // diagnostic: launch cost on this queue (once)
       if (!lb && (lb = true) && g_dq_bench && std::getenv("ALFSH_LAUNCHBENCH")) g_dq_bench(&Q(), work);
-      int rc = g_dq_geqrf(&Q(), m, n, a, lda, tau, work, lwork, g_qrnb);
+      int rc = g_devqr == 2 ? g_dq_geqrf2(&Q(), m, n, a, lda, tau, g_qrnb) : g_dq_geqrf(&Q(), m, n, a, lda, tau, work, lwork, g_qrnb);
       if (rc == 0) { Q().wait_and_throw(); return; }
       if (rc < -1) throw std::runtime_error("device QR failed");
     }
@@ -234,7 +246,12 @@ int alfsh_zunmqr_ws(int side, int trans, int64_t m, int64_t n, int64_t k, int64_
 }
 int alfsh_zunmqr(int side, int trans, int64_t m, int64_t n, int64_t k, void *a, int64_t lda, void *tau, void *c,
                  int64_t ldc, void *work, int64_t lwork) {
-  return guarded("unmqr", [&] {
+  return guarded(devunmqr_on() ? "unmqr_dev" : "unmqr", [&] {
+    if (devunmqr_on()) {
+      int rc = g_dq_unmqr(&Q(), side, trans, m, n, k, a, lda, tau, c, ldc);
+      if (rc == 0) { Q().wait_and_throw(); return; }
+      if (rc < -1) throw std::runtime_error("device ZUNMQR failed");
+    }
     lp::unmqr(Q(), sd(side), tr(trans), m, n, k, (const cd *)a, lda, (const cd *)tau, (cd *)c, ldc, (cd *)work, lwork)
         .wait_and_throw();
   });
