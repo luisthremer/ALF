@@ -13,7 +13,7 @@
     },
     {
       "collapsed" : false,
-      "description" : "Point-defect Hubbard production (Jakob's parameters) at L=24, 28, 32 (+ L32_fast) for U = 5.0-5.6 (10 values), on general (2-day chains, pn93la), running the full submitted chains (owner 2026-11-11: no early stop; L24\/L32_fast 2 jobs, L28\/L32 3 jobs), verified correct before and during the run. No production above L=36.",
+      "description" : "Point-defect Hubbard production (Jakob's parameters) at L=24, 28, 32 (+ L32_fast) for U = 5.0-5.6 (10 values), on general (2-day chains, pn93la), running the full submitted chains (owner 2026-11-11: no early stop; L24\/L32_fast 2 jobs, L28\/L32 3 jobs), verified correct before and during the run. No production above L=36. 2026-11-12: faulty GPU node excluded, unstable-matrix guard (decision 46), extra L32 Nwrap 10 run.",
       "id" : "special_goal",
       "kind" : "goal",
       "order" : 0,
@@ -202,8 +202,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "check_params.py vs ref_L24\/parameters, check_seeds.py over all 480 seeds.",
-      "done" : false,
+      "description" : "check_params.py vs ref_L24\/parameters, check_seeds.py over all 480 seeds. check_params.py and check_seeds.py on every run directory (2026-11-11\/12); 808 seeds in the 9 active run directories distinct (2026-11-12).",
+      "done" : true,
       "id" : "n_h2tfwfbz",
       "order" : 3,
       "parentId" : "n_gyzcgav1",
@@ -355,8 +355,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "GPU path ACTIVE, acceptance ~0.32-0.33, Precision Green\/Phase max < 1e-8, s\/bin as in T5, snapshots written, no requeue loop. 2026-11-11 22:30: jobs 560229-560234 ran ~6x too slow: --cpus-per-task=1 pinned every rank to one logical cpu (taskset). Fixed (fa393610), cancelled, resubmitted as 560309 (L24), 560310 (L28), 560311 (L32), 560312 (L32_fast); bins kept via recovery. Check affinity once they run. Owner 2026-11-11: 25k GPU-h on pn93la, 5-node runs to general: L24 stays on preempt (560309, running); L28 chain 560319-560321, L32 chain 560322-560324, L32_fast chain 560325-560326 (general, 2-day jobs, afterany, CPU_MAX 47 h). L24 also moved to general (was preempted by our own L28 general job): chain 560327-560328; recovery kept 8 bins per set (Temp_4: 7). L28 speed after the fix: 302 s per bin (30.2 s\/sweep, T5: 29.6). Stop target off: target_bins=1000000 in every run dir (de771d49). 2026-11-12 01:24: RUN_L32 (560322) aborted 'Unstable matrix' (U=5.25, G diff 21.3); restarted clean with Nwrap 5 (decision 44), chain 560323-560324-560394, old run kept as RUN_L32_failed_nwrap10_2026-11-12. 2026-11-12: L32_fast and L36 aborted and restarted clean with Nwrap 5 (decision 45): RUN_L32_fast 560397-560398, RUN_L36 560399-560401; RUN_L32_fast2-4 (prepared) also Nwrap 5.",
-      "done" : false,
+      "description" : "GPU path ACTIVE, acceptance ~0.32-0.33, Precision Green\/Phase max < 1e-8, s\/bin as in T5, snapshots written, no requeue loop. 2026-11-11 22:30: jobs 560229-560234 ran ~6x too slow: --cpus-per-task=1 pinned every rank to one logical cpu (taskset). Fixed (fa393610), cancelled, resubmitted as 560309 (L24), 560310 (L28), 560311 (L32), 560312 (L32_fast); bins kept via recovery. Check affinity once they run. Owner 2026-11-11: 25k GPU-h on pn93la, 5-node runs to general: L24 stays on preempt (560309, running); L28 chain 560319-560321, L32 chain 560322-560324, L32_fast chain 560325-560326 (general, 2-day jobs, afterany, CPU_MAX 47 h). L24 also moved to general (was preempted by our own L28 general job): chain 560327-560328; recovery kept 8 bins per set (Temp_4: 7). L28 speed after the fix: 302 s per bin (30.2 s\/sweep, T5: 29.6). Stop target off: target_bins=1000000 in every run dir (de771d49). 2026-11-12 01:24: RUN_L32 (560322) aborted 'Unstable matrix' (U=5.25, G diff 21.3); restarted clean with Nwrap 5 (decision 44), chain 560323-560324-560394, old run kept as RUN_L32_failed_nwrap10_2026-11-12. 2026-11-12: L32_fast and L36 aborted and restarted clean with Nwrap 5 (decision 45): RUN_L32_fast 560397-560398, RUN_L36 560399-560401; RUN_L32_fast2-4 (prepared) also Nwrap 5. Done 2026-11-11: GPU path active, speed matches T5 after the --cpus-per-task fix.",
+      "done" : true,
       "id" : "n_pgz21fmj",
       "order" : 2,
       "parentId" : "n_1mbg55ka",
@@ -364,7 +364,7 @@
     },
     {
       "collapsed" : false,
-      "description" : "Owner 2026-11-11: fast L=32 run for all 10 U at 1 walker per tile: 4 walkers\/U, 40 ranks, 5 nodes, 8 ranks\/node, 14 threads, no CCS, seed offset 132 (520 seeds distinct), job 560234.",
+      "description" : "Owner 2026-11-11: fast L=32 run for all 10 U at 1 walker per tile: 4 walkers\/U, 40 ranks, 5 nodes, 8 ranks\/node, 14 threads, no CCS, seed offset 132 (520 seeds distinct), job 560234. 2026-11-12: restarted clean with Nwrap 5 (decision 45), chain used up after two 'Unstable matrix' aborts (faulty node); relaunch 560651\/560652 HELD by the owner ('Don't run the L32_fast for now').",
       "done" : true,
       "id" : "n_63205wu7",
       "order" : 3,
@@ -436,6 +436,135 @@
       "order" : 4,
       "parentId" : "n_mwcqqc7x",
       "title" : "Analysis: drop bit-identical consecutive bins (preemption duplicates)"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_1mbg55ka"
+      ],
+      "description" : "Sporadic 'Unstable matrix' aborts (G difference 10-28) in L24, L32, L32_fast, L44 test. Owner: fix by 12:00. Decisions 44-46.",
+      "done" : false,
+      "id" : "n_aztpjo5u",
+      "order" : 8,
+      "parentId" : null,
+      "title" : "M9 Unstable-matrix incident 2026-11-12 (faulty GPU node)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "work_replay gpuA: same binary, same confin, ran past the abort bin without abort -> non-deterministic event, not Nwrap\/physics.",
+      "done" : true,
+      "id" : "n_qc8oklg6",
+      "order" : 0,
+      "parentId" : "n_aztpjo5u",
+      "title" : "Replay of the aborted L32_fast walker from its saved state"
+    },
+    {
+      "collapsed" : false,
+      "description" : "L32_fast 560325\/560397\/560398, L32 560322\/560323, L24 560327, L44 test 560331.",
+      "done" : true,
+      "id" : "n_2nivubmv",
+      "order" : 1,
+      "parentId" : "n_aztpjo5u",
+      "title" : "Pattern: all 7 aborts on GPU tile 1 (rank mod 8 = 1)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "L44 input: aborts on i20r02c06s02 (560331 x2, 560620 A\/B, G diff 15.7\/10.05), clean on i20r01c01s06 (560622) and on the same node with tile 1 hidden (560623, ZE_AFFINITY_MASK=0,2-7; Precision Phase identical to the control).",
+      "done" : true,
+      "id" : "n_4ljkkfv4",
+      "order" : 2,
+      "parentId" : "n_aztpjo5u",
+      "title" : "Node test: i20r02c06s02 tile 1 faulty (confirmed)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "560610: 2x64 identical replicas, 4\/tile, 34 sweeps: all bit-identical, no abort; base == ALF_OM_SYNC_ALWAYS build -> no code race seen.",
+      "done" : true,
+      "id" : "n_oet8io0w",
+      "order" : 3,
+      "parentId" : "n_aztpjo5u",
+      "title" : "Stress test on healthy nodes (128 replicas) + hard-sync build"
+    },
+    {
+      "collapsed" : false,
+      "description" : "ExcNodeList on all pending jobs; #SBATCH --exclude in the template and every RUN_*\/job.sh.",
+      "done" : true,
+      "id" : "n_dr5jqzaq",
+      "order" : 4,
+      "parentId" : "n_aztpjo5u",
+      "title" : "Exclude i20r02c06s02 from all jobs"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Branch production-mpi-intel-unstable-guard 410c7b04, binary ALF-pp-intel-410c7b04.out (md5 d2dac440). Threshold 1e-4 in production (healthy max <= 3e-8). Tests 560642\/560643: bit-identical to 5667acda (unset and 1e-4), 1e-15 aborts, real job script restarts and stops at the cap.",
+      "done" : true,
+      "id" : "n_rnl5de5n",
+      "order" : 5,
+      "parentId" : "n_aztpjo5u",
+      "title" : "Guard branch: ALF_UNSTABLE_THRESHOLD + in-job restart (decision 46)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Old scripts kept as job.sh.5667acda. New links: L32 560646, L28 560647-560648, L36 560649-560650, L32_fast 560651-560652; all held until the A\/B test passes. Running jobs keep their old script\/binary.",
+      "done" : true,
+      "id" : "n_x6ytjp8l",
+      "order" : 6,
+      "parentId" : "n_aztpjo5u",
+      "title" : "Deploy new job scripts, resubmit chain links"
+    },
+    {
+      "collapsed" : false,
+      "description" : "work_ab: L36 (8 walkers, 1\/tile) and L28 (2 U, 32 walkers, 4\/tile CCS) from the same snapshots, old vs new (560654-560657); criterion: appended bins and confouts bit-identical. Then release the held links (not L32_fast).",
+      "done" : false,
+      "id" : "n_k9ckyenl",
+      "order" : 7,
+      "parentId" : "n_aztpjo5u",
+      "title" : "A\/B test: old vs new script+binary continuing production snapshots"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Owner 2026-11-12: 'Don't do a fresh start, but run it additionally' \/ 'Already submit the RUN_L32_nw10'. 16 walkers\/U, 4\/tile, 5 nodes, seed offset 532 (808 active seeds distinct), check_params PASS, chain 560670-560672, guard script.",
+      "done" : true,
+      "id" : "n_d2f2oiuj",
+      "order" : 8,
+      "parentId" : "n_aztpjo5u",
+      "title" : "Additional RUN_L32_nw10 (Nwrap 10) submitted"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Owner: get rid of the Nwrap 5 run once Nwrap 10 is shown stable. Nwrap 5 costs ~45 % (75 vs 51.9 s\/sweep). Criterion to agree: no abort and Precision Green max at CPU level over N bins.",
+      "done" : false,
+      "id" : "n_9dqtyg8a",
+      "order" : 9,
+      "parentId" : "n_aztpjo5u",
+      "title" : "Decide Nwrap 5 vs 10 at L32: stop RUN_L32 (Nwrap 5) once RUN_L32_nw10 is proven stable"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Then flag the affected sets\/bins (expected: warm-up bins only, L24 bins 1-12 of job 560327 at most) and set n_skip accordingly.",
+      "done" : false,
+      "id" : "n_sblqb4zi",
+      "order" : 10,
+      "parentId" : "n_aztpjo5u",
+      "title" : "Which earlier jobs ran on i20r02c06s02 (sacct DB down)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Evidence: work_node tests 560620\/560622\/560623, team stress test 560637-560639; RAS\/ECC counters N\/A for users.",
+      "done" : false,
+      "id" : "n_s3coyl40",
+      "order" : 11,
+      "parentId" : "n_aztpjo5u",
+      "title" : "LRZ ticket for i20r02c06s02 (draft: Intel Max session, owner sends)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "L32_fast 560651\/560652 held; fast2-4 prepared (Nwrap 5), not submitted.",
+      "done" : false,
+      "id" : "n_yu3vvdze",
+      "order" : 12,
+      "parentId" : "n_aztpjo5u",
+      "title" : "Owner decision: L32_fast relaunch and fast2-4"
     }
   ],
   "rev" : 1,
