@@ -71,7 +71,8 @@ Program MaxEnt_Wrapper
        logical                             :: initial_checkpoint, N_boot_checkpoint = .false.
        logical                             :: Do_bootstrap, Reference_run
        integer                             :: N_runs
-       integer                             :: ia
+       integer                             :: ia, L_seed_boot
+       integer, allocatable                :: Iseed_boot(:)
        Real (Kind=Kind(0.d0))              :: A_err
       !  Character (len=64)     :: temp, temp2
 
@@ -312,6 +313,15 @@ Program MaxEnt_Wrapper
        ! number of random draws per call does not depend on the data, every bootstrap sample
        ! would then receive identical Gaussian noise. Continue the global stream instead.
        If (N_boot > 1) MaxEnt_stoch_reset_seed = .false.
+       ! Seed the stream explicitly (as MaxEnt_stoch does for a single run): the initial
+       ! state of an unseeded RANDOM_NUMBER is processor dependent.
+       If (Do_bootstrap) then
+          Call Get_seed_Len(L_seed_boot)
+          Allocate(Iseed_boot(L_seed_boot))
+          Iseed_boot = 0
+          Call Ranset(Iseed_boot)
+          Deallocate(Iseed_boot)
+       Endif
 
       ! 1. Box-Mueller Covariance Resampling
        Do iboot = 1, N_runs
