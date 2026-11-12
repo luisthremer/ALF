@@ -79,7 +79,7 @@ inline void panel_kernel_t(sycl::queue &q, int M, int jb, double *P, int64_t lda
   constexpr int MP = KM * G * SGS;   // padded column length
   q.submit([&](sycl::handler &h) {
     sycl::local_accessor<double, 1> vb(sycl::range<1>(2 * 2 * (size_t)MP), h);   // 2 buffers: zero-padded reflector v_i
-    sycl::local_accessor<double, 1> tb(sycl::range<1>(4), h);                    // 2 buffers: tau_i
+    sycl::local_accessor<double, 1> tb(sycl::range<1>(6), h);                    // 3 buffers (i mod 3): tau_i; sub-group 0 reads tau_(i-1) in step i while the owner of step i+1 already writes: 2 buffers raced
     sycl::local_accessor<double, 1> sx(sycl::range<1>(2 * G + 2), h);            // published: partial sums of squares [g], alpha (re,im)
     sycl::local_accessor<double, 1> wp(sycl::range<1>(2 * (size_t)jb * G + 8), h);   // partial dot products (G > 1)
     sycl::local_accessor<double, 1> zs(sycl::range<1>(2 * 2 * (size_t)G * jb), h);   // Z(l,i) partials [parity][g][l]
@@ -132,7 +132,7 @@ inline void panel_kernel_t(sycl::queue &q, int M, int jb, double *P, int64_t lda
 
       // T column i from Z(:,i) (step i's partials) and tau_i: sub-group 0
       auto build_t = [&](int i) {
-        const double ti = tb[2 * (i & 1)], tj = tb[2 * (i & 1) + 1];
+        const double ti = tb[2 * (i % 3)], tj = tb[2 * (i % 3) + 1];
         const double *z = &zs[2 * (i & 1) * G * jb];
         for (int l = lane; l <= i; l += SGS) {
           Z res = {0.0, 0.0};
@@ -208,14 +208,14 @@ inline void panel_kernel_t(sycl::queue &q, int M, int jb, double *P, int64_t lda
             v[2 * r] = vz.r; v[2 * r + 1] = vz.i;
             if (want_t && r < M) { vxc[2 * r] = vz.r; vxc[2 * r + 1] = vz.i; }
           }
-          if (g == 0 && lane == 0) { dst[2 * i] = beta; dst[2 * i + 1] = 0.0; tau[2 * i] = t.r; tau[2 * i + 1] = t.i; tb[2 * buf] = t.r; tb[2 * buf + 1] = t.i; }
+          if (g == 0 && lane == 0) { dst[2 * i] = beta; dst[2 * i + 1] = 0.0; tau[2 * i] = t.r; tau[2 * i + 1] = t.i; tb[2 * (i % 3)] = t.r; tb[2 * (i % 3) + 1] = t.i; }
         }
         sycl::group_barrier(it.get_group());
         Z w = {0.0, 0.0};
         double tr = 0.0, ti = 0.0;
         bool gen = false;
         if (c > i) {
-          tr = tb[2 * buf]; ti = tb[2 * buf + 1];
+          tr = tb[2 * (i % 3)]; ti = tb[2 * (i % 3) + 1];
           gen = (tr != 0.0 || ti != 0.0);
           if (gen) {   // pass A: w = v^H a
 #pragma unroll
@@ -304,11 +304,24 @@ inline int geqrf(sycl::queue &q, int64_t m, int64_t n, cd *A, int64_t lda, cd *t
   if (nb < 1) nb = 1;
   if (nb > MAX_NB) nb = MAX_NB;
   if (m > MAX_M || panel_maxjb(m) == 0 || lwork < scratch_size(m, n, nb)) return -1;
+  {   // device limits of the panel kernel (512 work-items = 32 sub-groups of 16, up to ~70 KB SLM), checked once; decline with a warning
+    static const bool limits_ok = [&] {
+      auto d = q.get_device();
+      const size_t wg = d.get_info<sycl::info::device::max_work_group_size>(), slm = d.get_info<sycl::info::device::local_mem_size>();
+      const auto sgs = d.get_info<sycl::info::device::sub_group_sizes>();
+      const bool has16 = std::find(sgs.begin(), sgs.end(), (size_t)SGS) != sgs.end();
+      const bool ok = wg >= 512 && slm >= 98304 && has16;
+      if (!ok) std::fprintf(stderr, "alfdevqr: WARNING device limits too small for the device QR (max work-group %zu, SLM %zu B, sub-group 16: %d): using oneMKL\n", wg, slm, (int)has16);
+      return ok;
+    }();
+    if (!limits_ok) return -1;
+  }
   static const bool prof = std::getenv("ALFDEVQR_PROF") != nullptr;   // per-stage host timing with a wait after every launch (diagnostic)
   static double tp[4] = {0, 0, 0, 0}; static long ncall = 0;
   auto now = [] { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); };
   double tl = prof ? now() : 0.0;
-  auto lap = [&](int k) { if (prof) { q.wait(); double t = now(); tp[k] += t - tl; tl = t; } };
+  static const bool syncall = std::getenv("ALFDEVQR_SYNC") != nullptr;   // diagnostic: host wait after every launch
+  auto lap = [&](int k) { if (syncall && !prof) q.wait(); if (prof) { q.wait(); double t = now(); tp[k] += t - tl; tl = t; } };
   cd *Vx = work, *Tm = Vx + m * nb, *W = Tm + (int64_t)nb * nb, *W2 = W + (int64_t)nb * n;
   sycl::event ev;
   for (int64_t j = 0, jbp; j < k; j += jbp) {
