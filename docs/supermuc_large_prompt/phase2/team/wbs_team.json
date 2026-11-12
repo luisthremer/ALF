@@ -461,7 +461,7 @@
     },
     {
       "collapsed" : false,
-      "description" : "C: L6F 2.3e-15, L12F 1.6e-14 PASS; L6T 1.36e-10 FAIL vs tol 1e-10, but oneMKL baseline itself fails 2\/5 seed sets (1.13e-10, 1.84e-10) -> criterion noise-limited; OWNER DECISION. Single-tile PG L24 2.6e-11, L32 2.7e-11; node PG max 6.5e-10 PASS. Planted: tau 1e-12 caught (same seed + node PG); gross races (no barrier, one SLM buffer) caught; 3 narrow race plants NOT caught by node PG. Default build bitwise unchanged.",
+      "description" : "C: L6F 2.3e-15, L12F 1.6e-14 PASS; L6T 1.36e-10 FAIL vs tol 1e-10, but oneMKL baseline itself fails 2\/5 seed sets (1.13e-10, 1.84e-10) -> criterion noise-limited; OWNER DECISION. Single-tile PG L24 2.6e-11, L32 2.7e-11; node PG max 6.5e-10 PASS. Planted: tau 1e-12 caught (same seed + node PG); gross races (no barrier, one SLM buffer) caught; 3 narrow race plants NOT caught by node PG. Default build bitwise unchanged.\n\nRace test (stress, p5\/race\/NOTES.md, jobs 560754-560807, ~5.4 node-h, 2026-11-12): real DEVQR=2+DEVUNMQR=1 at 4 ranks\/tile CCS 4: 0 BAD in 0.85 M it (N=1024) + 3.39 M it (N=576) on 2 nodes; controls oneMKL and DEVQR=1 also 0 (C). Plants: onebuf and race_ex caught, race_v caught with the ALFDEVQR_G=1 amplifier, race_tau NOT caught (detector blind to it). Bound: races at >=1e-5\/it excluded (95 %: <3.5e-6 at N=1024, <9e-7 at N=576). Open: L6T rule (owner wording), tau-slot code review.",
       "done" : false,
       "id" : "n_t0owuhxk",
       "order" : 6,
