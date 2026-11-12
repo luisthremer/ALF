@@ -262,8 +262,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "",
-      "done" : false,
+      "description" : "Replaced by Phase 3b: SYCL-async block path on the interop queue (ALFSH_ASYNCBLK=1, libalfsb.so), commits 26954206\/a574e898 on -async; agent gates G1-G3 passed.",
+      "done" : true,
       "id" : "n_mmraam8s",
       "order" : 1,
       "parentId" : "n_ip03gk58",
@@ -271,8 +271,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "",
-      "done" : false,
+      "description" : "C (agent + lead combined job 560387): same seed PASS, bitwise 0.0 vs branch head, missing wait -> abort (Unstable matrix); missing end-of-slice drain NOT detected (in-order queue orders it; drain kept). nvfortran compiles (combined).",
+      "done" : true,
       "id" : "n_oje6bbc7",
       "order" : 2,
       "parentId" : "n_ip03gk58",
@@ -301,8 +301,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "",
-      "done" : false,
+      "description" : "PASSED (agent): dR 2.1e-14, dV 5.9e-14, dtau 2.2e-14, orthogonality at host level; planted tau error caught.",
+      "done" : true,
       "id" : "n_fnb19x04",
       "order" : 0,
       "parentId" : "n_vg8vag8d",
@@ -310,8 +310,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "",
-      "done" : false,
+      "description" : "FAILED vs the 0.5x gate (agent: 8.7 vs 9.1 ms at N=576, 19.9 vs 26.3 at N=1024), but host-thread independent. In ALF (combined, C): stab+cgr L24 3.65 -> 3.23 s, L32 13.2 -> 10.3 s.",
+      "done" : true,
       "id" : "n_tpcema2g",
       "order" : 1,
       "parentId" : "n_vg8vag8d",
@@ -319,7 +319,7 @@
     },
     {
       "collapsed" : false,
-      "description" : "",
+      "description" : "C: single tile OK (same seed PASS, PG L24 1.8e-14\/4.5e-11, L32 5.1e-14\/4.4e-11). BUG: node config (32 ranks, CCS 4) Precision Green mean 2.6e-6 \/ max 0.55-1.96 -> wrong results; sent back to the Phase 4 agent (2026-11-12).",
       "done" : false,
       "id" : "n_7ulfjn4m",
       "order" : 2,
@@ -328,8 +328,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "",
-      "done" : false,
+      "description" : "C (combined): L24 7.07 -> 6.66, L32 23.2 -> 20.5. Node numbers (0.766\/card) invalid until the CCS bug is fixed.",
+      "done" : true,
       "id" : "n_afxoe8hz",
       "order" : 3,
       "parentId" : "n_vg8vag8d",
@@ -359,8 +359,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "",
-      "done" : false,
+      "description" : "Branch production-mpi-intel-large-prompt-team-combined: merged -async and -sycqr (conflicts Makefile\/configure.sh resolved: both libs, -ldl), libalfsb linked LP64 (-qmkl) instead of ILP64. Builds OK, nvfortran compile OK.",
+      "done" : true,
       "id" : "n_pyqq3ctv",
       "order" : 0,
       "parentId" : "n_mo4rpe72",
@@ -377,7 +377,7 @@
     },
     {
       "collapsed" : false,
-      "description" : "",
+      "description" : "C (job 560387\/560388, one binary, run-time switches): L24 one tile V0 10.6 \/ staging 7.07 \/ +async 6.58 \/ +devqr 6.66 \/ both 6.17 (A30 5.25); L32 31 \/ 23.2 \/ 22.4 \/ 20.5 \/ 19.1-19.4 (A30 18.2); node per card V0 0.549 \/ V1 0.568 \/ V2 0.655 (A30 0.43); V3\/V4 node invalid (CCS bug).",
       "done" : false,
       "id" : "n_331eda4l",
       "order" : 2,
