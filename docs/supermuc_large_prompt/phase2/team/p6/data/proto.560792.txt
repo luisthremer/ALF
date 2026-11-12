@@ -1,0 +1,92 @@
+start 2026-11-12T16:17:54+01:00 i20r07c02s08 job 560792
+######## C1: 8 ranks (1 per tile), one configuration per rank (rank 0 baseline; 1,2,3,4,7: B=1,2,4,8,16 mode 1; 5: B=4 mode 2; 6: B=4 mode 3)
+  [C1] rank 0 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    0.677  per call ms   0.3526
+  [C1] rank 1 GPU wb: B  1 mode 1 calls    1920 total s    0.773  per call ms   0.4027  per walker-call ms   0.4027  gemm+copy ms/call   0.3739 td ms/call   0.0007 fill+in/out ms/call   0.0280
+  [C1] rank 2 GPU wb: B  2 mode 1 calls    1920 total s    1.144  per call ms   0.5960  per walker-call ms   0.2980  gemm+copy ms/call   0.5577 td ms/call   0.0013 fill+in/out ms/call   0.0368
+  [C1] rank 3 GPU wb: B  4 mode 1 calls    1920 total s    1.800  per call ms   0.9376  per walker-call ms   0.2344  gemm+copy ms/call   0.8897 td ms/call   0.0019 fill+in/out ms/call   0.0458
+  [C1] rank 4 GPU wb: B  8 mode 1 calls    1920 total s    3.914  per call ms   2.0383  per walker-call ms   0.2548  gemm+copy ms/call   1.9724 td ms/call   0.0031 fill+in/out ms/call   0.0627
+  [C1] rank 5 GPU wb: B  4 mode 2 calls    1920 total s    2.262  per call ms   1.1783  per walker-call ms   0.2946  gemm+copy ms/call   1.1249 td ms/call   0.0019 fill+in/out ms/call   0.0514
+  [C1] rank 6 GPU wb: B  4 mode 3 calls    1920 total s    2.676  per call ms   1.3936  per walker-call ms   0.3484  gemm+copy ms/call   1.3416 td ms/call   0.0017 fill+in/out ms/call   0.0501
+  [C1] rank 7 GPU wb: B 16 mode 1 calls    1920 total s    6.905  per call ms   3.5964  per walker-call ms   0.2248  gemm+copy ms/call   3.4963 td ms/call   0.0060 fill+in/out ms/call   0.0940
+PHASES C1   ranks  8 per sweep [s]: sweep 6.35 wrapgrup 1.37 wrapgrdo 1.25 stab_wrapur 0.46 stab_wrapul 0.45 cgr 1.24 obs 1.35
+PG C1             mean 2.084695282770573E-014 max 3.295184029837001E-011 -> PASS
+######## C2: 8 ranks all baseline (tile-to-tile spread of the baseline)
+  [C2] rank 0 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    0.668  per call ms   0.3482
+  [C2] rank 1 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    0.686  per call ms   0.3573
+  [C2] rank 2 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    0.579  per call ms   0.3017
+  [C2] rank 3 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    0.588  per call ms   0.3063
+  [C2] rank 4 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    0.672  per call ms   0.3499
+  [C2] rank 5 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    0.681  per call ms   0.3548
+  [C2] rank 6 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    0.672  per call ms   0.3498
+  [C2] rank 7 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    0.674  per call ms   0.3511
+PHASES C2   ranks  8 per sweep [s]: sweep 5.32 wrapgrup 0.84 wrapgrdo 0.80 stab_wrapur 0.45 stab_wrapul 0.45 cgr 1.23 obs 1.31
+PG C2             mean 2.080716322776423E-014 max 3.334976231551937E-011 -> PASS
+######## C4: 8 ranks all B=4 mode 1
+  [C4] rank 0 GPU wb: B  4 mode 1 calls    1920 total s    2.127  per call ms   1.1077  per walker-call ms   0.2769  gemm+copy ms/call   1.0585 td ms/call   0.0017 fill+in/out ms/call   0.0474
+  [C4] rank 1 GPU wb: B  4 mode 1 calls    1920 total s    2.131  per call ms   1.1100  per walker-call ms   0.2775  gemm+copy ms/call   1.0589 td ms/call   0.0017 fill+in/out ms/call   0.0493
+  [C4] rank 2 GPU wb: B  4 mode 1 calls    1920 total s    1.792  per call ms   0.9331  per walker-call ms   0.2333  gemm+copy ms/call   0.8876 td ms/call   0.0018 fill+in/out ms/call   0.0435
+  [C4] rank 3 GPU wb: B  4 mode 1 calls    1920 total s    1.802  per call ms   0.9383  per walker-call ms   0.2346  gemm+copy ms/call   0.8901 td ms/call   0.0019 fill+in/out ms/call   0.0461
+  [C4] rank 4 GPU wb: B  4 mode 1 calls    1920 total s    2.117  per call ms   1.1025  per walker-call ms   0.2756  gemm+copy ms/call   1.0530 td ms/call   0.0017 fill+in/out ms/call   0.0475
+  [C4] rank 5 GPU wb: B  4 mode 1 calls    1920 total s    2.134  per call ms   1.1116  per walker-call ms   0.2779  gemm+copy ms/call   1.0594 td ms/call   0.0017 fill+in/out ms/call   0.0503
+  [C4] rank 6 GPU wb: B  4 mode 1 calls    1920 total s    2.120  per call ms   1.1040  per walker-call ms   0.2760  gemm+copy ms/call   1.0541 td ms/call   0.0017 fill+in/out ms/call   0.0480
+  [C4] rank 7 GPU wb: B  4 mode 1 calls    1920 total s    2.125  per call ms   1.1066  per walker-call ms   0.2766  gemm+copy ms/call   1.0535 td ms/call   0.0018 fill+in/out ms/call   0.0511
+PHASES C4   ranks  8 per sweep [s]: sweep 6.12 wrapgrup 1.23 wrapgrdo 1.15 stab_wrapur 0.46 stab_wrapul 0.46 cgr 1.24 obs 1.35
+PG C4             mean 2.087758806531678E-014 max 3.295184029837001E-011 -> PASS
+######## C3: 32 ranks (4/tile, CCS 4, OMP 3) all baseline: wrap time under production-like contention
+  [C3] rank 0 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.799  per call ms   0.9369
+  [C3] rank 1 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.794  per call ms   0.9345
+  [C3] rank 2 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.715  per call ms   0.8931
+  [C3] rank 3 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.724  per call ms   0.8981
+  [C3] rank 4 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.829  per call ms   0.9524
+  [C3] rank 5 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.860  per call ms   0.9685
+  [C3] rank 6 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.813  per call ms   0.9444
+  [C3] rank 7 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.834  per call ms   0.9552
+  [C3] rank 8 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.805  per call ms   0.9399
+  [C3] rank 9 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.819  per call ms   0.9473
+  [C3] rank 10 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.699  per call ms   0.8846
+  [C3] rank 11 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.710  per call ms   0.8905
+  [C3] rank 12 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.823  per call ms   0.9493
+  [C3] rank 13 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.862  per call ms   0.9699
+  [C3] rank 14 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.826  per call ms   0.9509
+  [C3] rank 15 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.837  per call ms   0.9565
+  [C3] rank 16 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.812  per call ms   0.9440
+  [C3] rank 17 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.835  per call ms   0.9555
+  [C3] rank 18 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.715  per call ms   0.8931
+  [C3] rank 19 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.724  per call ms   0.8980
+  [C3] rank 20 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.816  per call ms   0.9459
+  [C3] rank 21 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.808  per call ms   0.9418
+  [C3] rank 22 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.843  per call ms   0.9599
+  [C3] rank 23 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.803  per call ms   0.9393
+  [C3] rank 24 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.819  per call ms   0.9475
+  [C3] rank 25 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.837  per call ms   0.9567
+  [C3] rank 26 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.707  per call ms   0.8893
+  [C3] rank 27 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.713  per call ms   0.8921
+  [C3] rank 28 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.839  per call ms   0.9578
+  [C3] rank 29 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.836  per call ms   0.9562
+  [C3] rank 30 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.816  per call ms   0.9461
+  [C3] rank 31 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.835  per call ms   0.9555
+PHASES C3   ranks 32 per sweep [s]: sweep 9.22 wrapgrup 1.39 wrapgrdo 1.33 stab_wrapur 0.83 stab_wrapul 0.83 cgr 1.84 obs 2.68
+PG C3             mean 2.228029273548025E-014 max 6.536447432744344E-010 -> PASS
+######## C5: 8 ranks (1/tile) CCS 4 (each process gets ONE of the 4 compute slices of its tile), baseline
+  [C5] rank 0 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.617  per call ms   0.8424
+  [C5] rank 1 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.624  per call ms   0.8460
+  [C5] rank 2 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.620  per call ms   0.8438
+  [C5] rank 3 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.631  per call ms   0.8494
+  [C5] rank 4 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.616  per call ms   0.8416
+  [C5] rank 5 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.626  per call ms   0.8469
+  [C5] rank 6 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.629  per call ms   0.8483
+  [C5] rank 7 GPU wb baseline (unbatched hopping wrap): calls    1920 total s    1.624  per call ms   0.8459
+PHASES C5   ranks  8 per sweep [s]: sweep 8.31 wrapgrup 1.26 wrapgrdo 1.21 stab_wrapur 0.76 stab_wrapul 0.77 cgr 1.63 obs 2.44
+PG C5             mean 2.080716322776423E-014 max 3.334976231551937E-011 -> PASS
+######## C6: 8 ranks (1/tile) CCS 4, all B=4 mode 1
+  [C6] rank 0 GPU wb: B  4 mode 1 calls    1920 total s    5.618  per call ms   2.9259  per walker-call ms   0.7315  gemm+copy ms/call   2.8371 td ms/call   0.0016 fill+in/out ms/call   0.0870
+  [C6] rank 1 GPU wb: B  4 mode 1 calls    1920 total s    5.636  per call ms   2.9354  per walker-call ms   0.7338  gemm+copy ms/call   2.8442 td ms/call   0.0017 fill+in/out ms/call   0.0894
+  [C6] rank 2 GPU wb: B  4 mode 1 calls    1920 total s    5.632  per call ms   2.9331  per walker-call ms   0.7333  gemm+copy ms/call   2.8427 td ms/call   0.0019 fill+in/out ms/call   0.0884
+  [C6] rank 3 GPU wb: B  4 mode 1 calls    1920 total s    5.653  per call ms   2.9441  per walker-call ms   0.7360  gemm+copy ms/call   2.8514 td ms/call   0.0018 fill+in/out ms/call   0.0907
+  [C6] rank 4 GPU wb: B  4 mode 1 calls    1920 total s    5.620  per call ms   2.9271  per walker-call ms   0.7318  gemm+copy ms/call   2.8378 td ms/call   0.0017 fill+in/out ms/call   0.0874
+  [C6] rank 5 GPU wb: B  4 mode 1 calls    1920 total s    5.631  per call ms   2.9330  per walker-call ms   0.7333  gemm+copy ms/call   2.8418 td ms/call   0.0017 fill+in/out ms/call   0.0894
+  [C6] rank 6 GPU wb: B  4 mode 1 calls    1920 total s    5.652  per call ms   2.9438  per walker-call ms   0.7360  gemm+copy ms/call   2.8509 td ms/call   0.0018 fill+in/out ms/call   0.0909
+  [C6] rank 7 GPU wb: B  4 mode 1 calls    1920 total s    5.642  per call ms   2.9386  per walker-call ms   0.7347  gemm+copy ms/call   2.8468 td ms/call   0.0020 fill+in/out ms/call   0.0896
+PHASES C6   ranks  8 per sweep [s]: sweep 10.34 wrapgrup 2.28 wrapgrdo 2.21 stab_wrapur 0.76 stab_wrapul 0.77 cgr 1.63 obs 2.45
+PG C6             mean 2.087758806531678E-014 max 3.295184029837001E-011 -> PASS
+end 2026-11-12T16:20:23+01:00
