@@ -44,7 +44,8 @@
 !>     gathered on the device), unpivoted QR (la_geqrf), the exp(L_j - L_i) row scaling and the log update;
 !>   * gpu_stab_cgr: CGR for NVAR = 1 and 2 (cgr1_mod CGR, branches default and STABLOG).  Default: la_qrpp.  STABLOG: host
 !>     ZGEQP3 through la_geqp3_host (ADR-001 section 4: upstream numerics; the N x N matrix goes D->H and the factors H->D).
-!>     D separation, phase (permutation sign, R diagonal, reflector determinants, det of U_R^dagger U_L through la_getrf),
+!>     D separation, phase (permutation sign, R diagonal, reflector determinants, det of U_R^dagger U_L from the determinant
+!>     phases of the two U factors, tracked per slot since their decompose: see det tracking below; la_getrf only as fallback),
 !>     ZUNMQR, ZTRSM, ZLAPMR/T and the final GEMM on the device;
 !>   * the precision check of Control_PrecisionG as a device reduction (max |A-B|, sum |A-B|, NaN counts): one D->H of four
 !>     numbers, handed to Control_PrecisionG_vals (control_mod).
@@ -128,6 +129,20 @@ Module gpu_stab_mod
   Integer, Save :: chk_level = 0, chk_ncgr = 0, chk_nblk = 0, chk_nbad = 0, chk_mix = 0   ! chk_mix 1: use the host CGR result, 2: the host WRAPUR/UL result (isolation experiments)
   Real (Kind=Kind(0.d0)), Save :: chk_g(2) = 0.d0, chk_ph = 0.d0, chk_u = 0.d0, chk_v = 0.d0, chk_s = 0.d0
   Class (UDV_State), Allocatable, Save :: ck_l(:), ck_r(:), ck_d(:)
+  ! ---- det tracking (speedup S1): det(U)/|det(U)| of every device slot U, so that CGR gets det(U_R^dagger U_L) without an LU.
+  ! decompose: U = Q_ns * diag(cs(1),1,..,1), Q = H_1..H_n (Householder, LAPACK convention, H_i = I - tau_i v_i v_i^H, v_i(i) = 1),
+  ! det(H_i) = 1 - tau_i |v_i|^2 = 1 - 2 (tau_i/|tau_i|) (Re tau_i/|tau_i|) = -tau_i/conj(tau_i) (1 if tau_i = 0; unitarity of H_i
+  ! gives |v_i|^2 = 2 Re tau_i/|tau_i|^2).  The Newton-Schulz step multiplies Q by the Hermitian positive (3 - Q^H Q)/2, whose
+  ! determinant is real and positive: the phase is unchanged.  So the phase differs from the LU one at rounding level only; G is
+  ! untouched (the LU result was used for the phase only: sA is consumed by k_tpup before and overwritten in cgr_solve after).
+  ! st_dw(slot,nfe) / st_dv(nst,nfe): device; dw_ok / dv_ok: host flags (.false. after a host upload of U: ul_state), then CGR falls
+  ! back to la_getrf.  ALF_GPU_CGR_LU=1 (debug): always the LU (old path); =2: both, the tau phase is used and the largest
+  ! |phase_tau - phase_LU| of the run is reported at the end.
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: st_dw(:,:), st_dv(:,:)
+  Logical, Allocatable, Save :: dw_ok(:,:), dv_ok(:,:)
+  Integer, Save :: cgr_lu = 0
+  Integer, Save :: ph_ncmp = 0
+  Real (Kind=Kind(0.d0)), Save :: ph_maxdiff = 0.d0
 
 Contains
 
@@ -151,7 +166,17 @@ Contains
     st_ipvt = 1; st_perm = 1; st_ipiv = 1
     ! device allocation once, no transfer; the first use of each buffer is a device write
     !$omp target enter data map(alloc: sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_ipvt, st_perm, st_ipiv)
+    allocate(st_dw(2,s_nfe), st_dv(s_nstm,s_nfe), dw_ok(2,s_nfe), dv_ok(s_nstm,s_nfe))
+    st_dw = z1; st_dv = z1; dw_ok = .false.; dv_ok = .false.
+    !$omp target enter data map(alloc: st_dw, st_dv)
     call la_init()
+    if (gpu_env_is('ALF_GPU_CGR_LU', '1')) cgr_lu = 1
+    if (gpu_env_is('ALF_GPU_CGR_LU', '2')) cgr_lu = 2
+    if (cgr_lu == 2) then
+       !$omp target
+       st_r(12) = 0.d0
+       !$omp end target
+    endif
     if (gpu_env_is('ALF_GPU_NS', '0')) ns_on = .false.      ! (ticket 212: the value 0 is listed in the debug-env line)
     ! pre-grow the cuSOLVER work space (no device allocation inside the sweep)
     lw = la_geqrf_lwork(n, n, sA, n)
@@ -177,8 +202,19 @@ Contains
 
   Subroutine gpu_stab_finalize()
     Implicit none
+    Character (len=256) :: line
     if (.not. gpu_stab_on) return
     call check_report()
+    if (cgr_lu == 2) then
+       call la_sync()
+       !$omp target update from(st_r(12:12))
+       ph_maxdiff = st_r(12)
+       write(line,'(A,I0,A,ES10.3)') 'GPU CGR phase check (ALF_GPU_CGR_LU=2): CGR calls compared ', ph_ncmp, &
+            & ', max |phase(det tracking) - phase(LU)| ', ph_maxdiff
+       call say(line)
+    endif
+    !$omp target exit data map(delete: st_dw, st_dv)
+    deallocate(st_dw, st_dv, dw_ok, dv_ok)
     !$omp target exit data map(delete: sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_ipvt, st_perm, st_ipiv)
     deallocate(sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_ipvt, st_perm, st_ipiv, s_nt)
     call la_finalize()
@@ -257,6 +293,7 @@ Contains
     Integer, intent(in) :: slot, nfe
     call k_ident(s_N, udw_U(1,1,slot,nfe), s_N)
     call k_ident(s_N, udw_V(1,1,slot,nfe), s_N)
+    call k_set_one(st_dw(slot,nfe)); dw_ok(slot,nfe) = .true.        ! det(1) = 1
 #if defined(STABLOG)
     call k_setL(s_N, udw_L(1,slot,nfe))
 #else
@@ -282,6 +319,7 @@ Contains
     Integer, intent(in) :: nst, nfe
     call k_ident(s_N, udv_U(1,1,nst,nfe), s_N)
     call k_ident(s_N, udv_V(1,1,nst,nfe), s_N)
+    call k_set_one(st_dv(nst,nfe)); dv_ok(nst,nfe) = .true.
 #if defined(STABLOG)
     call k_setL(s_N, udv_L(1,nst,nfe))
 #else
@@ -295,6 +333,7 @@ Contains
     Integer, intent(in) :: wslot, nfe, nst
     call k_copy_c(s_N*s_N, udw_U(1,1,wslot,nfe), udv_U(1,1,nst,nfe))
     call k_copy_c(s_N*s_N, udw_V(1,1,wslot,nfe), udv_V(1,1,nst,nfe))
+    call k_copy_c(1, st_dw(wslot,nfe), st_dv(nst,nfe)); dv_ok(nst,nfe) = dw_ok(wslot,nfe)
 #if defined(STABLOG)
     call k_copy_r(s_N, udw_L(1,wslot,nfe), udv_L(1,nst,nfe))
 #else
@@ -307,6 +346,7 @@ Contains
     Integer, intent(in) :: wslot, nfe, nst
     call k_copy_c(s_N*s_N, udv_U(1,1,nst,nfe), udw_U(1,1,wslot,nfe))
     call k_copy_c(s_N*s_N, udv_V(1,1,nst,nfe), udw_V(1,1,wslot,nfe))
+    call k_copy_c(1, st_dv(nst,nfe), st_dw(wslot,nfe)); dw_ok(wslot,nfe) = dv_ok(nst,nfe)
 #if defined(STABLOG)
     call k_copy_r(s_N, udv_L(1,nst,nfe), udw_L(1,wslot,nfe))
 #else
@@ -409,6 +449,7 @@ Contains
     call dev_decompose(side, udw_U(1,1,slot,nfe), udw_V(1,1,slot,nfe), udw_D(1,slot,nfe))
     call dev_testscale(udw_D(1,slot,nfe))
 #endif
+    call k_copy_c(1, st_c(4), st_dw(slot,nfe)); dw_ok(slot,nfe) = .true.   ! det(U)/|det U| of the new U (k_phase)
   end subroutine decompose_slot
 
 !--------------------------------------------------------------------
@@ -471,7 +512,8 @@ Contains
     call k_diagabs(n, U, n, st_Dl)
     call k_divrows(n, U, n, st_Dl)
 #endif
-    call k_phase(n, U, n, sgn, .not. rside, st_c)         ! Phase = prod U(i,i), permutation sign, conj for side L; beta = 1/Phase
+    call k_phase(n, U, n, sgn, .not. rside, st_tau, st_c) ! Phase = prod U(i,i), permutation sign, conj for side L; beta = 1/Phase;
+                                                          ! cs(4) = det(U)/|det U| of the final U (reflector dets * Phase)
     call k_scale_row1(n, U, n, st_c)                      ! scale the first row of R with 1/Phase
 #if defined(STABLOG)
     call k_stablog_scale(n, U, n, S, st_Dl)               ! U(i,j) *= exp(L(j) - L(i)), j > i;  L(i) = log(D(i)) + L(i)
@@ -795,6 +837,7 @@ Contains
     Implicit none
     Integer, intent(in) :: nfe, nvar
     Integer :: n
+    Logical :: use_lu
 
     n = s_N
     ! RHS = U_R^dagger U_L  (sA),  T = V_R V_L  (sB)
@@ -806,9 +849,21 @@ Contains
     call k_tpup(n, sB, sA, udw_D(1,2,nfe), udw_D(1,1,nfe))
 #endif
     ! NOTE: upstream's one-time "Large number encountered" warning of CGR is omitted here (the scale test of decompose warns instead).
-    ! det(U_R^dagger U_L): LU of RHS; Phase = conj(det)/|det|  (st_c(3))
-    call la_getrf(n, n, sA, n, st_ipiv)
-    call k_det_phase(n, sA, n, st_ipiv, st_c)
+    ! det(U_R^dagger U_L); Phase = conj(det)/|det|  (st_c(3)).  Default (S1): from the tracked dets of U_L, U_R (no LU; sA, the
+    ! RHS, is not read again: k_tpup consumed it, cgr_solve overwrites it).  Fallback / ALF_GPU_CGR_LU=1: LU of RHS (old path).
+    use_lu = (cgr_lu /= 0) .or. .not. (dw_ok(1,nfe) .and. dw_ok(2,nfe))
+    if (use_lu) then
+       call la_getrf(n, n, sA, n, st_ipiv)
+       call k_det_phase(n, sA, n, st_ipiv, st_c)
+    endif
+    if (cgr_lu == 2 .and. dw_ok(1,nfe) .and. dw_ok(2,nfe)) then
+       call k_copy_c(1, st_c(3), st_c(5))                   ! LU phase kept in cs(5)
+       call k_det_phase_u(st_dw(1,nfe), st_dw(2,nfe), st_c)
+       call k_ph_cmp(st_c, st_r)                             ! st_r(12) = max |cs(3) - cs(5)| (debug, ALF_GPU_CGR_LU=2)
+       ph_ncmp = ph_ncmp + 1
+    else if (.not. use_lu) then
+       call k_det_phase_u(st_dw(1,nfe), st_dw(2,nfe), st_c)
+    endif
     if (nvar == 1) then
        call cgr_solve(nfe, nvar, sB)
     else
@@ -921,25 +976,65 @@ Contains
 
   ! Phase = prod_i U(i,i), times the permutation sign, conjugated for side L; cs(1) = Phase, cs(2) = 1/Phase.
   ! One serial loop on the device (N complex products, no transfer).
-  Subroutine k_phase(n, U, ld, sgn, cj, cs)
+  Subroutine k_phase(n, U, ld, sgn, cj, tau, cs)
     Implicit none
     Integer, intent(in) :: n, ld, sgn
     Logical, intent(in) :: cj
-    Complex (Kind=Kind(0.d0)), intent(in) :: U(ld,*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: U(ld,*), tau(*)
     Complex (Kind=Kind(0.d0)), intent(inout) :: cs(*)
-    Complex (Kind=Kind(0.d0)) :: ph
+    Complex (Kind=Kind(0.d0)) :: ph, dq, z
+    Real (Kind=Kind(0.d0)) :: a2
     Integer :: i
     !$omp target
     ph = cmplx(1.d0, 0.d0, kind(0.d0))
+    dq = cmplx(1.d0, 0.d0, kind(0.d0))
     do i = 1, n
        ph = ph*U(i,i)
+       ! det(H_i) = 1 - 2 tau_i Re(tau_i)/|tau_i|^2 (see det tracking in the module header); 1 for tau_i = 0
+       z = tau(i)
+       a2 = real(z)*real(z) + aimag(z)*aimag(z)
+       if (a2 > 0.d0) dq = dq * (1.d0 - 2.d0*z*(real(z)/a2))
     enddo
     if (sgn < 0) ph = -ph
     if (cj) ph = conjg(ph)
     cs(1) = ph
     cs(2) = cmplx(1.d0, 0.d0, kind(0.d0)) / ph
+    dq = dq*ph
+    cs(4) = dq/abs(dq)
     !$omp end target
   end subroutine k_phase
+
+  ! debug (ALF_GPU_CGR_LU=2): r(12) = max(r(12), |cs(3) - cs(5)|)
+  Subroutine k_ph_cmp(cs, r)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in) :: cs(*)
+    Real (Kind=Kind(0.d0)), intent(inout) :: r(*)
+    !$omp target
+    r(12) = max(r(12), abs(cs(3) - cs(5)))
+    !$omp end target
+  end subroutine k_ph_cmp
+
+  ! d(1) = 1 (det of a unit-matrix slot)
+  Subroutine k_set_one(d)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(inout) :: d(*)
+    !$omp target
+    d(1) = cmplx(1.d0, 0.d0, kind(0.d0))
+    !$omp end target
+  end subroutine k_set_one
+
+  ! cs(3) = conj(det)/|det| with det = det(U_R^dagger U_L) = conj(dR) dL (the dets of the two U factors, det tracking)
+  Subroutine k_det_phase_u(dL, dR, cs)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in) :: dL(*), dR(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: cs(*)
+    Complex (Kind=Kind(0.d0)) :: det
+    !$omp target
+    det = conjg(dR(1))*dL(1)
+    det = conjg(det)
+    cs(3) = det / abs(det)
+    !$omp end target
+  end subroutine k_det_phase_u
 
   ! U(1,j) = cs(2) * U(1,j)   (ZSCAL of the first row of R with 1/Phase)
   Subroutine k_scale_row1(n, U, ld, cs)
@@ -1524,6 +1619,7 @@ Contains
     Class (UDV_State), intent(in) :: ust
     udw_U(:,:,slot,nfe) = ust%U; udw_V(:,:,slot,nfe) = ust%V
     !$omp target update to(udw_U(:,:,slot,nfe), udw_V(:,:,slot,nfe))
+    dw_ok(slot,nfe) = .false.          ! host U: det not tracked, CGR uses the LU for the phase until the next decompose / reset
 #if defined(STABLOG)
     udw_L(:,slot,nfe) = ust%L
     !$omp target update to(udw_L(:,slot,nfe))
