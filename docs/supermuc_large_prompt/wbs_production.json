@@ -514,8 +514,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "work_ab: L36 (8 walkers, 1\/tile) and L28 (2 U, 32 walkers, 4\/tile CCS) from the same snapshots, old vs new (560654-560657); criterion: appended bins and confouts bit-identical. Then release the held links (not L32_fast).",
-      "done" : false,
+      "description" : "work_ab: L36 (8 walkers, 1\/tile) and L28 (2 U, 32 walkers, 4\/tile CCS) from the same snapshots, old vs new (560654-560657); criterion: appended bins and confouts bit-identical. Then release the held links (not L32_fast). RESULT 2026-11-12 (cmp job 560692, cmp_h5dump.py --tol 0): every common bin bit-identical (MAXREL 0) in all 10 sets; confouts identical (38 files) where both had the same bin count; L36 Temp_3\/Temp_7 old 24 vs new 23 bins because the 50-min time limit stopped the jobs mid-bin (CPU_MAX>0 makes ALF ignore NBin), first 23 bins identical. No 'Unstable matrix'. Held links L32 560646, L28 560647-560648, L36 560649-560650 released (dependencies verified); L32_fast 560651\/560652 stay held.",
+      "done" : true,
       "id" : "n_k9ckyenl",
       "order" : 7,
       "parentId" : "n_aztpjo5u",
