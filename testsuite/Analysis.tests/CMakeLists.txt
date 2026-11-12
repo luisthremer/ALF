@@ -17,3 +17,12 @@ endforeach(iter)
 
 enable_testing()
 add_test(1-maxent-kernel-overflow 1-maxent-kernel-overflow)
+
+# End-to-end test of the Gaussian bootstrap in Max_SAC (needs a built Analysis/Max_SAC.out).
+# See README_bootstrap_test.md.
+find_program(PYTHON3_EXE python3)
+if(PYTHON3_EXE)
+  add_test(NAME 2-maxsac-bootstrap
+           COMMAND ${PYTHON3_EXE} ${CMAKE_CURRENT_SOURCE_DIR}/2-maxsac-bootstrap.py
+                   ${CMAKE_CURRENT_SOURCE_DIR}/../../Analysis/Max_SAC.out)
+endif()

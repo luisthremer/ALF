@@ -239,6 +239,65 @@ In the  directory  \texttt{Scripts\_and\_Parameters\_files} there  is  a  shell 
 for  the  running of  the code,  and  production of  plots.   The   included  shell script produces  the  plots of  Fig.~\ref{Fig:Spectral1D}, 
 and  will have to  be  adapted  (i.e.  set  of  k-points)   for  different  system  sizes.
 
+\subsection{Statistical errors of the spectrum: Gaussian bootstrap}
+\label{sec:maxent_bootstrap}
+The  error  $\Delta \langle A_n(\omega) \rangle$  in the files \texttt{Aom\_n}  and \texttt{Aom\_ps\_n}  is the  Monte Carlo  error of the
+stochastic  MaxEnt  simulation for  \emph{fixed}  input data.   It does not  contain  the  statistical  uncertainty of the
+QMC data  $\overline{g(\tau_i)}$  themselves.   To  propagate the  latter  to  the  spectral  function, the  stochastic  MaxEnt
+code  can  carry out a parametric (Gaussian) bootstrap.  It is  switched on  by  setting  \texttt{N\_boot} $>1$   in the  namelist
+\texttt{VAR\_Max\_Stoch}  (see Sec.~\ref{sec:files});  it is only  available  for  \texttt{Stochastic = .T.}.
+
+\paragraph*{Method}
+The  data $\overline{g(\tau_i)}$ and the covariance  matrix  $C$ are  taken  from \texttt{g\_dat} after  the tolerance test,  i.e. for exactly
+the $n$  $\tau$-points  and  the  covariance  that enter $\chi^2(A)$  (the  full  covariance  for  \texttt{N\_cov = 1}, its  diagonal  for
+\texttt{N\_cov = 0}).    $C$ is the covariance of the mean, so it directly gives the width of the distribution of $\overline{g}$.
+With  the  spectral  decomposition  $C = U \Lambda U^{T}$,  $\Lambda = \mathrm{diag}(\lambda_1,\cdots,\lambda_n)$,  the code  generates
+$N_{\mathrm{boot}}$ synthetic  data  sets
+\begin{equation}
+  g^{(b)}(\tau_i) = \overline{g(\tau_i)} + \sum_{j=1}^{n} U_{ij} \sqrt{\lambda_j}\, z^{(b)}_j ,  \quad   b = 1 \cdots N_{\mathrm{boot}},
+\end{equation}
+where  the $z^{(b)}_j$ are independent standard normal random numbers (Box-Muller).  Hence  $g^{(b)}$ is  distributed according to
+the multivariate normal distribution ${\cal N}(\overline{g}, C)$.   Eigenvalues  $\lambda_j < -10^{-10} \max_k |\lambda_k|$  stop the  program with an
+error  message;  smaller  negative  eigenvalues (round-off) are set  to zero.  For each  $g^{(b)}$ a  complete  stochastic
+MaxEnt  run  with  the  parameters of  \texttt{VAR\_Max\_Stoch}   is  carried out,  with the   same  covariance $C$ in $\chi^2$,  the  same
+default model  and  the  same  sum  rule $M_0$  as  for  the  original data.  Each  run  starts  without  accumulated  histograms  and  with
+\texttt{NWarm} warmup bins.   From  the  images $A^{(b)}_n(\omega)$ of the files  \texttt{Aom\_ps\_n}  of all runs,  the  code  computes  the mean
+and the  standard  deviation
+\begin{equation}
+   \overline{A_n(\omega)} = \frac{1}{N_{\mathrm{boot}}} \sum_{b=1}^{N_{\mathrm{boot}}} A^{(b)}_n(\omega), \qquad
+   \Delta A_n(\omega) = \left[ \frac{1}{N_{\mathrm{boot}}-1} \sum_{b=1}^{N_{\mathrm{boot}}} \left( A^{(b)}_n(\omega) - \overline{A_n(\omega)}\right)^2 \right]^{1/2}
+\end{equation}
+(accumulated  with  Welford's  algorithm).  $\Delta A_n(\omega)$ is  the error bar of  one analysis of the data and is \emph{not} divided by
+$\sqrt{N_{\mathrm{boot}}}$.  It  contains  both  the  propagated  statistical  error of the  QMC data and  the  Monte Carlo  error of a single
+MaxEnt run.   Finally,  one  reference  run on the original, unperturbed  data  is  carried  out;  it  produces  all  the  output  files listed
+above.
+
+\paragraph*{Parameters}
+\texttt{N\_boot} (default 1)  sets the number of  bootstrap  samples;  for \texttt{N\_boot} $\le 1$  the code  carries out the  single run on the original data
+and its output is  identical to that of a run without this  parameter.   \texttt{N\_boot\_checkpoint} (default \texttt{.F.})   lets each run start from the
+configurations of the previous one (dump files);  the  histograms are reset and the warmup is  carried out nevertheless.
+The random numbers are  seeded  with  a fixed  seed,  so that  results  are reproducible.
+
+\paragraph*{Output}
+In  addition to the files of the reference  run, the  files \texttt{Aom\_ps\_boot\_n},  $n = 1 \cdots N_{\alpha}-10$, contain three columns:
+$\omega$,  $\overline{A_n(\omega)}$  and $\Delta A_n(\omega)$.  \texttt{Info\_MaxEnt}  lists \texttt{N\_boot},  and  \texttt{Max\_stoch\_log} contains the log of all
+$N_{\mathrm{boot}}+1$ runs.
+
+\paragraph*{Cost and remarks}
+The  computational cost is  $N_{\mathrm{boot}}+1$  times that  of a single  run.    Since  the total  weight is  fixed by the sum rule $M_0$  of the original data,
+its  bootstrap error  vanishes  by  construction.    The files contain the error  of $A_n(\omega)$  for each  frequency separately;  the  errors  of  frequency
+integrals  of $A_n(\omega)$ (e.g. the weight in a frequency window)  require the correlations between  frequencies, which  are not  written.
+A  typical usage  reads
+\begin{verbatim}
+&VAR_Max_Stoch
+N_boot     = 50             ! 50 bootstrap samples + 1 reference run
+...                         ! other parameters as for a single run
+Stochastic = .T.
+/
+\end{verbatim}
+followed  by  a  call to \texttt{\$ALF\_DIR/Analysis/Max\_SAC.out}  in the directory  containing \texttt{g\_dat}  and  \texttt{parameters};  the  spectral function
+with  error bars is then  read  from \texttt{Aom\_ps\_boot\_n}, typically for  $n = N_\alpha - 10$, the image  that  is also used for  \texttt{Green}.
+
 \subsection{Single-particle quantities: \texttt{Channel=P}}
 For the single-particle Green function, 
 \begin{equation} 

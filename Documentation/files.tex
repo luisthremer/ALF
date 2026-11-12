@@ -182,6 +182,9 @@ Tolerance  = 0.1d0          ! Data points for which the relative error exceeds t
                             ! tolerance threshold will be omitted.
 Stochastic =.T.             ! If  true,  stochastic  maxent  is  called
                             ! If  false, classic  maxent  is  called
+N_boot     = 1              ! Number of Gaussian bootstrap samples; N_boot <= 1: no
+                            ! bootstrap (Stoch, see Sec. #\ref{sec:maxent_bootstrap}#)
+N_boot_checkpoint = .F.     ! Bootstrap runs start from the previous configuration (Stoch)
 /
 
 &VAR_Hubbard               !! Variables for the specific model
