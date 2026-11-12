@@ -1,0 +1,222 @@
+diff --git a/Libraries/Modules/alf_la_mod.F90 b/Libraries/Modules/alf_la_mod.F90
+index 7b5aebf8..41e91cd7 100644
+--- a/Libraries/Modules/alf_la_mod.F90
++++ b/Libraries/Modules/alf_la_mod.F90
+@@ -429,6 +429,15 @@ contains
+     call check_slots()
+   end subroutine om_sync
+ 
++#if defined(ALF_OM_SYNC_ALWAYS)
++  ! diagnosis build (2026-11-12, sporadic 'Unstable matrix'): after every dispatched oneMKL call wait for all OpenMP
++  ! target tasks and for the interop queue, so nothing can still run when the next region starts
++  subroutine om_hardsync()
++    !$omp taskwait
++    if (alfsh_wait() /= 0) OM_FAIL('ONEMKL backend: queue wait failed')
++  end subroutine om_hardsync
++#endif
++
+   subroutine om_reserve(nelem)
+     integer, intent(in) :: nelem
+     call ensure_dws(nelem)
+@@ -569,6 +578,9 @@ contains
+     end if
+     !$omp dispatch
+     call zgemm(ta, tb, m, n, k, alpha, A, lda_eff, B, ldb, beta, C, ldc)
++#if defined(ALF_OM_SYNC_ALWAYS)
++    call om_hardsync()
++#endif
+   end subroutine om_gemm
+ 
+   subroutine om_gemm_cr(m, n, k, A, lda, B, ldb, C, ldc)
+@@ -586,6 +598,9 @@ contains
+     call c_f_pointer(c_loc(C(1,1)), Cr, [2*ldc, n])
+     !$omp dispatch
+     call dgemm('N', 'N', 2*m, n, k, one, Ar, 2*lda, B, ldb, zero, Cr, 2*ldc)
++#if defined(ALF_OM_SYNC_ALWAYS)
++    call om_hardsync()
++#endif
+   end subroutine om_gemm_cr
+ 
+   subroutine om_gemm_batched(opa, opb, m, n, k, alpha, A, lda, sA, B, ldb, sB, beta, C, ldc, sC, nb)
+@@ -609,6 +624,9 @@ contains
+     end if
+     !$omp dispatch
+     call zgemm_batch_strided(ta, tb, m, n, k, alpha, A, lda, sA, B, ldb, sB, beta, C, ldc, sC, nb)
++#if defined(ALF_OM_SYNC_ALWAYS)
++    call om_hardsync()
++#endif
+   end subroutine om_gemm_batched
+ 
+   subroutine om_geru(m, n, alpha, x, incx, y, incy, A, lda)
+@@ -620,6 +638,9 @@ contains
+     call need_z(A, ext2(m, n, lda), 'la_geru', 'A')
+     !$omp dispatch
+     call zgeru(m, n, alpha, x, incx, y, incy, A, lda)
++#if defined(ALF_OM_SYNC_ALWAYS)
++    call om_hardsync()
++#endif
+   end subroutine om_geru
+ 
+   subroutine om_trsm(side, uplo, opa, diag, m, n, alpha, A, lda, B, ldb)
+@@ -637,6 +658,9 @@ contains
+     call need_z(B, ext2(m, n, ldb), 'la_trsm', 'B')
+     !$omp dispatch
+     call ztrsm(side, uplo, ta, diag, m, n, alpha, A, lda, B, ldb)
++#if defined(ALF_OM_SYNC_ALWAYS)
++    call om_hardsync()
++#endif
+   end subroutine om_trsm
+ 
+   ! ---- QR family (shim) --------------------------------------------------------------------------------------------
+@@ -669,6 +693,9 @@ contains
+     integer, intent(in) :: m, n, lda, lw
+     complex(8), target :: A(lda,*), tau(*)
+     integer :: s
++#if defined(ALF_OM_HOST_LAPACK)
++    call om_host_geqrf(m, n, A, lda, tau); return
++#endif
+     call ensure_dws(lw)
+     call need_z(A, ext2(m, n, lda), 'la_geqrf', 'A')
+     call need_z(tau, int(min(m,n),8), 'la_geqrf', 'tau')
+@@ -694,6 +721,9 @@ contains
+     integer, intent(in) :: m, n, k, lda, lw
+     complex(8), target :: A(lda,*), tau(*)
+     integer :: s
++#if defined(ALF_OM_HOST_LAPACK)
++    call om_host_ungqr(m, n, k, A, lda, tau); return
++#endif
+     call ensure_dws(lw)
+     call need_z(A, ext2(m, n, lda), 'la_ungqr', 'A')
+     call need_z(tau, int(k,8), 'la_ungqr', 'tau')
+@@ -725,6 +755,9 @@ contains
+     integer :: s
+     integer(c_int) :: cs
+     cs = 0; if (side == 'R' .or. side == 'r') cs = 1
++#if defined(ALF_OM_HOST_LAPACK)
++    call om_host_ormqr(cs, trans, m, n, k, A, lda, tau, C, ldc); return
++#endif
+     call ensure_dws(lw)
+     if (cs == 0) then
+       call need_z(A, ext2(m, k, lda), 'la_ormqr', 'A')
+@@ -761,6 +794,9 @@ contains
+     ! ipiv is checked before anything runs: the int32 <-> int64 conversion regions below would map an absent array
+     ! implicitly (a silent temporary mapping)
+     call need_i(ipiv, int(mn,8), 'la_getrf', 'ipiv')
++#if defined(ALF_OM_HOST_LAPACK)
++    call om_host_getrf(m, n, A, lda, ipiv); return
++#endif
+     lw = om_getrf_lwork(m, n, lda)
+     call ensure_dws(lw)
+     call ensure_dpiv(mn)
+@@ -785,6 +821,9 @@ contains
+     integer(c_int64_t) :: ws
+     integer(c_int) :: rc
+     call need_i(ipiv, int(n,8), 'la_getrs', 'ipiv')      ! before any target region (see om_getrf)
++#if defined(ALF_OM_HOST_LAPACK)
++    call om_host_getrs(trans, n, nrhs, A, lda, ipiv, B, ldb); return
++#endif
+     ws = 0
+     rc = alfsh_zgetrs_ws(int(trans,c_int), int(n,c_int64_t), int(nrhs,c_int64_t), int(lda,c_int64_t), int(ldb,c_int64_t), ws)
+     lw = ws_result(rc, ws, 'getrs_ws')
+@@ -969,6 +1008,101 @@ contains
+     call upd_to_i(ipvt, n)
+   end subroutine om_geqp3_host
+ 
++
++#if defined(ALF_OM_HOST_LAPACK)
++  ! diagnosis build (2026-11-12, sporadic 'Unstable matrix'): the LAPACK calls run in host MKL on D->H copies, results H->D
++  ! (no oneMKL hybrid host/device hand-off). Synchronous: om_sync first, every result is on the device on return.
++  subroutine upd_from_i(a, nel)
++    integer, intent(in) :: nel
++    integer(c_int) :: a(*)
++    !$omp target update from(a(1:nel))
++  end subroutine upd_from_i
++  subroutine hw_need(lw)
++    integer, intent(in) :: lw
++    if (allocated(hws)) then
++      if (size(hws) < lw) deallocate(hws)
++    end if
++    if (.not. allocated(hws)) allocate(hws(max(lw,1)))
++  end subroutine hw_need
++  subroutine om_host_geqrf(m, n, A, lda, tau)
++    integer, intent(in) :: m, n, lda
++    complex(8) :: A(lda,*), tau(*)
++    integer :: info, nel, s
++    complex(8) :: w(1)
++    nel = (n-1)*lda + m
++    call need_z(A, int(nel,8), 'la_geqrf', 'A'); call need_z(tau, int(min(m,n),8), 'la_geqrf', 'tau')
++    call om_sync()
++    call upd_from_z(A, nel)
++    call zgeqrf(m, n, A, lda, tau, w, -1, info); call hw_need(int(dble(w(1))))
++    call zgeqrf(m, n, A, lda, tau, hws, size(hws), info)
++    s = next_slot('geqrf(host)', .false.); oinfo(s) = info
++    call upd_to_z(A, nel); call upd_to_z(tau, min(m,n))
++  end subroutine om_host_geqrf
++  subroutine om_host_ungqr(m, n, k, A, lda, tau)
++    integer, intent(in) :: m, n, k, lda
++    complex(8) :: A(lda,*), tau(*)
++    integer :: info, nel, s
++    complex(8) :: w(1)
++    nel = (n-1)*lda + m
++    call need_z(A, int(nel,8), 'la_ungqr', 'A'); call need_z(tau, int(k,8), 'la_ungqr', 'tau')
++    call om_sync()
++    call upd_from_z(A, nel); call upd_from_z(tau, k)
++    call zungqr(m, n, k, A, lda, tau, w, -1, info); call hw_need(int(dble(w(1))))
++    call zungqr(m, n, k, A, lda, tau, hws, size(hws), info)
++    s = next_slot('ungqr(host)', .false.); oinfo(s) = info
++    call upd_to_z(A, nel)
++  end subroutine om_host_ungqr
++  subroutine om_host_ormqr(cs, trans, m, n, k, A, lda, tau, C, ldc)
++    integer(c_int), intent(in) :: cs
++    integer, intent(in) :: trans, m, n, k, lda, ldc
++    complex(8) :: A(lda,*), tau(*), C(ldc,*)
++    integer :: info, nela, nelc, s
++    character(len=1) :: sd
++    complex(8) :: w(1)
++    if (cs == 0) then
++      sd = 'L'; nela = (k-1)*lda + m
++    else
++      sd = 'R'; nela = (k-1)*lda + n
++    end if
++    nelc = (n-1)*ldc + m
++    call need_z(A, int(nela,8), 'la_ormqr', 'A'); call need_z(tau, int(k,8), 'la_ormqr', 'tau')
++    call need_z(C, int(nelc,8), 'la_ormqr', 'C')
++    call om_sync()
++    call upd_from_z(A, nela); call upd_from_z(tau, k); call upd_from_z(C, nelc)
++    call zunmqr(sd, opc(trans), m, n, k, A, lda, tau, C, ldc, w, -1, info); call hw_need(int(dble(w(1))))
++    call zunmqr(sd, opc(trans), m, n, k, A, lda, tau, C, ldc, hws, size(hws), info)
++    s = next_slot('unmqr(host)', .false.); oinfo(s) = info
++    call upd_to_z(C, nelc)
++  end subroutine om_host_ormqr
++  subroutine om_host_getrf(m, n, A, lda, ipiv)
++    integer, intent(in) :: m, n, lda
++    complex(8) :: A(lda,*)
++    integer(c_int) :: ipiv(*)
++    integer :: info, nel, s
++    nel = (n-1)*lda + m
++    call need_i(ipiv, int(min(m,n),8), 'la_getrf', 'ipiv'); call need_z(A, int(nel,8), 'la_getrf', 'A')
++    call om_sync()
++    call upd_from_z(A, nel)
++    call zgetrf(m, n, A, lda, ipiv, info)
++    s = next_slot('getrf(host)', .true.); oinfo(s) = info
++    call upd_to_z(A, nel); call upd_to_i(ipiv, min(m,n))
++  end subroutine om_host_getrf
++  subroutine om_host_getrs(trans, n, nrhs, A, lda, ipiv, B, ldb)
++    integer, intent(in) :: trans, n, nrhs, lda, ldb
++    complex(8) :: A(lda,*), B(ldb,*)
++    integer(c_int) :: ipiv(*)
++    integer :: info, nela, nelb, s
++    nela = (n-1)*lda + n; nelb = (nrhs-1)*ldb + n
++    call need_i(ipiv, int(n,8), 'la_getrs', 'ipiv'); call need_z(A, int(nela,8), 'la_getrs', 'A')
++    call need_z(B, int(nelb,8), 'la_getrs', 'B')
++    call om_sync()
++    call upd_from_z(A, nela); call upd_from_i(ipiv, n); call upd_from_z(B, nelb)
++    call zgetrs(opc(trans), n, nrhs, A, lda, ipiv, B, ldb, info)
++    s = next_slot('getrs(host)', .false.); oinfo(s) = info
++    call upd_to_z(B, nelb)
++  end subroutine om_host_getrs
++#endif
++
+ end module alf_la_om_mod
+ #endif
+ #line 120
