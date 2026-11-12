@@ -108,7 +108,7 @@ L=24 V4 phase split (C): update 1.44-1.47, stabilisation 1.40, CGR 1.83-1.86, ob
 
 - Sporadic production aborts ("G difference > 10") were traced to tile 1 of node i20r02c06s02 by the production session: the same input aborts there and runs clean with the tile hidden or on another node.
 - Our stress test (`diag/t_stress.F90`) repeats the dev_cgr chain at N=1024 with a bitwise check every iteration. Its positive control catches a planted error on all 8 tiles.
-- LRZ ticket draft: `diag/LRZ_TICKET_i20r02c06s02.md`.
+- LRZ ticket sent by the owner (2026-11-12 ~12:20); closed from our side. Control node 560639: 100,711 iterations on 8 tiles, 0 differences (C). The suspect-node stress runs were cancelled before running (owner).
 
 ## 9. Budget
 
