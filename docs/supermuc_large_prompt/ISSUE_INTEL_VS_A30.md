@@ -111,7 +111,7 @@ L=24 V4 phase split (C): update 1.44-1.47, stabilisation 1.40, CGR 1.83-1.86, ob
   - Plants: one-buffer caught at once; exchange slot caught rarely (4 in 337k); v buffer caught only with an amplifier setting (`ALFDEVQR_G=1`); **tau slot never caught** (2.2 M iterations).
   - Meaning: races at >= 1e-5 per iteration are excluded (95 %: < 3.5e-6 at N=1024, < 9e-7 at N=576); a tau-type race (the Phase 4 bug class) would be missed. Code review of the tau-slot logic not done.
 - **Throughput vs walkers per tile** (job 560772, V7, L24, sweeps/s per card, C): 1/tile 0.365, 2/tile 0.458, **4/tile 0.879**, 8/tile 0.261. V7 helps one chain much more than throughput (+3.7 % at 4/tile, +16 % at 1/tile).
-- **Not done:** device ZGETRF (LU with partial pivoting; E: about -0.15 s/sweep at L24, -0.4 s at L32, +1-2 % per card), the observables phase.
+- **Not done:** device ZGETRF, the observables phase.
 
 ## 8. Phase 6: batched multi-walker rebuild (assessed, no-go recommended)
 
