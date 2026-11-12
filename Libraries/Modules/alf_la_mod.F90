@@ -113,10 +113,10 @@
 #endif
 
 #define LA_FAIL(msg) call la_fail(msg, __LINE__)
-! LA_GUARD heads every HOST code path of a public routine: under ALF_LA_ONEMKL (GPU=intel, backend not yet
-! implemented) it stops the run, so host BLAS/LAPACK can never touch device-resident data; otherwise it is empty.
+! LA_GUARD heads every HOST code path of a public routine: under ALF_LA_OM (GPU=intel or GPU=amd) a routine without
+! a device implementation stops the run, so host BLAS/LAPACK can never touch device-resident data; otherwise it is empty.
 #if defined(ALF_LA_OM)
-#define LA_GUARD LA_FAIL('ONEMKL backend not implemented yet (ticket 302)')
+#define LA_GUARD LA_FAIL('routine has no device implementation in this backend (oneMKL / HIP)')
 #else
 #define LA_GUARD
 #endif
@@ -1140,7 +1140,9 @@ contains
 
   function la_backend_name() result(s)
     character(len=16) :: s
-#if defined(ALF_LA_OM)
+#if defined(ALF_LA_HIP)
+    s = 'hip'
+#elif defined(ALF_LA_OM)
     s = 'onemkl'
 #else
 #line 294

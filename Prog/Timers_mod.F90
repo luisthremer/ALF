@@ -74,6 +74,7 @@
 !> minus the inclusive sweep times. Timers and counters are reset at every bin start.
 !--------------------------------------------------------------------
 module Timers_mod
+   use runtime_error_mod, only: alf_exit
    use iso_fortran_env, only: int64, error_unit
 #ifdef ALF_TIMERS
 !$ use omp_lib, only: omp_get_wtime
@@ -159,7 +160,7 @@ contains
    subroutine timer_fail(msg)
       Character (len=*), intent(in) :: msg
       write(error_unit,'(A)') ' Timers_mod: ' // trim(msg)
-      error stop 1
+      call alf_exit(1)
    end subroutine timer_fail
 
    Character (len=12) function idname(id)

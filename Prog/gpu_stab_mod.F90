@@ -1590,7 +1590,7 @@ Contains
        call gpu_stab_finalize()
        call gpu_state_finalize()
        write(output_unit,'(A)') ' GPU stabilization hook: ALF_GPU_EXIT=1, stopping after the test'
-       stop 0
+       call alf_exit(0)
     endif
   end subroutine gpu_stab_hook
 

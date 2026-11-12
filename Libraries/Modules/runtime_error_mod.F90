@@ -127,6 +127,25 @@ Module runtime_error_mod
               end if
               
             end Subroutine Terminate_on_error
+
+            !--------------------------------------------------------------------
+            !> @brief
+            !> Ends the program with the process exit code \p code without an error message
+            !> (standard-conforming replacement for the non-standard `call exit(code)`;
+            !> used by the GPU self-test / debug switches and by the environment checks).
+            !> code = 0: normal end; any other value is returned as the exit status.
+            !--------------------------------------------------------------------
+            Subroutine alf_exit(code)
+              Integer, intent(in) :: code
+              select case (code)
+              case (0)
+                stop 0
+              case (2)
+                stop 2
+              case default
+                error stop 1
+              end select
+            end Subroutine alf_exit
             
 end Module runtime_error_mod
           
