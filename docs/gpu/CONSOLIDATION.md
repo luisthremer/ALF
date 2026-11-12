@@ -94,9 +94,30 @@ combinations with `ham_h0 /= 0` (the normalisation itself is unchanged):
 A proper fix (count every measurement, weight only end points that are visited half as often)
 needs the same change in the host code, `gpu_obs_mod.F90` and the HIP kernel, and is left open.
 
-## Verification
+## Verification of the unified branch (2026-11-13)
 
-See the table in the section "Verification of the unified branch" below; it is filled from the
-runs of 2026-11-13.
+Method: the unified build against the pre-merge tip of the same backend and against a CPU build
+of the same compiler, same parameters and seeds. Commits tested: 609a6347, 4919ce0d, 05d64293
+(these differ only in declarations, comments and one preprocessor line).
 
-VERIFICATION_TABLE_PLACEHOLDER
+| Backend | Machine, compiler | Build | GPU vs same-compiler CPU | Unified vs pre-merge tip | Timing |
+|---|---|---|---|---|---|
+| `GPU=none` | macOS arm64, gfortran 16 | pass | n/a | bitwise identical to cc473abc (L=4, 6; Mz T/F; delayed, submatrix) | n/a |
+| `GPU=none` vs upstream | same | pass | n/a | see "Differences from upstream" above | n/a |
+| `GPU=amd` | MI210, gfortran 14 GCN + HIP | pass | 1.15e-14 (L=6), 5.0e-14 (L=12), acceptance identical; same with `ALF_HIP_ASYNC=0`, `ALF_HIP_QR=0` | bitwise identical to 156a0b01 at L=6, 12, 16, 24 | L=24 about 4.5 s per sweep, unchanged |
+| `GPU=intel` | Max 1550 (SuperMUC-NG Phase 2), ifx 2025.3 | pass (JIT and AOT) | default switches: 2.2e-15 (L6F), 1.5e-14 (L12F), 5.5e-11 (L6T). V7 switches: 2.3e-15, 1.6e-14, 1.36e-10 (L6T, same value as before the merge; tolerance 1e-10) | Green functions, scalars, acceptance and configurations bitwise identical to the p5 build; `Den_eq`, `SpinT_eq`, `SpinZ_eq` differ by at most 3.3e-16 (the `acc0` reduction from pp-opt) | L=24, one chain, V7: 4.92 to 4.98 s per sweep before, 4.42 to 4.48 after (observables 1.18 to 0.74 s) |
+| `GPU=nvidia` | A30, nvfortran 26.9 | pass (GPU and CPU reference) | **not run**: the card was occupied by a production run | **not run** | **not run** |
+| `GPU=nvidia` | H100 (Helma), nvhpc 25.7 | HELMA_RESULT_PLACEHOLDER | | | |
+
+V7 switches: `LIBOMPTARGET_LEVEL_ZERO_STAGING_BUFFER_SIZE=1048576 ALFSH_ASYNCBLK=1 ALFSH_DEVQR=2
+ALFSH_DEVUNMQR=1 ALFSH_QRNB=16`. Intel jobs 560852 to 560860, about 0.85 node-hours. Run
+directories: `amd:~/amd/work/uni1`, SuperMUC `$SCRATCH/large_prompt/unified`,
+`nividia:~/alf-gpu/work/uni1` (binaries built, `run_cmp.py` ready to run when the card is free).
+
+The checks were run before the later commits on this branch, which change the Hubbard
+Hamiltonian set-up only (the `Ltau = 1` rule and the refusal of unsupported defect settings),
+tests and documentation.
+
+An independent review of the merge compared, per backend, the code the preprocessor selects with
+that backend's own tip; the two defects it found (a preprocessor directive not in column 1, eight
+scalar-buffer dummies declared too short) are fixed in 4919ce0d.

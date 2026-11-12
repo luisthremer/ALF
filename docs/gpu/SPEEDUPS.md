@@ -21,7 +21,7 @@ helps production.
 | Intel: `ALFSH_ASYNCBLK=1` | L=24 about 0.5 s per sweep, 15 to 20 % per card | bitwise identical | Waits for the M12 timing test. |
 | All: `ALF_GPU_OBS_SKIP` (no `Green_eq`, `Den_eq`) | 7 % at L=24 under MPS | the skipped outputs stay zero | Needs `ALF_GPU_DEBUG=1` today. Owner decision whether the analysis needs these outputs. |
 | Nwrap 10 instead of 5 at L=32 | Nwrap 5 costs about 45 % more | precision rule of `/jakob_params` | Owner decision 44/45 used Nwrap 5; the abort that motivated it was traced to a faulty GPU tile. |
-| Intel: `acc0` parallel reduction in `corr` (arrived with the merge from pp-opt) | the two serial `corr` kernels were 0.47 s of 4.95 s at L=24 | summation order of the `acc0` terms changes (1e-13) | In `gpu-port-unified`; measurement on SuperMUC-NG pending (see CONSOLIDATION.md). |
+| Intel: `acc0` parallel reduction in `corr` (arrived with the merge from pp-opt) | the two serial `corr` kernels were 0.47 s of 4.95 s at L=24 | summation order of the `acc0` terms changes (1e-13) | In `gpu-port-unified`. Measured 2026-11-13, L=24, one chain, V7 switches: 4.92 to 4.98 s per sweep before, 4.42 to 4.48 after (observables 1.18 to 0.74 s), about 10 %. |
 
 ## 2. Implemented on `speedup/nvidia`, not yet measured
 
