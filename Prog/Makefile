@@ -13,7 +13,7 @@ SRCS = Hamiltonians/LRC_mod.F90 control_mod.F90 Fields_mod.F90 Operator_mod.F90 
 	Global_mod.F90 Langevin_HMC_mod.F90 Wrapgr_mod.F90 Trace_updates_mod.F90 Timers_mod.F90 tau_m_mod.F90 tau_p_mod.F90 QMC_runtime_var_mod.F90 \
 	main.F90
 
-# GPU mirror (ticket 203), device wraps (204), updates (205), stabilization (206) and tau pass (207): compiled only for GPU builds (configure.sh exports ALF_GPU=nvidia|intel)
+# GPU mirror (ticket 203), device wraps (204), updates (205), stabilization (206) and tau pass (207): compiled only for GPU builds (configure.sh exports ALF_GPU=nvidia|intel|amd)
 ifneq ($(strip $(ALF_GPU)),)
 SRCS := $(filter-out main.F90,$(SRCS)) gpu_state_mod.F90 gpu_wrap_mod.F90 gpu_lowrank_mod.F90 gpu_update_mod.F90 gpu_stab_mod.F90 gpu_tau_mod.F90 gpu_obs_mod.F90 main.F90
 endif

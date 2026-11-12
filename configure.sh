@@ -32,6 +32,8 @@ Further optional arguments:
                GPU=nvidia: MACHINE PGI or HELMAGPU only (nvfortran, OpenMP offload, cuBLAS/cuSOLVER);
                            target compute capability from env ALF_GPU_CC (default cc80, e.g. cc80,cc90; HELMAGPU: default cc90)
                GPU=intel:  MACHINE IntelLLVM/IntelX only (ifx, OpenMP offload to spir64 (JIT), oneMKL)
+               GPU=amd:    MACHINE GNU only (gfortran >= 14 with amdgcn offload, hipBLAS/hipSOLVER, HIP kernels);
+                           env ALF_AMD_ARCH (default gfx90a), ROCM_PATH (default /opt/rocm)
   NO-INTERACTIVE: Do not ask for user confirmation during excution of this script
   NO-FALLBACK: Do not use a fallback option in case of an unknown/no machine,
                but instead return with value 1

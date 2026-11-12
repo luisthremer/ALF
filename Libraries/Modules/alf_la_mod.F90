@@ -30,8 +30,10 @@
 !>   ALF_LA_CUDA          : cuBLAS / cuSOLVER through bind(C) interfaces on DEVICE-RESIDENT arrays.
 !>                          Needs -mp=gpu (nvfortran); the caller maps the arrays (!$omp target enter data) and
 !>                          alf_la gets the device addresses itself (!$omp target data use_device_addr).
-!>   ALF_LA_ONEMKL        : not implemented yet (ticket 302). Compiles (GPU=intel builds), but la_init and every
-!>                          HOST code path stop the run (LA_GUARD), so host code never touches device data.
+!>   ALF_LA_ONEMKL        : oneMKL (OpenMP offload BLAS, SYCL shim for LAPACK) on device-resident arrays (GPU=intel).
+!>   ALF_LA_HIP           : hipBLAS / hipSOLVER and own HIP kernels through a C++ shim (GPU=amd; alf_la_hip_mod).
+!>                          ALF_LA_OM is defined for both of these: they share the om_* call layer.  A routine without
+!>                          a device implementation stops the run (LA_GUARD), so host code never touches device data.
 !>
 !> Interface rules
 !>   * explicit-shape/assumed-size arrays + leading dimensions in LAPACK order, complex(8) throughout
@@ -106,8 +108,7 @@
 #if defined(ALF_LA_ONEMKL) || defined(ALF_LA_HIP)
 #define ALF_LA_OM
 #endif
-! ALF_LA_ONEMKL (GPU=intel): backend not implemented yet (ticket 302). The module compiles with the HOST code paths so
-! that GPU=intel builds; la_init stops the run, so no device data is ever processed by host code.
+! ALF_LA_OM: the oneMKL (GPU=intel) and HIP (GPU=amd) backends share the om_* call layer.
 #if defined(ALF_LA_CUDA) && defined(ALF_LA_HOST)
 #error "alf_la_mod: define at most one of ALF_LA_HOST, ALF_LA_CUDA"
 #endif
