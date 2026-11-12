@@ -7,7 +7,7 @@ if(NOT PYTHON_EXECUTABLE)
   return()
 endif()
 enable_testing()
-foreach(scenario schemes pinning)
+foreach(scenario schemes pinning local)
   add_test(NAME run-${scenario}
     COMMAND "${PYTHON_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_checks.py" "${PROG_DIR}/ALF.out" ${scenario})
   set_tests_properties(run-${scenario} PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=1" TIMEOUT 120)
