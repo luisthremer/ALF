@@ -17,6 +17,8 @@
 #include <sycl/sycl.hpp>
 #include <oneapi/mkl/blas.hpp>
 #include <oneapi/mkl/lapack.hpp>
+#include <dlfcn.h>
+#include <unistd.h>
 #include <atomic>
 #include <chrono>
 #include <complex>
@@ -25,6 +27,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -61,10 +64,23 @@ void async_handler(sycl::exception_list l) {
   }
 }
 
+// Profiling aid (team session 2026-11-11): ALFSH_TIMING=1 accumulates call count and wall time per shim routine and prints
+// them at alfsh_finalize. Off by default (one getenv at the first call); no effect on results.
+struct TimAcc { long long n = 0; double s = 0.0; };
+std::map<std::string, TimAcc> g_tim;
+int g_tim_on = -1;
 template <class F> int guarded(const char *what, F &&f) {
   g_async_err.store(false);
   try {
-    f();
+    if (g_tim_on < 0) { const char *e = std::getenv("ALFSH_TIMING"); g_tim_on = (e && e[0] == '1') ? 1 : 0; }
+    if (g_tim_on == 1) {
+      auto t0 = std::chrono::steady_clock::now();
+      f();
+      auto &a = g_tim[what];
+      a.n++; a.s += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    } else {
+      f();
+    }
     return g_async_err.load() ? -1 : 0;
   } catch (lp::exception &e) {
     // positive info = LAPACK computation error (e.g. exactly singular U in getrf); the data are still complete
@@ -83,6 +99,53 @@ template <class F> int guarded(const char *what, F &&f) {
   }
 }
 sycl::queue &Q() { return *g_q; }
+
+// Device-only Householder QR / ZUNMQR (alf_la_sycl_devqr.hpp, alf_la_sycl_qr2.hpp; in libalfdevqr.so because they contain SYCL device code, which a plain
+// host object cannot carry) instead of oneMKL's hybrid ZGEQRF (panels on the host CPU) and ZUNMQR. Run-time switches (read once; default off = oneMKL,
+// the library is then never loaded):
+//   ALFSH_DEVQR=1  phase-4 ZGEQRF (panel + ZLARFT in one kernel, ZLARFB by 3 GEMMs)     ALFSH_DEVQR=2  phase-5 ZGEQRF (T-free panel + apply kernel)
+//   ALFSH_DEVUNMQR=1  phase-5 device ZUNMQR (apply kernel; side L/R, trans N/C)
+// block size ALFSH_QRNB (default 32; 16 for level 2 unless set), library path ALFSH_DEVQR_LIB (default: ../Libraries/Modules/libalfdevqr.so relative to
+// the directory of the executable, else libalfdevqr.so on the loader path).
+int g_devqr = -1, g_qrnb = 32, g_devunmqr = 0;
+bool g_qrnb_set = false;
+int64_t (*g_dq_scratch)(int64_t, int64_t, int) = nullptr;
+int (*g_dq_geqrf)(void *, int64_t, int64_t, void *, int64_t, void *, void *, int64_t, int) = nullptr;
+int (*g_dq_geqrf2)(void *, int64_t, int64_t, void *, int64_t, void *, int) = nullptr;
+int (*g_dq_unmqr)(void *, int, int, int64_t, int64_t, int64_t, const void *, int64_t, const void *, void *, int64_t) = nullptr;
+void (*g_dq_bench)(void *, void *) = nullptr;
+void devqr_init() {
+  if (g_devqr >= 0) return;
+  const char *e = std::getenv("ALFSH_DEVQR");
+  g_devqr = (e && e[0] == '1') ? 1 : ((e && e[0] == '2') ? 2 : 0);
+  const char *u = std::getenv("ALFSH_DEVUNMQR");
+  g_devunmqr = (u && u[0] == '1') ? 1 : 0;
+  const char *b = std::getenv("ALFSH_QRNB");
+  if (b && std::atoi(b) > 0) { g_qrnb = std::atoi(b); g_qrnb_set = true; }
+  if (g_devqr == 2 && !g_qrnb_set) g_qrnb = 16;
+  if (g_devqr > 0 || g_devunmqr) {
+    std::string path;
+    if (const char *l = std::getenv("ALFSH_DEVQR_LIB")) path = l;
+    else {
+      char buf[4096];
+      ssize_t k = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+      if (k > 0) { buf[k] = 0; std::string d(buf); d = d.substr(0, d.rfind('/')); path = d + "/../Libraries/Modules/libalfdevqr.so"; }
+      if (path.empty() || access(path.c_str(), R_OK) != 0) path = "libalfdevqr.so";
+    }
+    void *h = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
+    if (h) {
+      g_dq_scratch = (int64_t(*)(int64_t, int64_t, int))dlsym(h, "alfdevqr_scratch");
+      g_dq_geqrf = (int (*)(void *, int64_t, int64_t, void *, int64_t, void *, void *, int64_t, int))dlsym(h, "alfdevqr_zgeqrf");
+      g_dq_geqrf2 = (int (*)(void *, int64_t, int64_t, void *, int64_t, void *, int))dlsym(h, "alfdevqr_zgeqrf2");
+      g_dq_unmqr = (int (*)(void *, int, int, int64_t, int64_t, int64_t, const void *, int64_t, const void *, void *, int64_t))dlsym(h, "alfdevqr_zunmqr");
+      g_dq_bench = (void (*)(void *, void *))dlsym(h, "alfdevqr_launch_bench");
+    }
+    if (!g_dq_scratch || !g_dq_geqrf || (g_devqr == 2 && !g_dq_geqrf2) || (g_devunmqr && !g_dq_unmqr))
+      throw std::runtime_error(std::string("ALFSH_DEVQR/ALFSH_DEVUNMQR set but cannot load the device QR library '") + path + "': " + (dlerror() ? dlerror() : "symbol missing"));
+  }
+}
+bool devqr_on() { devqr_init(); return g_devqr > 0; }
+bool devunmqr_on() { devqr_init(); return g_devunmqr == 1; }
 }  // namespace
 
 extern "C" {
@@ -95,12 +158,19 @@ int alfsh_init(void *q) {
   });
 }
 
+// The queue handed to alfsh_init (for the asynchronous block path, libalfsb: same in-order queue). nullptr before alfsh_init.
+void *alfsh_get_queue() { return static_cast<void *>(g_q); }
+
 // Opens the gate of the ordering-break test hook (idempotent, async-signal-safe enough: one atomic store). Called by
 // alfsh_wait, alfsh_finalize, the Fortran failure path (om_fail) and at process exit, so that an error exit while the gate
 // is closed cannot leave the host task spinning (the runtime shutdown would wait for it).
 void alfsh_release() { g_release.store(true); }
 
 void alfsh_finalize() {
+  if (g_tim_on == 1)
+    for (auto &kv : g_tim)
+      std::fprintf(stderr, "ALFSH_TIMING %-12s calls %10lld  total %10.3f s  per call %9.3f ms\n", kv.first.c_str(), kv.second.n,
+                   kv.second.s, kv.second.n ? 1e3 * kv.second.s / kv.second.n : 0.0);
   g_release.store(true);
   g_gate.reset();
   g_other.reset();     // the queue destructor waits for its (now released) tasks
@@ -146,10 +216,22 @@ int alfsh_wait() {
 
 // ---- QR family -------------------------------------------------------------------------------------------
 int alfsh_zgeqrf_ws(int64_t m, int64_t n, int64_t lda, int64_t *ws) {
-  return guarded("geqrf_ws", [&] { *ws = lp::geqrf_scratchpad_size<cd>(Q(), m, n, lda); });
+  return guarded("geqrf_ws", [&] {
+    *ws = lp::geqrf_scratchpad_size<cd>(Q(), m, n, lda);
+    if (devqr_on()) *ws = std::max<int64_t>(*ws, g_dq_scratch(m, n, g_qrnb));   // the device QR uses the caller's scratch too
+  });
 }
 int alfsh_zgeqrf(int64_t m, int64_t n, void *a, int64_t lda, void *tau, void *work, int64_t lwork) {
-  return guarded("geqrf", [&] { lp::geqrf(Q(), m, n, (cd *)a, lda, (cd *)tau, (cd *)work, lwork).wait_and_throw(); });
+  return guarded(devqr_on() ? "geqrf_dev" : "geqrf", [&] {
+    if (devqr_on()) {
+      static bool lb = false;   // diagnostic: launch cost on this queue (once)
+      if (!lb && (lb = true) && g_dq_bench && std::getenv("ALFSH_LAUNCHBENCH")) g_dq_bench(&Q(), work);
+      int rc = g_devqr == 2 ? g_dq_geqrf2(&Q(), m, n, a, lda, tau, g_qrnb) : g_dq_geqrf(&Q(), m, n, a, lda, tau, work, lwork, g_qrnb);
+      if (rc == 0) { Q().wait_and_throw(); return; }
+      if (rc < -1) throw std::runtime_error("device QR failed");
+    }
+    lp::geqrf(Q(), m, n, (cd *)a, lda, (cd *)tau, (cd *)work, lwork).wait_and_throw();   // oneMKL (default, or the device QR declined)
+  });
 }
 int alfsh_zungqr_ws(int64_t m, int64_t n, int64_t k, int64_t lda, int64_t *ws) {
   return guarded("ungqr_ws", [&] { *ws = lp::ungqr_scratchpad_size<cd>(Q(), m, n, k, lda); });
@@ -164,7 +246,12 @@ int alfsh_zunmqr_ws(int side, int trans, int64_t m, int64_t n, int64_t k, int64_
 }
 int alfsh_zunmqr(int side, int trans, int64_t m, int64_t n, int64_t k, void *a, int64_t lda, void *tau, void *c,
                  int64_t ldc, void *work, int64_t lwork) {
-  return guarded("unmqr", [&] {
+  return guarded(devunmqr_on() ? "unmqr_dev" : "unmqr", [&] {
+    if (devunmqr_on()) {
+      int rc = g_dq_unmqr(&Q(), side, trans, m, n, k, a, lda, tau, c, ldc);
+      if (rc == 0) { Q().wait_and_throw(); return; }
+      if (rc < -1) throw std::runtime_error("device ZUNMQR failed");
+    }
     lp::unmqr(Q(), sd(side), tr(trans), m, n, k, (const cd *)a, lda, (const cd *)tau, (cd *)c, ldc, (cd *)work, lwork)
         .wait_and_throw();
   });

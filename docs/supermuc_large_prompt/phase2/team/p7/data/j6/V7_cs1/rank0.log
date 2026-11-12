@@ -1,0 +1,64 @@
+ ALF Copyright (C) 2016 - 2026 The ALF project contributors
+ This Program comes with ABSOLUTELY NO WARRANTY; for details see license.GPL
+ This is free software, and you are welcome to redistribute it under certain conditions.
+ No initial configuration
+ GPU build: git none backend ONEMKL
+ GPU debug env: none
+ alf_la: ONEMKL device: Intel(R) Data Center GPU Max 1550
+ GPU mirror setup time (incl. host->device copies):     0.3774 s
+ALFDEVQR_PROF2 calls 50  s total: panel 0.139 apply 0.088  (m=576 n=576 nb=16)
+ALFP7: block path serialised on a profiling queue (interop queue in_order=1)
+  gpu_lowrank: ALFSH_ASYNCBLK=1, submatrix blocks run asynchronously on the SYCL queue
+ALFDEVQR_PROF2 calls 100  s total: panel 0.266 apply 0.174  (m=576 n=576 nb=16)
+ALFDEVQR_PROF2 calls 150  s total: panel 0.394 apply 0.259  (m=576 n=576 nb=16)
+ALFDEVQR_PROF2 calls 200  s total: panel 0.522 apply 0.345  (m=576 n=576 nb=16)
+ TEAM_TIMERS nsw, sweep wrapgrup wrapgrdo stab_wrapur stab_wrapul stab_cgr obser [s]:      1      6.013      1.249      1.153      0.424      0.428      1.278      1.205
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:         8640      0.372      0.328      1.557      0.000      1.555      0.297      0.000
+ALFSH_TIMING device_info  calls          1  total      0.000 s  per call     0.023 ms
+ALFSH_TIMING geqrf_dev    calls        242  total      1.046 s  per call     4.323 ms
+ALFSH_TIMING geqrf_ws     calls        243  total      0.003 s  per call     0.012 ms
+ALFSH_TIMING getrf        calls         98  total      1.320 s  per call    13.467 ms
+ALFSH_TIMING getrf_ws     calls         99  total      0.000 s  per call     0.004 ms
+ALFSH_TIMING init         calls          1  total      0.000 s  per call     0.007 ms
+ALFSH_TIMING ptr_kind     calls          1  total      0.000 s  per call     0.026 ms
+ALFSH_TIMING unmqr_dev    calls        242  total      0.332 s  per call     1.370 ms
+ALFSH_TIMING unmqr_ws     calls        244  total      0.000 s  per call     0.001 ms
+ALFSH_TIMING wait         calls        343  total      0.000 s  per call     0.001 ms
+ALFP7_BLK copy     calls     43200 dev_s     0.0273 host_s     0.3224 mean_global_items    13721.6
+ALFP7_BLK fgather  calls     17280 dev_s     0.0711 host_s     0.2077 mean_global_items     5876.3
+ALFP7_BLK gather   calls      8640 dev_s     0.0379 host_s     0.1221 mean_global_items     2048.0
+ALFP7_BLK gemm m576 calls     34560 dev_s     0.2855 host_s     0.7834 mean_global_items 13795435.5
+ALFP7_BLK scale    calls      8640 dev_s     0.0931 host_s     0.1508 mean_global_items    36864.0
+ALFP7_OFF zgemm 576x576x576 tCN @6a0fe3,5ae0d5,5adddd,5acf56 calls        48 dev_s     0.0057 host_s     0.0065
+ALFP7_OFF zgemm 576x576x576 tCN @6a0fe3,5ae0d5,5adddd,5ad736 calls        96 dev_s     0.0124 host_s     0.0742
+ALFP7_OFF zgemm 576x576x576 tCN @6a0fe3,5b3bde,5af115,6261e8 calls         2 dev_s     0.0002 host_s     0.0003
+ALFP7_OFF zgemm 576x576x576 tCN @6a0fe3,5b3bde,5af115,6282f4 calls        48 dev_s     0.0087 host_s     0.0098
+ALFP7_OFF zgemm 576x576x576 tCN @6a0fe3,5b3bde,5af115,629674 calls        46 dev_s     0.0075 host_s     0.0085
+ALFP7_OFF zgemm 576x576x576 tCN @6a0fe3,5b3bde,5af115,62a47c calls         2 dev_s     0.0002 host_s     0.0003
+ALFP7_OFF zgemm 576x576x576 tNC @6a0fe3,5ae023,5adddd,5ad736 calls        96 dev_s     0.0108 host_s     0.0568
+ALFP7_OFF zgemm 576x576x576 tNC @6a0fe3,5b41ad,5b3d54,5af115 calls        46 dev_s     0.0052 host_s     0.0063
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,5374a0,536201,5a7e2b calls       480 dev_s     0.0517 host_s     0.0591
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,5374a0,541505,5acf43 calls        96 dev_s     0.0105 host_s     0.0120
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,5374a0,541916,5acf43 calls        96 dev_s     0.0106 host_s     0.0121
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,5374a0,541a01,5acf43 calls        96 dev_s     0.0106 host_s     0.0120
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,5374a0,541b01,5acf43 calls        96 dev_s     0.0105 host_s     0.0120
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,5374a0,541c10,5acf43 calls        96 dev_s     0.0105 host_s     0.0120
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,5374a0,5a762b,4e59ce calls       480 dev_s     0.0527 host_s     0.0603
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,5375e0,536341,5a7de4 calls       480 dev_s     0.0527 host_s     0.0599
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,5375e0,5a766e,4e59ce calls       480 dev_s     0.0517 host_s     0.0590
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,53ccde,53ca6f,537de2 calls         2 dev_s     0.0002 host_s     0.0003
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,53ccde,53ca6f,5387cf calls       964 dev_s     0.1070 host_s     0.1729
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,53d037,53ce2b,537dfb calls         2 dev_s     0.0002 host_s     0.0003
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,53d037,53ce2b,538f8f calls         4 dev_s     0.0004 host_s     0.0005
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,5ae023,5adddd,5acf56 calls        48 dev_s     0.0054 host_s     0.0062
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,5ae119,5adddd,5acf56 calls        48 dev_s     0.0058 host_s     0.0068
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,5ae119,5adddd,5ad736 calls        96 dev_s     0.0117 host_s     0.0137
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,5b3c88,5af115,6261e8 calls         2 dev_s     0.0003 host_s     0.0003
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,5b3c88,5af115,6282f4 calls        48 dev_s     0.0056 host_s     0.0063
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,5b3c88,5af115,629674 calls        46 dev_s     0.0053 host_s     0.0060
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,5b3c88,5af115,62a47c calls         2 dev_s     0.0002 host_s     0.0003
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,5b41ad,5b3d54,5af115 calls        52 dev_s     0.0060 host_s     0.0073
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,60c751,60dc9c,63dea1 calls       960 dev_s     0.1046 host_s     0.1200
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3,60c7b5,60dc9c,63dea1 calls       960 dev_s     0.1012 host_s     0.1137
+ALFP7_OFF ztrsm 576x576 LUNN @6a22ad,6a5eea,5b3f88,5b3d54 calls        52 dev_s     0.0404 host_s     0.0588
+ALFP7_OFF ztrsm 576x576 RUCN @6a22ad,6a5eea,5b410c,5b3d54 calls        46 dev_s     0.0277 host_s     0.0348

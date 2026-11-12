@@ -1,0 +1,44 @@
+ ALF Copyright (C) 2016 - 2026 The ALF project contributors
+ This Program comes with ABSOLUTELY NO WARRANTY; for details see license.GPL
+ This is free software, and you are welcome to redistribute it under certain conditions.
+ No initial configuration
+ GPU build: git none backend ONEMKL
+ GPU debug env: none
+ alf_la: ONEMKL device: Intel(R) Data Center GPU Max 1550
+ GPU mirror setup time (incl. host->device copies):     0.3094 s
+ALFDEVQR_PROF2 calls 50  s total: panel 0.135 apply 0.086  (m=576 n=576 nb=16)
+ALFP7: block path serialised on a profiling queue (interop queue in_order=1)
+  gpu_lowrank: ALFSH_ASYNCBLK=1, submatrix blocks run asynchronously on the SYCL queue
+ALFDEVQR_PROF2 calls 100  s total: panel 0.263 apply 0.172  (m=576 n=576 nb=16)
+ALFDEVQR_PROF2 calls 150  s total: panel 0.391 apply 0.257  (m=576 n=576 nb=16)
+ALFDEVQR_PROF2 calls 200  s total: panel 0.519 apply 0.342  (m=576 n=576 nb=16)
+ALFDEVQR_PROF2 calls 250  s total: panel 0.647 apply 0.428  (m=576 n=576 nb=16)
+ALFDEVQR_PROF2 calls 300  s total: panel 0.774 apply 0.513  (m=576 n=576 nb=16)
+ALFDEVQR_PROF2 calls 350  s total: panel 0.902 apply 0.599  (m=576 n=576 nb=16)
+ALFDEVQR_PROF2 calls 400  s total: panel 1.030 apply 0.685  (m=576 n=576 nb=16)
+ALFDEVQR_PROF2 calls 450  s total: panel 1.158 apply 0.770  (m=576 n=576 nb=16)
+ALFDEVQR_PROF2 calls 500  s total: panel 1.286 apply 0.856  (m=576 n=576 nb=16)
+ALFDEVQR_PROF2 calls 550  s total: panel 1.413 apply 0.941  (m=576 n=576 nb=16)
+ALFDEVQR_PROF2 calls 600  s total: panel 1.541 apply 1.027  (m=576 n=576 nb=16)
+ TEAM_TIMERS nsw, sweep wrapgrup wrapgrdo stab_wrapur stab_wrapul stab_cgr obser [s]:      3     17.796      3.581      3.504      1.260      1.264      3.801      3.607
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      1.087      0.960      4.597      0.001      4.592      0.870      0.000
+ALFSH_TIMING device_info  calls          1  total      0.000 s  per call     0.016 ms
+ALFSH_TIMING geqrf_dev    calls        626  total      2.679 s  per call     4.280 ms
+ALFSH_TIMING geqrf_ws     calls        627  total      0.002 s  per call     0.004 ms
+ALFSH_TIMING getrf        calls        290  total      1.669 s  per call     5.756 ms
+ALFSH_TIMING getrf_ws     calls        291  total      0.000 s  per call     0.001 ms
+ALFSH_TIMING init         calls          1  total      0.000 s  per call     0.004 ms
+ALFSH_TIMING ptr_kind     calls          1  total      0.000 s  per call     0.019 ms
+ALFSH_TIMING unmqr_dev    calls        626  total      0.853 s  per call     1.363 ms
+ALFSH_TIMING unmqr_ws     calls        628  total      0.000 s  per call     0.001 ms
+ALFSH_TIMING wait         calls        919  total      0.000 s  per call     0.000 ms
+ALFP7_BLK copy     calls    129600 dev_s     0.0826 host_s     0.9547 mean_global_items    13721.6
+ALFP7_BLK fgather  calls     51840 dev_s     0.2528 host_s     0.6520 mean_global_items     6044.8
+ALFP7_BLK gather   calls     25920 dev_s     0.1331 host_s     0.3551 mean_global_items     2048.0
+ALFP7_BLK gemm m576 calls    103680 dev_s     0.9291 host_s     2.2490 mean_global_items 14197495.2
+ALFP7_BLK scale    calls     25920 dev_s     0.2833 host_s     0.4545 mean_global_items    36864.0
+ALFP7_OFF zgemm 576x576x576 tCN @6a0fe3      calls       626 dev_s     0.0775 host_s     0.1488
+ALFP7_OFF zgemm 576x576x576 tNC @6a0fe3      calls       330 dev_s     0.0372 host_s     0.0874
+ALFP7_OFF zgemm 576x576x576 tNN @6a0fe3      calls     15814 dev_s     1.7241 host_s     2.0071
+ALFP7_OFF ztrsm 576x576 LUNN @6a22ad         calls       152 dev_s     0.1175 host_s     0.1364
+ALFP7_OFF ztrsm 576x576 RUCN @6a22ad         calls       138 dev_s     0.0833 host_s     0.0940

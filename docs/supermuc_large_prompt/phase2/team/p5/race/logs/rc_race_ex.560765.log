@@ -1,0 +1,27 @@
+node i20r08c01s04 job 560765 start 2026-11-12T15:47:45+01:00
+xpu-smi dev 0:       1 | 3. GPU Power               | Status: OK                                                          |
+xpu-smi dev 0:       1 | 5. Xe Link Port            | Status: OK                                                          |
+xpu-smi dev 0:       1 | 6. GPU Frequency           | Status: OK                                                          |
+xpu-smi dev 1:       1 | 3. GPU Power               | Status: OK                                                          |
+xpu-smi dev 1:       1 | 5. Xe Link Port            | Status: OK                                                          |
+xpu-smi dev 1:       1 | 6. GPU Frequency           | Status: OK                                                          |
+xpu-smi dev 2:       1 | 3. GPU Power               | Status: OK                                                          |
+xpu-smi dev 2:       1 | 5. Xe Link Port            | Status: OK                                                          |
+xpu-smi dev 2:       1 | 6. GPU Frequency           | Status: OK                                                          |
+xpu-smi dev 3:       1 | 3. GPU Power               | Status: OK                                                          |
+xpu-smi dev 3:       1 | 5. Xe Link Port            | Status: OK                                                          |
+xpu-smi dev 3:       1 | 6. GPU Frequency           | Status: OK                                                          |
+CASE plant_race_ex_N1024 N=1024 sec=1200 [ALFSH_DEVQR=2 ALFSH_DEVUNMQR=1 ALFSH_DEVQR_LIB=/hppfs/scratch/0C/di38zuw/large_prompt/team/p5/plant/race_ex/libalfdevqr.so] start 2026-11-12T15:47:53+01:00 node i20r08c01s04
+mpiexec rc=0
+  ranks finished: 32 of 32; iterations total: 337443; s/iter mean: 0.114031
+  BAD lines: 4; ranks with BAD: 3; by what:       4 G_NVAR2 
+  distinct nonzero-BAD tiles (rank mod 8): 1 7 
+  STRESS_RESULT nbad bit/1e-8/1e-3 sums: 4 4 4   max maxrel LU,G1,G2: 0 0 0.0269
+  distinct reference hashes over ranks (1 = all ranks bitwise equal): 1
+  device-kernel calls (ALFSH_TIMING sums): geqrf_dev 674886 unmqr_dev 674886 geqrf(mkl) 0 unmqr(mkl) 0
+  BAD rank    9 it    1103 G_NVAR2  rel  1.71E-02 nbits     8192 t     126.9
+  BAD rank    7 it    5990 G_NVAR2  rel  1.07E-02 nbits     1024 t     678.3
+  BAD rank    9 it    6402 G_NVAR2  rel  2.69E-02 nbits     8192 t     721.7
+  BAD rank   23 it    6436 G_NVAR2  rel  2.04E-02 nbits     8192 t     728.4
+CASE plant_race_ex_N1024 end 2026-11-12T16:08:29+01:00
+end 2026-11-12T16:08:29+01:00

@@ -1,0 +1,33 @@
+start 2026-11-12T22:55:21+01:00 i20r02c01s10 job 560843
+total 193
+drwxr-sr-x  2 di38zuw hpcusers   4096 Nov 12 22:55 .
+drwxr-sr-x 14 di38zuw hpcusers   4096 Nov 12 22:55 ..
+-rwxr-xr-x  1 di38zuw hpcusers 155504 Nov 12 22:44 libalfsb.so
+-rwxr-xr-x  1 di38zuw hpcusers  37208 Nov 12 22:55 libp7mkl.so
+4
+=== V7 serialised full profile with the MKL interposer, 1 and 3 sweeps
+V7_mf1: rc=0 wall=17.0s  (1 sweeps/rank, 1 rank(s))
+V7_mf3: rc=0 wall=28.0s  (3 sweeps/rank, 1 rank(s))
+RESULT V7_mf1         sweep   6.14  upd  2.35  stab  0.90  cgr  1.26  obs  1.36 s/sweep
+RESULT V7_mf3         sweep   6.17  upd  2.35  stab  0.90  cgr  1.27  obs  1.37 s/sweep
+ALFP7: block path serialised on a profiling queue (interop queue in_order=1)
+ALFP7_BLK copy     calls    129600 dev_s     0.0823 host_s     0.9518 mean_global_items    13721.6
+ALFP7_BLK fgather  calls     51840 dev_s     0.2488 host_s     0.6471 mean_global_items     6044.8
+ALFP7_BLK gather   calls     25920 dev_s     0.1307 host_s     0.3510 mean_global_items     2048.0
+ALFP7_BLK gemm m576 calls    103680 dev_s     0.9307 host_s     2.2679 mean_global_items 14197495.2
+ALFP7_BLK scale    calls     25920 dev_s     0.2801 host_s     0.4481 mean_global_items    36864.0
+=== V2 serialised full profile with the MKL interposer, 1 and 3 sweeps
+V2_mf1: rc=0 wall=18.7s  (1 sweeps/rank, 1 rank(s))
+V2_mf3: rc=0 wall=34.2s  (3 sweeps/rank, 1 rank(s))
+RESULT V2_mf1         sweep   7.82  upd  2.38  stab  1.67  cgr  2.12  obs  1.39 s/sweep
+RESULT V2_mf3         sweep   7.72  upd  2.39  stab  1.64  cgr  2.03  obs  1.38 s/sweep
+ALFP7: block path serialised on a profiling queue (interop queue in_order=1)
+ALFP7_BLK copy     calls    129600 dev_s     0.0808 host_s     0.9593 mean_global_items    13721.6
+ALFP7_BLK fgather  calls     51840 dev_s     0.2487 host_s     0.6585 mean_global_items     6044.8
+ALFP7_BLK gather   calls     25920 dev_s     0.1309 host_s     0.3571 mean_global_items     2048.0
+ALFP7_BLK gemm m576 calls    103680 dev_s     0.9292 host_s     2.3019 mean_global_items 14197495.2
+ALFP7_BLK scale    calls     25920 dev_s     0.2784 host_s     0.4478 mean_global_items    36864.0
+=== V7 interposer only (passes through, no ALFP7_PROF): overhead check
+V7_ip3: rc=0 wall=24.4s  (3 sweeps/rank, 1 rank(s))
+RESULT V7_ip3         sweep   4.99  upd  1.49  stab  0.81  cgr  1.24  obs  1.19 s/sweep
+end 2026-11-12T22:57:29+01:00

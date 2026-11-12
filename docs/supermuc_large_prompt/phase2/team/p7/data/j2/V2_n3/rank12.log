@@ -1,0 +1,15 @@
+ alf_la: ONEMKL device: Intel(R) Data Center GPU Max 1550
+ GPU mirror setup time (incl. host->device copies):     0.2227 s
+  gpu_lowrank: ALFSH_ASYNCBLK=1, submatrix blocks run asynchronously on the SYCL queue
+ TEAM_TIMERS nsw, sweep wrapgrup wrapgrdo stab_wrapur stab_wrapul stab_cgr obser [s]:      3     35.598      4.019      3.865      4.451      4.413      9.678      7.797
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      0.745      0.683      3.852      0.001      3.844      2.593      0.000
+ALFSH_TIMING device_info  calls          1  total      0.000 s  per call     0.019 ms
+ALFSH_TIMING geqrf        calls        626  total     13.444 s  per call    21.475 ms
+ALFSH_TIMING geqrf_ws     calls        627  total      0.002 s  per call     0.003 ms
+ALFSH_TIMING getrf        calls        290  total      1.923 s  per call     6.632 ms
+ALFSH_TIMING getrf_ws     calls        291  total      0.001 s  per call     0.002 ms
+ALFSH_TIMING init         calls          1  total      0.000 s  per call     0.005 ms
+ALFSH_TIMING ptr_kind     calls          1  total      0.000 s  per call     0.014 ms
+ALFSH_TIMING unmqr        calls        626  total      3.138 s  per call     5.013 ms
+ALFSH_TIMING unmqr_ws     calls        628  total      0.001 s  per call     0.002 ms
+ALFSH_TIMING wait         calls        919  total      0.001 s  per call     0.001 ms

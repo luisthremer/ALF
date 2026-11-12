@@ -1,0 +1,18 @@
+start 2026-11-12T22:49:26+01:00 i20r08c02s08 job 560841
+=== V7 32 ranks timing 3 sweeps (ALFSH_TIMING)
+V7_n3: rc=0 wall=77.5s  (3 sweeps/rank, 32 rank(s))
+RESULT V7_n3          sweep   9.31  upd  2.66  stab  1.71  cgr  1.85  obs  2.73 s/sweep
+PG V7_n3          mean 1.960957926459005E-014 max 6.536447432744344E-010 -> PASS
+=== V7 32 ranks PLUGIN_PROFILE 1 and 3 sweeps
+V7_pp1: rc=0 wall=23.2s  (1 sweeps/rank, 32 rank(s))
+V7_pp3: rc=0 wall=43.3s  (3 sweeps/rank, 32 rank(s))
+RESULT V7_pp3         sweep  10.09  upd  2.66  stab  1.91  cgr  1.87  obs  3.28 s/sweep
+=== V2 32 ranks timing 3 sweeps (ALFSH_TIMING)
+V2_n3: rc=0 wall=51.4s  (3 sweeps/rank, 32 rank(s))
+RESULT V2_n3          sweep  11.86  upd  2.60  stab  2.98  cgr  3.22  obs  2.60 s/sweep
+PG V2_n3          mean 1.680882848565433E-014 max 3.682285526457003E-010 -> PASS
+=== V2 32 ranks PLUGIN_PROFILE 1 and 3 sweeps
+V2_pp1: rc=0 wall=29.4s  (1 sweeps/rank, 32 rank(s))
+V2_pp3: rc=0 wall=53.5s  (3 sweeps/rank, 32 rank(s))
+RESULT V2_pp3         sweep  12.89  upd  2.71  stab  3.24  cgr  3.28  obs  3.20 s/sweep
+end 2026-11-12T22:54:05+01:00

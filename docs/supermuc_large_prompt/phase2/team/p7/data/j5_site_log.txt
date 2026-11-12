@@ -1,0 +1,10 @@
+start 2026-11-12T23:05:08+01:00 i20r02c01s10 job 560846
+8319 /hppfs/scratch/0C/di38zuw/large_prompt/team/p7/data/ALF.out.nm.txt
+=== single tile V7 serialised with call sites, 1 and 3 sweeps
+V7_cs1: rc=0 wall=16.7s  (1 sweeps/rank, 1 rank(s))
+V7_cs3: rc=0 wall=27.3s  (3 sweeps/rank, 1 rank(s))
+RESULT V7_cs1         sweep   5.94  upd  2.38  stab  0.84  cgr  1.25  obs  1.20 s/sweep
+RESULT V7_cs3         sweep   5.93  upd  2.36  stab  0.84  cgr  1.27  obs  1.20 s/sweep
+=== node layout (32 ranks, 4/tile, CCS 4) V7: normal, then serialised profile (ops measured under real tile sharing), 1 and 3 sweeps
+N_V7_n3: rc=0 wall=42.7s  (3 sweeps/rank, 32 rank(s))
+RESULT N_V7_n3        sweep   9.22  upd  2.64  stab  1.70  cgr  1.85  obs  2.67 s/sweep

@@ -1,0 +1,45 @@
+node i20r07c02s02 job 560806 start 2026-11-12T17:09:57+01:00
+xpu-smi dev 0:       1 | 3. GPU Power               | Status: OK                                                          |
+xpu-smi dev 0:       1 | 5. Xe Link Port            | Status: OK                                                          |
+xpu-smi dev 0:       1 | 6. GPU Frequency           | Status: OK                                                          |
+xpu-smi dev 1:       1 | 3. GPU Power               | Status: OK                                                          |
+xpu-smi dev 1:       1 | 5. Xe Link Port            | Status: OK                                                          |
+xpu-smi dev 1:       1 | 6. GPU Frequency           | Status: OK                                                          |
+xpu-smi dev 2:       1 | 3. GPU Power               | Status: OK                                                          |
+xpu-smi dev 2:       1 | 5. Xe Link Port            | Status: OK                                                          |
+xpu-smi dev 2:       1 | 6. GPU Frequency           | Status: OK                                                          |
+xpu-smi dev 3:       1 | 3. GPU Power               | Status: OK                                                          |
+xpu-smi dev 3:       1 | 5. Xe Link Port            | Status: OK                                                          |
+xpu-smi dev 3:       1 | 6. GPU Frequency           | Status: OK                                                          |
+CASE plant_race_v_N576 N=576 sec=750 [ALFSH_DEVQR=2 ALFSH_DEVUNMQR=1 ALFSH_DEVQR_LIB=/hppfs/scratch/0C/di38zuw/large_prompt/team/p5/plant/race_v/libalfdevqr.so] start 2026-11-12T17:10:06+01:00 node i20r07c02s02
+mpiexec rc=0
+  ranks finished: 32 of 32; iterations total: 851110; s/iter mean: 0.0280938
+  BAD lines: 1; ranks with BAD: 1; by what:       1 G_NVAR2 
+  distinct nonzero-BAD tiles (rank mod 8): 3 
+  STRESS_RESULT nbad bit/1e-8/1e-3 sums: 1 1 1   max maxrel LU,G1,G2: 0 0 5.81
+  distinct reference hashes over ranks (1 = all ranks bitwise equal): 1
+  device-kernel calls (ALFSH_TIMING sums): geqrf_dev 1702220 unmqr_dev 1702220 geqrf(mkl) 0 unmqr(mkl) 0
+  BAD rank   27 it    6831 G_NVAR2  rel  5.81E+00 nbits   331776 t     196.2
+CASE plant_race_v_N576 end 2026-11-12T17:22:40+01:00
+CASE plant_race_v_N576_G1 N=576 sec=750 [ALFSH_DEVQR=2 ALFSH_DEVUNMQR=1 ALFSH_DEVQR_LIB=/hppfs/scratch/0C/di38zuw/large_prompt/team/p5/plant/race_v/libalfdevqr.so ALFDEVQR_G=1] start 2026-11-12T17:22:40+01:00 node i20r07c02s02
+mpiexec rc=0
+  ranks finished: 32 of 32; iterations total: 712908; s/iter mean: 0.0338125
+  BAD lines: 530; ranks with BAD: 32; by what:     261 G_NVAR1     269 G_NVAR2 
+  distinct nonzero-BAD tiles (rank mod 8): 0 1 2 3 4 5 6 7 
+  STRESS_RESULT nbad bit/1e-8/1e-3 sums: 530 530 530   max maxrel LU,G1,G2: 0 0.624 0.487
+  distinct reference hashes over ranks (1 = all ranks bitwise equal): 1
+  device-kernel calls (ALFSH_TIMING sums): geqrf_dev 1425816 unmqr_dev 1425816 geqrf(mkl) 0 unmqr(mkl) 0
+  BAD rank    1 it      38 G_NVAR1  rel  9.63E-02 nbits   331776 t       2.1
+  BAD rank    0 it      56 G_NVAR2  rel  2.97E-02 nbits   331776 t       2.6
+  BAD rank    1 it      60 G_NVAR1  rel  4.17E-02 nbits   331776 t       2.9
+  BAD rank   16 it      73 G_NVAR2  rel  4.77E-01 nbits   331776 t       3.3
+  BAD rank    3 it      87 G_NVAR2  rel  8.53E-02 nbits   331776 t       3.8
+  BAD rank   10 it      94 G_NVAR2  rel  2.01E-01 nbits   331776 t       4.0
+  BAD rank   17 it     141 G_NVAR2  rel  1.38E-01 nbits   331776 t       5.6
+  BAD rank    6 it     167 G_NVAR1  rel  1.52E-01 nbits   331776 t       6.5
+  BAD rank   24 it     197 G_NVAR2  rel  3.43E-01 nbits   331776 t       7.5
+  BAD rank   28 it     282 G_NVAR2  rel  3.81E-02 nbits   331776 t      10.3
+  BAD rank    9 it     289 G_NVAR1  rel  4.88E-02 nbits   331776 t      10.3
+  BAD rank   24 it     290 G_NVAR2  rel  1.01E-01 nbits   331776 t      10.6
+CASE plant_race_v_N576_G1 end 2026-11-12T17:35:13+01:00
+end 2026-11-12T17:35:13+01:00
