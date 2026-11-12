@@ -464,7 +464,7 @@
       "description" : "",
       "done" : false,
       "id" : "n_t0owuhxk",
-      "order" : 5,
+      "order" : 6,
       "parentId" : "n_v7wyl9eg",
       "title" : "Checks: same seed vs CPU, node PG (CCS 4) + planted defect, bitwise vs V4 where expected, nvfortran compile"
     },
@@ -473,7 +473,7 @@
       "description" : "",
       "done" : false,
       "id" : "n_5jsw56zn",
-      "order" : 6,
+      "order" : 7,
       "parentId" : "n_v7wyl9eg",
       "title" : "Timing vs A30 and report update"
     },
@@ -530,8 +530,17 @@
       "order" : 4,
       "parentId" : "n_k2mfq94n",
       "title" : "Draft LaTeX section (technical feasibility, performance, resources)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Owner 2026-11-12. Node config 32 ranks (4\/tile, CCS 4) and also 8 ranks (1\/tile): sweeps\/s per card for V0, V1, V2, V4 and the Phase 5 variant, alternating pairs, CPU-time difference method (comb\/c_two.sh, c_gnode.sh). Known so far (C): V0 0.549, V1 0.568, V2 0.669-0.688, V4 0.737-0.785 per card. Question: is the gain at 4\/tile smaller than single-chain (shared tile saturates)?",
+      "done" : false,
+      "id" : "n_5owq5egr",
+      "order" : 5,
+      "parentId" : "n_v7wyl9eg",
+      "title" : "Throughput benchmark: does the single-chain speedup raise total throughput with 4 walkers per tile?"
     }
   ],
-  "rev" : 2,
+  "rev" : 3,
   "version" : 1
 }
