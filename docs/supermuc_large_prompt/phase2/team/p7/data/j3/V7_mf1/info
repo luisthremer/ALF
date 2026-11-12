@@ -1,0 +1,85 @@
+ START TIME: 2026-11-12T22:55:32.858+01:00
+ =====================================
+ Model is      : Hubbard                                                         
+ Lattice is    : Square                                                          
+ # unit cells  :          576
+ # of orbitals :            1
+ Flux_1        :   0.000000000000000E+000
+ Flux_2        :   0.000000000000000E+000
+ Twist as phase factor in bulk
+ HS  couples to density
+ Checkerboard  :  T
+ Symm. decomp  :  T
+ Finite temperture version
+ Beta          :    24.0000000000000     
+ dtau,Ltrot_eff:   0.100000000000000              240
+ N_SUN         :            2
+ N_FL          :            2
+ t             :    1.00000000000000     
+ Ham_U         :    5.30000000000000     
+ Pinning field :    1.00000000000000     
+ Ham_chem      :   0.000000000000000E+000
+ No initial configuration, Seed_in      454359
+ Sweeps                              :            1
+ Bins                                :            1
+ No CPU-time limitation 
+ Measure Int.                        :            0         240
+ Stabilization,Wrap                  :           10
+ Nstm                                :           24
+ Ltau                                :            0
+ # of interacting Ops per time slice :          576
+ -------  Space-sequential Time-sequential moves -------
+ Nt_sequential_start:            1
+ Nt_sequential_end  :          576
+ Number of mpi-processes :            1
+ GPU build: git none backend ONEMKL
+ GPU debug env: none
+ GPU path (gpu_state): ACTIVE (mirror built, used by the sweep), OpenMP device 0
+ GPU mirror: hopping elements 8, Op_V operators 1152, omp devices 1
+ GPU mirror: checkerboard groups 2 (flavour 1: 1 groups), dense element(s) in flavour 1: T
+ GPU mirror array hop_start (3) int bytes 12
+ GPU mirror array hop_meta (4,8) int bytes 128
+ GPU mirror array hop_P (1158) int bytes 4632
+ GPU mirror array hop_Rval (1) real bytes 8
+ GPU mirror array hop_Cval (2654232) complex bytes 42467712
+ GPU mirror array V_meta (4,576,2) int bytes 18432
+ GPU mirror array V_type (576) int bytes 2304
+ GPU mirror array V_P (1152) int bytes 4608
+ GPU mirror array V_exp (5760) complex bytes 92160
+ GPU mirror array nsigma_d (576,240) complex bytes 2211840
+ GPU mirror array nsigma_t (576) int bytes 2304
+ GPU mirror array hop_gptr (9) int bytes 36
+ GPU mirror array hop_aux (2,8) int bytes 64
+ GPU mirror array hop_At (1) real bytes 8
+ GPU mirror array hop_Ac (1) complex bytes 16
+ GPU mirror array vr_ptr (577,2) int bytes 4616
+ GPU mirror array vr_ent (2,1152) int bytes 9216
+ GPU mirror array G_d (576,576,2) complex bytes 10616832
+ GPU mirror array udv_U (576,576,24,2) complex bytes 254803968
+ GPU mirror array udv_V (576,576,24,2) complex bytes 254803968
+ GPU mirror array udv_D (576,24,2) complex bytes 442368
+ GPU mirror array udw_D (576,2,2) complex bytes 36864
+ GPU mirror array udw_U (576,576,2,2) complex bytes 21233664
+ GPU mirror array udw_V (576,576,2,2) complex bytes 21233664
+ GPU mirror array scr_c (576,576,2) complex bytes 10616832
+ GPU mirror array scr_vec (576,4) complex bytes 36864
+ GPU mirror array scr_r (576,2) real bytes 9216
+ GPU mirror array scr_ipiv (576) int bytes 2304
+ GPU mirror array scr_work (36928) complex bytes 590848
+ GPU mirror total device bytes: 619245488 (arrays listed above)
+ GPU mirror: time-dependent hopping: 6 per-slice element(s) in 2 flavour(s)
+ GPU mirror setup time (incl. host->device copies):     0.3807 s
+ GPU stabilization (206): ACTIVE (decompose, CGR and precision check on the device), N = 576, Nstm = 24, pre-pivoted QR in decompose and CGR (default)
+ GPU update path (ticket 205): ACTIVE (device wraps + rank-1 update, host decision; INTERIM per-slice G copies)
+ GPU submatrix update (test branch): N_delay = 32, Ndim = 576, M on the host, G0 untouched between flushes
+ GPU observables: device equal-time measurement ACTIVE (N_FL 2, N_SUN 1, Symm T, point-defect local observables T, tau-resolved on device F
+ GPU low-rank update counts: proposals 552960, accepted 88144, fused steps 0, blocks 8640, flushes 17280 (capacity 0, forced 17280)
+ GPU update counts: WRAPGRUP/DO calls 480, site proposals tested 276480, accepted 88144, site-wrap launches 8640, update launches 60480
+ GPU update transfers: ratio-block D->H elements 0, field H->D scalars 8640, interim G copies H->D 0 and D->H 0 (0 bytes, INTERIM 205)
+ -------  Acceptance precision and timing  -------
+  Precision Green  Mean, Max :   2.797406813129769E-014  2.578022397483383E-011
+  Precision Phase, Max       :   3.502573106262197E-012
+  Acceptance                 :   0.318807870370370     
+  Effective Acceptance       :   0.318807870370370     
+  CPU Time                   :    6.46431400000000     
+ FIN TIME: 2026-11-12T22:55:43.624+01:00

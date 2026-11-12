@@ -1,0 +1,15 @@
+start 2026-11-12T23:14:56+01:00 i20r08c02s08 job 560848
+=== single tile
+s_nd128_11153 RESULT s_nd128_11153  sweep   5.14  upd  1.63  stab  0.82  cgr  1.22  obs  1.19 s/sweep
+s_nd128_21921 RESULT s_nd128_21921  sweep   5.14  upd  1.64  stab  0.82  cgr  1.22  obs  1.19 s/sweep
+s_nd32_20835 RESULT s_nd32_20835   sweep   4.92  upd  1.44  stab  0.82  cgr  1.21  obs  1.19 s/sweep
+s_nd32_29577 RESULT s_nd32_29577   sweep   4.92  upd  1.43  stab  0.81  cgr  1.22  obs  1.18 s/sweep
+s_nd64_29593 RESULT s_nd64_29593   sweep   4.74  upd  1.23  stab  0.82  cgr  1.23  obs  1.19 s/sweep
+s_nd64_32348 RESULT s_nd64_32348   sweep   4.73  upd  1.23  stab  0.82  cgr  1.22  obs  1.19 s/sweep
+=== node 32 ranks
+n_nd128_13002 RESULT n_nd128_13002  sweep   9.50  upd  2.87  stab  1.68  cgr  1.84  obs  2.71 s/sweep PG n_nd128_13002  mean 1.964509454017596E-014 max 6.515567699051575E-010 -> PASS
+n_nd32_24377 RESULT n_nd32_24377   sweep   9.32  upd  2.68  stab  1.69  cgr  1.84  obs  2.74 s/sweep PG n_nd32_24377   mean 1.960957926459005E-014 max 6.536447432744344E-010 -> PASS
+n_nd32_31687 RESULT n_nd32_31687   sweep   9.33  upd  2.67  stab  1.70  cgr  1.85  obs  2.74 s/sweep PG n_nd32_31687   mean 1.960957926459005E-014 max 6.536447432744344E-010 -> PASS
+n_nd64_31746 RESULT n_nd64_31746   sweep   9.10  upd  2.43  stab  1.70  cgr  1.86  obs  2.74 s/sweep PG n_nd64_31746   mean 1.963248079752794E-014 max 6.536440615758303E-010 -> PASS
+n_nd64_5270 RESULT n_nd64_5270    sweep   9.08  upd  2.42  stab  1.69  cgr  1.86  obs  2.74 s/sweep PG n_nd64_5270    mean 1.963248079752794E-014 max 6.536440615758303E-010 -> PASS
+end 2026-11-12T23:20:29+01:00

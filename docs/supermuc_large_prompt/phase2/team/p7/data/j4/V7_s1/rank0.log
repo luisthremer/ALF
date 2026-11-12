@@ -1,0 +1,16 @@
+ ALF Copyright (C) 2016 - 2026 The ALF project contributors
+ This Program comes with ABSOLUTELY NO WARRANTY; for details see license.GPL
+ This is free software, and you are welcome to redistribute it under certain conditions.
+ No initial configuration
+ GPU build: git none backend ONEMKL
+ GPU debug env: none
+ alf_la: ONEMKL device: Intel(R) Data Center GPU Max 1550
+ GPU mirror setup time (incl. host->device copies):     0.3579 s
+  gpu_lowrank: ALFSH_ASYNCBLK=1, submatrix blocks run asynchronously on the SYCL queue
+ TEAM_TIMERS nsw, sweep wrapgrup wrapgrdo stab_wrapur stab_wrapul stab_cgr obser [s]:      1      5.012      0.800      0.720      0.401      0.402      1.220      1.190
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:         8640      0.216      0.198      0.841      0.000      0.839      0.284      0.000
+ALFP7_SUBMIT copy       calls     43200 submit_s     0.3954
+ALFP7_SUBMIT fgather    calls     17280 submit_s     0.0681
+ALFP7_SUBMIT gather     calls      8640 submit_s     0.0340
+ALFP7_SUBMIT gemm m576  calls     34560 submit_s     0.3742
+ALFP7_SUBMIT scale      calls      8640 submit_s     0.0331

@@ -617,8 +617,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "Tools: unitrace, Advisor, LIBOMPTARGET_PLUGIN_PROFILE; standard updates if supported.",
-      "done" : false,
+      "description" : "Tools: unitrace, Advisor, LIBOMPTARGET_PLUGIN_PROFILE; standard updates if supported. Done (p7\/NOTES.md, jobs 560821-560848, ~0.6 node-h): unitrace not installed, L0 tracing layer crashes ALF, Advisor fails; LIBOMPTARGET_PLUGIN_PROFILE=T + own LD_PRELOAD timers work. One chain\/tile: device busy 70-78 %, ~1\/3 of tile capacity used (E); updates host-submission bound (0.88 s submit for 112k async ops), observables have two 1x1 kernels (0.47 s), QR\/LU calls 30 %. Node layout: tile ~69 % used (E), headroom 1.4-1.6x max (E). Standard updates on GPU: 18.3 s\/sweep vs submatrix 5.0 (C).",
+      "done" : true,
       "id" : "n_7hijxwq9",
       "order" : 0,
       "parentId" : "n_2zpx5lj8",

@@ -1,0 +1,77 @@
+start 2026-11-12T22:58:29+01:00 i20r02c01s10 job 560844
+total 193
+drwxr-sr-x  2 di38zuw hpcusers   4096 Nov 12 22:58 .
+drwxr-sr-x 15 di38zuw hpcusers   4096 Nov 12 22:58 ..
+-rwxr-xr-x  1 di38zuw hpcusers 155504 Nov 12 22:44 libalfsb.so
+-rwxr-xr-x  1 di38zuw hpcusers  37360 Nov 12 22:58 libp7mkl.so
+4
+=== V7 MKL interposer: (a) with PLUGIN_PROFILE=T (interop queue may profile), (b) without; 1 and 3 sweeps
+V7_ma1: rc=0 wall=17.1s  (1 sweeps/rank, 1 rank(s))
+V7_ma3: rc=0 wall=28.3s  (3 sweeps/rank, 1 rank(s))
+RESULT V7_ma1         sweep   6.26  upd  2.45  stab  0.90  cgr  1.26  obs  1.37 s/sweep
+RESULT V7_ma3         sweep   6.26  upd  2.43  stab  0.91  cgr  1.28  obs  1.38 s/sweep
+ALFP7_MKL_SEEN calls 103680 on_profiling_queue 103680
+ALFP7_MKL zgemm 576x10x10 t01            calls      7652 dev_s     0.0551 host_s     0.1812
+ALFP7_MKL zgemm 576x11x11 t01            calls      7612 dev_s     0.0567 host_s     0.1565
+ALFP7_MKL zgemm 576x12x12 t01            calls      6380 dev_s     0.0437 host_s     0.1307
+ALFP7_MKL zgemm 576x13x13 t01            calls      4668 dev_s     0.0326 host_s     0.0964
+ALFP7_MKL zgemm 576x14x14 t01            calls      3150 dev_s     0.0221 host_s     0.0651
+ALFP7_MKL zgemm 576x15x15 t01            calls      1846 dev_s     0.0131 host_s     0.0385
+ALFP7_MKL zgemm 576x16x16 t01            calls      1004 dev_s     0.0069 host_s     0.0362
+ALFP7_MKL zgemm 576x17x17 t01            calls       486 dev_s     0.0036 host_s     0.0102
+ALFP7_MKL zgemm 576x18x18 t01            calls       202 dev_s     0.0015 host_s     0.0043
+ALFP7_MKL zgemm 576x19x19 t01            calls        72 dev_s     0.0005 host_s     0.0105
+ALFP7_MKL zgemm 576x20x20 t01            calls        18 dev_s     0.0001 host_s     0.0004
+ALFP7_MKL zgemm 576x21x21 t01            calls         4 dev_s     0.0000 host_s     0.0001
+ALFP7_MKL zgemm 576x22x22 t01            calls         4 dev_s     0.0000 host_s     0.0001
+ALFP7_MKL zgemm 576x23x23 t01            calls         2 dev_s     0.0000 host_s     0.0000
+ALFP7_MKL zgemm 576x2x2 t01              calls        30 dev_s     0.0002 host_s     0.0005
+ALFP7_MKL zgemm 576x3x3 t01              calls        88 dev_s     0.0005 host_s     0.0016
+ALFP7_MKL zgemm 576x4x4 t01              calls       336 dev_s     0.0019 host_s     0.0063
+ALFP7_MKL zgemm 576x576x10 t01           calls      7652 dev_s     0.0833 host_s     0.1660
+ALFP7_MKL zgemm 576x576x11 t01           calls      7612 dev_s     0.0846 host_s     0.1674
+ALFP7_MKL zgemm 576x576x12 t01           calls      6380 dev_s     0.0727 host_s     0.1418
+ALFP7_MKL zgemm 576x576x13 t01           calls      4668 dev_s     0.0544 host_s     0.1047
+ALFP7_MKL zgemm 576x576x14 t01           calls      3150 dev_s     0.0376 host_s     0.0717
+ALFP7_MKL zgemm 576x576x15 t01           calls      1846 dev_s     0.0225 host_s     0.0427
+ALFP7_MKL zgemm 576x576x16 t01           calls      1004 dev_s     0.0129 host_s     0.0509
+ALFP7_MKL zgemm 576x576x17 t01           calls       486 dev_s     0.0065 host_s     0.0118
+ALFP7_MKL zgemm 576x576x18 t01           calls       202 dev_s     0.0027 host_s     0.0049
+ALFP7_MKL zgemm 576x576x19 t01           calls        72 dev_s     0.0010 host_s     0.0018
+ALFP7_MKL zgemm 576x576x2 t01            calls        30 dev_s     0.0003 host_s     0.0006
+ALFP7_MKL zgemm 576x576x20 t01           calls        18 dev_s     0.0003 host_s     0.0004
+V7_mb1: rc=0 wall=15.8s  (1 sweeps/rank, 1 rank(s))
+V7_mb3: rc=0 wall=27.4s  (3 sweeps/rank, 1 rank(s))
+RESULT V7_mb1         sweep   6.10  upd  2.53  stab  0.83  cgr  1.28  obs  1.19 s/sweep
+RESULT V7_mb3         sweep   5.98  upd  2.42  stab  0.83  cgr  1.27  obs  1.18 s/sweep
+ALFP7_MKL_SEEN calls 103680 on_profiling_queue 103680
+ALFP7_MKL zgemm 576x10x10 t01            calls      7652 dev_s     0.0553 host_s     0.1809
+ALFP7_MKL zgemm 576x11x11 t01            calls      7612 dev_s     0.0569 host_s     0.1573
+ALFP7_MKL zgemm 576x12x12 t01            calls      6380 dev_s     0.0447 host_s     0.1320
+ALFP7_MKL zgemm 576x13x13 t01            calls      4668 dev_s     0.0332 host_s     0.0973
+ALFP7_MKL zgemm 576x14x14 t01            calls      3150 dev_s     0.0226 host_s     0.0658
+ALFP7_MKL zgemm 576x15x15 t01            calls      1846 dev_s     0.0134 host_s     0.0387
+ALFP7_MKL zgemm 576x16x16 t01            calls      1004 dev_s     0.0070 host_s     0.0351
+ALFP7_MKL zgemm 576x17x17 t01            calls       486 dev_s     0.0036 host_s     0.0103
+ALFP7_MKL zgemm 576x18x18 t01            calls       202 dev_s     0.0015 host_s     0.0043
+ALFP7_MKL zgemm 576x19x19 t01            calls        72 dev_s     0.0005 host_s     0.0105
+ALFP7_MKL zgemm 576x20x20 t01            calls        18 dev_s     0.0001 host_s     0.0004
+ALFP7_MKL zgemm 576x21x21 t01            calls         4 dev_s     0.0000 host_s     0.0001
+ALFP7_MKL zgemm 576x22x22 t01            calls         4 dev_s     0.0000 host_s     0.0001
+ALFP7_MKL zgemm 576x23x23 t01            calls         2 dev_s     0.0000 host_s     0.0000
+ALFP7_MKL zgemm 576x2x2 t01              calls        30 dev_s     0.0002 host_s     0.0005
+ALFP7_MKL zgemm 576x3x3 t01              calls        88 dev_s     0.0005 host_s     0.0017
+ALFP7_MKL zgemm 576x4x4 t01              calls       336 dev_s     0.0019 host_s     0.0063
+ALFP7_MKL zgemm 576x576x10 t01           calls      7652 dev_s     0.0831 host_s     0.1662
+ALFP7_MKL zgemm 576x576x11 t01           calls      7612 dev_s     0.0842 host_s     0.1664
+ALFP7_MKL zgemm 576x576x12 t01           calls      6380 dev_s     0.0728 host_s     0.1413
+ALFP7_MKL zgemm 576x576x13 t01           calls      4668 dev_s     0.0544 host_s     0.1046
+ALFP7_MKL zgemm 576x576x14 t01           calls      3150 dev_s     0.0376 host_s     0.0718
+ALFP7_MKL zgemm 576x576x15 t01           calls      1846 dev_s     0.0224 host_s     0.0426
+ALFP7_MKL zgemm 576x576x16 t01           calls      1004 dev_s     0.0128 host_s     0.0497
+ALFP7_MKL zgemm 576x576x17 t01           calls       486 dev_s     0.0064 host_s     0.0117
+ALFP7_MKL zgemm 576x576x18 t01           calls       202 dev_s     0.0027 host_s     0.0049
+ALFP7_MKL zgemm 576x576x19 t01           calls        72 dev_s     0.0010 host_s     0.0018
+ALFP7_MKL zgemm 576x576x2 t01            calls        30 dev_s     0.0003 host_s     0.0006
+ALFP7_MKL zgemm 576x576x20 t01           calls        18 dev_s     0.0003 host_s     0.0004
+end 2026-11-12T23:00:03+01:00

@@ -1,0 +1,117 @@
+ alf_la: ONEMKL device: Intel(R) Data Center GPU Max 1550
+ GPU mirror setup time (incl. host->device copies):     0.2533 s
+  gpu_lowrank: ALFSH_ASYNCBLK=1, submatrix blocks run asynchronously on the SYCL queue
+ TEAM_TIMERS nsw, sweep wrapgrup wrapgrdo stab_wrapur stab_wrapul stab_cgr obser [s]:      3     38.343      3.946      3.816      4.852      4.880      9.885      9.576
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      0.719      0.654      3.767      0.001      3.759      2.570      0.000
+======================================================================================================================
+LIBOMPTARGET_PLUGIN_PROFILE(LEVEL_ZERO) for OMP DEVICE(2) Intel(R) Data Center GPU Max 1550, Thread 0
+----------------------------------------------------------------------------------------------------------------------
+Kernel 0                  : __omp_offloading_45_37221397_alf_la_om_mod_mp_k_colnorms__l845
+Kernel 1                  : __omp_offloading_45_37221397_alf_la_om_mod_mp_k_permute_cols__l879
+Kernel 2                  : __omp_offloading_45_37221397_alf_la_om_mod_mp_k_permute_cols__l885
+Kernel 3                  : __omp_offloading_45_37221397_alf_la_om_mod_mp_om_getrf__l774
+Kernel 4                  : __omp_offloading_45_37c62573_gpu_wrap_mod_mp_k_cb_left_g__l638
+Kernel 5                  : __omp_offloading_45_37c62573_gpu_wrap_mod_mp_k_cb_right_g__l656
+Kernel 6                  : __omp_offloading_45_37c62573_gpu_wrap_mod_mp_k_cpy_n__l308
+Kernel 7                  : __omp_offloading_45_37c62573_gpu_wrap_mod_mp_k_scatter_cols__l833
+Kernel 8                  : __omp_offloading_45_37c62573_gpu_wrap_mod_mp_k_scatter_rows__l770
+Kernel 9                  : __omp_offloading_45_37c62573_gpu_wrap_mod_mp_k_set_c__l391
+Kernel 10                 : __omp_offloading_45_37c62573_gpu_wrap_mod_mp_k_vslice_r__l980
+Kernel 11                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_gpu_stab_cgr__l620
+Kernel 12                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_gpu_stab_cgr__l651
+Kernel 13                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_cgr_phase__l1232
+Kernel 14                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_colinv__l1105
+Kernel 15                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_copy_c__l236
+Kernel 16                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_ct__l1074
+Kernel 17                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_det_phase__l1207
+Kernel 18                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_diagabs__l897
+Kernel 19                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_divrows__l911
+Kernel 20                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_ident__l196
+Kernel 21                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_iperm_cols__l1045
+Kernel 22                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_iperm_rows__l1029
+Kernel 23                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_ns__l1260
+Kernel 24                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_perm_cols__l1013
+Kernel 25                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_perm_rows__l997
+Kernel 26                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_phase__l932
+Kernel 27                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_prec__l1327
+Kernel 28                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_prec__l1343
+Kernel 29                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_prec__l1350
+Kernel 30                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_rowdiv__l1089
+Kernel 31                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_scale_col1__l964
+Kernel 32                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_scale_cols__l882
+Kernel 33                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_scale_row1__l951
+Kernel 34                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_setd__l213
+Kernel 35                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_testscale__l1303
+Kernel 36                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_testscale__l1308
+Kernel 37                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_tpup__l1121
+Kernel 38                 : __omp_offloading_45_3bdb6452_gpu_stab_mod_mp_k_triu__l977
+Kernel 39                 : __omp_offloading_45_558876e_gpu_obs_mod_mp_corr__l386
+Kernel 40                 : __omp_offloading_45_558876e_gpu_obs_mod_mp_corr__l418
+Kernel 41                 : __omp_offloading_45_558876e_gpu_obs_mod_mp_corr__l437
+Kernel 42                 : __omp_offloading_45_558876e_gpu_obs_mod_mp_corr__l450
+Kernel 43                 : __omp_offloading_45_558876e_gpu_obs_mod_mp_corr__l473
+Kernel 44                 : __omp_offloading_45_558876e_gpu_obs_mod_mp_gpu_obs_measure__l284
+Kernel 45                 : __omp_offloading_45_558876e_gpu_obs_mod_mp_gpu_obs_measure__l293
+Kernel 46                 : __omp_offloading_45_558876e_gpu_obs_mod_mp_gpu_obs_measure__l303
+Kernel 47                 : __omp_offloading_45_558876e_gpu_obs_mod_mp_k_cpy__l207
+Kernel 48                 : __omp_offloading_45_558876e_gpu_obs_mod_mp_local_obs__l363
+----------------------------------------------------------------------------------------------------------------------
+                          : Host Time (msec)                        Device Time (msec)                      
+Name                      :      Total   Average       Min       Max     Total   Average       Min       Max     Count
+----------------------------------------------------------------------------------------------------------------------
+Compiling                 :      10.16     10.16     10.16     10.16      0.00      0.00      0.00      0.00      1.00
+DataAlloc                 :      33.94      0.00      0.00      0.84      0.00      0.00      0.00      0.00  97465.00
+DataRead (Device to Host) :      53.52      0.01      0.00      1.01      4.73      0.00      0.00      0.18   7064.00
+DataWrite (Host to Device):    2997.07      0.02      0.00     16.78     15.27      0.00      0.00      1.95 143517.00
+Kernel 0                  :       3.53      0.01      0.00      0.11    151.54      0.24      0.23      0.36    626.00
+Kernel 1                  :       3.49      0.01      0.00      0.04     14.72      0.02      0.02      0.06    626.00
+Kernel 2                  :       2.76      0.00      0.00      0.03     13.95      0.02      0.02      0.06    626.00
+Kernel 3                  :       2.76      0.01      0.01      0.04      2.46      0.01      0.01      0.03    290.00
+Kernel 4                  :       0.40      0.01      0.00      0.09      0.43      0.01      0.00      0.01     64.00
+Kernel 5                  :       0.21      0.01      0.00      0.05      0.30      0.01      0.01      0.01     36.00
+Kernel 6                  :      23.38      0.00      0.00      0.05    110.29      0.02      0.01      0.07   7200.00
+Kernel 7                  :       0.06      0.01      0.00      0.03      0.14      0.02      0.02      0.02      6.00
+Kernel 8                  :       6.98      0.00      0.00      0.19     44.87      0.02      0.02      0.08   1926.00
+Kernel 9                  :       0.21      0.02      0.01      0.05      0.20      0.02      0.01      0.02     12.00
+Kernel 10                 :      12.96      0.00      0.00      0.05    126.04      0.04      0.03      0.09   3360.00
+Kernel 11                 :       1.68      0.01      0.00      0.05      8.57      0.03      0.03      0.06    288.00
+Kernel 12                 :       1.74      0.01      0.01      0.03      7.53      0.03      0.02      0.03    290.00
+Kernel 13                 :       1.85      0.01      0.01      0.05    181.06      0.62      0.61      0.88    290.00
+Kernel 14                 :       1.46      0.01      0.01      0.21      3.30      0.02      0.02      0.03    138.00
+Kernel 15                 :      13.55      0.01      0.00      0.05     35.12      0.01      0.00      0.07   2640.00
+Kernel 16                 :       1.99      0.01      0.01      0.03     15.18      0.05      0.05      0.12    290.00
+Kernel 17                 :       1.72      0.01      0.00      0.04    102.66      0.35      0.34      0.48    290.00
+Kernel 18                 :       8.53      0.01      0.01      0.07      3.45      0.01      0.00      0.01    626.00
+Kernel 19                 :       3.86      0.01      0.00      0.03     10.31      0.02      0.02      0.04    626.00
+Kernel 20                 :       2.87      0.01      0.00      0.61     14.95      0.04      0.03      0.06    396.00
+Kernel 21                 :       1.09      0.01      0.01      0.06      3.66      0.03      0.02      0.05    138.00
+Kernel 22                 :       1.18      0.01      0.01      0.05      6.74      0.04      0.04      0.08    152.00
+Kernel 23                 :       1.84      0.01      0.00      0.05      8.14      0.02      0.02      0.05    336.00
+Kernel 24                 :       1.36      0.01      0.01      0.02      6.08      0.03      0.03      0.06    192.00
+Kernel 25                 :       1.05      0.01      0.01      0.04      5.36      0.04      0.03      0.05    144.00
+Kernel 26                 :       1.69      0.01      0.00      0.02     91.36      0.27      0.26      0.37    336.00
+Kernel 27                 :       2.67      0.01      0.01      0.05    175.43      0.61      0.59      0.92    288.00
+Kernel 28                 :       1.47      0.01      0.00      0.06     24.53      0.09      0.08      0.12    288.00
+Kernel 29                 :       1.36      0.00      0.00      0.04      0.89      0.00      0.00      0.01    288.00
+Kernel 30                 :       1.42      0.01      0.01      0.04      3.59      0.02      0.02      0.06    152.00
+Kernel 31                 :       1.92      0.01      0.00      0.04      1.24      0.00      0.00      0.02    336.00
+Kernel 32                 :       1.95      0.01      0.00      0.14      8.68      0.03      0.02      0.05    336.00
+Kernel 33                 :       1.93      0.01      0.00      0.03      1.41      0.00      0.00      0.01    336.00
+Kernel 34                 :       0.17      0.01      0.00      0.03      0.09      0.00      0.00      0.00     30.00
+Kernel 35                 :       2.57      0.01      0.01      0.07      9.01      0.03      0.02      0.05    336.00
+Kernel 36                 :       1.58      0.00      0.00      0.02      1.11      0.00      0.00      0.01    336.00
+Kernel 37                 :       2.22      0.01      0.01      0.06      9.37      0.03      0.03      0.07    290.00
+Kernel 38                 :       1.98      0.01      0.00      0.02     10.06      0.03      0.03      0.11    336.00
+Kernel 39                 :       5.98      0.00      0.00      0.03    680.00      0.47      0.44      0.69   1440.00
+Kernel 40                 :       6.10      0.00      0.00      0.03    859.49      0.60      0.56      0.86   1440.00
+Kernel 41                 :       4.92      0.00      0.00      0.04    920.56      0.64      0.62      0.78   1440.00
+Kernel 42                 :       7.30      0.01      0.00      0.17   1701.88      1.18      1.13      1.44   1440.00
+Kernel 43                 :       5.42      0.00      0.00      0.04    516.20      0.36      0.34      0.48   1440.00
+Kernel 44                 :       6.51      0.00      0.00      0.04     52.30      0.04      0.03      0.11   1440.00
+Kernel 45                 :       6.37      0.00      0.00      0.14     42.95      0.03      0.03      0.10   1440.00
+Kernel 46                 :       5.88      0.00      0.00      0.03     45.44      0.03      0.03      0.06   1440.00
+Kernel 47                 :      28.28      0.00      0.00      0.05    127.23      0.01      0.01      0.06   8640.00
+Kernel 48                 :       5.60      0.00      0.00      0.05      7.25      0.01      0.00      0.02   1440.00
+Linking                   :       0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00      1.00
+OffloadEntriesInit        :       3.22      3.22      3.22      3.22      0.00      0.00      0.00      0.00      1.00
+======================================================================================================================
