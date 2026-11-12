@@ -14,6 +14,7 @@ changed or deleted; the history of each line is intact below its merge commit.
 | 4 | `production-mpi-intel-large-prompt-team-combined` (7e8b6032) | device Householder QR (SYCL), async block path, explicit-shape kernels, team measurements; contains `-team`, `-team-async`, `-team-sycqr` | none |
 | 5 | `intel-supermuc-ng2` (c3a91f72) | first SuperMUC-NG Phase 2 session: build scripts, AOT wrapper, layout benchmarks | `alf_la_mod.F90`, two jobfiles |
 | 6 | `gpu-delayed-submatrix-defect-production-mpi-amd` (156a0b01) | `GPU=amd`: HIP backend, HIP kernels, device QR, AMD notes and patches | `gpu_lowrank_mod.F90`, `gpu_obs_mod.F90`, `configure.sh` |
+| 7 | `origin/luis_playground` (b86df3ad), on branch `gpu-port-unified-maxent` | Gaussian bootstrap of the stochastic MaxEnt (`N_boot`, `Aom_ps_boot_n`) in `Analysis/Max_SAC.F90`, `maxent_stoch_mod`, test `2-maxsac-bootstrap`, `Start_PP` template; scratch files removed after the merge; documented in `Documentation/maxent.tex` (Sec. "Statistical errors of the spectrum: Gaussian bootstrap") and `files.tex` | none |
 
 Contained in these and therefore not merged separately: `master`, `JAKOB_BACKUP`,
 `gpu-delayed-submatrix-defect`, `-fullgpu`, `-production`, `-production-mpi`, `-production-mpi-pp`.
@@ -49,7 +50,6 @@ Changes made after the merges (commit 609a6347):
 | Branch | Reason |
 |---|---|
 | `gpu-delayed-submatrix-defect-production-old-Ntau` (8438cf0f) | Variant with the older tau labelling of `SpinZ_localtau`, kept for comparison with older data. It differs from production in 4 files and must not flow into production. |
-| `origin/luis_playground` (b86df3ad) | MaxEnt bootstrap work in `Analysis/` on an older upstream base; not part of the GPU port. |
 | `origin/gpu-port-207-4`, `-207-harness`, `-207-wip`, `-212-hardening`, `-302b-docs`, `origin/feature/delayed-submatrix*` | Early ticket branches with a few commits that never reached the port. |
 
 ## Tree changes after the merge
