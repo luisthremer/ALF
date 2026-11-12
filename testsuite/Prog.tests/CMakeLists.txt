@@ -169,9 +169,12 @@ add_test(38-unstable-threshold-default 38-unstable-threshold)
 set_tests_properties(38-unstable-threshold-default PROPERTIES ENVIRONMENT "ALF_UNSTABLE_THRESHOLD=" PASS_REGULAR_EXPRESSION "PASS: deviation")
 add_test(38-unstable-threshold-1.0 38-unstable-threshold)
 set_tests_properties(38-unstable-threshold-1.0 PROPERTIES ENVIRONMENT "ALF_UNSTABLE_THRESHOLD=1.0" PASS_REGULAR_EXPRESSION "PASS: deviation")
-add_test(38-unstable-threshold-0.25 38-unstable-threshold)
-set_tests_properties(38-unstable-threshold-0.25 PROPERTIES ENVIRONMENT "ALF_UNSTABLE_THRESHOLD=0.25"
-  PASS_REGULAR_EXPRESSION "exceeding the threshold" FAIL_REGULAR_EXPRESSION "PASS: deviation")
+if(NOT "${FLAG_LIST}" MATCHES "-DTEMPERING")
+  # (with TEMPERING the abort branch first writes Temp_<igroup>/info, a directory a unit test does not have)
+  add_test(38-unstable-threshold-0.25 38-unstable-threshold)
+  set_tests_properties(38-unstable-threshold-0.25 PROPERTIES ENVIRONMENT "ALF_UNSTABLE_THRESHOLD=0.25"
+    PASS_REGULAR_EXPRESSION "exceeding the threshold" FAIL_REGULAR_EXPRESSION "PASS: deviation")
+endif()
 if(NOT "${FLAG_LIST}" MATCHES "-D(MPI|TEMPERING|PARALLEL_PARAMS)")
   # serial build: Terminate_on_error(ERROR_UNSTABLE_MATRIX) = error stop 3 (MPI builds call MPI_ABORT instead)
   add_test(NAME 38-unstable-threshold-0.25-exit
