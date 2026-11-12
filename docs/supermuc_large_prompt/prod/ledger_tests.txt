@@ -1,0 +1,18 @@
+# jobid nodes hours note   (test and diagnosis jobs on pn93la outside the RUN_* directories; hours = elapsed, estimated where sacct was down)
+# 2026-11-11 verification and timing (T0-T5b, build, T2/T3, big-L tests, L28 probe): estimate from the session's job list
+T0-T5b   1  20.0  build, T2, T2b, T3, T5, T5b, template tests (estimate)
+bigL     1  15.0  big-L tests L36/40/44 incl. VTune (estimate)
+560395   5   0.5  L28 stability probe
+# 2026-11-12 diagnosis of the 'Unstable matrix' aborts and guard tests
+replay   1   2.0  work_replay gpu/cpu/gpuC (560585-560587, 560592)
+560610   4   0.9  stress pair base vs sync (128 replicas)
+nodechk  1   0.5  560620, 560622, 560623 (node test A-D)
+guard    1   0.3  560642, 560643 (guard binary tests)
+ab       4   0.85 560654-560657 (A/B old vs new, 1 node each)
+abcmp    1   0.3  560692 (A/B comparison)
+smoke    9   0.5  560742-560744 (second-set smoke tests, 3 nodes each)
+# other sessions on pn93la (estimates)
+sp_stab  4   1.0  another session's stability jobs 560588-560591
+qrteam   1  10.0  QR team / Intel team stress tests (limit 1000 GPU-h = 250 node-h; update from their reports)
+L36old   1   5.0  RUN_L36_aborted_nwrap10 560381 (no segments.log; estimate)
+# note: a job cancelled by scancel has no 'end' line in segments.log; ledger.sh then counts it up to the next start or now (RUN_L36 560399: ~1 h too much)

@@ -13,7 +13,7 @@
     },
     {
       "collapsed" : false,
-      "description" : "Point-defect Hubbard production (Jakob's parameters) at L=24, 28, 32 (+ L32_fast) for U = 5.0-5.6 (10 values), on general (2-day chains, pn93la), running the full submitted chains (owner 2026-11-11: no early stop; L24\/L32_fast 2 jobs, L28\/L32 3 jobs), verified correct before and during the run. No production above L=36. 2026-11-12: faulty GPU node excluded, unstable-matrix guard (decision 46), extra L32 Nwrap 10 run.",
+      "description" : "Point-defect Hubbard production (Jakob's parameters) at L=24, 28, 32 (+ L32_fast) for U = 5.0-5.6 (10 values), on general (2-day chains, pn93la), running the full submitted chains (owner 2026-11-11: no early stop; L24\/L32_fast 2 jobs, L28\/L32 3 jobs), verified correct before and during the run. No production above L=36. 2026-11-12: faulty GPU node excluded, unstable-matrix guard (decision 46), extra L32 Nwrap 10 run. 2026-11-12 (decision 47): second U set (5.15-5.425, 6 values) at L=24\/28\/32, owner analyses the h5 files on Fri 20 Nov; chains may continue.",
       "id" : "special_goal",
       "kind" : "goal",
       "order" : 0,
@@ -390,7 +390,7 @@
       "id" : "n_mwcqqc7x",
       "order" : 7,
       "parentId" : null,
-      "title" : "M8 Monitoring and physics cross-checks"
+      "title" : "M8 Monitoring and physics cross-checks (until Fri 20 Nov)"
     },
     {
       "collapsed" : false,
@@ -559,12 +559,153 @@
     },
     {
       "collapsed" : false,
-      "description" : "L32_fast 560651\/560652 held; fast2-4 prepared (Nwrap 5), not submitted.",
-      "done" : false,
+      "description" : "L32_fast 560651\/560652 held; fast2-4 prepared (Nwrap 5), not submitted. Owner 2026-11-12: dropped (L32_fast 560651\/560652 cancelled, fast2-4 not submitted); L36 not needed.",
+      "done" : true,
       "id" : "n_yu3vvdze",
       "order" : 12,
       "parentId" : "n_aztpjo5u",
       "title" : "Owner decision: L32_fast relaunch and fast2-4"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Ener_scal consecutive-bin scan over all data.h5 (2026-11-12: 0 duplicates in ~2200 bins); repeat daily.",
+      "done" : false,
+      "id" : "n_hvzysbl2",
+      "order" : 5,
+      "parentId" : "n_mwcqqc7x",
+      "title" : "Daily duplicated-bin scan"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_aztpjo5u"
+      ],
+      "description" : "Decision 47: U = 5.15, 5.225, 5.275, 5.325, 5.375, 5.425, Nwrap 10, Ltau 0, 16 walkers\/U, 3 nodes\/run, guard build 410c7b04 (tag smuc2-prod-2026-11b, pushed), CPU_MAX 47 h, no bin target.",
+      "done" : false,
+      "id" : "n_26cr93nm",
+      "order" : 9,
+      "parentId" : null,
+      "title" : "M10 Second U set (6 U) at L=24\/28\/32 + L24 extension"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Pushed to the fork 2026-11-12.",
+      "done" : true,
+      "id" : "n_tk825dtl",
+      "order" : 0,
+      "parentId" : "n_26cr93nm",
+      "title" : "Push guard branch, tag smuc2-prod-2026-11b, decision 47"
+    },
+    {
+      "collapsed" : false,
+      "description" : "560741 after 560328, guard script.",
+      "done" : true,
+      "id" : "n_qc6bxvhx",
+      "order" : 1,
+      "parentId" : "n_26cr93nm",
+      "title" : "L24 (first set) extension link"
+    },
+    {
+      "collapsed" : false,
+      "description" : "make_pp_dirs.py, seed offsets 624\/628\/632; check_params PASS (0 violations) x3; 1096 seeds in 12 active dirs distinct; job.sh differs from RUN_L28 only in name and nodes=3.",
+      "done" : true,
+      "id" : "n_1tbmxqqb",
+      "order" : 2,
+      "parentId" : "n_26cr93nm",
+      "title" : "Create RUN_L24_U2\/L28_U2\/L32_U2 + checks"
+    },
+    {
+      "collapsed" : false,
+      "description" : "work_smoke, real job.sh, 3 nodes, 30 min (560742-560744): GPU path ACTIVE, >=1 bin per set, snapshots, no Unstable, acceptance ~0.33.",
+      "done" : false,
+      "id" : "n_7fwfuvfg",
+      "order" : 3,
+      "parentId" : "n_26cr93nm",
+      "title" : "Smoke test of the three new job scripts (test partition)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Check ExcNodeList and dependencies.",
+      "done" : false,
+      "id" : "n_e4yu9dhr",
+      "order" : 4,
+      "parentId" : "n_26cr93nm",
+      "title" : "Submit chains: L24_U2 2, L28_U2 2, L32_U2 3 links"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Speed vs T5 (13.4\/30.2\/51.9 s\/sweep), GPU path ACTIVE, recovery none.",
+      "done" : false,
+      "id" : "n_1cpf2c0i",
+      "order" : 5,
+      "parentId" : "n_26cr93nm",
+      "title" : "First-bin check of the second set"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_aztpjo5u"
+      ],
+      "description" : "25k GPU-h booked (owner, per LRZ); account order pn93la -> pn73xu -> pr94vu; LRZ accounting lags, so own ledger.",
+      "done" : false,
+      "id" : "n_2ibxa3og",
+      "order" : 10,
+      "parentId" : null,
+      "title" : "M11 Budget, storage and data safety"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Node-h per job from segments.log x nodes + manual test list; 2026-11-12 13:50: ~350 node-h = ~1400 GPU-h used.",
+      "done" : true,
+      "id" : "n_j2o1hcef",
+      "order" : 0,
+      "parentId" : "n_2ibxa3og",
+      "title" : "Ledger script prod\/ledger.sh + ledger_tests.txt"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Planned total ~16,200 of ~25,900 GPU-h incl. reserve and QR limit.",
+      "done" : false,
+      "id" : "n_hmumqaqu",
+      "order" : 1,
+      "parentId" : "n_2ibxa3og",
+      "title" : "Keep 1000 GPU-h test reserve"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Messages sent 2026-11-12.",
+      "done" : true,
+      "id" : "n_um4cqc87",
+      "order" : 2,
+      "parentId" : "n_2ibxa3og",
+      "title" : "QR team limit 1000 GPU-h communicated; other SuperMUC session stopped"
+    },
+    {
+      "collapsed" : false,
+      "description" : "du daily; move to \/hppfs\/work\/pn73xu if > 800 GB.",
+      "done" : false,
+      "id" : "n_jmorwm32",
+      "order" : 3,
+      "parentId" : "n_2ibxa3og",
+      "title" : "Storage watch (WORK pn93la 1.05 TB)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Plan only; details later.",
+      "done" : false,
+      "id" : "n_24nq72qu",
+      "order" : 4,
+      "parentId" : "n_2ibxa3og",
+      "title" : "Copy the h5 data off the cluster after the campaign"
+    },
+    {
+      "collapsed" : false,
+      "description" : "module load lrztools; budget_and_quota (lags while sacct is down).",
+      "done" : false,
+      "id" : "n_z3wa6rgm",
+      "order" : 5,
+      "parentId" : "n_2ibxa3og",
+      "title" : "Daily ledger vs budget_and_quota"
     }
   ],
   "rev" : 1,
