@@ -709,7 +709,7 @@
     },
     {
       "collapsed" : false,
-      "description" : "Owner 2026-11-12: separate L=24 run at U = 3.0, 5.25, 8.0 (16 walkers\/U, 48 ranks), 2 nodes x 24 ranks (3 walkers\/tile, CCS 4, OMP 4), seed offset 824 (1144 active seeds distinct), check_params PASS, guard build, CPU_MAX 47 h, chain 560762-560763. Precision test at U=3\/U=8 (560759): max 4.7e-11 \/ 8.5e-10.",
+      "description" : "Owner 2026-11-12: separate L=24 run at U = 3.0, 5.25, 8.0 (16 walkers\/U, 48 ranks), 2 nodes x 24 ranks (3 walkers\/tile, CCS 4, OMP 4), seed offset 824 (1144 active seeds distinct), check_params PASS, guard build, CPU_MAX 47 h, chain 560762-560763. Precision test at U=3\/U=8 (560759): max 4.7e-11 \/ 8.5e-10. ~15:45 owner: 'has to have smallest error possible until our deadline' \/ 'Can you do 48 walkers per U?': rebuilt before start with 48 walkers\/U, 144 ranks on 6 nodes x 24 (3\/tile, OMP 4), 4 links until Fri 20 Nov (560768-560771), ~4500 GPU-h; 1240 active seeds distinct; 16-walker chain 560762\/560763 cancelled.",
       "done" : true,
       "id" : "n_po1ro3tw",
       "order" : 6,
