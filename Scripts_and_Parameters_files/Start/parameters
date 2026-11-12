@@ -99,6 +99,7 @@ Tempering_calc_det    = .T. ! Specifies whether the fermion weight has to be tak
 /
 
 &VAR_Max_Stoch             !! Variables for Stochastic Maximum entropy
+N_boot     = 1              ! Number of bootstrap samples
 Ngamma     = 400            ! Number of Dirac delta-functions for parametrization
 Om_st      = -10.d0         ! Frequency range lower bound
 Om_en      = 10.d0          ! Frequency range upper bound

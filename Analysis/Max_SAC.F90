@@ -57,11 +57,47 @@ Program MaxEnt_Wrapper
        Real (Kind=Kind(0.d0)), Dimension(:)  , allocatable :: XQMC, XQMC_st, XTAU, Xtau_st, &
             &                                                 Alpha_tot, om_bf, alp_bf, xom, A
        Real (Kind=Kind(0.d0)), Dimension(:,:), allocatable :: XCOV, XCOV_st
-       Real (Kind=Kind(0.d0))                              :: ChiSq
-       Character (Len=64)                                  :: command, File1, File2
+       Real (Kind=Kind(0.d0))                              :: X_moments(2), Xerr_moments(2), ChiSq
+       Character (Len=64)                                  :: command, File1, File2, file_boot
        Complex (Kind=Kind(0.d0))                           :: Z
        Logical, parameter                                  :: Test =.false.
        
+
+       !----
+       Integer                :: iboot, N_boot = 1 ! Set default to 1 in order to be compatible with original parameter files
+       Real (Kind=Kind(0.d0)), Allocatable :: U_cov(:,:), Sigma_cov(:), Z_sample(:)
+       Real (Kind=Kind(0.d0)), Allocatable :: A_mean(:,:), A_M2(:,:)
+       Real (Kind=Kind(0.d0))              :: u, v, welford_delta, welford_delta2
+       logical                             :: initial_checkpoint, N_boot_checkpoint = .false.
+       logical                             :: Do_bootstrap, Reference_run
+       integer                             :: N_runs
+       integer                             :: ia
+       Real (Kind=Kind(0.d0))              :: A_err
+      !  Character (len=64)     :: temp, temp2
+
+       !TODO: 22.06.2026
+       !5. Ask for MPI, numerical stability -> of interpolation table
+       !
+       !9. Finish analysis of data: a) Extract Kappa(T) -> Plot; b) extract \tau(T) -> Plot; c) Plot GF; d) Extract \sigma(T)
+       !10. Analytical continuation for electrical current. What could be the reason, why in Superlattice, I get such an answer, and here this answer. Did I do something wrong? 
+            !=> I make a sanity check for the old simulation, whether I can reproduce the results I had with superlattice.
+
+
+
+
+       !TODO: MPI -> seeds for random number generators
+       !TODO: more robust implementation is not to generate the aom files until at last.
+       !The important change is: do not write Aom_ps_*, Best_fit, energies, moments, dump_*, Max_stoch_log during every bootstrap sample. That avoids MPI file collisions and removes a lot of unnecessary I/O.
+
+       !TODO: old max stoch mod + bootstrap -> new mod -> fallback to old if no bootstrap. -> new does not write the files, but explicitly calculates the cumulative means .> and only in final run writes the files.
+
+       !Todo Numerical accuracy will go down with to many ntau -> dynamically check numerical accuracy -> dynamical increase Ndis_table size
+       !Todo: better interpolation for kernel table -> sinh (in maxent_stoch_mod)
+       !TODO: fallback if kernel goes out of table -> use to see, whether interpolation is actually good
+       !TODO: How to use default model + Bootstrapping? Default model for smooth curves. => Best practice would be to start with T1 -> make one bootstrap sample -> T2 -> next bootstrap sample so on and on ..., but this will be slow AF, because parameters have to be read etc.
+       !TODO: Average chi^2
+       !TODO: Default model.
+       !----
 
        Integer                :: Ngamma, Ndis,  NBins, NSweeps, Nwarm, N_alpha, N_cov
        Integer                :: N_skip, N_rebin, N_Back, N_auto, Norb
@@ -81,7 +117,7 @@ Program MaxEnt_Wrapper
        Integer ::  N_BZ_Zones     =  1 
        Logical ::  Extended_Zone = .false.
 
-       NAMELIST /VAR_Max_Stoch/ Ngamma, Ndis,  NBins, NSweeps, Nwarm, N_alpha, &
+       NAMELIST /VAR_Max_Stoch/ Ngamma, Ndis,  NBins, NSweeps, Nwarm, N_alpha, N_boot, N_boot_checkpoint, &
             &                   OM_st, OM_en,  alpha_st, R,  Checkpoint, Tolerance, &
             &                   Stochastic
 
@@ -229,6 +265,96 @@ Program MaxEnt_Wrapper
        write(50,13) "First Moment",  Xmom1
        write(50,13) "Beta", Beta
 
+       !------Injection--------
+       !Bootstrap
+       N_alpha_1 = N_alpha - 10
+       Allocate (xom(Ndis), A(Ndis))
+       Allocate(U_cov(Ntau,Ntau), Sigma_cov(Ntau), Z_sample(Ntau)) !Allocate arrays for Gaussian resampling
+       Allocate(A_mean(Ndis, N_alpha_1), A_M2(Ndis, N_alpha_1)) !Allocate arrays for Welford online algorithm
+       A_mean = 0.d0; A_M2 = 0.d0; A_err = 0.d0
+
+       ! Bootstrap only for stochastic MaxEnt with N_boot > 1. The bootstrap samples are followed
+       ! by one reference run on the unperturbed data, which provides energies, Best_fit, Data_out,
+       ! Aom_ps_* and Green. N_boot <= 1 reproduces the original single run on the original data.
+       Do_bootstrap = Stochastic .and. N_boot > 1
+       If (Do_bootstrap) then
+          N_runs = N_boot + 1
+       else
+          N_runs = 1
+       endif
+       If (.not. Stochastic .and. N_boot > 1) &
+            & Write(50,"(A)") 'N_boot > 1 ignored: bootstrap is only implemented for stochastic MaxEnt'
+       If (Do_bootstrap) Write(50,12) "N_boot", N_boot
+
+       If (Do_bootstrap) Call Diag(XCOV_st, U_cov, Sigma_cov)  !Considering the usual sizes of Ntau this will mostlikely not be a bottlneck
+
+       If (Do_bootstrap) then
+       Do nt1 = 1, Ntau
+
+         !! ---------------------------------------------------------
+         !! SANITY CHECK: Ensure covariance is positive semi-definite
+         !! We tolerate tiny negative values from numerical round-off
+         !! (relative to the largest eigenvalue) and set them to zero,
+         !! but crash if the matrix is fundamentally broken.
+         !! ---------------------------------------------------------
+           If (Sigma_cov(nt1) < -1.d-10*maxval(abs(Sigma_cov))) then
+               write(error_unit,*) 'FATAL ERROR: Resampled Covariance matrix has a significantly negative eigenvalue!'
+               write(error_unit,*) 'Eigenvalue index: ', nt1, ' Value: ', Sigma_cov(nt1)
+               write(error_unit,*) 'Your QMC data may be corrupted, or you have too few bins.'
+               CALL Terminate_on_error(ERROR_MAXENT,__FILE__,__LINE__)
+           Endif
+           Sigma_cov(nt1) = max(Sigma_cov(nt1), 0.d0)
+       End Do
+       End If
+
+       initial_checkpoint = Checkpoint
+       ! MaxEnt_stoch resets the random number generator to a fixed seed by default. Since the
+       ! number of random draws per call does not depend on the data, every bootstrap sample
+       ! would then receive identical Gaussian noise. Continue the global stream instead.
+       If (N_boot > 1) MaxEnt_stoch_reset_seed = .false.
+
+      ! 1. Box-Mueller Covariance Resampling
+       Do iboot = 1, N_runs
+            Reference_run = (iboot == N_runs)
+            XQMC = XQMC_st
+            XCOV = XCOV_st
+            If (.not. Reference_run) then
+            Do nt = 1, Ntau !For each tau point we get a different noise
+               Do! U \in (0,1]
+                   u = ranf_wrap()
+                   If (u > tiny(0.d0)) Exit !Tiny, in order to not slow down the code, if a number smaller than 10^(-308) was sampled
+               End Do
+
+               Do ! v \in [0,1)
+                  v = ranf_wrap()
+                  If (v< 1.d0) Exit
+               End Do 
+               Z_sample(nt) = sqrt(-2.d0 * log(u)) * cos(2.d0 * pi * v)  !Box mueller of the two uniformly sampled u, v to a Gaussian N(\mu =0, \sigma=1)
+            End Do
+
+            !Apply noise to data
+            Do nt = 1, Ntau
+               Do nt1 = 1, Ntau
+                  XQMC(nt) = XQMC(nt) + U_cov(nt, nt1) * sqrt(Sigma_cov(nt1)) * Z_sample(nt1) ! Sigma_cov >= 0 ensured above
+               End Do
+            End Do
+            End If
+         
+            !2. Warmup & File Caching Logic
+            !   A dump of a previous run (Checkpoint at iboot=1, or the previous bootstrap
+            !   sample if N_boot_checkpoint) is only used as starting configuration: the data
+            !   differ, so accumulated histograms must not be reused and the warmup is kept.
+            If (Do_bootstrap) then
+               If (iboot == 1) then
+                  If (.not. Initial_Checkpoint) Call EXECUTE_COMMAND_LINE("rm -f dump*")
+               Else If (.not. N_boot_checkpoint) then
+                  Call EXECUTE_COMMAND_LINE("rm -f dump*")
+               End If
+               MaxEnt_stoch_warm_start_only = .true.
+               Checkpoint = Initial_Checkpoint .or. N_boot_checkpoint
+            End If
+       !------Injection_END----
+
        Select Case (str_to_upper(Channel))
        Case ("PH")
           If  (Stochastic)  then
@@ -297,14 +423,58 @@ Program MaxEnt_Wrapper
           CALL Terminate_on_error(ERROR_MAXENT,__FILE__,__LINE__)
        end Select
 
-       Allocate (xom(Ndis), A(Ndis))
-       If  ( Stochastic )   then
-          If ( .not.  Checkpoint  ) then
-            Command = "rm dump*"
-            Call EXECUTE_COMMAND_LINE(Command)
-            Command = "ls"
-            Call EXECUTE_COMMAND_LINE(Command)
-          endif
+       !Injection Part 2: Welford Online Algorithm (No data is written yet!)
+       !TODO: Implement welford in MaxEnt_stpcj directly. -> Write files only after last N_boot
+       !TODO: Also bootstrap A_om
+       If (Do_bootstrap .and. .not. Reference_run) then
+         Do ia=1, N_alpha_1
+            write(file2, '(A,"_",I0)') "Aom_ps", ia
+            Open(Unit=66, File=file2, status="old")
+            Do nw = 1, Ndis
+               read(66, *) xom(nw), A(nw), x, x1, x2
+               welford_delta = A(nw) - A_mean(nw, ia)  
+               A_mean(nw, ia) = A_mean(nw,ia) + welford_delta/dble(iboot) ! \bar{x}_\text{iboot} = \bar_{x}_{iboot-1} + \frac{(x_{iboot} - \bar{x}_{iboot-1})}{iboot})
+               welford_delta2 = A(nw) - A_mean(nw, ia)  !   (x_{iboot} - \bar{x}_{iboot})
+               A_M2(nw, ia) = A_M2(nw, ia) + welford_delta * welford_delta2  ! M_{2,iboot}= M_{2, iboot-1} + (x_{iboot} - \bar{x}_{iboot - 1}) (x_{iboot} - \bar{x}_{iboot})
+            End Do
+         close(66)
+         End Do
+
+         ! write(temp, '("mkdir ",A,"_",I0)') "Boot", iboot
+         ! write(temp2, '("mv Aom_ps* ",A,"_",I0)') "Boot", iboot
+         ! Call EXECUTE_COMMAND_LINE(trim(temp))
+         ! Call EXECUTE_COMMAND_LINE(trim(temp2))
+
+         !INJECTION_PART_2_END
+      End If
+   End Do
+
+
+         !INJECTION 3
+         !Calculate Bootstrap error from variance.
+         If (Do_bootstrap) Then
+         Do ia = 1, N_alpha_1
+            write(file_boot, '(A,"_",I0)') "Aom_ps_boot", ia
+            open (Unit=12, File=file_boot, Status="unknown", action="write") 
+            ! Write(12,"(A14,2x,A16,2x,A16)") "# omega", "A_mean", "A_error"
+            Do nw = 1, Ndis
+               A_err = sqrt(A_M2(nw, ia) / dble(max(1, N_boot - 1)))
+               Write(12,"(3(1X,E25.17E3))") xom(nw), A_mean(nw,ia), A_err
+            End Do
+            Close(12)
+         End Do
+         End If
+
+         !INJECTION 3 END
+      
+         If  ( Stochastic )   then
+         If ( .not.  Checkpoint  ) then
+           Command = "rm dump*"
+           Call EXECUTE_COMMAND_LINE(Command)
+           Command = "ls"
+           Call EXECUTE_COMMAND_LINE(Command)
+         endif
+          
           Open (Unit=10,File="energies",status="unknown")
 
           Do n = 1,N_alpha

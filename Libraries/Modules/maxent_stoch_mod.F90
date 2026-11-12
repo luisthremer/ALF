@@ -54,6 +54,19 @@ Module MaxEnt_stoch_mod
                                       &   Dx_spectral, Dx_table
        Real (Kind=Kind(0.d0)), allocatable, private :: XQMC1(:)
        Integer, allocatable,  private ::  Phim1_func(:), Phi_func(:)
+
+       ! Control flags for repeated calls (e.g. bootstrap resampling in Max_SAC).
+       ! MaxEnt_stoch_reset_seed = .true. : (default, original behaviour) the random number
+       !     generator is reset to a fixed seed at the beginning of every call.
+       !     .false. : the caller's random number stream is continued, so that repeated
+       !     calls (and random numbers drawn by the caller in between) are independent.
+       Logical, public :: MaxEnt_stoch_reset_seed = .true.
+       ! MaxEnt_stoch_warm_start_only = .false. : (default) an existing dump restarts the
+       !     simulation including all accumulated histograms (checkpointing).
+       !     .true. : the dump only provides the starting configurations. All accumulators are
+       !     reset and the warmup is carried out, as required when the input data changed
+       !     (e.g. a new bootstrap sample).
+       Logical, public :: MaxEnt_stoch_warm_start_only = .false.
        
        contains
 
@@ -72,7 +85,7 @@ Module MaxEnt_stoch_mod
            Integer :: Nsweeps, NBins, Ngamma_1, Ndis_1, nw, nt1
 
            ! Local
-           Integer NSims, ns, nb, nc, Nwarm, nalp1, nalp2, Nex, p_star, Ndis_table, &
+           Integer NSims, ns, nb, nc, Nwarm, Nwarm_eff, nalp1, nalp2, Nex, p_star, Ndis_table, &
                 & io_error, io_error1, i, n, nc1, nx
            Real (Kind=Kind(0.d0)), Allocatable :: Xn_M_tot(:,:), En_M_tot(:), Xn_E_tot(:,:), En_E_tot(:), &
                 & Xn_tot(:,:,:), En_tot(:), Default(:)
@@ -104,6 +117,8 @@ Module MaxEnt_stoch_mod
            Allocate (Xn(Ngamma,2))
            Allocate (Xn_m(NDis), Xn_e(NDis), A(Ndis) )
            Om_st_1 = OM_st; Om_en_1 = OM_en
+           
+           
            ! Setup table for the Kernel
            Ndis_table   = 50000
            Dx_table     =  1.d0 /dble(Ndis_table)
@@ -119,6 +134,12 @@ Module MaxEnt_stoch_mod
                  Xker_table(nt,nw) = Xker(tau,om,beta)
               enddo
            enddo
+
+
+
+
+
+
            ! Normalize  the  data
            xqmc = xqmc / XMOM1
            cov  = cov / ((XMOM1)**2)
@@ -165,13 +186,14 @@ Module MaxEnt_stoch_mod
            Call Get_seed_Len(L_seed)
            Allocate(Iseed_vec(L_seed))
            Iseed_vec = 0
-           Call Ranset(Iseed_vec)
+           If (MaxEnt_stoch_reset_seed) Call Ranset(Iseed_vec)
            File_conf = "dump_conf"
            File_Aom  = "dump_Aom"
            Open(unit=41,file=File_conf,status='old',action='read', iostat=io_error)
            Open(unit=42,file=File_Aom, status='old',action='read', iostat=io_error1)
+           Nwarm_eff = Nwarm   ! Local copy: do not overwrite the caller's Nwarm
            If (io_error == 0 .and. io_error1 == 0 ) then
-              Nwarm = 0
+              Nwarm_eff = 0
               read(41,*) (Iseed_vec(I), I = 1,size(Iseed_vec,1))
               do ns = 1,Nsims
                  do ng = 1,Ngamma
@@ -187,6 +209,19 @@ Module MaxEnt_stoch_mod
               enddo
               Open (Unit=44,File='Max_stoch_log', Status="unknown", position="append")
               Write(44,*) 'Read from dump: nc = ', nc
+              If (MaxEnt_stoch_warm_start_only) then
+                 ! Keep only the configurations Xn_tot. The data changed, so the accumulated
+                 ! histograms belong to a different problem and a warmup is needed.
+                 Xn_m_tot = 0.d0
+                 En_m_tot = 0.d0
+                 Xn_e_tot = 0.d0
+                 En_e_tot = 0.d0
+                 F_A_m    = 0.d0
+                 F_A_e    = 0.d0
+                 nc       = 0
+                 Nwarm_eff = Nwarm
+                 Write(44,*) 'Warm start: only configurations taken from dump'
+              endif
               close(44)
            else
               !Iseed is already set.
@@ -232,7 +267,7 @@ Module MaxEnt_stoch_mod
                  Open (Unit=44,File='Max_stoch_log', Status="unknown", position="append")
                 Write(44,"('Alpha, En_m, Acc ', E25.17E3, 2x, E25.17E3, 2x, E25.17E3, 2x, E25.17E3, 2x, E25.17E3)") 1.d0/Alpha, En_m, Acc_1, Acc_2
                  close(44)
-                 if (nb.gt.nwarm) then
+                 if (nb.gt.nwarm_eff) then
                     if (ns.eq.1) nc = nc + 1
                     
                     !  Given   Xn_m  =  n(x) dx   with  x =  phi(om)  the  following  loop  sets:
@@ -444,6 +479,8 @@ Module MaxEnt_stoch_mod
            DeAllocate( G_Mean )
            DeAllocate( xqmc1 )
            Deallocate( Xker_table )
+            If (Allocated(Phim1_func)) Deallocate(Phim1_func)
+           If (Allocated(Phi_func)) Deallocate(Phi_func)
            
          end Subroutine MaxEnt_stoch
 !------------------------------------------------------------------------------------------------
@@ -486,6 +523,8 @@ Module MaxEnt_stoch_mod
             Default_table  =   Default_table * Xmom1/X1
 
             ! Setup  Phimi_func
+            If (Allocated(Phim1_func)) Deallocate(Phim1_func)
+            If (Allocated(Phi_func)) Deallocate(Phi_func)   
             Allocate(Phim1_func(Size(Default_table,1)), Phi_func(Size(Default_table,1)))
             x = 0.D0 
             Do nx = 1,Size(Default_table,1)
