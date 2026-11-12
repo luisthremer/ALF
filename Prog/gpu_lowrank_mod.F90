@@ -1495,10 +1495,21 @@ Contains
     ta = p3_now()
 #endif
     b = blk_b
+#if !defined(ALF_LA_CUDA)
 #if defined(ALF_LA_ONEMKL)
     if (.not. ab_on) &
 #endif
     call la_sync()          ! the previous block's flush (cuBLAS) is asynchronous: it must be done before cbuf / bS_d are overwritten
+#else
+    ! CUDA (speedup S2): no la_sync here.  (1) The previous block's flush (the only library work reading the device cbuf / bS_d)
+    ! was waited for by the la_sync at the start of this block's blk_begin, and blk_begin ends with a blocking D->H of gbd.
+    ! (2) Between blk_begin and here only host work, synchronous target regions/updates and (non-block sites only)
+    ! gpu_lr_flush can run; gpu_lr_flush does not touch cbuf / bS_d and syncs itself before reusing S_d / M_pk.  (3) cbuf / bS_d
+    ! below are written on the HOST copy (no unified memory in the CUDA build), the device copy changes only by the target update,
+    ! and cuBLAS/cuSOLVER run on the stream of the synchronous target regions (alf_la_mod, la_init), so that update and
+    ! k_blk_scale are ordered after any library call still in flight (G_d writes included).  The removed sync waited on an idle
+    ! stream (its check_info_slots found islot = 0, reset by blk_begin's la_sync).
+#endif
 #ifdef ALF_TEAM_TIMERS
     p3t(4) = p3t(4) + (p3_now() - ta)
 #endif
