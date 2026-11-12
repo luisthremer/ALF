@@ -167,7 +167,7 @@
         "n_cd170p3f"
       ],
       "description" : "",
-      "done" : false,
+      "done" : true,
       "id" : "n_gyzcgav1",
       "order" : 3,
       "parentId" : null,
@@ -329,7 +329,7 @@
         "n_am1v0f5w"
       ],
       "description" : "",
-      "done" : false,
+      "done" : true,
       "id" : "n_1mbg55ka",
       "order" : 6,
       "parentId" : null,
@@ -386,7 +386,6 @@
         "n_1mbg55ka"
       ],
       "description" : "",
-      "done" : false,
       "id" : "n_mwcqqc7x",
       "order" : 7,
       "parentId" : null,
@@ -395,7 +394,6 @@
     {
       "collapsed" : false,
       "description" : "",
-      "done" : false,
       "id" : "n_5aliqysn",
       "order" : 0,
       "parentId" : "n_mwcqqc7x",
@@ -404,7 +402,6 @@
     {
       "collapsed" : false,
       "description" : "After warm-up, binned errors, 3 sigma.",
-      "done" : false,
       "id" : "n_erljytaq",
       "order" : 1,
       "parentId" : "n_mwcqqc7x",
@@ -413,7 +410,6 @@
     {
       "collapsed" : false,
       "description" : "After checking that the parameters match.",
-      "done" : false,
       "id" : "n_ui6wb2ut",
       "order" : 2,
       "parentId" : "n_mwcqqc7x",
@@ -422,7 +418,6 @@
     {
       "collapsed" : false,
       "description" : "",
-      "done" : false,
       "id" : "n_go0tqatb",
       "order" : 3,
       "parentId" : "n_mwcqqc7x",
@@ -431,7 +426,6 @@
     {
       "collapsed" : false,
       "description" : "",
-      "done" : false,
       "id" : "n_u4i20tls",
       "order" : 4,
       "parentId" : "n_mwcqqc7x",
@@ -443,7 +437,6 @@
         "n_1mbg55ka"
       ],
       "description" : "Sporadic 'Unstable matrix' aborts (G difference 10-28) in L24, L32, L32_fast, L44 test. Owner: fix by 12:00. Decisions 44-46.",
-      "done" : false,
       "id" : "n_aztpjo5u",
       "order" : 8,
       "parentId" : null,
@@ -533,7 +526,6 @@
     {
       "collapsed" : false,
       "description" : "Owner: get rid of the Nwrap 5 run once Nwrap 10 is shown stable. Nwrap 5 costs ~45 % (75 vs 51.9 s\/sweep). Criterion to agree: no abort and Precision Green max at CPU level over N bins.",
-      "done" : false,
       "id" : "n_9dqtyg8a",
       "order" : 9,
       "parentId" : "n_aztpjo5u",
@@ -542,7 +534,6 @@
     {
       "collapsed" : false,
       "description" : "Then flag the affected sets\/bins (expected: warm-up bins only, L24 bins 1-12 of job 560327 at most) and set n_skip accordingly.",
-      "done" : false,
       "id" : "n_sblqb4zi",
       "order" : 10,
       "parentId" : "n_aztpjo5u",
@@ -551,7 +542,6 @@
     {
       "collapsed" : false,
       "description" : "Evidence: work_node tests 560620\/560622\/560623, team stress test 560637-560639; RAS\/ECC counters N\/A for users.",
-      "done" : false,
       "id" : "n_s3coyl40",
       "order" : 11,
       "parentId" : "n_aztpjo5u",
@@ -560,7 +550,6 @@
     {
       "collapsed" : false,
       "description" : "L32_fast 560651\/560652 held; fast2-4 prepared (Nwrap 5), not submitted.",
-      "done" : false,
       "id" : "n_yu3vvdze",
       "order" : 12,
       "parentId" : "n_aztpjo5u",
