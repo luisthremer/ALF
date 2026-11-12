@@ -34,6 +34,13 @@ void alfdevqr_launch_bench(void *qq, void *scratch /* >= 64 complex<double> */) 
 void alfdevqr_probe(void *qq, void *A, int64_t lda, int64_t mfull, int nb) {
   sycl::queue &q = *static_cast<sycl::queue *>(qq);
   auto now = [] { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); };
+  {
+    auto d = q.get_device();
+    std::fprintf(stderr, "ALFSH_DEVINFO max_wg=%zu local_mem=%zu max_cu=%u max_clock=%u sub_group_sizes:", d.get_info<sycl::info::device::max_work_group_size>(), (size_t)d.get_info<sycl::info::device::local_mem_size>(),
+                 d.get_info<sycl::info::device::max_compute_units>(), d.get_info<sycl::info::device::max_clock_frequency>());
+    for (auto z : d.get_info<sycl::info::device::sub_group_sizes>()) std::fprintf(stderr, " %zu", (size_t)z);
+    std::fprintf(stderr, "  name=%s\n", d.get_info<sycl::info::device::name>().c_str());
+  }
   double *P0 = (double *)A;
   for (int64_t m : {128, 256, 384, 512, 576}) {
     if (m > mfull) continue;
