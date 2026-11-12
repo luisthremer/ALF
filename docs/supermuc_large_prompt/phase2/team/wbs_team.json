@@ -605,6 +605,60 @@
       "order" : 5,
       "parentId" : "n_0pogcitw",
       "title" : "Full batched sweep, checks (same seed, node PG, bitwise per walker), throughput vs A30"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Prompt: owner 2026-11-12, a friend's FT-AFQMC is ~10x faster (not via many walkers per kernel); occupancy never measured. Plan \/Users\/luis\/.claude\/plans\/eventual-wibbling-valiant.md.",
+      "done" : false,
+      "id" : "n_2zpx5lj8",
+      "order" : 11,
+      "parentId" : null,
+      "title" : "Phase 7: kernel-level profile and device-side update loop"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Tools: unitrace, Advisor, LIBOMPTARGET_PLUGIN_PROFILE; standard updates if supported.",
+      "done" : false,
+      "id" : "n_7hijxwq9",
+      "order" : 0,
+      "parentId" : "n_2zpx5lj8",
+      "title" : "Measure: occupancy, per-kernel time, busy vs idle per phase, round trips (subagent, <=2 node-h)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_esc2h7u8",
+      "order" : 1,
+      "parentId" : "n_2zpx5lj8",
+      "title" : "Owner: comparison facts from the friend (model, L, beta, dtau, observables, hardware, time per what, where decisions run)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Only if step 1 shows round trips dominate. Gates: bitwise vs current GPU path L6F\/L12F\/L24F, planted defect fails, node PG, update phase L24 <= 0.5x.",
+      "done" : false,
+      "id" : "n_yxoiv7af",
+      "order" : 2,
+      "parentId" : "n_2zpx5lj8",
+      "title" : "Prototype: update loop of one time slice on the device, same RNG order (pre-draw + RANDOM_SEED GET\/PUT), default off"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Same gates.",
+      "done" : false,
+      "id" : "n_tjbczdyv",
+      "order" : 3,
+      "parentId" : "n_2zpx5lj8",
+      "title" : "Occupancy tuning of the worst kernels (launch sizes, observables fusion)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_mqp64is9",
+      "order" : 4,
+      "parentId" : "n_2zpx5lj8",
+      "title" : "Results into ISSUE_INTEL_VS_A30.md, node-h to production session"
     }
   ],
   "rev" : 6,
