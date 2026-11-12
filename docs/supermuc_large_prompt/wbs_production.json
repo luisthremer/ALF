@@ -616,8 +616,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "work_smoke, real job.sh, 3 nodes, 30 min (560742-560744): GPU path ACTIVE, >=1 bin per set, snapshots, no Unstable, acceptance ~0.33.",
-      "done" : false,
+      "description" : "work_smoke, real job.sh, 3 nodes, 30 min (560742-560744): GPU path ACTIVE, >=1 bin per set, snapshots, no Unstable, acceptance ~0.33. Owner: no need to wait for it; production submitted while the smoke jobs were still running (they end at their 30-min limit, results read as an early check).",
+      "done" : true,
       "id" : "n_7fwfuvfg",
       "order" : 3,
       "parentId" : "n_26cr93nm",
@@ -625,8 +625,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "Check ExcNodeList and dependencies.",
-      "done" : false,
+      "description" : "Check ExcNodeList and dependencies. Submitted 2026-11-12 ~14:20 on the owner's word ('just immediately run the production runs'): L24_U2 560747-560748, L28_U2 560749-560750, L32_U2 560751-560753; ExcNodeList and dependencies checked.",
+      "done" : true,
       "id" : "n_e4yu9dhr",
       "order" : 4,
       "parentId" : "n_26cr93nm",
