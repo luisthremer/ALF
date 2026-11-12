@@ -482,7 +482,7 @@
       "description" : "Owner 2026-11-12: keep in mind, do NOT work on it yet. Reuse our measured evidence (scaling, single-chain and node throughput, correctness checks).",
       "done" : false,
       "id" : "n_k2mfq94n",
-      "order" : 9,
+      "order" : 10,
       "parentId" : null,
       "title" : "GCS application 140k GPU-h (SuperMUC-NG Phase 2): LaTeX technical part"
     },
@@ -539,8 +539,74 @@
       "order" : 5,
       "parentId" : "n_v7wyl9eg",
       "title" : "Throughput benchmark: does the single-chain speedup raise total throughput with 4 walkers per tile?"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_v7wyl9eg"
+      ],
+      "description" : "Owner 2026-11-12. Today 4 walkers\/tile reach ~20 % of the tile compute floor (E: ~6-7 TFLOP per walker-sweep at L24, 10-15 TFLOP\/s zgemm per tile). Estimate: ceiling 4-5x, realistic 2-3x per card (E). Measure first, then hand development to a Sonnet subagent.",
+      "done" : false,
+      "id" : "n_0pogcitw",
+      "order" : 9,
+      "parentId" : null,
+      "title" : "Phase 6: batched multi-walker GPU path (throughput rebuild)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "job 560772",
+      "done" : false,
+      "id" : "n_5ubioznl",
+      "order" : 0,
+      "parentId" : "n_0pogcitw",
+      "title" : "Measure throughput vs walkers per tile (1\/2\/4\/8, V7)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "job 560773",
+      "done" : false,
+      "id" : "n_mtt452m3",
+      "order" : 1,
+      "parentId" : "n_0pogcitw",
+      "title" : "Measure work per sweep: MKL_VERBOSE FLOP count + device-QR calls"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_wupch5cn",
+      "order" : 2,
+      "parentId" : "n_0pogcitw",
+      "title" : "Decision: rebuild worth it? (owner)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_qngrzpm7",
+      "order" : 3,
+      "parentId" : "n_0pogcitw",
+      "title" : "Design: walker index in GPU modules, batched kernels\/BLAS, MPI\/PP layout"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_makj7mtj",
+      "order" : 4,
+      "parentId" : "n_0pogcitw",
+      "title" : "Prototype batched wrap + stabilisation for B walkers, bitwise vs single-walker"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_in02dd0b",
+      "order" : 5,
+      "parentId" : "n_0pogcitw",
+      "title" : "Full batched sweep, checks (same seed, node PG, bitwise per walker), throughput vs A30"
     }
   ],
-  "rev" : 4,
+  "rev" : 5,
   "version" : 1
 }
