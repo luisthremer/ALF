@@ -28,4 +28,9 @@ if(ALF_MALA_TESTS)
   endif()
   add_subdirectory(MALA.tests)
 endif()
+# End-to-end checks of fork features with Prog/ALF.out (update schemes, Hubbard Ltau = 1 pinning rule). They read the
+# plain-text observable files, so they run only for a serial build without HDF5 (e.g. the MALA CI job's build).
+if(NOT "${FLAG_LIST}" MATCHES "-D(MPI|TEMPERING|PARALLEL_PARAMS|HDF5)")
+  add_subdirectory(Run.tests)
+endif()
 enable_testing()

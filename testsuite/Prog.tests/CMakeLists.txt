@@ -136,3 +136,53 @@ add_test(33-Op-equal 33-Op-equal)
 add_test(34-Op-V-symm-pass 34-Op-V-symm-pass)
 add_test(35-Op-V-symm-fail 35-Op-V-symm-fail)
 set_tests_properties(35-Op-V-symm-fail PROPERTIES WILL_FAIL TRUE)
+
+# ---- fork additions: time-dependent hopping element, alf_exit, ALF_UNSTABLE_THRESHOLD ----
+add_executable(36-OpT-time-dependent 36-OpT-time-dependent.F90)
+target_link_libraries(36-OpT-time-dependent ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/OpT_time_dependent.o
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/ContainerElementBase_mod.o
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/Operator_mod.o ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/Fields_mod.o)
+add_executable(37-alf-exit 37-alf-exit.F90)
+add_executable(38-unstable-threshold 38-unstable-threshold.F90)
+target_link_libraries(38-unstable-threshold ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/control_mod.o)
+foreach(iter 36-OpT-time-dependent 37-alf-exit 38-unstable-threshold)
+  target_compile_options(${iter} PRIVATE ${FLAG_LIST})
+  target_include_directories(${iter} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/)
+  target_include_directories(${iter} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules/)
+  target_link_libraries(${iter} ${LIB_LIST})
+endforeach(iter)
+
+add_test(36-OpT-time-dependent 36-OpT-time-dependent)
+
+# alf_exit: exit status 0 / 1 / 2 (and 1 for any other code)
+set(EXPECT_EXIT ${CMAKE_CURRENT_SOURCE_DIR}/expect_exit.cmake)
+foreach(pair "0;0" "1;1" "2;2" "7;1")
+  list(GET pair 0 code)
+  list(GET pair 1 expected)
+  add_test(NAME 37-alf-exit-${code}
+    COMMAND ${CMAKE_COMMAND} -DCMD=$<TARGET_FILE:37-alf-exit>\;${code} -DEXPECTED=${expected} -P ${EXPECT_EXIT})
+endforeach()
+
+# ALF_UNSTABLE_THRESHOLD: a deviation of 0.5 passes with the default (10) and with 1.0, aborts with 0.25;
+# a non-positive or unparsable value ends the program with exit status 2.
+add_test(38-unstable-threshold-default 38-unstable-threshold)
+set_tests_properties(38-unstable-threshold-default PROPERTIES ENVIRONMENT "ALF_UNSTABLE_THRESHOLD=" PASS_REGULAR_EXPRESSION "PASS: deviation")
+add_test(38-unstable-threshold-1.0 38-unstable-threshold)
+set_tests_properties(38-unstable-threshold-1.0 PROPERTIES ENVIRONMENT "ALF_UNSTABLE_THRESHOLD=1.0" PASS_REGULAR_EXPRESSION "PASS: deviation")
+if(NOT "${FLAG_LIST}" MATCHES "-DTEMPERING")
+  # (with TEMPERING the abort branch first writes Temp_<igroup>/info, a directory a unit test does not have)
+  add_test(38-unstable-threshold-0.25 38-unstable-threshold)
+  set_tests_properties(38-unstable-threshold-0.25 PROPERTIES ENVIRONMENT "ALF_UNSTABLE_THRESHOLD=0.25"
+    PASS_REGULAR_EXPRESSION "exceeding the threshold" FAIL_REGULAR_EXPRESSION "PASS: deviation")
+endif()
+if(NOT "${FLAG_LIST}" MATCHES "-D(MPI|TEMPERING|PARALLEL_PARAMS)")
+  # serial build: Terminate_on_error(ERROR_UNSTABLE_MATRIX) = error stop 3 (MPI builds call MPI_ABORT instead)
+  add_test(NAME 38-unstable-threshold-0.25-exit
+    COMMAND ${CMAKE_COMMAND} -DCMD=$<TARGET_FILE:38-unstable-threshold> -DEXPECTED=3
+      -DENVVAR=ALF_UNSTABLE_THRESHOLD=0.25 -P ${EXPECT_EXIT})
+endif()
+foreach(bad abc -1 0)
+  add_test(NAME 38-unstable-threshold-bad-${bad}
+    COMMAND ${CMAKE_COMMAND} -DCMD=$<TARGET_FILE:38-unstable-threshold> -DEXPECTED=2
+      -DENVVAR=ALF_UNSTABLE_THRESHOLD=${bad} -P ${EXPECT_EXIT})
+endforeach()
