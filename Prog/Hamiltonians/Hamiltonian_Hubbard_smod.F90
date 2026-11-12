@@ -130,7 +130,7 @@
       Use Predefined_Hoppings
       Use LRC_Mod
       Use Natural_Constants, only: Eps_small
-      Use QMC_runtime_var, only: get_Ltau
+      Use QMC_runtime_var, only: get_Ltau, get_Langevin, get_HMC, get_LOBS_ST, get_LOBS_EN
 #ifdef ALF_GPU
       Use gpu_obs_mod, only: gpu_obs_setup, gpu_obs_active, gpu_obs_measure
 #endif
@@ -256,6 +256,17 @@
 #endif
              ham_h0 = 0.d0
              h0_off_by_ltau = .true.
+          endif
+
+          ! The local observables of the pinning defect (SpinZ_local, SpinZ_localtau) are normalised for one setting only:
+          ! finite temperature, sequential updates, measurements on all time slices.  With the projector, with Langevin or
+          ! HMC updates, or with a restricted measurement window they come out wrong (missing or double-weighted end points,
+          ! or NaN when slice Ltrot/2 is not measured), so these combinations are refused.
+          if (abs(ham_h0) > 0.d0 .and. ( Projector .or. get_Langevin() .or. get_HMC() &
+               &                        .or. get_LOBS_ST() /= 0 .or. get_LOBS_EN() /= 0 )) then
+             Write(error_unit,*) 'Ham_Set: the pinning field (ham_h0 /= 0) needs Projector = .F., sequential updates'
+             Write(error_unit,*) '         (no Langevin, no HMC) and the default measurement window (LOBS_ST = 0, LOBS_EN = 0).'
+             CALL Terminate_on_error(ERROR_HAMILTONIAN,__FILE__,__LINE__)
           endif
 
           Thtrot = 0

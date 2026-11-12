@@ -81,7 +81,8 @@ trajectories (with and without the defect). `SpinZ_localtau` agrees with an exac
 calculation to 4.7e-14 for all tau.
 
 Known defects of the point-defect observable outside the production setting (finite temperature,
-sequential updates, default `LOBS_ST`), found in the same check and **not fixed**:
+sequential updates, default `LOBS_ST`), found in the same check. `Ham_Set` now **refuses** these
+combinations with `ham_h0 /= 0` (the normalisation itself is unchanged):
 
 1. `SpinZ_localtau` is NaN if slice `Ltrot/2` is never measured (for example `LOBS_ST = 15`,
    `Ltrot = 20`): the normalisation counter is only incremented at that slice.
@@ -90,7 +91,8 @@ sequential updates, default `LOBS_ST`), found in the same check and **not fixed*
 3. With Langevin or HMC updates the endpoint weights are wrong (tau = 0 column zero, tau = beta
    doubled).
 
-Until these are fixed the defect should only be used in the production setting.
+A proper fix (count every measurement, weight only end points that are visited half as often)
+needs the same change in the host code, `gpu_obs_mod.F90` and the HIP kernel, and is left open.
 
 ## Verification
 
