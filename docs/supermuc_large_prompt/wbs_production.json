@@ -1,0 +1,772 @@
+{
+  "archived": false,
+  "name": "SuperMUC-NG Phase 2 production L=24/28/32 (preempt)",
+  "nodes": [
+    {
+      "collapsed": false,
+      "description": "",
+      "id": "special_start",
+      "kind": "start",
+      "order": 0,
+      "parentId": null,
+      "title": "Start",
+      "done": false
+    },
+    {
+      "collapsed": false,
+      "description": "Point-defect Hubbard production (Jakob's parameters) at L=24, 28, 32 (+ L32_fast) for U = 5.0-5.6 (10 values), on general (2-day chains, pn93la), running the full submitted chains (owner 2026-11-11: no early stop; L24/L32_fast 2 jobs, L28/L32 3 jobs), verified correct before and during the run. No production above L=36. 2026-11-12: faulty GPU node excluded, unstable-matrix guard (decision 46), extra L32 Nwrap 10 run. 2026-11-12 (decision 47): second U set (5.15-5.425, 6 values) at L=24/28/32, owner analyses the h5 files on Fri 20 Nov; chains may continue.",
+      "id": "special_goal",
+      "kind": "goal",
+      "order": 0,
+      "parentId": null,
+      "title": "Goal",
+      "done": false
+    },
+    {
+      "collapsed": false,
+      "description": "Plan file ~/.claude/plans/okay-following-idea-we-rustling-valiant.md approved 2026-11-11.",
+      "done": true,
+      "id": "n_qflgdf87",
+      "order": 0,
+      "parentId": null,
+      "title": "M1 Plan and owner decisions"
+    },
+    {
+      "collapsed": false,
+      "description": "Owner: GPU-h are not a constraint (preempt may not be billed).",
+      "done": true,
+      "id": "n_93td3fpw",
+      "order": 0,
+      "parentId": "n_qflgdf87",
+      "title": "Accounts: pn93la, then pn73xu, then pr94vu"
+    },
+    {
+      "collapsed": false,
+      "description": "L=32 also runs on Helma: independent cross-check.",
+      "done": true,
+      "id": "n_cuiwdag9",
+      "order": 1,
+      "parentId": "n_qflgdf87",
+      "title": "All three sizes, 16 walkers per U"
+    },
+    {
+      "collapsed": false,
+      "description": "L=32 layout chosen by the owner from the T5b wall-clock table.",
+      "done": true,
+      "id": "n_7wg85zo2",
+      "order": 2,
+      "parentId": "n_qflgdf87",
+      "title": "L=24 and L=28 at 4 walkers per tile (5 nodes each)"
+    },
+    {
+      "collapsed": false,
+      "description": "Owner: losing a segment (days) is not acceptable; script-only snapshots chosen over an ALF code change.",
+      "done": true,
+      "id": "n_mp64g4g7",
+      "order": 3,
+      "parentId": "n_qflgdf87",
+      "title": "Kill safety: rolling snapshots, <= 30 min loss"
+    },
+    {
+      "collapsed": false,
+      "dependsOn": [
+        "n_qflgdf87"
+      ],
+      "description": "docs/supermuc_large_prompt/prod/ in ALF_wt_large_prompt, branch production-mpi-intel-large-prompt.",
+      "done": true,
+      "id": "n_qlxa2x1f",
+      "order": 1,
+      "parentId": null,
+      "title": "M2 Production scripts"
+    },
+    {
+      "collapsed": false,
+      "description": "Commit 469c25a7; tested against a fake ALF only.",
+      "done": true,
+      "id": "n_wjxnx5lh",
+      "order": 0,
+      "parentId": "n_qlxa2x1f",
+      "title": "Preempt job template + recovery (RUNNING, corrupt HDF5, stop guard, segments.log)"
+    },
+    {
+      "collapsed": false,
+      "description": "Commit 469c25a7; planted violations exit 1.",
+      "done": true,
+      "id": "n_opxrhebj",
+      "order": 1,
+      "parentId": "n_qlxa2x1f",
+      "title": "check_params.py, check_seeds.py, cmp_h5dump.py, README"
+    },
+    {
+      "collapsed": false,
+      "description": "Watcher in the job; recovery restores only damaged sets from the newest complete slot. Implemented (recover.sh rc_snapshot_loop, 2 slots, .restoring marker); local fake-ALF tests (a)-(e) PASS; real-ALF test is T3.",
+      "done": true,
+      "id": "n_achl5o83",
+      "order": 2,
+      "parentId": "n_qlxa2x1f",
+      "title": "Rolling snapshots (2 slots per set, <= 30 min)"
+    },
+    {
+      "collapsed": false,
+      "description": "Only the manager commits. Tag smuc2-prod-2026-11 (f0e8c924).",
+      "done": true,
+      "id": "n_f49kh8nb",
+      "order": 3,
+      "parentId": "n_qlxa2x1f",
+      "title": "Commit snapshot version and tag smuc2-prod-2026-11"
+    },
+    {
+      "collapsed": false,
+      "dependsOn": [
+        "n_qlxa2x1f"
+      ],
+      "description": "Source 5667acda shipped to $SCRATCH/prod_2026-11/src; build_all in the test partition.",
+      "done": true,
+      "id": "n_cd170p3f",
+      "order": 2,
+      "parentId": null,
+      "title": "M3 Build (T0/T1)"
+    },
+    {
+      "collapsed": false,
+      "description": "Copy to /hppfs/work/pn93la/di38zuw/prod_2026-11/bin with md5. Done: md5 445f966e9f64ca879c59196b5ebfd0cf, bin/ALF-pp-intel-5667acda.out (verified by manager).",
+      "done": true,
+      "id": "n_mk3v4ca1",
+      "order": 0,
+      "parentId": "n_cd170p3f",
+      "title": "Production binary pp (PP, GPU=intel, HDF5)"
+    },
+    {
+      "collapsed": false,
+      "description": "For the same-seed comparison. Done (jobs 560144).",
+      "done": true,
+      "id": "n_3krqkofa",
+      "order": 1,
+      "parentId": "n_cd170p3f",
+      "title": "Text binaries gpu-pptxt and cpu-pptxt"
+    },
+    {
+      "collapsed": false,
+      "description": "Done: 53/53 GPU (46 s), 53/53 CPU (job 560145, verified).",
+      "done": true,
+      "id": "n_dtej9tp2",
+      "order": 2,
+      "parentId": "n_cd170p3f",
+      "title": "ctest on gpu-ser and cpu-ser (53/53 each)"
+    },
+    {
+      "collapsed": false,
+      "description": "Done: $SCRATCH/prod_2026-11/BUILD_PROVENANCE.md.",
+      "done": true,
+      "id": "n_7tuwkljy",
+      "order": 3,
+      "parentId": "n_cd170p3f",
+      "title": "BUILD_PROVENANCE.md (sha, modules, md5)"
+    },
+    {
+      "collapsed": false,
+      "dependsOn": [
+        "n_cd170p3f"
+      ],
+      "description": "",
+      "done": true,
+      "id": "n_gyzcgav1",
+      "order": 3,
+      "parentId": null,
+      "title": "M4 Correctness checks (T2/T3/T4)"
+    },
+    {
+      "collapsed": false,
+      "description": "10 U, 32 ranks CCS, 3 threads, NSweep 10, N_delay 64, Nwrap 10; Mz=F <= 1e-13, configs identical; negative control (changed seed) must fail. PASS: worst 8.5e-14 over 10 Temp_i, configs+acceptance identical; negative control FAIL 3.5e-1 (job 560157/560165, verified).",
+      "done": true,
+      "id": "n_epizb11r",
+      "order": 0,
+      "parentId": "n_gyzcgav1",
+      "title": "T2 same-seed GPU vs CPU, production config at L=8"
+    },
+    {
+      "collapsed": false,
+      "description": "Same seeds, Ener_scal via h5dump. PASS: bit-identical Ener_scal obser+sign, 10 Temp_i.",
+      "done": true,
+      "id": "n_8q5u3zu6",
+      "order": 1,
+      "parentId": "n_gyzcgav1",
+      "title": "T2b HDF5 production binary equals the text GPU binary"
+    },
+    {
+      "collapsed": false,
+      "description": "(a) reference, (b) kill + recover, (c) corrupt confout, (d) snapshots: final data bit-identical except at most one duplicated bin. PASS on real ALF (job 560175): (a)-(e) final data.h5 + all confouts bit-identical to reference, 0 orphan ranks, snapshots taken; fix: HDF5_USE_FILE_LOCKING=FALSE for the scripts' h5ls (a locked h5ls crashed ALF in job 560169).",
+      "done": true,
+      "id": "n_9lhmegr0",
+      "order": 2,
+      "parentId": "n_gyzcgav1",
+      "title": "T3 restart test on real ALF"
+    },
+    {
+      "collapsed": false,
+      "description": "check_params.py vs ref_L24/parameters, check_seeds.py over all 480 seeds. check_params.py and check_seeds.py on every run directory (2026-11-11/12); 808 seeds in the 9 active run directories distinct (2026-11-12).",
+      "done": true,
+      "id": "n_h2tfwfbz",
+      "order": 3,
+      "parentId": "n_gyzcgav1",
+      "title": "T4 parameter and seed checks of the run directories"
+    },
+    {
+      "collapsed": false,
+      "description": "Fresh agent, not the author. Done: T2 OK (metric is file-scale; element-wise ~1e-11 on small entries), T3 OK; concerns: template never run under Slurm, no module check, disk-full paths, restore choice, requeue cap, coverage only L=8.",
+      "done": true,
+      "id": "n_ee41a8yy",
+      "order": 4,
+      "parentId": "n_gyzcgav1",
+      "title": "Independent numerics review of T2/T3 evidence"
+    },
+    {
+      "collapsed": false,
+      "description": "Module check, loud snapshot failures, copy-then-replace restore, best restore source by bins, requeue cap, mixed-bin confout logging. Done (f0e8c924).",
+      "done": true,
+      "id": "n_k70meh7l",
+      "order": 5,
+      "parentId": "n_gyzcgav1",
+      "title": "Fix review findings in recover.sh/job_preempt.sh"
+    },
+    {
+      "collapsed": false,
+      "description": "Filled job_preempt.sh, L=8, preempt partition: restart count, appended logs, recovery, snapshots, CPU_MAX end, stop guard. PASS: jobs 560205 (requeue, recovery, snapshots, CPU_MAX end) and 560213 (stop guard).",
+      "done": true,
+      "id": "n_kom2mwn4",
+      "order": 6,
+      "parentId": "n_gyzcgav1",
+      "title": "Real template test under Slurm with scontrol requeue"
+    },
+    {
+      "collapsed": false,
+      "description": "Production sizes exercise the delayed-update accumulation (N > N_delay); file-scale and element-wise metrics. PASS under decision 43 (compare_large.py): real parts within 10x CPU-vs-CPU spread, confouts/acceptance identical; Im of scalar observables report-only (summation order of device reductions); planted defects FAIL.",
+      "done": true,
+      "id": "n_ywn5mtgt",
+      "order": 7,
+      "parentId": "n_gyzcgav1",
+      "title": "Same-seed GPU vs CPU at L=24 and L=16"
+    },
+    {
+      "collapsed": false,
+      "dependsOn": [
+        "n_gyzcgav1"
+      ],
+      "description": "",
+      "done": true,
+      "id": "n_3l49m0in",
+      "order": 4,
+      "parentId": null,
+      "title": "M5 Timing and size (T5/T5b)"
+    },
+    {
+      "collapsed": false,
+      "description": "Marginal s/sweep per chain (wall clock), bytes per bin, device memory, Precision Green max < 1e-8. s/sweep/chain 13.4 / 29.6 / 51.9; node sweeps/s 2.39 / 1.08 / 0.62; bytes/bin 2.4 / 3.8 / 5.6 MB; Green max 5.5e-11 / 1.1e-10 / 6.8e-10.",
+      "done": true,
+      "id": "n_8jskpftf",
+      "order": 0,
+      "parentId": "n_3l49m0in",
+      "title": "T5 L=24/28/32 at 4 walkers per tile"
+    },
+    {
+      "collapsed": false,
+      "description": "1, 2 (CCS 0:2 and 0:4), 4 walkers per tile; projected wall time to 6000 sweeps per walker and nodes needed. 1/tile 26.1 s (43 h, 20 nodes); 2/tile CCS2 35.2 s (59 h, 10 nodes); 2/tile CCS4 42.1 s (70 h); 4/tile 51.9 s (86.5 h, 5 nodes).",
+      "done": true,
+      "id": "n_l7crs7po",
+      "order": 1,
+      "parentId": "n_3l49m0in",
+      "title": "T5b L=32 layout scan with full wall clock"
+    },
+    {
+      "collapsed": false,
+      "description": "From bytes per bin x 600 bins x 30 sets plus 2 snapshot slots. WORK: ~600 bins x (2.4+3.8+5.6) MB x 10 sets = ~71 GB live, ~5 copies ~360 GB < 1.05 TB.",
+      "done": true,
+      "id": "n_nc8hcbt1",
+      "order": 2,
+      "parentId": "n_3l49m0in",
+      "title": "Storage decision (WORK 1.05 TB vs SCRATCH)"
+    },
+    {
+      "collapsed": false,
+      "dependsOn": [
+        "n_3l49m0in"
+      ],
+      "description": "",
+      "done": true,
+      "id": "n_am1v0f5w",
+      "order": 5,
+      "parentId": null,
+      "title": "M6 Gate report and owner decisions"
+    },
+    {
+      "collapsed": false,
+      "description": "Done in chat 2026-11-11.",
+      "done": true,
+      "id": "n_oxldyfkd",
+      "order": 0,
+      "parentId": "n_am1v0f5w",
+      "title": "Report T0-T5b to the owner"
+    },
+    {
+      "collapsed": false,
+      "description": "4 per tile (5 nodes); owner asked for 2 additional runs at 1 per tile (details open).",
+      "done": true,
+      "id": "n_ndk62nqm",
+      "order": 1,
+      "parentId": "n_am1v0f5w",
+      "title": "Owner picks the L=32 layout"
+    },
+    {
+      "collapsed": false,
+      "description": "2026-11-11: submit all three after the template test; mail to the owner's address.",
+      "done": true,
+      "id": "n_q24rrwbi",
+      "order": 2,
+      "parentId": "n_am1v0f5w",
+      "title": "Owner OK to submit"
+    },
+    {
+      "collapsed": false,
+      "dependsOn": [
+        "n_am1v0f5w"
+      ],
+      "description": "",
+      "done": true,
+      "id": "n_1mbg55ka",
+      "order": 6,
+      "parentId": null,
+      "title": "M7 Production launch"
+    },
+    {
+      "collapsed": false,
+      "description": "/hppfs/work/pn93la/di38zuw/prod_2026-11/; NSweep 10, N_delay 64, Nwrap 10, CPU_MAX 166, target 600 bins. check_params PASS x3, 480 seeds distinct.",
+      "done": true,
+      "id": "n_xqn24pqv",
+      "order": 0,
+      "parentId": "n_1mbg55ka",
+      "title": "Generate RUN_L24/28/32 (make_pp_dirs.py, seed offsets 24/28/32)"
+    },
+    {
+      "collapsed": false,
+      "description": "Jobs 560229 (L24), 560230 (L28), 560231 (L32), preempt, 5 nodes each, TARGET_BINS 600.",
+      "done": true,
+      "id": "n_bfq1i1yh",
+      "order": 1,
+      "parentId": "n_1mbg55ka",
+      "title": "Fill job templates and submit three preempt jobs"
+    },
+    {
+      "collapsed": false,
+      "description": "GPU path ACTIVE, acceptance ~0.32-0.33, Precision Green/Phase max < 1e-8, s/bin as in T5, snapshots written, no requeue loop. 2026-11-11 22:30: jobs 560229-560234 ran ~6x too slow: --cpus-per-task=1 pinned every rank to one logical cpu (taskset). Fixed (fa393610), cancelled, resubmitted as 560309 (L24), 560310 (L28), 560311 (L32), 560312 (L32_fast); bins kept via recovery. Check affinity once they run. Owner 2026-11-11: 25k GPU-h on pn93la, 5-node runs to general: L24 stays on preempt (560309, running); L28 chain 560319-560321, L32 chain 560322-560324, L32_fast chain 560325-560326 (general, 2-day jobs, afterany, CPU_MAX 47 h). L24 also moved to general (was preempted by our own L28 general job): chain 560327-560328; recovery kept 8 bins per set (Temp_4: 7). L28 speed after the fix: 302 s per bin (30.2 s/sweep, T5: 29.6). Stop target off: target_bins=1000000 in every run dir (de771d49). 2026-11-12 01:24: RUN_L32 (560322) aborted 'Unstable matrix' (U=5.25, G diff 21.3); restarted clean with Nwrap 5 (decision 44), chain 560323-560324-560394, old run kept as RUN_L32_failed_nwrap10_2026-11-12. 2026-11-12: L32_fast and L36 aborted and restarted clean with Nwrap 5 (decision 45): RUN_L32_fast 560397-560398, RUN_L36 560399-560401; RUN_L32_fast2-4 (prepared) also Nwrap 5. Done 2026-11-11: GPU path active, speed matches T5 after the --cpus-per-task fix.",
+      "done": true,
+      "id": "n_pgz21fmj",
+      "order": 2,
+      "parentId": "n_1mbg55ka",
+      "title": "First 2 h check"
+    },
+    {
+      "collapsed": false,
+      "description": "Owner 2026-11-11: fast L=32 run for all 10 U at 1 walker per tile: 4 walkers/U, 40 ranks, 5 nodes, 8 ranks/node, 14 threads, no CCS, seed offset 132 (520 seeds distinct), job 560234. 2026-11-12: restarted clean with Nwrap 5 (decision 45), chain used up after two 'Unstable matrix' aborts (faulty node); relaunch 560651/560652 HELD by the owner ('Don't run the L32_fast for now').",
+      "done": true,
+      "id": "n_63205wu7",
+      "order": 3,
+      "parentId": "n_1mbg55ka",
+      "title": "Extra RUN_L32_fast (1 walker per tile) submitted"
+    },
+    {
+      "collapsed": false,
+      "description": "Big-L tests (BIGL_RESULTS.md): L36 P1 46.7 s/sweep, PG max 6.9e-10, 5.1 GiB/tile; N_delay irrelevant (update ~20 % of sweep; stabilisation 54-61 %, geqrf dominant). L>=40: Precision Green max up to 1.5e-8/3.2e-8 and one 'Unstable matrix' abort at L44 with Nwrap 10 (owner: no production > 36 anyway). RUN_L36: 8 U (5.1-5.5) x 1 walker, 1 node, 1 per tile, 14 threads, N_delay 64, general chain 560381-560383. 2026-11-12 ~12:45: ABORTED by the owner ('Abort L36 production runs if they are running'): running 560399 and queued 560649/560650 cancelled at 34-35 bins per U (Nwrap 5); all Temp_*/data.h5 and confout readable, RUNNING left (a restart would recover it).",
+      "done": true,
+      "id": "n_nk1w5ybq",
+      "order": 4,
+      "parentId": "n_1mbg55ka",
+      "title": "RUN_L36 (1 node, 8 U x 1 walker) submitted"
+    },
+    {
+      "collapsed": false,
+      "dependsOn": [
+        "n_1mbg55ka"
+      ],
+      "description": "",
+      "done": false,
+      "id": "n_mwcqqc7x",
+      "order": 7,
+      "parentId": null,
+      "title": "M8 Monitoring and physics cross-checks (until Fri 20 Nov)"
+    },
+    {
+      "collapsed": false,
+      "description": "",
+      "done": false,
+      "id": "n_5aliqysn",
+      "order": 0,
+      "parentId": "n_mwcqqc7x",
+      "title": "Daily: segments.log, snapshots.log, bins per set, precision, budget/account switch"
+    },
+    {
+      "collapsed": false,
+      "description": "After warm-up, binned errors, 3 sigma.",
+      "done": false,
+      "id": "n_erljytaq",
+      "order": 1,
+      "parentId": "n_mwcqqc7x",
+      "title": "L=24 U=5.3 vs A30 reference E = -505.42 +- 0.40"
+    },
+    {
+      "collapsed": false,
+      "description": "After checking that the parameters match.",
+      "done": false,
+      "id": "n_ui6wb2ut",
+      "order": 2,
+      "parentId": "n_mwcqqc7x",
+      "title": "L=32 vs Helma run of the same U values"
+    },
+    {
+      "collapsed": false,
+      "description": "",
+      "done": false,
+      "id": "n_go0tqatb",
+      "order": 3,
+      "parentId": "n_mwcqqc7x",
+      "title": "Equilibration and n_skip per size"
+    },
+    {
+      "collapsed": false,
+      "description": "",
+      "done": false,
+      "id": "n_u4i20tls",
+      "order": 4,
+      "parentId": "n_mwcqqc7x",
+      "title": "Analysis: drop bit-identical consecutive bins (preemption duplicates)"
+    },
+    {
+      "collapsed": false,
+      "dependsOn": [
+        "n_1mbg55ka"
+      ],
+      "description": "Sporadic 'Unstable matrix' aborts (G difference 10-28) in L24, L32, L32_fast, L44 test. Owner: fix by 12:00. Decisions 44-46.",
+      "done": false,
+      "id": "n_aztpjo5u",
+      "order": 8,
+      "parentId": null,
+      "title": "M9 Unstable-matrix incident 2026-11-12 (faulty GPU node)"
+    },
+    {
+      "collapsed": false,
+      "description": "work_replay gpuA: same binary, same confin, ran past the abort bin without abort -> non-deterministic event, not Nwrap/physics.",
+      "done": true,
+      "id": "n_qc8oklg6",
+      "order": 0,
+      "parentId": "n_aztpjo5u",
+      "title": "Replay of the aborted L32_fast walker from its saved state"
+    },
+    {
+      "collapsed": false,
+      "description": "L32_fast 560325/560397/560398, L32 560322/560323, L24 560327, L44 test 560331.",
+      "done": true,
+      "id": "n_2nivubmv",
+      "order": 1,
+      "parentId": "n_aztpjo5u",
+      "title": "Pattern: all 7 aborts on GPU tile 1 (rank mod 8 = 1)"
+    },
+    {
+      "collapsed": false,
+      "description": "L44 input: aborts on i20r02c06s02 (560331 x2, 560620 A/B, G diff 15.7/10.05), clean on i20r01c01s06 (560622) and on the same node with tile 1 hidden (560623, ZE_AFFINITY_MASK=0,2-7; Precision Phase identical to the control).",
+      "done": true,
+      "id": "n_4ljkkfv4",
+      "order": 2,
+      "parentId": "n_aztpjo5u",
+      "title": "Node test: i20r02c06s02 tile 1 faulty (confirmed)"
+    },
+    {
+      "collapsed": false,
+      "description": "560610: 2x64 identical replicas, 4/tile, 34 sweeps: all bit-identical, no abort; base == ALF_OM_SYNC_ALWAYS build -> no code race seen.",
+      "done": true,
+      "id": "n_oet8io0w",
+      "order": 3,
+      "parentId": "n_aztpjo5u",
+      "title": "Stress test on healthy nodes (128 replicas) + hard-sync build"
+    },
+    {
+      "collapsed": false,
+      "description": "ExcNodeList on all pending jobs; #SBATCH --exclude in the template and every RUN_*/job.sh.",
+      "done": true,
+      "id": "n_dr5jqzaq",
+      "order": 4,
+      "parentId": "n_aztpjo5u",
+      "title": "Exclude i20r02c06s02 from all jobs"
+    },
+    {
+      "collapsed": false,
+      "description": "Branch production-mpi-intel-unstable-guard 410c7b04, binary ALF-pp-intel-410c7b04.out (md5 d2dac440). Threshold 1e-4 in production (healthy max <= 3e-8). Tests 560642/560643: bit-identical to 5667acda (unset and 1e-4), 1e-15 aborts, real job script restarts and stops at the cap.",
+      "done": true,
+      "id": "n_rnl5de5n",
+      "order": 5,
+      "parentId": "n_aztpjo5u",
+      "title": "Guard branch: ALF_UNSTABLE_THRESHOLD + in-job restart (decision 46)"
+    },
+    {
+      "collapsed": false,
+      "description": "Old scripts kept as job.sh.5667acda. New links: L32 560646, L28 560647-560648, L36 560649-560650, L32_fast 560651-560652; all held until the A/B test passes. Running jobs keep their old script/binary.",
+      "done": true,
+      "id": "n_x6ytjp8l",
+      "order": 6,
+      "parentId": "n_aztpjo5u",
+      "title": "Deploy new job scripts, resubmit chain links"
+    },
+    {
+      "collapsed": false,
+      "description": "work_ab: L36 (8 walkers, 1/tile) and L28 (2 U, 32 walkers, 4/tile CCS) from the same snapshots, old vs new (560654-560657); criterion: appended bins and confouts bit-identical. Then release the held links (not L32_fast). RESULT 2026-11-12 (cmp job 560692, cmp_h5dump.py --tol 0): every common bin bit-identical (MAXREL 0) in all 10 sets; confouts identical (38 files) where both had the same bin count; L36 Temp_3/Temp_7 old 24 vs new 23 bins because the 50-min time limit stopped the jobs mid-bin (CPU_MAX>0 makes ALF ignore NBin), first 23 bins identical. No 'Unstable matrix'. Held links L32 560646, L28 560647-560648, L36 560649-560650 released (dependencies verified); L32_fast 560651/560652 stay held.",
+      "done": true,
+      "id": "n_k9ckyenl",
+      "order": 7,
+      "parentId": "n_aztpjo5u",
+      "title": "A/B test: old vs new script+binary continuing production snapshots"
+    },
+    {
+      "collapsed": false,
+      "description": "Owner 2026-11-12: 'Don't do a fresh start, but run it additionally' / 'Already submit the RUN_L32_nw10'. 16 walkers/U, 4/tile, 5 nodes, seed offset 532 (808 active seeds distinct), check_params PASS, chain 560670-560672, guard script.",
+      "done": true,
+      "id": "n_d2f2oiuj",
+      "order": 8,
+      "parentId": "n_aztpjo5u",
+      "title": "Additional RUN_L32_nw10 (Nwrap 10) submitted"
+    },
+    {
+      "collapsed": false,
+      "description": "Owner: get rid of the Nwrap 5 run once Nwrap 10 is shown stable. Nwrap 5 costs ~45 % (75 vs 51.9 s/sweep). Criterion to agree: no abort and Precision Green max at CPU level over N bins. Owner 2026-11-12: run Nwrap 10 in parallel, decide when RUN_L32_nw10 has started.",
+      "done": false,
+      "id": "n_9dqtyg8a",
+      "order": 9,
+      "parentId": "n_aztpjo5u",
+      "title": "Decide Nwrap 5 vs 10 at L32: stop RUN_L32 (Nwrap 5) once RUN_L32_nw10 is proven stable"
+    },
+    {
+      "collapsed": false,
+      "description": "Then flag the affected sets/bins (expected: warm-up bins only, L24 bins 1-12 of job 560327 at most) and set n_skip accordingly. RESULT 2026-11-12 (sacct and eacct unavailable): Slurm node lists are sorted, so a job whose first node sorts after i20r02c06s02 cannot contain it. Excluded: L24 560229 (first i20r05c01s02), 560309 (i20r02c06s08), L28 560230 (i20r05c02s02), 560319 (known list), and all running jobs (known lists). Possible (and consistent with their tile-1 aborts): L24 560327 -> at most bins 9-12 of Temp_2/Temp_3 (U=5.2, 5.25; ranks 33,41,49,57); L32_fast 560397 -> bins 1-2 of Temp_6 (rank 25); 560323 wrote no bin. All in the warm-up that n_skip discards; L28, L32 (Nwrap 5) and L36 data are not affected.",
+      "done": true,
+      "id": "n_sblqb4zi",
+      "order": 10,
+      "parentId": "n_aztpjo5u",
+      "title": "Which earlier jobs ran on i20r02c06s02 (sacct DB down)"
+    },
+    {
+      "collapsed": false,
+      "description": "Evidence: work_node tests 560620/560622/560623, team stress test 560637-560639; RAS/ECC counters N/A for users. Owner sent the ticket 2026-11-12 ('They will take care of it. Let's not focus on this anymore.'); Intel team asked to stop its node diagnosis and stress runs.",
+      "done": true,
+      "id": "n_s3coyl40",
+      "order": 11,
+      "parentId": "n_aztpjo5u",
+      "title": "LRZ ticket for i20r02c06s02 (draft: Intel Max session, owner sends)"
+    },
+    {
+      "collapsed": false,
+      "description": "L32_fast 560651/560652 held; fast2-4 prepared (Nwrap 5), not submitted. Owner 2026-11-12: dropped (L32_fast 560651/560652 cancelled, fast2-4 not submitted); L36 not needed.",
+      "done": true,
+      "id": "n_yu3vvdze",
+      "order": 12,
+      "parentId": "n_aztpjo5u",
+      "title": "Owner decision: L32_fast relaunch and fast2-4"
+    },
+    {
+      "collapsed": false,
+      "description": "Ener_scal consecutive-bin scan over all data.h5 (2026-11-12: 0 duplicates in ~2200 bins); repeat daily.",
+      "done": false,
+      "id": "n_hvzysbl2",
+      "order": 5,
+      "parentId": "n_mwcqqc7x",
+      "title": "Daily duplicated-bin scan"
+    },
+    {
+      "collapsed": false,
+      "dependsOn": [
+        "n_aztpjo5u"
+      ],
+      "description": "Decision 47: U = 5.15, 5.225, 5.275, 5.325, 5.375, 5.425, Nwrap 10, Ltau 0, 16 walkers/U, 3 nodes/run, guard build 410c7b04 (tag smuc2-prod-2026-11b, pushed), CPU_MAX 47 h, no bin target.",
+      "done": false,
+      "id": "n_26cr93nm",
+      "order": 9,
+      "parentId": null,
+      "title": "M10 Second U set (6 U) at L=24/28/32 + L24 extension"
+    },
+    {
+      "collapsed": false,
+      "description": "Pushed to the fork 2026-11-12.",
+      "done": true,
+      "id": "n_tk825dtl",
+      "order": 0,
+      "parentId": "n_26cr93nm",
+      "title": "Push guard branch, tag smuc2-prod-2026-11b, decision 47"
+    },
+    {
+      "collapsed": false,
+      "description": "560741 after 560328, guard script.",
+      "done": true,
+      "id": "n_qc6bxvhx",
+      "order": 1,
+      "parentId": "n_26cr93nm",
+      "title": "L24 (first set) extension link"
+    },
+    {
+      "collapsed": false,
+      "description": "make_pp_dirs.py, seed offsets 624/628/632; check_params PASS (0 violations) x3; 1096 seeds in 12 active dirs distinct; job.sh differs from RUN_L28 only in name and nodes=3.",
+      "done": true,
+      "id": "n_1tbmxqqb",
+      "order": 2,
+      "parentId": "n_26cr93nm",
+      "title": "Create RUN_L24_U2/L28_U2/L32_U2 + checks"
+    },
+    {
+      "collapsed": false,
+      "description": "work_smoke, real job.sh, 3 nodes, 30 min (560742-560744): GPU path ACTIVE, >=1 bin per set, snapshots, no Unstable, acceptance ~0.33. Owner: no need to wait for it; production submitted while the smoke jobs were still running (they end at their 30-min limit, results read as an early check).",
+      "done": true,
+      "id": "n_7fwfuvfg",
+      "order": 3,
+      "parentId": "n_26cr93nm",
+      "title": "Smoke test of the three new job scripts (test partition)"
+    },
+    {
+      "collapsed": false,
+      "description": "Check ExcNodeList and dependencies. Submitted 2026-11-12 ~14:20 on the owner's word ('just immediately run the production runs'): L24_U2 560747-560748, L28_U2 560749-560750, L32_U2 560751-560753; ExcNodeList and dependencies checked. 2026-11-12 ~15:00 owner: 'Adjust the run_L24_U2 to include U=3.0 and 8.0': 560747/560748 cancelled before start, RUN_L24_U2 rebuilt with 8 U (3.0, 5.15-5.425, 8.0), 128 ranks, 4 nodes, seed offset 724 (1128 active seeds distinct), check_params PASS, chain 560757-560758. Precision test 560759 (L24, Nwrap 10, guard binary, 0.3 h from seeds): U=3 Precision Green max 4.7e-11, U=8 8.5e-10, phase <= 3.4e-11, acceptance 0.376 / 0.301, no Unstable -> far below the 1e-4 guard threshold. Superseded ~15:30, owner: 'Let's run the L=24, U=3.0, 5.25, 8.0 independently of the others': 8-U chain 560757/560758 cancelled before start; RUN_L24_U2 back to the 6 U (seed offset 624, 3 nodes), chain 560760-560761.",
+      "done": true,
+      "id": "n_e4yu9dhr",
+      "order": 4,
+      "parentId": "n_26cr93nm",
+      "title": "Submit chains: L24_U2 2, L28_U2 2, L32_U2 3 links"
+    },
+    {
+      "collapsed": false,
+      "description": "Speed vs T5 (13.4/30.2/51.9 s/sweep), GPU path ACTIVE, recovery none. Done 2026-11-12 23:20: all 21 sets GPU path ACTIVE, recovery none, no Unstable; L24_U2 ~14, L28_U2 ~31, L32_U2 ~55 s/sweep (2.7 h, bins 66-68/31/14-15); L24_U3 72-73 bins in 2.7 h.",
+      "done": true,
+      "id": "n_1cpf2c0i",
+      "order": 5,
+      "parentId": "n_26cr93nm",
+      "title": "First-bin check of the second set"
+    },
+    {
+      "collapsed": false,
+      "dependsOn": [
+        "n_aztpjo5u"
+      ],
+      "description": "25k GPU-h booked (owner, per LRZ); account order pn93la -> pn73xu -> pr94vu; LRZ accounting lags, so own ledger.",
+      "done": false,
+      "id": "n_2ibxa3og",
+      "order": 10,
+      "parentId": null,
+      "title": "M11 Budget, storage and data safety"
+    },
+    {
+      "collapsed": false,
+      "description": "Node-h per job from segments.log x nodes + manual test list; 2026-11-12 13:50: ~350 node-h = ~1400 GPU-h used.",
+      "done": true,
+      "id": "n_j2o1hcef",
+      "order": 0,
+      "parentId": "n_2ibxa3og",
+      "title": "Ledger script prod/ledger.sh + ledger_tests.txt"
+    },
+    {
+      "collapsed": false,
+      "description": "Planned total ~16,200 of ~25,900 GPU-h incl. reserve and QR limit.",
+      "done": false,
+      "id": "n_hmumqaqu",
+      "order": 1,
+      "parentId": "n_2ibxa3og",
+      "title": "Keep 1000 GPU-h test reserve"
+    },
+    {
+      "collapsed": false,
+      "description": "Messages sent 2026-11-12.",
+      "done": true,
+      "id": "n_um4cqc87",
+      "order": 2,
+      "parentId": "n_2ibxa3og",
+      "title": "QR team limit 1000 GPU-h communicated; other SuperMUC session stopped"
+    },
+    {
+      "collapsed": false,
+      "description": "du daily; move to /hppfs/work/pn73xu if > 800 GB.",
+      "done": false,
+      "id": "n_jmorwm32",
+      "order": 3,
+      "parentId": "n_2ibxa3og",
+      "title": "Storage watch (WORK pn93la 1.05 TB)"
+    },
+    {
+      "collapsed": false,
+      "description": "Helma copy helma:/hnvme/workspace/b133ae29-qmc_data/smuc2_prod_2026-11 (13:00 snapshot). 2026-11-12 22:00 partial live update stopped (L24 all, L28 Temp_0-4 may have an incomplete last bin; L28 Temp_5 repaired from .snap/A, sha256 OK; rest at 13:00). Method agreed: frozen .snap hard links + sha256 both sides; no direct SMUC->Helma path, Helma ignores authorized_keys. Task handed to the side session (local_91ae5e71) on owner order; owner decides when (now or Fri).",
+      "done": false,
+      "id": "n_24nq72qu",
+      "order": 4,
+      "parentId": "n_2ibxa3og",
+      "title": "Copy the h5 data off the cluster after the campaign"
+    },
+    {
+      "collapsed": false,
+      "description": "module load lrztools; budget_and_quota (lags while sacct is down).",
+      "done": false,
+      "id": "n_z3wa6rgm",
+      "order": 5,
+      "parentId": "n_2ibxa3og",
+      "title": "Daily ledger vs budget_and_quota"
+    },
+    {
+      "collapsed": false,
+      "description": "Owner 2026-11-12: separate L=24 run at U = 3.0, 5.25, 8.0 (16 walkers/U, 48 ranks), 2 nodes x 24 ranks (3 walkers/tile, CCS 4, OMP 4), seed offset 824 (1144 active seeds distinct), check_params PASS, guard build, CPU_MAX 47 h, chain 560762-560763. Precision test at U=3/U=8 (560759): max 4.7e-11 / 8.5e-10. ~15:45 owner: 'has to have smallest error possible until our deadline' / 'Can you do 48 walkers per U?': rebuilt before start with 48 walkers/U, 144 ranks on 6 nodes x 24 (3/tile, OMP 4), 4 links until Fri 20 Nov (560768-560771), ~4500 GPU-h; 1240 active seeds distinct; 16-walker chain 560762/560763 cancelled.",
+      "done": true,
+      "id": "n_po1ro3tw",
+      "order": 6,
+      "parentId": "n_26cr93nm",
+      "title": "RUN_L24_U3 (U=3.0, 5.25, 8.0) submitted"
+    },
+    {
+      "collapsed": false,
+      "dependsOn": [
+        "n_aztpjo5u"
+      ],
+      "description": "Owner 2026-11-12 (via QR team): merge team branch into a temporary branch, build, test; do not change running things. Switching is the owner's decision.",
+      "done": false,
+      "id": "n_9h03g9vc",
+      "order": 11,
+      "parentId": null,
+      "title": "M12 Async block path (ALFSH_ASYNCBLK) test for later runs"
+    },
+    {
+      "collapsed": false,
+      "description": "Merge c6e13a88, no conflicts, guard kept; built 20:16 on login node (md5 b67fa66c3a10); not pushed.",
+      "done": true,
+      "id": "n_x2lkun9n",
+      "order": 0,
+      "parentId": "n_9h03g9vc",
+      "title": "Temp branch production-mpi-intel-unstable-guard-asyncblk-test: merge c084ea1b, build build_pp_asyncblk"
+    },
+    {
+      "collapsed": false,
+      "description": "A==A2, old==new default, old==new+STAGING+ASYNCBLK (0/34 files), positive control other seeds 34/34 differ; Precision Green identical; ~1.1 node-h.",
+      "done": true,
+      "id": "n_hkdke31x",
+      "order": 1,
+      "parentId": "n_9h03g9vc",
+      "title": "Bitwise tests L24/28/32 (jobs 560812-560814)"
+    },
+    {
+      "collapsed": false,
+      "description": "6-sweep wall incl. start-up: -12/-9/-6 % at L24/28/32 (team expected +15-20 %/card). Awaits owner OK (~1 node-h).",
+      "done": false,
+      "id": "n_8pfd1726",
+      "order": 2,
+      "parentId": "n_9h03g9vc",
+      "title": "Longer timing test (~30 sweeps/variant, alternating)"
+    },
+    {
+      "collapsed": false,
+      "description": "Recommendation: not for the running U sets (one binary per set).",
+      "done": false,
+      "id": "n_2ui8fwbt",
+      "order": 3,
+      "parentId": "n_9h03g9vc",
+      "title": "Owner decision: use async build for new runs"
+    }
+  ],
+  "rev": 1,
+  "version": 1
+}
