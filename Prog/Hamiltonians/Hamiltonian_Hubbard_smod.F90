@@ -224,6 +224,7 @@
           integer                :: nf, unit_info
           Character (len=64)     :: file_info
           Logical                :: toggle 
+          Logical                :: h0_off_by_ltau = .false.
 
 
           ! L1, L2, Lattice_type, List(:,:), Invlist(:,:) -->  Lattice information
@@ -254,6 +255,7 @@
              endif
 #endif
              ham_h0 = 0.d0
+             h0_off_by_ltau = .true.
           endif
 
           Thtrot = 0
@@ -349,6 +351,7 @@
              Write(unit_info,*) 't             : ', Ham_T
              Write(unit_info,*) 'Ham_U         : ', Ham_U
              if (abs(ham_h0) >= Eps_small ) Write(unit_info,*) 'Pinning field : ', ham_h0
+             if (h0_off_by_ltau) Write(unit_info,*) 'Pinning field : 0 (switched off because Ltau = 1)'
              if (Index(str_to_upper(Lattice_type),'BILAYER') > 0 )  then
                Write(unit_info,*) 't2            : ', Ham_T2
                Write(unit_info,*) 'Ham_U2        : ', Ham_U2

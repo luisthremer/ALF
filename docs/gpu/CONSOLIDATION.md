@@ -61,6 +61,37 @@ Changes made after the merges (commit 609a6347):
   branches use their own checkouts and are not affected.
 - New: `RUNTIME_SWITCHES.md`, `SPEEDUPS.md`, this file.
 
+## Differences from upstream ALF (`master` 521ddfca) in a `GPU=none` build
+
+Checked on 2026-11-13 with gfortran, L = 4, same parameters and seeds. With `LOBS_ST = 1` set
+explicitly every upstream feature tested is bitwise identical to upstream (Hubbard `Mz` T/F,
+`Symm`, `Checkerboard`, `Ltau` 0/1, projector, `N_SUN`, continuous fields, `Propose_S0`, global
+moves, Langevin, HMC, MALA, Kondo, tV, Plain Vanilla). Two intended differences remain:
+
+| Difference | Where | Effect |
+|---|---|---|
+| Default `LOBS_ST` is 0 (upstream: 1) | `Prog/QMC_runtime_var_mod.F90`, commit 0b63e5d0 | The down sweep also measures tau = 0: 2 Ltrot instead of 2 Ltrot - 1 equal-time measurements per sweep, for every model at finite temperature with sequential updates. Results differ statistically from upstream unless `LOBS_ST = 1` is set. |
+| `ham_h0` is the space-time point defect | `Prog/Hamiltonians/Hamiltonian_Hubbard_smod.F90` | Upstream: static pinning field on the origin, orbital 1, all time slices. Here: a field on one time slice (`g_t(1)`) at site `Latt%N/2 - L/2`, all orbitals, with the observables `SpinZ_local` and `SpinZ_localtau`. The site formula assumes a square lattice. |
+
+New rule (2026-11-13): with `Ltau = 1` the pinning field is switched off (`ham_h0 = 0`); the
+`info` file says so.
+
+The delayed and submatrix schemes reproduce the standard update to 1e-12 with identical
+trajectories (with and without the defect). `SpinZ_localtau` agrees with an exact U = 0
+calculation to 4.7e-14 for all tau.
+
+Known defects of the point-defect observable outside the production setting (finite temperature,
+sequential updates, default `LOBS_ST`), found in the same check and **not fixed**:
+
+1. `SpinZ_localtau` is NaN if slice `Ltrot/2` is never measured (for example `LOBS_ST = 15`,
+   `Ltrot = 20`): the normalisation counter is only incremented at that slice.
+2. With `Projector = .T.` the endpoint weights are wrong (first column never measured, last
+   doubled) and the pin sits inside the projection region.
+3. With Langevin or HMC updates the endpoint weights are wrong (tau = 0 column zero, tau = beta
+   doubled).
+
+Until these are fixed the defect should only be used in the production setting.
+
 ## Verification
 
 See the table in the section "Verification of the unified branch" below; it is filled from the
