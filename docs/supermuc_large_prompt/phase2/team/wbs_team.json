@@ -581,8 +581,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "",
-      "done" : false,
+      "description" : "\n\nDone (p6\/DESIGN.md): walker index last on all device arrays, lockstep, per-walker RNG via RANDOM_SEED PUT\/GET, ~62 person-days (E).",
+      "done" : true,
       "id" : "n_qngrzpm7",
       "order" : 3,
       "parentId" : "n_0pogcitw",
@@ -590,8 +590,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "",
-      "done" : false,
+      "description" : "\n\nDone for the hopping wrap only (patch p6\/proto_walker_batch.patch, not in source). Gate 1 ceiling: gemm formula 3.1-4.1x, grounded 1.5-2.3x, realistic 1.3-1.6x (E). Gate 2 FAIL: oneMKL batched\/wide gemm not bitwise vs single at N=144\/400\/576 (1e-15 level); bit-safe mode 3 gives no gain. Wrap batching = ~2 % of a sweep (C, jobs 560780-560805, ~1.3 node-h).",
+      "done" : true,
       "id" : "n_makj7mtj",
       "order" : 4,
       "parentId" : "n_0pogcitw",
@@ -599,7 +599,7 @@
     },
     {
       "collapsed" : false,
-      "description" : "",
+      "description" : "\n\nNO-GO recommended (Phase 6 agent, 2026-11-12): gemm ceiling not reachable; lever is launch latency in updates\/observables (70-90 % latency, E). Option: bit-safe pilot with walker index only in own kernels (15-20 person-days, E). Owner decision pending.",
       "done" : false,
       "id" : "n_in02dd0b",
       "order" : 5,
