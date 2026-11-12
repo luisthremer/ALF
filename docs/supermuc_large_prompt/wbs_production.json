@@ -625,7 +625,7 @@
     },
     {
       "collapsed" : false,
-      "description" : "Check ExcNodeList and dependencies. Submitted 2026-11-12 ~14:20 on the owner's word ('just immediately run the production runs'): L24_U2 560747-560748, L28_U2 560749-560750, L32_U2 560751-560753; ExcNodeList and dependencies checked. 2026-11-12 ~15:00 owner: 'Adjust the run_L24_U2 to include U=3.0 and 8.0': 560747\/560748 cancelled before start, RUN_L24_U2 rebuilt with 8 U (3.0, 5.15-5.425, 8.0), 128 ranks, 4 nodes, seed offset 724 (1128 active seeds distinct), check_params PASS, chain 560757-560758. Precision test 560759 (L24, Nwrap 10, guard binary, 0.3 h from seeds): U=3 Precision Green max 4.7e-11, U=8 8.5e-10, phase <= 3.4e-11, acceptance 0.376 \/ 0.301, no Unstable -> far below the 1e-4 guard threshold.",
+      "description" : "Check ExcNodeList and dependencies. Submitted 2026-11-12 ~14:20 on the owner's word ('just immediately run the production runs'): L24_U2 560747-560748, L28_U2 560749-560750, L32_U2 560751-560753; ExcNodeList and dependencies checked. 2026-11-12 ~15:00 owner: 'Adjust the run_L24_U2 to include U=3.0 and 8.0': 560747\/560748 cancelled before start, RUN_L24_U2 rebuilt with 8 U (3.0, 5.15-5.425, 8.0), 128 ranks, 4 nodes, seed offset 724 (1128 active seeds distinct), check_params PASS, chain 560757-560758. Precision test 560759 (L24, Nwrap 10, guard binary, 0.3 h from seeds): U=3 Precision Green max 4.7e-11, U=8 8.5e-10, phase <= 3.4e-11, acceptance 0.376 \/ 0.301, no Unstable -> far below the 1e-4 guard threshold. Superseded ~15:30, owner: 'Let's run the L=24, U=3.0, 5.25, 8.0 independently of the others': 8-U chain 560757\/560758 cancelled before start; RUN_L24_U2 back to the 6 U (seed offset 624, 3 nodes), chain 560760-560761.",
       "done" : true,
       "id" : "n_e4yu9dhr",
       "order" : 4,
@@ -706,6 +706,15 @@
       "order" : 5,
       "parentId" : "n_2ibxa3og",
       "title" : "Daily ledger vs budget_and_quota"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Owner 2026-11-12: separate L=24 run at U = 3.0, 5.25, 8.0 (16 walkers\/U, 48 ranks), 2 nodes x 24 ranks (3 walkers\/tile, CCS 4, OMP 4), seed offset 824 (1144 active seeds distinct), check_params PASS, guard build, CPU_MAX 47 h, chain 560762-560763. Precision test at U=3\/U=8 (560759): max 4.7e-11 \/ 8.5e-10.",
+      "done" : true,
+      "id" : "n_po1ro3tw",
+      "order" : 6,
+      "parentId" : "n_26cr93nm",
+      "title" : "RUN_L24_U3 (U=3.0, 5.25, 8.0) submitted"
     }
   ],
   "rev" : 1,
