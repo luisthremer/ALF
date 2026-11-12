@@ -965,7 +965,7 @@ Contains
     Integer, intent(in) :: n, ld, sgn
     Logical, intent(in) :: cj
     Complex (Kind=Kind(0.d0)), intent(in) :: U(ld,1)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: cs(1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: cs(8)
     Complex (Kind=Kind(0.d0)) :: ph
     Integer :: i
 #if defined(ALF_LA_HIP)
@@ -989,7 +989,7 @@ Contains
     Implicit none
     Integer, intent(in) :: n, ld
     Complex (Kind=Kind(0.d0)), intent(inout) :: U(ld,1)
-    Complex (Kind=Kind(0.d0)), intent(in) :: cs(1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: cs(8)
     Integer :: j
 #if defined(ALF_LA_HIP)
     call hk_scale_row1(n, ld, U, cs)
@@ -1292,7 +1292,7 @@ Contains
     Integer, intent(in) :: n, lda
     Complex (Kind=Kind(0.d0)), intent(in) :: A(lda,1)
     Integer(c_int), intent(in) :: ipiv(1)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: cs(1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: cs(8)
     Complex (Kind=Kind(0.d0)) :: det
     Integer :: i, sg
 #if defined(ALF_LA_HIP)
@@ -1320,7 +1320,7 @@ Contains
     Implicit none
     Integer, intent(in) :: n, ld, nvar, sgn, bad
     Complex (Kind=Kind(0.d0)), intent(in) :: T(ld,1), tau(1)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: cs(1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: cs(8)
     Complex (Kind=Kind(0.d0)) :: ph, z
     Real (Kind=Kind(0.d0)) :: x
     Integer :: i
@@ -1374,7 +1374,7 @@ Contains
     Implicit none
     Integer, intent(in) :: n
     Complex (Kind=Kind(0.d0)), intent(in) :: A(n,1)
-    Real (Kind=Kind(0.d0)), intent(inout) :: r(1)
+    Real (Kind=Kind(0.d0)), intent(inout) :: r(16)
     Integer :: i, j
     Real (Kind=Kind(0.d0)) :: xm, d
     xm = 0.d0
@@ -1399,7 +1399,7 @@ Contains
     Implicit none
     Integer, intent(in) :: n
     Complex (Kind=Kind(0.d0)), intent(in) :: D(1)
-    Real (Kind=Kind(0.d0)), intent(inout) :: r(1)
+    Real (Kind=Kind(0.d0)), intent(inout) :: r(16)
     Integer :: i, nn
     Real (Kind=Kind(0.d0)) :: a, b
 #if defined(ALF_LA_HIP)
@@ -1424,7 +1424,7 @@ Contains
     Implicit none
     Integer, intent(in) :: n
     Complex (Kind=Kind(0.d0)), intent(in) :: A(n,1), B(n,1)
-    Real (Kind=Kind(0.d0)), intent(inout) :: r(1)
+    Real (Kind=Kind(0.d0)), intent(inout) :: r(16)
     Integer :: i, j, na, nb
     Real (Kind=Kind(0.d0)) :: xm, xs, d, cs
     Logical :: fa, fb

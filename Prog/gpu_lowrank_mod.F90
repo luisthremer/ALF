@@ -364,7 +364,7 @@ Contains
     Implicit none
     Integer, intent(in) :: ld, jcnt, p
     Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,1), X(ld,1), Y(ld,1)
-    Real (Kind=Kind(0.d0)), intent(inout) :: res(1)
+    Real (Kind=Kind(0.d0)), intent(inout) :: res(2)
     Integer :: k
     Complex (Kind=Kind(0.d0)) :: s
     !$omp target private(s)

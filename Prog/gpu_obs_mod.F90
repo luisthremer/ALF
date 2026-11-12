@@ -222,8 +222,8 @@ Contains
     do i = 1, nel
        b(i) = a(i)
     enddo
-  #endif
-end subroutine k_cpy
+#endif
+  end subroutine k_cpy
 
   !> .true. when the device measurement replaces ham%Obser
   Logical Function gpu_obs_active()
