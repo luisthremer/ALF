@@ -1,0 +1,297 @@
+diff --git a/Prog/gpu_update_mod.F90 b/Prog/gpu_update_mod.F90
+index cc039059..2fe76d1a 100644
+--- a/Prog/gpu_update_mod.F90
++++ b/Prog/gpu_update_mod.F90
+@@ -479,6 +479,7 @@ Contains
+     Complex (Kind=Kind(0.d0)) :: HS_New
+     Real (Kind=Kind(0.d0)) :: T0_proposal, T0_Proposal_ratio, S0_ratio
+     Logical :: Acc, toggle1, fast_lr, bm
++    Real (Kind=Kind(0.d0)) :: wb_t0
+ #ifdef ALF_TEAM_TIMERS
+     Real (Kind=Kind(0.d0)) :: p3_t0
+ #endif
+@@ -495,8 +496,14 @@ Contains
+     ! Wrap up with B(tau1)
+     Do nf_eff = 1,N_FL_eff
+        nf=Calc_Fl_map(nf_eff)
+-       call gpu_mmthr   (G_d(1,1,nf), Ndim, Ndim, nf, ntau1)
+-       call gpu_mmthl_m1(G_d(1,1,nf), Ndim, Ndim, nf, ntau1)
++       if (gpu_wb_on()) then                       ! phase 6 prototype: batched wrap of B stand-in walkers, default off
++          call gpu_wb_hop(G_d(1,1,nf), nf, ntau1, .true.)
++       else
++          if (gpu_wb_time_on()) then; wb_t0 = gpu_wb_tick(); endif
++          call gpu_mmthr   (G_d(1,1,nf), Ndim, Ndim, nf, ntau1)
++          call gpu_mmthl_m1(G_d(1,1,nf), Ndim, Ndim, nf, ntau1)
++          if (gpu_wb_time_on()) call gpu_wb_base_add(gpu_wb_tick() - wb_t0)
++       endif
+     Enddo
+ #ifdef ALF_TEAM_TIMERS
+     p3t(6) = p3t(6) + (p3_now() - p3_t0)
+@@ -561,6 +568,7 @@ Contains
+     Complex (Kind=Kind(0.d0)) :: HS_New
+     Real (Kind=Kind(0.d0)) :: T0_proposal, T0_Proposal_ratio, S0_ratio
+     Logical :: Acc, toggle1, fast_lr, bm
++    Real (Kind=Kind(0.d0)) :: wb_t0
+ #ifdef ALF_TEAM_TIMERS
+     Real (Kind=Kind(0.d0)) :: p3_t0
+ #endif
+@@ -619,8 +627,14 @@ Contains
+     call gpu_lr_flush_all(2)                    ! delayed / submatrix: flush before the hopping wrap
+     Do nf_eff = 1,N_FL_eff
+        nf=Calc_Fl_map(nf_eff)
+-       call gpu_mmthl   (G_d(1,1,nf), Ndim, Ndim, nf, ntau)
+-       call gpu_mmthr_m1(G_d(1,1,nf), Ndim, Ndim, nf, ntau)
++       if (gpu_wb_on()) then                       ! phase 6 prototype: batched wrap of B stand-in walkers, default off
++          call gpu_wb_hop(G_d(1,1,nf), nf, ntau, .false.)
++       else
++          if (gpu_wb_time_on()) then; wb_t0 = gpu_wb_tick(); endif
++          call gpu_mmthl   (G_d(1,1,nf), Ndim, Ndim, nf, ntau)
++          call gpu_mmthr_m1(G_d(1,1,nf), Ndim, Ndim, nf, ntau)
++          if (gpu_wb_time_on()) call gpu_wb_base_add(gpu_wb_tick() - wb_t0)
++       endif
+     enddo
+     call g_out(GR)
+ #ifdef ALF_TEAM_TIMERS
+diff --git a/Prog/gpu_wrap_mod.F90 b/Prog/gpu_wrap_mod.F90
+index ce4d5966..dd33bd84 100644
+--- a/Prog/gpu_wrap_mod.F90
++++ b/Prog/gpu_wrap_mod.F90
+@@ -88,6 +88,7 @@ Module gpu_wrap_mod
+   Public :: gpu_wrapur_slices, gpu_wrapul_slices, gpu_wrapgr_up, gpu_wrapgr_do
+   Public :: gpu_wrap_hook, gpu_wrap_selftest, gpu_wrap_timing
+   Public :: gpu_dense_left_mode, gpu_tl, gpu_tr, gpu_vb, gpu_n_launch, gpu_n_lib
++  Public :: gpu_wb_on, gpu_wb_hop, gpu_wb_time_on, gpu_wb_report, gpu_wb_base_add, gpu_wb_tick   ! Phase 6 prototype (batched wrap), default off
+ 
+   Integer, Save :: gpu_dense_left_mode = 0     ! 0 auto (v1 for nd <= 400, else v2), 1 complex copy + ZGEMM, 2 transposes + DGEMM (measured, ticket 204)
+   Integer(int64), Save :: gpu_n_launch = 0, gpu_n_lib = 0    ! counters: target-region launches / alf_la calls issued here
+@@ -103,6 +104,15 @@ Module gpu_wrap_mod
+   Integer, Save :: st_t = 1                    ! slice used by the self-test hop calls (cpu_hop / dev_hop)
+   Complex (Kind=Kind(0.d0)), Allocatable, Save :: Hd(:,:,:,:)
+ 
++  ! ---- Phase 6 prototype: batched wrap of B walkers (env ALF_GPU_WB=B, default off; ALF_GPU_WB_MODE 1 strided batch both sides,
++  !      2 wide gemm left + strided right, 3 separate gemms (control); ALF_GPU_WB_TIME=1 prints wrap timers).  See docs/.../p6/DESIGN.md.
++  Integer, Save :: wb_B = -1, wb_mode = 1
++  Logical, Save :: wb_time = .false., wb_plant = .false.     ! wb_plant: planted defect (negative control of the bitwise gate), ALF_GPU_WB_PLANT=1
++  Integer(int64), Save :: wb_ncall = 0
++  Real (Kind=Kind(0.d0)), Save :: wb_t(6) = 0.d0      ! 1 total, 2 left+right gemm and copies, 3 td kernels, 4 fill/copy in+out; 5 baseline (unbatched) total
++  Integer(int64), Save :: wb_n(6) = 0
++  Complex (Kind=Kind(0.d0)), Allocatable, Save :: Gwb(:,:,:), Swb(:,:,:)   ! (Ndim,Ndim,B) device: walker matrices, gemm scratch
++
+ Contains
+ 
+ !====================================================================
+@@ -311,6 +321,193 @@ Contains
+     enddo
+   end subroutine k_cpy_n
+ 
++!====================================================================
++!  Phase 6 prototype: batched wrap of B walkers in one rank (docs/supermuc_large_prompt/phase2/team/p6/DESIGN.md).
++!  NOT a multi-walker engine: ALF still runs one chain per rank.  Slot s of the walker batch (s rotates with every call) holds the real
++!  G of the chain, the other B-1 slots are filled with scaled copies of it (stand-in walkers).  The hopping part of WRAPGRUP/WRAPGRDO
++!  (mmthr + mmthl_m1, resp. mmthl + mmthr_m1) is applied to all B slots with batched alf_la calls, and the real slot is copied back.
++!  Purpose: (1) bitwise test of a batched call against the single call in the real sweep, (2) wrap time per walker.
++!  The time-dependent hopping elements (td_apply) are NOT batched here: one call per slot.
++!====================================================================
++  Subroutine wb_init()
++    Implicit none
++    if (wb_B >= 0) return
++    wb_B = 0
++    call gpu_env_int('ALF_GPU_WB', wb_B)
++    call gpu_env_int('ALF_GPU_WB_MODE', wb_mode)
++    wb_time = gpu_env_is('ALF_GPU_WB_TIME', '1')
++    wb_plant = gpu_env_is('ALF_GPU_WB_PLANT', '1')
++    if (wb_B > 0) then
++       if (.not. gpu_hopd_on()) then
++          call info_line('GPU wb (phase 6 prototype): needs the dense hopping path (Ndim <= 800): OFF')
++          wb_B = 0
++          return
++       endif
++       call hopd_build()
++       allocate(Gwb(Ndim,Ndim,wb_B), Swb(Ndim,Ndim,wb_B))
++       Gwb = z0; Swb = z0
++       !$omp target enter data map(to: Gwb, Swb)
++       call info_line('GPU wb (phase 6 prototype): batched wrap of B walkers ACTIVE')
++    endif
++  end subroutine wb_init
++
++  Logical Function gpu_wb_on()
++    Implicit none
++    call wb_init()
++    gpu_wb_on = (wb_B > 0)
++  end function gpu_wb_on
++
++  Logical Function gpu_wb_time_on()
++    Implicit none
++    call wb_init()
++    gpu_wb_time_on = wb_time
++  end function gpu_wb_time_on
++
++  !> up: WRAPGRUP hopping (mmthr, then mmthl_m1); else WRAPGRDO hopping (mmthl, then mmthr_m1).  G = G_d(:,:,nf), device resident.
++  Subroutine gpu_wb_hop(G, nf, t, up)
++    Implicit none
++    Complex (Kind=Kind(0.d0)), intent(inout) :: G(Ndim,*)
++    Integer, intent(in) :: nf, t
++    Logical, intent(in) :: up
++    Integer :: slot
++    Real (Kind=Kind(0.d0)) :: ta, tb, tc
++    if (wb_time) call la_sync()
++    ta = omp_get_wtime()
++    wb_ncall = wb_ncall + 1
++    slot = int(mod(wb_ncall - 1_int64, int(wb_B, int64))) + 1
++    call k_cpy_n(Ndim*Ndim, G, Gwb(1,1,slot))
++    if (wb_B > 1) call k_wb_fill(Ndim*Ndim, wb_B, slot, G, Gwb)
++    tb = omp_get_wtime(); wb_t(4) = wb_t(4) + (tb - ta)
++    if (up) then
++       call wb_td(nf, t, 1, .true., .true.)
++       call wb_left(nf, 1)
++       call wb_td(nf, t, 2, .false., .true.)
++       call wb_right(nf, 2)
++    else
++       call wb_right(nf, 3)
++       call wb_td(nf, t, 1, .false., .false.)
++       call wb_left(nf, 4)
++       call wb_td(nf, t, 2, .true., .false.)
++    endif
++    if (wb_plant) call k_wb_plant(Gwb(1,1,slot))
++    tb = omp_get_wtime()
++    call k_cpy_n(Ndim*Ndim, Gwb(1,1,slot), G)
++    tc = omp_get_wtime()
++    wb_t(4) = wb_t(4) + (tc - tb); wb_t(1) = wb_t(1) + (tc - ta); wb_n(1) = wb_n(1) + 1
++  end subroutine gpu_wb_hop
++
++  Subroutine wb_td(nf, t, k, left, desc)     ! the td elements of kind 1, matrix k, on every slot (one call per slot: not batched)
++    Implicit none
++    Integer, intent(in) :: nf, t, k
++    Logical, intent(in) :: left, desc
++    Integer :: b
++    Real (Kind=Kind(0.d0)) :: t0
++    if (.not. td_any) return
++    t0 = omp_get_wtime()
++    do b = 1, wb_B
++       call td_apply(Gwb(1,1,b), Ndim, Ndim, nf, t, 1, k, left, desc)
++    enddo
++    wb_t(3) = wb_t(3) + (omp_get_wtime() - t0)
++  end subroutine wb_td
++
++  Subroutine wb_left(nf, w)          ! every slot: M <- Hd(w) M
++    Implicit none
++    Integer, intent(in) :: nf, w
++    Integer :: b
++    Real (Kind=Kind(0.d0)) :: t0
++    t0 = omp_get_wtime()
++    select case (wb_mode)
++    case (1)
++       call la_gemm_batched(LA_N, LA_N, Ndim, Ndim, Ndim, z1, Hd(1,1,nf,w), Ndim, 0, Gwb, Ndim, Ndim*Ndim, &
++            z0, Swb, Ndim, Ndim*Ndim, wb_B)
++    case (2)
++       call la_gemm(LA_N, LA_N, Ndim, Ndim*wb_B, Ndim, z1, Hd(1,1,nf,w), Ndim, Gwb, Ndim, z0, Swb, Ndim)
++    case default
++       do b = 1, wb_B
++          call la_gemm(LA_N, LA_N, Ndim, Ndim, Ndim, z1, Hd(1,1,nf,w), Ndim, Gwb(1,1,b), Ndim, z0, Swb(1,1,b), Ndim)
++       enddo
++    end select
++    call k_cpy_n(Ndim*Ndim*wb_B, Swb, Gwb)
++    wb_t(2) = wb_t(2) + (omp_get_wtime() - t0)
++  end subroutine wb_left
++
++  Subroutine wb_right(nf, w)         ! every slot: M <- M Hd(w)
++    Implicit none
++    Integer, intent(in) :: nf, w
++    Integer :: b
++    Real (Kind=Kind(0.d0)) :: t0
++    t0 = omp_get_wtime()
++    select case (wb_mode)
++    case (1, 2)
++       call la_gemm_batched(LA_N, LA_N, Ndim, Ndim, Ndim, z1, Gwb, Ndim, Ndim*Ndim, Hd(1,1,nf,w), Ndim, 0, &
++            z0, Swb, Ndim, Ndim*Ndim, wb_B)
++    case default
++       do b = 1, wb_B
++          call la_gemm(LA_N, LA_N, Ndim, Ndim, Ndim, z1, Gwb(1,1,b), Ndim, Hd(1,1,nf,w), Ndim, z0, Swb(1,1,b), Ndim)
++       enddo
++    end select
++    call k_cpy_n(Ndim*Ndim*wb_B, Swb, Gwb)
++    wb_t(2) = wb_t(2) + (omp_get_wtime() - t0)
++  end subroutine wb_right
++
++  Subroutine k_wb_plant(M)                      ! planted defect: one element of the real slot changed by 1e-12 (relative)
++    Implicit none
++    Complex (Kind=Kind(0.d0)), intent(inout) :: M(*)
++    !$omp target
++    M(1) = M(1) * (1.d0 + 1.d-12)
++    !$omp end target
++  end subroutine k_wb_plant
++
++  Subroutine k_wb_fill(nel, nb, slot, G, W)    ! stand-in walkers: W(:,j) = (1 + j/4) G for j /= slot
++    Implicit none
++    Integer, intent(in) :: nel, nb, slot
++    Complex (Kind=Kind(0.d0)), intent(in) :: G(*)
++    Complex (Kind=Kind(0.d0)), intent(inout) :: W(*)
++    Integer :: i, j
++    !$omp target teams distribute parallel do collapse(2)
++    do j = 1, nb
++       do i = 1, nel
++          if (j /= slot) W(i + (j-1)*nel) = (1.d0 + 0.25d0*j) * G(i)
++       enddo
++    enddo
++  end subroutine k_wb_fill
++
++  !> baseline (unbatched) timing hook of the callers: seconds of one unbatched hopping wrap (both flavours' calls are summed)
++  Subroutine gpu_wb_report(rank0)
++    Implicit none
++    Logical, intent(in) :: rank0       ! unused: every rank prints (rank from PMI_RANK; one configuration per rank)
++    Character (len=400) :: line
++    Character (len=16) :: rk
++    rk = '?'
++    call get_environment_variable('PMI_RANK', rk)
++    if (wb_B > 0 .and. wb_n(1) > 0) then
++       write(line,'(A,I3,A,I2,A,I8,A,F9.3,A,F9.4,A,F9.4,A,F9.4,A,F9.4,A,F9.4)') 'GPU wb: B', wb_B, ' mode', wb_mode, &
++            ' calls', wb_n(1), ' total s', wb_t(1), '  per call ms', 1.d3*wb_t(1)/wb_n(1), &
++            '  per walker-call ms', 1.d3*wb_t(1)/wb_n(1)/wb_B, '  gemm+copy ms/call', 1.d3*wb_t(2)/wb_n(1), &
++            ' td ms/call', 1.d3*wb_t(3)/wb_n(1), ' fill+in/out ms/call', 1.d3*wb_t(4)/wb_n(1)
++       call info_line(trim(line))
++       write(output_unit,'(A)') 'rank '//trim(rk)//' '//trim(line)
++    endif
++    if (wb_n(5) > 0) then
++       write(line,'(A,I8,A,F9.3,A,F9.4)') 'GPU wb baseline (unbatched hopping wrap): calls', wb_n(5), &
++            ' total s', wb_t(5), '  per call ms', 1.d3*wb_t(5)/wb_n(5)
++       call info_line(trim(line))
++       write(output_unit,'(A)') 'rank '//trim(rk)//' '//trim(line)
++    endif
++  end subroutine gpu_wb_report
++
++  Real (Kind=Kind(0.d0)) Function gpu_wb_tick()    ! host wall time after draining the stream (timing only)
++    Implicit none
++    call la_sync()
++    gpu_wb_tick = omp_get_wtime()
++  end function gpu_wb_tick
++
++  Subroutine gpu_wb_base_add(dt)
++    Implicit none
++    Real (Kind=Kind(0.d0)), intent(in) :: dt
++    wb_t(5) = wb_t(5) + dt; wb_n(5) = wb_n(5) + 1
++  end subroutine gpu_wb_base_add
++
+   Subroutine gpu_mmthr_d(M, nf)
+     Implicit none
+     Complex (Kind=Kind(0.d0)), intent(inout) :: M(Ndim,*)
+diff --git a/Prog/main.F90 b/Prog/main.F90
+index 97d044f0..446b670b 100644
+--- a/Prog/main.F90
++++ b/Prog/main.F90
+@@ -148,7 +148,7 @@ Program Main
+         use iso8601_datetime_mod
+ #ifdef ALF_GPU
+         use gpu_state_mod, only: gpu_state_setup, gpu_state_finalize, gpu_active
+-        use gpu_wrap_mod,  only: gpu_wrap_hook
++        use gpu_wrap_mod,  only: gpu_wrap_hook, gpu_wb_report
+         use gpu_update_mod, only: gpu_upd_enabled, gpu_g_host, gpu_g_host_wrote
+         use gpu_obs_mod, only: gpu_obs_active, gpu_obs_flush, gpu_obs_finalize, gpu_obs_symm
+         use gpu_stab_mod,  only: gpu_stab_on, gpu_stab_setup, gpu_stab_finalize, gpu_stab_hook, gpu_stab_wrapur, &
+@@ -1393,6 +1393,7 @@ Program Main
+         endif
+         DEALLOCATE(udvl, udvr, udvst)
+ #ifdef ALF_GPU
++        call gpu_wb_report(.true.)
+         call gpu_lr_finalize()
+         call gpu_tau_finalize()
+ #ifdef ALF_TEAM_TIMERS

@@ -1,0 +1,32 @@
+node i20r07c02s02 job 560799 start 2026-11-12T16:38:55+01:00
+xpu-smi dev 0:       1 | 3. GPU Power               | Status: OK                                                          |
+xpu-smi dev 0:       1 | 5. Xe Link Port            | Status: OK                                                          |
+xpu-smi dev 0:       1 | 6. GPU Frequency           | Status: OK                                                          |
+xpu-smi dev 1:       1 | 3. GPU Power               | Status: OK                                                          |
+xpu-smi dev 1:       1 | 5. Xe Link Port            | Status: OK                                                          |
+xpu-smi dev 1:       1 | 6. GPU Frequency           | Status: OK                                                          |
+xpu-smi dev 2:       1 | 3. GPU Power               | Status: OK                                                          |
+xpu-smi dev 2:       1 | 5. Xe Link Port            | Status: OK                                                          |
+xpu-smi dev 2:       1 | 6. GPU Frequency           | Status: OK                                                          |
+xpu-smi dev 3:       1 | 3. GPU Power               | Status: OK                                                          |
+xpu-smi dev 3:       1 | 5. Xe Link Port            | Status: OK                                                          |
+xpu-smi dev 3:       1 | 6. GPU Frequency           | Status: OK                                                          |
+CASE plant_race_tau_N576 N=576 sec=900 [ALFSH_DEVQR=2 ALFSH_DEVUNMQR=1 ALFSH_DEVQR_LIB=/hppfs/scratch/0C/di38zuw/large_prompt/team/p5/plant/race_tau/libalfdevqr.so] start 2026-11-12T16:39:04+01:00 node i20r07c02s02
+mpiexec rc=0
+  ranks finished: 32 of 32; iterations total: 1019146; s/iter mean: 0.0280938
+  BAD lines: 0; ranks with BAD: 0; by what: 
+  distinct nonzero-BAD tiles (rank mod 8): 
+  STRESS_RESULT nbad bit/1e-8/1e-3 sums: 0 0 0   max maxrel LU,G1,G2: 0 0 0
+  distinct reference hashes over ranks (1 = all ranks bitwise equal): 1
+  device-kernel calls (ALFSH_TIMING sums): geqrf_dev 2038292 unmqr_dev 2038292 geqrf(mkl) 0 unmqr(mkl) 0
+CASE plant_race_tau_N576 end 2026-11-12T16:54:07+01:00
+CASE plant_race_tau_N576_G1 N=576 sec=900 [ALFSH_DEVQR=2 ALFSH_DEVUNMQR=1 ALFSH_DEVQR_LIB=/hppfs/scratch/0C/di38zuw/large_prompt/team/p5/plant/race_tau/libalfdevqr.so ALFDEVQR_G=1] start 2026-11-12T16:54:07+01:00 node i20r07c02s02
+mpiexec rc=0
+  ranks finished: 32 of 32; iterations total: 852116; s/iter mean: 0.034
+  BAD lines: 0; ranks with BAD: 0; by what: 
+  distinct nonzero-BAD tiles (rank mod 8): 
+  STRESS_RESULT nbad bit/1e-8/1e-3 sums: 0 0 0   max maxrel LU,G1,G2: 0 0 0
+  distinct reference hashes over ranks (1 = all ranks bitwise equal): 1
+  device-kernel calls (ALFSH_TIMING sums): geqrf_dev 1704232 unmqr_dev 1704232 geqrf(mkl) 0 unmqr(mkl) 0
+CASE plant_race_tau_N576_G1 end 2026-11-12T17:09:10+01:00
+end 2026-11-12T17:09:10+01:00

@@ -1,0 +1,612 @@
+{
+  "archived" : false,
+  "name" : "Intel Max 1550 >= A30 (team issue)",
+  "nodes" : [
+    {
+      "collapsed" : false,
+      "description" : "",
+      "id" : "special_start",
+      "kind" : "start",
+      "order" : 0,
+      "parentId" : null,
+      "title" : "Start"
+    },
+    {
+      "collapsed" : false,
+      "description" : "At L=24 and L=32, one ALF chain on one Max 1550 tile\/card is no slower than on the A30 (5.25 \/ 18.2 s\/sweep), and sweeps\/s per card is at least that of one A30 (0.37 with 4 chains, 0.43 with 8), with the whole computation on the GPU and numerics unchanged.",
+      "id" : "special_goal",
+      "kind" : "goal",
+      "order" : 0,
+      "parentId" : null,
+      "title" : "Goal"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Plan, GPU-h and usage estimate; owner OK. Worktree ALF_wt_large_prompt_team, branch production-mpi-intel-large-prompt-team.",
+      "done" : true,
+      "id" : "n_h0zn35sr",
+      "order" : 0,
+      "parentId" : null,
+      "title" : "Checkpoint 1: plan"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : true,
+      "id" : "n_htqqjrqj",
+      "order" : 0,
+      "parentId" : "n_h0zn35sr",
+      "title" : "Plan with GPU-h and usage estimate"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : true,
+      "id" : "n_ngbxdk06",
+      "order" : 1,
+      "parentId" : "n_h0zn35sr",
+      "title" : "Owner OK; fresh worktree and branch"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_h0zn35sr"
+      ],
+      "description" : "Builds, ctest, same-seed comparison against ifx GPU=none, planted-defect control, baseline timings.",
+      "done" : true,
+      "id" : "n_z8umbxo0",
+      "order" : 1,
+      "parentId" : null,
+      "title" : "Phase A: baseline and checks"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Job 560146 (preempt), ~3 min.",
+      "done" : true,
+      "id" : "n_qmkfzfdv",
+      "order" : 0,
+      "parentId" : "n_z8umbxo0",
+      "title" : "Builds aot, gpu-txt, cpu-txt, gpu-ser"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C: 53\/53 passed (gpu-ser).",
+      "done" : true,
+      "id" : "n_1enp2iel",
+      "order" : 1,
+      "parentId" : "n_z8umbxo0",
+      "title" : "ctest 53\/53 on GPU"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C: L6 Mz=F 2.2e-15, L6 Mz=T 5.5e-11, L12 Mz=F 1.5e-14; configurations identical.",
+      "done" : true,
+      "id" : "n_0u6h1svx",
+      "order" : 2,
+      "parentId" : "n_z8umbxo0",
+      "title" : "Same-seed comparison passes"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C: eps:1e-12 caught (1.1e-13 > 1e-13, marginal); ALF_GPU_NS=0 NOT caught at L=12 (8e-15). Needs a stronger control or a Precision Green check.",
+      "done" : true,
+      "id" : "n_wduq2swm",
+      "order" : 3,
+      "parentId" : "n_z8umbxo0",
+      "title" : "Planted-defect control"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C (jobs 560147, 560153, AOT, ref params): L=24 one tile 10.6 s\/sweep (2 host threads), 11.3 (8), 13.3-14.6 (1); one card COMPOSITE 17.3-19.4; L=32 one tile 30.7 (8 thr), 50.0 (1). Node: 8 ranks 0.56-0.83, 16 ranks 0.53, 32 ranks + CCS 2.05 sweeps\/s (= 0.51 per card). First-run 4.4 s value was a setup artefact. vs A30: one chain 2.0x (L24) and 1.7x (L32) slower; per-card throughput already above A30 (0.43) with 32 ranks.",
+      "done" : true,
+      "id" : "n_2nx06120",
+      "order" : 4,
+      "parentId" : "n_z8umbxo0",
+      "title" : "Baseline timings L=24, L=32, node throughput"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_z8umbxo0"
+      ],
+      "description" : "Where the time goes on Max 1550 vs A30, what runs on the host and why.",
+      "done" : true,
+      "id" : "n_fy5jf2xm",
+      "order" : 2,
+      "parentId" : null,
+      "title" : "Phase B: own profile"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C: oneMKL geqrf takes geqrf_wy_lookahead_hybrid: panel (zgeqrf, zlarft, ztrmm) and larfb_wy (zgemm) run on the host; geqrf ~53% of main-thread time. VTune gpu-offload collected no GPU data.",
+      "done" : true,
+      "id" : "n_x9lwj6lq",
+      "order" : 0,
+      "parentId" : "n_fy5jf2xm",
+      "title" : "VTune host hotspots, one L=24 chain"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C (in-ALF shim timers ALFSH_TIMING, jobs 560168\/560187): L=24 per sweep 192 geqrf (9.4 ms\/call, 8 thr; 27 ms, 1 thr), 192 unmqr (2.8 ms), 96 getrf (3.9 ms) = 2.43 s; L=32: 9.8 s of 31.4. Standalone SYCL bench unreliable (V2 adapter needed, timings disagree with ALF).",
+      "done" : true,
+      "id" : "n_etxiv7wl",
+      "order" : 1,
+      "parentId" : "n_fy5jf2xm",
+      "title" : "LAPACK per-call microbenchmark N=576\/1024"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C (phase timers ALF_TEAM_TIMERS, job 560187), L=24 per sweep 10.1 s: updates 5.60 (55%), CGR 1.74, stab 1.39, obser 1.18. Host work: oneMKL geqrf_wy_lookahead_hybrid (panel + larfb on CPU), getrf host-assisted. Updates latency-bound: 75k kernel launches, 40k dispatched BLAS with sync, 374k small H2D copies per sweep (LIBOMPTARGET_DEBUG). GPU tracing impossible here: VTune 2025.1\/2025.8 no GPU data, LIBOMPTARGET_PROFILE no output, PTI segfaults.",
+      "done" : true,
+      "id" : "n_2kv1891i",
+      "order" : 2,
+      "parentId" : "n_fy5jf2xm",
+      "title" : "Routine map CUDA vs oneMKL"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Owner 2026-11-11: single-chain speed is the target (per-card throughput already met, 0.51 vs 0.43); Phase C covers both QR\/LU and update-phase latency; preempt partition OK.",
+      "done" : true,
+      "id" : "n_a1w6x2on",
+      "order" : 3,
+      "parentId" : "n_fy5jf2xm",
+      "title" : "Checkpoint 2 report"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_fy5jf2xm"
+      ],
+      "description" : "Same-algorithm options only (Householder QR, partial-pivot LU).",
+      "done" : true,
+      "id" : "n_wn2dza0r",
+      "order" : 3,
+      "parentId" : null,
+      "title" : "Phase C: research and prototypes"
+    },
+    {
+      "collapsed" : false,
+      "description" : "oneMKL docs: device geqrf is officially hybrid (part on CPU), no switch. Earlier OpenMP device QR prototypes 55-120 ms at N=576 (their data). Probe job 560206: module-allocatable arrays cost 16.0 us\/launch vs 10.7 us with explicit-shape dummies (C); declare target 1318 us (C, unusable). Standalone SYCL bench unreliable on this system (needs V2 adapter; geqrf 87 ms vs 9.4 ms in ALF; batched results inconsistent).",
+      "done" : true,
+      "id" : "n_r87zm40k",
+      "order" : 0,
+      "parentId" : "n_wn2dza0r",
+      "title" : "Research oneMKL, MAGMA, SLATE, reference LAPACK"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Phase 1 (A2, job 560233, C): oneMKL geqrf_batch (batch 1) 9.7\/28.9 ms per call at L24\/L32 vs plain 10.1\/28.4 (no gain, same Precision Green); getrf_batch 10.5\/37.0 ms vs 4.0\/8.9 (slower). Same-seed check passed. Gate failed, switch reverted (patch phase1_batch_switch.patch). Run-to-run noise of the L24 sweep ~1 s (10.1-11.5). Phase 2 (B1+B2) next.",
+      "done" : true,
+      "id" : "n_671xrazy",
+      "order" : 1,
+      "parentId" : "n_wn2dza0r",
+      "title" : "Prototype benchmarks"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Owner: phased plan (A2, then B1+B2), continue past 5 % usage up to 10 %.",
+      "done" : true,
+      "id" : "n_ulnuru0c",
+      "order" : 2,
+      "parentId" : "n_wn2dza0r",
+      "title" : "Checkpoint 3: ranked table and recommendation"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_wn2dza0r"
+      ],
+      "description" : "",
+      "done" : true,
+      "id" : "n_g4twgzat",
+      "order" : 4,
+      "parentId" : null,
+      "title" : "Phase D: integration and final report"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Commit de3f7306 (gpu_lowrank_mod dummies + fused k_blk_scale); map(present) Intel-only; CUDA compiles (nvfortran, A30 host), not run.",
+      "done" : true,
+      "id" : "n_f8a84eio",
+      "order" : 0,
+      "parentId" : "n_g4twgzat",
+      "title" : "Integrate behind ONEMKL backend, CUDA unchanged"
+    },
+    {
+      "collapsed" : false,
+      "description" : "APPROVE WITH NOTES (static): extents\/slices correct, fused kernel race-free and bit-identical; note: build+run on nvfortran.",
+      "done" : true,
+      "id" : "n_qdqkpl5h",
+      "order" : 1,
+      "parentId" : "n_g4twgzat",
+      "title" : "Numerics review by fresh agent"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C: L24 one tile 9.68 -> 9.28 s\/sweep (4 alternating pairs, in-loop timer; prototyper 10.51 -> 9.32); L32 31.6 -> 27.4 (1 pair); per card 0.51 -> 0.52 (A30 0.43). Single-chain target not met (~1.8x \/ ~1.5x).",
+      "done" : true,
+      "id" : "n_279szlz2",
+      "order" : 2,
+      "parentId" : "n_g4twgzat",
+      "title" : "Before\/after timings vs A30 target"
+    },
+    {
+      "collapsed" : false,
+      "description" : "docs\/supermuc_large_prompt\/ISSUE_INTEL_VS_A30.md; commits d2b35605, 5ceb2291, 9ac8cc1e, de3f7306 (+ docs); ~3.0 node-h (E), usage ~6 %.",
+      "done" : true,
+      "id" : "n_79rg49gy",
+      "order" : 3,
+      "parentId" : "n_g4twgzat",
+      "title" : "ISSUE_INTEL_VS_A30.md, commits, node-h and usage"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_g4twgzat"
+      ],
+      "description" : "Worktree ALF_wt_lp_team_async, branch production-mpi-intel-large-prompt-team-async, remote team\/p3. Owner 2026-11-11: GPU up to 1000 GPU-h for testing; usage cap 25 % total (from weekly 30 %), max 12.5 % per phase. Branch pushed by owner (push from the session was blocked).",
+      "done" : false,
+      "id" : "n_ip03gk58",
+      "order" : 5,
+      "parentId" : null,
+      "title" : "Phase 3: asynchronous update phase (Intel)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "FAILED (C, jobs 560333-35, branch -async commit 2a29034f, p3\/asyncbench.F90): dependent chain of small kernels + dispatched zgemm: sync 11.9-12.7 us\/op, nowait+depend 12.0-12.7 (97-103 %), nowait without depend 34-36 and racy. ifx runs nowait target tasks undeferred (issue time = total time, no overlap with host work). 11 LIBOMPTARGET_LEVEL_ZERO knobs: no effect; immediate command lists off 2.4x worse. No source change; ~0.1 node-h.",
+      "done" : true,
+      "id" : "n_2pw4ggdn",
+      "order" : 0,
+      "parentId" : "n_ip03gk58",
+      "title" : "Gate A: async microbenchmark <= 0.5x sync per kernel"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Replaced by Phase 3b: SYCL-async block path on the interop queue (ALFSH_ASYNCBLK=1, libalfsb.so), commits 26954206\/a574e898 on -async; agent gates G1-G3 passed.",
+      "done" : true,
+      "id" : "n_mmraam8s",
+      "order" : 1,
+      "parentId" : "n_ip03gk58",
+      "title" : "Implement nowait\/depend in the submatrix update path"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C (agent + lead combined job 560387): same seed PASS, bitwise 0.0 vs branch head, missing wait -> abort (Unstable matrix); missing end-of-slice drain NOT detected (in-order queue orders it; drain kept). nvfortran compiles (combined).",
+      "done" : true,
+      "id" : "n_oje6bbc7",
+      "order" : 2,
+      "parentId" : "n_ip03gk58",
+      "title" : "Checks: same seed vs CPU, bitwise vs GPU x3, planted missing dependency, nvfortran compile"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_64yz0wj0",
+      "order" : 3,
+      "parentId" : "n_ip03gk58",
+      "title" : "Timing old vs new (L24, L32, node)"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_g4twgzat"
+      ],
+      "description" : "Worktree ALF_wt_lp_team_sycqr, branch production-mpi-intel-large-prompt-team-sycqr, remote team\/p4. Switch ALFSH_DEVQR=1.",
+      "done" : false,
+      "id" : "n_vg8vag8d",
+      "order" : 6,
+      "parentId" : null,
+      "title" : "Phase 4: device-only SYCL Householder QR (shim)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "PASSED (agent): dR 2.1e-14, dV 5.9e-14, dtau 2.2e-14, orthogonality at host level; planted tau error caught.",
+      "done" : true,
+      "id" : "n_fnb19x04",
+      "order" : 0,
+      "parentId" : "n_vg8vag8d",
+      "title" : "Gate A: correctness vs host LAPACK (R, V, tau <= 1e-13, orthogonality)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "FAILED vs the 0.5x gate (agent: 8.7 vs 9.1 ms at N=576, 19.9 vs 26.3 at N=1024), but host-thread independent. In ALF (combined, C): stab+cgr L24 3.65 -> 3.23 s, L32 13.2 -> 10.3 s.",
+      "done" : true,
+      "id" : "n_tpcema2g",
+      "order" : 1,
+      "parentId" : "n_vg8vag8d",
+      "title" : "Gate B: per call <= 0.5x oneMKL hybrid in ALF"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C, jobs 560581-83 (2026-11-12, fix 29005a0f merged as a130d085): node config 32 ranks CCS 4: planted pre-fix lib PG max 0.40 -> FAIL (check catches the race); fixed V4 PG mean 1.9e-14 max 5.8e-10 -> PASS (V2 3.7e-10). Same seed vs CPU V3 and V4: L6F 2.2e-15, L12F 1.6e-14, L6T 6.0e-11 PASS. Single tile PG L24 1.8e-14\/4.5e-11, L32 5.1e-14\/4.4e-11.",
+      "done" : true,
+      "id" : "n_7ulfjn4m",
+      "order" : 2,
+      "parentId" : "n_vg8vag8d",
+      "title" : "Checks: same seed vs CPU, Precision Green, planted defect"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C (combined): L24 7.07 -> 6.66, L32 23.2 -> 20.5. Node numbers (0.766\/card) invalid until the CCS bug is fixed.",
+      "done" : true,
+      "id" : "n_afxoe8hz",
+      "order" : 3,
+      "parentId" : "n_vg8vag8d",
+      "title" : "Timing old vs new (L24, L32, node)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_cd9c88g1",
+      "order" : 4,
+      "parentId" : "n_vg8vag8d",
+      "title" : "Optional: device ZGETRF"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_ip03gk58",
+        "n_vg8vag8d"
+      ],
+      "description" : "Merge both branches into a combined branch, same checks, before\/after vs A30 target, fresh numerics review.",
+      "done" : false,
+      "id" : "n_mo4rpe72",
+      "order" : 7,
+      "parentId" : null,
+      "title" : "Phase 3+4 combined"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Branch production-mpi-intel-large-prompt-team-combined: merged -async and -sycqr (conflicts Makefile\/configure.sh resolved: both libs, -ldl), libalfsb linked LP64 (-qmkl) instead of ILP64. Builds OK, nvfortran compile OK.",
+      "done" : true,
+      "id" : "n_pyqq3ctv",
+      "order" : 0,
+      "parentId" : "n_mo4rpe72",
+      "title" : "Merge and build"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C, jobs 560581-83 (2026-11-12, fix 29005a0f merged as a130d085): same checks as Phase 4 node above, all PASS. Open: fresh numerics review (agent) before production use.",
+      "done" : false,
+      "id" : "n_7uyk379j",
+      "order" : 1,
+      "parentId" : "n_mo4rpe72",
+      "title" : "Checks and fresh numerics review"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C, jobs 560581-83 (2026-11-12, fix 29005a0f merged as a130d085): L24 one tile: V2 6.53, V4 6.12-6.15 s\/sweep (A30 5.25); L32: V2 21.98, V4 19.38 (A30 18.2). Node per card (CPU-time diff): V2 0.669-0.688, V4 0.737-0.785 (A30 0.43). L24 V4 split: upd 1.44, stab 1.40, cgr 1.86, obs 1.19 s.",
+      "done" : true,
+      "id" : "n_331eda4l",
+      "order" : 2,
+      "parentId" : "n_mo4rpe72",
+      "title" : "Before\/after timing vs A30"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_xoa52f6l",
+      "order" : 3,
+      "parentId" : "n_mo4rpe72",
+      "title" : "Update ISSUE_INTEL_VS_A30.md and report"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C (agent jobs 560361-560370, lead job 560375): SYCL async via interop queue 4.3 us\/op vs OpenMP sync 12.3 (gate A' passed). Real cost of blk_begin = 32 KB D2H of gbd, 380 us with default staging, 22 us with 1 MB. L24 one tile 10.5 -> 7.05 s\/sweep (update 5.5 -> 1.96), L32 31.5 -> 23.4; same seed vs CPU PASS, bitwise identical to default; node 32 ranks 0.513\/card unchanged, 16 ranks 0.421, 8 ranks 7.29 s\/chain. Committed to the Phase 2 jobfiles (b2343b98). Next: SYCL-async block path (est. -0.4 s), gate G1 >= 0.25 s.",
+      "done" : true,
+      "id" : "n_oz0pl1sx",
+      "order" : 4,
+      "parentId" : "n_ip03gk58",
+      "title" : "Phase 3b: staging-buffer finding (LIBOMPTARGET_LEVEL_ZERO_STAGING_BUFFER_SIZE=1 MB)"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_mo4rpe72"
+      ],
+      "description" : "Owner 2026-11-12: continue the speedup plan. AMD MI210 session reached L24 4.41 s\/sweep with own HIP Householder QR (geqrf AND unmqr, wave-per-column apply, no T factor) + deferred sync; obs only 0.12 s device time there. Our L24 V4: cgr 1.86, stab 1.40, obs 1.19, upd 1.44.",
+      "done" : false,
+      "id" : "n_v7wyl9eg",
+      "order" : 8,
+      "parentId" : null,
+      "title" : "Phase 5: close the single-chain gap to the A30 (L24 6.1 -> <=5.25 s)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C: AMD report received 2026-11-12 (branch gpu-delayed-submatrix-defect-production-mpi-amd, commits fc22e314..b3923afe; alf_hip_qr.hip.cpp). Transferable: device unmqr apply kernel, deferred sync. Not transferable: patched libgomp plugin.",
+      "done" : true,
+      "id" : "n_fmw0qzq2",
+      "order" : 0,
+      "parentId" : "n_v7wyl9eg",
+      "title" : "AMD consolidation: read AMD report, map ideas to Intel"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C job 560667: per sweep L24 geqrf 1.50 s (dev QR) \/ 2.09 (oneMKL), unmqr 0.50, getrf 0.41; L32 geqrf 5.20\/8.17, unmqr 1.95, getrf 1.24.",
+      "done" : true,
+      "id" : "n_c894quzg",
+      "order" : 1,
+      "parentId" : "n_v7wyl9eg",
+      "title" : "Profile V4 at L24\/L32: ALFSH_TIMING per LAPACK call + obs kernel split"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C (399075ac, ALFSH_DEVUNMQR=1): Gate A PASS (<=2.3e-15, 3 planted defects FAIL). Gate B in ALF: 1.37 ms vs oneMKL 2.41-2.61 at L24 (0.52-0.57x), 5.30 vs 7.44-7.63 at L32 (0.69-0.71x): MISSED (target 0.5x).",
+      "done" : false,
+      "id" : "n_3zd3wfbk",
+      "order" : 2,
+      "parentId" : "n_v7wyl9eg",
+      "title" : "Device ZUNMQR (apply reflectors, AMD-style, no T) in libalfdevqr"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Was 'Optional: device ZGETRF' in Phase 4.",
+      "done" : false,
+      "id" : "n_sppug866",
+      "order" : 3,
+      "parentId" : "n_v7wyl9eg",
+      "title" : "Device ZGETRF (replaces oneMKL host-assisted getrf)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "AMD obs device time 0.12 s; ours likely launch\/first-private bound.",
+      "done" : false,
+      "id" : "n_t8cbu6px",
+      "order" : 4,
+      "parentId" : "n_v7wyl9eg",
+      "title" : "Observables phase: dummy-arg treatment + fusion in gpu_obs_mod (1.19 s at L24)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C: L6F 2.3e-15, L12F 1.6e-14 PASS; L6T 1.36e-10 FAIL vs tol 1e-10, but oneMKL baseline itself fails 2\/5 seed sets (1.13e-10, 1.84e-10) -> criterion noise-limited; OWNER DECISION. Single-tile PG L24 2.6e-11, L32 2.7e-11; node PG max 6.5e-10 PASS. Planted: tau 1e-12 caught (same seed + node PG); gross races (no barrier, one SLM buffer) caught; 3 narrow race plants NOT caught by node PG. Default build bitwise unchanged.\n\nRace test (stress, p5\/race\/NOTES.md, jobs 560754-560807, ~5.4 node-h, 2026-11-12): real DEVQR=2+DEVUNMQR=1 at 4 ranks\/tile CCS 4: 0 BAD in 0.85 M it (N=1024) + 3.39 M it (N=576) on 2 nodes; controls oneMKL and DEVQR=1 also 0 (C). Plants: onebuf and race_ex caught, race_v caught with the ALFDEVQR_G=1 amplifier, race_tau NOT caught (detector blind to it). Bound: races at >=1e-5\/it excluded (95 %: <3.5e-6 at N=1024, <9e-7 at N=576). Open: L6T rule (owner wording), tau-slot code review.",
+      "done" : false,
+      "id" : "n_t0owuhxk",
+      "order" : 6,
+      "parentId" : "n_v7wyl9eg",
+      "title" : "Checks: same seed vs CPU, node PG (CCS 4) + planted defect, bitwise vs V4 where expected, nvfortran compile"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C jobs 560726\/560730: L24 V4 5.85-5.91, V7 4.95-4.97 s\/sweep (A30 5.25: MET); L32 V4 18.44-18.70, V7 16.41-16.42 (A30 18.2: MET). Report update open.",
+      "done" : false,
+      "id" : "n_5jsw56zn",
+      "order" : 7,
+      "parentId" : "n_v7wyl9eg",
+      "title" : "Timing vs A30 and report update"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Owner 2026-11-12: keep in mind, do NOT work on it yet. Reuse our measured evidence (scaling, single-chain and node throughput, correctness checks).",
+      "done" : false,
+      "id" : "n_k2mfq94n",
+      "order" : 10,
+      "parentId" : null,
+      "title" : "GCS application 140k GPU-h (SuperMUC-NG Phase 2): LaTeX technical part"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_yqmebhg0",
+      "order" : 0,
+      "parentId" : "n_k2mfq94n",
+      "title" : "Collect GCS requirements (code readiness, scaling\/performance evidence, resource justification)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Source: Phase A\/4\/5 checks and job logs.",
+      "done" : false,
+      "id" : "n_xca2yibf",
+      "order" : 1,
+      "parentId" : "n_k2mfq94n",
+      "title" : "Evidence: code runs on SuperMUC-NG Phase 2 (builds, ctest, same seed vs CPU, Precision Green)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Source: comb\/ jobs 560386-88, 560581-83.",
+      "done" : false,
+      "id" : "n_myir4kzt",
+      "order" : 2,
+      "parentId" : "n_k2mfq94n",
+      "title" : "Evidence: performance and scaling tables (s\/sweep per chain, sweeps\/s per card\/node, ranks per tile CCS)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_m5vg459s",
+      "order" : 3,
+      "parentId" : "n_k2mfq94n",
+      "title" : "Resource justification: GPU-h = sweeps x s\/sweep x walkers x parameter sets"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_49lwz0az",
+      "order" : 4,
+      "parentId" : "n_k2mfq94n",
+      "title" : "Draft LaTeX section (technical feasibility, performance, resources)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C job 560727, per card: 4\/tile CCS4: V4 0.812-0.815, V7 0.841-0.846 (+3.7 %); 1\/tile: V4 0.302-0.315, V7 0.354-0.361 (+16 %). Single-chain gain mostly absorbed when 4 walkers share a tile.",
+      "done" : true,
+      "id" : "n_5owq5egr",
+      "order" : 5,
+      "parentId" : "n_v7wyl9eg",
+      "title" : "Throughput benchmark: does the single-chain speedup raise total throughput with 4 walkers per tile?"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_v7wyl9eg"
+      ],
+      "description" : "Owner 2026-11-12. Today 4 walkers\/tile reach ~20 % of the tile compute floor (E: ~6-7 TFLOP per walker-sweep at L24, 10-15 TFLOP\/s zgemm per tile). Estimate: ceiling 4-5x, realistic 2-3x per card (E). Measure first, then hand development to a Sonnet subagent.",
+      "done" : false,
+      "id" : "n_0pogcitw",
+      "order" : 9,
+      "parentId" : null,
+      "title" : "Phase 6: batched multi-walker GPU path (throughput rebuild)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C job 560772 (V7, L24): per card 1\/tile 0.365, 2\/tile 0.458, 4\/tile 0.879, 8\/tile 0.261 (collapses). More processes per tile do not help beyond 4.",
+      "done" : true,
+      "id" : "n_5ubioznl",
+      "order" : 0,
+      "parentId" : "n_0pogcitw",
+      "title" : "Measure throughput vs walkers per tile (1\/2\/4\/8, V7)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C job 560773 (MKL_VERBOSE dims): per walker-sweep 8.8 TFLOP oneMKL BLAS (5376 big zgemm 8.2 TF, 34560 rank-k zgemm 0.49 TF, ztrsm 0.07) + ~0.4 TF device QR (E) = ~9.2 TFLOP. 4 walkers\/tile reach ~4 TFLOP\/s per tile (peak ~26, E).",
+      "done" : true,
+      "id" : "n_mtt452m3",
+      "order" : 1,
+      "parentId" : "n_0pogcitw",
+      "title" : "Measure work per sweep: MKL_VERBOSE FLOP count + device-QR calls"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Owner 2026-11-12: \"Yes, and then hand the development off to a new subagent (sonnet).\" Agent started with Gate 1 = ceiling benchmark (>=1.5x today, else stop).",
+      "done" : true,
+      "id" : "n_wupch5cn",
+      "order" : 2,
+      "parentId" : "n_0pogcitw",
+      "title" : "Decision: rebuild worth it? (owner)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "\n\nDone (p6\/DESIGN.md): walker index last on all device arrays, lockstep, per-walker RNG via RANDOM_SEED PUT\/GET, ~62 person-days (E).",
+      "done" : true,
+      "id" : "n_qngrzpm7",
+      "order" : 3,
+      "parentId" : "n_0pogcitw",
+      "title" : "Design: walker index in GPU modules, batched kernels\/BLAS, MPI\/PP layout"
+    },
+    {
+      "collapsed" : false,
+      "description" : "\n\nDone for the hopping wrap only (patch p6\/proto_walker_batch.patch, not in source). Gate 1 ceiling: gemm formula 3.1-4.1x, grounded 1.5-2.3x, realistic 1.3-1.6x (E). Gate 2 FAIL: oneMKL batched\/wide gemm not bitwise vs single at N=144\/400\/576 (1e-15 level); bit-safe mode 3 gives no gain. Wrap batching = ~2 % of a sweep (C, jobs 560780-560805, ~1.3 node-h).",
+      "done" : true,
+      "id" : "n_makj7mtj",
+      "order" : 4,
+      "parentId" : "n_0pogcitw",
+      "title" : "Prototype batched wrap + stabilisation for B walkers, bitwise vs single-walker"
+    },
+    {
+      "collapsed" : false,
+      "description" : "\n\nNO-GO recommended (Phase 6 agent, 2026-11-12): gemm ceiling not reachable; lever is launch latency in updates\/observables (70-90 % latency, E). Option: bit-safe pilot with walker index only in own kernels (15-20 person-days, E). Owner decision pending.",
+      "done" : false,
+      "id" : "n_in02dd0b",
+      "order" : 5,
+      "parentId" : "n_0pogcitw",
+      "title" : "Full batched sweep, checks (same seed, node PG, bitwise per walker), throughput vs A30"
+    }
+  ],
+  "rev" : 6,
+  "version" : 1
+}

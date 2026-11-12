@@ -32,6 +32,9 @@ module unload intel-mkl
 module load intel-mkl/2025.3.0 hdf5/1.14.5-intel25
 
 export OMP_TARGET_OFFLOAD=MANDATORY
+# Level Zero staging buffer 1 MB (default is smaller): the 32 KB D->H block copy of the submatrix update drops from ~380 us
+# to ~22 us; one chain L=24 10.5 -> 7.05 s/sweep, L=32 31.5 -> 23.4, bitwise-identical results (team session 2026-11-12).
+export LIBOMPTARGET_LEVEL_ZERO_STAGING_BUFFER_SIZE=1048576
 export OMP_NUM_THREADS=##OMPT##
 # expose 4 compute engines per tile: 4 walkers per tile then run concurrently (measured 3.5x node throughput; without it they time-slice)
 export ZEX_NUMBER_OF_CCS=0:4,1:4,2:4,3:4,4:4,5:4,6:4,7:4

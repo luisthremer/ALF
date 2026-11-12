@@ -479,12 +479,18 @@ Contains
     Complex (Kind=Kind(0.d0)) :: HS_New
     Real (Kind=Kind(0.d0)) :: T0_proposal, T0_Proposal_ratio, S0_ratio
     Logical :: Acc, toggle1, fast_lr, bm
+#ifdef ALF_TEAM_TIMERS
+    Real (Kind=Kind(0.d0)) :: p3_t0
+#endif
 
     if (N_Global_tau > 0) call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
     upd_cnt(10) = upd_cnt(10) + 1
     fast_lr = gpu_lr_fast()
     bm = gpu_lr_blockmode()
     NTAU1 = NTAU + 1
+#ifdef ALF_TEAM_TIMERS
+    p3_t0 = p3_now()
+#endif
     call g_in(GR)
     ! Wrap up with B(tau1)
     Do nf_eff = 1,N_FL_eff
@@ -492,6 +498,9 @@ Contains
        call gpu_mmthr   (G_d(1,1,nf), Ndim, Ndim, nf, ntau1)
        call gpu_mmthl_m1(G_d(1,1,nf), Ndim, Ndim, nf, ntau1)
     Enddo
+#ifdef ALF_TEAM_TIMERS
+    p3t(6) = p3t(6) + (p3_now() - p3_t0)
+#endif
     Do n = Nt_sequential_start,Nt_sequential_end
        if (bm) then
           call gpu_lr_blk_enter(n, Nt_sequential_end, 1, ntau1, .true.)   ! submatrix block mode: host block, wrap on the host copy
@@ -528,8 +537,14 @@ Contains
        endif
        ! Op_Wrapup with N_Type 2: nothing for diagonal operators
     Enddo
+#ifdef ALF_TEAM_TIMERS
+    p3_t0 = p3_now()
+#endif
     call gpu_lr_flush_all(2)                    ! delayed / submatrix: G_d must be current at the end of the slice
     call g_out(GR)
+#ifdef ALF_TEAM_TIMERS
+    p3t(6) = p3t(6) + (p3_now() - p3_t0)
+#endif
   end Subroutine gpu_wrapgrup
 
 !--------------------------------------------------------------------
@@ -546,12 +561,21 @@ Contains
     Complex (Kind=Kind(0.d0)) :: HS_New
     Real (Kind=Kind(0.d0)) :: T0_proposal, T0_Proposal_ratio, S0_ratio
     Logical :: Acc, toggle1, fast_lr, bm
+#ifdef ALF_TEAM_TIMERS
+    Real (Kind=Kind(0.d0)) :: p3_t0
+#endif
 
     if (N_Global_tau > 0) call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
     upd_cnt(10) = upd_cnt(10) + 1
     fast_lr = gpu_lr_fast()
     bm = gpu_lr_blockmode()
+#ifdef ALF_TEAM_TIMERS
+    p3_t0 = p3_now()
+#endif
     call g_in(GR)
+#ifdef ALF_TEAM_TIMERS
+    p3t(6) = p3t(6) + (p3_now() - p3_t0)
+#endif
     Do n =  Nt_sequential_end, Nt_sequential_start, -1
        ! Op_Wrapdo with N_Type 2: nothing for diagonal operators
        if (bm) then
@@ -589,6 +613,9 @@ Contains
           enddo
        endif
     Enddo
+#ifdef ALF_TEAM_TIMERS
+    p3_t0 = p3_now()
+#endif
     call gpu_lr_flush_all(2)                    ! delayed / submatrix: flush before the hopping wrap
     Do nf_eff = 1,N_FL_eff
        nf=Calc_Fl_map(nf_eff)
@@ -596,6 +623,9 @@ Contains
        call gpu_mmthr_m1(G_d(1,1,nf), Ndim, Ndim, nf, ntau)
     enddo
     call g_out(GR)
+#ifdef ALF_TEAM_TIMERS
+    p3t(6) = p3t(6) + (p3_now() - p3_t0)
+#endif
   end Subroutine gpu_wrapgrdo
 
 

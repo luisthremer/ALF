@@ -1,0 +1,13 @@
+#!/bin/bash
+#SBATCH --job-name=p5_g3
+#SBATCH --output=%x.%j.log
+#SBATCH --error=%x.%j.err
+#SBATCH --time=00:59:00
+#SBATCH --no-requeue
+#SBATCH --export=NONE
+#SBATCH --get-user-env
+#SBATCH --account=pn93la
+#SBATCH --partition=preempt
+#SBATCH --qos=preempt
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=32
