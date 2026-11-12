@@ -1,0 +1,11 @@
+#!/bin/bash
+# ifx wrapper: AOT for Intel Max (PVC) instead of JIT. Put its directory first in PATH; REAL_IFX = real ifx.
+args=(); aot=0
+for a in "$@"; do
+  case "$a" in
+    -fopenmp-targets=spir64) args+=("-fopenmp-targets=spir64_gen"); aot=1 ;;
+    *) args+=("$a") ;;
+  esac
+done
+[ $aot = 1 ] && args+=("-Xopenmp-target-backend" "-device pvc")
+exec "${REAL_IFX:?REAL_IFX not set}" "${args[@]}"
