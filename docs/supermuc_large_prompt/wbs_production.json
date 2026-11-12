@@ -373,7 +373,7 @@
     },
     {
       "collapsed" : false,
-      "description" : "Big-L tests (BIGL_RESULTS.md): L36 P1 46.7 s\/sweep, PG max 6.9e-10, 5.1 GiB\/tile; N_delay irrelevant (update ~20 % of sweep; stabilisation 54-61 %, geqrf dominant). L>=40: Precision Green max up to 1.5e-8\/3.2e-8 and one 'Unstable matrix' abort at L44 with Nwrap 10 (owner: no production > 36 anyway). RUN_L36: 8 U (5.1-5.5) x 1 walker, 1 node, 1 per tile, 14 threads, N_delay 64, general chain 560381-560383.",
+      "description" : "Big-L tests (BIGL_RESULTS.md): L36 P1 46.7 s\/sweep, PG max 6.9e-10, 5.1 GiB\/tile; N_delay irrelevant (update ~20 % of sweep; stabilisation 54-61 %, geqrf dominant). L>=40: Precision Green max up to 1.5e-8\/3.2e-8 and one 'Unstable matrix' abort at L44 with Nwrap 10 (owner: no production > 36 anyway). RUN_L36: 8 U (5.1-5.5) x 1 walker, 1 node, 1 per tile, 14 threads, N_delay 64, general chain 560381-560383. 2026-11-12 ~12:45: ABORTED by the owner ('Abort L36 production runs if they are running'): running 560399 and queued 560649\/560650 cancelled at 34-35 bins per U (Nwrap 5); all Temp_*\/data.h5 and confout readable, RUNNING left (a restart would recover it).",
       "done" : true,
       "id" : "n_nk1w5ybq",
       "order" : 4,
