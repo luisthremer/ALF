@@ -130,6 +130,7 @@
       Use Predefined_Hoppings
       Use LRC_Mod
       Use Natural_Constants, only: Eps_small
+      Use QMC_runtime_var, only: get_Ltau
 #ifdef ALF_GPU
       Use gpu_obs_mod, only: gpu_obs_setup, gpu_obs_active, gpu_obs_measure
 #endif
@@ -241,6 +242,19 @@
 
           ! From dynamically generated file "Hamiltonian_Hubbard_read_write_parameters.F90"
           call read_parameters()
+
+          ! Time-displaced observables (Ltau = 1) are measured without the space-time pinning defect:
+          ! the pinning field is switched off, whatever the parameter file says.
+          if (get_Ltau() == 1 .and. abs(ham_h0) > 0.d0) then
+#ifdef MPI
+             If (Irank_g == 0) then
+#endif
+                Write(error_unit,*) 'Ham_Set: Ltau = 1, the pinning field ham_h0 is set to 0. Value in the parameter file: ', ham_h0
+#ifdef MPI
+             endif
+#endif
+             ham_h0 = 0.d0
+          endif
 
           Thtrot = 0
           Ltrot = nint(beta/dtau)
