@@ -88,6 +88,9 @@ Module gpu_stab_mod
   Use cgr1_mod, only: CGR
   Use Control, only: Control_PrecisionG_vals
   Use alf_la_mod
+#if defined(ALF_LA_HIP)
+  Use alf_hipk_mod
+#endif
   Use gpu_state_mod
   Use gpu_update_mod, only: gpu_upd_enabled
   Use gpu_wrap_mod, only: gpu_wrapur_slices, gpu_wrapul_slices
@@ -191,8 +194,11 @@ Contains
   Subroutine k_ident(n, U, ld)
     Implicit none
     Integer, intent(in) :: n, ld
-    Complex (Kind=Kind(0.d0)), intent(inout) :: U(ld,*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: U(ld,1)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    call hk_ident(n, ld, U)
+#else
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
@@ -203,47 +209,60 @@ Contains
           endif
        enddo
     enddo
+#endif
   end subroutine k_ident
 
   Subroutine k_setD(n, D)
     Implicit none
     Integer, intent(in) :: n
-    Complex (Kind=Kind(0.d0)), intent(inout) :: D(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: D(1)
     Integer :: i
+#if defined(ALF_LA_HIP)
+    call hk_setd(n, D)
+#else
     !$omp target teams distribute parallel do
     do i = 1, n
        D(i) = z1
     enddo
+#endif
   end subroutine k_setD
 
   Subroutine k_setL(n, L)
     Implicit none
     Integer, intent(in) :: n
-    Real (Kind=Kind(0.d0)), intent(inout) :: L(*)
+    Real (Kind=Kind(0.d0)), intent(inout) :: L(1)
     Integer :: i
+#if defined(ALF_LA_HIP)
+    call hk_setl(n, L)
+#else
     !$omp target teams distribute parallel do
     do i = 1, n
        L(i) = 0.d0
     enddo
+#endif
   end subroutine k_setL
 
   Subroutine k_copy_c(nel, a, b)
     Implicit none
     Integer, intent(in) :: nel
-    Complex (Kind=Kind(0.d0)), intent(in) :: a(*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: b(*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: a(1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: b(1)
     Integer :: i
+#if defined(ALF_LA_HIP)
+    call hk_copyz(nel, a, b)
+#else
     !$omp target teams distribute parallel do
     do i = 1, nel
        b(i) = a(i)
     enddo
+#endif
   end subroutine k_copy_c
 
   Subroutine k_copy_r(nel, a, b)
     Implicit none
     Integer, intent(in) :: nel
-    Real (Kind=Kind(0.d0)), intent(in) :: a(*)
-    Real (Kind=Kind(0.d0)), intent(inout) :: b(*)
+    Real (Kind=Kind(0.d0)), intent(in) :: a(1)
+    Real (Kind=Kind(0.d0)), intent(inout) :: b(1)
     Integer :: i
     !$omp target teams distribute parallel do
     do i = 1, nel
@@ -595,7 +614,7 @@ Contains
   Subroutine gpu_stab_cgr(nfe, nf, nvar, G, phase, with_prec, lazy)
     Implicit none
     Integer, intent(in) :: nfe, nf, nvar
-    Complex (Kind=Kind(0.d0)), intent(inout) :: G(Ndim,Ndim,*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: G(Ndim,Ndim,1)
     Complex (Kind=Kind(0.d0)), intent(out) :: phase
     Logical, intent(in) :: with_prec
     Logical, intent(in), optional :: lazy
@@ -617,12 +636,16 @@ Contains
              !$omp target update to(G_d(:,:,nf))
              g_dev_ok(nf) = .true.
           endif
+#if defined(ALF_LA_HIP)
+          call hk_copyz(n*n, G_d(1,1,nf), st_Gt)
+#else
           !$omp target teams distribute parallel do collapse(2)
           do j = 1, n
              do i = 1, n
                 st_Gt(i,j) = G_d(i,j,nf)
              enddo
           enddo
+#endif
        else
           st_Gt = G(:,:,nf)
           ! H->D of the wrapped G (host-authoritative), 16 N^2 B, for the precision reduction
@@ -648,12 +671,16 @@ Contains
     endif
     if (sess) then
        ! the new G becomes the device Green function (device-to-device)
+#if defined(ALF_LA_HIP)
+       call hk_copyz(n*n, st_Gn, G_d(1,1,nf))
+#else
        !$omp target teams distribute parallel do collapse(2)
        do j = 1, n
           do i = 1, n
              G_d(i,j,nf) = st_Gn(i,j)
           enddo
        enddo
+#endif
        g_dev_ok(nf) = .true.
        g_host_ok(nf) = keep_host
     endif
@@ -876,38 +903,49 @@ Contains
   Subroutine k_scale_cols(n, U, ld, D)
     Implicit none
     Integer, intent(in) :: n, ld
-    Complex (Kind=Kind(0.d0)), intent(inout) :: U(ld,*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: D(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: U(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: D(1)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    call hk_scale_cols(n, ld, U, D)
+#else
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
           U(i,j) = U(i,j)*D(j)
        enddo
     enddo
+#endif
   end subroutine k_scale_cols
 
   ! D(i) = |U(i,i)| (complex, zero imaginary part)
   Subroutine k_diagabs(n, U, ld, D)
     Implicit none
     Integer, intent(in) :: n, ld
-    Complex (Kind=Kind(0.d0)), intent(in) :: U(ld,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: D(*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: U(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: D(1)
     Integer :: i
+#if defined(ALF_LA_HIP)
+    call hk_diagabs(n, ld, U, D)
+#else
     !$omp target teams distribute parallel do
     do i = 1, n
        D(i) = cmplx(abs(U(i,i)), 0.d0, kind(0.d0))
     enddo
+#endif
   end subroutine k_diagabs
 
   ! U(i,j) = U(i,j) / D(i), j >= i   (D real valued)
   Subroutine k_divrows(n, U, ld, D)
     Implicit none
     Integer, intent(in) :: n, ld
-    Complex (Kind=Kind(0.d0)), intent(inout) :: U(ld,*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: D(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: U(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: D(1)
     Integer :: i, j
     Real (Kind=Kind(0.d0)) :: x
+#if defined(ALF_LA_HIP)
+    call hk_divrows(n, ld, U, D)
+#else
     !$omp target teams distribute parallel do collapse(2) private(x)
     do j = 1, n
        do i = 1, n
@@ -917,6 +955,7 @@ Contains
           endif
        enddo
     enddo
+#endif
   end subroutine k_divrows
 
   ! Phase = prod_i U(i,i), times the permutation sign, conjugated for side L; cs(1) = Phase, cs(2) = 1/Phase.
@@ -925,10 +964,13 @@ Contains
     Implicit none
     Integer, intent(in) :: n, ld, sgn
     Logical, intent(in) :: cj
-    Complex (Kind=Kind(0.d0)), intent(in) :: U(ld,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: cs(*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: U(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: cs(1)
     Complex (Kind=Kind(0.d0)) :: ph
     Integer :: i
+#if defined(ALF_LA_HIP)
+    call hk_phase(n, ld, U, sgn, cj, cs)
+#else
     !$omp target
     ph = cmplx(1.d0, 0.d0, kind(0.d0))
     do i = 1, n
@@ -939,41 +981,53 @@ Contains
     cs(1) = ph
     cs(2) = cmplx(1.d0, 0.d0, kind(0.d0)) / ph
     !$omp end target
+#endif
   end subroutine k_phase
 
   ! U(1,j) = cs(2) * U(1,j)   (ZSCAL of the first row of R with 1/Phase)
   Subroutine k_scale_row1(n, U, ld, cs)
     Implicit none
     Integer, intent(in) :: n, ld
-    Complex (Kind=Kind(0.d0)), intent(inout) :: U(ld,*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: cs(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: U(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: cs(1)
     Integer :: j
+#if defined(ALF_LA_HIP)
+    call hk_scale_row1(n, ld, U, cs)
+#else
     !$omp target teams distribute parallel do
     do j = 1, n
        U(1,j) = cs(2)*U(1,j)
     enddo
+#endif
   end subroutine k_scale_row1
 
   ! U(i,1) = cs(1) * U(i,1)   (ZSCAL of the first column of Q with Phase)
   Subroutine k_scale_col1(n, U, ld, cs)
     Implicit none
     Integer, intent(in) :: n, ld
-    Complex (Kind=Kind(0.d0)), intent(inout) :: U(ld,*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: cs(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: U(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: cs(1)
     Integer :: i
+#if defined(ALF_LA_HIP)
+    call hk_scale_col1(n, U, cs)
+#else
     !$omp target teams distribute parallel do
     do i = 1, n
        U(i,1) = cs(1)*U(i,1)
     enddo
+#endif
   end subroutine k_scale_col1
 
   ! R(i,j) = U(i,j) for i <= j, else 0
   Subroutine k_triu(n, U, ld, R, ldr)
     Implicit none
     Integer, intent(in) :: n, ld, ldr
-    Complex (Kind=Kind(0.d0)), intent(in) :: U(ld,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: R(ldr,*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: U(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: R(ldr,1)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    call hk_triu(n, ld, U, ldr, R)
+#else
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
@@ -984,124 +1038,156 @@ Contains
           endif
        enddo
     enddo
+#endif
   end subroutine k_triu
 
   ! W(i,j) = X(perm(i),j)        (ZLAPMR forward)
   Subroutine k_perm_rows(n, X, ldx, perm, W, ldw)
     Implicit none
     Integer, intent(in) :: n, ldx, ldw
-    Integer(c_int), intent(in) :: perm(*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: X(ldx,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: W(ldw,*)
+    Integer(c_int), intent(in) :: perm(1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: X(ldx,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: W(ldw,1)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    call hk_perm(0, n, X, ldx, perm, W, ldw)
+#else
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
           W(i,j) = X(perm(i),j)
        enddo
     enddo
+#endif
   end subroutine k_perm_rows
 
   ! W(i,j) = X(i,perm(j))        (ZLAPMT forward)
   Subroutine k_perm_cols(n, X, ldx, perm, W, ldw)
     Implicit none
     Integer, intent(in) :: n, ldx, ldw
-    Integer(c_int), intent(in) :: perm(*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: X(ldx,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: W(ldw,*)
+    Integer(c_int), intent(in) :: perm(1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: X(ldx,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: W(ldw,1)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    call hk_perm(1, n, X, ldx, perm, W, ldw)
+#else
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
           W(i,j) = X(i,perm(j))
        enddo
     enddo
+#endif
   end subroutine k_perm_cols
 
   ! W(perm(i),j) = X(i,j)        (ZLAPMR backward)
   Subroutine k_iperm_rows(n, X, ldx, perm, W, ldw)
     Implicit none
     Integer, intent(in) :: n, ldx, ldw
-    Integer(c_int), intent(in) :: perm(*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: X(ldx,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: W(ldw,*)
+    Integer(c_int), intent(in) :: perm(1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: X(ldx,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: W(ldw,1)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    call hk_perm(2, n, X, ldx, perm, W, ldw)
+#else
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
           W(perm(i),j) = X(i,j)
        enddo
     enddo
+#endif
   end subroutine k_iperm_rows
 
   ! W(i,perm(j)) = X(i,j)        (ZLAPMT backward)
   Subroutine k_iperm_cols(n, X, ldx, perm, W, ldw)
     Implicit none
     Integer, intent(in) :: n, ldx, ldw
-    Integer(c_int), intent(in) :: perm(*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: X(ldx,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: W(ldw,*)
+    Integer(c_int), intent(in) :: perm(1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: X(ldx,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: W(ldw,1)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    call hk_perm(3, n, X, ldx, perm, W, ldw)
+#else
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
           W(i,perm(j)) = X(i,j)
        enddo
     enddo
+#endif
   end subroutine k_iperm_cols
 
   ! W(i) = L(perm(i))
   Subroutine k_perm_vec(n, L, perm, W)
     Implicit none
     Integer, intent(in) :: n
-    Integer(c_int), intent(in) :: perm(*)
-    Real (Kind=Kind(0.d0)), intent(in) :: L(*)
-    Real (Kind=Kind(0.d0)), intent(inout) :: W(*)
+    Integer(c_int), intent(in) :: perm(1)
+    Real (Kind=Kind(0.d0)), intent(in) :: L(1)
+    Real (Kind=Kind(0.d0)), intent(inout) :: W(1)
     Integer :: i
+#if defined(ALF_LA_HIP)
+    call hk_perm_vec(n, L, perm, W)
+#else
     !$omp target teams distribute parallel do
     do i = 1, n
        W(i) = L(perm(i))
     enddo
+#endif
   end subroutine k_perm_vec
 
   ! B(i,j) = conjg(A(j,i))
   Subroutine k_ct(n, A, lda, B, ldb)
     Implicit none
     Integer, intent(in) :: n, lda, ldb
-    Complex (Kind=Kind(0.d0)), intent(in) :: A(lda,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: B(ldb,*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: A(lda,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: B(ldb,1)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    call hk_ct(n, A, lda, B, ldb)
+#else
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
           B(i,j) = conjg(A(j,i))
        enddo
     enddo
+#endif
   end subroutine k_ct
 
   ! A(i,j) = A(i,j) / D(i)   (complex division, as the CPU code)
   Subroutine k_rowdiv(n, A, lda, D)
     Implicit none
     Integer, intent(in) :: n, lda
-    Complex (Kind=Kind(0.d0)), intent(inout) :: A(lda,*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: D(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: A(lda,1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: D(1)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    call hk_rowdiv(n, lda, A, D)
+#else
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
           A(i,j) = A(i,j) / D(i)
        enddo
     enddo
+#endif
   end subroutine k_rowdiv
 
   ! A(i,j) = A(i,j) * (1/Re D(j))
   Subroutine k_colinv(n, A, lda, D)
     Implicit none
     Integer, intent(in) :: n, lda
-    Complex (Kind=Kind(0.d0)), intent(inout) :: A(lda,*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: D(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: A(lda,1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: D(1)
     Integer :: i, j
     Real (Kind=Kind(0.d0)) :: sv
+#if defined(ALF_LA_HIP)
+    call hk_colinv(n, lda, A, D)
+#else
     !$omp target teams distribute parallel do collapse(2) private(sv)
     do j = 1, n
        do i = 1, n
@@ -1109,15 +1195,19 @@ Contains
           A(i,j) = A(i,j) * sv
        enddo
     enddo
+#endif
   end subroutine k_colinv
 
   ! default CGR: T(i,j) = Dr(i) * T(i,j) * Dl(j) + RHS(i,j)
   Subroutine k_tpup(n, T, R, Dr, Dl)
     Implicit none
     Integer, intent(in) :: n
-    Complex (Kind=Kind(0.d0)), intent(inout) :: T(n,*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: R(n,*), Dr(*), Dl(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: T(n,1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: R(n,1), Dr(1), Dl(1)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    call hk_tpup(n, T, R, Dr, Dl)
+#else
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
@@ -1125,15 +1215,16 @@ Contains
           T(i,j) = T(i,j) + R(i,j)
        enddo
     enddo
+#endif
   end subroutine k_tpup
 
   ! STABLOG CGR: the four cases of cgr1_mod (exponent signs chosen so that no exp overflows)
   Subroutine k_tpup_log(n, T, R, Lr, Ll)
     Implicit none
     Integer, intent(in) :: n
-    Complex (Kind=Kind(0.d0)), intent(inout) :: T(n,*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: R(n,*)
-    Real (Kind=Kind(0.d0)), intent(in) :: Lr(*), Ll(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: T(n,1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: R(n,1)
+    Real (Kind=Kind(0.d0)), intent(in) :: Lr(1), Ll(1)
     Integer :: i, j
     Real (Kind=Kind(0.d0)) :: lr_i, ll_j
     Complex (Kind=Kind(0.d0)) :: dup, dlj
@@ -1169,8 +1260,8 @@ Contains
   Subroutine k_rowscale_log(n, A, lda, L)
     Implicit none
     Integer, intent(in) :: n, lda
-    Complex (Kind=Kind(0.d0)), intent(inout) :: A(lda,*)
-    Real (Kind=Kind(0.d0)), intent(in) :: L(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: A(lda,1)
+    Real (Kind=Kind(0.d0)), intent(in) :: L(1)
     Integer :: i, j
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
@@ -1184,8 +1275,8 @@ Contains
   Subroutine k_colscale_log(n, A, lda, L)
     Implicit none
     Integer, intent(in) :: n, lda
-    Complex (Kind=Kind(0.d0)), intent(inout) :: A(lda,*)
-    Real (Kind=Kind(0.d0)), intent(in) :: L(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: A(lda,1)
+    Real (Kind=Kind(0.d0)), intent(in) :: L(1)
     Integer :: i, j
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
@@ -1199,11 +1290,14 @@ Contains
   Subroutine k_det_phase(n, A, lda, ipiv, cs)
     Implicit none
     Integer, intent(in) :: n, lda
-    Complex (Kind=Kind(0.d0)), intent(in) :: A(lda,*)
-    Integer(c_int), intent(in) :: ipiv(*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: cs(*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: A(lda,1)
+    Integer(c_int), intent(in) :: ipiv(1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: cs(1)
     Complex (Kind=Kind(0.d0)) :: det
     Integer :: i, sg
+#if defined(ALF_LA_HIP)
+    call hk_det_phase(n, lda, A, ipiv, cs)
+#else
     !$omp target
     det = cmplx(1.d0, 0.d0, kind(0.d0))
     do i = 1, n
@@ -1217,6 +1311,7 @@ Contains
     det = conjg(det)
     cs(3) = det / abs(det)
     !$omp end target
+#endif
   end subroutine k_det_phase
 
   ! cs(3) *= permutation sign * prod_i (R_ii phase) * reflector determinants   (cgr1_mod, after the QR); serial loop.
@@ -1224,11 +1319,14 @@ Contains
   Subroutine k_cgr_phase(n, T, ld, tau, cs, nvar, sgn, bad)
     Implicit none
     Integer, intent(in) :: n, ld, nvar, sgn, bad
-    Complex (Kind=Kind(0.d0)), intent(in) :: T(ld,*), tau(*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: cs(*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: T(ld,1), tau(1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: cs(1)
     Complex (Kind=Kind(0.d0)) :: ph, z
     Real (Kind=Kind(0.d0)) :: x
     Integer :: i
+#if defined(ALF_LA_HIP)
+    call hk_cgr_phase(n, ld, T, tau, cs, nvar, sgn, bad)
+#else
     !$omp target
     ph = cs(3)
     if (sgn < 0) ph = -ph
@@ -1249,14 +1347,18 @@ Contains
     if (bad == 1) ph = -ph
     cs(3) = ph
     !$omp end target
+#endif
   end subroutine k_cgr_phase
 
   ! A <- 3/2 - A/2  (A = Q^H Q on input)
   Subroutine k_ns(n, A)
     Implicit none
     Integer, intent(in) :: n
-    Complex (Kind=Kind(0.d0)), intent(inout) :: A(n,*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: A(n,1)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    call hk_ns(n, A)
+#else
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
@@ -1264,14 +1366,15 @@ Contains
           if (i == j) A(i,j) = A(i,j) + 1.5d0
        enddo
     enddo
+#endif
   end subroutine k_ns
 
   ! r(8) = max |A - 1|
   Subroutine k_orth(n, A, r)
     Implicit none
     Integer, intent(in) :: n
-    Complex (Kind=Kind(0.d0)), intent(in) :: A(n,*)
-    Real (Kind=Kind(0.d0)), intent(inout) :: r(*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: A(n,1)
+    Real (Kind=Kind(0.d0)), intent(inout) :: r(1)
     Integer :: i, j
     Real (Kind=Kind(0.d0)) :: xm, d
     xm = 0.d0
@@ -1295,10 +1398,13 @@ Contains
   Subroutine k_testscale(n, D, r)
     Implicit none
     Integer, intent(in) :: n
-    Complex (Kind=Kind(0.d0)), intent(in) :: D(*)
-    Real (Kind=Kind(0.d0)), intent(inout) :: r(*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: D(1)
+    Real (Kind=Kind(0.d0)), intent(inout) :: r(1)
     Integer :: i, nn
     Real (Kind=Kind(0.d0)) :: a, b
+#if defined(ALF_LA_HIP)
+    call hk_testscale(n, D, r)
+#else
     nn = 0
     !$omp target teams distribute parallel do reduction(+:nn) private(a, b)
     do i = 1, n
@@ -1310,17 +1416,21 @@ Contains
     r(2) = real(D(1))
     r(3) = real(D(n))
     !$omp end target
+#endif
   end subroutine k_testscale
 
   ! precision check: r(4) = max |A-B|, r(5) = sum |A-B|, r(6)/r(7) = number of NaN entries in A / B (not in max/sum)
   Subroutine k_prec(n, A, B, r)
     Implicit none
     Integer, intent(in) :: n
-    Complex (Kind=Kind(0.d0)), intent(in) :: A(n,*), B(n,*)
-    Real (Kind=Kind(0.d0)), intent(inout) :: r(*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: A(n,1), B(n,1)
+    Real (Kind=Kind(0.d0)), intent(inout) :: r(1)
     Integer :: i, j, na, nb
     Real (Kind=Kind(0.d0)) :: xm, xs, d, cs
     Logical :: fa, fb
+#if defined(ALF_LA_HIP)
+    call hk_prec(n, A, B, r)
+#else
     xm = 0.d0; xs = 0.d0; na = 0; nb = 0
     ! ticket 212: the sum has a fixed order: one thread per column sums serially into st_pw(j), then one thread adds the
     ! n column sums in order (max and the integer counts are order independent and stay reductions)
@@ -1352,6 +1462,7 @@ Contains
     r(6) = real(na, kind(0.d0))
     r(7) = real(nb, kind(0.d0))
     !$omp end target
+#endif
   end subroutine k_prec
 
   Logical function isnan_bits(x)
@@ -1368,9 +1479,9 @@ Contains
   Subroutine k_lognorm(n, U, ld, L, out)
     Implicit none
     Integer, intent(in) :: n, ld
-    Complex (Kind=Kind(0.d0)), intent(in) :: U(ld,*)
-    Real (Kind=Kind(0.d0)), intent(in) :: L(*)
-    Real (Kind=Kind(0.d0)), intent(inout) :: out(*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: U(ld,1)
+    Real (Kind=Kind(0.d0)), intent(in) :: L(1)
+    Real (Kind=Kind(0.d0)), intent(inout) :: out(1)
     Integer :: i, j
     Real (Kind=Kind(0.d0)) :: mx, s, v
     ! ticket 212: one thread per column, serial sums (fixed order; a device reduction combines in an unspecified order)
@@ -1399,9 +1510,9 @@ Contains
   Subroutine k_stablog_scale(n, U, ld, L, D)
     Implicit none
     Integer, intent(in) :: n, ld
-    Complex (Kind=Kind(0.d0)), intent(inout) :: U(ld,*)
-    Real (Kind=Kind(0.d0)), intent(inout) :: L(*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: D(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: U(ld,1)
+    Real (Kind=Kind(0.d0)), intent(inout) :: L(1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: D(1)
     Integer :: i, j
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
@@ -1479,7 +1590,7 @@ Contains
        call gpu_stab_finalize()
        call gpu_state_finalize()
        write(output_unit,'(A)') ' GPU stabilization hook: ALF_GPU_EXIT=1, stopping after the test'
-       call exit(0)
+       stop 0
     endif
   end subroutine gpu_stab_hook
 

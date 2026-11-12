@@ -46,6 +46,7 @@ Hamiltonian_main_mod.o: Hamiltonians_interface.h Hamiltonians_case.h
 $(OHAM): .parse_parameters Hamiltonian_main_mod.o
 
 main.o: git.h
+gpu_state_mod.o: git.h
 
 # Regenerate git.h whenever the commit hash, branch, or dirty state changes.
 # .git/HEAD changes on branch switch; .git/index changes on commit/stage.

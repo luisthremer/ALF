@@ -62,6 +62,9 @@ Module gpu_lowrank_mod
   Use Hamiltonian_main, only: Ndim, N_FL, N_FL_eff, Calc_Fl_map, Op_V, nsigma
   Use QMC_runtime_var, only: get_Sequential_scheme, get_N_delay
   Use alf_la_mod, only: la_gemm, la_sync, LA_N, LA_T
+#if defined(ALF_LA_HIP)
+  Use alf_hipk_mod
+#endif
   Use gpu_state_mod
 #if defined(ALF_LA_ONEMKL)
   Use iso_c_binding, only: c_ptr, c_int, c_int64_t, c_intptr_t, c_double, c_loc, c_f_pointer, c_associated, c_null_ptr
@@ -332,7 +335,7 @@ Contains
   Subroutine k_dly_wrap(G, X, Y, ld, nd_, jcnt, n, t, dir, r, eo, nt)
     Implicit none
     Integer, intent(in) :: ld, nd_, jcnt, n, t, dir, r, eo, nt
-    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,*), X(ld,*), Y(ld,*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,1), X(ld,1), Y(ld,1)
     Integer :: j, sp, nloop
     Complex (Kind=Kind(0.d0)) :: za, zb
     nloop = max(nd_, jcnt)
@@ -360,8 +363,8 @@ Contains
   Subroutine k_dly_gpp(G, X, Y, ld, jcnt, p, res)
     Implicit none
     Integer, intent(in) :: ld, jcnt, p
-    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,*), X(ld,*), Y(ld,*)
-    Real (Kind=Kind(0.d0)), intent(inout) :: res(*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,1), X(ld,1), Y(ld,1)
+    Real (Kind=Kind(0.d0)), intent(inout) :: res(1)
     Integer :: k
     Complex (Kind=Kind(0.d0)) :: s
     !$omp target private(s)
@@ -380,8 +383,8 @@ Contains
     Implicit none
     Integer, intent(in) :: ld, nrow, jcnt, p
     Real (Kind=Kind(0.d0)), intent(in) :: zr, zi
-    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: X(ld,*), Y(ld,*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: X(ld,1), Y(ld,1)
     Integer :: i, k
     Complex (Kind=Kind(0.d0)) :: c, rr, z
     !$omp target teams distribute parallel do private(k, c, rr, z)
@@ -431,6 +434,9 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: C(ld,k), Qt(ld,k)
     Integer, intent(inout) :: slot(ld,nfg)
     Integer :: i, m
+#if defined(ALF_LA_HIP)
+    call hk_flush_gather(ld, nrow, k, nf, size(slot,1), G(1,1), S, C(1,1), Qt(1,1), slot(1,1))
+#else
 #if defined(ALF_LA_ONEMKL)
     !$omp target teams distribute parallel do collapse(2) map(present,alloc: G, S, C, Qt, slot)
 #else
@@ -446,6 +452,7 @@ Contains
           endif
        enddo
     enddo
+#endif
   end subroutine k_sub_flush_gather
 
 !====================================================================
@@ -540,7 +547,7 @@ Contains
   Subroutine k_wrap_g0(G, ld, n, t, dir, r, eo, nt)
     Implicit none
     Integer, intent(in) :: ld, n, t, dir, r, eo, nt
-    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,1)
     Integer :: j, sp
     Complex (Kind=Kind(0.d0)) :: za, zb
     !$omp target teams distribute parallel do private(sp, za, zb)
@@ -1363,6 +1370,9 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: gbk(nd_,nd_,2), Gk(ld,ld,nfg)
     Integer, intent(in) :: bsk(nd_,2)
     Integer :: fl, a, c, nf
+#if defined(ALF_LA_HIP)
+    call hk_blk_gather(nfl, nfa, nfb, b, nd_, ld, Gk(1,1,1), bsk(1,1), gbk(1,1,1))
+#else
 #if defined(ALF_LA_ONEMKL)
     !$omp target teams distribute parallel do collapse(3) private(nf) map(present,alloc: gbk, bsk, Gk)
 #else
@@ -1377,6 +1387,7 @@ Contains
           enddo
        enddo
     enddo
+#endif
   end subroutine k_blk_gather
 
 !> End of a block: rows, then columns of G(:,:,nf) scaled by the block's wrap factors (cbuf: za(1:b), zb(1:b) of each flavour),
@@ -1489,7 +1500,7 @@ Contains
   Subroutine blk_end(t)
     Implicit none
     Integer, intent(in) :: t
-    Integer :: fl, nf, a, k, b, m, v, vmin, vmax, nfm(2)
+    Integer :: fl, nf, a, k, b, m, v, vmin, vmax, nfm(2), kk
 #ifdef ALF_TEAM_TIMERS
     Real (Kind=Kind(0.d0)) :: ta, tb, tc
     ta = p3_now()
@@ -1542,16 +1553,31 @@ Contains
        call ab_check(alfsb_scale(N_FL_eff, nfm(1), nfm(2), Ndim, b, nd, size(cbuf,1), ab_pG, ab_pBs, ab_pCb), 'scale')
     else
 #endif
+#if !defined(ALF_LA_HIP)
+    ! HIP scales inside the fused hk_blk_end kernel below
     call k_blk_scale(N_FL_eff, nfm(1), nfm(2), Ndim, b, nd, size(G_d,3), size(cbuf,1), G_d, bsd, cbuf)
+#endif
 #if defined(ALF_LA_ONEMKL)
     endif
 #endif
+#if !defined(ALF_LA_HIP)
     upd_cnt(4) = upd_cnt(4) + 1
+#endif
     do fl = 1, N_FL_eff
        nf = Calc_Fl_map(fl)
+#if defined(ALF_LA_HIP)
+       ! one fused kernel: row and column scalings plus the flush gathers (AMD only: launch count)
+       kk = jc(nf)
+       if (kk == 1 .and. nd >= 2) kk = 2
+       call hk_blk_end(nf, fl, Ndim, b, nd, size(cbuf,1), kk, size(slot_d,1), G_d(1,1,1), bsd(1,1), cbuf(1,1), &
+            &          bS_d(1,fl), X_d(1,1,nf), scr_c(1,1,1), slot_d(1,1))
+       upd_cnt(4) = upd_cnt(4) + 1
+       if (jc(nf) > 0) call blk_flush(nf, fl, .true.)
+#else
        if (jc(nf) > 0) then
-          call blk_flush(nf, fl)
+          call blk_flush(nf, fl, .false.)
        endif
+#endif
        do a = 1, b
           bidx(bs_h(a,fl),nf) = 0
        enddo
@@ -1592,9 +1618,10 @@ Contains
 #endif
 
 !> flush from the already uploaded S and packed M (bS_d, cbuf): same device sequence as gpu_lr_flush, no further uploads
-  Subroutine blk_flush(nf, fl)
+  Subroutine blk_flush(nf, fl, gathered)
     Implicit none
     Integer, intent(in) :: nf, fl
+    Logical, intent(in) :: gathered       ! gathers (X, scr 1) already done by hk_blk_end
     Integer :: k, m, kk
     Complex (Kind=Kind(0.d0)), parameter :: cone = (1.d0,0.d0), cmone = (-1.d0,0.d0), czero = (0.d0,0.d0)
     k = jc(nf)
@@ -1606,7 +1633,7 @@ Contains
        call ab_flush_dev(nf, fl, kk)
     else
 #endif
-    call k_sub_flush_gather(G_d(1,1,nf), Ndim, Ndim, bS_d(1,fl), kk, nf, X_d(1,1,nf), scr_c(1,1,1), slot_d, size(slot_d,2))
+    if (.not. gathered) call k_sub_flush_gather(G_d(1,1,nf), Ndim, Ndim, bS_d(1,fl), kk, nf, X_d(1,1,nf), scr_c(1,1,1), slot_d, size(slot_d,2))
     call la_gemm(LA_N, LA_T, Ndim, kk, kk, cone, scr_c(1,1,1), Ndim, cbuf(2*nd+1,fl), kk, czero, scr_c(1,1,2), Ndim)
     call la_gemm(LA_N, LA_T, Ndim, Ndim, kk, cmone, X_d(1,1,nf), Ndim, scr_c(1,1,2), Ndim, cone, G_d(1,1,nf), Ndim)
 #if defined(ALF_LA_ONEMKL)

@@ -1,0 +1,215 @@
+--- plugin-gcn.c.pre_pool	2026-11-11 09:50:42.749082686 +0100
++++ plugin-gcn.c	2026-11-11 10:05:23.318763551 +0100
+@@ -1929,6 +1929,14 @@
+   return true;
+ }
+ 
++/* ALF-AMD local patch: reuse small device allocations (target-region
++   argument buffers) instead of calling the HSA allocator each time.  */
++#define ALF_SMALL_MAX 1024
++#define ALF_SMALL_LIMIT 65536
++static struct { void *p; size_t cls; int inuse; } alf_small[ALF_SMALL_MAX];
++static int alf_small_n = 0;
++static pthread_mutex_t alf_small_lock = PTHREAD_MUTEX_INITIALIZER;
++
+ /* Allocate memory on a specified device.  */
+ 
+ static void *
+@@ -1937,6 +1945,24 @@
+   GCN_DEBUG ("Allocating %zu bytes on device %d\n", size, agent->device_id);
+ 
+   void *ptr;
++  size_t alf_cls = 0;
++  if (size <= ALF_SMALL_LIMIT)
++    {
++      alf_cls = 256;
++      while (alf_cls < size)
++	alf_cls <<= 1;
++      pthread_mutex_lock (&alf_small_lock);
++      for (int i = 0; i < alf_small_n; i++)
++	if (!alf_small[i].inuse && alf_small[i].cls == alf_cls)
++	  {
++	    alf_small[i].inuse = 1;
++	    ptr = alf_small[i].p;
++	    pthread_mutex_unlock (&alf_small_lock);
++	    return ptr;
++	  }
++      pthread_mutex_unlock (&alf_small_lock);
++      size = alf_cls;
++    }
+   hsa_status_t status = hsa_fns.hsa_memory_allocate_fn (agent->data_region,
+ 							size, &ptr);
+   if (status != HSA_STATUS_SUCCESS)
+@@ -1952,6 +1978,18 @@
+       hsa_error ("Could not assign data memory to device", status);
+       return NULL;
+     }
++  if (alf_cls)
++    {
++      pthread_mutex_lock (&alf_small_lock);
++      if (alf_small_n < ALF_SMALL_MAX)
++	{
++	  alf_small[alf_small_n].p = ptr;
++	  alf_small[alf_small_n].cls = alf_cls;
++	  alf_small[alf_small_n].inuse = 1;
++	  alf_small_n++;
++	}
++      pthread_mutex_unlock (&alf_small_lock);
++    }
+ 
+   struct goacc_thread *thr = GOMP_PLUGIN_goacc_thread ();
+   bool profiling_dispatch_p
+@@ -1985,6 +2023,44 @@
+   return ptr;
+ }
+ 
++
++/* ALF-AMD local patch: pool kernarg blocks and completion signals so that a
++   kernel launch does not hit the HSA allocator/driver every time.  */
++#define ALF_POOL_MAX 256
++static pthread_mutex_t alf_pool_lock = PTHREAD_MUTEX_INITIALIZER;
++static void *alf_kernarg_pool[ALF_POOL_MAX];
++static int alf_kernarg_n = 0;
++static uint64_t alf_signal_pool[ALF_POOL_MAX];
++static int alf_signal_n = 0;
++
++/* ALF-AMD local patch: optional per-kernel wall-time profile (GCN_PROF=1).  */
++#include <time.h>
++#define ALF_PROF_MAX 512
++static struct { const char *name; double t; long n; } alf_prof[ALF_PROF_MAX];
++static int alf_prof_n = 0;
++static int alf_prof_on = -1;
++static pthread_mutex_t alf_prof_lock = PTHREAD_MUTEX_INITIALIZER;
++static double alf_now (void)
++{ struct timespec ts; clock_gettime (CLOCK_MONOTONIC, &ts); return ts.tv_sec + 1e-9 * ts.tv_nsec; }
++static void alf_prof_add (const char *name, double dt)
++{
++  pthread_mutex_lock (&alf_prof_lock);
++  int i;
++  for (i = 0; i < alf_prof_n; i++) if (alf_prof[i].name == name) break;
++  if (i == alf_prof_n && i < ALF_PROF_MAX) { alf_prof[i].name = name; alf_prof_n++; }
++  if (i < ALF_PROF_MAX) { alf_prof[i].t += dt; alf_prof[i].n++; }
++  pthread_mutex_unlock (&alf_prof_lock);
++}
++static void __attribute__((destructor)) alf_prof_dump (void)
++{
++  if (alf_prof_on != 1) return;
++  double tot = 0;
++  for (int i = 0; i < alf_prof_n; i++) tot += alf_prof[i].t;
++  fprintf (stderr, "GCN_PROF total kernel wall %.3f s\n", tot);
++  for (int i = 0; i < alf_prof_n; i++)
++    fprintf (stderr, "GCN_PROF %10.3f s %9ld calls %8.1f us/call  %s\n", alf_prof[i].t, alf_prof[i].n, 1e6 * alf_prof[i].t / alf_prof[i].n, alf_prof[i].name);
++}
++
+ /* Create kernel dispatch data structure for given KERNEL, along with
+    the necessary device signals and memory allocations.  */
+ 
+@@ -2000,9 +2076,19 @@
+   shadow->object = kernel->object;
+ 
+   hsa_signal_t sync_signal;
+-  hsa_status_t status = hsa_fns.hsa_signal_create_fn (1, 0, NULL, &sync_signal);
+-  if (status != HSA_STATUS_SUCCESS)
+-    hsa_fatal ("Error creating the GCN sync signal", status);
++  hsa_status_t status = HSA_STATUS_SUCCESS;
++  pthread_mutex_lock (&alf_pool_lock);
++  if (alf_signal_n > 0)
++    sync_signal.handle = alf_signal_pool[--alf_signal_n];
++  else
++    sync_signal.handle = 0;
++  pthread_mutex_unlock (&alf_pool_lock);
++  if (sync_signal.handle == 0)
++    {
++      status = hsa_fns.hsa_signal_create_fn (1, 0, NULL, &sync_signal);
++      if (status != HSA_STATUS_SUCCESS)
++	hsa_fatal ("Error creating the GCN sync signal", status);
++    }
+ 
+   shadow->signal = sync_signal.handle;
+   shadow->private_segment_size = kernel->private_segment_size;
+@@ -2035,11 +2121,19 @@
+       return NULL;
+     }
+ 
+-  status = hsa_fns.hsa_memory_allocate_fn (agent->kernarg_region,
+-					   sizeof (struct kernargs),
+-					   &shadow->kernarg_address);
+-  if (status != HSA_STATUS_SUCCESS)
+-    hsa_fatal ("Could not allocate memory for GCN kernel arguments", status);
++  shadow->kernarg_address = NULL;
++  pthread_mutex_lock (&alf_pool_lock);
++  if (alf_kernarg_n > 0)
++    shadow->kernarg_address = alf_kernarg_pool[--alf_kernarg_n];
++  pthread_mutex_unlock (&alf_pool_lock);
++  if (!shadow->kernarg_address)
++    {
++      status = hsa_fns.hsa_memory_allocate_fn (agent->kernarg_region,
++					       sizeof (struct kernargs),
++					       &shadow->kernarg_address);
++      if (status != HSA_STATUS_SUCCESS)
++	hsa_fatal ("Could not allocate memory for GCN kernel arguments", status);
++    }
+   struct kernargs *kernargs = shadow->kernarg_address;
+ 
+   /* Zero-initialize the output_data (minimum needed).  */
+@@ -2145,11 +2239,24 @@
+     addr = (void *)kernargs->abi.stack_ptr;
+   release_ephemeral_memories (shadow->agent, addr);
+ 
+-  hsa_fns.hsa_memory_free_fn (shadow->kernarg_address);
+-
+   hsa_signal_t s;
+   s.handle = shadow->signal;
+-  hsa_fns.hsa_signal_destroy_fn (s);
++  pthread_mutex_lock (&alf_pool_lock);
++  if (alf_kernarg_n < ALF_POOL_MAX)
++    {
++      alf_kernarg_pool[alf_kernarg_n++] = shadow->kernarg_address;
++      shadow->kernarg_address = NULL;
++    }
++  if (alf_signal_n < ALF_POOL_MAX)
++    {
++      alf_signal_pool[alf_signal_n++] = s.handle;
++      s.handle = 0;
++    }
++  pthread_mutex_unlock (&alf_pool_lock);
++  if (shadow->kernarg_address)
++    hsa_fns.hsa_memory_free_fn (shadow->kernarg_address);
++  if (s.handle)
++    hsa_fns.hsa_signal_destroy_fn (s);
+ 
+   free (shadow);
+ }
+@@ -2412,6 +2519,8 @@
+ 				       index);
+ 
+   GCN_DEBUG ("Kernel dispatched, waiting for completion\n");
++  if (alf_prof_on < 0) alf_prof_on = getenv ("GCN_PROF") ? 1 : 0;
++  double alf_t0 = alf_prof_on == 1 ? alf_now () : 0;
+ 
+   /* Root signal waits with 1ms timeout.  */
+   while (hsa_fns.hsa_signal_wait_acquire_fn (s, HSA_SIGNAL_CONDITION_LT, 1,
+@@ -2421,6 +2530,7 @@
+       console_output (kernel, shadow->kernarg_address, false);
+     }
+   console_output (kernel, shadow->kernarg_address, true);
++  if (alf_prof_on == 1) alf_prof_add (kernel->name, alf_now () - alf_t0);
+ 
+   struct kernargs *kernargs = shadow->kernarg_address;
+   unsigned int return_value = (unsigned int)kernargs->output_data.return_value;
+@@ -3904,6 +4014,15 @@
+ GOMP_OFFLOAD_free (int device, void *ptr)
+ {
+   GCN_DEBUG ("Freeing memory on device %d\n", device);
++  pthread_mutex_lock (&alf_small_lock);
++  for (int i = 0; i < alf_small_n; i++)
++    if (alf_small[i].p == ptr)
++      {
++	alf_small[i].inuse = 0;
++	pthread_mutex_unlock (&alf_small_lock);
++	return true;
++      }
++  pthread_mutex_unlock (&alf_small_lock);
+ 
+   hsa_status_t status = hsa_fns.hsa_memory_free_fn (ptr);
+   if (status != HSA_STATUS_SUCCESS)

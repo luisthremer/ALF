@@ -2,7 +2,7 @@
 # shellcheck disable=SC2059
 # This script sets necessary environment variables for compiling ALF.
 # You need to source it prior to executing make.
-USAGE="usage 'source configure.sh MACHINE MODE STAB [HDF5] [Devel] [GPU=none|nvidia|intel]'
+USAGE="usage 'source configure.sh MACHINE MODE STAB [HDF5] [Devel] [GPU=none|nvidia|intel|amd]'
 
 Please choose one of the following MACHINEs:
  * GNU
@@ -28,7 +28,7 @@ Possible STABs are:
 Further optional arguments: 
   Devel: Compile with additional flags for development and debugging
   HDF5: Compile with HDF5
-  GPU=none|nvidia|intel: GPU target (default none = unchanged CPU build)
+  GPU=none|nvidia|intel|amd: GPU target (default none = unchanged CPU build)
                GPU=nvidia: MACHINE PGI or HELMAGPU only (nvfortran, OpenMP offload, cuBLAS/cuSOLVER);
                            target compute capability from env ALF_GPU_CC (default cc80, e.g. cc80,cc90; HELMAGPU: default cc90)
                GPU=intel:  MACHINE IntelLLVM/IntelX only (ifx, OpenMP offload to spir64 (JIT), oneMKL)
@@ -264,11 +264,11 @@ while [ "$#" -gt "0" ]; do
       INTELLLVMOPTFLAGS="$INTELLLVMOPTFLAGS $INTELLLVMDEVFLAGS"
       PGIOPTFLAGS="$PGIOPTFLAGS $PGIDEVFLAGS"
     ;;
-    GPU=NONE|GPU=NVIDIA|GPU=INTEL)
+    GPU=NONE|GPU=NVIDIA|GPU=INTEL|GPU=AMD)
       GPU_TARGET="$(echo "${ARG#GPU=}" | tr '[:upper:]' '[:lower:]')"
     ;;
     GPU=*)
-      printf "${RED}Error: unknown GPU target '%s'. Allowed: GPU=none, GPU=nvidia, GPU=intel.${NC}\n" "${ARG#GPU=}" 1>&2
+      printf "${RED}Error: unknown GPU target '%s'. Allowed: GPU=none, GPU=nvidia, GPU=intel, GPU=amd.${NC}\n" "${ARG#GPU=}" 1>&2
       rm -r "$tmpdir"
       return 1
     ;;
@@ -552,6 +552,13 @@ case "$GPU_TARGET" in
       return 1
     fi
   ;;
+  amd)
+    if [ "$MACHINE" != "GNU" ]; then
+      printf "${RED}Error: GPU=amd requires MACHINE GNU (gfortran with GCC amdgcn offload); got '%s'.${NC}\n" "$MACHINE" 1>&2
+      rm -r "$tmpdir"
+      return 1
+    fi
+  ;;
   intel)
     if [ "$MACHINE" != "INTELLLVM" ] && [ "$MACHINE" != "INTELX" ]; then
       printf "${RED}Error: GPU=intel requires MACHINE IntelLLVM or IntelX (ifx); got '%s'.${NC}\n" "$MACHINE" 1>&2
@@ -611,6 +618,18 @@ case "$GPU_TARGET" in
     unset _alf_gpu_cc
     export ALF_GPU="nvidia"
     printf "\nGPU target: ${GREEN}nvidia${NC} (nvfortran, OpenMP offload %s, cuBLAS/cuSOLVER)\n" "${ALF_GPU_CC:-cc80}"
+  ;;
+  amd)
+    # gfortran (GCC >= 14) OpenMP offload to amdgcn (ALF_AMD_ARCH, default gfx90a = MI200), hipBLAS/hipSOLVER through a C++ shim.
+    # Offload needs dynamic libraries: drop -static; drop -ffast-math (the GPU=amd runs went unstable with it, test L=6, 2026-11-10). ROCM_PATH: ROCm prefix with include/ (hipblas, hipsolver, hip) and lib/.
+    _alf_amd="-foffload=amdgcn-amdhsa -foffload-options=amdgcn-amdhsa=-march=${ALF_AMD_ARCH:-gfx90a} -DALF_GPU -DALF_LA_HIP"
+    ALF_FLAGS_MODULES="$(echo "${ALF_FLAGS_MODULES} " | sed -e 's/ -static / /g' -e 's/ -ffast-math / /g' -e 's/ $//') ${_alf_amd}"
+    ALF_FLAGS_ANA="$(echo "${ALF_FLAGS_ANA} " | sed -e 's/ -static / /g' -e 's/ -ffast-math / /g' -e 's/ $//') ${_alf_amd}"
+    ALF_FLAGS_PROG="$(echo "${ALF_FLAGS_PROG} " | sed -e 's/ -static / /g' -e 's/ -ffast-math / /g' -e 's/ $//') ${_alf_amd}"
+    ALF_LIB="${ALF_LIB} -foffload=amdgcn-amdhsa -foffload-options=amdgcn-amdhsa=-march=${ALF_AMD_ARCH:-gfx90a} -L${ROCM_PATH:-/opt/rocm}/lib -Wl,-rpath,${ROCM_PATH:-/opt/rocm}/lib -lhipsolver -lhipblas -lamdhip64 -lstdc++"
+    unset _alf_amd
+    export ALF_GPU="amd"
+    printf "\nGPU target: ${GREEN}amd${NC} (gfortran, OpenMP offload amdgcn %s, hipBLAS/hipSOLVER)\n" "${ALF_AMD_ARCH:-gfx90a}"
   ;;
   intel)
     # offload needs dynamic libraries: drop -static

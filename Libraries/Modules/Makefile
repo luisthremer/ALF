@@ -4,6 +4,7 @@ LIB=modules_90.a
 
 SRCS = Mat_subroutines_mod.F90 \
 	alf_la_mod.F90 \
+	alf_la_hip_mod.F90 alf_hipk_mod.F90 \
 	alf_hdf5_mod.F90 \
 	check_omp_num_threads_mod.F90 \
 	entanglement_mod.F90 \
@@ -51,6 +52,20 @@ libalfdevqr.so: alf_la_sycl_devqr.cpp alf_la_sycl_devqr.hpp alf_la_sycl_qr2.hpp
 	icpx -fsycl -O2 -std=c++17 -fPIC -shared $(ALF_SYCL_BLK_FLAGS) -I$(MKLROOT)/include $< -o $@ -qmkl -lmkl_sycl_blas
 endif
 lib: $(SYCLBLK)
+
+# GPU=amd (ALF_GPU=amd): C++ hipBLAS/hipSOLVER shim of the alf_la HIP backend
+ROCM_INC ?= $(if $(ROCM_PATH),$(ROCM_PATH),/opt/rocm)/include
+ifeq ($(ALF_GPU),amd)
+ALF_AMD_ARCH ?= gfx90a
+HIPCC ?= $(if $(ROCM_PATH),$(ROCM_PATH),/opt/rocm)/bin/hipcc
+SHIMOBJ = alf_la_hip_shim.o alf_hip_kernels.o alf_hip_qr.o
+alf_la_hip_shim.o: alf_la_hip_shim.cpp
+	g++ -O2 -std=c++17 -D__HIP_PLATFORM_AMD__ -I$(ROCM_INC) -c $<
+alf_hip_kernels.o: alf_hip_kernels.hip.cpp
+	$(HIPCC) -O2 --offload-arch=$(ALF_AMD_ARCH) -I$(ROCM_INC) -c $< -o $@
+alf_hip_qr.o: alf_hip_qr.hip.cpp
+	$(HIPCC) -O2 --offload-arch=$(ALF_AMD_ARCH) -I$(ROCM_INC) -c $< -o $@
+endif
 
 $(LIB): $(DEPSFILE) $(OBJS) $(SHIMOBJ)
 	ar -r $(LIB) $(OBJS) $(SHIMOBJ)

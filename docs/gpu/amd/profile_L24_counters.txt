@@ -1,0 +1,14 @@
+total kernel time 4.71 s, 118303 dispatches
+group                                    n       ms      % |  occ%  VALU  MemB L2hit stall |    GB/s %peak |   wg vgpr   lds   scr
+QR panel                              8712     1690   35.9 |   0.1   0.1   1.7  60.6   0.0 |       1   0.0 |  256   74 65024     0
+rocBLAS gemm (Tensile)               45478     1083   23.0 |   8.1   4.1  25.8  72.8   0.1 |     183  11.1 |  248   68 14925     0
+QR apply                              8712      887   18.8 |   3.2  12.8  12.4  81.5   0.1 |      22   1.4 |  256   84     0     0
+rocSOLVER/trsm                       13622      407    8.6 |   1.1   0.3  26.8  86.7   1.0 |       7   0.5 |  999   35   570     0
+HIP kernels (k_blk_end(int, int, i   17280      224    4.8 |   9.7   3.2  11.0  72.1   0.1 |      45   2.7 |  256   24     0     0
+HIP kernels (k_corr(int, int, int,    1440       88    1.9 |  26.9   6.4  71.6  93.4   0.1 |     237  14.5 |  128   64  6144     0
+HIP kernels (k_copyz(long, cd cons    6510       74    1.6 |  45.8   1.9  54.9  34.2   3.4 |     662  40.4 |  256    8     0     0
+HIP kernels (k_blk_gather(int, int    8640       70    1.5 |   0.5   0.2   1.1  55.3   0.0 |       4   0.3 |  128   16     0     0
+HIP kernels (k_prec1(int, cd const      96       38    0.8 |   0.3   0.3  27.2  87.5   0.0 |      27   1.6 |   64   32     0     0
+HIP kernels (k_vslice_r(int, int,     1440       34    0.7 |  62.7  11.9  63.8  91.4   1.7 |     291  17.7 |  256   28     0     0
+HIP kernels (k_scalars(int, int co     480       31    0.7 |   0.1   0.0  12.4  24.0   0.0 |       6   0.4 |  128   40  6144     0
+OpenMP-offload kernels                 544       20    0.4 |   6.3   1.8  14.1  74.0   0.2 |      17   1.0 |  238   50  5363     0

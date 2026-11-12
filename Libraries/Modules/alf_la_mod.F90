@@ -99,8 +99,12 @@
 !>   Not provided: la_gemm_rc (real x complex): no DGEMM view exists for it without transposes (ticket 101 used
 !>   transpose kernels); no ALF call site. la_getri: its only call sites are the cold INV routines (mymats_mod.F90:575,623,677).
 
-#if defined(ALF_LA_ONEMKL) && defined(ALF_LA_CUDA)
-#error "alf_la_mod: define at most one of ALF_LA_ONEMKL, ALF_LA_CUDA"
+#if (defined(ALF_LA_ONEMKL) && defined(ALF_LA_CUDA)) || (defined(ALF_LA_HIP) && (defined(ALF_LA_ONEMKL) || defined(ALF_LA_CUDA)))
+#error "alf_la_mod: define at most one of ALF_LA_ONEMKL, ALF_LA_CUDA, ALF_LA_HIP"
+#endif
+! ALF_LA_OM: a backend that goes through the om_* interface (alf_la_om_mod = oneMKL, alf_la_hip_mod = HIP/hipBLAS/hipSOLVER)
+#if defined(ALF_LA_ONEMKL) || defined(ALF_LA_HIP)
+#define ALF_LA_OM
 #endif
 ! ALF_LA_ONEMKL (GPU=intel): backend not implemented yet (ticket 302). The module compiles with the HOST code paths so
 ! that GPU=intel builds; la_init stops the run, so no device data is ever processed by host code.
@@ -111,7 +115,7 @@
 #define LA_FAIL(msg) call la_fail(msg, __LINE__)
 ! LA_GUARD heads every HOST code path of a public routine: under ALF_LA_ONEMKL (GPU=intel, backend not yet
 ! implemented) it stops the run, so host BLAS/LAPACK can never touch device-resident data; otherwise it is empty.
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
 #define LA_GUARD LA_FAIL('ONEMKL backend not implemented yet (ticket 302)')
 #else
 #define LA_GUARD
@@ -983,6 +987,9 @@ module alf_la_mod
 #if defined(ALF_LA_ONEMKL)
   use alf_la_om_mod
 #endif
+#if defined(ALF_LA_HIP)
+  use alf_la_hip_mod
+#endif
 #line 128
   implicit none
   private
@@ -1150,7 +1157,7 @@ contains
 
   function la_backend_name() result(s)
     character(len=16) :: s
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     s = 'onemkl'
 #else
 #line 294
@@ -1208,7 +1215,7 @@ contains
     islot = 0
     lib_pending = .false.
 #endif
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     ! ONEMKL backend (ticket 302a): interop queue, oneMKL dispatch + SYCL shim, test hooks (module alf_la_om_mod)
     ! a failed initialisation (no device, queue/device mismatch) ends the run in om_init
     call om_init()
@@ -1218,7 +1225,7 @@ contains
 
   subroutine la_finalize()
     if (.not. inited) return
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     call om_finalize()
 #endif
 #line 356
@@ -1253,7 +1260,7 @@ contains
 
   !> Block until all enqueued device work is finished and check the solver info slots.
   subroutine la_sync()
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     call om_sync()
 #endif
 #line 387
@@ -1267,7 +1274,7 @@ contains
   !> Pre-grow the work memory (complex(8) elements): host and, with CUDA, device.
   subroutine la_reserve_work(nelem)
     integer, intent(in) :: nelem
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     call om_reserve(nelem)      ! the host workspace of the HOST/CUDA paths is unused under ONEMKL
 #else
 #line 397
@@ -1497,7 +1504,7 @@ contains
     complex(8), intent(in) :: alpha, beta
     complex(8), target :: A(lda,*), B(ldb,*), C(ldc,*)
     if (m <= 0 .or. n <= 0) return
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     call om_gemm(opa, opb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc)
 #else
 #line 621
@@ -1528,7 +1535,7 @@ contains
     real(8), pointer, contiguous :: Ar(:,:), Cr(:,:)
 #endif
     if (m <= 0 .or. n <= 0) return
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     call om_gemm_cr(m, n, k, A, lda, B, ldb, C, ldc)
 #else
 #line 646
@@ -1559,7 +1566,7 @@ contains
     integer :: ib
 #endif
     if (m <= 0 .or. n <= 0 .or. nb <= 0) return
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     call om_gemm_batched(opa, opb, m, n, k, alpha, A, lda, sA, B, ldb, sB, beta, C, ldc, sC, nb)
 #else
 #line 671
@@ -1588,7 +1595,7 @@ contains
     complex(8), intent(in) :: alpha
     complex(8), target :: x(*), y(*), A(lda,*)
     if (m <= 0 .or. n <= 0) return
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     call om_geru(m, n, alpha, x, incx, y, incy, A, lda)
 #else
 #line 694
@@ -1618,7 +1625,7 @@ contains
     integer(c_int) :: cs, cu, cd
 #endif
     if (m <= 0 .or. n <= 0) return
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     call om_trsm(side, uplo, opa, diag, m, n, alpha, A, lda, B, ldb)
 #else
 #line 718
@@ -1649,7 +1656,7 @@ contains
     integer, intent(in) :: m, n, lda
     complex(8), target :: A(lda,*)
     integer :: lw
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     lw = om_geqrf_lwork(m, n, lda)
 #else
 #line 743
@@ -1683,7 +1690,7 @@ contains
 #endif
     if (m <= 0 .or. n <= 0) return
     lw = la_geqrf_lwork(m, n, A, lda)
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     call om_geqrf(m, n, A, lda, tau, lw)
 #else
 #line 771
@@ -1710,7 +1717,7 @@ contains
     integer, intent(in) :: m, n, k, lda
     complex(8), target :: A(lda,*), tau(*)
     integer :: lw
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     lw = om_ungqr_lwork(m, n, k, lda)
 #else
 #line 792
@@ -1746,7 +1753,7 @@ contains
 #endif
     if (m <= 0 .or. n <= 0) return
     lw = la_ungqr_lwork(m, n, k, A, lda, tau)
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     call om_ungqr(m, n, k, A, lda, tau, lw)
 #else
 #line 822
@@ -1775,7 +1782,7 @@ contains
     integer, intent(in) :: trans, m, n, k, lda, ldc
     complex(8), target :: A(lda,*), tau(*), C(ldc,*)
     integer :: lw
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     lw = om_ormqr_lwork(side, trans, m, n, k, lda, ldc)
 #else
 #line 845
@@ -1813,7 +1820,7 @@ contains
 #endif
     if (m <= 0 .or. n <= 0 .or. k <= 0) return
     lw = la_ormqr_lwork(side, trans, m, n, k, A, lda, tau, C, ldc)
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     call om_ormqr(side, trans, m, n, k, A, lda, tau, C, ldc, lw)
 #else
 #line 877
@@ -1844,7 +1851,7 @@ contains
     integer, intent(in) :: m, n, lda
     complex(8), target :: A(lda,*)
     integer :: lw
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     lw = om_getrf_lwork(m, n, lda)
 #else
 #line 902
@@ -1874,7 +1881,7 @@ contains
     integer :: info
 #endif
     if (m <= 0 .or. n <= 0) return
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     call om_getrf(m, n, A, lda, ipiv)
 #else
 #line 926
@@ -1908,7 +1915,7 @@ contains
     integer :: info
 #endif
     if (n <= 0 .or. nrhs <= 0) return
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     call om_getrs(trans, n, nrhs, A, lda, ipiv, B, ldb)
 #else
 #line 954
@@ -1983,7 +1990,7 @@ contains
 #endif
     if (m <= 0 .or. n <= 0) return
     if (m < n) LA_FAIL('la_qrpp requires m >= n')
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     call om_qrpp(m, n, A, lda, ipvt, tau)
 #else
 #line 1023
@@ -2046,7 +2053,7 @@ contains
   !> Test hook: make the info slot of the most recent solver call look failed (CUDA), or fail at once (HOST).
   !> Used by t_info to show that a failure is detected without la_sync (slot recycling) and at la_sync.
   subroutine la_debug_poison_last_info()
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     call om_poison_last()
 #else
 #line 1080
@@ -2073,7 +2080,7 @@ contains
     complex(8) :: w(1)
     if (m <= 0 .or. n <= 0) return
     nel = (n-1)*lda + m
-#if defined(ALF_LA_ONEMKL)
+#if defined(ALF_LA_OM)
     call om_geqp3_host(m, n, A, lda, ipvt, tau)
 #else
 #line 1101

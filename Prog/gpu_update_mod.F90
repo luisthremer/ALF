@@ -280,7 +280,7 @@ Contains
   Subroutine k_site_wrap(G, ld, nd, n, t, dir, r, eo, nt)
     Implicit none
     Integer, intent(in) :: ld, nd, n, t, dir, r, eo, nt
-    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,1)
     Integer :: j, sp
     Complex (Kind=Kind(0.d0)) :: za, zb
     !$omp target teams distribute parallel do private(sp, za, zb)
@@ -301,8 +301,8 @@ Contains
   Subroutine k_upd_prep(G, ld, nd, p, x, y)
     Implicit none
     Integer, intent(in) :: ld, nd, p
-    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: x(*), y(*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: x(1), y(1)
     Integer :: i
     !$omp target teams distribute parallel do
     do i = 1, nd
@@ -319,8 +319,8 @@ Contains
     Implicit none
     Integer, intent(in) :: ld, nd
     Real (Kind=Kind(0.d0)), intent(in) :: zr, zi
-    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: x(*), y(*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: x(1), y(1)
     Integer :: i, j
     Complex (Kind=Kind(0.d0)) :: tmp, Zg
     !$omp target teams distribute parallel do collapse(2) private(tmp, Zg)

@@ -77,6 +77,9 @@ Module gpu_wrap_mod
   Use QMC_runtime_var
   Use Hop_mod
   Use alf_la_mod
+#if defined(ALF_LA_HIP)
+  Use alf_hipk_mod
+#endif
   Use gpu_state_mod
 
   Implicit none
@@ -302,13 +305,17 @@ Contains
   Subroutine k_cpy_n(nel, a, b)
     Implicit none
     Integer, intent(in) :: nel
-    Complex (Kind=Kind(0.d0)), intent(in) :: a(*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: b(*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: a(1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: b(1)
     Integer :: i
+#if defined(ALF_LA_HIP)
+    call hk_copyz(nel, a, b)
+#else
     !$omp target teams distribute parallel do
     do i = 1, nel
        b(i) = a(i)
     enddo
+#endif
   end subroutine k_cpy_n
 
   Subroutine gpu_mmthr_d(M, nf)
@@ -385,8 +392,8 @@ Contains
   Subroutine k_set_c(nel, src, dst)
     Implicit none
     Integer, intent(in) :: nel
-    Complex (Kind=Kind(0.d0)), intent(in) :: src(*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: dst(*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: src(1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: dst(1)
     Integer :: i
     !$omp target teams distribute parallel do map(to: src(1:nel))
     do i = 1, nel
@@ -631,7 +638,7 @@ Contains
   Subroutine k_cb_left_g(M, ld, ncol, g, k, tl)
     Implicit none
     Integer, intent(in) :: ld, ncol, g, k, tl
-    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,1)
     Integer :: jt, ntile, e, e1, e2, j1, j2
     e1 = hop_gptr(g); e2 = hop_gptr(g+1) - 1
     ntile = (ncol + tl - 1) / tl
@@ -648,7 +655,7 @@ Contains
   Subroutine k_cb_right_g(M, ld, nrow, g, k, tl)
     Implicit none
     Integer, intent(in) :: ld, nrow, g, k, tl
-    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,1)
     Integer :: it, ntile, e, e1, e2
     e1 = hop_gptr(g); e2 = hop_gptr(g+1) - 1
     ntile = (nrow + tl - 1) / tl
@@ -748,9 +755,9 @@ Contains
   Subroutine k_gather_rows(nd, ncol, P, M, ld, W, ldw)
     Implicit none
     Integer, intent(in) :: nd, ncol, ld, ldw
-    Integer, intent(in) :: P(*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: M(ld,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: W(ldw,*)
+    Integer, intent(in) :: P(1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: M(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: W(ldw,1)
     Integer :: j, l
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, ncol
@@ -763,25 +770,29 @@ Contains
   Subroutine k_scatter_rows(nd, ncol, P, M, ld, W, ldw)
     Implicit none
     Integer, intent(in) :: nd, ncol, ld, ldw
-    Integer, intent(in) :: P(*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: W(ldw,*)
+    Integer, intent(in) :: P(1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: W(ldw,1)
     Integer :: j, l
+#if defined(ALF_LA_HIP)
+    call hk_scatter_rows(nd, ncol, P, M, ld, W, ldw)
+#else
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, ncol
        do l = 1, nd
           M(P(l), j) = W(l,j)
        enddo
     enddo
+#endif
   end subroutine k_scatter_rows
 
   ! W(j,l) = M(P(l), j)   (W is ncol x nd, ld ncol)
   Subroutine k_tgather(nd, ncol, P, M, ld, W)
     Implicit none
     Integer, intent(in) :: nd, ncol, ld
-    Integer, intent(in) :: P(*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: M(ld,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: W(ncol,*)
+    Integer, intent(in) :: P(1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: M(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: W(ncol,1)
     Integer :: j, l
     !$omp target teams distribute parallel do collapse(2)
     do l = 1, nd
@@ -795,9 +806,9 @@ Contains
   Subroutine k_tscatter(nd, ncol, P, M, ld, W)
     Implicit none
     Integer, intent(in) :: nd, ncol, ld
-    Integer, intent(in) :: P(*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: W(ncol,*)
+    Integer, intent(in) :: P(1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: W(ncol,1)
     Integer :: j, l
     !$omp target teams distribute parallel do collapse(2)
     do l = 1, nd
@@ -811,9 +822,9 @@ Contains
   Subroutine k_gather_cols(nrow, nd, P, M, ld, W)
     Implicit none
     Integer, intent(in) :: nrow, nd, ld
-    Integer, intent(in) :: P(*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: M(ld,*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: W(nrow,*)
+    Integer, intent(in) :: P(1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: M(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: W(nrow,1)
     Integer :: i, l
     !$omp target teams distribute parallel do collapse(2)
     do l = 1, nd
@@ -826,9 +837,9 @@ Contains
   Subroutine k_scatter_cols(nrow, nd, P, M, ld, W)
     Implicit none
     Integer, intent(in) :: nrow, nd, ld
-    Integer, intent(in) :: P(*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
-    Complex (Kind=Kind(0.d0)), intent(in) :: W(nrow,*)
+    Integer, intent(in) :: P(1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: W(nrow,1)
     Integer :: i, l
     !$omp target teams distribute parallel do collapse(2)
     do l = 1, nd
@@ -858,7 +869,7 @@ Contains
     Implicit none
     Integer, intent(in) :: ld, ncol, n, nf, t, N1, po, eo, nt
     Logical, intent(in) :: cj
-    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,1)
     Integer :: i, j, sp, r
     Complex (Kind=Kind(0.d0)) :: z
     !$omp target teams distribute parallel do collapse(2) private(sp, r, z)
@@ -890,7 +901,7 @@ Contains
     Implicit none
     Integer, intent(in) :: ld, nrow, n, nf, t, sign, N1, po, eo, nt
     Logical, intent(in) :: cj
-    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,1)
     Integer :: i, c, sp, cc
     Complex (Kind=Kind(0.d0)) :: z
     !$omp target teams distribute parallel do collapse(2) private(sp, cc, z)
@@ -920,7 +931,7 @@ Contains
   Subroutine k_vop_wrap_rows(G, ld, nd, n, t, dir, N1, po, eo, nt)
     Implicit none
     Integer, intent(in) :: ld, nd, n, t, dir, N1, po, eo, nt
-    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,1)
     Integer :: i, j, sp, r
     Complex (Kind=Kind(0.d0)) :: z
     !$omp target teams distribute parallel do collapse(2) private(sp, r, z)
@@ -937,7 +948,7 @@ Contains
   Subroutine k_vop_wrap_cols(G, ld, nd, n, t, dir, N1, po, eo, nt)
     Implicit none
     Integer, intent(in) :: ld, nd, n, t, dir, N1, po, eo, nt
-    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,1)
     Integer :: i, c, sp, cc
     Complex (Kind=Kind(0.d0)) :: z
     !$omp target teams distribute parallel do collapse(2) private(sp, cc, z)
@@ -970,10 +981,14 @@ Contains
     Implicit none
     Integer, intent(in) :: ld, ncol, nd, nf, t, vb
     Logical, intent(in) :: cj, desc
-    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,1)
     Integer :: jb, nblk, j, j1, j2, r, pa, pb, p, q, n, i, sp, nact
     Complex (Kind=Kind(0.d0)) :: x, z, zq(4)
 
+#if defined(ALF_LA_HIP)
+    call hk_vslice_r(nd, ncol, ld, nf, t, cj, desc, size(vr_ptr,1), size(V_meta,2), vr_ptr(1,1), vr_ent(1,1), V_meta(1,1,1), V_type, nsigma_d(1,1), V_exp, M)
+    return
+#endif
     nblk = (ncol + vb - 1) / vb
     ! thread (r, column block): the factors of row r are looked up once per thread when there are at most 4 of them
     ! (always in the models with one operator per site); more: per element, the same products in the same order
@@ -1048,7 +1063,7 @@ Contains
     Implicit none
     Integer, intent(in) :: ld, nrow, nd, nf, t, sign, vb
     Logical, intent(in) :: cj, desc
-    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,1)
     Integer :: ib, nblk, c, i1, i2, i0, pa, pb, p, q, n, i, sp, nact
     Complex (Kind=Kind(0.d0)) :: x, z, zq(4)
 
@@ -1122,7 +1137,7 @@ Contains
   Subroutine k_vwrap_all(G, ld, nd, nf, t, dir)
     Implicit none
     Integer, intent(in) :: ld, nd, nf, t, dir
-    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,*)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,1)
     Integer, parameter :: big = 1073741824
     Integer :: r, c, pr, pre, pc, pce, ir, ic, nr, nc, n, i, sp, cnt
     Complex (Kind=Kind(0.d0)) :: x, z
@@ -1247,7 +1262,7 @@ Contains
     if (did .and. gpu_env_is('ALF_GPU_EXIT', '1')) then
        call gpu_state_finalize()
        write(output_unit,'(A)') ' GPU wrap hook: ALF_GPU_EXIT=1, stopping after the test'
-       call exit(0)
+       stop 0
     endif
   end subroutine gpu_wrap_hook
 

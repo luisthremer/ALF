@@ -36,6 +36,9 @@ Module gpu_obs_mod
   Use gpu_update_mod, only: gpu_upd_enabled
   Use gpu_wrap_mod, only: gpu_symm, gpu_symm_build, gpu_symm_td
   Use alf_la_mod, only: la_gemm, LA_N
+#if defined(ALF_LA_HIP)
+  Use alf_hipk_mod
+#endif
   Implicit none
   Private
   Logical, Save :: o_symm = .false.
@@ -209,14 +212,18 @@ Contains
   Subroutine k_cpy(nel, a, b)
     Implicit none
     Integer, intent(in) :: nel
-    Complex (Kind=Kind(0.d0)), intent(in) :: a(*)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: b(*)
+    Complex (Kind=Kind(0.d0)), intent(in) :: a(1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: b(1)
     Integer :: i
+#if defined(ALF_LA_HIP)
+    call hk_copyz(nel, a, b)
+#else
     !$omp target teams distribute parallel do
     do i = 1, nel
        b(i) = a(i)
     enddo
-  end subroutine k_cpy
+  #endif
+end subroutine k_cpy
 
   !> .true. when the device measurement replaces ham%Obser
   Logical Function gpu_obs_active()
@@ -246,6 +253,9 @@ Contains
     Complex (Kind=Kind(0.d0)) :: ZP, ZS, ZW, Zkin, Zpot, Zrho, zc, zt
     Integer :: I, nf, k, no, no2, imj, I1, J1, kd, N, Norb, NFL, NSUN, dec, kind_k
     Real (Kind=Kind(0.d0)) :: rs, sq3
+#if defined(ALF_LA_HIP)
+    Real (Kind=Kind(0.d0)) :: hsc(6)
+#endif
 
     if (.not. o_dev) call alloc_dev()
     do nf = 1, o_NFL          ! the device copy must be current (it is, except after a host write of GR)
@@ -288,6 +298,12 @@ Contains
     enddo
 
     ! ---- scalars: GRC(i,j,nf) = delta_ij - G(j,i,nf)
+#if defined(ALF_LA_HIP)
+    call hk_scalars(o_nk, hk_i, hk_j, hk_f, hk_c, N, Norb, NFL, dec, size(G_d,1), G_d(1,1,1), o_inv, o_uo, hsc)
+    Zkin = cmplx(hsc(1), hsc(2), kind(0.d0))*dble(NSUN)
+    Zpot = cmplx(hsc(3), hsc(4), kind(0.d0))
+    Zrho = cmplx(hsc(5), hsc(6), kind(0.d0))
+#else
     Zkin = (0.d0, 0.d0)
     !$omp target teams distribute parallel do reduction(+:Zkin) private(i1,J1,nf,zc)
     do k = 1, o_nk
@@ -317,6 +333,7 @@ Contains
           enddo
        enddo
     enddo
+#endif
     Zrho = Zrho*dble(NSUN)
     Obs_scal(1)%Obs_vec(1) = Obs_scal(1)%Obs_vec(1) + Zkin*ZP*ZS
     Obs_scal(2)%Obs_vec(1) = Obs_scal(2)%Obs_vec(1) + Zpot*ZP*ZS
@@ -369,6 +386,9 @@ Contains
     if (Ntau == Thtrot .or. Ntau == Ltrot - Thtrot) wt = 2.d0
     if (it < 1 .or. it > o_lNt) call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
     N = o_N; Norb = o_Norb; dec = o_dec; w = ZW
+#if defined(ALF_LA_HIP)
+    call hk_local(N, Norb, o_lNt, it, dec, wt, real(w), aimag(w), size(G_d,1), o_inv, G_d(1,1,1), lacc1, lacc2)
+#else
     !$omp target teams distribute parallel do collapse(2) private(i1,d)
     do no = 1, Norb
        do I = 1, N
@@ -378,6 +398,7 @@ Contains
           lacc2(I,it,no) = lacc2(I,it,no) + wt*d
        enddo
     enddo
+#endif
   End Subroutine local_obs
 
   Subroutine corr(k, kind_k, ZW, N, Norb, NFL, NSUN, sq3)
@@ -389,6 +410,10 @@ Contains
     Complex (Kind=Kind(0.d0)) :: s1, s2, s3, z, zi, zj, zxy, zz, g11, g22, a, b, zs0
     Real (Kind=Kind(0.d0)) :: ns, wr, wi
 
+#if defined(ALF_LA_HIP)
+    call hk_corr(kind_k, k, N, Norb, NFL, dble(NSUN), sq3, real(ZW), aimag(ZW), size(G_d,1), G_d(1,1,1), o_jc, o_inv, acc, acc0)
+    return
+#endif
     ns = dble(NSUN)
     wr = real(ZW); wi = aimag(ZW)
     if (kind_k == 1) then            ! Green
@@ -632,11 +657,17 @@ Contains
     N = o_N; Norb = o_Norb; NFL = o_NFL; it = nt + 1
     ns = dble(o_NSUN); rn = 1.d0/dble(o_NFL); sq3 = sqrt(3.d0)
     if (kind_k == 1) then            ! Green: sum_nf GT0 / N_FL
+#if defined(ALF_LA_HIP)
+       !$omp target teams distribute parallel do private(imj,no,no2,s1)
+#else
        !$omp target teams distribute private(imj,no,no2,s1)
+#endif
        do m = 0, N*Norb*Norb - 1
           imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
           s1 = (0.d0, 0.d0)
+#if !defined(ALF_LA_HIP)
           !$omp parallel do private(I,J,i1,j1,nf,z) reduction(+:s1)
+#endif
           do I = 1, N
              J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
              z = (0.d0, 0.d0)
@@ -645,28 +676,44 @@ Contains
              enddo
              s1 = s1 + z*rn
           enddo
+#if !defined(ALF_LA_HIP)
           !$omp end parallel do
+#endif
           tacc(imj,it,no,no2,k) = tacc(imj,it,no,no2,k) + s1*cmplx(wr,wi,kind(0.d0))
        enddo
     elseif (kind_k == 2) then        ! SpinSUN (N_FL = 1): - N_SUN G0T(J1,I1,1) GT0(I1,J1,1)
+#if defined(ALF_LA_HIP)
+       !$omp target teams distribute parallel do private(imj,no,no2,s1)
+#else
        !$omp target teams distribute private(imj,no,no2,s1)
+#endif
        do m = 0, N*Norb*Norb - 1
           imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
           s1 = (0.d0, 0.d0)
+#if !defined(ALF_LA_HIP)
           !$omp parallel do private(I,J,i1,j1) reduction(+:s1)
+#endif
           do I = 1, N
              J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
              s1 = s1 - ns*G0T(j1,i1,1)*GT0(i1,j1,1)
           enddo
+#if !defined(ALF_LA_HIP)
           !$omp end parallel do
+#endif
           tacc(imj,it,no,no2,k) = tacc(imj,it,no,no2,k) + s1*cmplx(wr,wi,kind(0.d0))
        enddo
     elseif (kind_k == 3) then        ! Den
+#if defined(ALF_LA_HIP)
+       !$omp target teams distribute parallel do private(imj,no,no2,s1)
+#else
        !$omp target teams distribute private(imj,no,no2,s1)
+#endif
        do m = 0, N*Norb*Norb - 1
           imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
           s1 = (0.d0, 0.d0)
+#if !defined(ALF_LA_HIP)
           !$omp parallel do private(I,J,i1,j1,nf,z,zi,zj) reduction(+:s1)
+#endif
           do I = 1, N
              J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
              zi = (0.d0, 0.d0); zj = (0.d0, 0.d0); z = (0.d0, 0.d0)
@@ -677,7 +724,9 @@ Contains
              enddo
              s1 = s1 + (zi*ns)*(zj*ns) + z*ns
           enddo
+#if !defined(ALF_LA_HIP)
           !$omp end parallel do
+#endif
           tacc(imj,it,no,no2,k) = tacc(imj,it,no,no2,k) + s1*cmplx(wr,wi,kind(0.d0))
        enddo
        !$omp target teams distribute parallel do private(I,i1,zi,nf,zs0)
@@ -693,11 +742,17 @@ Contains
           tacc0(no,k) = tacc0(no,k) + zs0*cmplx(wr,wi,kind(0.d0))
        enddo
     else                             ! SpinMz (N_FL = 2, N_SUN = 1): k = SpinZ, k+1 = SpinXY, k+2 = SpinT
+#if defined(ALF_LA_HIP)
+       !$omp target teams distribute parallel do private(imj,no,no2,s1,s2,s3)
+#else
        !$omp target teams distribute private(imj,no,no2,s1,s2,s3)
+#endif
        do m = 0, N*Norb*Norb - 1
           imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
           s1 = (0.d0, 0.d0); s2 = (0.d0, 0.d0); s3 = (0.d0, 0.d0)
+#if !defined(ALF_LA_HIP)
           !$omp parallel do private(I,J,i1,j1,zxy,zz) reduction(+:s1,s2,s3)
+#endif
           do I = 1, N
              J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
              zz  = (GTT(i1,i1,1) - GTT(i1,i1,2))*(G00(j1,j1,1) - G00(j1,j1,2)) &
@@ -707,7 +762,9 @@ Contains
              s2 = s2 + zxy
              s3 = s3 + (2.d0*zxy + zz)/3.d0
           enddo
+#if !defined(ALF_LA_HIP)
           !$omp end parallel do
+#endif
           tacc(imj,it,no,no2,k)   = tacc(imj,it,no,no2,k)   + s1*cmplx(wr,wi,kind(0.d0))
           tacc(imj,it,no,no2,k+1) = tacc(imj,it,no,no2,k+1) + s2*cmplx(wr,wi,kind(0.d0))
           tacc(imj,it,no,no2,k+2) = tacc(imj,it,no,no2,k+2) + s3*cmplx(wr,wi,kind(0.d0))
