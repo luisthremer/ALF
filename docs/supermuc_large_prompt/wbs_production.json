@@ -625,7 +625,7 @@
     },
     {
       "collapsed" : false,
-      "description" : "Check ExcNodeList and dependencies. Submitted 2026-11-12 ~14:20 on the owner's word ('just immediately run the production runs'): L24_U2 560747-560748, L28_U2 560749-560750, L32_U2 560751-560753; ExcNodeList and dependencies checked.",
+      "description" : "Check ExcNodeList and dependencies. Submitted 2026-11-12 ~14:20 on the owner's word ('just immediately run the production runs'): L24_U2 560747-560748, L28_U2 560749-560750, L32_U2 560751-560753; ExcNodeList and dependencies checked. 2026-11-12 ~15:00 owner: 'Adjust the run_L24_U2 to include U=3.0 and 8.0': 560747\/560748 cancelled before start, RUN_L24_U2 rebuilt with 8 U (3.0, 5.15-5.425, 8.0), 128 ranks, 4 nodes, seed offset 724 (1128 active seeds distinct), check_params PASS, chain 560757-560758. Precision test 560759 (L24, Nwrap 10, guard binary, 0.3 h from seeds): U=3 Precision Green max 4.7e-11, U=8 8.5e-10, phase <= 3.4e-11, acceptance 0.376 \/ 0.301, no Unstable -> far below the 1e-4 guard threshold.",
       "done" : true,
       "id" : "n_e4yu9dhr",
       "order" : 4,

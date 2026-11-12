@@ -16,3 +16,4 @@ sp_stab  4   1.0  another session's stability jobs 560588-560591
 qrteam   1  40.0  QR team / Intel team, 2026-11-11..12 14:00: ~65 one-node jobs, best estimate 40 node-h (upper bound 70) (limit 1000 GPU-h = 250 node-h; update from their reports)
 L36old   1   5.0  RUN_L36_aborted_nwrap10 560381 (no segments.log; estimate)
 # note: a job cancelled by scancel has no 'end' line in segments.log; ledger.sh then counts it up to the next start or now (RUN_L36 560399: ~1 h too much)
+u38test  1   0.4  560759 (L24 U=3/U=8 precision test)
