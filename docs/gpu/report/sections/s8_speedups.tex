@@ -1,0 +1,76 @@
+\section{Open speedup candidates}
+\label{sec:speedups}
+
+State of \file{SPEEDUPS.md}, 2026-11-13. The rule that organises the list: a change that removes launches helps single chains. Only a change that removes device work helps production layouts, which are throughput-bound (Section~\ref{sec:breakdown}).
+
+\subsection{Available now, no code change}
+
+\begin{table}[h]
+\centering
+\caption{Switches that need no code change (\file{SPEEDUPS.md}).}
+\label{tab:now}
+\small
+\begin{tabularx}{\textwidth}{@{}p{3.6cm}p{3.4cm}p{2.2cm}X@{}}
+\toprule
+Item & Gain & Numerics & State \\
+\midrule
+Intel: \env{LIBOMPTARGET\_LEVEL\_ZERO\_STAGING\_BUFFER\_SIZE=1048576} & $L=24$, one chain: 10.6 to 7.1~s per sweep & bitwise identical & Set in the team jobs. Not found in \texttt{prod/job\_preempt.sh}. Owner decision for new production sets; a running set keeps its settings. \\ % SPEEDUPS.md
+Intel: \env{ALFSH\_ASYNCBLK=1} & $L=24$ about 0.5~s per sweep, 15 to 20\,\% per card & bitwise identical & Waits for the M12 timing test. \\ % SPEEDUPS.md
+All: \env{ALF\_GPU\_OBS\_SKIP} (no \texttt{Green\_eq}, \texttt{Den\_eq}) & 7\,\% at $L=24$ under MPS & skipped outputs stay zero & Needs \env{ALF\_GPU\_DEBUG=1} today. Owner decision whether the analysis needs these outputs. \\ % SPEEDUPS.md
+\texttt{Nwrap} 10 instead of 5 at $L=32$ & \texttt{Nwrap} 5 costs about 45\,\% more & precision rule of the reference parameter set & Owner decision 44/45 used 5; the motivating abort was a faulty GPU tile. \\ % SPEEDUPS.md
+Intel: parallel \texttt{acc0} reduction in \texttt{corr} (came with the merge from pp-opt) & the two serial \texttt{corr} kernels were 0.47~s of 4.95~s at $L=24$ & summation order of \texttt{acc0} changes ($10^{-13}$) & In \texttt{gpu-port-unified}. Measured on SuperMUC-NG: $L=24$ one chain V7 4.92 to 4.98 $\to$ 4.42 to 4.48~s per sweep, about 10\,\% (\file{CONSOLIDATION.md}). \\ % SPEEDUPS.md
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Implemented on \texttt{speedup/nvidia}, not yet measured}
+
+The A30 was occupied by the parameter-set production during this work. The two changes compile with nvfortran 26.9 but have neither timing nor a numerics run. The script \texttt{\textasciitilde/alf-gpu/work/spd1/ab.sh} on \texttt{nividia} runs the checks once the GPU is free (\file{SPEEDUPS.md}). \todo{timing and numerics of commits a3f257c6 and 50f837f7}
+
+\begin{table}[h]
+\centering
+\caption{Not yet measured changes (\file{SPEEDUPS.md}).}
+\small
+\begin{tabularx}{\textwidth}{@{}p{1.7cm}p{6.5cm}X@{}}
+\toprule
+Commit & Change & Expected gain and claim to verify \\
+\midrule
+\texttt{a3f257c6} & Phase of the determinant without an LU. In \texttt{dev\_cgr} the \texttt{la\_getrf} of $U_R^HU_L$ is used only by \texttt{k\_det\_phase}. The phase follows from the Householder scalars, $\det H_i=-\tau_i/\overline{\tau_i}$, tracked per stack slot in \texttt{dev\_decompose}. \env{ALF\_GPU\_CGR\_LU=1} restores the LU, \texttt{=2} runs both. & 1.2\,\% per sweep at $L=32$ single chain, about 3\,\% at $L=24$ in the A30 MPS production (from profiles). Larger on Intel, where \texttt{getrf} is host-assisted (0.38~s of 4.9~s, about 8\,\%). $G$ bitwise unchanged; phase differs at rounding level. \\ % SPEEDUPS.md
+\texttt{50f837f7} & \texttt{la\_sync} in \texttt{blk\_end} removed on CUDA. & 10 to 20~ms per sweep, bitwise identical. \\ % SPEEDUPS.md
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Measured and decided}
+
+\begin{itemize}
+\item \textbf{Port the AMD device QR to CUDA: no, for now.} On the A30, single chain, cuSOLVER \texttt{geqrf} takes 7.8~ms at $n=1024$, \texttt{ormqr} 2.2~ms and \texttt{getrf} 4.1~ms, together 8\,\% of a sweep. The AMD gain was against hipSOLVER, which is much slower. Best case about 3\,\% per sweep for a single chain, at most 8\,\% per rank in production. Worth another look only if single-chain \texttt{geqrf} at $n=576$ is well above 4~ms.
+\item \textbf{Fused block-end kernel (AMD b3923afe): no gain} ($L=24$ stays at 4.41~s). Not ported.
+\item \textbf{\texttt{N\_delay} 128, \texttt{Nwrap} $\ge20$, oneMKL batched routines, \texttt{nowait} on ifx, CholeskyQR2, \texttt{STABLOG}:} measured or rejected earlier, not re-opened.
+\item \textbf{MI210 compute-unit masks:} no throughput gain (Section~\ref{sec:amd}).
+\end{itemize}
+
+\subsection{Larger candidates, ranked by expected effect on production throughput}
+
+These are design notes without code (\file{SPEEDUPS.md}).
+
+\begin{table}[h]
+\centering
+\caption{Larger candidates in the order of the source.}
+\label{tab:larger}
+\small
+\begin{tabularx}{\textwidth}{@{}rp{3cm}Xp{2.4cm}p{1.9cm}@{}}
+\toprule
+\# & Idea & Mechanism & Numerics & Effort \\
+\midrule
+1 & Two-level submatrix update (\texttt{blk\_end}, \texttt{blk\_flush}) & Keep the pending low-rank update $XY^H$ over all blocks of a time slice and correct each block's gather by $X(B,:)Y(B,:)^H$. $G$ is flushed once per slice with rank about 190 instead of once per block with rank 10 to 21. The $k\times k$ algebra has to move to the device. Targets flush GEMMs, 47\,\% of kernel time in the A30 production. & rounding changes & large (weeks) \\ % SPEEDUPS.md
+2 & Static hopping by FFT or band (\texttt{Hd}, \texttt{symm\_apply}) & The static \texttt{Op\_T} is a dense $N\times N$ exponential of a translation-invariant matrix. An FFT or a truncated band removes about 5800 dense GEMMs per sweep at $L=24$. & rounding changes; truncation must be shown to be below one ulp & medium to large; FFT per backend \\ % SPEEDUPS.md
+3 & \texttt{corr} with coalesced memory access & Threads read $G$ along shifted diagonals. A pre-pass with a tiled transpose, then binning by distance, removes uncoalesced loads. On Intel the large \texttt{corr} kernels are 3.5 times slower than their data volume. & summation order & medium \\ % SPEEDUPS.md
+4 & Equal-time measurements on fewer slices & Measuring every second slice halves 12 to 25\,\% of a sweep. & no bias, larger variance per sweep; owner decision on comparability & small \\ % SPEEDUPS.md
+5 & QR panel look-ahead (\texttt{alf\_hip\_qr.hip.cpp}, \texttt{alf\_la\_sycl\_qr2.hpp}) & Factor panel $j+1$ while the trailing update of panel $j$ runs. Helps single chains on AMD and Intel. & same arithmetic & medium; node race test again \\ % SPEEDUPS.md
+6 & Device \texttt{getrf} on Intel & oneMKL \texttt{getrf} is host-assisted (13~ms at $N=1024$). Commit \texttt{a3f257c6} removes half of the calls. & rounding changes & medium \\ % SPEEDUPS.md
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The Intel kernel study adds two throughput levers that are not in the list above (estimates, not tried; \file{p7/NOTES.md}): a better mapping of the large \texttt{corr} kernels (about $+5$ to 8\,\% throughput at 4 ranks per tile) and fewer, cheaper host submissions in the update block path (pack the 4 uploads per block, fuse the 4 rank-$k$ \texttt{gemm}, or reuse a command list; $-0.4$ to $-0.5$~s per sweep for one chain, $+5$ to 8\,\% throughput). The two serial \texttt{corr} kernels are already addressed by the merged parallel reduction.

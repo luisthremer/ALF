@@ -1,0 +1,81 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[margin=2.0cm]{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{pgfplots}
+\usepackage{pgfplotstable}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage[colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black]{hyperref}
+\pgfplotsset{compat=1.17}
+\usepgfplotslibrary{groupplots}
+\usetikzlibrary{positioning,arrows.meta,shapes.misc}
+\captionsetup{font=small,labelfont=bf}
+\setlist{nosep,leftmargin=1.4em}
+\setlength{\parindent}{0pt}
+\setlength{\emergencystretch}{3em}
+\renewcommand{\_}{\textunderscore\hspace{0pt}}
+\setlength{\parskip}{0.35em}
+\renewcommand{\arraystretch}{1.05}
+\usepackage[compact]{titlesec}
+\titlespacing*{\section}{0pt}{1.2em}{0.4em}
+\titlespacing*{\subsection}{0pt}{0.9em}{0.3em}
+\setcounter{tocdepth}{1}
+\renewcommand{\floatpagefraction}{0.8}
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\textfraction}{0.1}
+
+% open items are shown in red and counted in the log
+\newcommand{\todo}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
+\newcommand{\file}[1]{\texttt{\small #1}}
+\newcommand{\env}[1]{\texttt{#1}}
+\newcommand{\sweep}{s\,/\,sweep}
+
+% plot styles (colour-blind safe, also distinguishable by marker)
+\definecolor{cA30}{HTML}{1B9E77}
+\definecolor{cH100}{HTML}{D95F02}
+\definecolor{cMAX}{HTML}{7570B3}
+\definecolor{cMI}{HTML}{E7298A}
+\definecolor{cCPU}{HTML}{666666}
+\pgfplotsset{
+  every axis/.append style={
+    grid=major, grid style={gray!25}, tick label style={font=\small},
+    label style={font=\small}, legend style={font=\scriptsize, fill=white, fill opacity=0.85, text opacity=1, draw=gray!50},
+    unbounded coords=jump,
+  },
+  a30/.style={color=cA30, mark=square*, thick},
+  h100/.style={color=cH100, mark=triangle*, thick},
+  max/.style={color=cMAX, mark=diamond*, thick},
+  mi/.style={color=cMI, mark=*, thick},
+  cpu/.style={color=cCPU, mark=x, thick},
+  mybars/.style={ybar, bar width=9pt},
+}
+
+\title{ALF on GPUs: technical report on the port of the\\ auxiliary-field QMC sweep\\[0.3em]
+\large Branch \texttt{gpu-port-unified}, state of 2026-11-13}
+\author{[author]}
+\date{2026-11-13}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+\input{sections/s1_summary}
+\input{sections/s2_method}
+\input{sections/s3_design}
+\input{sections/s4_ported}
+\input{sections/s5_verification}
+\input{sections/s6_performance}
+\input{sections/s7_tuning}
+\input{sections/s8_speedups}
+\input{sections/s9_limits}
+\appendix
+\input{sections/a_appendix}
+
+\end{document}

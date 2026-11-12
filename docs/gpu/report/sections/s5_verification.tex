@@ -1,0 +1,98 @@
+\section{Verification}
+\label{sec:verif}
+
+\subsection{Method}
+
+\paragraph{Same-compiler CPU reference.} A GPU build is compared with a CPU build (\texttt{GPU=none}) made by the same compiler, with the same parameters and the same seeds. The CPU reference must come from the same compiler because the random-number stream of the GNU build differs from that of nvfortran, so trajectories from different compilers are not comparable (\file{TIMEDEP\_HOPPING.md}). With the same seeds and the host decision of ADR-001 the GPU trajectory follows the CPU trajectory flip by flip until rounding differences accumulate. The driver is \texttt{scripts/defect/run\_cmp.py} (\file{VERIFICATION.md}, \file{README.md}).
+
+\paragraph{Deviation measure.} For each output file the deviation is $\max|A-B|/\max|A|$ over the file. Acceptance rates and final configurations have to be identical.
+
+\paragraph{Tolerances.} About $10^{-13}$ for \texttt{Mz = .F.} and about $10^{-10}$ for \texttt{Mz = .T.} (\file{README.md}). The Intel session used the same two values; the SuperMUC first session used $10^{-8}$ as the criterion (\file{intel\_pvc\_supermuc\_ng2.md}). The \texttt{Mz = .T.} deviations are the intrinsic accuracy of $G$ and not a code difference: the same code gives $10^{-14}$ with \texttt{Mz = .F.} (\file{TIMEDEP\_HOPPING.md}). Production runs additionally monitor \texttt{Precision Green}; the requirement in the Helma benchmarks is below $10^{-8}$ (\file{helma\_h100.md}).
+
+\paragraph{Test standard} (\file{VERIFICATION.md}, from 2026-10-29). The main rules are:
+\begin{itemize}
+\item Acceptance runs use binaries built from \texttt{git archive} of a frozen candidate. The committed tree equals the accepted tree except for \texttt{docs/**}.
+\item Every run writes a provenance record (candidate hash, binary hash, compiler, environment, parameter and seed hashes, output hashes). Debug and fault variables are refused unless the acceptance file declares a test run. GPU runs have to show the \texttt{ACTIVE} lines.
+\item Each ticket has a pre-registered acceptance file with gates, thresholds, seeds and positive controls. Changing it needs the owner's dated approval and fresh seeds.
+\item Verdicts are computed by a script. NaN, missing files and inactive GPU paths give \texttt{INPUT\_ERROR}, never a pass.
+\item Every gate has a positive control that must fail, for example a scaled tau dataset, \texttt{ALF\_GPU\_NS=0} or a planted $10^{-12}$ perturbation. Statistical gates carry a null control (CPU against CPU).
+\item Tiers: T0 (every iteration), T1 (implementer, frozen candidate, about 90~min GPU time) and T2 (manager, fresh seeds, about 120~min, plus an independent verifier).
+\end{itemize}
+
+\paragraph{Determinism.} Where bit identity holds (same binary run twice, same commit rebuilt with the same toolchain), it is demanded. On 2026-10-29 the \texttt{LOG} path on the A30 was bitwise reproducible, the default path was not (20 of 38 datasets differed, first in \texttt{Den\_eq/back} at about $10^{-12}$ relative). MPS and CPU jobs alongside did not change results (\file{VERIFICATION.md}). \todo{state of ticket 212 (reproducibility of the default path); the notes do not say whether it is closed}
+
+\subsection{Earlier results against the same-compiler CPU reference}
+
+Table~\ref{tab:earlier} collects the same-seed results from the platform sessions before the merge.
+
+\begin{table}[h]
+\centering
+\caption{Worst relative deviation, GPU against the same-compiler CPU build, same seeds. Acceptance identical in all rows.}
+\label{tab:earlier}
+\small
+\begin{tabularx}{\textwidth}{@{}p{2.6cm}p{5.2cm}Xp{2.9cm}@{}}
+\toprule
+Platform & Case & Deviation & Source \\
+\midrule
+A30, nvfortran 26.9 & $U=0$, $L=4$ and $L=8$, all files & $3.0\times10^{-14}$, $8.5\times10^{-14}$ & \file{TIMEDEP\_HOPPING.md} \\ % TIMEDEP_HOPPING.md sec 5
+A30 & $L=4$, \texttt{Mz = .F.}, standard, delayed, submatrix & $1.7$, $1.5$, $2.2\times10^{-15}$ & \file{TIMEDEP\_HOPPING.md} \\ % TIMEDEP_HOPPING.md
+A30 & $L=8$, \texttt{Mz = .F.}, three schemes & $8.4\times10^{-15}$ & \file{TIMEDEP\_HOPPING.md} \\ % TIMEDEP_HOPPING.md
+A30 & $L=8$, \texttt{Mz = .T.}, three schemes & $5.1\times10^{-10}$ (largest in \texttt{SpinZ\_localtau}) & \file{TIMEDEP\_HOPPING.md} \\ % TIMEDEP_HOPPING.md
+A30 & $L=32$, $\beta=4$, 1 sweep, \texttt{Mz = .F.} standard, delayed & $6.0\times10^{-15}$, $1.4\times10^{-14}$ & \file{TIMEDEP\_HOPPING.md} \\ % TIMEDEP_HOPPING.md
+A30 & one MPI rank against non-MPI, $L=16$ & $10^{-12}$ level (\texttt{Ener\_scal} $7\times10^{-12}$, \texttt{SpinZ\_localtau} $1.4\times10^{-12}$) & \file{MPI\_GPU.md} \\ % MPI_GPU.md
+H100, nvhpc 25.7 & $L=8$, \texttt{Mz = .F.}, $N_{\rm delay}$ 64 & $5.2\times10^{-13}$ & \file{helma\_h100.md} \\ % helma_h100.md sec 3
+Max 1550, ifx & \texttt{Mz = .F.}, $L=6$ to 12, $N_{\rm delay}$ 8 to 128 & $3.0\times10^{-15}$ to $2.7\times10^{-14}$ & \file{intel\_pvc\_supermuc\_ng2.md} \\ % intel_pvc_supermuc_ng2.md
+Max 1550, ifx & \texttt{Mz = .T.}, $L=6$ ($L=12$, $N_{\rm delay}$ 128) & $2.5\times10^{-11}$ ($3.4\times10^{-9}$) & \file{intel\_pvc\_supermuc\_ng2.md} \\ % intel_pvc_supermuc_ng2.md
+Max 1550, V4 & \texttt{Mz = .F.} $L=6$, $L=12$; \texttt{Mz = .T.} & $2.2\times10^{-15}$, $1.6\times10^{-14}$; $6.0\times10^{-11}$ & \file{ISSUE\_INTEL\_VS\_A30.md} \\ % ISSUE_INTEL_VS_A30.md sec 5
+Max 1550, V7 & \texttt{Mz = .F.} $L=6$, $L=12$; \texttt{Mz = .T.} $L=6$ & $2.3\times10^{-15}$, $1.6\times10^{-14}$; $1.36\times10^{-10}$ (fails $10^{-10}$) & \file{ISSUE\_INTEL\_VS\_A30.md} \\ % ISSUE_INTEL_VS_A30.md sec 7
+\bottomrule
+\end{tabularx}
+\end{table}
+
+For V7 the criterion is noise-limited. oneMKL itself fails the $L=6$, \texttt{Mz = .T.} tolerance for 2 of 5 seed sets ($1.13\times10^{-10}$ and $1.84\times10^{-10}$). A new pre-registered rule needs the owner's approval (\file{ISSUE\_INTEL\_VS\_A30.md}).
+
+\paragraph{Physics and statistics.} Delayed and submatrix reproduce the standard update bin by bin on the A30 and on the B580 and agree with exact diagonalisation of a four-site chain within one standard deviation (\file{DELAYED\_SUBMATRIX.md}). The upstream \texttt{test\_vs\_ed} Hubbard chain passes with GNU, ifx and nvfortran (deviations of 0.64, 1.48 and 1.52 standard deviations, \file{BASELINE.md}).
+
+\paragraph{Precision of $G$ at production sizes.} \texttt{Precision Green} (mean / max) at $L=24$, 28, 32 on the Max~1550 is $1.7\times10^{-14}/1.2\times10^{-11}$, $4.6\times10^{-14}/1.1\times10^{-10}$ and $1.4\times10^{-13}/5.3\times10^{-10}$ (\file{intel\_pvc\_supermuc\_ng2.md}). On the H100 at $L=32$ the maximum is $1.4\times10^{-10}$ to $7.2\times10^{-10}$ in all configurations (\file{helma\_h100.md}).
+
+\subsection{Verification of the consolidated branch, 2026-11-13}
+\label{sec:verif1113}
+
+\texttt{gpu-port-unified} merges six vendor lines (\file{CONSOLIDATION.md}). The checks below test that the merge changed nothing it should not have changed. They were run on 2026-11-13. Entries that were not finished when this report was written are marked \todo{pending}. Source of the Intel and AMD rows: the verification table of \file{CONSOLIDATION.md}.
+
+\begin{table}[h]
+\centering
+\caption{Checks of the consolidated branch. Source of all entries: verification runs of 2026-11-13.}
+\label{tab:verif1113}
+\small
+\begin{tabularx}{\textwidth}{@{}p{3.1cm}p{4.2cm}Xl@{}}
+\toprule
+Platform, build & Comparison & Result & Status \\
+\midrule
+macOS, gfortran 16, \texttt{GPU=none} & 4 fixed-seed cases ($L=4$/6, \texttt{Mz} T/F, delayed/submatrix) against the pre-merge tip \texttt{cc473abc} & bitwise identical & done \\ % verification 2026-11-13
+macOS, gfortran, \texttt{GPU=none}, $L=4$ & upstream ALF master \texttt{521ddfca}, \texttt{LOBS\_ST = 1} set explicitly & bitwise identical for all tested upstream features (list below) & done \\ % verification 2026-11-13
+\texttt{GPU=none}, gfortran & delayed and submatrix against the standard update & agree to $10^{-12}$ with identical trajectories & done \\ % verification 2026-11-13
+\texttt{GPU=none}, gfortran & \texttt{SpinZ\_localtau} against an exact $U=0$ calculation & agrees to $4.7\times10^{-14}$ & done \\ % verification 2026-11-13
+AMD MI210, \texttt{GPU=amd}, gfortran 14 GCN + HIP & unified against pre-merge tip \texttt{156a0b01}, $L=6$, 12, 16, 24; default, \texttt{ALF\_HIP\_ASYNC=0}, \texttt{ALF\_HIP\_QR=0} & bitwise identical in all cases & done \\ % verification 2026-11-13
+AMD MI210 & GPU against same-compiler CPU & $1.15\times10^{-14}$ ($L=6$), $5.0\times10^{-14}$ ($L=12$) & done \\ % verification 2026-11-13
+AMD MI210 & timing & unchanged, about 4.5~s per sweep at $L=24$ & done \\ % verification 2026-11-13
+NVIDIA A30, nvfortran 26.9 & build of GPU and CPU reference & builds & done \\ % verification 2026-11-13
+NVIDIA A30 & GPU runs & \todo{pending} (card occupied by a production run) & pending \\ % verification 2026-11-13
+NVIDIA H100 (Helma) & GPU runs & \todo{pending} & pending \\ % verification 2026-11-13
+Intel Max 1550 (SuperMUC-NG Phase 2), ifx 2025.3, JIT and AOT & GPU against same-compiler CPU, default switches & $2.2\times10^{-15}$ ($L=6$, \texttt{Mz = .F.}), $1.5\times10^{-14}$ ($L=12$, \texttt{Mz = .F.}), $5.5\times10^{-11}$ ($L=6$, \texttt{Mz = .T.}) & done \\ % CONSOLIDATION.md
+Intel Max 1550, V7 switches & GPU against same-compiler CPU & $2.3\times10^{-15}$, $1.6\times10^{-14}$, $1.36\times10^{-10}$ ($L=6$, \texttt{Mz = .T.}; same value as before the merge, tolerance $10^{-10}$, fails) & done, one failure \\ % CONSOLIDATION.md
+Intel Max 1550 & unified against pre-merge Intel build (p5) & Green functions, scalars, acceptance and configurations bitwise identical; \texttt{Den\_eq}, \texttt{SpinT\_eq}, \texttt{SpinZ\_eq} differ by at most $3.3\times10^{-16}$ (expected, \texttt{acc0} parallel reduction from pp-opt) & done \\ % CONSOLIDATION.md
+Intel Max 1550, $L=24$, one chain, V7 & timing, before and after the merge & 4.92 to 4.98~s per sweep before, 4.42 to 4.48~s after; observables 1.18 to 0.74~s per sweep; updates 1.43, stabilisation 0.81, CGR 1.23~s unchanged & done \\ % CONSOLIDATION.md
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{Upstream features tested for bitwise identity} against ALF master \texttt{521ddfca}, with \texttt{GPU=none}, gfortran, $L=4$ and \texttt{LOBS\_ST = 1}: Hubbard with \texttt{Mz} true and false, \texttt{Symm}, checkerboard, \texttt{Ltau} 0 and 1, projector, \texttt{N\_SUN}, continuous fields, Langevin, HMC, MALA, Kondo, tV and Plain Vanilla.
+
+\paragraph{Two intended differences from upstream.}
+\begin{enumerate}
+\item The default \texttt{LOBS\_ST} is 0. The down sweep then also measures at $\tau=0$, which gives $2L_{\rm trot}$ instead of $2L_{\rm trot}-1$ measurements per sweep. With \texttt{LOBS\_ST = 1} the upstream behaviour is restored.
+\item \texttt{ham\_h0} now means the space-time point defect and not upstream's static pinning field.
+\end{enumerate}
+
+\paragraph{Limits of these checks.} The \texttt{GPU=none} checks show that the merge did not change the CPU path. They say nothing about the device code, which was checked on the MI210 and on the Max~1550. The two pending NVIDIA rows (A30, H100) have to be run before the consolidated branch can be called verified on NVIDIA. The Intel jobs 560852 to 560860 used about 0.85 node-hours. The CI (\texttt{.github/workflows/tests.yml}) builds and tests the CPU path only (\file{README.md}). The \texttt{acc0} parallel reduction that arrived from the pp-opt line changes the summation order of the \texttt{acc0} terms. On the Max~1550 the effect is at most $3.3\times10^{-16}$ in \texttt{Den\_eq}, \texttt{SpinT\_eq} and \texttt{SpinZ\_eq}, and it cuts the observables phase from 1.18 to 0.74~s per sweep, about 10\,\% of the sweep (\file{CONSOLIDATION.md}).

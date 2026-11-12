@@ -1,0 +1,73 @@
+\section{Build lines per platform}
+\label{app:build}
+
+Sources: \file{README.md}, \file{BUILD.md}, \file{helma\_h100.md}, \file{intel\_pvc\_supermuc\_ng2.md}, \file{amd\_mi210/README.md}. After \texttt{configure.sh} the build is \texttt{make lib program}.
+
+\begin{small}
+\begin{verbatim}
+# CPU reference (unchanged upstream code)
+source configure.sh GNU MPI HDF5                 # or the compiler of the GPU build
+
+# NVIDIA A30 (nvfortran 26.9, MACHINE PGI)
+source configure.sh PGI MPI GPU=nvidia HDF5 NO-INTERACTIVE
+source configure.sh PGI PP  GPU=nvidia HDF5 NO-INTERACTIVE   # parameter sets
+# default ALF_GPU_CC=cc80
+
+# NVIDIA H100 on Helma (nvhpc 25.7; login shell, module command)
+export ALF_HDF5_DIR=/hnvme/workspace/b133ae29-ALF_GPU/hdf5_257
+. ./configure.sh HELMAGPU PP GPU=nvidia HDF5 NO-INTERACTIVE
+# loads gpu-env/2025, nvhpc/25.7, openmpi/5.0.8-nvhpc25.7-cuda; flags cc90,cuda12.9
+
+# Intel Max 1550 on SuperMUC-NG Phase 2 (intel-toolkit/2025.1.0)
+source configure.sh IntelLLVM MPI GPU=intel HDF5
+# AOT for PVC through scripts/supermuc_ng2/build.sh:
+AOT=1 bash -l build.sh prodaot IntelLLVM MPI GPU=intel HDF5 NO-INTERACTIVE
+# ifx wrapper rewrites -fopenmp-targets=spir64 to spir64_gen -device pvc
+# (start-up of one process: JIT about 65 s, AOT 14 s)
+# SYCL libraries: ALF_SYCL_BLK_FLAGS='-fsycl-targets=spir64_gen -Xs "-device pvc"'
+
+# AMD MI210 (gfortran 14 with amdgcn offload, ROCm)
+source configure.sh GNU MPI GPU=amd HDF5
+# ALF_AMD_ARCH=gfx90a (default), ROCM_PATH=/opt/rocm, hipcc for the kernels
+# patched libgomp GCN plugin first in LD_LIBRARY_PATH (see amd_mi210/README.md)
+\end{verbatim}
+\end{small}
+
+The \texttt{GPU=none} build adds no flag and no object code. The identity of the exported variables with upstream was checked for GNU, IntelLLVM and PGI with and without MPI, \texttt{LOG}, HDF5 and \texttt{Devel} (\file{BUILD.md}).
+
+\section{Environment switches that matter in production}
+\label{app:env}
+
+The full list with categories is in \file{RUNTIME\_SWITCHES.md}. The production guard stops a run if any \env{ALF\_GPU\_*} or \env{ALF\_LA\_TEST\_*} variable except \env{ALF\_GPU\_DISABLE} and \env{ALF\_GPU\_DEBUG} is set. This includes a leaked build variable such as \env{ALF\_GPU\_CC} (from the code, not tested). The variables \env{ALFSH\_*}, \env{ALF\_HIP\_*} and \env{ALFDEVQR\_*} are not guarded and have to be checked by hand.
+
+\begin{table}[h]
+\centering
+\caption{Variables used in production job scripts.}
+\small
+\begin{tabularx}{\textwidth}{@{}p{5.3cm}p{1.9cm}X@{}}
+\toprule
+Variable and value & Platform & Effect \\
+\midrule
+\env{OMP\_TARGET\_OFFLOAD=MANDATORY} & all & Fail if no device is found instead of running on the host. \\ % RUNTIME_SWITCHES.md sec 7
+\env{OMP\_NUM\_THREADS=1} & NVIDIA & One host thread per rank (\file{helma\_h100.md}, \file{MPI\_GPU.md}). \\
+\env{ALF\_GPU\_DISABLE=1} & all GPU & GPU build runs the host path. Allowed in production. \\ % RUNTIME_SWITCHES.md sec 3
+\env{ALF\_UNSTABLE\_THRESHOLD} & all & Abort threshold of the precision check, default 10. SuperMUC production uses $10^{-4}$. \\ % RUNTIME_SWITCHES.md
+\env{CUDA\_MPS\_ACTIVE\_THREAD\_PERCENTAGE=25}, \env{CUDA\_MPS\_PIPE\_DIRECTORY}, \env{CUDA\_MPS\_LOG\_DIRECTORY} & NVIDIA & One MPS daemon per GPU; SM share per client. Mandatory for several ranks per GPU. \\ % RUNTIME_SWITCHES.md sec 7
+\env{CUDA\_VISIBLE\_DEVICES} (through \texttt{rank\_wrap.sh}) & NVIDIA & Binds rank $r$ to GPU $r/{\rm RPG}$ (\file{helma\_h100.md}). \\
+\env{LIBOMPTARGET\_LEVEL\_ZERO\_STAGING\_BUFFER\_SIZE=1048576} & Intel & V1, $-33$\,\% at $L=24$ one chain, bitwise identical. \\ % RUNTIME_SWITCHES.md sec 7
+\env{ALFSH\_ASYNCBLK=1} & Intel & V2, async block path, bitwise identical, +15 to 20\,\% per card. Not yet released. \\
+\env{ALFSH\_DEVQR=1}, \env{=2}, \env{ALFSH\_DEVUNMQR=1} & Intel & V4 and V7 device QR and apply. Rounding level; not released. \\
+\env{ZE\_FLAT\_DEVICE\_HIERARCHY=FLAT} & Intel & One tile is one device, 8 per node; rank $r$ uses tile $r \bmod 8$. \\
+\env{ZE\_AFFINITY\_MASK}, \env{ONEAPI\_DEVICE\_SELECTOR=level\_zero:N} & Intel & Select tile or device; bind with \env{2*local\_rank} for fewer than 8 ranks per node. \\
+\env{I\_MPI\_PIN\_DOMAIN=auto} & Intel & \texttt{omp:compact} was 35\,\% slower than \texttt{auto} at one rank per tile. \\ % intel_pvc_supermuc_ng2.md
+\env{ALF\_HIP\_QR=0}, \env{ALF\_HIP\_ASYNC=0} & AMD & Switch off the own QR or the deferred synchronisation (default on, async only with the patched plugin). Output bit-identical for async; checked bitwise on 2026-11-13 (Table~\ref{tab:verif1113}). \\
+\env{GCN\_NUM\_THREADS=4} & AMD & Threads of the GCN OpenMP runtime; 4 was best at $L=16$. \\ % RUNTIME_SWITCHES.md sec 7
+\env{HSA\_CU\_MASK} & AMD & Honoured, bitwise neutral, no throughput gain. Not recommended. \\ % SPEEDUPS.md
+\texttt{mpirun --bind-to core} & all & One core per rank. On Helma also \texttt{--oversubscribe} and \texttt{--mca smsc \textasciicircum knem}. \\ % helma_h100.md
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section*{Source documents}
+
+Everything in this report comes from the following files in \texttt{docs/gpu/}: \file{README.md}, \file{CONSOLIDATION.md}, \file{SPEEDUPS.md}, \file{RUNTIME\_SWITCHES.md}, \file{FEATURES.md}, \file{NOT\_IMPLEMENTED.md}, \file{ADR-001-programming-model.md}, \file{ADR-002-alf-la-and-data-model.md}, \file{DELAYED\_SUBMATRIX.md}, \file{TIMEDEP\_HOPPING.md}, \file{TUNING\_DEFECT.md}, \file{MPI\_GPU.md}, \file{PP\_GPU.md}, \file{VERIFICATION.md}, \file{BENCHMARKS.md}, \file{BASELINE.md}, \file{PROFILE.md}, \file{BUILD.md}, \file{HARD.md}, \file{platforms/helma\_h100.md}, \file{platforms/intel\_pvc\_supermuc\_ng2.md}, \file{platforms/amd\_mi210/README.md}, \file{sessions/supermuc\_large\_prompt/ISSUE\_INTEL\_VS\_A30.md} and \file{sessions/supermuc\_large\_prompt/phase2/team/p7/NOTES.md}, plus the verification runs of 2026-11-13 reported by the owner.

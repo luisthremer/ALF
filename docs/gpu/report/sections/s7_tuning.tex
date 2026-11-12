@@ -1,0 +1,103 @@
+\section{Tuning rules}
+\label{sec:tuning}
+
+\subsection{Recommended settings}
+
+Table~\ref{tab:settings} is the summary of \file{TUNING\_DEFECT.md}, measured on the A30 on 2026-11-07, with additions from the later platform work.
+
+\begin{table}[h]
+\centering
+\caption{Recommended settings for the defect model on the GPU path.}
+\label{tab:settings}
+\small
+\begin{tabularx}{\textwidth}{@{}p{3.1cm}p{4.6cm}X@{}}
+\toprule
+Parameter & Value & Reason \\
+\midrule
+\texttt{Sequential\_scheme} & \texttt{"submatrix"} & 2.4 to 5 times faster than \texttt{standard}, 1.4 to 2.1 times faster than \texttt{delayed} at the same \texttt{N\_delay} ($L=16$ to 32) \\ % TUNING_DEFECT.md
+\texttt{N\_delay} & 32 for $L\le28$, 64 for $L\ge32$; 0 selects 64 & minimum of the scan at $L=16$, 24, 32 on the A30; Figure~\ref{fig:ndelay} \\ % TUNING_DEFECT.md
+\texttt{Nwrap} & 10; 4 to 5 for \texttt{Mz = .T.} & see below \\ % TUNING_DEFECT.md
+\texttt{Checkerboard} & irrelevant & ignored for $h_0\ne0$ on CPU and GPU \\ % TUNING_DEFECT.md
+\texttt{Ltau} & 0 & \texttt{SpinZ\_localtau} comes from the equal-time pass; \texttt{Ltau = 1} works but is slower \\ % TUNING_DEFECT.md
+\texttt{CPU\_MAX} & 23.8 (hours) & bins are written every 10 sweeps; the run ends at the first bin boundary after \texttt{CPU\_MAX}, losing at most one bin \\ % TUNING_DEFECT.md
+Environment & \env{OMP\_TARGET\_OFFLOAD=MANDATORY}, \env{OMP\_NUM\_THREADS=1} (NVIDIA) & a failed device initialisation otherwise runs silently on the CPU \\ % TUNING_DEFECT.md, helma_h100.md
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{\texttt{N\_delay}}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.82\textwidth, height=6.8cm, xmode=log, log basis x=2, ymode=log,
+  xtick={2,4,8,16,32,64,128}, xticklabels={2,4,8,16,32,64,128},
+  xlabel={\texttt{N\_delay} (submatrix scheme)}, ylabel={seconds per sweep, A30},
+  legend pos=north east, legend cell align=left,
+]
+\addplot[a30, mark=o] table[x=nd,y=L16] {data/ndelay_a30.dat};
+\addplot[h100, mark=triangle*] table[x=nd,y=L24] {data/ndelay_a30.dat};
+\addplot[max, mark=diamond*] table[x=nd,y=L32] {data/ndelay_a30.dat};
+\legend{$L=16$, $L=24$, $L=32$}
+\end{axis}
+\end{tikzpicture}
+\caption{A30, submatrix update, $\beta=L$ (\file{TUNING\_DEFECT.md}). Minimum at 32 to 64. Missing points were not measured.}
+\label{fig:ndelay}
+\end{figure}
+
+\begin{itemize}
+\item \textbf{A30.} The minimum is at 32 for $L=16$ and 24 (1.33 and 5.25~s) and at 64 for $L=32$ (18.2~s, against 18.7~s at 32 and 21.0~s at 128). At $L=48$ 32 is 1.7 times faster than 8. \texttt{N\_delay} 0 gives the same time as 64 at $L=32$ (\file{TUNING\_DEFECT.md}).
+\item \textbf{H100, 8 ranks, MPS, $L=32$.} 32: 66.5~s per sweep (0.120 sweeps per second); 64: 34.5~s (0.232); 128: 34.3~s (0.233). So 64 is the choice and 128 gives nothing (\file{helma\_h100.md}).
+\item \textbf{Max 1550, V7, $L=24$.} One chain: 16: 5.72~s, 32: 4.92 (5.01 in an earlier run), 64: 4.73 to 4.74, 128: 5.14. In the layout with 32 ranks: 32: 9.32 to 9.33~s, 64: 9.08 to 9.10 ($-2.6$\,\%), 128: 9.50 (\file{p7/NOTES.md}). In the early build with 14 host threads per rank the time fell from 9.7 to 8.2~s per sweep from 32 to 128 (\file{intel\_pvc\_supermuc\_ng2.md}). The best value depends on the build.
+\item \textbf{A30, 9 ranks, parameter sets with $N_{\rm FL}=1$, 6 sweeps.} Wall time 65.8, 57.0, 53.6 and 52.9~s for 16, 32, 64 and 128 (\file{PP\_GPU.md}).
+\end{itemize}
+
+\subsection{\texttt{Nwrap}}
+
+\begin{table}[h]
+\centering
+\caption{\texttt{Nwrap} on the A30, $L=24$, submatrix with \texttt{N\_delay} 8 (\file{TUNING\_DEFECT.md}).}
+\small
+\begin{tabular}{@{}rrrr@{}}
+\toprule
+\texttt{Nwrap} & s per sweep & GPU memory (MiB) & Precision Green mean / max \\
+\midrule
+5 & 11.8 & 1553 & $2\times10^{-14}$ / $9\times10^{-12}$ \\ % TUNING_DEFECT.md
+10 & 9.9 & 1069 & $4\times10^{-14}$ / $1\times10^{-11}$ \\
+20 & 9.2 & 825 & $3\times10^{-13}$ / $5\times10^{-11}$ \\
+40 & 8.7 & 703 & $6\times10^{-11}$ / $1.6\times10^{-8}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{itemize}
+\item \texttt{Nwrap} 20 saves 7\,\% and has a Green precision that is usable. 40 gives $1.6\times10^{-8}$ and is not recommended. \texttt{Nwrap} 5 costs 19\,\% more time and 45\,\% more memory (\file{TUNING\_DEFECT.md}).
+\item In the 9-rank A30 production layout \texttt{Nwrap} 20 gave 78.5~s against 88.9~s for 10 sweeps. Precision Green mean / max changed from $4\times10^{-15}/1.6\times10^{-11}$ to $9\times10^{-14}/4.4\times10^{-10}$ at $U=3$, and at $U=8$ from $1.5\times10^{-13}/5\times10^{-10}$ to $7.6\times10^{-13}/4.8\times10^{-9}$. Observables agreed to $4\times10^{-12}$ relative after 10 sweeps (\file{PP\_GPU.md}).
+\item At $L=32$ \texttt{Nwrap} 5 costs about 45\,\% more than 10. Owner decision 44/45 used \texttt{Nwrap} 5. The abort that motivated it was traced to a faulty GPU tile and not to precision (\file{SPEEDUPS.md}). The $\ge20$ values were measured or rejected earlier and are not re-opened there.
+\item \texttt{Mz = .T.} at $L=24$ with \texttt{Nwrap} 10 has Precision Green mean $8\times10^{-8}$ and max $2\times10^{-3}$. The stabilisation is not sufficient for the \texttt{Mz = .T.} coupling at $U=5$, so use 4 to 5. Production uses \texttt{Mz = .F.} and is not affected (\file{TUNING\_DEFECT.md}).
+\item The abort threshold of the precision check can be set by \env{ALF\_UNSTABLE\_THRESHOLD}. SuperMUC production uses $10^{-4}$ (\file{RUNTIME\_SWITCHES.md}, \file{DECISIONS.md} decision 46).
+\end{itemize}
+
+\subsection{Ranks per GPU}
+
+\begin{table}[h]
+\centering
+\caption{Layout rules per platform.}
+\label{tab:layout}
+\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+Platform & Rule and source \\
+\midrule
+A30 & One rank per GPU keeps the time per chain (owner decision 2026-11-08, \file{MPI\_GPU.md}). With MPS 25\,\% a second rank costs 15 to 17\,\% per chain at $L=16$. 4 ranks: 10.5~s per chain at $L=24$ (0.37 to 0.38 sweeps per second). \\ % MPI_GPU.md, README.md
+H100 & 8 ranks per GPU with MPS 25\,\%, \env{CUDA\_MPS\_ACTIVE\_THREAD\_PERCENTAGE=25}, one MPS daemon per GPU. At $L=32$, 16 ranks give $+6$\,\% throughput at twice the time per chain and are not used (\file{helma\_h100.md}). \\ % helma_h100.md
+Max 1550 & One rank per tile for the shortest time per chain, four per tile with CCS 4 for throughput (0.84 to 0.88 sweeps per second per card at $L=24$, V7). Eight per tile is worse (0.26). Bind with \env{ZE\_AFFINITY\_MASK=2*local\_rank} when there are fewer than 8 ranks per node (\file{ISSUE\_INTEL\_VS\_A30.md}, \file{intel\_pvc\_supermuc\_ng2.md}). \\ % ISSUE_INTEL_VS_A30.md, intel_pvc_supermuc_ng2.md
+MI210 & No masking. Several separate processes: 4 give about 1.95 times one (\file{SPEEDUPS.md}). \\ % SPEEDUPS.md
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{Cost of the layout choice on Max 1550.} For a scan of 10 $U$ values with 16 ranks per set, more ranks per tile save 8 to 20\,\% of the GPU hours but stretch the wall time by a factor 2 to 3.5 (\file{intel\_pvc\_supermuc\_ng2.md}). At $L=32$ with $S=5000$ usable sweeps per $U$ point, 1, 2 and 4 ranks per tile need 769, 713 and 616 GPU-h on 20, 10 and 5 nodes. The warm-up is 62 to 76\,\% of every chain in these estimates (assumption of 1000 warm-up sweeps).
+
+\paragraph{Production layout on the H100 (Helma, as submitted 2026-11-11).} Ten $U$ values, 2 parts per value, 8 walkers per part, one GPU per part, 20 independent job chains of 24-hour links in the \texttt{h100} partition. Worst case 1920 GPU-h. The projection of the source is 0.232 sweeps per second per GPU, 20\,000 sweeps per GPU per day. This is arithmetic on Section~\ref{sec:mps}, not a production measurement. At the time the note was written (2026-11-11 15:20) no production link had started. \todo{production status of the Helma chains after 2026-11-11 is not in the sources}

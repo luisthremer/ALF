@@ -1,0 +1,65 @@
+\section{What is ported}
+\label{sec:ported}
+
+Table~\ref{tab:features} lists the features per backend. The base is \file{FEATURES.md} (state 2026-11-06). Rows on MPI and parallel parameters are updated from \file{MPI\_GPU.md}, \file{PP\_GPU.md}, \file{helma\_h100.md}, \file{intel\_pvc\_supermuc\_ng2.md} and the SuperMUC session notes, which are newer. \todo{\file{FEATURES.md} is stale: it has the Arc B580 as the Intel GPU, lists MPI and tempering as refused on Intel and has no AMD column. It should be updated; the table here follows the newer notes}
+
+Entries: S = supported and validated, R = refused at setup (the run uses the CPU path), N = not implemented (no GPU code and no check, a CPU-only feature that the model does not use), ? = not documented. The AMD notes do not list feature coverage; the AMD column shows only what the notes state. \todo{AMD feature coverage is not documented; fill the ? entries after a check of \texttt{gpu\_supported} on the HIP build}
+
+\begin{table}[h]
+\centering
+\caption{Feature coverage of the GPU path. NVIDIA: A30 and H100. Intel: Max 1550 (the first notes were for an Arc B580).}
+\label{tab:features}
+\small
+\begin{tabular}{@{}p{6.1cm}cccc@{}}
+\toprule
+Feature & CPU & NVIDIA & Intel & AMD \\
+\midrule
+Finite-$T$ DQMC, Hubbard (predefined) & S & S & S & S \\ % FEATURES.md; AMD: platforms/amd_mi210/README.md (defect production parameters)
+Projector ($T=0$) & S & R & R & ? \\ % FEATURES.md
+Other Hamiltonians (Plain\_Vanilla, Kondo, tV, Spin\_Peierls, $Z_2$, LRC) & S & R & R & ? \\ % FEATURES.md
+HS fields type 1, 2 (diagonal, rank-1) & S & S & S & ? \\ % FEATURES.md
+HS fields type 3, 4; non-diagonal or rank $>1$ vertices & S & R & R & ? \\ % FEATURES.md
+Local updates, standard & S & S & S & ? \\ % FEATURES.md; Intel measured in p7 NOTES.md sec 5
+Delayed and submatrix updates & S & S & S & S \\ % FEATURES.md, DELAYED_SUBMATRIX.md; AMD README submatrix runs
+Cross-slice delay (\texttt{Lowrank\_cross\_slice}) & S & R & R & ? \\ % FEATURES.md
+Global-in-$\tau$ and space-time moves & S & R & R & ? \\ % FEATURES.md
+Langevin, HMC, MALA & S & R & R & ? \\ % FEATURES.md
+Parallel tempering (exchange) & S & R & R & ? \\ % FEATURES.md, PP_GPU.md
+Parallel parameter sets (\texttt{PARALLEL\_PARAMS}), no exchange & S & S & S & ? \\ % PP_GPU.md, helma_h100.md, intel_pvc_supermuc_ng2.md
+MPI, independent chains & S & S & S & ? \\ % MPI_GPU.md, intel_pvc_supermuc_ng2.md
+Checkerboard, dense hopping, \texttt{Symm} & S & S & S & ? \\ % FEATURES.md
+Time-dependent hopping (point defect) & S & S & S & S \\ % TIMEDEP_HOPPING.md; AMD README
+Time-dependent couplings of \texttt{Op\_V} & S & R & R & ? \\ % FEATURES.md
+Flavour symmetry reconstruction & S & R & R & ? \\ % FEATURES.md
+Stabilisation default (pre-pivoted QR) & S & S & S & S \\ % ADR-001
+Stabilisation \texttt{LOG} (host QR with pivoting) & S & S & S & ? \\ % ADR-001, FEATURES.md
+\texttt{STAB1/2/3}, \texttt{QRREF}, \texttt{Propose\_S0} & S & R & R & ? \\ % FEATURES.md
+Equal-time observables (Hubbard) & S & S & S & S \\ % FEATURES.md
+Time-displaced observables (\texttt{Ltau = 1}) & S & S & S & ? \\ % FEATURES.md, TIMEDEP_HOPPING.md
+Custom observables, entanglement & S & N & N & N \\ % FEATURES.md
+HDF5 output (host side) & S & S & S & ? \\ % MPI_GPU.md (L16 run), helma_h100.md
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection*{Remarks on the table}
+
+\begin{itemize}
+\item The GPU path is taken only if every check passes. Otherwise the whole run uses the CPU path, and \texttt{info} states the reason (\file{FEATURES.md}).
+\item The time-displaced pass for the defect runs its propagation on the device, but the $\tau$ observables with the defect still use the host \texttt{ObserT} (\file{TIMEDEP\_HOPPING.md}). \texttt{Ltau = 0} is recommended; \texttt{Ltau = 1} works but is slower (\file{TUNING\_DEFECT.md}).
+\item Time-dependent hopping elements are accepted only if they follow all static elements in \texttt{Op\_T(:,nf)}. Otherwise the run is refused with a reason (\file{TIMEDEP\_HOPPING.md}).
+\item Tempering is refused only as real tempering. Since the change of \texttt{gpu\_state\_mod.F90} (\file{PP\_GPU.md}), builds with \texttt{PARALLEL\_PARAMS} are accepted and \texttt{Exchange\_Step} is skipped in \texttt{main.F90}.
+\item On one Max~1550 tile the standard and delayed schemes were also timed at $L=24$: 18.32 and 19.66~s per sweep against 5.01~s for the submatrix scheme (\file{ISSUE\_INTEL\_VS\_A30.md}, \file{p7/NOTES.md}).
+\end{itemize}
+
+\subsection*{Not implemented, by group (\file{NOT\_IMPLEMENTED.md})}
+
+\begin{description}
+\item[Model and feature coverage.] Rank $>1$ and non-diagonal vertices (would open tV, Kondo, Spin\_Peierls); flavour-symmetry reconstruction (Plain\_Vanilla, Spin\_Peierls); device observables for other models, entanglement and custom observables; HS fields of type 3 and 4; global moves; \texttt{Propose\_S0}; time-dependent couplings of \texttt{Op\_V}; \texttt{STAB1/2/3} and \texttt{QRREF}; cross-slice delay; parallel tempering; projector; Langevin and HMC.
+\item[Performance at small and medium $N$.] Device-side accept decision, start-up cost, per-bin output, remaining launch overhead.
+\item[Performance at large $N$.] Sparse \texttt{Symm}, a memory footprint of about $1650\,N^2$ bytes, block structure of the $\tau$ pass, Cholesky-QR variants.
+\end{description}
+
+\subsection*{Size limits}
+
+At $\beta=5$ a $62\times62$ lattice fits an A30 (23\,967~MiB) and $63\times63$ does not (\file{DELAYED\_SUBMATRIX.md}). In the defect setting with $\beta=L$ the peak memory is 3077~MiB at $L=32$ and 19\,647~MiB at $L=48$ (\file{TUNING\_DEFECT.md}). The H100 uses 3584~MiB per rank at $L=32$ (\file{helma\_h100.md}).

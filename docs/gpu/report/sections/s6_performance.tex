@@ -1,0 +1,384 @@
+\section{Performance}
+\label{sec:perf}
+
+\subsection{How the numbers were obtained}
+
+The numbers come from different sessions on different machines. Table~\ref{tab:how} states how each was measured. They are comparable to within the differences stated there, not better.
+
+\begin{table}[h]
+\centering
+\caption{Measurement method per platform. All runs: Hubbard defect model, $N_{\rm FL}=2$, $h_0=1$, \texttt{Mz = .F.}, $\beta=L$, $\Delta\tau=0.1$, \texttt{Nwrap} 10, submatrix, unless stated.}
+\label{tab:how}
+\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+Platform & Method \\
+\midrule
+A30 (\texttt{nividia}) & nvfortran 26.9, one process, 2 sweeps, timer in the run, excludes the 1 to 2~s mirror set-up (\file{TUNING\_DEFECT.md}). The older multi-rank numbers are CPU time of rank 0 divided by the number of sweeps and include start-up. Whether MPS was active in those runs is not recorded (\file{helma\_h100.md}). \\ % TUNING_DEFECT.md, helma_h100.md 4.1
+H100 (Helma) & nvhpc 25.7, 6 sweeps per test (\texttt{NSweep} 2, \texttt{NBin} 3), (finish time $-$ start time)/6 of rank 0. Excludes the 0.3 to 0.6~s mirror set-up, includes the first-sweep warm-up, so it is slightly pessimistic. One MPS daemon, thread share 25\,\% (\file{helma\_h100.md}). \\ % helma_h100.md sec 4
+Max 1550 (SuperMUC-NG Phase 2) & ifx and oneMKL 2025.x, in-loop timers, variants alternated in the same job. V4 and V7 were also measured in different jobs (\file{ISSUE\_INTEL\_VS\_A30.md}). One chain on one tile; the card layout uses 32 ranks per node, 4 per tile, with CCS 4. \\ % ISSUE_INTEL_VS_A30.md
+MI210 & gfortran 14 and HIP, steady state from the difference of 2- and 4-sweep runs (\file{amd\_mi210/README.md}). \\ % platforms/amd_mi210/README.md
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Time per sweep against $L$}
+\label{sec:scaling}
+
+Figure~\ref{fig:sweep} shows the seconds per sweep for one chain against $L$ with $\beta=L$. For the A30 the full scan of \file{TUNING\_DEFECT.md} is shown. The filled squares use the best \texttt{N\_delay} of the scan and enter the fit. The open squares use \texttt{N\_delay} 4 or 8 and are therefore too slow. The dashed lines are least-squares fits of $t=aL^{b}$ in log-log space to the filled points of each platform (data in \texttt{data/sweep\_*.dat}).
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.88\textwidth, height=7.4cm,
+  xmode=log, ymode=log, log basis x=2,
+  xlabel={Linear lattice size $L$ ($N=L^2$, $\beta=L$)}, ylabel={seconds per sweep},
+  xtick={12,16,24,32,48}, xticklabels={12,16,24,32,48},
+  xmin=10.5, xmax=56, ymin=0.9, ymax=400,
+  legend style={at={(0.5,-0.2)}, anchor=north, font=\scriptsize}, legend columns=2, legend cell align=left,
+]
+\addplot[cpu] table[x=L,y=t] {data/sweep_cpu1.dat};
+\addplot[cpu, dashed, no marks, thin, forget plot, domain=12:24, samples=2] {2.005e-7*x^6.44};
+\addplot[a30] table[x=L,y=t] {data/sweep_a30_tuned.dat};
+\addplot[a30, mark=square, only marks] table[x=L,y=t] {data/sweep_a30_untuned.dat};
+\addplot[a30, dashed, no marks, thin, forget plot, domain=16:48, samples=2] {4.601e-6*x^4.45};
+\addplot[h100] table[x=L,y=t] {data/sweep_h100.dat};
+\addplot[h100, dashed, no marks, thin, forget plot, domain=24:32, samples=2] {4.068e-5*x^3.58};
+\addplot[max] table[x=L,y=t] {data/sweep_max1550_v7.dat};
+\addplot[max, dashed, no marks, thin, forget plot, domain=24:32, samples=2] {8.801e-6*x^4.17};
+\addplot[max, mark=diamond, densely dotted] table[x=L,y=t] {data/sweep_max1550_early.dat};
+\addplot[mi] table[x=L,y=t] {data/sweep_mi210.dat};
+\addplot[mi, dashed, no marks, thin, forget plot, domain=24:32, samples=2] {1.086e-6*x^4.78};
+\legend{{CPU, 1 thread ($b=6.44$)},
+        {A30 ($b=4.45$)}, {A30, $N_{\rm delay}$ not tuned},
+        {H100 ($b=3.58$, 2 points)}, {Max 1550 V7 ($b=4.17$, 2 points)},
+        {Max 1550 early build ($b=4.04$)}, {MI210 ($b=4.78$)}}
+\end{axis}
+\end{tikzpicture}
+\caption{Seconds per sweep for one chain against $L$. Sources: \file{TUNING\_DEFECT.md} (A30, CPU), \file{helma\_h100.md}, \file{ISSUE\_INTEL\_VS\_A30.md} (V7), \file{intel\_pvc\_supermuc\_ng2.md} (early build), \file{amd\_mi210/README.md}. The exponent $b$ in the legend is from the fit of the dashed line. The CPU is one thread of the \texttt{nividia} host with the same source (\texttt{GPU=none}).}
+\label{fig:sweep}
+\end{figure}
+
+Table~\ref{tab:fits} gives the numbers behind the figure and the local exponent between neighbouring points.
+
+\begin{table}[h]
+\centering
+\caption{Fitted exponent $b$ of $t\propto L^{b}$ and local exponents. The fit is a least-squares line through all listed points in log-log space.}
+\label{tab:fits}
+\small
+\begin{tabular}{@{}lllrl@{}}
+\toprule
+Series & Points ($L$) & Fit $b$ & Local $b$ & Source \\
+\midrule
+CPU, 1 thread & 12, 16, 24 & 6.44 & 7.0 (12 to 16), 6.1 (16 to 24) & \file{TUNING\_DEFECT.md} \\ % TUNING_DEFECT.md
+A30, tuned & 16, 24, 32, 48 & 4.45 & 3.4 (16 to 24), 4.3 (24 to 32), 5.6 (32 to 48) & \file{TUNING\_DEFECT.md} \\ % TUNING_DEFECT.md
+H100 & 24, 32 & 3.58 & 3.6 & \file{helma\_h100.md} \\ % helma_h100.md
+Max 1550 V7 & 24, 32 & 4.17 & 4.2 & \file{ISSUE\_INTEL\_VS\_A30.md} \\ % ISSUE_INTEL_VS_A30.md
+Max 1550 early & 24, 28, 32 & 4.04 & 4.4 (24 to 28), 3.6 (28 to 32) & \file{intel\_pvc\_supermuc\_ng2.md} \\ % intel_pvc_supermuc_ng2.md
+MI210 & 24, 28, 32 & 4.78 & 4.5 (24 to 28), 5.1 (28 to 32) & \file{amd\_mi210/README.md} \\ % platforms/amd_mi210/README.md
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three remarks:
+\begin{itemize}
+\item The exponents are well above the 3 of a single dense matrix product at fixed $\beta$. The work per sweep grows with $L_{\rm trot}\propto L$ slices and with the $N\propto L^2$ cost per slice of both the update blocks and the $N^3$ stabilisation. A fit with two to four points does not separate these contributions. The H100 and Max~1550 fits rest on two points and are indicative only.
+\item The local exponents rise with $L$ on the A30 and the MI210, but not on the early Max 1550 build. For the A30 the local exponent grows from 3.4 to 5.6. The MI210 value between $L=28$ and 32 (8.84 to 17.5~s, a factor 2.0 for a size ratio of 1.14) is unusually steep. \todo{check the MI210 value at $L=28$: an earlier note in the same file gives 16.6~s per sweep at $L=28$ for the version before the QR work}
+\item Below $L=16$ the GPU does not win: at $L=12$ the A30 needs 1.76~s with \texttt{N\_delay} 4 and the one-thread CPU 1.68~s. At $L=16$ the speed-up is 9.6, at $L=24$ it is 28 (\file{TUNING\_DEFECT.md}). The small sizes are latency-bound: 175\,000 small kernel launches and 220\,000 stream synchronisations per sweep at $L=32$.
+\end{itemize}
+
+\subsection{Several chains per GPU: MPS, CCS and ranks per GPU}
+\label{sec:mps}
+
+One chain does not fill a GPU. Production therefore places several independent chains (MPI ranks) on one device. Figure~\ref{fig:mps} shows the aggregate throughput and the time per chain.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+\begin{groupplot}[
+  group style={group size=2 by 1, horizontal sep=1.9cm},
+  width=0.5\textwidth, height=7.2cm,
+  xmode=log, log basis x=2, xtick={1,2,4,8,16}, xticklabels={1,2,4,8,16},
+  xlabel={ranks per GPU (per card for Max 1550)},
+]
+\nextgroupplot[ylabel={sweeps per second per GPU}, ymin=0, ymax=4.8, legend pos=north west, legend style={font=\tiny, at={(0.02,0.98)}, anchor=north west}]
+\addplot[h100] table[x=ranks,y=agg] {data/mps_h100_l24.dat};
+\addplot[a30] table[x=ranks,y=agg] {data/mps_a30_l24.dat};
+\addplot[max] table[x=ranks,y=agg] {data/mps_max1550_l24.dat};
+\addplot[h100, mark=triangle, densely dashed] table[x=ranks,y=agg] {data/mps_h100_l32.dat};
+\addplot[h100, mark=o, dotted] table[x=ranks,y=agg] {data/mps_h100_l32_nomps.dat};
+\addplot[a30, mark=square, densely dashed] table[x=ranks,y=agg] {data/mps_a30_l16.dat};
+\legend{H100 $L=24$ (MPS 25\,\%), A30 $L=24$, Max 1550 card $L=24$ (V7), H100 $L=32$ (MPS), H100 $L=32$ no MPS, A30 $L=16$ (MPS)}
+\nextgroupplot[ylabel={seconds per sweep per chain}, ymode=log, ymin=2, ymax=100]
+\addplot[h100] table[x=ranks,y=tchain] {data/mps_h100_l24.dat};
+\addplot[a30] table[x=ranks,y=tchain] {data/mps_a30_l24.dat};
+\addplot[h100, mark=triangle, densely dashed] table[x=ranks,y=tchain] {data/mps_h100_l32.dat};
+\addplot[h100, mark=o, dotted] table[x=ranks,y=tchain] {data/mps_h100_l32_nomps.dat};
+\end{groupplot}
+\end{tikzpicture}
+\caption{Left: aggregate sweeps per second per GPU against ranks per GPU. Right: time per sweep of each chain. Sources: \file{helma\_h100.md} (H100, A30 $L=24$), \file{MPI\_GPU.md} (A30 $L=16$), \file{ISSUE\_INTEL\_VS\_A30.md} section 7 (Max~1550: 1, 2, 4 and 8 walkers per tile, plotted at 2, 4, 8 and 16 ranks per card). H100 without MPS: 4 and 8 ranks at $L=32$ did not finish 6 sweeps in 420~s and are not plotted. Whether MPS was active in the A30 $L=24$ runs is not recorded.}
+\label{fig:mps}
+\end{figure}
+
+\paragraph{NVIDIA.}
+\begin{itemize}
+\item \textbf{MPS is mandatory.} Without it, ranks time-slice. On the H100 two ranks are 6.5 times slower per chain at $L=24$ (29.5 against 4.54~s) and 2.6 times slower at $L=32$ (42.7 against 16.3~s). Four or eight ranks at $L=32$ did not finish 6 sweeps in 420~s (\file{helma\_h100.md}). On the A30 older notes give 13 to 15 times (\file{MPI\_GPU.md}). MPS itself costs nothing: one rank under MPS equals one rank without it (\file{MPI\_GPU.md}).
+\item \textbf{H100, $L=24$:} 8 ranks give 1.176 sweeps per second against 0.285 for one rank, a factor 4.1. Every chain takes 6.80~s instead of 3.51~s (\file{helma\_h100.md}).
+\item \textbf{H100, $L=32$:} the throughput goes from 0.102 (1 rank, no MPS) to 0.232 (8 ranks) and 0.250 sweeps per second (16 ranks). Going from 8 to 16 ranks gains 6\,\% and doubles the time per chain (34.5 to 64.0~s). Memory is about 3.2~GB per rank, 51 to 53~GB for 16 ranks. One rank alone reaches an SM utilisation of 55\,\% (\file{helma\_h100.md}).
+\item \textbf{MPS thread share.} 25\,\% and 50\,\% are the same within 2\,\% at 8 and 16 ranks. 25\,\% was used in production. With 9 ranks on the A30 (the PP benchmark) the 25\,\% share was 12\,\% faster than no cap (\file{PP\_GPU.md}).
+\item \textbf{A30 against H100, 8 ranks, $L=24$:} 0.44 against 1.18 sweeps per second, a factor 2.7. For one rank the factor is 1.5 to 1.6 (\file{helma\_h100.md}).
+\item \textbf{A30 $L=16$:} 16 ranks without a cap give 3.18 sweeps per second and 3.7 times longer per chain than one rank. With a 25\,\% share the aggregate is 4.68 (\file{MPI\_GPU.md}). The A30 is shared and not multiplied: one chain keeps it busy 58\,\% of the time and two chains 82\,\%.
+\end{itemize}
+
+\paragraph{Max 1550.} There is no MPS on this GPU. Ranks sharing a tile time-slice, and the compute command streamer setting CCS 4 is used in the card layout. In the early build, oversubscribing a tile raised the node throughput by only 0 to 27\,\% while every chain was 2 to 3 times slower (Table~\ref{tab:pvcmatrix}). With V7 at $L=24$ the throughput per card is 0.365, 0.458, 0.879 and 0.261 sweeps per second for 1, 2, 4 and 8 walkers per tile. So four walkers per tile are the optimum, and eight are 3.4 times worse than four (\file{ISSUE\_INTEL\_VS\_A30.md}, section 7). \todo{cause of the drop at 8 walkers per tile is not documented}
+
+\begin{table}[h]
+\centering
+\caption{Max 1550, early build (AOT, $N_{\rm delay}$ 128, threads $=112/{\rm ranks}$), one node = 4 cards = 8 tiles, 2 sweeps (\file{intel\_pvc\_supermuc\_ng2.md}).}
+\label{tab:pvcmatrix}
+\small
+\begin{tabular}{@{}rrrrr@{}}
+\toprule
+$L$ & ranks (per tile) & s/sweep per chain & node sweeps/s & per chain sweeps/s \\
+\midrule
+24 & 8 (1) & 8.25 & 0.97 & 0.121 \\ % intel_pvc_supermuc_ng2.md
+24 & 16 (2) & 17.4 & 0.92 & 0.057 \\
+24 & 32 (4) & 30.9 & 1.04 & 0.032 \\
+28 & 8 (1) & 16.2 & 0.49 & 0.062 \\
+28 & 16 (2) & 32.0 & 0.50 & 0.031 \\
+28 & 32 (4) & 57.3 & 0.56 & 0.018 \\
+32 & 8 (1) & 26.3 & 0.30 & 0.038 \\
+32 & 16 (2) & 48.9 & 0.33 & 0.020 \\
+32 & 32 (4) & 84.5 & 0.38 & 0.012 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{MI210.} The numbers are for separate processes without MPS (\file{SPEEDUPS.md}): one process 4.46 and 4.52~s per sweep at $L=24$, four processes 9.16 to 9.27~s each. Four processes deliver about 1.95 times the throughput of one. Pinning four processes to disjoint quarters of the 104 compute units, or two halves shared by two each, does not raise the throughput (Section~\ref{sec:amd}).
+
+\subsection{Where the time goes}
+\label{sec:breakdown}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+\begin{groupplot}[
+  group style={group size=2 by 1, horizontal sep=1.6cm},
+  height=6.6cm,
+]
+\nextgroupplot[
+  width=0.6\textwidth, xbar stacked, bar width=14pt,
+  symbolic y coords={V0,V2,V4,V7}, ytick=data, y dir=reverse,
+  xlabel={seconds per sweep, $L=24$, one tile}, xmin=0, xmax=11,
+  legend style={at={(0.5,1.04)}, anchor=south, legend columns=4, font=\tiny},
+  enlarge y limits=0.2,
+]
+\addplot[fill=cA30!70, draw=white] table[y=variant, x=U] {data/intel_phases.dat};
+\addplot[fill=cH100!75, draw=white] table[y=variant, x=S] {data/intel_phases.dat};
+\addplot[fill=cMAX!70, draw=white] table[y=variant, x=C] {data/intel_phases.dat};
+\addplot[fill=gray!60, draw=white] table[y=variant, x=O] {data/intel_phases.dat};
+\legend{updates, stabilisation, CGR, observables}
+\nextgroupplot[
+  width=0.36\textwidth, mybars,
+  symbolic x coords={flushGEMMs,stabilisation,measurement,blockkernels,wraps},
+  xtick=data, xticklabels={flush GEMM,stab.,meas.,block,wraps}, x tick label style={rotate=40, anchor=east, font=\scriptsize},
+  ylabel={\% of kernel time}, ymin=0, ymax=55, nodes near coords, every node near coord/.append style={font=\tiny},
+  enlarge x limits=0.15,
+]
+\addplot[fill=cA30!70, draw=white] table[x=cat, y=share] {data/a30_kernel_shares.dat};
+\end{groupplot}
+\end{tikzpicture}
+\caption{Left: Max 1550, $L=24$, one chain per tile, wall time per sweep by phase for four variants (\file{ISSUE\_INTEL\_VS\_A30.md} section 3, \file{p7/NOTES.md} section 3). The phase times of V0 add up to 9.7~s against a sweep of 10.5 to 10.7~s. Right: A30, 9 ranks with MPS, $L=24$, share of the kernel time of rank 0 (\file{PP\_GPU.md}).}
+\label{fig:breakdown}
+\end{figure}
+
+\paragraph{One chain is latency-bound.}
+\begin{itemize}
+\item \textbf{A30, $L=32$, $\beta=4$, one sweep (nsys):} 44\,\% of the kernel time are 32\,338 small \texttt{ZGEMM} launches of 52~$\mu$s each (submatrix block flushes), 17\,\% dense GEMMs and about 9\,\% QR and LU. The GPU kernel time is 3.8~s of 7.5~s per sweep, and 65\,\% of the host API time is \texttt{cuStreamSynchronize} (\file{TUNING\_DEFECT.md}).
+\item \textbf{Max 1550, $L=24$, V7:} the device is busy 70 to 78\,\% of the wall time, but only about one third of the tile's capacity is used. The update phase is bound by host submission: 112\,320 asynchronous operations per sweep cost 0.88~s of host time, against 0.56~s of device time in the block path. In the update phase the device is idle 37\,\% of the time (\file{p7/NOTES.md}, sections 3, 4 and 6; the busy fraction is an estimate from isolated kernel times).
+\item \textbf{MI210:} the QR panel, which runs in one work-group, is 36\,\% of the kernel time (\file{SPEEDUPS.md}).
+\end{itemize}
+
+\paragraph{Production layouts are throughput-bound.} On the A30 with 9 ranks under MPS a kernel is running 99.97\,\% of the time, and on average 5.6 kernels run at once. Flush GEMMs take 47\,\% of the kernel time of a rank, stabilisation 25\,\%, measurements 17\,\%, block kernels 6\,\% and wraps 5\,\% (\file{PP\_GPU.md}). On the Max~1550 with 4 chains per tile the observables take 2.7~s and the updates 2.7~s of 9.3~s per sweep (\file{SPEEDUPS.md}). Estimated tile utilisation with four ranks is about 69\,\%, which leaves at most 1.4 to 1.6 times in headroom (\file{p7/NOTES.md}, estimate).
+
+\begin{table}[h]
+\centering
+\caption{Max 1550, $L=24$, V7, one chain: the largest device-time items per sweep (\file{p7/NOTES.md} section 2; times in isolation).}
+\label{tab:p7top}
+\small
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+Phase & Item & Calls & Device s & Mean $\mu$s \\
+\midrule
+S, C & device QR \texttt{geqrf} (sync) & 192 & 0.822 & 4281 \\ % p7/NOTES.md
+C & \texttt{getrf} oneMKL (hybrid host and device) & 96 & 0.379 & 3943 \\
+U & \texttt{zgemm} $576^3$ (hopping wraps) & 2880 & 0.315 & 109 \\
+U & rank-$k$ \texttt{gemm} $576\times576\times k$ & 34\,560 & 0.312 & 9.0 \\
+O & \texttt{corr}, serial kernel (1 thread), first of two & 480 & 0.300 & 626 \\
+S, C & device QR \texttt{unmqr} & 192 & 0.262 & 1367 \\
+O & \texttt{zgemm} $576^3$ (\texttt{symm\_apply}) & 1920 & 0.206 & 107 \\
+O & \texttt{corr}, serial kernel (1 thread), second of two & 480 & 0.166 & 346 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The two serial \texttt{corr} kernels (the \texttt{acc0} loop over $N_{\rm orb}$, one thread over 576 sites) cost 0.47~s of 4.9~s per sweep, 9.5\,\% of a sweep at one chain. The \texttt{acc0} reduction was parallelised in the pp-opt line and arrived with the merge, and on the Max~1550 (V7, $L=24$, one chain) it was measured after the merge: the sweep went from 4.92 to 4.98~s to 4.42 to 4.48~s, about 10\,\%, with the observables phase from 1.18 to 0.74~s and the other phases unchanged (\file{CONSOLIDATION.md}). On the A30 the same change gave no speed-up in the 9-rank production layout, because the device throughput is the limit (\file{PP\_GPU.md}).
+
+\subsection{Intel Max 1550: the optimisation steps}
+\label{sec:intel}
+
+At the start of the team session one Max~1550 tile ran one chain at 10.5 to 10.7~s per sweep at $L=24$, about twice the A30 (\file{ISSUE\_INTEL\_VS\_A30.md}). Each step below is a run-time switch of one binary and was measured by alternating runs in the same job.
+
+\begin{table}[h]
+\centering
+\caption{Steps on Max 1550. Per card: 32 ranks per node, 4 per tile, CCS 4. Ranges are those of the source.}
+\label{tab:intelsteps}
+\small
+\begin{tabularx}{\textwidth}{@{}llrrrX@{}}
+\toprule
+Variant & Switches & $L=24$ & $L=32$ & per card & Numerics \\
+\midrule
+V0 & none & 10.5 to 10.7 & 30.3 to 31.7 & 0.549 & reference \\ % ISSUE_INTEL_VS_A30.md sec 2
+V1 & staging buffer 1 MB & 7.05 to 7.08 & 23.2 & 0.568 & bitwise identical \\
+V2 & V1 + \texttt{ALFSH\_ASYNCBLK=1} & 6.53 to 6.59 & 22.0 to 22.4 & 0.655 to 0.688 & bitwise identical \\
+V4 & V2 + \texttt{ALFSH\_DEVQR=1} & 6.12 to 6.18 & 19.1 to 19.6 & 0.737 to 0.785 & rounding level \\
+V7 & V2 + \texttt{DEVQR=2}, \texttt{DEVUNMQR=1} & 4.95 to 4.97 & 16.41 to 16.42 & 0.841 to 0.879 & rounding level; $L=6$, \texttt{Mz = .T.} fails $10^{-10}$ \\
+\midrule
+A30 target & & 5.25 & 18.2 & 0.43 & \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+\begin{groupplot}[
+  group style={group size=2 by 1, horizontal sep=1.8cm},
+  width=0.5\textwidth, height=6.6cm,
+  symbolic x coords={V0,V1,V2,V4,V7}, xtick=data, enlarge x limits=0.12,
+]
+\nextgroupplot[mybars, ylabel={seconds per sweep, one chain per tile}, ymin=0, ymax=36,
+  legend style={at={(0.97,0.97)}, anchor=north east, font=\tiny}]
+\addplot[fill=cMAX!70, draw=white] table[x=step,y=L24] {data/intel_steps.dat};
+\addplot[fill=cH100!75, draw=white] table[x=step,y=L32] {data/intel_steps.dat};
+\addplot[no marks, dashed, color=cA30, thick, sharp plot, forget plot] coordinates {(V0,5.25) (V7,5.25)};
+\addplot[no marks, dashed, color=cA30, thick, sharp plot, forget plot] coordinates {(V0,18.2) (V7,18.2)};
+\legend{$L=24$, $L=32$}
+\nextgroupplot[mybars, ylabel={sweeps per second per card}, ymin=0, ymax=1.0]
+\addplot[fill=cMAX!70, draw=white] table[x=step,y=card] {data/intel_steps.dat};
+\addplot[no marks, dashed, color=cA30, thick, sharp plot] coordinates {(V0,0.43) (V7,0.43)};
+\end{groupplot}
+\end{tikzpicture}
+\caption{Max 1550 optimisation steps (\file{ISSUE\_INTEL\_VS\_A30.md}, section 2). Bars are the mid-points of the measured ranges. The dashed lines are the A30 targets: 5.25 and 18.2~s per sweep (left), 0.43 sweeps per second per GPU (right). Per-card values are for the 32-rank layout.}
+\label{fig:intel}
+\end{figure}
+
+\begin{itemize}
+\item \textbf{V1, staging buffer.} The default Level Zero staging buffer made the 32~KB device-to-host copy of the gathered block cost 380~$\mu$s. With a 1~MB buffer it costs 22~$\mu$s. There are 8640 such copies per sweep at $L=24$. This is the largest single lever, $-33\,\%$ at $L=24$, with bitwise identical results. It is an environment variable, \env{LIBOMPTARGET\_LEVEL\_ZERO\_STAGING\_BUFFER\_SIZE=1048576}.
+\item \textbf{Explicit-shape dummies and fused kernel (before V1, not in the table).} First-private arrays fell from 168\,800 to 28\,544 per sweep and launches from about 75\,000 to 49\,530, worth 0.4 to 1.2~s at $L=24$, bitwise identical.
+\item \textbf{V2, async block path.} Block kernels go onto the interop queue without a wait. This gives $-0.5$~s at $L=24$, $-1$~s at $L=32$ and $+15$ to 20\,\% per card.
+\item \textbf{V4, device QR.} The oneMKL \texttt{geqrf} is hybrid: the panel runs on the host CPU. Before, this cost 2.4~s per sweep at $L=24$ and 9.8~s at $L=32$. The own QR (panel plus blocked update) gives $-0.4$~s at $L=24$, $-2.6$~s at $L=32$ and $+10$ to 15\,\% per card.
+\item \textbf{V7, T-free panel and device apply.} The apply kernel idea came from the AMD work. Per call inside ALF at $L=24$: \texttt{geqrf} 5.48 to 3.91~ms, \texttt{unmqr} 2.4 to 1.37~ms. The gate set before the work (\texttt{geqrf} at most 0.6 and \texttt{unmqr} at most 0.5 times the old time) was missed narrowly (0.61 to 0.71 and 0.52 to 0.71) but the sweep targets are met. V7 helps one chain much more than throughput: $+3.7$\,\% at 4 walkers per tile, $+16$\,\% at one.
+\item \textbf{Tried and dropped.} oneMKL batched \texttt{geqrf} and \texttt{getrf}: no gain. OpenMP \texttt{nowait} and \texttt{depend}: ifx runs the target tasks undeferred. A batched multi-walker rebuild: the assessment gives a grounded ceiling of 1.5 to 2.3 times, realistic 1.3 to 1.6 times, at about 62 person-days, and a prototype of a batched hopping wrap saves 2\,\% only because oneMKL batched \texttt{zgemm} is not bitwise equal to the single call. No-go recommended (\file{ISSUE\_INTEL\_VS\_A30.md}, section 8).
+\end{itemize}
+
+At the start of the session the A30 targets were 5.25 and 18.2~s per sweep for one chain and 0.43 sweeps per second per GPU. V7 meets them: 4.95 to 4.97~s, 16.41 to 16.42~s and 0.84 to 0.88 per card, about twice the A30 per card (\file{ISSUE\_INTEL\_VS\_A30.md}). Throughput per card is bounded by gemm and rank-$k$ bandwidth.
+
+\subsection{AMD MI210}
+\label{sec:amd}
+
+The AMD work removed launch and synchronisation costs in four steps (\file{amd\_mi210/README.md}).
+
+\begin{table}[h]
+\centering
+\caption{MI210, effect of each step. Times as given in the source; the first three rows are CPU time of 2 sweeps, one process.}
+\label{tab:amdsteps}
+\small
+\begin{tabularx}{\textwidth}{@{}p{6.4cm}X@{}}
+\toprule
+Step & Effect \\
+\midrule
+Patched libgomp GCN plugin (pooled kernel arguments and signals, pooled small allocations) & empty target region 253 to 37~$\mu$s; about 3 times on the real run; \texttt{GCN\_NUM\_THREADS=4} (default 16) was best at $L=16$ \\ % amd_mi210/README.md
+Plugin, threads and first HIP observable kernels & $L=16$, 2 sweeps: 66~s CPU time with the stock runtime, 21~s after \\ % amd_mi210/README.md
+HIP kernels instead of the hot OpenMP target kernels (a HIP launch and sync is about 15~$\mu$s, a libgomp GCN parallel target region about 150~$\mu$s) & $L=16$: 66 to 6~s; $L=24$: 95 to 19~s; $L=28$ about 16.6~s per sweep, $L=32$ about 28.8~s per sweep at that point \\ % amd_mi210/README.md
+Own blocked Householder QR and Q-apply in HIP ($m\le2304$) & $n=576$: \texttt{geqrf} 8.8 to 4.4~ms, \texttt{unmqr} 8.5 to 1.7~ms. rocSOLVER had made 93\,\% of the 2.07 million kernel dispatches per 2 sweeps, 44\,\% of the sweep \\ % amd_mi210/README.md
+Deferred synchronisation (presync hook in the plugin) & output bit-identical to the synchronous mode; \texttt{ALF\_HIP\_ASYNC=0} restores it \\ % amd_mi210/README.md
+\midrule
+Result, steady state & $L=24$: 4.41~s; $L=28$: 8.84~s; $L=32$: 17.5~s per sweep \\ % amd_mi210/README.md
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{Compute-unit partitioning} (\file{SPEEDUPS.md}, measured 2026-11-13, $L=24$, steady state). \env{HSA\_CU\_MASK} is honoured: 2 of 104 CUs gave 28.4~s per sweep. Results are bitwise identical with and without a mask (25 of 25 output files, also with 4 concurrent processes). It does not raise throughput (Table~\ref{tab:cumask}). Recommendation in the source: no masking.
+
+\begin{table}[h]
+\centering
+\caption{MI210 compute-unit masks, $L=24$ (\file{SPEEDUPS.md}).}
+\label{tab:cumask}
+\small
+\begin{tabular}{@{}lr@{}}
+\toprule
+Configuration & s per sweep per process \\
+\midrule
+1 process, no mask & 4.46, 4.52 \\ % SPEEDUPS.md
+1 process, quarter of the CUs & about 5.7 \\
+4 processes, no mask & 9.16, 9.27, 9.21 \\
+4 processes, disjoint quarters & 9.41, 9.77, 9.42 \\
+4 processes, two halves shared by two each & 8.74, 8.63 (within noise) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Cross-platform comparison}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+\begin{groupplot}[
+  group style={group size=2 by 1, horizontal sep=1.8cm},
+  width=0.5\textwidth, height=6.4cm, enlarge x limits=0.15,
+  symbolic x coords={A30,H100,Max1550,MI210}, xtick=data, xticklabels={A30,H100,Max 1550,MI210},
+  x tick label style={font=\scriptsize},
+  nodes near coords, every node near coord/.append style={font=\tiny},
+]
+\nextgroupplot[mybars, ylabel={seconds per sweep, one chain}, ymin=0, ymax=23, legend style={at={(0.5,1.02)}, anchor=south, font=\tiny, legend columns=2}]
+\addplot[fill=cMAX!70, draw=white] table[x=plat,y=L24] {data/platform_single.dat};
+\addplot[fill=cH100!75, draw=white] table[x=plat,y=L32] {data/platform_single.dat};
+\legend{$L=24$, $L=32$}
+\nextgroupplot[mybars, ylabel={sweeps per second per accelerator, $L=24$}, ymin=0, ymax=1.4]
+\addplot[fill=cA30!70, draw=white] table[x=plat,y=thr] {data/platform_throughput_l24.dat};
+\end{groupplot}
+\end{tikzpicture}
+\caption{Left: one chain, tuned settings, $L=24$ and 32 (A30: \file{TUNING\_DEFECT.md}; H100: \file{helma\_h100.md}; Max~1550: V7, \file{ISSUE\_INTEL\_VS\_A30.md}; MI210: \file{amd\_mi210/README.md}). Right: throughput per accelerator at $L=24$ for the best measured layout: A30 8 ranks, H100 8 ranks with MPS, Max~1550 card with 8 ranks and CCS~4 (V7, mid-point of 0.84 to 0.88), MI210 4 processes. Throughput at $L=32$ exists only for the H100 (0.232 sweeps per second at 8 ranks) and is not plotted.}
+\label{fig:platforms}
+\end{figure}
+
+Table~\ref{tab:cross} shows the numbers behind the figure with the ratio to the A30.
+
+\begin{table}[h]
+\centering
+\caption{Cross-platform comparison. Ratio: A30 time divided by platform time (single chain) and platform throughput divided by A30 throughput.}
+\label{tab:cross}
+\small
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+ & \multicolumn{2}{c}{s per sweep, one chain} & \multicolumn{2}{c}{ratio to A30} & sweeps/s per device, $L=24$ \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+Platform & $L=24$ & $L=32$ & $L=24$ & $L=32$ & (ratio) \\
+\midrule
+A30 & 5.25 & 18.2 & 1.00 & 1.00 & 0.44 (1.00) \\ % TUNING_DEFECT.md; helma_h100.md 4.1
+H100 & 3.51 & 9.82 & 1.50 & 1.85 & 1.176 (2.7) \\ % helma_h100.md
+Max 1550, V7 & 4.96 & 16.41 & 1.06 & 1.11 & 0.86 (2.0) \\ % ISSUE_INTEL_VS_A30.md
+MI210 & 4.41 & 17.5 & 1.19 & 1.04 & 0.434 (1.0) \\ % amd_mi210/README.md, SPEEDUPS.md
+\bottomrule
+\end{tabular}
+\end{table}
+
+The Max~1550 and the MI210 are about as fast as an A30 for one chain. The Max~1550 card reaches twice the A30 throughput only in the layout with four walkers per tile. The MI210 gains nothing from several processes beyond a factor 1.95 over its own single process and ends at the A30 level. The H100 is 2.7 times an A30 for throughput. These comparisons use different layouts and timers, as in Table~\ref{tab:how}. A comparison of cost or of energy per sweep is not possible from the sources. \todo{no cost or energy numbers per sweep exist}
+
+\subsection{Comparison with the CPU}
+
+For the defect model the sources give one-thread CPU times on the \texttt{nividia} host (same source, \texttt{GPU=none}, nvfortran, submatrix \texttt{N\_delay} 8): 1.68, 12.7 and 148.6~s per sweep at $L=12$, 16 and 24. The A30 is therefore 1.0, 9.6 and 28 times faster for one chain. At $L=32$ the source has one 4-thread run at $\beta=4$ of 107~s per sweep, scaled by 8 to about 860~s for $\beta=32$, which gives a factor of about 47 against four threads (\file{TUNING\_DEFECT.md}). That value is an extrapolation by the source, not a measurement.
+
+The earlier plain-Hubbard baseline of one rank on the same host (checkerboard, $U=4$, $\beta=4$) is 0.60~s per sweep at $N=144$, 8.0~s at $N=400$ and 193~s at $N=1024$, with a 16-core node at 26, 1.8 and about 0.08 chain-sweeps per second (\file{BENCHMARKS.md}). That model is not the defect model and the dense defect hopping makes the CPU run slower. \todo{full-node CPU numbers for the defect model do not exist; a GPU-against-node comparison cannot be made from the sources}

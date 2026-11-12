@@ -1,0 +1,72 @@
+\section{Limitations and open decisions}
+\label{sec:limits}
+
+\subsection{Limitations}
+
+\paragraph{Scope.} Only the predefined Hubbard model with diagonal rank-1 vertices runs on the device. Everything in the refused rows of Table~\ref{tab:features} runs on the CPU. Real parallel tempering, projector, Langevin, HMC, MALA, cross-slice delay and time-dependent couplings of \texttt{Op\_V} are refused. Time-displaced observables with the defect use the host \texttt{ObserT}. Custom observables and entanglement are not implemented.
+
+\paragraph{Size.}
+\begin{itemize}
+\item $L=64$ ($N=4096$) cannot be started on any backend. \texttt{Op\_set} stops with "Eigenvector matrix has near-zero determinant" because \texttt{Det\_C} of the eigenvector matrix underflows. A fix has to compute the determinant phase without forming the product of 4096 LU diagonal elements. This is outside the port and not changed (\file{TUNING\_DEFECT.md}).
+\item Memory grows as $\approx(4N_{\rm STM}+40)\cdot16N^2$ bytes. $L=48$ with $\beta=48$ needs 19.6~GB.
+\end{itemize}
+
+\paragraph{Verification.}
+\begin{itemize}
+\item The consolidated branch is verified on the CPU path, on the MI210 and on the Max~1550. The A30 and H100 device runs are \todo{pending} (Section~\ref{sec:verif1113}).
+\item The CI builds and tests the CPU path only (\file{README.md}).
+\item The default path on the A30 was not bitwise reproducible on 2026-10-29 (Section~\ref{sec:verif}).
+\item The $L=6$, \texttt{Mz = .T.} tolerance is noise-limited. oneMKL itself fails it for 2 of 5 seed sets.
+\item Not tested, from \file{TIMEDEP\_HOPPING.md} (state 2026-11-07): \texttt{SELFTEST} 3 and 4, $L=32$ with \texttt{Mz = .T.} and \texttt{Ltau = 1}, runs longer than 2 sweeps at $L\ge32$ against the CPU, and \texttt{Nwrap} $\ne10$ against the CPU. \todo{check which of these were closed later}
+\item Whether the result is bitwise independent of some tuning variables is not determined in the code review: \env{ALF\_GPU\_TL}, \env{ALF\_GPU\_TR}, \env{ALF\_GPU\_VB} and \env{ALF\_HIP\_QR} (\file{RUNTIME\_SWITCHES.md}).
+\end{itemize}
+
+\paragraph{Intel device QR.}
+\begin{itemize}
+\item A race in the first version of the device QR gave wrong results with 4 ranks per tile under CCS 4 (Precision Green maximum 0.55 to 1.96). The cause was a tau buffer reused two panel steps early. It was fixed with three slots and a device-limit check (\file{ISSUE\_INTEL\_VS\_A30.md}).
+\item The node race test found 0 bad results in 0.85 million iterations at $N=1024$ and 3.39 million at $N=576$ on two nodes. In the planted-defect controls a one-buffer defect was caught at once, an exchange-slot defect rarely (4 in 337\,000), a v-buffer defect only with an amplifier setting, and a tau-slot defect never in 2.2 million iterations. Races of $10^{-5}$ per iteration or more are excluded (95\,\%: below $3.5\times10^{-6}$ at $N=1024$). A tau-type race, the class of the earlier bug, would be missed. A code review of the tau-slot logic is not done. A fresh numerics review of the device QR before production is open.
+\end{itemize}
+
+\paragraph{Point-defect observables.} With \texttt{ham\_h0} $\ne0$ the code now refuses \texttt{Projector}, Langevin and HMC updates, and a restricted measurement window (\texttt{LOBS\_ST}, \texttt{LOBS\_EN}). \texttt{SpinZ\_local} and \texttt{SpinZ\_localtau} are normalised only for finite temperature, sequential updates and all slices. Known defects outside that setting (\file{CONSOLIDATION.md}): \texttt{SpinZ\_localtau} is NaN if slice $L_{\rm trot}/2$ is never measured; with the projector the endpoint weights are wrong and the pin lies inside the projection region; with Langevin or HMC the endpoint weights are wrong. A proper fix needs the same change in the host code, \texttt{gpu\_obs\_mod.F90} and the HIP kernel and is open. With \texttt{Ltau = 1} the pinning field is switched off (\texttt{ham\_h0 = 0}), and \texttt{info} says so. The site formula of the defect assumes a square lattice.
+
+\paragraph{Hardware and tools.}
+\begin{itemize}
+\item On SuperMUC-NG Phase 2 a faulty GPU tile caused sporadic production aborts ("G difference > 10"). It was diagnosed with a stress test and reported to LRZ (\file{ISSUE\_INTEL\_VS\_A30.md}).
+\item On that system VTune 2025.1 and 2025.8 gpu-offload collect no GPU data, Level Zero tracing tools crash ALF at start-up, and Intel Advisor failed (\file{p7/NOTES.md}). Occupancy figures are estimates from launch geometry.
+\item The AMD speed needs a patched libgomp GCN plugin. Without it every HIP call synchronises (\file{amd\_mi210/README.md}). The patches apply to GCC 14.2.0.
+\item nvfortran 26.9 mis-compiles \texttt{blk\_end} at \texttt{-O2} and above, pinned to \texttt{-O1}. The cause is not understood (\file{DELAYED\_SUBMATRIX.md}).
+\end{itemize}
+
+\paragraph{Performance data.}
+\begin{itemize}
+\item The numbers have different timers and run lengths (Table~\ref{tab:how}). The H100 benchmarks are 6 sweeps long, so a warm-up or one outlier shows. The full 4-GPU node and finer GPU utilisation were not measured (\file{helma\_h100.md}).
+\item There is no multi-rank A30 number for $L=32$ and no CPU full-node number for the defect model.
+\item Single-chain fits of the scaling exponent use two to four points.
+\end{itemize}
+
+\paragraph{Production budget on Intel.} With the budget of the project alone (840 of 900 GPU-h) the best layout for both lattice sizes reaches only 1000 usable sweeps per $U$ point, which is nothing beyond the warm-up (\file{intel\_pvc\_supermuc\_ng2.md}). Options named there: more budget, one lattice size at a time (517 GPU-h for $L=28$ at $S=10\,000$), fewer $U$ values, or warm-starting from \texttt{confout} of a shorter run.
+
+\subsection{Open decisions}
+
+\begin{table}[h]
+\centering
+\caption{Decisions that belong to the owner.}
+\label{tab:decisions}
+\small
+\begin{tabularx}{\textwidth}{@{}rXp{3.6cm}@{}}
+\toprule
+\# & Decision & Source \\
+\midrule
+1 & Add the 1~MB staging buffer to the production job script of Intel runs. It is environment-only and bitwise identical in tests. The source recommends a short same-seed check of the production binary with and without it. & \file{SPEEDUPS.md}, \file{ISSUE\_INTEL\_VS\_A30.md} \\ % SPEEDUPS.md; ISSUE sec 9
+2 & Release \env{ALFSH\_ASYNCBLK=1} (V2) after the M12 timing test and a same-seed bitwise check. & \file{SPEEDUPS.md} \\
+3 & Release V4 and V7: needs the numerics review of the device QR (V4), a new pre-registered rule for the $L=6$, \texttt{Mz = .T.} test and a review of the tau-slot logic (V7). & \file{ISSUE\_INTEL\_VS\_A30.md} \\
+4 & Allow \env{ALF\_GPU\_OBS\_SKIP} in production, if the analysis does not need \texttt{Green\_eq} and \texttt{Den\_eq}. Gain 7\,\% at $L=24$. & \file{SPEEDUPS.md} \\
+5 & \texttt{Nwrap} 10 or 5 at $L=32$. & \file{SPEEDUPS.md} \\
+6 & Measure on every second slice (halves 12 to 25\,\% of a sweep) given the loss of comparability with existing data. & \file{SPEEDUPS.md} \\
+7 & Start the two-level submatrix update (weeks of work; targets the largest item in production). & \file{SPEEDUPS.md} \\
+8 & Fix of the determinant in \texttt{Op\_set} for $L=64$. & \file{TUNING\_DEFECT.md} \\
+9 & Budget and layout of the Intel scan (Section on production budget above). & \file{intel\_pvc\_supermuc\_ng2.md} \\
+10 & Not merged on purpose: the variant branch with the older tau labelling of \texttt{SpinZ\_localtau} (\texttt{...-old-Ntau}). It must not flow into production. & \file{CONSOLIDATION.md} \\
+\bottomrule
+\end{tabularx}
+\end{table}

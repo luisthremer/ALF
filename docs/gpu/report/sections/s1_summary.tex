@@ -1,0 +1,71 @@
+\section{Summary}
+
+This report describes the GPU port of the ALF auxiliary-field quantum Monte Carlo code that lives on the branch \texttt{gpu-port-unified}. It is built from the Markdown notes in \file{docs/gpu/} and from the verification runs of 2026-11-13. Every number comes from one of those notes. The source file is given in a comment next to the number in the \LaTeX{} source. Missing numbers and open items are marked in red as TODO.
+
+\subsection*{What runs on which hardware}
+
+One source tree builds for four targets (\file{README.md}, \file{BUILD.md}). The default build, \texttt{GPU=none}, leaves the CPU code unchanged.
+
+\begin{table}[h]
+\centering
+\caption{Build targets and the hardware on which they were run.}
+\label{tab:targets}
+\begin{tabular}{@{}lp{4.6cm}p{3.6cm}p{4.2cm}@{}}
+\toprule
+\texttt{GPU=} & Hardware used & Compiler & Libraries \\
+\midrule
+\texttt{none} & any CPU & any ALF compiler & BLAS/LAPACK \\ % README.md
+\texttt{nvidia} & A30, H100 & nvfortran 25.7 / 26.9 & cuBLAS, cuSOLVER \\ % README.md
+\texttt{intel} & Max 1550 (SuperMUC-NG Phase 2) & ifx, oneAPI 2025.x & oneMKL, SYCL shim \\ % README.md
+\texttt{amd} & MI210 & gfortran 14 (amdgcn offload) & hipBLAS, hipSOLVER, HIP kernels \\ % README.md
+\bottomrule
+\end{tabular}
+\end{table}
+
+The port was developed for the Hubbard model with a space-time point defect (time-dependent hopping, $N_{\rm FL}=2$). It runs the finite-temperature sweep, the local updates (standard, delayed and submatrix), the wraps, the stabilisation and the equal-time and time-displaced measurements on the device. Random numbers, the accept/reject decision, bookkeeping and file output stay on the host. MPI with independent chains and parallel parameter sets (\texttt{PARALLEL\_PARAMS}) work. Real parallel tempering, the projector code, Langevin, HMC and MALA, other Hamiltonians and several other features are refused at setup, and the run then uses the CPU path (Section~\ref{sec:ported}).
+
+\subsection*{Headline speeds}
+
+Table~\ref{tab:headline} gives seconds per sweep for the Hubbard defect model with $\beta=L$, $\Delta\tau=0.1$, submatrix update and \texttt{Nwrap} 10. Numbers are from different sessions and different timers. Section~\ref{sec:perf} lists how each was obtained.
+
+\begin{table}[h]
+\centering
+\caption{Seconds per sweep, one chain, and aggregate throughput of the best measured layout at $L=24$.}
+\label{tab:headline}
+\begin{tabular}{@{}lrrl@{}}
+\toprule
+Platform and layout & $L=24$ & $L=32$ & Source \\
+\midrule
+A30, one chain & 5.25 & 18.2 & \file{TUNING\_DEFECT.md} \\ % TUNING_DEFECT.md
+A30, 4 ranks with MPS, per chain & 10.5 & \todo{not measured} & \file{MPI\_GPU.md}, \file{README.md} \\ % README.md
+H100, one chain & 3.51 & 9.82 & \file{helma\_h100.md} \\ % helma_h100.md 4.1, 4.2
+H100, 8 ranks with MPS, per chain & 6.80 & 34.5 & \file{helma\_h100.md} \\ % helma_h100.md
+Max 1550, one chain per tile (V7) & 4.95 & 16.4 & \file{ISSUE\_INTEL\_VS\_A30.md} \\ % ISSUE_INTEL_VS_A30.md sec 2
+Max 1550, 4 chains per tile, per chain & 9.3 & \todo{not measured} & \file{ISSUE\_INTEL\_VS\_A30.md} \\ % ISSUE_INTEL_VS_A30.md, p7 NOTES
+MI210, one process & 4.41 & 17.5 & \file{amd\_mi210/README.md} \\ % platforms/amd_mi210/README.md
+\bottomrule
+\end{tabular}
+\end{table}
+
+The main points:
+\begin{itemize}
+\item At $L=24$ all four GPUs are within a factor 1.5 of each other for one chain (3.51 to 5.25~s per sweep). The H100 is the fastest at both sizes. At $L=32$ the H100 is 1.8 times faster than the A30 and the MI210 and Max~1550 are close to the A30 (16.4 to 18.2~s).
+\item One chain does not fill a GPU. Several chains per GPU raise the throughput by a factor 2 to 4 but slow every chain down by a factor 2 to 3. On the H100 at $L=24$ eight ranks deliver 1.18 sweeps per second against 0.285 for one rank (Section~\ref{sec:mps}).
+\item Against one CPU thread the A30 is 28 times faster at $L=24$ and 9.6 times at $L=16$, and not faster at $L=12$ (1.76 against 1.68~s). A CPU comparison with a full node for the defect model does not exist \todo{CPU node-level number for the defect model}.
+\item On Intel, run-time switches of one binary reduced the single-chain time at $L=24$ from 10.6 to 4.96~s per sweep (Section~\ref{sec:intel}). The two last steps, device QR and device \texttt{ZUNMQR}, are not yet released for production.
+\item MPS is required whenever several ranks share an NVIDIA GPU. Without it, two ranks on an H100 are 6.5 times slower per chain at $L=24$ (Section~\ref{sec:mps}).
+\end{itemize}
+
+\subsection*{State of verification}
+
+The GPU build is compared with a CPU build of the same compiler, same parameters and same seeds. Agreement is at rounding level, about $10^{-13}$ with \texttt{Mz = .F.} and about $10^{-10}$ with \texttt{Mz = .T.} (Section~\ref{sec:verif}). The consolidation of the six vendor branches into one was checked on 2026-11-13:
+\begin{itemize}
+\item \texttt{GPU=none}: four fixed-seed cases are bitwise identical to the pre-merge tip \texttt{cc473abc}. All tested upstream features are bitwise identical to upstream ALF master \texttt{521ddfca} when \texttt{LOBS\_ST = 1} is set. Two differences from upstream are intended.
+\item AMD MI210: bitwise identical to the pre-merge AMD tip \texttt{156a0b01} at $L=6$, 12, 16 and 24; timing unchanged.
+\item Intel Max~1550 (ifx 2025.3, JIT and AOT builds): against the same-compiler CPU build the deviation is $2.2\times10^{-15}$ and $1.5\times10^{-14}$ ($L=6$ and 12, \texttt{Mz = .F.}) and $5.5\times10^{-11}$ ($L=6$, \texttt{Mz = .T.}). Against the pre-merge Intel build, Green functions, scalars, acceptance and configurations are bitwise identical. With the V7 switches the $L=6$, \texttt{Mz = .T.} value is $1.36\times10^{-10}$, the same as before the merge, above the tolerance of $10^{-10}$.
+\item NVIDIA A30: the code builds with nvfortran 26.9; the GPU runs are \todo{pending} (card occupied). NVIDIA H100 (Helma): \todo{pending}.
+\end{itemize}
+
+\subsection*{Open points that affect production}
+
+The Intel steps V4 and V7 wait for a numerics review of the device QR. The $L=6$, \texttt{Mz = .T.} test fails its pre-registered tolerance with V7 ($1.36\times10^{-10}$ against $10^{-10}$). The race test of the device QR cannot detect a race on the \texttt{tau} slot. The staging-buffer setting, worth 33\,\% at $L=24$ on Intel, is not in the production job script of the running set. Section~\ref{sec:limits} lists these and the decisions that belong to the owner.

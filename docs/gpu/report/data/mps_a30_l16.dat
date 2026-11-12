@@ -1,0 +1,8 @@
+# A30, L=16, N_delay 32, 30 sweeps, MPS (thread share: 100 % 1 rank, 50 % 2 ranks, 25 % 4 ranks, 13 % 8 ranks, default 16 ranks)
+# source: docs/gpu/MPI_GPU.md
+ranks agg
+1 0.73
+2 1.25
+4 2.09
+8 2.83
+16 3.18

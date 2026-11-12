@@ -1,0 +1,10 @@
+# Max 1550, one chain per tile: time per sweep for each optimisation step; mid-points of the ranges in the source.
+# source: docs/gpu/sessions/supermuc_large_prompt/ISSUE_INTEL_VS_A30.md (section 2 table); per-card sweeps/s with 4 ranks per tile
+# V0 L24 10.5-10.7, L32 30.3-31.7, card 0.549 | V1 7.05-7.08, 23.2, 0.568 | V2 6.53-6.59, 22.0-22.4, 0.655-0.688
+# V4 6.12-6.18 (6.12-6.18 in the V4 row; 5.85-6.17 in the summary row), 19.1-19.6, 0.737-0.785 | V7 4.95-4.97, 16.41-16.42, 0.841-0.879
+step L24 L32 card
+V0 10.6 31.0 0.549
+V1 7.065 23.2 0.568
+V2 6.56 22.2 0.6715
+V4 6.15 19.35 0.761
+V7 4.96 16.415 0.860

@@ -1,0 +1,65 @@
+\section{Method in brief}
+\label{sec:method}
+
+\subsection{The sweep}
+
+ALF samples a Hubbard--Stratonovich auxiliary field on a space-time lattice with $N$ sites and $L_{\rm trot}=\beta/\Delta\tau$ time slices. For a fixed field the fermions are integrated out. The weight and all equal-time Green functions follow from products of $N\times N$ matrices (\file{PROFILE.md}, \file{HARD.md}). One \emph{sweep} goes up and then down through all slices. In the GPU documents it includes the measurements (\file{TUNING\_DEFECT.md}).
+
+On each slice the code does the following.
+\begin{enumerate}
+\item \textbf{Local updates.} For every site it proposes a field change, computes the ratio of weights from the Green function $G$, accepts or rejects, and on acceptance updates $G$ by a rank-one matrix. The rank-one update is memory-bound BLAS-2 work.
+\item \textbf{Wrap.} It moves $G$ from slice $\tau$ to $\tau+1$ by multiplying with the hopping matrix and the interaction factor.
+\item \textbf{Stabilisation.} Every \texttt{Nwrap} slices the product of the $B$ matrices is re-factorised with a QR decomposition, and $G$ is rebuilt (\texttt{CGR}). Between these points the products are numerically unstable.
+\item \textbf{Measurements.} Equal-time observables are accumulated from $G$ on every slice. Time-displaced observables (\texttt{Ltau = 1}) need an extra pass over $\tau$ with a $2N\times2N$ factorisation (\texttt{CGR2\_2}).
+\end{enumerate}
+
+\subsection{Where the time goes on a CPU}
+
+Table~\ref{tab:cpuprofile} is the profile of the upstream CPU code (stack sampling, one rank, one thread; \file{PROFILE.md}). It is for the plain Hubbard model, $U=4$, $\beta=4$, $\Delta\tau=0.1$, not for the defect model.
+
+\begin{table}[h]
+\centering
+\caption{Share of wall time per group of routines on one CPU core, in percent (\file{PROFILE.md}). Hubbard square lattice, $U=4$, $\beta=4$, \texttt{Ltau = 1}. cb: checkerboard hopping, dense: dense hopping matrix.}
+\label{tab:cpuprofile}
+\begin{tabular}{@{}p{5.6cm}rrrrrr@{}}
+\toprule
+ & \multicolumn{3}{c}{cb} & \multicolumn{3}{c}{dense} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}
+Group & $12^2$ & $20^2$ & $32^2$ & $12^2$ & $20^2$ & $32^2$ \\
+\midrule
+Stabilisation (CGR, CGR2\_2, decompose) & 47.0 & 55.4 & 42.3 & 32.0 & 32.0 & 26.4 \\ % PROFILE.md aggregates
+Local updates (Upgrade2, Op\_Wrap) & 22.5 & 25.3 & 34.9 & 12.8 & 16.2 & 21.0 \\ % PROFILE.md
+$B$ products (wraps, propagators, hopping) & 12.1 & 5.6 & 13.3 & 41.6 & 42.4 & 42.0 \\ % PROFILE.md
+Measurements & 16.9 & 11.5 & 8.1 & 11.7 & 6.3 & 5.1 \\ % PROFILE.md
+\midrule
+Rank-one update (\texttt{ZGERU}) alone & 17.2 & 23.5 & 33.3 & 9.7 & 15.2 & 20.1 \\ % PROFILE.md
+Wall time per sweep, 1 rank (s) & 0.60 & 8.0 & 193 & 0.80 & 13.7 & 294 \\ % PROFILE.md
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three points follow for the port (\file{PROFILE.md}, \file{BENCHMARKS.md}):
+\begin{itemize}
+\item Stabilisation is the largest group. Its QR with column pivoting has no good batched GPU equivalent.
+\item The share of the rank-one update grows with $N$ (17 to 33\,\% for checkerboard hopping). It is memory-bound, and one GPU launch per accepted flip is slow. This is the case for delayed and submatrix updates.
+\item Measurements are not negligible (17\,\% at $N=144$) and are loops with scatter-adds. They have to run on the device, otherwise $G$ must be copied back three times per slice.
+\end{itemize}
+
+The measured cost of one sweep on one core of the \texttt{nividia} host (Zen~3, 16-core EPYC 7763 VM) for the same model is 0.60~s at $N=144$ and 193~s at $N=1024$ with checkerboard hopping (\file{BENCHMARKS.md}). The values at $N=1024$ come from profiling runs with other jobs on the node and are indicative only.
+
+\subsection{Delayed and submatrix updates}
+
+A GPU cannot do rank-one updates fast. Kernel benchmarks on the A30 give 12 to 15~$\mu$s for one OpenMP target region and 28 to 34~$\mu$s for a rank-one update with a host decision at $N\le400$ (\file{BENCHMARKS.md}, \file{ADR-001-programming-model.md}). A rank-$k$ update with $k=128$ costs 0.21 to 1.25~$\mu$s per update on the device, 25 to 40 times less than rank one. This motivates two schemes of ALF (\file{DELAYED\_SUBMATRIX.md}):
+
+\begin{description}
+\item[Delayed update.] $G=G_0-XY^{T}$ is kept in low-rank form for up to \texttt{N\_delay} accepted flips and flushed with one \texttt{ZGEMM}.
+\item[Submatrix update.] Between flushes only the diagonal wrap scalings change $G_0$. The host copies the principal block $G_0(B,B)$ of one block of \texttt{N\_delay} consecutive vertices once and decides all proposals of the block from it. At the block end the device applies the scalings and flushes with two \texttt{ZGEMM} calls.
+\end{description}
+
+On the A30 the block mode brought the submatrix scheme on a $20\times20$ lattice (six sweeps) from 49.7~s to 8.7~s. That is 4.9 times faster than the earlier standard run (42.2~s). Acceptance is identical (\file{DELAYED\_SUBMATRIX.md}). At $L=16$ to $32$ it is 2.4 to 5 times faster than the standard update (\file{TUNING\_DEFECT.md}). The block mode replaced about 8 synchronous device operations per site by about 12 per block.
+
+\subsection{Point defect and time-dependent hopping}
+
+The production model is the Hubbard model with a space-time point defect (\file{TIMEDEP\_HOPPING.md}). A hopping element depends on the time slice through a function $g_t$. The element is applied as $A(g)=U\exp(gE)U^\dagger$ and is skipped when $|g|^2$ is below a threshold. For the point defect the pin is at one slice, $g_t(1)=-1$ ($\tau=0$), after the merge of 2026-11-09. The static hopping is a dense $N\times N$ matrix. The \texttt{Checkerboard} flag is ignored when \texttt{ham\_h0} $\neq0$.
+
+Two consequences matter for the GPU. First, a time-dependent element has one nonzero eigenvalue in the defect case, so it is stored on its support (one site) instead of as a dense matrix. Without this, a set of matrices at $L=32$ needs more than 2~GB. Second, the down sweep measures all slices, including $\tau=0$, and \texttt{SpinZ\_localtau} has $L_{\rm trot}+1-2T_{\rm htrot}$ columns ($\tau=0$ to $\beta$). The default \texttt{LOBS\_ST} is 0; upstream ALF measures $2L_{\rm trot}-1$ times per sweep and the unified branch measures $2L_{\rm trot}$ times (Section~\ref{sec:verif}).

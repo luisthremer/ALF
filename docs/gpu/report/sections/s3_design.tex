@@ -1,0 +1,127 @@
+\section{Design}
+\label{sec:design}
+
+The design decisions are in two architecture decision records, accepted on 2026-10-27 after the kernel benchmarks of Phase~1 (\file{ADR-001-programming-model.md}, \file{ADR-002-alf-la-and-data-model.md}).
+
+\subsection{Programming model}
+
+ALF is Fortran with class-based Hamiltonians. One source tree has to run with nvfortran, ifx and gfortran, and \texttt{GPU=none} has to stay upstream ALF. The decision (ADR-001) is:
+
+\begin{itemize}
+\item \textbf{OpenMP 5.x target offload} with one conservative subset that both nvfortran and ifx accept: \texttt{target enter/exit data}, \texttt{target update}, \texttt{target teams distribute} \texttt{parallel do} on explicit-shape contiguous arrays, and \texttt{use\_device\_addr}. No \texttt{declare mapper}, no unified memory, no polymorphism or allocation in device code.
+\item \textbf{Vendor libraries behind one layer, \texttt{alf\_la}.} Large matrix work (\texttt{GEMM}, QR, LU, \texttt{TRSM}) goes to cuBLAS/cuSOLVER, oneMKL or hipBLAS/hipSOLVER. Nothing outside \texttt{alf\_la} knows the backend.
+\item \textbf{Selection at configure time}: \texttt{GPU=none|nvidia|intel|amd}.
+\item \textbf{Same trajectory as the CPU.} The update is organised as propose, ratio, decide, apply or defer, flush. The decision is made on the host with the same random-number order, so that a GPU run follows the CPU run flip by flip for the same compiler and seeds.
+\end{itemize}
+
+OpenACC, CUDA Fortran, \texttt{do concurrent} offload and a SYCL or Kokkos rewrite were considered and not adopted (ADR-001). The only measured difference between OpenMP and OpenACC on the A30 is the asynchronous launch: about 10~$\mu$s for OpenMP \texttt{nowait} and 2.6~$\mu$s for OpenACC \texttt{async} (\file{BENCHMARKS.md}). With a device-side decision per site OpenACC gives 6.5 to 8.8~$\mu$s per site against 15 to 18~$\mu$s for the host decision at $N\le400$. The lever turned out to be algorithmic (delayed and submatrix updates), which removes launches in either model.
+
+The kernel benchmarks (\file{BENCHMARKS.md}) divide the work in two parts. Bulk work, such as stabilisation, dense products and fused element-wise wraps, is 5 to 40 times faster than one core at $N\ge400$. Per-site work is launch-bound: an OpenMP target region costs 12 to 15~$\mu$s, a cuBLAS call 5~$\mu$s and a scalar device-host-device round trip 16 to 23~$\mu$s.
+
+\subsection{Layers}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners=2pt, minimum height=0.8cm, align=center, font=\small, fill=gray!8},
+  dev/.style={box, fill=blue!7},
+  host/.style={box, fill=orange!10},
+  node distance=0.45cm and 0.35cm]
+\node[host, text width=12.6cm] (alf) {ALF host code: Hamiltonian, random numbers, accept/reject, bookkeeping, I/O (unchanged)};
+\node[dev, text width=12.6cm, below=of alf] (gpu) {\texttt{gpu\_state, gpu\_wrap, gpu\_stab, gpu\_update, gpu\_lowrank, gpu\_obs, gpu\_tau}: device mirror and kernels (OpenMP target)};
+\node[dev, text width=12.6cm, below=of gpu] (la) {\texttt{alf\_la}: \texttt{la\_gemm, la\_geqrf, la\_ormqr, la\_getrf, la\_trsm, la\_qrpp}, \dots};
+\node[box, below=of la, minimum width=4.2cm] (mkl) {oneMKL\\+ SYCL shim, device QR};
+\node[box, left=of mkl, minimum width=4.2cm] (cu) {CUDA\\cuBLAS, cuSOLVER};
+\node[box, right=of mkl, minimum width=4.2cm] (hip) {HIP\\hipBLAS, hipSOLVER, kernels, QR};
+\node[box, below=0.35cm of mkl, text width=12.6cm, fill=gray!3] (host2) {\texttt{GPU=none}: \texttt{alf\_la} calls the unchanged BLAS/LAPACK (test oracle)};
+\draw[-{Stealth}] (alf) -- (gpu); \draw[-{Stealth}] (gpu) -- (la);
+\draw[-{Stealth}] (la) -- (cu); \draw[-{Stealth}] (la) -- (mkl); \draw[-{Stealth}] (la) -- (hip);
+\end{tikzpicture}
+\caption{Layers of the port. Upstream routines get at most a guarded early branch into the GPU modules (ADR-002).}
+\label{fig:layers}
+\end{figure}
+
+\subsection{\texttt{alf\_la}}
+
+\texttt{alf\_la\_mod.F90} is one module with plain-array routines in LAPACK argument order: \texttt{la\_gemm}, the real-times-complex variants for dense hopping, strided batched \texttt{GEMM} over flavours, \texttt{la\_geru}, \texttt{la\_geqrf}, \texttt{la\_ungqr}, \texttt{la\_ormqr}, \texttt{la\_getrf}, \texttt{la\_getrs}, \texttt{la\_trsm}, and \texttt{la\_qrpp}, which is a column-norm pre-pivot followed by an unpivoted QR and returns a pivot vector compatible with \texttt{ZGEQP3} (ADR-002). No array descriptors or derived types cross the interface. The arrays are device-resident and \texttt{alf\_la} gets their device addresses through \texttt{use\_device\_addr}.
+
+Library calls must run on the queue that the OpenMP runtime uses for the kernels, otherwise kernels and library calls are not ordered. This was tested and amended in ADR-002:
+\begin{itemize}
+\item \textbf{CUDA.} A stream created by \texttt{la\_init} is not ordered against nvfortran's target regions. Synchronous regions use the per-thread default stream, so the cuBLAS and cuSOLVER handles are set to the stream returned by \texttt{acc\_get\_cuda\_stream(acc\_async\_sync)}. As a consequence \texttt{nowait} and \texttt{depend} regions are not ordered against library calls. The test \texttt{t\_order} checks this. The build flag \texttt{-DALF\_LA\_SYNC\_ALWAYS} brackets every call with a sync.
+\item \textbf{oneMKL.} BLAS goes through \texttt{!\$omp dispatch}. The LAPACK factorisations go through a small SYCL shim on the interop queue of the OpenMP runtime.
+\item \textbf{CUDA reproducibility.} cuSOLVER runs in deterministic mode and cuBLAS atomics are off (\file{RUNTIME\_SWITCHES.md}).
+\end{itemize}
+
+\subsection{Device-resident data}
+
+\texttt{gpu\_state\_mod.F90} allocates and maps one flat mirror at setup (\texttt{target enter data}) and frees it at the end. Nothing is allocated in loops. Table~\ref{tab:mirror} lists the main arrays (ADR-002).
+
+\begin{table}[h]
+\centering
+\caption{Main arrays of the device mirror (ADR-002).}
+\label{tab:mirror}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Array & Shape & Content \\
+\midrule
+\texttt{G} & $(N,N,N_{\rm FL})$ & Green function, on the device for the whole run \\ % ADR-002
+\texttt{cb\_idx, cb\_exp} & per family & checkerboard bond pairs and $2\times2$ exponentials \\ % ADR-002
+\texttt{T\_exp} & $(N,N,N_{\rm FL},4)$ & $e^{\pm T}$, $e^{\pm T/2}$ for dense hopping \\ % ADR-002
+\texttt{V\_site, V\_exp} & per \texttt{Op\_V} & sites and exponential table of the diagonal vertices \\ % ADR-002
+\texttt{nsigma\_d} & $(N_{\rm op},L_{\rm trot})$ & auxiliary field \\ % ADR-002
+\texttt{U, D, V} work, \texttt{udvst\_d} & per stabilisation point & stabilisation stack \\ % ADR-002
+\texttt{GT0, G0T, GTT} & $(N,N,N_{\rm FL})$ & time-displaced pass, only for \texttt{Ltau = 1} \\ % ADR-002
+\bottomrule
+\end{tabular}
+\end{table}
+
+The stack dominates memory: peak $\approx(4N_{\rm STM}+40)\cdot16\,N^2$ bytes plus 0.3~GB, with $N_{\rm STM}=L_{\rm trot}/\texttt{Nwrap}$ (\file{TUNING\_DEFECT.md}). The formula gives 19.7~GB at $L=48$, $\beta=48$ and the measurement is 19.6~GB. A card with 24~GB holds $L=48$; for $L=64$ the formula gives 45~GB at $\beta=32$, but $L=64$ cannot be started at present (Section~\ref{sec:limits}).
+
+\subsection{Backends}
+
+\paragraph{CUDA (NVIDIA).} cuBLAS and cuSOLVER through \texttt{bind(C)}. The device of rank $r$ is $r \bmod$ the number of devices. Several ranks per GPU need an MPS daemon (Section~\ref{sec:mps}).
+
+\paragraph{oneMKL and SYCL (Intel).} Beyond the shim, three items were added during the SuperMUC-NG work (\file{ISSUE\_INTEL\_VS\_A30.md}):
+\begin{itemize}
+\item an \emph{async block path} (\texttt{libalfsb.so}): the block kernels of the submatrix update are submitted on the OpenMP interop in-order queue without a wait (4.3~$\mu$s per operation against 12.3~$\mu$s synchronous);
+\item an own \emph{device Householder QR} (\texttt{libalfdevqr.so}, loaded with \texttt{dlopen}) that replaces the hybrid host-device \texttt{geqrf} of oneMKL, in two versions, plus a device \texttt{ZUNMQR};
+\item explicit-shape dummy arguments and a fused kernel in the submatrix update, which cut first-private arrays from 168\,800 to 28\,544 per sweep.
+\end{itemize}
+
+\paragraph{HIP (AMD).} The AMD build uses gfortran~14 with amdgcn offload. Its libgomp runtime has a high launch cost (\file{amd\_mi210/README.md}). The AMD backend therefore replaces the small OpenMP kernels by HIP kernels (copies, block gather and scale, flush gather, scatter, correlations, scalar and local observables, stabilisation helpers) and adds its own blocked Householder QR and Q-apply. A patched libgomp GCN plugin pools kernel arguments and signals, and calls a presync hook so that HIP calls need no \texttt{hipDeviceSynchronize} after each launch.
+
+\subsection{What stays on the host}
+
+Random numbers, the accept/reject decision, field bookkeeping, bin I/O, the Hamiltonian setup and all of ALF outside the GPU path stay on the host. With the submatrix scheme the host decides all proposals of a block from a copy of the principal block of $G_0$ (\file{DELAYED\_SUBMATRIX.md}). Under \texttt{STABLOG} the CGR factorisations run as host \texttt{ZGEQP3} with copies of the matrices, because no GPU-friendly pivoting met the precision criteria (ADR-001). The time-displaced observables with the defect still use the host \texttt{ObserT} and copy four matrices per $\tau$ slice (\file{TIMEDEP\_HOPPING.md}).
+
+\subsection{Activation, fallback and guard}
+
+At setup \texttt{gpu\_supported} checks the Hamiltonian, the vertices and the options. If a check fails, the whole run uses the CPU path and \texttt{info} gives the reason. It never gives a silent wrong answer. A GPU run should show \texttt{GPU path (gpu\_state): ACTIVE} and \texttt{GPU observables: device equal-time measurement ACTIVE} in \texttt{info}. All runs set \texttt{OMP\_TARGET\_OFFLOAD=MANDATORY}, otherwise a failed device initialisation silently runs on the CPU.
+
+A production guard (\file{RUNTIME\_SWITCHES.md}) reads the environment: any \texttt{ALF\_GPU\_*} or \texttt{ALF\_LA\_TEST\_*} variable except \texttt{ALF\_GPU\_DISABLE} and \texttt{ALF\_GPU\_DEBUG} stops a run unless it is declared a debug run. The variables \texttt{ALFSH\_*}, \texttt{ALF\_HIP\_*} and \texttt{ALFDEVQR\_*} are outside the guard and have to be checked by hand.
+
+\subsection{Compiler problems met}
+
+\begin{table}[h]
+\centering
+\caption{Compiler and runtime problems that shaped the code or the build.}
+\label{tab:compilers}
+\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+Toolchain & Problem and handling \\
+\midrule
+nvfortran 26.9 & \texttt{blk\_end} is mis-compiled at \texttt{-O2} and above (wrong $G$ after the first stabilisation). It is pinned to \texttt{-O1} with \texttt{!pgi\$r opt=1}. The cause is not understood (\file{DELAYED\_SUBMATRIX.md}). \\ % DELAYED_SUBMATRIX.md
+nvhpc 24.11 & The GPU build compiles but the $L=8$ run aborts with \texttt{la\_qrpp: NaN or Inf}. The CPU run of the same compiler is fine. Not used (\file{helma\_h100.md}). \\ % helma_h100.md
+nvhpc 25.7 & Needs \texttt{-gpu=cc90,cuda12.9}; without it the default CUDA 13 device compile fails (\file{helma\_h100.md}). \\ % helma_h100.md
+ifx $\le$ 2025.3 & \texttt{omp\_get\_interop\_int/ptr} are missing in \texttt{omp\_lib}, so \texttt{alf\_la\_mod.F90} declares them with \texttt{bind(C)} (\file{intel\_pvc\_supermuc\_ng2.md}). \\ % platforms/intel_pvc_supermuc_ng2.md
+oneAPI 2025.3 & Compiles, but the OpenMP-to-SYCL interop crashes at run time with the Level Zero V2 adapter. 2025.1 works and is used (\file{intel\_pvc\_supermuc\_ng2.md}). \\ % intel_pvc_supermuc_ng2.md
+ifx (OpenMP tasks) & \texttt{nowait}/\texttt{depend} target tasks run undeferred; no gain (gate A: 97 to 103\,\% of the baseline time) (\file{ISSUE\_INTEL\_VS\_A30.md}). \\ % ISSUE_INTEL_VS_A30.md sec 4
+gfortran 14 (amdgcn) & Launch cost of the libgomp GCN plugin is high: 253~$\mu$s for an empty target region, 37~$\mu$s with the patched plugin (\file{amd\_mi210/README.md}). \\ % platforms/amd_mi210/README.md
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Source layout}
+
+The device code is in \texttt{Prog/gpu\_*\_mod.F90} (state, wrap, stabilisation, update, low-rank blocks, equal-time and time-displaced observables). The backends are in \texttt{Libraries/Modules/}: \texttt{alf\_la\_mod.F90} (interface and CUDA/oneMKL/host code), \texttt{alf\_la\_sycl\_*} (Intel shim, async block path, device QR) and \texttt{alf\_la\_hip\_mod.F90}, \texttt{alf\_hipk\_mod.F90}, \texttt{alf\_hip\_*.cpp} (AMD). Unit tests of \texttt{alf\_la} and the acceptance harness are in \texttt{testsuite/alf\_la.tests/} and \texttt{testsuite/gpu\_reference/} (\file{README.md}).

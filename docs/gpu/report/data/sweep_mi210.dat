@@ -1,0 +1,6 @@
+# MI210, one process, HIP kernels, own QR, deferred sync, s per sweep (steady state)
+# source: docs/gpu/platforms/amd_mi210/README.md (table "Steady-state seconds per sweep"; L=24 also 4.46, 4.52 in SPEEDUPS.md)
+L t
+24 4.41
+28 8.84
+32 17.5
