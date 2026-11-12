@@ -319,8 +319,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "C: single tile OK (same seed PASS, PG L24 1.8e-14\/4.5e-11, L32 5.1e-14\/4.4e-11). BUG: node config (32 ranks, CCS 4) Precision Green mean 2.6e-6 \/ max 0.55-1.96 -> wrong results; sent back to the Phase 4 agent (2026-11-12).",
-      "done" : false,
+      "description" : "C, jobs 560581-83 (2026-11-12, fix 29005a0f merged as a130d085): node config 32 ranks CCS 4: planted pre-fix lib PG max 0.40 -> FAIL (check catches the race); fixed V4 PG mean 1.9e-14 max 5.8e-10 -> PASS (V2 3.7e-10). Same seed vs CPU V3 and V4: L6F 2.2e-15, L12F 1.6e-14, L6T 6.0e-11 PASS. Single tile PG L24 1.8e-14\/4.5e-11, L32 5.1e-14\/4.4e-11.",
+      "done" : true,
       "id" : "n_7ulfjn4m",
       "order" : 2,
       "parentId" : "n_vg8vag8d",
@@ -368,7 +368,7 @@
     },
     {
       "collapsed" : false,
-      "description" : "",
+      "description" : "C, jobs 560581-83 (2026-11-12, fix 29005a0f merged as a130d085): same checks as Phase 4 node above, all PASS. Open: fresh numerics review (agent) before production use.",
       "done" : false,
       "id" : "n_7uyk379j",
       "order" : 1,
@@ -377,8 +377,8 @@
     },
     {
       "collapsed" : false,
-      "description" : "C (job 560387\/560388, one binary, run-time switches): L24 one tile V0 10.6 \/ staging 7.07 \/ +async 6.58 \/ +devqr 6.66 \/ both 6.17 (A30 5.25); L32 31 \/ 23.2 \/ 22.4 \/ 20.5 \/ 19.1-19.4 (A30 18.2); node per card V0 0.549 \/ V1 0.568 \/ V2 0.655 (A30 0.43); V3\/V4 node invalid (CCS bug).",
-      "done" : false,
+      "description" : "C, jobs 560581-83 (2026-11-12, fix 29005a0f merged as a130d085): L24 one tile: V2 6.53, V4 6.12-6.15 s\/sweep (A30 5.25); L32: V2 21.98, V4 19.38 (A30 18.2). Node per card (CPU-time diff): V2 0.669-0.688, V4 0.737-0.785 (A30 0.43). L24 V4 split: upd 1.44, stab 1.40, cgr 1.86, obs 1.19 s.",
+      "done" : true,
       "id" : "n_331eda4l",
       "order" : 2,
       "parentId" : "n_mo4rpe72",
@@ -401,8 +401,137 @@
       "order" : 4,
       "parentId" : "n_ip03gk58",
       "title" : "Phase 3b: staging-buffer finding (LIBOMPTARGET_LEVEL_ZERO_STAGING_BUFFER_SIZE=1 MB)"
+    },
+    {
+      "collapsed" : false,
+      "dependsOn" : [
+        "n_mo4rpe72"
+      ],
+      "description" : "Owner 2026-11-12: continue the speedup plan. AMD MI210 session reached L24 4.41 s\/sweep with own HIP Householder QR (geqrf AND unmqr, wave-per-column apply, no T factor) + deferred sync; obs only 0.12 s device time there. Our L24 V4: cgr 1.86, stab 1.40, obs 1.19, upd 1.44.",
+      "done" : false,
+      "id" : "n_v7wyl9eg",
+      "order" : 8,
+      "parentId" : null,
+      "title" : "Phase 5: close the single-chain gap to the A30 (L24 6.1 -> <=5.25 s)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "C: AMD report received 2026-11-12 (branch gpu-delayed-submatrix-defect-production-mpi-amd, commits fc22e314..b3923afe; alf_hip_qr.hip.cpp). Transferable: device unmqr apply kernel, deferred sync. Not transferable: patched libgomp plugin.",
+      "done" : true,
+      "id" : "n_fmw0qzq2",
+      "order" : 0,
+      "parentId" : "n_v7wyl9eg",
+      "title" : "AMD consolidation: read AMD report, map ideas to Intel"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Where are cgr 1.86 s and obs 1.19 s now? Per-call geqrf_dev\/unmqr\/getrf times.",
+      "done" : false,
+      "id" : "n_c894quzg",
+      "order" : 1,
+      "parentId" : "n_v7wyl9eg",
+      "title" : "Profile V4 at L24\/L32: ALFSH_TIMING per LAPACK call + obs kernel split"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Gate: <=0.5x oneMKL unmqr per call; vs host LAPACK <=1e-13.",
+      "done" : false,
+      "id" : "n_3zd3wfbk",
+      "order" : 2,
+      "parentId" : "n_v7wyl9eg",
+      "title" : "Device ZUNMQR (apply reflectors, AMD-style, no T) in libalfdevqr"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Was 'Optional: device ZGETRF' in Phase 4.",
+      "done" : false,
+      "id" : "n_sppug866",
+      "order" : 3,
+      "parentId" : "n_v7wyl9eg",
+      "title" : "Device ZGETRF (replaces oneMKL host-assisted getrf)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "AMD obs device time 0.12 s; ours likely launch\/first-private bound.",
+      "done" : false,
+      "id" : "n_t8cbu6px",
+      "order" : 4,
+      "parentId" : "n_v7wyl9eg",
+      "title" : "Observables phase: dummy-arg treatment + fusion in gpu_obs_mod (1.19 s at L24)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_t0owuhxk",
+      "order" : 5,
+      "parentId" : "n_v7wyl9eg",
+      "title" : "Checks: same seed vs CPU, node PG (CCS 4) + planted defect, bitwise vs V4 where expected, nvfortran compile"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_5jsw56zn",
+      "order" : 6,
+      "parentId" : "n_v7wyl9eg",
+      "title" : "Timing vs A30 and report update"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Owner 2026-11-12: keep in mind, do NOT work on it yet. Reuse our measured evidence (scaling, single-chain and node throughput, correctness checks).",
+      "done" : false,
+      "id" : "n_k2mfq94n",
+      "order" : 9,
+      "parentId" : null,
+      "title" : "GCS application 140k GPU-h (SuperMUC-NG Phase 2): LaTeX technical part"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_yqmebhg0",
+      "order" : 0,
+      "parentId" : "n_k2mfq94n",
+      "title" : "Collect GCS requirements (code readiness, scaling\/performance evidence, resource justification)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Source: Phase A\/4\/5 checks and job logs.",
+      "done" : false,
+      "id" : "n_xca2yibf",
+      "order" : 1,
+      "parentId" : "n_k2mfq94n",
+      "title" : "Evidence: code runs on SuperMUC-NG Phase 2 (builds, ctest, same seed vs CPU, Precision Green)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "Source: comb\/ jobs 560386-88, 560581-83.",
+      "done" : false,
+      "id" : "n_myir4kzt",
+      "order" : 2,
+      "parentId" : "n_k2mfq94n",
+      "title" : "Evidence: performance and scaling tables (s\/sweep per chain, sweeps\/s per card\/node, ranks per tile CCS)"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_m5vg459s",
+      "order" : 3,
+      "parentId" : "n_k2mfq94n",
+      "title" : "Resource justification: GPU-h = sweeps x s\/sweep x walkers x parameter sets"
+    },
+    {
+      "collapsed" : false,
+      "description" : "",
+      "done" : false,
+      "id" : "n_49lwz0az",
+      "order" : 4,
+      "parentId" : "n_k2mfq94n",
+      "title" : "Draft LaTeX section (technical feasibility, performance, resources)"
     }
   ],
-  "rev" : 1,
+  "rev" : 2,
   "version" : 1
 }
