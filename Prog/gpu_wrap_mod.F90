@@ -1262,7 +1262,7 @@ Contains
     if (did .and. gpu_env_is('ALF_GPU_EXIT', '1')) then
        call gpu_state_finalize()
        write(output_unit,'(A)') ' GPU wrap hook: ALF_GPU_EXIT=1, stopping after the test'
-       stop 0
+       call alf_exit(0)
     endif
   end subroutine gpu_wrap_hook
 

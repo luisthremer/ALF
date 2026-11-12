@@ -47,6 +47,7 @@
 Module Wrapgr_mod
 
 
+  Use runtime_error_mod, only: alf_exit
   Use Hamiltonian_main
   Use MyMats 
   Use Operator_mod
@@ -662,7 +663,7 @@ Contains
     if (gpu_env_is('ALF_GPU_EXIT', '1')) then
        call gpu_state_finalize()
        write(output_unit,'(A)') ' GPU update self-test: ALF_GPU_EXIT=1, stopping after the test'
-       stop 0
+       call alf_exit(0)
     endif
     deallocate(seed0, seed1, f0, cfu, cfd, gfu, gfd, GR0, cGu, cGd)
   end Subroutine Wrapgr_gpu_selftest
