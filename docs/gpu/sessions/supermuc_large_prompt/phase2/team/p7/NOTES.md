@@ -133,5 +133,5 @@ Jobs (all single-node, preempt): 560821, 560823, 560825, 560826, 560829 (probes,
 Total ~37 min = **~0.62 node-h** (from the start/end `date -Is` lines of the logs; limit 2 node-h).
 
 Remote: `$SCRATCH/large_prompt/team/p7/` = `jobs/` (scripts, logs `*.sh.<id>.log/.err`), `src/` (measurement libraries), `lib/` (built .so), `work_*/runs/*` (raw rank logs of every run), `data/`.
-Local: `docs/supermuc_large_prompt/phase2/team/p7/` = `jobs/`, `src/`, `data/` (rank logs and job logs of every run; `data/report_tables.md`, `data/kinfo_V7.txt`, `data/ALF.out.nm.txt`), `ana.py`, `tables.py`, `report.py` (tables from the raw data), this file.
+Local: `docs/gpu/sessions/supermuc_large_prompt/phase2/team/p7/` = `jobs/`, `src/`, `data/` (rank logs and job logs of every run; `data/report_tables.md`, `data/kinfo_V7.txt`, `data/ALF.out.nm.txt`), `ana.py`, `tables.py`, `report.py` (tables from the raw data), this file.
 Reproduce: `jobs/p7lib.sh` (helpers), `j1_single.sh` (L1), `j2_node.sh` (L32), `j4_off.sh` / `j6_site.sh` (serialised profile), `j7_nd.sh` (N_delay); `jobs/a_probe*.sh` = tool probes.

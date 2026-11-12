@@ -85,7 +85,7 @@ index ce4d5966..dd33bd84 100644
    end subroutine k_cpy_n
  
 +!====================================================================
-+!  Phase 6 prototype: batched wrap of B walkers in one rank (docs/supermuc_large_prompt/phase2/team/p6/DESIGN.md).
++!  Phase 6 prototype: batched wrap of B walkers in one rank (docs/gpu/sessions/supermuc_large_prompt/phase2/team/p6/DESIGN.md).
 +!  NOT a multi-walker engine: ALF still runs one chain per rank.  Slot s of the walker batch (s rotates with every call) holds the real
 +!  G of the chain, the other B-1 slots are filled with scaled copies of it (stand-in walkers).  The hopping part of WRAPGRUP/WRAPGRDO
 +!  (mmthr + mmthl_m1, resp. mmthl + mmthr_m1) is applied to all B slots with batched alf_la calls, and the real slot is copied back.

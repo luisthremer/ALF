@@ -6,13 +6,13 @@
 # The following jobscript contains a few 'variables' marked by the ##...## pattern.
 # The user has to provide the appropriate values, e.g. replace ##Nnodes## by 1.
 #
-# Measured layout (L = 24 pi-flux Hubbard with point defect, submatrix updates, see docs/gpu/SUPERMUC_NG2.md):
+# Measured layout (L = 24 pi-flux Hubbard with point defect, submatrix updates, see docs/gpu/platforms/intel_pvc_supermuc_ng2.md):
 #  * ONE MPI rank (= one independent Markov chain) per GPU tile: NtaskPnode = 8, 14 cores (OpenMP threads for the host MKL) each.
 #    More ranks than tiles do not help: PVC has no MPS, the ranks on one tile are time-sliced (aggregate throughput stays flat).
 #  * N_delay = 128 in the parameters file (29 % faster per sweep than the usual 32 on this hardware).
 #  * The device of a rank is rank mod 8 (ZE_FLAT_DEVICE_HIERARCHY=FLAT, every tile is a device), so the ranks of a node spread over
 #    all 4 cards. With fewer than 8 ranks per node bind one rank per card: ZE_AFFINITY_MASK=<2*local rank>.
-#  * The executable has to be built ahead of time for PVC (AOT, see docs/gpu/SUPERMUC_NG2.md); JIT costs about 1 minute per rank at start.
+#  * The executable has to be built ahead of time for PVC (AOT, see docs/gpu/platforms/intel_pvc_supermuc_ng2.md); JIT costs about 1 minute per rank at start.
 #
 # Partitions on Phase 2: test (<= 1 h, <= 4 nodes), general (<= 2 d, <= 96 nodes), large, preempt (no micro).
 # The project budget is in GPU-h: 1 node-hour = 4 GPU-h.

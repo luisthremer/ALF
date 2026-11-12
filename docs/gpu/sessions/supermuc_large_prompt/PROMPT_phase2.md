@@ -8,11 +8,11 @@
 You may implement every option; do the small, low-risk changes first.
 
 ## Your work plan
-Work through `docs/supermuc_large_prompt/wbs.json`, Parts 4 to 8 (new; Parts 1-3 and Deliverables are your earlier work).
+Work through `docs/gpu/sessions/supermuc_large_prompt/wbs.json`, Parts 4 to 8 (new; Parts 1-3 and Deliverables are your earlier work).
 Mark a task `done: true` only after its criterion is met. After each edit run
-`python3 "<wbs-json skill>/scripts/wbs.py" check docs/supermuc_large_prompt/wbs.json` (the wbs-json skill is in this app; use the `/anthropic-skills:wbs-json` skill to find the script) and keep the existing ids.
+`python3 "<wbs-json skill>/scripts/wbs.py" check docs/gpu/sessions/supermuc_large_prompt/wbs.json` (the wbs-json skill is in this app; use the `/anthropic-skills:wbs-json` skill to find the script) and keep the existing ids.
 
-## What we already know (from both sessions' docs, read them: FINDINGS.md here, `ALF_GPU_SUBMATRIX/docs/gpu/SUPERMUC_NG2.md` of the short-prompt session)
+## What we already know (from both sessions' docs, read them: FINDINGS.md here, `ALF_GPU_SUBMATRIX/docs/gpu/platforms/intel_pvc_supermuc_ng2.md` of the short-prompt session)
 - Only ~10 % of a sweep is GPU kernel time; ~55-60 % is waiting at sync points; ~26-28 % oneMKL (QR partly on the host); ~9 % host MKL.
 - ~76 000 synchronous operations per sweep at L=24; estimated 100-170 us overhead each on PVC vs ~12 us empty sync kernel on the A30.
 - No `nowait` in any `Prog/gpu_*_mod.F90`; `!$omp dispatch` blocks; the SYCL shim calls `wait_and_throw()` after every LAPACK call.

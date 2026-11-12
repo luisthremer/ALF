@@ -22,7 +22,7 @@ oneMKL/oneAPI documentation, papers, open-source libraries such as MAGMA, SLATE 
   - L=32: 18.2 s/sweep.
 - Success: at L=24 and L=32, one chain on one Max 1550 tile/card is no slower than one chain on the A30, and sweeps/s per Max 1550 card is at least that of one A30.
   - Report both metrics before and after.
-- Use the reference parameters in `docs/supermuc_large_prompt/ref_L24/` (the `jakob_params` skill describes the production parameter set).
+- Use the reference parameters in `docs/gpu/sessions/supermuc_large_prompt/ref_L24/` (the `jakob_params` skill describes the production parameter set).
 
 ## Boundaries (owner decisions; non-negotiable)
 1. **Numerics stay as they are.** No CholeskyQR/CholeskyQR2 or any other change of the algorithm, no switch to STABLOG.
@@ -40,7 +40,7 @@ oneMKL/oneAPI documentation, papers, open-source libraries such as MAGMA, SLATE 
    - Report the node-hours you used.
 4. **Version control:**
    - Worktree `ALF_wt_large_prompt`, branch `production-mpi-intel-large-prompt` (`origin` = the user's fork `luisthremer/ALF`).
-   - One commit per coherent change; experiments in `docs/supermuc_large_prompt/phase2/` or a sub-branch.
+   - One commit per coherent change; experiments in `docs/gpu/sessions/supermuc_large_prompt/phase2/` or a sub-branch.
    - No merge into `production-mpi`/`production` and no push without the user's explicit OK.
    - The CUDA path must keep building and stay unchanged in behaviour.
 5. **Shared account `pn93la`:**
@@ -51,7 +51,7 @@ oneMKL/oneAPI documentation, papers, open-source libraries such as MAGMA, SLATE 
 - Log in with the `/supermuc2` skill. The user's expect script types password and TOTP, never you.
 - Remote commands: `timeout 60 ssh supermuc2 '<cmd>'`. Never kill ssh processes; ask the user.
 - Never pipe `module load`; it runs in a subshell and does nothing.
-- Earlier sessions left build and job scripts in `docs/supermuc_large_prompt/jobs/` and `ALF_GPU_SUBMATRIX/docs/gpu/scripts/supermuc_ng2/` (other branch). They are tools to reuse, not facts: verify they still work.
+- Earlier sessions left build and job scripts in `docs/gpu/sessions/supermuc_large_prompt/jobs/` and `ALF_GPU_SUBMATRIX/docs/gpu/scripts/supermuc_ng2/` (other branch). They are tools to reuse, not facts: verify they still work.
 - Profilers to check for: VTune (module available), `unitrace`/`onetrace`, `LIBOMPTARGET_DEBUG`/`LIBOMPTARGET_PROFILE`, `ZE_` tracing layers, gdb sampling, `xpu-smi`.
 - Relevant code:
   - `Libraries/Modules/alf_la_mod.F90`: the Intel backend `alf_la_om_mod`.
@@ -60,8 +60,8 @@ oneMKL/oneAPI documentation, papers, open-source libraries such as MAGMA, SLATE 
   - The NVIDIA counterpart is the `ALF_LA_CUDA` backend in the same file. Compare what runs where on each.
 
 ## Earlier work (unverified leads only)
-Two earlier sessions measured things (`docs/supermuc_large_prompt/FINDINGS.md`, `SYNC.md`,
-`ALF_GPU_SUBMATRIX/docs/gpu/SUPERMUC_NG2.md`). Some of their conclusions were already shown to be wrong once. Read them only
+Two earlier sessions measured things (`docs/gpu/sessions/supermuc_large_prompt/FINDINGS.md`, `SYNC.md`,
+`ALF_GPU_SUBMATRIX/docs/gpu/platforms/intel_pvc_supermuc_ng2.md`). Some of their conclusions were already shown to be wrong once. Read them only
 after your own first profile, and treat every claim there as a hypothesis to confirm or refute with your own measurement.
 
 ## Team layout (suggestion; you decide)
@@ -79,7 +79,7 @@ Report to the user in English: numbered sentences, one fact each, paragraph subh
    - the bottleneck, with numbers.
 3. **After research and prototypes:** a ranked table of solutions (gain, accuracy, effort, risk) and a recommendation. Integrate only after the user's OK.
 4. **Final:**
-   - `docs/supermuc_large_prompt/ISSUE_INTEL_VS_A30.md`: problem, profile, cause, solution, before/after against the A30 target;
+   - `docs/gpu/sessions/supermuc_large_prompt/ISSUE_INTEL_VS_A30.md`: problem, profile, cause, solution, before/after against the A30 target;
    - updated `wbs.json` (keep the ids, check with the wbs-json skill);
    - commits, node-hours used, usage used.
 

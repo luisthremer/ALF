@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the L=24 reference parameter set (docs/supermuc_large_prompt/ref_L24/parameters: L=24, Beta=24, U=5.3, h0=1, N_FL=2, Mz=F,
+"""Run the L=24 reference parameter set (docs/gpu/sessions/supermuc_large_prompt/ref_L24/parameters: L=24, Beta=24, U=5.3, h0=1, N_FL=2, Mz=F,
 submatrix N_delay=32, Nwrap=10, Dtau=0.1) for a SHORT time on SuperMUC-NG Phase 2.
 usage: run_ref_sng.py TAG BIN NR NSWEEP NBIN [wrap-script]   env: W, SEEDS, PARAMS; OMP_TARGET_OFFLOAD from the caller"""
 import os, re, sys, shutil, subprocess, time

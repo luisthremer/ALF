@@ -20,3 +20,5 @@ testsuite/tests/
 .alf_gpu_stamp
 Prog/.echo_compile_mods
 Prog/.parse_parameters
+.DS_Store
+*.bak

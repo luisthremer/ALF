@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the parameter files of a PP run directory against the reference parameter set (e.g. docs/supermuc_large_prompt/ref_L24/parameters).
+"""Check the parameter files of a PP run directory against the reference parameter set (e.g. docs/gpu/sessions/supermuc_large_prompt/ref_L24/parameters).
 
 usage: check_params.py RUNDIR REFFILE        (python3 standard library only; exit 1 on any violation)
 

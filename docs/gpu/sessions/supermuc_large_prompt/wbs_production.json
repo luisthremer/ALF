@@ -72,7 +72,7 @@
       "dependsOn": [
         "n_qflgdf87"
       ],
-      "description": "docs/supermuc_large_prompt/prod/ in ALF_wt_large_prompt, branch production-mpi-intel-large-prompt.",
+      "description": "docs/gpu/sessions/supermuc_large_prompt/prod/ in ALF_wt_large_prompt, branch production-mpi-intel-large-prompt.",
       "done": true,
       "id": "n_qlxa2x1f",
       "order": 1,

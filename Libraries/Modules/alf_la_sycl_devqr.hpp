@@ -10,7 +10,7 @@
 // by sub-group reduction, rank-1 update). ZLARFT's V^H V is formed after the loop, T from the recurrence by one sub-group.
 // The trailing update uses oneMKL device GEMMs on an explicit V (zeros above, ones on the diagonal).
 //
-// Used by alf_la_sycl_shim.cpp (ALFSH_DEVQR=1) and by the standalone test docs/supermuc_large_prompt/phase2/team/p4/devqr_test.cpp.
+// Used by alf_la_sycl_shim.cpp (ALFSH_DEVQR=1) and by the standalone test docs/gpu/sessions/supermuc_large_prompt/phase2/team/p4/devqr_test.cpp.
 #pragma once
 #include <sycl/sycl.hpp>
 #include <sycl/ext/intel/experimental/grf_size_properties.hpp>

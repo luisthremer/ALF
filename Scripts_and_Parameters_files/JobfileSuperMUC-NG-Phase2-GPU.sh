@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # ALF job script for SuperMUC-NG Phase 2 (LRZ, Intel Data Center GPU Max 1550 "PVC") with the GPU build of ALF
-# (configure.sh IntelLLVM MPI GPU=intel HDF5, see docs/gpu/BUILD.md and docs/supermuc_large_prompt/FINDINGS.md).
+# (configure.sh IntelLLVM MPI GPU=intel HDF5, see docs/gpu/BUILD.md and docs/gpu/sessions/supermuc_large_prompt/FINDINGS.md).
 # For the CPU-only SuperMUC-NG Phase 1 nodes use JobfileSuperMUC-NG.sh.
 #
 # Variables marked ##...## have to be replaced, e.g. ##Nranks## by 4.

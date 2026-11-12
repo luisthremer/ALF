@@ -121,6 +121,6 @@ Snapshot: `~/alf-gpu/backup/oneapi_state_2026-10-29.txt`. Fix options: gate repo
 2× Xeon Platinum 8480+, 4× Intel Data Center GPU Max 1550 (2 stacks each) per node, 240 nodes.
 oneAPI module versions, Slurm partitions and limits: [verify, owner].
 
-## `helma` (NHR@FAU, H100) – see `HELMA_H100.md`
+## `helma` (NHR@FAU, H100) – see `platforms/helma_h100.md`
 
 MACHINE `HELMAGPU` in `configure.sh`: `gpu-env/2025`, `nvhpc/24.11`, `openmpi/5.0.5-nvhpc24.11-cuda`, `-gpu=cc90`. Nodes: 4x H100 (94 GB), 128 cores.

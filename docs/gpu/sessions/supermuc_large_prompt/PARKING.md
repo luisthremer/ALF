@@ -1,7 +1,7 @@
 # Parking list (needs more than 1 node, or more than a short test job)
 
 Nothing here has been submitted. Node-hour estimates use my measured, tuned rates (C: 24 s/sweep/chain at L=28, 42 s at L=32, 32 chains per node; noise +-15-20 %).
-1 node-h = 4 GPU-h. Script names refer to `Scripts_and_Parameters_files/` and `docs/supermuc_large_prompt/jobs/`.
+1 node-h = 4 GPU-h. Script names refer to `Scripts_and_Parameters_files/` and `docs/gpu/sessions/supermuc_large_prompt/jobs/`.
 
 ## P1. Production L=28 and L=32 (the task of the user's 2nd message)
 - What: 10 U values (5.0, 5.1, 5.2, 5.25, 5.3, 5.35, 5.4, 5.45, 5.5, 5.6) per size, point-defect Hubbard model, beta=L, N_FL=2, Mz=F, PARALLEL_PARAMS (one set per U),
