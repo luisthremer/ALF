@@ -1,5 +1,18 @@
 # AMD (MI210, gfx90a) notes
 
+## Known issue (2026-11-13): checkerboard hopping hangs on the GPU path
+
+Found while checking branch `gpu-port` (standard Hubbard, no defect; same on `gpu-port-unified` 72a3900f with
+`ham_h0 = 0`). With `Checkerboard = .T.` and real checkerboard groups (`GPU mirror: checkerboard groups 7 ...
+dense element(s) in flavour 1: F` in `info`) the `GPU=amd` run hangs in the first sweep (host thread at 100 %, GPU idle,
+no output after the `GPU update path` line). Seen: L = 6 and 12, `Mz` T/F, `Symm` T/F, submatrix and standard scheme,
+`ALF_HIP_ASYNC=0`, `ALF_GPU_NOUPDATE=1`, `ALF_GPU_NOOBS=1`. `GCN_NUM_THREADS=1` makes L = 6 `Ltau = 0` finish (GPU vs
+CPU 1.3e-13 `Mz` F, 8.1e-13 `Mz` T) but L = 6 `Ltau = 1` and L = 12 still hang. The wrap self-test
+(`ALF_GPU_SELFTEST=2`) passes, so the per-group hopping kernels themselves are right. The defect model never hit this
+path: its `Op_T` is one dense element per flavour. `Checkerboard = .F.` works (L = 6, 12, `Mz` T/F, `Ltau` 0/1).
+Root cause open. Until fixed: use `Checkerboard = .F.` with `GPU=amd`. NVIDIA and Intel not affected as far as known
+(not re-checked in this session).
+
 Toolchain: gfortran 14 + GCC amdgcn offload, hipBLAS/hipSOLVER via `alf_la_hip_*` (see configure.sh `GPU=AMD`).
 
 ## Faster libgomp GCN plugin (optional, ~3x on the real run)
