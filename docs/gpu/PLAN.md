@@ -242,5 +242,8 @@ Still open:
 1. oneAPI/ifx, MKL, MPI and HDF5 module versions on SuperMUC-NG Phase 2: needed in Phase 3 (301); until then pin
    **ifx 2026.2 + oneMKL 2026.2** for `GPU=intel` on `intel` (pin change of 2026-10-30, DECISIONS.md row 13; was ifx
    2025.3). The ifx on `nividia` (2025.3, CPU-only stand-in builds) is not the Intel-lane toolchain.
+   *Note 2026-11-13 (the text above is kept as written):* the 2026.2 pin is for the `intel` test machine; on SuperMUC-NG Phase 2 the later
+   sessions and the verification of 2026-11-13 used ifx 2025.3.0 with `intel-mpi/2021.15.0`, `intel-mkl/2025.3.0`, `hdf5/1.14.5-intel25`
+   (`platforms/intel_pvc_supermuc_ng2.md`, `DECISIONS.md` row 13).
 2. Official CPU baseline for BENCHMARKS.md (nividia 16-core VM vs a SuperMUC full-node CPU run): decided in
    Phase 3. Phase 2 reports nividia numbers as development numbers.

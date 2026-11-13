@@ -14,7 +14,16 @@ Status 2026-11-10, branch `intel-supermuc-ng2` (production-mpi + `-mpi-pp`). Eve
 ## Toolchain that works
 `intel-toolkit/2025.1.0` (ifx 2025.1.1, Intel MPI 2021.15, MKL 2025.1) + `hdf5/1.14.5-intel25-impi` (`scripts/supermuc_ng2/env.sh`).
 - oneAPI 2025.3 compiles but the OpenMP-to-SYCL interop crashes at run time with the Level Zero V2 adapter, and without `SYCL_UR_USE_LEVEL_ZERO_V2=1`
-  Level Zero does not initialise (`sycl-ls` fails). 2025.1 works without any such variable. ifx < 2026 has no `omp_get_interop_int/ptr` in `omp_lib`
+  Level Zero does not initialise (`sycl-ls` fails). 2025.1 works without any such variable.
+  **Update 2026-11-13: this is the result of the first session only (the 2025.3 environment of that session, run with `SYCL_UR_USE_LEVEL_ZERO_V2=1`, the only setting in which `sycl-ls` worked there).
+  The later sessions and the verification of 2026-11-13 ran ALF with 2025.3 successfully**: `module load intel/2025.3.0 intel-mpi/2021.15.0`,
+  `module unload intel-mkl`, `module load intel-mkl/2025.3.0 hdf5/1.14.5-intel25` (`sessions/supermuc_large_prompt/FINDINGS.md` section 4,
+  `sessions/supermuc_large_prompt/jobs/env_intel_pvc.sh`; `CONSOLIDATION.md`), with ifx 2025.3.0 and **without** `SYCL_UR_USE_LEVEL_ZERO_V2` in
+  the ALF jobs (the variable appears only in the scripts of standalone SYCL tests, e.g. `phase2/team/p4`, `p5`, which need it there; with it
+  a device-to-host copy completes late, `p4/STATUS.md`). `sycl-ls` listed the 8 devices in those sessions without it. What exactly differs from
+  the first session (module set, loading the single modules instead of `intel-toolkit`, or the unset variable) was not isolated by a
+  controlled test; the documents only show that the combination above works. `scripts/supermuc_ng2/env.sh` still loads 2025.1 and
+  the numbers on this page were measured with 2025.1. Use the module list above for 2025.3. ifx < 2026 has no `omp_get_interop_int/ptr` in `omp_lib`
   (libiomp5 exports them): `Libraries/Modules/alf_la_mod.F90` declares them with `bind(C)` (the only source change needed).
 - HDF5: ALF downloads and builds its own HDF5, impossible here. `scripts/supermuc_ng2/build.sh` points `ALF_HDF5_DIR` at the LRZ module through a shim directory
   (CMake-style library names, `h5fc` wrapper, `-lhdf5_f90cstub -lhdf5_hl_f90cstub`).
@@ -43,6 +52,10 @@ Precision Green at L=24 / 28 / 32: mean 1.7e-14 / 4.6e-14 / 1.4e-13, max 1.2e-11
 | oversubscription (ranks per tile): 8 / 16 / 32 ranks, 1 thread each | 14.6 / 29 / 51 | 0.55 / 0.54 / 0.63 |
 | 16 ranks x 7 threads | 27 | 0.59 |
 | `LIBOMPTARGET_LEVEL_ZERO_USE_IMMEDIATE_COMMAND_LIST=all` / `compute`, `UR_L0_USE_IMMEDIATE_COMMANDLISTS=2`, `ZEX_NUMBER_OF_CCS=0:4` | no gain (first hint of -16 % did not repeat) | |
+
+Note (2026-11-13) on `ZEX_NUMBER_OF_CCS`: "no gain" is the result of this first session (8 ranks, one per tile, without the later switches). In the later sessions, with
+`ZEX_NUMBER_OF_CCS=0:4,...,7:4` set for 4 ranks per tile (32 ranks per node), it is the throughput optimum of the rank scan (8/16/24/32/48/64 ranks); see
+`sessions/supermuc_large_prompt/COMPARISON.md` (CCS row) and `RUNTIME_SWITCHES.md` section 7. The two results are for different rank counts per tile and switch sets.
 
 No MPS on PVC: ranks sharing a tile are time-sliced, the aggregate stays flat, so one rank per tile. The A30 reference (4 walkers, MPS) is 0.37 sweeps/s per GPU,
 a PVC card (2 tiles) now reaches 0.24 sweeps/s, a node (4 cards) 0.97. After the fixes a stack sample of one rank shows ~60 % waiting for the GPU in
