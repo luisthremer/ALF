@@ -118,6 +118,13 @@ The checks were run before the later commits on this branch, which change the Hu
 Hamiltonian set-up only (the `Ltau = 1` rule and the refusal of unsupported defect settings),
 tests and documentation.
 
+Added after these checks and verified separately on 2026-11-13 (commit 819a96ec on `speedup/unified`):
+the LU-free determinant phase in `dev_cgr`, enabled for oneMKL only. Max 1550: gates against CPU
+unchanged (2.2e-15, 1.5e-14, 5.5e-11), phase equal to the LU phase to 5.8e-15, L=24 single chain
+4.45 to 4.04 s per sweep with the V7 switches. MI210 with the same commit: bitwise identical to
+05d64293 at L=6, 12, 24 (HIP keeps the LU). Note on the Intel runs: a node has 8 flat devices,
+`ZE_AFFINITY_MASK` 0 to 7; larger values crash or run silently on the host.
+
 An independent review of the merge compared, per backend, the code the preprocessor selects with
 that backend's own tip; the two defects it found (a preprocessor directive not in column 1, eight
 scalar-buffer dummies declared too short) are fixed in 4919ce0d.
