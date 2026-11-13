@@ -107,18 +107,6 @@
             endif
          endif
       enddo
-
-      do n=1, size(names)
-         name = names(n)
-         i = len(trim(name)) -8
-         if ( i > 1 ) then
-            if ( name(i:) == '_localtau' ) then
-               print *, ''
-               print '(A,A)', "analyzing tau-resolved equal time local observables ", name
-               call Cov_local(name)
-            endif
-         endif
-      enddo
       
       do n=1, size(names)
          name = names(n)

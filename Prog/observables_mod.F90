@@ -168,6 +168,10 @@
          Type(Unit_cell),   Intent(INOUT), target :: Latt_unit
          Character(len=*),  Intent(IN)         :: Channel
          Real(Kind=Kind(0.d0)),  Intent(IN)    :: dtau
+         If (Nt > 1) then
+            write(error_unit,*) "Nt > 1 not yet implemented for local observables"
+            CALL Terminate_on_error(ERROR_HAMILTONIAN,__FILE__,__LINE__)
+         endif
          Allocate (Obs%Obs_Latt(Latt%N, Nt, Latt_unit%Norb))
          Obs%File_Latt = Filename
          Obs%Latt => Latt
