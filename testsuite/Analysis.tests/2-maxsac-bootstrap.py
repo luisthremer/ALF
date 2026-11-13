@@ -220,6 +220,24 @@ def main():
     check(boot_err > mc_err,
           f"bootstrap error ({boot_err:.3g}) exceeds Monte Carlo error of one run ({mc_err:.3g})")
 
+    # 7. Bootstrap of the (F,A) observable (DIDV.dat in the P channel, QFI_ph.dat in PH).
+    fb_path = os.path.join(d, "DIDV_boot.dat")
+    check(os.path.exists(fb_path), "DIDV_boot.dat written")
+    if os.path.exists(fb_path):
+        fb = loadtxt(fb_path)
+        fr = loadtxt(os.path.join(d, "DIDV.dat"))
+        check(len(fb) == N_ALPHA and all(len(r) == 3 and all(math.isfinite(x) for x in r)
+                                         for r in fb),
+              f"DIDV_boot.dat: {N_ALPHA}x3, finite")
+        check(all(abs(fb[k][0] - fr[k][0]) <= 1e-8 * abs(fr[k][0]) for k in range(N_ALPHA)),
+              "DIDV_boot.dat and DIDV.dat have the same alphas")
+        check(all(r[2] > 0 for r in fb), "(F,A) bootstrap error > 0 for every alpha")
+        devf = statistics.median(abs(fr[k][1] - fb[k][1]) / fb[k][2] for k in range(N_ALPHA)
+                                 if fb[k][2] > 0)
+        check(devf < 3.0, f"reference (F,A) vs bootstrap mean: median |dF|/err = {devf:.2f} < 3")
+        bf = sum(r[2] for r in fb); mf = sum(r[2] for r in fr)
+        check(bf > mf, f"(F,A) bootstrap error ({bf:.3g}) exceeds Monte Carlo error ({mf:.3g})")
+
     if keep or failures:
         print(f"Outputs kept in {root}")
     else:

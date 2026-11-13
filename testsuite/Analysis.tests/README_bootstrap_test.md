@@ -54,6 +54,7 @@ ctest -R 2-maxsac-bootstrap --output-on-failure
 | `Aom_ps_boot_1..N_alpha-10` exist, `Ndis × 3`, finite; error > 0 where A has weight | broken output |
 | reference `Aom_ps_*` agrees with the bootstrap mean (median \|ΔA\|/err < 3) | biased mean, outputs from a noisy sample |
 | bootstrap error > Monte Carlo error of a single run | error dominated by MC noise only, i.e. no data noise propagated |
+| `DIDV_boot.dat` (the (F,A) observable of the `P` channel): one finite line per α, error > 0, same α as `DIDV.dat`, agrees with the reference, error > MC error | missing or broken bootstrap of (F,A) (`QFI_ph_boot.dat` in `PH` uses the same code) |
 
 Note: the error per frequency bin is **not** expected to scale linearly with the
 error bars of the input. Stochastic MaxEnt works in units of σ and smooths more
@@ -69,5 +70,8 @@ In `&VAR_Max_Stoch` of `parameters`:
   of the previous one (histograms and warmup are reset).
 
 Output: `Aom_ps_boot_<n>` with columns ω, mean A(ω) over the samples, and the
-bootstrap standard deviation. All other files (`Aom_ps_*`, `energies`,
+bootstrap standard deviation. Channels that compute an (F,A) observable also
+get `<name>_boot.dat` with columns α, bootstrap mean and bootstrap error:
+`QFI_ph_boot.dat` (quantum Fisher information, `PH`) and `DIDV_boot.dat` (`P`,
+`P_PH`). All other files (`Aom_ps_*`, `energies`,
 `Best_fit`, `Data_out`, `Green`) come from the reference run on the original data.

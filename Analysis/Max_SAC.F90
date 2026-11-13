@@ -73,6 +73,9 @@ Program MaxEnt_Wrapper
        integer                             :: N_runs
        integer                             :: ia
        Real (Kind=Kind(0.d0))              :: A_err
+       ! Bootstrap of the (F,A) observable (e.g. QFI_ph.dat, DIDV.dat), one value per alpha
+       Real (Kind=Kind(0.d0)), Allocatable :: F_mean(:), F_M2(:), Alpha_F(:)
+       Character (len=64)                  :: FA_boot_Name
       !  Character (len=64)     :: temp, temp2
 
        !TODO: 22.06.2026
@@ -272,6 +275,8 @@ Program MaxEnt_Wrapper
        Allocate(U_cov(Ntau,Ntau), Sigma_cov(Ntau), Z_sample(Ntau)) !Allocate arrays for Gaussian resampling
        Allocate(A_mean(Ndis, N_alpha_1), A_M2(Ndis, N_alpha_1)) !Allocate arrays for Welford online algorithm
        A_mean = 0.d0; A_M2 = 0.d0; A_err = 0.d0
+       Allocate(F_mean(N_alpha), F_M2(N_alpha), Alpha_F(N_alpha))
+       F_mean = 0.d0; F_M2 = 0.d0; Alpha_F = 0.d0
 
        ! Bootstrap only for stochastic MaxEnt with N_boot > 1. The bootstrap samples are followed
        ! by one reference run on the unperturbed data, which provides energies, Best_fit, Data_out,
@@ -355,6 +360,7 @@ Program MaxEnt_Wrapper
             End If
        !------Injection_END----
 
+       FA_Name = ""   ! Set below if the channel writes an (F,A) file
        Select Case (str_to_upper(Channel))
        Case ("PH")
           If  (Stochastic)  then
@@ -440,6 +446,19 @@ Program MaxEnt_Wrapper
          close(66)
          End Do
 
+         ! Same for the (F,A) observable: one line (alpha, F, MC error) per alpha.
+         If (len_trim(FA_Name) > 0) then
+            Open(Unit=67, File=trim(FA_Name), status="old")
+            Do ia = 1, N_alpha
+               read(67, *) Alpha_F(ia), x, x1
+               welford_delta  = x - F_mean(ia)
+               F_mean(ia)     = F_mean(ia) + welford_delta/dble(iboot)
+               welford_delta2 = x - F_mean(ia)
+               F_M2(ia)       = F_M2(ia) + welford_delta * welford_delta2
+            End Do
+            close(67)
+         End If
+
          ! write(temp, '("mkdir ",A,"_",I0)') "Boot", iboot
          ! write(temp2, '("mv Aom_ps* ",A,"_",I0)') "Boot", iboot
          ! Call EXECUTE_COMMAND_LINE(trim(temp))
@@ -463,6 +482,21 @@ Program MaxEnt_Wrapper
             End Do
             Close(12)
          End Do
+         ! (F,A) observable: <name>_boot.dat with alpha, bootstrap mean, bootstrap error.
+         If (len_trim(FA_Name) > 0) then
+            i = index(FA_Name, ".dat", back=.true.)
+            If (i > 1) then
+               FA_boot_Name = FA_Name(1:i-1) // "_boot.dat"
+            else
+               FA_boot_Name = trim(FA_Name) // "_boot"
+            endif
+            open (Unit=12, File=trim(FA_boot_Name), Status="unknown", action="write")
+            Do ia = 1, N_alpha
+               Write(12,"(3(1X,E25.17E3))") Alpha_F(ia), F_mean(ia), &
+                    & sqrt(F_M2(ia) / dble(max(1, N_boot - 1)))
+            End Do
+            Close(12)
+         End If
          End If
 
          !INJECTION 3 END
