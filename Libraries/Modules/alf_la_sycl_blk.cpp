@@ -100,6 +100,95 @@ int alfsb_gemm(int ta, int tb, int m, int n, int k, double ar, double ai, const 
   });
 }
 
+#ifdef ALFSB_WIP_CORR  // WORK IN PROGRESS: not built, not tested (docs/gpu/platforms/INTEL_BATCHED.md section 5); compiled only with -DALFSB_WIP_CORR
+// ---- observables: SYCL port of the HIP k_corr (alf_hip_kernels.hip.cpp), switch ALFSH_OBSCORR=1 in gpu_obs_mod ----------------
+// One work-group (128) per output m = (imj,no,no2); work-groups MT..MT+Norb-1 do the acc0 sums (kinds 3, 4). Same expressions as the
+// OpenMP kernels of gpu_obs_mod corr; the order of the sum over I differs (work-group tree reduction), i.e. rounding-level changes.
+// Callable without the block path: q is the OpenMP interop queue (alfsh_get_queue); waits at the end (acc is read by OpenMP code).
+int alfsb_corr(void *q, int kind, int k, int N, int Norb, int NFL, double ns, double sq3, double wr, double wi, int ld, const cd *G,
+               const int *jc, const int *inv, cd *acc, cd *acc0) {
+  if (!Q) {
+    if (!q) return -1;
+    Q = static_cast<sycl::queue *>(q);
+  }
+  return guarded("corr", [&] {
+    const long MT = (long)N * Norb * Norb;
+    const long nwg = MT + ((kind == 3 || kind == 4) ? Norb : 0);
+    constexpr int RB = 128;
+    Q->parallel_for(sycl::nd_range<1>((size_t)nwg * RB, RB), [=](sycl::nd_item<1> it) {
+      const long m = it.get_group(0);
+      const bool zero_part = (m >= MT);
+      int imj = 0, no, no2 = 0;
+      if (!zero_part) { imj = m % N; no = (m / N) % Norb; no2 = m / ((long)N * Norb); }
+      else no = (int)(m - MT);
+      cd s1 = 0, s2 = 0, s3 = 0;
+      const long ld2 = (long)ld * ld;
+      const cd one(1.0, 0.0);
+      for (int I = it.get_local_id(0); I < N; I += RB) {
+        if (!zero_part) {
+          int J = jc[I + (long)imj * N] - 1;
+          int i1 = inv[I + (long)no * N] - 1, j1 = inv[J + (long)no2 * N] - 1;
+          if (kind == 1) {
+            cd z = 0;
+            for (int nf = 0; nf < NFL; nf++) { cd a = -G[j1 + (long)i1 * ld + nf * ld2]; if (i1 == j1) a = a + one; z = z + a; }
+            s1 = s1 + z * ns;
+          } else if (kind == 2) {
+            cd a = -G[j1 + (long)i1 * ld]; if (i1 == j1) a = a + one;
+            s1 = s1 + (a * G[i1 + (long)j1 * ld]) * ns;
+          } else if (kind == 3) {
+            cd zi = 0, zj = 0, z = 0;
+            for (int nf = 0; nf < NFL; nf++) {
+              zi = zi + (one - G[i1 + (long)i1 * ld + nf * ld2]);
+              zj = zj + (one - G[j1 + (long)j1 * ld + nf * ld2]);
+              cd a = -G[j1 + (long)i1 * ld + nf * ld2]; if (i1 == j1) a = a + one;
+              z = z + a * G[i1 + (long)j1 * ld + nf * ld2];
+            }
+            s1 = s1 + ((zi * ns) * (zj * ns) + z * ns);
+          } else {
+            cd a = -G[j1 + (long)i1 * ld]; if (i1 == j1) a = a + one;
+            cd b = -G[j1 + (long)i1 * ld + ld2]; if (i1 == j1) b = b + one;
+            cd zxy = a * G[i1 + (long)j1 * ld + ld2] + b * G[i1 + (long)j1 * ld];
+            cd zi = (one - G[i1 + (long)i1 * ld + ld2]) - (one - G[i1 + (long)i1 * ld]);
+            cd zj = (one - G[j1 + (long)j1 * ld + ld2]) - (one - G[j1 + (long)j1 * ld]);
+            cd zz = a * G[i1 + (long)j1 * ld] + b * G[i1 + (long)j1 * ld + ld2] + zi * zj;
+            s1 = s1 + zz; s2 = s2 + zxy; s3 = s3 + (2.0 * zxy + zz) / 3.0;
+          }
+        } else {
+          int i1 = inv[I + (long)no * N] - 1;
+          if (kind == 3) {
+            cd zi = 0;
+            for (int nf = 0; nf < NFL; nf++) zi = zi + (one - G[i1 + (long)i1 * ld + nf * ld2]);
+            s1 = s1 + zi * ns;
+          } else {
+            s1 = s1 + ((one - G[i1 + (long)i1 * ld + ld2]) - (one - G[i1 + (long)i1 * ld]));
+          }
+        }
+      }
+      auto g = it.get_group();
+      double r0 = sycl::reduce_over_group(g, s1.real(), sycl::plus<double>());
+      double r1 = sycl::reduce_over_group(g, s1.imag(), sycl::plus<double>());
+      double r2 = sycl::reduce_over_group(g, s2.real(), sycl::plus<double>());
+      double r3 = sycl::reduce_over_group(g, s2.imag(), sycl::plus<double>());
+      double r4 = sycl::reduce_over_group(g, s3.real(), sycl::plus<double>());
+      double r5 = sycl::reduce_over_group(g, s3.imag(), sycl::plus<double>());
+      if (it.get_local_id(0) == 0) {
+        const cd w(wr, wi);
+        const cd t1(r0, r1), t2(r2, r3), t3(r4, r5);
+        if (!zero_part) {
+          acc[m + (long)(k - 1) * MT] += t1 * w;
+          if (kind == 4) { acc[m + (long)k * MT] += t2 * w; acc[m + (long)(k + 1) * MT] += t3 * w; }
+        } else {
+          acc0[no + (long)(k - 1) * Norb] += t1 * w;
+          if (kind == 4) acc0[no + (long)(k + 1) * Norb] += (t1 * w) / sq3;
+        }
+      }
+    });
+    Q->wait_and_throw();
+  });
+}
+
+#endif  // ALFSB_WIP_CORR
+
 // ---- multi-walker (batched) variants, intel-batched branch, NOT yet called by Fortran (docs/gpu/platforms/INTEL_BATCHED.md) ----
 // W walkers, walker w's arrays at base + w * stride (strides in elements). Per element, every kernel computes exactly the
 // expression of the single-walker kernel above (same operands, same order), so walker w of a batched launch is bitwise
