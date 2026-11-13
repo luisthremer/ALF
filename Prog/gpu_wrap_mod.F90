@@ -476,6 +476,10 @@ Contains
 !> Element bodies (device routines): apply element e (matrix k) to the columns j1..j2 of M (left: M(P,j) = A M(P,j)) or
 !> to the rows i1..i2 of M (right: M(i,P) = M(i,P) A).  The element data are read once per call and reused for all
 !> columns/rows of the range.  Arrays are passed explicitly so that the routines only see device pointers.
+!> GCC amdgcn: the `!GCC$ novector` lines are required, not tuning.  GCC maps OpenMP threads to wavefronts and vectorises
+!> loops over the 64 lanes; vectorising these short loops (tile length tl = 1..2, nd <= 8) inlined into the group kernels
+!> gave a 47-50 KB stack frame per wavefront (default GCN_STACK_SIZE 32 KB): stack overflow -> GPU memory fault, which
+!> with the HIP runtime in the process is not reported, so the host waited forever (README of the AMD platform).
   Subroutine el_left_d(M, ld, j1, j2, e, k, hmeta, hP, hR, hC)
     Implicit none
     !$omp declare target
@@ -493,12 +497,14 @@ Contains
        if (nd == 1) then
           r = hP(po+1)
           a = hR(mo+1)
+          !GCC$ novector
           do j = j1, j2
              M(r,j) = cmplx(a*real(M(r,j)), a*aimag(M(r,j)), kind(0.d0))
           enddo
        else if (nd == 2) then
           r1 = hP(po+1); r2 = hP(po+2)
           a11 = hR(mo+1); a21 = hR(mo+2); a12 = hR(mo+3); a22 = hR(mo+4)
+          !GCC$ novector
           do j = j1, j2
              w1 = M(r1,j); w2 = M(r2,j)
              zr = a11*real(w1) + a12*real(w2); zi = a11*aimag(w1) + a12*aimag(w2)
@@ -507,13 +513,17 @@ Contains
              M(r2,j) = cmplx(zr, zi, kind(0.d0))
           enddo
        else
+          !GCC$ novector
           do j = j1, j2
+             !GCC$ novector
              do l = 1, nd
                 w(l) = M(hP(po+l), j)
              enddo
+             !GCC$ novector
              do i = 1, nd
                 a = hR(mo + i)
                 zr = a*real(w(1)); zi = a*aimag(w(1))
+                !GCC$ novector
                 do l = 2, nd
                    a = hR(mo + i + (l-1)*nd)
                    zr = zr + a*real(w(l)); zi = zi + a*aimag(w(l))
@@ -526,24 +536,30 @@ Contains
        if (nd == 1) then
           r = hP(po+1)
           c11 = hC(mo+1)
+          !GCC$ novector
           do j = j1, j2
              M(r,j) = c11 * M(r,j)
           enddo
        else if (nd == 2) then
           r1 = hP(po+1); r2 = hP(po+2)
           c11 = hC(mo+1); c21 = hC(mo+2); c12 = hC(mo+3); c22 = hC(mo+4)
+          !GCC$ novector
           do j = j1, j2
              w1 = M(r1,j); w2 = M(r2,j)
              M(r1,j) = c11*w1 + c12*w2
              M(r2,j) = c21*w1 + c22*w2
           enddo
        else
+          !GCC$ novector
           do j = j1, j2
+             !GCC$ novector
              do l = 1, nd
                 w(l) = M(hP(po+l), j)
              enddo
+             !GCC$ novector
              do i = 1, nd
                 z = hC(mo + i) * w(1)
+                !GCC$ novector
                 do l = 2, nd
                    z = z + hC(mo + i + (l-1)*nd) * w(l)
                 enddo
@@ -571,12 +587,14 @@ Contains
        if (nd == 1) then
           c = hP(po+1)
           a = hR(mo+1)
+          !GCC$ novector
           do i = i1, i2, istep
              M(i,c) = cmplx(a*real(M(i,c)), a*aimag(M(i,c)), kind(0.d0))
           enddo
        else if (nd == 2) then
           c1 = hP(po+1); c2 = hP(po+2)
           a11 = hR(mo+1); a21 = hR(mo+2); a12 = hR(mo+3); a22 = hR(mo+4)
+          !GCC$ novector
           do i = i1, i2, istep
              w1 = M(i,c1); w2 = M(i,c2)
              zr = a11*real(w1) + a21*real(w2); zi = a11*aimag(w1) + a21*aimag(w2)
@@ -585,13 +603,17 @@ Contains
              M(i,c2) = cmplx(zr, zi, kind(0.d0))
           enddo
        else
+          !GCC$ novector
           do i = i1, i2, istep
+             !GCC$ novector
              do l = 1, nd
                 w(l) = M(i, hP(po+l))
              enddo
+             !GCC$ novector
              do j = 1, nd
                 a = hR(mo + 1 + (j-1)*nd)
                 zr = a*real(w(1)); zi = a*aimag(w(1))
+                !GCC$ novector
                 do l = 2, nd
                    a = hR(mo + l + (j-1)*nd)
                    zr = zr + a*real(w(l)); zi = zi + a*aimag(w(l))
@@ -604,24 +626,30 @@ Contains
        if (nd == 1) then
           c = hP(po+1)
           c11 = hC(mo+1)
+          !GCC$ novector
           do i = i1, i2, istep
              M(i,c) = M(i,c) * c11
           enddo
        else if (nd == 2) then
           c1 = hP(po+1); c2 = hP(po+2)
           c11 = hC(mo+1); c21 = hC(mo+2); c12 = hC(mo+3); c22 = hC(mo+4)
+          !GCC$ novector
           do i = i1, i2, istep
              w1 = M(i,c1); w2 = M(i,c2)
              M(i,c1) = w1*c11 + w2*c21
              M(i,c2) = w1*c12 + w2*c22
           enddo
        else
+          !GCC$ novector
           do i = i1, i2, istep
+             !GCC$ novector
              do l = 1, nd
                 w(l) = M(i, hP(po+l))
              enddo
+             !GCC$ novector
              do j = 1, nd
                 z = w(1) * hC(mo + 1 + (j-1)*nd)
+                !GCC$ novector
                 do l = 2, nd
                    z = z + w(l) * hC(mo + l + (j-1)*nd)
                 enddo

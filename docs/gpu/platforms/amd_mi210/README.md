@@ -1,17 +1,21 @@
 # AMD (MI210, gfx90a) notes
 
-## Known issue (2026-11-13): checkerboard hopping hangs on the GPU path
+## Fixed 2026-11-13: checkerboard hopping hang on the GPU path (was: known issue)
 
-Found while checking branch `gpu-port` (standard Hubbard, no defect; same on `gpu-port-unified` 72a3900f with
-`ham_h0 = 0`). With `Checkerboard = .T.` and real checkerboard groups (`GPU mirror: checkerboard groups 7 ...
-dense element(s) in flavour 1: F` in `info`) the `GPU=amd` run hangs in the first sweep (host thread at 100 %, GPU idle,
-no output after the `GPU update path` line). Seen: L = 6 and 12, `Mz` T/F, `Symm` T/F, submatrix and standard scheme,
-`ALF_HIP_ASYNC=0`, `ALF_GPU_NOUPDATE=1`, `ALF_GPU_NOOBS=1`. `GCN_NUM_THREADS=1` makes L = 6 `Ltau = 0` finish (GPU vs
-CPU 1.3e-13 `Mz` F, 8.1e-13 `Mz` T) but L = 6 `Ltau = 1` and L = 12 still hang. The wrap self-test
-(`ALF_GPU_SELFTEST=2`) passes, so the per-group hopping kernels themselves are right. The defect model never hit this
-path: its `Op_T` is one dense element per flavour. `Checkerboard = .F.` works (L = 6, 12, `Mz` T/F, `Ltau` 0/1).
-Root cause open. Until fixed: use `Checkerboard = .F.` with `GPU=amd`. NVIDIA and Intel not affected as far as known
-(not re-checked in this session).
+Symptom: with `Checkerboard = .T.` (real checkerboard groups) the `GPU=amd` run hung in the first sweep (host in the
+plugin wait loop, `amd-smi` GFX activity 0 %). Root cause: the parallel bodies of `k_cb_left_g` / `k_cb_right_g`
+(gpu_wrap_mod, `el_left_d`/`el_right_d` inlined) had a device stack frame of 48456 / 50128 bytes per wavefront
+(`; local vars size` in the offload asm, `-foffload-options=amdgcn-amdhsa=-save-temps`; next largest kernel 4184),
+because GCC vectorised the short tile and nd loops over the 64 lanes. The default GCN stack is 32 KB per wavefront, so
+the kernel overflowed it and faulted. A GPU memory fault in an OpenMP kernel aborts the process without the HIP runtime,
+but with HIP initialised it is swallowed and libgomp waits forever (shown with a 20-line test: out-of-bounds store in a
+target region, rc 134 core dump without HIP, rc 124 hang after hipMalloc). Evidence: GCN_DEBUG shows the hang inside
+the wait for a `k_cb_left_g` launch after a random number (2..231) of good launches; stock (unpatched) plugin hangs too;
+`GCN_STACK_SIZE` 40960/49152 hang 6/6, 57344 hangs 1/3, 65536 and 262144 never. Fix: `!GCC$ novector` on the tile and
+nd loops of `el_left_d`/`el_right_d` (frames now < 4184 bytes, not in the top list). Verified L=6, GCN_NUM_THREADS=4,
+default stack: Mz F/T x Ltau 0/1 no hang, GPU vs same-compiler CPU 1.3e-13 / 8.1e-13 / 1.4e-13 / 4.2e-12;
+`Checkerboard = .F.` output bitwise equal to the previous binary. Not yet run: L=12, standard scheme, timing.
+Any other OpenMP kernel with a frame near 32 KB would fail the same way; check with the asm grep above after changes.
 
 Toolchain: gfortran 14 + GCC amdgcn offload, hipBLAS/hipSOLVER via `alf_la_hip_*` (see configure.sh `GPU=AMD`).
 
