@@ -32,6 +32,8 @@ Optional arguments:
 
 * a path to another `Max_SAC.out`, e.g.
   `python3 testsuite/Analysis.tests/2-maxsac-bootstrap.py /path/to/Max_SAC.out`
+* `--mpi N`: run `Max_SAC.out` with `mpirun -np N` (MPI build needed), e.g.
+  `python3 testsuite/Analysis.tests/2-maxsac-bootstrap.py --mpi 4`
 * `--keep`: keep the temporary run directories (they are always kept on failure;
   the path is printed).
 
@@ -75,3 +77,25 @@ get `<name>_boot.dat` with columns α, bootstrap mean and bootstrap error:
 `QFI_ph_boot.dat` (quantum Fisher information, `PH`) and `DIDV_boot.dat` (`P`,
 `P_PH`). All other files (`Aom_ps_*`, `energies`,
 `Best_fit`, `Data_out`, `Green`) come from the reference run on the original data.
+
+## Running the bootstrap in parallel (MPI)
+
+If ALF is configured with MPI (the default of `configure.sh`), `Max_SAC.out` is
+built with MPI and the bootstrap samples can be distributed over ranks:
+
+```bash
+mpirun -np 8 /path/to/ALF/Analysis/Max_SAC.out
+```
+
+* Rank 0 does the reference run on the original data in the current directory
+  and then collects the samples, updating mean and error online (Welford) as
+  they arrive.
+* Ranks 1 … N−1 compute the `N_boot` samples (round robin), each with its own
+  random number stream and its own directory `MaxSAC_rank_<r>/` (log files,
+  intermediate spectra, dumps).
+* The results are the same files as in the serial run, in the current directory.
+* Only the bootstrap is parallel: with `N_boot = 1` or classic MaxEnt the extra
+  ranks exit immediately. Use at least 2 ranks; `N_boot` a multiple of N−1 keeps
+  all workers busy. The wall time is about (⌈N_boot/(N−1)⌉ + 1) single runs.
+* The `MaxSAC_rank_*` directories can be deleted afterwards.
+
