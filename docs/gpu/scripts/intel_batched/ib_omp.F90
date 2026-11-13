@@ -3,7 +3,7 @@
 program ib_omp
   use omp_lib
   implicit none
-  integer, parameter :: R = 20000, n = 64
+  integer, parameter :: nrep = 20000, n = 64
   integer :: a(n), i, r
   real(8) :: t0, ts, ta
   a = 0
@@ -15,17 +15,17 @@ program ib_omp
     end do
   end do
   t0 = omp_get_wtime()
-  do r = 1, R
+  do r = 1, nrep
     !$omp target teams distribute parallel do
     do i = 1, n
       a(i) = i + r
     end do
   end do
-  ts = (omp_get_wtime() - t0) / R
+  ts = (omp_get_wtime() - t0) / nrep
   t0 = omp_get_wtime()
   !$omp parallel
   !$omp single
-  do r = 1, R
+  do r = 1, nrep
     !$omp target teams distribute parallel do nowait
     do i = 1, n
       a(i) = i + r
@@ -34,7 +34,7 @@ program ib_omp
   !$omp taskwait
   !$omp end single
   !$omp end parallel
-  ta = (omp_get_wtime() - t0) / R
+  ta = (omp_get_wtime() - t0) / nrep
   !$omp target exit data map(from: a)
   write(*, '(a,f8.2,a,f8.2,a,i0)') 'omp sync_us=', ts * 1d6, ' nowait_us=', ta * 1d6, ' check=', a(1)
 end program ib_omp

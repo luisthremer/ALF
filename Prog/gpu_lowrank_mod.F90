@@ -172,6 +172,34 @@ Module gpu_lowrank_mod
       Real (c_double), Value :: ar, ai, br, bi
       Type (c_ptr), Value :: A, B, C
     End Function
+    ! multi-walker variants (intel-batched; not called yet, see docs/gpu/platforms/INTEL_BATCHED.md): walker w at base + w*stride
+    Integer (c_int) Function alfsb_gather_w(W, nfl, nfa, nfb, ld, b, nd, gbk, sgb, bsk, sbs, Gk, sG) Bind(C, name='alfsb_gather_w')
+      Import :: c_ptr, c_int, c_int64_t
+      Integer (c_int), Value :: W, nfl, nfa, nfb, ld, b, nd
+      Integer (c_int64_t), Value :: sgb, sbs, sG
+      Type (c_ptr), Value :: gbk, bsk, Gk
+    End Function
+    Integer (c_int) Function alfsb_scale_w(W, nfl, nfa, nfb, ld, b, nd, ldc, Gk, sG, bsk, sbs, cbk, scb) Bind(C, name='alfsb_scale_w')
+      Import :: c_ptr, c_int, c_int64_t
+      Integer (c_int), Value :: W, nfl, nfa, nfb, ld, b, nd, ldc
+      Integer (c_int64_t), Value :: sG, sbs, scb
+      Type (c_ptr), Value :: Gk, bsk, cbk
+    End Function
+    Integer (c_int) Function alfsb_fgather_w(W, G, sG, ld, nrow, S, sS, kw, kmax, nf, C, sC, Qt, sQ, slot, ssl) &
+         & Bind(C, name='alfsb_fgather_w')
+      Import :: c_ptr, c_int, c_int64_t
+      Integer (c_int), Value :: W, ld, nrow, kmax, nf
+      Integer (c_int64_t), Value :: sG, sS, sC, sQ, ssl
+      Type (c_ptr), Value :: G, S, kw, C, Qt, slot
+    End Function
+    Integer (c_int) Function alfsb_gemm_w(mode, W, ta, tb, m, n, k, ar, ai, A, lda, sA, B, ldb, sB, br, bi, C, ldc, sC) &
+         & Bind(C, name='alfsb_gemm_w')
+      Import :: c_ptr, c_int, c_int64_t, c_double
+      Integer (c_int), Value :: mode, W, ta, tb, m, n, k, lda, ldb, ldc
+      Integer (c_int64_t), Value :: sA, sB, sC
+      Real (c_double), Value :: ar, ai, br, bi
+      Type (c_ptr), Value :: A, B, C
+    End Function
   End Interface
 #endif
 

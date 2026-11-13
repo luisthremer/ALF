@@ -124,7 +124,7 @@ static void launch(sycl::queue &q) {
 // m = n = N/2.. here N x N x k/2 to keep flops of 2 gemms per flavour), copies.
 struct Blk {
   int N, b, k, W;
-  cd *G, *gbk, *cbk, *Cc, *Qt, *hbuf, *hup;
+  cd *G, *gbk, *cbk, *Cc, *Qt, *hbuf, *hup, *Sx, *Mk;
   int *bsk, *S, *slot;
 };
 static void blk_alloc(sycl::queue &q, Blk &x) {
@@ -134,6 +134,9 @@ static void blk_alloc(sycl::queue &q, Blk &x) {
   x.cbk = sycl::malloc_device<cd>((size_t)2 * 2 * x.b * x.W, q);
   x.Cc = sycl::malloc_device<cd>((size_t)x.N * x.k * 2 * x.W, q);
   x.Qt = sycl::malloc_device<cd>((size_t)x.N * x.k * 2 * x.W, q);
+  x.Sx = sycl::malloc_device<cd>((size_t)x.N * x.k * 2 * x.W, q);
+  x.Mk = sycl::malloc_device<cd>((size_t)x.k * x.k * 2 * x.W, q);
+  fill(q, x.Mk, (size_t)x.k * x.k * 2 * x.W, 0.01);
   x.bsk = sycl::malloc_device<int>((size_t)2 * x.b * x.W, q);
   x.S = sycl::malloc_device<int>((size_t)2 * x.k * x.W, q);
   x.slot = sycl::malloc_device<int>((size_t)x.N * 2 * x.W, q);
@@ -184,8 +187,24 @@ static void blk_ops(sycl::queue &q, Blk &x, int w0, int nw, bool wait_dh) {
       if (i + 1 == s) { qv += 1.0; slot[i + (long)N * wf] = 0; }
       Qt[i + (long)N * (m + (long)k * wf)] = qv;
     });
-  // rank-k flush: 2 gemms per flavour of rank k/2 (4 per walker-block as today)
-  cd al(-1e-3, 0.0), be(1.0, 0.0);
+  cd al(-1e-3, 0.0), be(1.0, 0.0), one(1.0, 0.0), zero(0.0, 0.0);
+  if (getenv("IB_BLK_REAL")) {
+    // as gpu_lowrank_mod ab_flush_dev: per flavour gemm1 Sx(N x k) = Qt(N x k) * M(k x k)^T, gemm2 G -= Cc * Sx^T (one G pass)
+    cd *Sx = x.Sx, *Mk = x.Mk;
+    if (nw == 1) {
+      for (int f = 0; f < 2; ++f) {
+        long wf = 2l * w0 + f;
+        mb::gemm(q, transpose::nontrans, transpose::trans, N, k, k, one, Qt + (size_t)N * k * wf, N, Mk + (size_t)k * k * wf, k, zero, Sx + (size_t)N * k * wf, N);
+        mb::gemm(q, transpose::nontrans, transpose::trans, N, N, k, al, Cc + (size_t)N * k * wf, N, Sx + (size_t)N * k * wf, N, be, G + NN * wf, N);
+      }
+    } else {
+      mb::gemm_batch(q, transpose::nontrans, transpose::trans, N, k, k, one, Qt + (size_t)N * k * 2 * w0, N, (int64_t)N * k, Mk + (size_t)k * k * 2 * w0, k,
+                     (int64_t)k * k, zero, Sx + (size_t)N * k * 2 * w0, N, (int64_t)N * k, 2 * nw);
+      mb::gemm_batch(q, transpose::nontrans, transpose::trans, N, N, k, al, Cc + (size_t)N * k * 2 * w0, N, (int64_t)N * k, Sx + (size_t)N * k * 2 * w0, N,
+                     (int64_t)N * k, be, G + NN * 2 * w0, N, (int64_t)NN, 2 * nw);
+    }
+  } else {
+  // variant A (job 560867): 2 gemms per flavour of rank k/2, each a full G pass (4 G passes per walker-block: pessimistic)
   int kh = k / 2;
   if (nw == 1) {
     for (int f = 0; f < 2; ++f)
@@ -198,6 +217,7 @@ static void blk_ops(sycl::queue &q, Blk &x, int w0, int nw, bool wait_dh) {
     for (int h = 0; h < 2; ++h)
       mb::gemm_batch(q, transpose::nontrans, transpose::trans, N, N, kh, al, Cc + (size_t)N * (k * 2l * w0 + h * kh), N, (int64_t)N * k,
                      Qt + (size_t)N * (k * 2l * w0 + h * kh), N, (int64_t)N * k, be, G + NN * 2 * w0, N, (int64_t)NN, 2 * nw);
+  }
   }
   // trailing copies (today: several small D->H/H->D copies per block)
   for (int u = 0; u < 4; ++u) q.memcpy(x.hup + 4096 - 64, cbk + (size_t)2 * 2 * b * w0, 64 * 16 / 4);
@@ -232,7 +252,7 @@ static void block(sycl::queue &q, int N, int b, int k, double tmin) {
       t = (now() - t0) / reps;
       std::printf("block N=%d b=%d k=%d W=%d mode=batched_nowait t_us=%.1f us_per_walker_block=%.2f\n", N, b, k, W, t * 1e6, t * 1e6 / W);
     }
-    sycl::free(x.G, q); sycl::free(x.gbk, q); sycl::free(x.cbk, q); sycl::free(x.Cc, q); sycl::free(x.Qt, q);
+    sycl::free(x.G, q); sycl::free(x.gbk, q); sycl::free(x.cbk, q); sycl::free(x.Cc, q); sycl::free(x.Qt, q); sycl::free(x.Sx, q); sycl::free(x.Mk, q);
     sycl::free(x.bsk, q); sycl::free(x.S, q); sycl::free(x.slot, q); sycl::free(x.hbuf, q); sycl::free(x.hup, q);
   }
 }
@@ -240,6 +260,15 @@ static void block(sycl::queue &q, int N, int b, int k, double tmin) {
 int main(int argc, char **argv) {
   std::string mode = argc > 1 ? argv[1] : "all";
   double tmin = argc > 2 ? atof(argv[2]) : 1.0;
+#ifdef IB_OMPINIT
+  // oneAPI 2025.3 with the UR Level-Zero v1 adapter: a pure SYCL program fails at platform init (UR_RESULT_ERROR_UNINITIALIZED);
+  // ALF initialises the device through libomptarget first. Do the same.
+  {
+    int x = 0;
+#pragma omp target map(tofrom : x)
+    x = 1;
+  }
+#endif
   sycl::queue q(sycl::gpu_selector_v, sycl::property::queue::in_order());
   auto dev = q.get_device();
   std::printf("device %s CUs=%u\n", dev.get_info<sycl::info::device::name>().c_str(), dev.get_info<sycl::info::device::max_compute_units>());
@@ -251,8 +280,9 @@ int main(int argc, char **argv) {
   if (mode == "gemm" || mode == "all") gemm(q, tmin);
   std::fflush(stdout);
   if (mode == "block" || mode == "all") {
-    block(q, 576, 32, 32, tmin);
-    block(q, 1024, 32, 32, tmin);
+    int kb = getenv("IB_BLK_K") ? atoi(getenv("IB_BLK_K")) : 32;
+    block(q, 576, 32, kb, tmin);
+    block(q, 1024, 32, kb, tmin);
   }
   return 0;
 }

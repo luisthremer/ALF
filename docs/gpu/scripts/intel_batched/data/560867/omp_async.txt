@@ -1,0 +1,1 @@
+omp sync_us=    5.95 nowait_us=   25.87 check=20001

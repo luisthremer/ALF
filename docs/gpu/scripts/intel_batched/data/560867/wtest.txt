@@ -1,0 +1,9 @@
+gather   n=10240 differing=0 BITWISE
+scale    n=3317760 differing=0 BITWISE
+C        n=69120 differing=0 BITWISE
+Qt       n=69120 differing=0 BITWISE
+slot     n=5760 differing=0 BITWISE
+gemm     n=3317760 differing=0 BITWISE
+gemm_batch(mode1) vs loop(mode0): differing=0 maxabs=0.000e+00 (information only)
+RESULT PASS
+wtest rc=0

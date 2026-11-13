@@ -1,0 +1,2 @@
+device Intel(R) Data Center GPU Max 1550 CUs=512
+launch sync_us=6.82 async_submit_us=3.05 async_total_us=3.06 copy_sync_us=1.48 copy_async_us=1.32

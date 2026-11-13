@@ -14,6 +14,15 @@ static void fillr(std::vector<cd> &v, unsigned s) {
   }
 }
 int main() {
+#ifdef IB_OMPINIT
+  // oneAPI 2025.3 with the UR Level-Zero v1 adapter: a pure SYCL program fails at platform init (UR_RESULT_ERROR_UNINITIALIZED);
+  // ALF initialises the device through libomptarget first. Do the same.
+  {
+    int x = 0;
+#pragma omp target map(tofrom : x)
+    x = 1;
+  }
+#endif
   sycl::queue q(sycl::gpu_selector_v, sycl::property::queue::in_order());
   if (alfsb_init(&q) != 0) return 2;
   const int W = 5, ld = 576, nd = 32, b = 32, nfl = 2, k = 24;

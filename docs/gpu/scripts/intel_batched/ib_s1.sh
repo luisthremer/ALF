@@ -18,6 +18,9 @@ O=$D/out/$SLURM_JOB_ID; mkdir -p $O
 echo "start $(date -Is) $(hostname)"
 export ZE_FLAT_DEVICE_HIERARCHY=FLAT
 T=${TMIN:-0.4}
+# probe: pure SYCL init under oneAPI 2025.3 (UR L0 v1 fails without the OpenMP init; fall back to the v2 adapter)
+if ! ZE_AFFINITY_MASK=0 $B launch > $O/probe.txt 2>&1; then export SYCL_UR_USE_LEVEL_ZERO_V2=1; echo "probe failed: using SYCL_UR_USE_LEVEL_ZERO_V2=1"; fi
+cat $O/probe.txt
 # 0. bitwise check of the multi-walker kernels (alf_la_sycl_blk.cpp *_w) + planted defect (must FAIL)
 ZE_AFFINITY_MASK=0 $D/bin/ib_wtest > $O/wtest.txt 2>&1; echo "wtest rc=$?" >> $O/wtest.txt
 ZE_AFFINITY_MASK=0 IB_PLANT=1 $D/bin/ib_wtest > $O/wtest_plant.txt 2>&1; echo "wtest_plant rc=$?" >> $O/wtest_plant.txt

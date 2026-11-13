@@ -1,0 +1,110 @@
+device Intel(R) Data Center GPU Max 1550 CUs=512
+triad n=331776 MB_per_array=5.3 t_us=6.96 GBs=2288.4
+triad n=663552 MB_per_array=10.6 t_us=11.22 GBs=2837.5
+triad n=1048576 MB_per_array=16.8 t_us=16.13 GBs=3119.6
+triad n=2654208 MB_per_array=42.5 t_us=35.73 GBs=3565.8
+triad n=16777216 MB_per_array=268.4 t_us=795.84 GBs=1011.9
+triad n=67108864 MB_per_array=1073.7 t_us=3095.36 GBs=1040.7
+launch sync_us=6.72 async_submit_us=3.02 async_total_us=3.03 copy_sync_us=1.52 copy_async_us=1.32
+gemm N=576 K=576 B=1 mode=loop t_us=113.3 us_per_prob=113.35 TFs=13.49 GBs=187
+gemm N=576 K=576 B=2 mode=loop t_us=254.3 us_per_prob=127.16 TFs=12.02 GBs=167
+gemm N=576 K=576 B=2 mode=batch t_us=244.1 us_per_prob=122.07 TFs=12.52 GBs=174
+gemm N=576 K=576 B=4 mode=loop t_us=508.3 us_per_prob=127.08 TFs=12.03 GBs=167
+gemm N=576 K=576 B=4 mode=batch t_us=437.5 us_per_prob=109.38 TFs=13.98 GBs=194
+gemm N=576 K=576 B=8 mode=loop t_us=1020.7 us_per_prob=127.59 TFs=11.98 GBs=166
+gemm N=576 K=576 B=8 mode=batch t_us=898.3 us_per_prob=112.28 TFs=13.62 GBs=189
+gemm N=576 K=576 B=16 mode=loop t_us=2088.9 us_per_prob=130.55 TFs=11.71 GBs=163
+gemm N=576 K=576 B=16 mode=batch t_us=1763.5 us_per_prob=110.22 TFs=13.87 GBs=193
+gemm N=576 K=16 B=1 mode=loop t_us=15.0 us_per_prob=14.99 TFs=2.83 GBs=728
+gemm N=576 K=16 B=2 mode=loop t_us=28.8 us_per_prob=14.40 TFs=2.95 GBs=758
+gemm N=576 K=16 B=2 mode=batch t_us=21.8 us_per_prob=10.91 TFs=3.89 GBs=1000
+gemm N=576 K=16 B=4 mode=loop t_us=56.5 us_per_prob=14.13 TFs=3.01 GBs=772
+gemm N=576 K=16 B=4 mode=batch t_us=31.1 us_per_prob=7.78 TFs=5.46 GBs=1402
+gemm N=576 K=16 B=8 mode=loop t_us=111.4 us_per_prob=13.93 TFs=3.05 GBs=784
+gemm N=576 K=16 B=8 mode=batch t_us=53.0 us_per_prob=6.62 TFs=6.41 GBs=1648
+gemm N=576 K=16 B=16 mode=loop t_us=222.0 us_per_prob=13.88 TFs=3.06 GBs=786
+gemm N=576 K=16 B=16 mode=batch t_us=93.8 us_per_prob=5.86 TFs=7.25 GBs=1862
+gemm N=576 K=32 B=1 mode=loop t_us=17.0 us_per_prob=16.97 TFs=5.00 GBs=660
+gemm N=576 K=32 B=2 mode=loop t_us=32.8 us_per_prob=16.38 TFs=5.19 GBs=684
+gemm N=576 K=32 B=2 mode=batch t_us=26.6 us_per_prob=13.31 TFs=6.38 GBs=842
+gemm N=576 K=32 B=4 mode=loop t_us=64.2 us_per_prob=16.05 TFs=5.29 GBs=698
+gemm N=576 K=32 B=4 mode=batch t_us=41.1 us_per_prob=10.27 TFs=8.27 GBs=1091
+gemm N=576 K=32 B=8 mode=loop t_us=127.2 us_per_prob=15.89 TFs=5.34 GBs=705
+gemm N=576 K=32 B=8 mode=batch t_us=72.9 us_per_prob=9.12 TFs=9.32 GBs=1229
+gemm N=576 K=32 B=16 mode=loop t_us=253.8 us_per_prob=15.86 TFs=5.35 GBs=706
+gemm N=576 K=32 B=16 mode=batch t_us=137.4 us_per_prob=8.59 TFs=9.89 GBs=1305
+gemm N=576 K=64 B=1 mode=loop t_us=23.6 us_per_prob=23.58 TFs=7.20 GBs=500
+gemm N=576 K=64 B=2 mode=loop t_us=46.0 us_per_prob=23.02 TFs=7.38 GBs=512
+gemm N=576 K=64 B=2 mode=batch t_us=38.0 us_per_prob=18.99 TFs=8.94 GBs=621
+gemm N=576 K=64 B=4 mode=loop t_us=90.6 us_per_prob=22.66 TFs=7.50 GBs=521
+gemm N=576 K=64 B=4 mode=batch t_us=64.2 us_per_prob=16.06 TFs=10.58 GBs=734
+gemm N=576 K=64 B=8 mode=loop t_us=180.1 us_per_prob=22.52 TFs=7.54 GBs=524
+gemm N=576 K=64 B=8 mode=batch t_us=121.4 us_per_prob=15.17 TFs=11.20 GBs=778
+gemm N=576 K=64 B=16 mode=loop t_us=359.7 us_per_prob=22.48 TFs=7.56 GBs=525
+gemm N=576 K=64 B=16 mode=batch t_us=229.7 us_per_prob=14.35 TFs=11.83 GBs=822
+gemm N=1024 K=1024 B=1 mode=loop t_us=562.7 us_per_prob=562.66 TFs=15.27 GBs=119
+gemm N=1024 K=1024 B=2 mode=loop t_us=1158.0 us_per_prob=578.99 TFs=14.84 GBs=116
+gemm N=1024 K=1024 B=2 mode=batch t_us=1121.6 us_per_prob=560.81 TFs=15.32 GBs=120
+gemm N=1024 K=1024 B=4 mode=loop t_us=2320.2 us_per_prob=580.04 TFs=14.81 GBs=116
+gemm N=1024 K=1024 B=4 mode=batch t_us=2296.8 us_per_prob=574.19 TFs=14.96 GBs=117
+gemm N=1024 K=1024 B=8 mode=loop t_us=4723.9 us_per_prob=590.49 TFs=14.55 GBs=114
+gemm N=1024 K=1024 B=8 mode=batch t_us=4669.3 us_per_prob=583.67 TFs=14.72 GBs=115
+gemm N=1024 K=1024 B=16 mode=loop t_us=9454.9 us_per_prob=590.93 TFs=14.54 GBs=114
+gemm N=1024 K=1024 B=16 mode=batch t_us=9317.5 us_per_prob=582.34 TFs=14.75 GBs=115
+gemm N=1024 K=16 B=1 mode=loop t_us=24.6 us_per_prob=24.55 TFs=5.47 GBs=1388
+gemm N=1024 K=16 B=2 mode=loop t_us=47.7 us_per_prob=23.84 TFs=5.63 GBs=1429
+gemm N=1024 K=16 B=2 mode=batch t_us=44.5 us_per_prob=22.24 TFs=6.03 GBs=1532
+gemm N=1024 K=16 B=4 mode=loop t_us=94.0 us_per_prob=23.50 TFs=5.71 GBs=1450
+gemm N=1024 K=16 B=4 mode=batch t_us=81.6 us_per_prob=20.40 TFs=6.58 GBs=1671
+gemm N=1024 K=16 B=8 mode=loop t_us=186.8 us_per_prob=23.35 TFs=5.75 GBs=1460
+gemm N=1024 K=16 B=8 mode=batch t_us=152.9 us_per_prob=19.11 TFs=7.02 GBs=1784
+gemm N=1024 K=16 B=16 mode=loop t_us=663.5 us_per_prob=41.47 TFs=3.24 GBs=822
+gemm N=1024 K=16 B=16 mode=batch t_us=500.6 us_per_prob=31.29 TFs=4.29 GBs=1089
+gemm N=1024 K=32 B=1 mode=loop t_us=31.3 us_per_prob=31.29 TFs=8.58 GBs=1106
+gemm N=1024 K=32 B=2 mode=loop t_us=63.3 us_per_prob=31.66 TFs=8.48 GBs=1093
+gemm N=1024 K=32 B=2 mode=batch t_us=61.0 us_per_prob=30.51 TFs=8.80 GBs=1134
+gemm N=1024 K=32 B=4 mode=loop t_us=126.1 us_per_prob=31.54 TFs=8.51 GBs=1097
+gemm N=1024 K=32 B=4 mode=batch t_us=116.9 us_per_prob=29.22 TFs=9.19 GBs=1184
+gemm N=1024 K=32 B=8 mode=loop t_us=251.3 us_per_prob=31.41 TFs=8.55 GBs=1102
+gemm N=1024 K=32 B=8 mode=batch t_us=224.3 us_per_prob=28.04 TFs=9.57 GBs=1234
+gemm N=1024 K=32 B=16 mode=loop t_us=740.8 us_per_prob=46.30 TFs=5.80 GBs=747
+gemm N=1024 K=32 B=16 mode=batch t_us=587.6 us_per_prob=36.72 TFs=7.31 GBs=942
+gemm N=1024 K=64 B=1 mode=loop t_us=48.3 us_per_prob=48.28 TFs=11.12 GBs=739
+gemm N=1024 K=64 B=2 mode=loop t_us=98.1 us_per_prob=49.04 TFs=10.95 GBs=727
+gemm N=1024 K=64 B=2 mode=batch t_us=95.2 us_per_prob=47.61 TFs=11.28 GBs=749
+gemm N=1024 K=64 B=4 mode=loop t_us=195.0 us_per_prob=48.75 TFs=11.01 GBs=731
+gemm N=1024 K=64 B=4 mode=batch t_us=186.1 us_per_prob=46.52 TFs=11.54 GBs=766
+gemm N=1024 K=64 B=8 mode=loop t_us=389.5 us_per_prob=48.69 TFs=11.03 GBs=732
+gemm N=1024 K=64 B=8 mode=batch t_us=366.6 us_per_prob=45.83 TFs=11.71 GBs=778
+gemm N=1024 K=64 B=16 mode=loop t_us=961.2 us_per_prob=60.08 TFs=8.94 GBs=593
+gemm N=1024 K=64 B=16 mode=batch t_us=821.6 us_per_prob=51.35 TFs=10.45 GBs=694
+block N=576 b=32 k=32 W=1 mode=today t_us=114.1 us_per_walker_block=114.13
+block N=576 b=32 k=32 W=1 mode=batched t_us=113.6 us_per_walker_block=113.63
+block N=576 b=32 k=32 W=1 mode=batched_nowait t_us=103.9 us_per_walker_block=103.86
+block N=576 b=32 k=32 W=2 mode=today t_us=228.7 us_per_walker_block=114.35
+block N=576 b=32 k=32 W=2 mode=batched t_us=134.4 us_per_walker_block=67.18
+block N=576 b=32 k=32 W=2 mode=batched_nowait t_us=125.9 us_per_walker_block=62.97
+block N=576 b=32 k=32 W=4 mode=today t_us=455.1 us_per_walker_block=113.78
+block N=576 b=32 k=32 W=4 mode=batched t_us=197.1 us_per_walker_block=49.27
+block N=576 b=32 k=32 W=4 mode=batched_nowait t_us=189.6 us_per_walker_block=47.41
+block N=576 b=32 k=32 W=8 mode=today t_us=909.9 us_per_walker_block=113.73
+block N=576 b=32 k=32 W=8 mode=batched t_us=283.4 us_per_walker_block=35.42
+block N=576 b=32 k=32 W=8 mode=batched_nowait t_us=276.7 us_per_walker_block=34.59
+block N=576 b=32 k=32 W=16 mode=today t_us=1828.8 us_per_walker_block=114.30
+block N=576 b=32 k=32 W=16 mode=batched t_us=565.2 us_per_walker_block=35.32
+block N=576 b=32 k=32 W=16 mode=batched_nowait t_us=559.9 us_per_walker_block=34.99
+block N=1024 b=32 k=32 W=1 mode=today t_us=154.2 us_per_walker_block=154.25
+block N=1024 b=32 k=32 W=1 mode=batched t_us=153.5 us_per_walker_block=153.45
+block N=1024 b=32 k=32 W=1 mode=batched_nowait t_us=144.5 us_per_walker_block=144.49
+block N=1024 b=32 k=32 W=2 mode=today t_us=308.2 us_per_walker_block=154.12
+block N=1024 b=32 k=32 W=2 mode=batched t_us=240.1 us_per_walker_block=120.03
+block N=1024 b=32 k=32 W=2 mode=batched_nowait t_us=233.1 us_per_walker_block=116.55
+block N=1024 b=32 k=32 W=4 mode=today t_us=614.5 us_per_walker_block=153.63
+block N=1024 b=32 k=32 W=4 mode=batched t_us=407.4 us_per_walker_block=101.86
+block N=1024 b=32 k=32 W=4 mode=batched_nowait t_us=401.3 us_per_walker_block=100.33
+block N=1024 b=32 k=32 W=8 mode=today t_us=1396.2 us_per_walker_block=174.52
+block N=1024 b=32 k=32 W=8 mode=batched t_us=1284.7 us_per_walker_block=160.59
+block N=1024 b=32 k=32 W=8 mode=batched_nowait t_us=1284.2 us_per_walker_block=160.53
+block N=1024 b=32 k=32 W=16 mode=today t_us=2855.8 us_per_walker_block=178.49
+block N=1024 b=32 k=32 W=16 mode=batched t_us=2978.1 us_per_walker_block=186.13
+block N=1024 b=32 k=32 W=16 mode=batched_nowait t_us=2976.4 us_per_walker_block=186.03

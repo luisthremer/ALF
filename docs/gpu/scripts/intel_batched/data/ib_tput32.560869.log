@@ -1,0 +1,61 @@
+start 2026-11-13T02:17:01+01:00 i20r02c01s10 /hppfs/scratch/0C/di38zuw/large_prompt/unified/build_spd_aottt/Prog/ALF.out
+chains_per_tile=1 RESULT L32_c1_r1      sweep  15.85  upd  5.28  stab  3.60  cgr  3.27  obs  2.72 s/sweep
+chains_per_tile=1 RESULT L32_c1_r1      sweep  16.09  upd  5.53  stab  3.59  cgr  3.33  obs  2.73 s/sweep
+chains_per_tile=1 RESULT L32_c1_r1      sweep  15.91  upd  5.29  stab  3.65  cgr  3.27  obs  2.73 s/sweep
+chains_per_tile=1 RESULT L32_c1_r1      sweep  15.94  upd  5.34  stab  3.62  cgr  3.28  obs  2.74 s/sweep
+chains_per_tile=1 RESULT L32_c1_r1      sweep  16.28  upd  5.66  stab  3.65  cgr  3.30  obs  2.78 s/sweep
+chains_per_tile=1 RESULT L32_c1_r1      sweep  15.84  upd  5.44  stab  3.55  cgr  3.22  obs  2.70 s/sweep
+chains_per_tile=1 RESULT L32_c1_r1      sweep  16.18  upd  5.58  stab  3.63  cgr  3.30  obs  2.75 s/sweep
+chains_per_tile=1 RESULT L32_c1_r1      sweep  15.77  upd  5.30  stab  3.55  cgr  3.24  obs  2.70 s/sweep
+  Precision Green  Mean, Max :   4.925168242722213E-014  5.889242337547418E-011
+chains_per_tile=2 RESULT L32_c2_r1      sweep  24.33  upd  7.82  stab  5.77  cgr  4.82  obs  4.94 s/sweep
+chains_per_tile=2 RESULT L32_c2_r1      sweep  24.30  upd  7.27  stab  6.28  cgr  4.98  obs  4.82 s/sweep
+chains_per_tile=2 RESULT L32_c2_r1      sweep  23.96  upd  7.70  stab  5.60  cgr  4.81  obs  4.92 s/sweep
+chains_per_tile=2 RESULT L32_c2_r1      sweep  24.06  upd  7.61  stab  5.68  cgr  4.85  obs  4.96 s/sweep
+chains_per_tile=2 RESULT L32_c2_r1      sweep  24.54  upd  7.96  stab  5.76  cgr  4.76  obs  5.02 s/sweep
+chains_per_tile=2 RESULT L32_c2_r1      sweep  24.24  upd  7.74  stab  5.62  cgr  4.78  obs  5.14 s/sweep
+chains_per_tile=2 RESULT L32_c2_r1      sweep  24.11  upd  7.64  stab  5.93  cgr  4.70  obs  4.89 s/sweep
+chains_per_tile=2 RESULT L32_c2_r1      sweep  24.40  upd  7.63  stab  6.00  cgr  4.75  obs  5.06 s/sweep
+chains_per_tile=2 RESULT L32_c2_r1      sweep  24.29  upd  7.84  stab  5.59  cgr  4.91  obs  5.04 s/sweep
+chains_per_tile=2 RESULT L32_c2_r1      sweep  23.89  upd  7.55  stab  5.91  cgr  4.59  obs  4.95 s/sweep
+chains_per_tile=2 RESULT L32_c2_r1      sweep  24.29  upd  7.87  stab  5.74  cgr  4.61  obs  5.02 s/sweep
+chains_per_tile=2 RESULT L32_c2_r1      sweep  24.53  upd  7.58  stab  6.19  cgr  4.93  obs  4.93 s/sweep
+chains_per_tile=2 RESULT L32_c2_r1      sweep  23.82  upd  7.64  stab  5.60  cgr  4.63  obs  5.02 s/sweep
+chains_per_tile=2 RESULT L32_c2_r1      sweep  24.53  upd  7.95  stab  5.86  cgr  4.78  obs  5.07 s/sweep
+chains_per_tile=2 RESULT L32_c2_r1      sweep  24.20  upd  7.85  stab  5.64  cgr  4.66  obs  5.09 s/sweep
+chains_per_tile=2 RESULT L32_c2_r1      sweep  24.08  upd  7.47  stab  6.00  cgr  4.73  obs  4.91 s/sweep
+  Precision Green  Mean, Max :   4.998354480476624E-014  6.849410957338013E-011
+chains_per_tile=4 RESULT L32_c4_r1      sweep  44.42  upd 13.89  stab 10.99  cgr  7.94  obs 10.58 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  44.97  upd 13.37  stab 11.57  cgr  8.74  obs 10.21 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  44.27  upd 13.48  stab 11.07  cgr  8.21  obs 10.41 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  44.29  upd 13.21  stab 10.83  cgr  8.81  obs 10.34 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  44.22  upd 13.14  stab 11.41  cgr  8.32  obs 10.36 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  44.96  upd 13.76  stab 10.97  cgr  8.40  obs 10.75 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  44.94  upd 13.93  stab 10.90  cgr  8.34  obs 10.67 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  45.18  upd 14.12  stab 10.99  cgr  7.86  obs 11.13 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  44.42  upd 13.91  stab 10.29  cgr  8.25  obs 10.94 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  43.76  upd 13.15  stab 10.66  cgr  8.42  obs 10.51 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  45.38  upd 13.74  stab 10.67  cgr  8.82  obs 11.07 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  45.51  upd 13.52  stab 11.46  cgr  8.72  obs 10.73 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  44.47  upd 13.03  stab 12.02  cgr  8.26  obs 10.09 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  45.19  upd 14.07  stab 10.95  cgr  7.91  obs 11.23 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  44.38  upd 13.05  stab 11.00  cgr  8.84  obs 10.41 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  45.30  upd 14.07  stab 10.88  cgr  8.14  obs 11.13 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  44.39  upd 13.95  stab 10.68  cgr  7.94  obs 10.87 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  44.54  upd 13.25  stab 10.51  cgr  9.27  obs 10.51 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  44.21  upd 13.37  stab 10.96  cgr  8.23  obs 10.59 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  44.43  upd 13.80  stab 10.70  cgr  7.99  obs 10.88 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  45.24  upd 14.28  stab 10.54  cgr  8.28  obs 11.12 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  43.93  upd 12.86  stab 11.05  cgr  8.70  obs 10.21 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  45.12  upd 13.69  stab 11.48  cgr  8.16  obs 10.76 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  44.43  upd 13.63  stab 10.29  cgr  8.47  obs 10.96 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  44.95  upd 13.71  stab 10.75  cgr  8.57  obs 10.86 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  44.28  upd 13.47  stab 10.73  cgr  8.35  obs 10.63 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  43.86  upd 12.94  stab 11.21  cgr  8.33  obs 10.30 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  44.46  upd 13.32  stab 11.58  cgr  8.07  obs 10.39 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  44.32  upd 12.95  stab 11.05  cgr  8.90  obs 10.38 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  45.21  upd 13.80  stab 11.31  cgr  7.98  obs 10.99 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  43.81  upd 13.26  stab 10.91  cgr  8.29  obs 10.33 s/sweep
+chains_per_tile=4 RESULT L32_c4_r1      sweep  44.41  upd 12.90  stab 11.64  cgr  8.59  obs 10.18 s/sweep
+  Precision Green  Mean, Max :   5.074707225979650E-014  4.586072956576172E-010
+end 2026-11-13T02:21:50+01:00
