@@ -640,7 +640,7 @@
       "id" : "n_yxoiv7af",
       "order" : 2,
       "parentId" : "n_2zpx5lj8",
-      "title" : "Prototype: update loop of one time slice on the device, same RNG order (pre-draw + RANDOM_SEED GET\/PUT), default off"
+      "title" : "Prototype on-device update loop: stopped before code (p9\/devupd, job 561178): not bitwise possible (host FMA\/cpow vs device), est. <=30 % of update at one chain, none at node; per-flip round trip not in production block path"
     },
     {
       "collapsed" : false,

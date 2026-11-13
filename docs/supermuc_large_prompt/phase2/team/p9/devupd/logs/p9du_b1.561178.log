@@ -1,0 +1,56 @@
+start 2026-11-13T22:39:09+01:00 i20r07c02s10 job 561178
+          kb = kb + 1
+------------------^
+dubench.F90(258): warning #9089: For spir64 compilation, PRIVATE variables on a TEAMS construct that have a variable size are not supported and will be made private to each thread of the team.   [BT]
+!$omp target teams num_teams(1) thread_limit(256) private(it, fl, a, m, kk, s, gp, R2, xv, acc, bt)
+------------------------------------------------------------------------------------------------^
+dubench.F90(177): warning #5470: Runtime validation of transfer size is not done in an offloaded region.
+  write(*,'(A,I9,A,ES10.3)') ' BITCMP weight differ ', count(transfer(wh,0_8,ns) /= transfer(wd,0_8,ns)), '  max rel ', &
+-------------------------------------------------------------^
+dubench.F90(177): warning #5470: Runtime validation of transfer size is not done in an offloaded region.
+  write(*,'(A,I9,A,ES10.3)') ' BITCMP weight differ ', count(transfer(wh,0_8,ns) /= transfer(wd,0_8,ns)), '  max rel ', &
+------------------------------------------------------------------------------------^
+dubench.F90(333): warning #5469: An allocatable array will not be reallocated in an offloaded region.
+          kb = kb + 1
+------------------^
+Compilation from IR - skipping loading of FCL
+
+warning: VLA has been detected, the private memory size is set to 4096B. You can change the size by setting flag ForcePerThreadPrivateMemorySize to a value from [1024:20480]. Greater values can affect performance, and lower ones may lead to incorrect results of your program.
+To make sure your program runs correctly you can set flag StackOverflowDetection to 1. This flag will print "Stack overflow detected!" if insufficient memory value has lead to stack overflow. It should be used for debugging only as it affects performance.
+
+Build succeeded.
+=== K 8
+ samples      200000  k           8  N_SUN           2  block          64  nrep
+         200
+ BITCMP      cpow z**dble(N_SUN) differ    186765 of    200000  max rel  9.128E-16
+ BITCMP              phase csqrt differ     19970 of    200000  max rel  6.470E-16
+ BITCMP                  cdiv xv differ     82105 of    200000  max rel  1.914E-15
+ BITCMP                     cexp differ    173724 of    200000  max rel  6.597E-16
+ BITCMP      gpp chain (blk_gpp) differ     51736 of    200000  max rel  8.311E-15
+ BITCMP                 Ratiotot differ    193125 of    200000  max rel  2.113E-15
+ BITCMP          bt dot (accept) differ    177533 of    200000  max rel  2.217E-14
+ BITCMP            M rank-1 elem differ     88888 of    200000  max rel  2.182E-14
+ BITCMP weight differ    166101  max rel  1.055E-11
+ BLK host  b=  64  us/block     280.77  accepted   63  k   63
+ BLK dev1  b=  64  us/block    4809.18  accepted   63  k   63
+=== K 24
+ samples      200000  k          24  N_SUN           2  block          64  nrep
+         200
+ BITCMP      cpow z**dble(N_SUN) differ    186704 of    200000  max rel  9.451E-16
+ BITCMP              phase csqrt differ     19830 of    200000  max rel  6.515E-16
+ BITCMP                  cdiv xv differ     81896 of    200000  max rel  1.753E-15
+ BITCMP                     cexp differ    173892 of    200000  max rel  6.405E-16
+ BITCMP      gpp chain (blk_gpp) differ    131410 of    200000  max rel  2.371E-14
+ BITCMP                 Ratiotot differ    193077 of    200000  max rel  2.137E-15
+ BITCMP          bt dot (accept) differ    190755 of    200000  max rel  1.963E-13
+ BITCMP            M rank-1 elem differ     88891 of    200000  max rel  1.189E-14
+ BITCMP weight differ    166027  max rel  6.752E-12
+ BLK host  b=  64  us/block     215.49  accepted   57  k   57
+ BLK dev1  b=  64  us/block    4269.03  accepted   57  k   57
+=== B 32
+ BLK host  b=  32  us/block      24.73  accepted   27  k   27
+ BLK dev1  b=  32  us/block     880.10  accepted   27  k   27
+=== B 64
+ BLK host  b=  64  us/block     289.74  accepted   64  k   64
+ BLK dev1  b=  64  us/block    4937.97  accepted   64  k   64
+end 2026-11-13T22:39:26+01:00
