@@ -672,20 +672,20 @@
     {
       "collapsed" : false,
       "description" : "",
-      "done" : false,
+      "done" : true,
       "id" : "n_wtr0fnpq",
       "order" : 1,
       "parentId" : "n_tjbczdyv",
-      "title" : "Update block path: ALFSH_BLKPACK, fewer host submissions (agent running, <=4 node-h)"
+      "title" : "Update block path: ALFSH_BLKPACK, bitwise, no gain at node layout N_delay 64 (-1.6 %), not for production (3.9 node-h)"
     },
     {
       "collapsed" : false,
       "description" : "",
-      "done" : false,
+      "done" : true,
       "id" : "n_cpxevoy7",
       "order" : 2,
       "parentId" : "n_tjbczdyv",
-      "title" : "Combined production-layout timing: V7 + OBSPAR + BLKPACK vs V2, all checks"
+      "title" : "Combined production-layout timing: = V7 + OBSPAR (BLKPACK dropped), node 0.92 per card measured in job 561062"
     }
   ],
   "rev" : 6,
