@@ -1,130 +1,58 @@
-Explanation on how to use the "prepare_sims.py".
+Start_PP: parameter scans for the parallel-parameters mode (PP) of ALF
+=======================================================================
 
-Here I present an easy way to prepare raster simulations for the PP mode in ALF.
-To use this, make sure to compile ALF with PP.
+prepare_sim.py turns ONE template `parameters` file, in which some parameters are given as sets of values,
+into one directory Temp_<i>/ per combination of values. ALF compiled with PP (configure.sh ... PP ...)
+then runs all of them in one MPI job: mpi_per_parameter_set ranks per Temp_<i>. The same layout is used
+by parallel tempering (TEMPERING), see ../Start_Tempering.
 
-Definition raster simulation: A simulation containing at least one varying simulation parameter. 
+Files
+  parameters          example template (lattice-size scan with linked N_Phi and Beta, U scan)
+  prepare_sim.py      the generator (needs f90nml: pip install f90nml; pyALF installs it too)
+  seeds               one integer seed per MPI rank (needs at least as many lines as ranks)
+  out_to_in_temper.sh renames confout_* to confin_* in every Temp_*/ before a continuation run
 
-1. Copy the files from $ALF_DIR/Scripts_and_Parameters_files/Start_PP into your simulation directory.
-2. Adjust the "parameters" file according to:
-a) For each varying simulation parameter list all values your parameter can have. 
-Example: 
-...
-Beta         = {2, 4, 6, 8}  
-...
-ham_U      = {0.5d0, 1.5d0, 3.0d0, 5.0d0, 5.5d0, 6.0d0, 7.5d0} 
-...
+Usage
+  python3 prepare_sim.py [-t TEMPLATE] [-o OUTDIR] [--no-links]
+  python3 prepare_sim.py --self-test       # generates a built-in example in a temp dir and checks it
+  python3 prepare_sim.py --help
+Defaults: TEMPLATE = ./parameters, OUTDIR = . (as the original script, which took no arguments).
 
-b) There is no need to adjust "mpi_per_parameter_set" in the parameters file, as this will be automatically overwritten by the python script
-c) You then can launch the simulation via "mpiexec -n <n_cores> $ALF_DIR/Prog/ALF.out", where <n_cores> = <mpi_per_parameter_set> \times <number_of_mpi_runs_per_parameter_set>. 
-Note that I) The number of cores has to be available on your system, II) you really have to use the <mpi_per_parameter_set> times an integer. If <n_cores> mod <mpi_per_parameter_set> \neq 0, ALF will fail.
+Template syntax
+  ham_U = {0.5d0, 1.5d0, 3.0d0}              set: one simulation per value
+  L2    = [4, 6, 8; VAR_lattice, L1]         linked list: element i goes with element i of the set
+                                             VAR_lattice/L1 (same length); it does not add combinations
+  everything else                            copied unchanged
+Independent sets are combined as a Cartesian product. ham_name = {"Hubbard", "tV"} is allowed; the sets in
+VAR_Hubbard (VAR_tV) are only varied for ham_name = "Hubbard" ("tV"); the rules are in RULES in
+prepare_sim.py. VAR_errors and VAR_Max_Stoch are never varied.
+For every combination the script writes OUTDIR/Temp_<i>/parameters and a symbolic link named after the
+varied values (e.g. ham_name_Hubbard_ham_u_0.5_l1_6_l2_6_beta_6_n_phi_18 -> Temp_<i>), and prints the
+number of sets and the required number of MPI ranks.
 
-Some remarks: 
-If you use different Beta on a HPC system, make sure to use the CPU_MAX option with some large number of bins. In this example, Beta=2 will be approximately four times faster than Beta=8.
-It is therefore in general not advisable to use different \beta in one single production run raster simulation (unless you know what you are doing).
-The same is true for different system sizes and different \delta \tau.
-The automatic creation works for ALL parameters in "parameters". I.e. also for parameters with value ".T.; .F." and so on. 
+Worked example: U scan of the Hubbard model, 4 values of U, 2 independent walkers (ranks) per U
+  mkdir run && cd run
+  cp $ALF_DIR/Scripts_and_Parameters_files/Start_PP/{parameters,seeds,prepare_sim.py} .
+  # edit parameters:
+  #   &VAR_lattice  L1 = 6,  L2 = 6                    (scalars: no lattice scan)
+  #   &VAR_Model_Generic  N_Phi = 0, Beta = 5.d0
+  #   &VAR_TEMP     mpi_per_parameter_set = 2, N_exchange_steps = 0
+  #   &VAR_Hubbard  ham_U = {2.d0, 4.d0, 6.d0, 8.d0}
+  python3 prepare_sim.py
+  #   -> 4 parameter sets written to ./Temp_<i>; mpi_per_parameter_set = 2: run with mpiexec -n 8
+  mpiexec -n 8 $ALF_DIR/Prog/ALF.out
+Rank r writes to Temp_<r / mpi_per_parameter_set>/. To continue: ./out_to_in_temper.sh, then run again.
+The example template as shipped scans L = 4, 6, 8 (with N_Phi = L^2/2 and Beta = L linked to L1) times
+7 values of U: 21 sets.
 
-Raster over different lattice sizes:
-1D Systems:
-Set either L1 or L2 = 0. The remaining variable then is set to a set over different lattice sizes {8, 16, 32, 64}.
+Notes
+  * mpi_per_parameter_set is read from &VAR_TEMP of the top-level parameters; the number of ranks must be
+    (number of Temp_<i>) * mpi_per_parameter_set.
+  * Runs with different Beta or lattice size in one job take different times per bin; use CPU_MAX with a
+    large NBin, or scan only parameters that do not change the cost.
 
-2D Systems with L1=L2:
-Set either L1 = ## or L2 = ##, notice, it does not matter if there is a space. All that matters is, that after "=" there are "##" before a "!" in the same line.
-The remaining variable is then set to a set of different lattice sizes, e.g. {8, 12, 16}.
-
-2D Systems with L1\neqL2:
-Set each L1 and L2 to some set of different lattice sizes, e.g.:
-L1 = {8, 12, 16}
-L2 = {2, 4, 6}
-
-
-Running the script:
-Run the script with "python prepare_sims.py".
-Upon running the script you will find several folders named "Temp_". These are the folders, that will contain a unique combination of parameters.
-Notice also, that links are generated, in order to ensure better distinguishability between the different simulations.
-
-Running the simulation:
-Launch the simulation via "mpiexec -n <ncores> $ALF_DIR/Prog/ALF.out"
-
-
-Special settings:
-1. It is also possible, that someone wants to use this setup to not wanting to Launch raster simulations, but rather the following:
-a) e.g. Say you want to have a raster simulation:
-L1=##
-L2={8,12,16}
-...
-ham_U={0.5d0, 1.5d0, 3.0d0, 5.0d0, 6.0d0, 7.5d0}
-...
-
-And you want to have a different \beta for each different Lattice size, i.e. you don't want to have a raster for beta, but a 1:1 mapping for a specific L value.
-Then you can fix beta in such a way: 
-beta=[4, 6, 8; L2]
-This works only, if beta has the same length as (in this case) L2.
-
-b) You can always fix several parameters at once! E.g.:
-
-&VAR_lattice               !! Parameters defining the specific lattice and base model
-L1           = ##            ! Length in direction a_1
-L2           = {8, 12, 16}            ! Length in direction a_2
-...
-N_Phi        = [32, 72, 128; L2]            ! Total number of flux quanta traversing the lattice
-...
-Beta         = [8, 12, 16; L2]         ! Inverse temperature
-...
-Mz         = {.F., .T.}
-....
-ham_U      = [0.5d0, 1.5d0, 3.0d0, 5.0d0, 5.5d0, 6.0d0, 7.5d0]           ! Hubbard interaction
-
-...
-/
-
-What would this simulation do?
-L1           = ##
-L2           = {8, 12, 16}
-Investigate three lattice sizes:  L1 = L2 = {8, 12, 16}. We want a pi flux per Plaquette, as well as \beta = L.
-Thus we need to set:
-N_Phi        = [32, 72, 128; L2]
-Beta         = [8, 12, 16; L2]
-Therefore:
-    - L2 = 8  ==> N_Phi = 32,  Beta = 8
-    - L2 = 12 ==> N_Phi = 72,  Beta = 12
-    - L2 = 16 ==> N_Phi = 128, Beta = 16
-
-We would like to investigate
- 
-
-
-Some are excluded, as it does not make sense, because it would give double simulations:
-&VAR_Max_Stoch
-...
-/
-
-&VAR_errors
-...
-/
-
-
-NOTICE, THAT THE RASTER IS always created for:
-&VAR_lattice
-&VAR_Model_Generic
-(&VAR_QMC, which can be used for debugging/some monte carlo specific test, but here one should be careful..)
-And the corresponding:
-&VAR_ham_name
-ham_name = "Hubbard"
-/
-
-We also allow to have e.g. {"Hubbard", "tV"}, which then will create a separate raster for each Model type!
-
-
-
-
-
-
-TODO:
-1. Need to adjust, that MPI_per_parameter_set automatically is adjusted!
-2. Need to ensure some naming: Ich will, dass die links immer folgende namen haben: 1. Lx, Ly, beta, dtau, then list of all parameters (if beta was in parameters, or l in parameters, or something else, that already was there, then don't include again...)
-3. Need to adjust, that if only Lx or Ly has nonzero number, then this is done always the same for Lx = Ly. I.e. if there is somelist, then yes...
-4. If both have some list, then create all combinations (there needs to be some flag, that says: rotation symmetry). If that is true, then only all unique combinations!
-5. Ensure, that there is some mechanism, that ensures, that it works with all parameters.
-6. Need to ensure that this works also with the Raster over different lattice sizes.
+Related tools (model-specific, not general generators; they write the same Temp_<i> layout):
+  ../make_PP_Uscan.py                      point-defect Hubbard U scan, stdlib only, can fill a jobfile
+  ../Start_PP_GPU/make_pp_dirs.py          same model, GPU production defaults
+  docs/gpu/scripts/pp/pp_setup.py          nividia helper that runs prepare_sim.py on a generated template
+docs/gpu/scripts/pp/prepare_sim.py is a symbolic link to this prepare_sim.py.

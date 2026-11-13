@@ -1,3 +1,22 @@
+#!/usr/bin/env python3
+"""Set up a parameter scan for ALF's parallel-parameters mode (PARALLEL_PARAMS, "PP") or for parallel tempering.
+
+The template `parameters` file may contain, instead of a single value,
+  * a set   `ham_U = {0.5d0, 1.5d0, 3.0d0}`               -> one simulation per value;
+  * a linked list `L2 = [4, 6, 8; VAR_lattice, L1]`      -> varies together with VAR_lattice/L1
+    (same length as the set of L1, element i goes with element i of L1).
+All independent sets are combined as a Cartesian product. For every combination Temp_<i>/parameters is written
+(the template with the scalar values patched in) plus a symbolic link named after the varied values
+(e.g. ham_U_1.5d0_l1_6_... -> Temp_3). Groups listed in RULES are only varied when their condition holds
+(e.g. sets in VAR_tV are ignored unless ham_name = "tV"); otherwise their template text is left as it is.
+
+Afterwards: put `seeds` (one integer per MPI rank) next to `parameters`, set mpi_per_parameter_set in &VAR_TEMP
+and run `mpiexec -n <number of Temp_i * mpi_per_parameter_set> $ALF_DIR/Prog/ALF.out` (ALF compiled with PP or
+TEMPERING). See README.
+
+Requires f90nml (pip install f90nml; it is also a dependency of pyALF).
+"""
+import argparse
 import f90nml
 import itertools
 import os
@@ -124,7 +143,7 @@ def cartesian_product(group_combos):
         raw_combos.append(merged)
     return raw_combos
 
-def unflatten(data, raw_combos, conditions):
+def unflatten(data, raw_combos, conditions, defaults=None):
     final_results = []
     for flat_combo in raw_combos:
         nested = defaultdict(dict)
@@ -142,6 +161,9 @@ def unflatten(data, raw_combos, conditions):
                     actual_val = inner_dict[check_key]
                     break
             
+            if actual_val is None and defaults:
+                # Condition parameter not varied: take its scalar value from the template.
+                actual_val = defaults.get(check_key)
             if actual_val != required_val:
                 if target_dict in nested:
                     del nested[target_dict]
@@ -174,7 +196,15 @@ def build_link_name(patch):
             parts.append(f"{_sanitize_for_name(parameter)}_{_sanitize_for_name(value)}")
     return "_".join(parts) if parts else "sim"
 
-def main(original_param_path, rules):
+# Groups that are kept only if a parameter has a given value (group -> (parameter, value)).
+RULES = {
+    'var_hubbard': ('ham_name', 'Hubbard'),
+    'var_tv': ('ham_name', 'tV')
+}
+
+
+def main(original_param_path, rules, outdir=".", links=True):
+    """Write outdir/Temp_<i>/parameters for every combination; return the list of patches (one dict per Temp_i)."""
     original_nml = f90nml.read(original_param_path)
     extracted_information = cleanup_dirty_list(original_nml)
     data = extracted_information
@@ -182,33 +212,116 @@ def main(original_param_path, rules):
     flattend = flatten_dict(data)
     grouped = group_something(flatten_dict(data))
     linked = zip_linked(flattend, grouped)
-    l_of_patches = safely_deduplicate(unflatten(data, cartesian_product(linked), rules))
-    
+    defaults = {k: v for group in original_nml.values() for k, v in group.items() if not isinstance(v, list)}
+    l_of_patches = safely_deduplicate(unflatten(data, cartesian_product(linked), rules, defaults))
+
     for i, el in enumerate(l_of_patches):
-        sim_path = os.path.join(".", f"Temp_{i}")
-        param_path = os.path.join(sim_path, "parameters")
-        
-        subprocess.run(["mkdir", "-p", sim_path], check=True)
-        subprocess.run(["cp", "parameters", sim_path], check=True)
-        
-        apply_patch(original_param_path, el, param_path)
+        sim_dir = f"Temp_{i}"
+        os.makedirs(os.path.join(outdir, sim_dir), exist_ok=True)
+        apply_patch(original_param_path, el, os.path.join(outdir, sim_dir, "parameters"))
 
-        link_name = build_link_name(el)
-        if os.path.lexists(link_name):
-            os.unlink(link_name)
-        subprocess.run(["ln", "-s", sim_path, link_name], check=True)
+        if links:
+            link_name = os.path.join(outdir, build_link_name(el))
+            if os.path.lexists(link_name):
+                os.unlink(link_name)
+            os.symlink(os.path.join(".", sim_dir), link_name)
+    return l_of_patches
 
 
-if __name__=="__main__":
-    rules = {
-        'var_hubbard': ('ham_name', 'Hubbard'),
-        'var_tv': ('ham_name', 'tV')
-    }
+SELF_TEST_TEMPLATE = """&VAR_ham_name
+ham_name = {"Hubbard"}
+/
+&VAR_lattice
+L1           = {4, 6, 8}
+L2           = [4, 6, 8; VAR_lattice, L1]
+Lattice_type = "Square"
+Model        = "Hubbard"
+/
+&VAR_Model_Generic
+N_Phi        = [8, 18, 32; VAR_lattice, L1]
+Beta         = [4.d0, 6.d0, 8.d0; VAR_lattice, L1]
+Dtau         = 0.1d0
+/
+&VAR_TEMP
+mpi_per_parameter_set = 2
+/
+&VAR_Hubbard
+ham_U        = {1.0d0, 4.0d0}
+ham_T        = 1.d0
+/
+&VAR_tV
+ham_V        = {1.d0, 2.d0}
+/
+&VAR_errors
+n_skip = 1
+/
+"""
 
-    main("parameters", rules)
+
+def plain_namelist_check(path, skip=()):
+    """Standard-library check: balanced &group ... / blocks, one 'key = value' per line, no set/link syntax left
+    (except in the groups in skip)."""
+    groups, open_group = [], None
+    for line in open(path):
+        line = line.split("!")[0].strip()
+        if not line:
+            continue
+        if line.startswith("&"):
+            assert open_group is None, f"{path}: nested group {line}"
+            open_group = line[1:].lower()
+        elif line == "/":
+            assert open_group is not None, f"{path}: '/' outside a group"
+            groups.append(open_group)
+            open_group = None
+        else:
+            assert open_group is not None and "=" in line, f"{path}: bad line {line!r}"
+            assert open_group in skip or not any(c in line for c in "{}[];"), f"{path}: set/link syntax left: {line!r}"
+    assert open_group is None, f"{path}: group {open_group} not closed"
+    return groups
 
 
-    #TODO: def automatic_rules()
-    #TODO: link names
-    #TODO: MPI PER PARAMETER SET klären!
-    #TODO: MODEL to list!
+def self_test():
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        tmpl = os.path.join(d, "parameters")
+        open(tmpl, "w").write(SELF_TEST_TEMPLATE)
+        patches = main(tmpl, RULES, outdir=d)
+        # VAR_tV/ham_V is a set too, but ham_name = "Hubbard": it must not multiply the number of sets.
+        assert len(patches) == 6, f"expected 3 lattices x 2 U = 6 sets, got {len(patches)}"
+        seen = set()
+        for i in range(len(patches)):
+            p = os.path.join(d, f"Temp_{i}", "parameters")
+            plain_namelist_check(p, skip=("var_tv",))
+            nml = f90nml.read(p)
+            l1, l2 = nml["var_lattice"]["l1"], nml["var_lattice"]["l2"]
+            assert l1 == l2 and nml["var_model_generic"]["n_phi"] == l1 * l1 // 2, f"{p}: linked values wrong"
+            assert nml["var_model_generic"]["beta"] == float(l1) and nml["var_model_generic"]["dtau"] == 0.1
+            assert nml["var_errors"]["n_skip"] == 1 and nml["var_temp"]["mpi_per_parameter_set"] == 2
+            seen.add((l1, nml["var_hubbard"]["ham_u"]))
+            link = os.path.join(d, build_link_name(patches[i]))
+            assert os.path.realpath(link) == os.path.realpath(os.path.dirname(p)), f"link {link} wrong"
+        assert seen == {(l, u) for l in (4, 6, 8) for u in (1.0, 4.0)}, f"combinations wrong: {sorted(seen)}"
+    with tempfile.TemporaryDirectory() as d:
+        # ham_name given as a scalar: the sets in VAR_Hubbard must still be expanded.
+        tmpl = os.path.join(d, "parameters")
+        open(tmpl, "w").write(SELF_TEST_TEMPLATE.replace('ham_name = {"Hubbard"}', 'ham_name = "Hubbard"'))
+        assert len(main(tmpl, RULES, outdir=d)) == 6, "scalar ham_name: VAR_Hubbard sets not expanded"
+    print("prepare_sim.py self-test: OK (6 parameter sets, linked lists, rules, symlinks, namelists parse)")
+
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("-t", "--template", default="parameters", help="template parameters file (default: ./parameters)")
+    ap.add_argument("-o", "--outdir", default=".", help="where Temp_<i>/ and the links are created (default: .)")
+    ap.add_argument("--no-links", action="store_true", help="do not create the descriptive symbolic links")
+    ap.add_argument("--self-test", action="store_true", help="run the generator on a built-in example in a temporary "
+                    "directory and check the result")
+    args = ap.parse_args()
+    if args.self_test:
+        self_test()
+    else:
+        patches = main(args.template, RULES, outdir=args.outdir, links=not args.no_links)
+        nper = f90nml.read(args.template).get("var_temp", {}).get("mpi_per_parameter_set")
+        print(f"{len(patches)} parameter sets written to {os.path.join(args.outdir, 'Temp_<i>')}")
+        if isinstance(nper, int):
+            print(f"mpi_per_parameter_set = {nper}: run with mpiexec -n {len(patches) * nper}")
