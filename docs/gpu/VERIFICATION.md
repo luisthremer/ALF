@@ -88,6 +88,13 @@ only once calibrated), and maxima are compared only between runs of identical le
   (all 38 datasets and the full-precision Precision lines); the default path is **not** (20 of 38 datasets differ, first
   in `Den_eq/back` at ~1e-12 relative; Precision Green mean 6.188 vs 6.180e-10). Until the hardening ticket (212) makes
   it reproducible, replay and non-interference gates run on the LOG path only, and this is stated in the file.
+  **Correction 2026-11-13: ticket 212 fixed this.** The default path is run-to-run bitwise reproducible (same binary, same seeds) since 212
+  (closed and merged into `gpu-port`, `tickets/212-verification-hardening.md`): `k_colnorms`, `k_lognorm`, `k_prec` have a fixed summation order (one thread
+  per column, serial sum; `gpu_stab_mod.F90:1539,1591`, `alf_la_mod.F90:1449`), the CUDA backend sets cuSOLVER deterministic mode and cuBLAS atomics off
+  (`alf_la_mod.F90:1216`), and the micro-test `t_determinism` checks `la_qrpp` pivots and factors bit for bit. Acceptance T2 of 212 (2026-10-30): determinism, 4
+  pairs bit-identical, no measurable cost (default N = 144: 1.507 vs 1.501 s per sweep). The restriction "replay and non-interference gates on the LOG path
+  only" therefore no longer applies to the default path on the NVIDIA backend that was measured; for oneMKL and HIP bit identity of re-runs was measured in the
+  later sessions only for the settings listed in `CONSOLIDATION.md` (bitwise identical to the pre-merge tip). The measurement above stays as the record of the state before 212.
 - MPS and CPU jobs alongside do not change results: LOG runs under MPS (2 clients), next to a time-sliced second
   process, or next to 2–3 CPU runs gave `data.h5` bit-identical to a solo run (2026-10-29).
 - Across source changes: the documented relative bounds (same-seed per-bin 1e-9 overall and in the τ line, no bin
