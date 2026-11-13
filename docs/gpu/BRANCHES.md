@@ -22,13 +22,19 @@ upstream).
 | `Prog/Hamiltonian_main_mod.F90` | `Obs_local` private (upstream). | `Obs_local` public (used by `gpu_obs_mod`). |
 | `Prog/gpu_obs_mod.F90` | no device accumulators for local observables; with `ham_h0 /= 0` the device measurement declines and the host `Obser` measures. | `local_obs`, `lacc1/lacc2`: device accumulators of `SpinZ_local(tau)`. |
 | `Libraries/Modules/alf_hipk_mod.F90`, `alf_hip_kernels.hip.cpp` | no `hk_local` kernel. | `hk_local` / `alfhk_local` (HIP version of `local_obs`). |
+| `Prog/observables_mod.F90`, `Analysis/ana.F90`, `ana_hdf5.F90`, `ana_mod.F90` | master's files (local observables with `Nt = 1` only). | tau-resolved local observables (`Nt > 1`, `_localtau` analysis). |
 | `testsuite/Run.tests/` | `run-schemes` on the standard Hubbard model (`ham_h0 = 0`). | `run-schemes` on the defect, plus `run-pinning` and `run-local`. |
 | `docs/gpu/` | this file, banners. | — |
 
-Kept on `gpu-port` as generic, inert features: `Prog/OpT_time_dependent.F90` (time-dependent
-hopping operator `Op_T%g_t`, with its device support in `gpu_wrap_mod`/`gpu_tau_mod` and unit
-test `36-OpT-time-dependent`). No Hamiltonian of this branch sets `g_t`, so the code path is the
-upstream one; a user model can opt in.
+Kept on `gpu-port` as generic, inert features: the device support of upstream's time-dependent
+hopping operator (`Prog/OpT_time_dependent.F90`, `Op_T%g_t`, unchanged from master) in
+`Hop_mod`/`gpu_wrap_mod`/`gpu_tau_mod`, and the unit test `36-OpT-time-dependent`. No
+Hamiltonian of this branch sets `g_t`, so the code path is the upstream one; a user model can
+opt in.
+
+Removed with the defect (back to master): the support for tau-resolved local observables
+(`Obser_Latt_Local` with `Nt > 1` in `Prog/observables_mod.F90`, `_localtau` analysis in
+`Analysis/ana.F90`, `ana_hdf5.F90`, `ana_mod.F90`); on `gpu-port-unified` it is still there.
 
 Defect-production material that is still in this tree but only makes sense on
 `gpu-port-unified`: `docs/gpu/TIMEDEP_HOPPING.md`, `docs/gpu/TUNING_DEFECT.md`,
