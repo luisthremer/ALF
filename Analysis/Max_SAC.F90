@@ -86,7 +86,7 @@ Program MaxEnt_Wrapper
        ! ranks 1..Isize-1 compute in their own directories MaxSAC_rank_<r>/ with own seeds.
        Integer                             :: Isize = 1, Irank = 0, ierr, k_seed, i_seed
        Integer, Allocatable                :: seed_vec(:)
-       Logical                             :: Use_MPI
+       Logical                             :: Use_MPI, MPI_on = .false.
 #ifdef MPI
        Integer                             :: mpi_stat(MPI_STATUS_SIZE)
 #endif
@@ -141,9 +141,14 @@ Program MaxEnt_Wrapper
        NAMELIST /VAR_errors/    N_skip, N_rebin, N_cov,  N_Back, N_auto,  N_BZ_Zones,  Extended_Zone
 
 #ifdef MPI
-       Call MPI_Init(ierr)
-       Call MPI_Comm_size(MPI_COMM_WORLD, Isize, ierr)
-       Call MPI_Comm_rank(MPI_COMM_WORLD, Irank, ierr)
+       ! Start MPI only if the program was launched by an MPI launcher. Run directly, Max_SAC
+       ! stays serial as before: some MPI installations cannot start without mpirun.
+       MPI_on = Launched_by_MPI()
+       If (MPI_on) then
+          Call MPI_Init(ierr)
+          Call MPI_Comm_size(MPI_COMM_WORLD, Isize, ierr)
+          Call MPI_Comm_rank(MPI_COMM_WORLD, Irank, ierr)
+       endif
 #endif
 #ifdef _OPENMP
        call check_omp_num_threads()
@@ -164,7 +169,7 @@ Program MaxEnt_Wrapper
        Use_MPI = Isize > 1 .and. Stochastic .and. N_boot > 1
        If (Isize > 1 .and. .not. Use_MPI .and. Irank /= 0) then
 #ifdef MPI
-          Call MPI_Finalize(ierr)
+          If (MPI_on) Call MPI_Finalize(ierr)
 #endif
           Stop
        endif
@@ -721,10 +726,29 @@ Program MaxEnt_Wrapper
 
        call clean_Set_Ra_ba()
 #ifdef MPI
-       Call MPI_Finalize(ierr)
+       If (MPI_on) Call MPI_Finalize(ierr)
 #endif
 
      contains
+
+       !> True if one of the environment variables set by common MPI launchers exists
+       !> (Open MPI mpirun, MPICH/Intel MPI hydra, PMI/PMIx as used by srun, MVAPICH).
+       Logical function Launched_by_MPI()
+         Implicit none
+         Character (len=24), parameter :: names(6) = [Character(len=24) :: &
+              & "OMPI_COMM_WORLD_SIZE", "PMI_SIZE", "PMI_RANK", "PMIX_RANK", &
+              & "MV2_COMM_WORLD_SIZE", "MPI_LOCALNRANKS"]
+         Character (len=32) :: val
+         Integer :: k, stat_env
+         Launched_by_MPI = .false.
+         Do k = 1, size(names)
+            Call get_environment_variable(trim(names(k)), val, status=stat_env)
+            If (stat_env == 0 .or. stat_env == -1) then
+               Launched_by_MPI = .true.
+               return
+            endif
+         Enddo
+       end function Launched_by_MPI
 
        !> Reads the result of one bootstrap sample (files in MaxEnt_stoch_dir) into B.
        Subroutine Read_sample(B)
