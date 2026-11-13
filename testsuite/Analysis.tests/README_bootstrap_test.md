@@ -96,6 +96,7 @@ mpirun -np 8 /path/to/ALF/Analysis/Max_SAC.out
 * The results are the same files as in the serial run, in the current directory.
 * Only the bootstrap is parallel: with `N_boot = 1` or classic MaxEnt the extra
   ranks exit immediately. Use at least 2 ranks; `N_boot` a multiple of N−1 keeps
-  all workers busy. The wall time is about (⌈N_boot/(N−1)⌉ + 1) single runs.
+  all workers busy. The wall time is about ⌈N_boot/(N−1)⌉ single runs, since the
+  reference run on rank 0 runs at the same time as the first samples.
 * The `MaxSAC_rank_*` directories can be deleted afterwards.
 
