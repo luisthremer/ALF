@@ -1,0 +1,25 @@
+device Intel(R) Data Center GPU Max 1550 mode=race_panel nb=16 plant=0
+QR2_DELAY=unset QR2_PDELAY=500 RACE_REPS=3
+PASS geqrf m=  64 n=  64 type=0 nb=16 rc=0  dR=2.59e-15 dV=4.72e-15 dtau=2.28e-15  orth host=9.99e-16 dev=8.88e-16
+PASS geqrf m=  64 n=  64 type=0 nb=16 rc=0  dR=2.59e-15 dV=4.72e-15 dtau=2.28e-15  orth host=9.99e-16 dev=8.88e-16
+PASS geqrf m=  64 n=  64 type=0 nb=16 rc=0  dR=2.59e-15 dV=4.72e-15 dtau=2.28e-15  orth host=9.99e-16 dev=8.88e-16
+PASS geqrf m= 128 n= 128 type=0 nb=16 rc=0  dR=8.83e-15 dV=6.00e-14 dtau=8.49e-15  orth host=1.11e-15 dev=8.88e-16 [last row skipped]
+PASS geqrf m= 128 n= 128 type=0 nb=16 rc=0  dR=8.83e-15 dV=6.00e-14 dtau=8.49e-15  orth host=1.11e-15 dev=8.88e-16 [last row skipped]
+PASS geqrf m= 128 n= 128 type=0 nb=16 rc=0  dR=8.83e-15 dV=6.00e-14 dtau=8.49e-15  orth host=1.11e-15 dev=8.88e-16 [last row skipped]
+PASS geqrf m= 192 n= 192 type=0 nb=16 rc=0  dR=5.07e-15 dV=2.41e-14 dtau=3.15e-15  orth host=1.11e-15 dev=1.11e-15 [last row skipped]
+PASS geqrf m= 192 n= 192 type=0 nb=16 rc=0  dR=5.07e-15 dV=2.41e-14 dtau=3.15e-15  orth host=1.11e-15 dev=1.11e-15 [last row skipped]
+PASS geqrf m= 192 n= 192 type=0 nb=16 rc=0  dR=5.07e-15 dV=2.41e-14 dtau=3.15e-15  orth host=1.11e-15 dev=1.11e-15 [last row skipped]
+PASS geqrf m= 256 n= 256 type=0 nb=16 rc=0  dR=7.13e-15 dV=1.58e-14 dtau=7.70e-15  orth host=1.33e-15 dev=1.33e-15 [last row skipped]
+PASS geqrf m= 256 n= 256 type=0 nb=16 rc=0  dR=7.13e-15 dV=1.58e-14 dtau=7.70e-15  orth host=1.33e-15 dev=1.33e-15 [last row skipped]
+PASS geqrf m= 256 n= 256 type=0 nb=16 rc=0  dR=7.13e-15 dV=1.58e-14 dtau=7.70e-15  orth host=1.33e-15 dev=1.33e-15 [last row skipped]
+PASS geqrf m= 384 n= 384 type=0 nb=16 rc=0  dR=6.48e-15 dV=1.76e-14 dtau=5.37e-15  orth host=1.55e-15 dev=1.55e-15 [last row skipped]
+PASS geqrf m= 384 n= 384 type=0 nb=16 rc=0  dR=6.48e-15 dV=1.76e-14 dtau=5.37e-15  orth host=1.55e-15 dev=1.55e-15 [last row skipped]
+PASS geqrf m= 384 n= 384 type=0 nb=16 rc=0  dR=6.48e-15 dV=1.76e-14 dtau=5.37e-15  orth host=1.55e-15 dev=1.55e-15 [last row skipped]
+PASS geqrf m= 576 n= 576 type=0 nb=16 rc=0  dR=1.11e-14 dV=4.07e-14 dtau=1.22e-14  orth host=1.33e-15 dev=1.11e-15 [last row skipped]
+PASS geqrf m= 576 n= 576 type=0 nb=16 rc=0  dR=1.11e-14 dV=4.07e-14 dtau=1.22e-14  orth host=1.33e-15 dev=1.11e-15 [last row skipped]
+PASS geqrf m= 576 n= 576 type=0 nb=16 rc=0  dR=1.11e-14 dV=4.07e-14 dtau=1.22e-14  orth host=1.33e-15 dev=1.11e-15 [last row skipped]
+PASS geqrf m= 768 n= 768 type=0 nb=16 rc=0  dR=2.61e-14 dV=8.58e-14 dtau=2.45e-14  orth host=1.89e-15 dev=1.33e-15 [last row skipped]
+PASS geqrf m= 768 n= 768 type=0 nb=16 rc=0  dR=2.61e-14 dV=8.58e-14 dtau=2.45e-14  orth host=1.89e-15 dev=1.33e-15 [last row skipped]
+PASS geqrf m= 768 n= 768 type=0 nb=16 rc=0  dR=2.61e-14 dV=8.58e-14 dtau=2.45e-14  orth host=1.89e-15 dev=1.33e-15 [last row skipped]
+race_panel: 21 cases, 0 failing (ALFDEVQR_G=1)
+rc=0 wall=3 s

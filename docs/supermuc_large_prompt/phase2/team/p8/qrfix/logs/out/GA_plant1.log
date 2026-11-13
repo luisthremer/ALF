@@ -1,0 +1,107 @@
+device Intel(R) Data Center GPU Max 1550 mode=correct nb=16 plant=1
+FAIL geqrf m=  36 n=  36 type=0 nb=16 rc=0  dR=3.83e-15 dV=7.03e-15 dtau=1.00e-12  orth host=8.88e-16 dev=2.03e-12
+FAIL geqrf m= 144 n= 144 type=0 nb=16 rc=0  dR=1.08e-14 dV=1.59e-14 dtau=1.00e-12  orth host=1.11e-15 dev=2.06e-12 [last row skipped]
+FAIL geqrf m= 576 n= 576 type=0 nb=16 rc=0  dR=1.62e-14 dV=5.57e-14 dtau=1.00e-12  orth host=1.33e-15 dev=2.02e-12 [last row skipped]
+FAIL geqrf m=1024 n=1024 type=0 nb=16 rc=0  dR=1.98e-14 dV=6.78e-14 dtau=1.00e-12  orth host=1.67e-15 dev=2.00e-12 [last row skipped]
+FAIL geqrf m=  36 n=  36 type=1 nb=16 rc=0  dR=1.69e-15 dV=4.34e-15 dtau=1.00e-12  orth host=8.88e-16 dev=2.03e-12
+FAIL geqrf m= 144 n= 144 type=1 nb=16 rc=0  dR=7.20e-15 dV=3.79e-14 dtau=1.00e-12  orth host=1.11e-15 dev=2.06e-12 [last row skipped]
+FAIL geqrf m= 576 n= 576 type=1 nb=16 rc=0  dR=1.41e-14 dV=2.93e-14 dtau=1.00e-12  orth host=1.33e-15 dev=2.02e-12 [last row skipped]
+FAIL geqrf m=1024 n=1024 type=1 nb=16 rc=0  dR=2.05e-14 dV=4.93e-14 dtau=1.00e-12  orth host=1.55e-15 dev=2.00e-12 [last row skipped]
+FAIL geqrf m=  36 n=  36 type=2 nb=16 rc=0  dR=3.01e-15 dV=5.23e-15 dtau=1.00e-12  orth host=8.88e-16 dev=2.03e-12
+FAIL geqrf m= 144 n= 144 type=2 nb=16 rc=0  dR=1.17e-14 dV=1.48e-14 dtau=1.00e-12  orth host=1.11e-15 dev=2.06e-12 [last row skipped]
+FAIL geqrf m= 576 n= 576 type=2 nb=16 rc=0  dR=1.47e-14 dV=4.14e-14 dtau=1.00e-12  orth host=1.22e-15 dev=2.02e-12 [last row skipped]
+FAIL geqrf m=1024 n=1024 type=2 nb=16 rc=0  dR=1.46e-14 dV=4.31e-14 dtau=1.00e-12  orth host=1.55e-15 dev=2.00e-12 [last row skipped]
+FAIL geqrf m=  36 n=  36 type=4 nb=16 rc=0  dR=1.68e-15 dV=4.90e-15 dtau=1.00e-12  orth host=1.44e-15 dev=2.03e-12
+FAIL geqrf m= 144 n= 144 type=4 nb=16 rc=0  dR=1.27e-14 dV=4.98e-14 dtau=1.00e-12  orth host=1.11e-15 dev=2.06e-12 [last row skipped]
+FAIL geqrf m= 576 n= 576 type=4 nb=16 rc=0  dR=1.22e-14 dV=5.86e-14 dtau=1.00e-12  orth host=1.33e-15 dev=2.02e-12 [last row skipped]
+FAIL geqrf m=1024 n=1024 type=4 nb=16 rc=0  dR=1.61e-14 dV=5.53e-14 dtau=1.00e-12  orth host=1.55e-15 dev=2.00e-12 [last row skipped]
+PASS geqrf m=  36 n=  36 type=5 nb=16 rc=0  dR=2.62e-15 dV=5.06e-15 dtau=1.67e-15  orth host=8.88e-16 dev=7.77e-16
+PASS geqrf m= 144 n= 144 type=5 nb=16 rc=0  dR=3.18e-15 dV=8.02e-15 dtau=4.29e-15  orth host=1.22e-15 dev=8.88e-16 [last row skipped]
+PASS geqrf m= 576 n= 576 type=5 nb=16 rc=0  dR=8.23e-15 dV=4.29e-14 dtau=1.33e-14  orth host=1.55e-15 dev=1.22e-15
+PASS geqrf m=1024 n=1024 type=5 nb=16 rc=0  dR=1.99e-14 dV=3.24e-14 dtau=1.59e-14  orth host=1.55e-15 dev=1.44e-15 [last row skipped]
+FAIL geqrf m= 576 n= 144 type=0 nb=16 rc=0  dR=4.42e-16 dV=1.39e-15 dtau=1.00e-12  orth host=1.11e-15 dev=2.03e-12
+FAIL geqrf m= 144 n= 576 type=0 nb=16 rc=0  dR=5.79e-15 dV=9.12e-15 dtau=1.00e-12  orth host=1.55e-15 dev=2.06e-12 [last row skipped]
+FAIL geqrf m=1000 n=  37 type=0 nb=16 rc=0  dR=3.27e-16 dV=8.81e-16 dtau=1.00e-12  orth host=1.11e-15 dev=2.00e-12
+FAIL geqrf m=  37 n=1000 type=0 nb=16 rc=0  dR=4.87e-15 dV=2.72e-15 dtau=1.00e-12  orth host=6.66e-16 dev=2.01e-12 [last row skipped]
+FAIL geqrf m=1300 n=  90 type=0 nb=16 rc=0  dR=7.02e-16 dV=1.24e-15 dtau=1.00e-12  orth host=1.11e-15 dev=2.02e-12
+FAIL geqrf m=1536 n=  64 type=0 nb=16 rc=0  dR=3.95e-16 dV=1.21e-15 dtau=1.00e-12  orth host=9.99e-16 dev=2.01e-12
+PASS geqrf m= 576 n= 144 type=5 nb=16 rc=0  dR=4.43e-16 dV=1.35e-15 dtau=2.25e-16  orth host=1.33e-15 dev=8.88e-16
+PASS geqrf m= 144 n= 576 type=5 nb=16 rc=0  dR=9.11e-15 dV=5.11e-15 dtau=2.48e-15  orth host=1.33e-15 dev=1.11e-15 [last row skipped]
+PASS geqrf m=1000 n=  37 type=5 nb=16 rc=0  dR=4.36e-16 dV=8.55e-16 dtau=2.20e-16  orth host=1.33e-15 dev=1.33e-15
+PASS geqrf m=  37 n=1000 type=5 nb=16 rc=0  dR=4.97e-15 dV=2.00e-14 dtau=1.29e-15  orth host=4.44e-16 dev=8.88e-16 [last row skipped]
+PASS geqrf m=1300 n=  90 type=5 nb=16 rc=0  dR=4.38e-16 dV=1.23e-15 dtau=2.23e-16  orth host=1.22e-15 dev=1.22e-15
+PASS geqrf m=1536 n=  64 type=5 nb=16 rc=0  dR=3.90e-16 dV=9.37e-16 dtau=2.22e-16  orth host=1.11e-15 dev=6.66e-16
+FAIL geqrf m= 576 n= 576 type=0 nb= 8 rc=0  dR=1.02e-14 dV=3.24e-14 dtau=1.00e-12  orth host=1.33e-15 dev=2.02e-12 [last row skipped]
+FAIL geqrf m=1024 n=1024 type=0 nb= 8 rc=0  dR=1.48e-14 dV=5.41e-14 dtau=1.00e-12  orth host=1.67e-15 dev=2.00e-12 [last row skipped]
+FAIL geqrf m= 576 n= 576 type=0 nb=32 rc=0  dR=1.80e-14 dV=3.90e-14 dtau=1.00e-12  orth host=1.33e-15 dev=2.02e-12 [last row skipped]
+FAIL geqrf m=1024 n=1024 type=0 nb=32 rc=0  dR=2.44e-14 dV=5.89e-14 dtau=1.00e-12  orth host=1.67e-15 dev=2.00e-12 [last row skipped]
+FAIL geqrf m=   5 n=   5 type=0 nb=16 rc=0  dR=4.57e-16 dV=6.50e-16 dtau=1.00e-12  orth host=3.33e-16 dev=2.51e-12
+FAIL geqrf m=   1 n=   1 type=0 nb=16 rc=0  dR=1.15e-16 dV=0.00e+00 dtau=1.00e-12  orth host=3.14e-18 dev=2.34e-12
+FAIL geqrf m=  17 n=  33 type=2 nb=16 rc=0  dR=1.21e-15 dV=9.92e-16 dtau=1.00e-12  orth host=7.77e-16 dev=2.04e-12
+FAIL geqrf m= 577 n= 577 type=0 nb=16 rc=0  dR=1.38e-14 dV=3.01e-14 dtau=1.00e-12  orth host=1.33e-15 dev=2.06e-12 [last row skipped]
+FAIL geqrf m= 130 n= 130 type=1 nb=16 rc=0  dR=2.67e-15 dV=4.93e-14 dtau=1.00e-12  orth host=1.33e-15 dev=2.03e-12 [last row skipped]
+PASS unmqr LN m=  36 n=  36 k=  36 type=0 rc=0  reldiff vs host=6.36e-16
+PASS unmqr LN m= 144 n= 144 k= 144 type=0 rc=0  reldiff vs host=1.18e-15
+PASS unmqr LN m= 576 n= 576 k= 576 type=0 rc=0  reldiff vs host=1.49e-15
+PASS unmqr LN m=1024 n=1024 k=1024 type=0 rc=0  reldiff vs host=2.00e-15
+PASS unmqr LN m= 576 n= 576 k= 576 type=1 rc=0  reldiff vs host=1.58e-15
+PASS unmqr LN m= 576 n= 576 k= 576 type=5 rc=0  reldiff vs host=2.05e-15
+PASS unmqr LN m= 200 n=  90 k=  70 type=0 rc=0  reldiff vs host=1.14e-15
+PASS unmqr LN m=  90 n= 200 k=  60 type=0 rc=0  reldiff vs host=8.60e-16
+PASS unmqr LN m=1000 n=  33 k=  33 type=0 rc=0  reldiff vs host=7.66e-16
+PASS unmqr LN m=  33 n=1000 k=  33 type=0 rc=0  reldiff vs host=1.12e-15
+PASS unmqr LN m=1300 n= 100 k= 100 type=0 rc=0  reldiff vs host=1.16e-15
+PASS unmqr LN m= 100 n=1300 k= 100 type=0 rc=0  reldiff vs host=1.14e-15
+PASS unmqr LN m=   7 n=   5 k=   5 type=0 rc=0  reldiff vs host=2.42e-16
+PASS unmqr LN m=   1 n=   1 k=   1 type=0 rc=0  reldiff vs host=0.00e+00
+PASS unmqr LN m= 577 n= 577 k= 300 type=0 rc=0  reldiff vs host=1.56e-15
+PASS unmqr LC m=  36 n=  36 k=  36 type=0 rc=0  reldiff vs host=5.96e-16
+PASS unmqr LC m= 144 n= 144 k= 144 type=0 rc=0  reldiff vs host=1.02e-15
+PASS unmqr LC m= 576 n= 576 k= 576 type=0 rc=0  reldiff vs host=1.53e-15
+PASS unmqr LC m=1024 n=1024 k=1024 type=0 rc=0  reldiff vs host=1.97e-15
+PASS unmqr LC m= 576 n= 576 k= 576 type=1 rc=0  reldiff vs host=1.51e-15
+PASS unmqr LC m= 576 n= 576 k= 576 type=5 rc=0  reldiff vs host=1.55e-15
+PASS unmqr LC m= 200 n=  90 k=  70 type=0 rc=0  reldiff vs host=8.99e-16
+PASS unmqr LC m=  90 n= 200 k=  60 type=0 rc=0  reldiff vs host=6.82e-16
+PASS unmqr LC m=1000 n=  33 k=  33 type=0 rc=0  reldiff vs host=7.28e-16
+PASS unmqr LC m=  33 n=1000 k=  33 type=0 rc=0  reldiff vs host=1.26e-15
+PASS unmqr LC m=1300 n= 100 k= 100 type=0 rc=0  reldiff vs host=1.04e-15
+PASS unmqr LC m= 100 n=1300 k= 100 type=0 rc=0  reldiff vs host=1.14e-15
+PASS unmqr LC m=   7 n=   5 k=   5 type=0 rc=0  reldiff vs host=1.58e-16
+PASS unmqr LC m=   1 n=   1 k=   1 type=0 rc=0  reldiff vs host=0.00e+00
+PASS unmqr LC m= 577 n= 577 k= 300 type=0 rc=0  reldiff vs host=1.33e-15
+PASS unmqr RN m=  36 n=  36 k=  36 type=0 rc=0  reldiff vs host=6.80e-16
+PASS unmqr RN m= 144 n= 144 k= 144 type=0 rc=0  reldiff vs host=1.10e-15
+PASS unmqr RN m= 576 n= 576 k= 576 type=0 rc=0  reldiff vs host=1.62e-15
+PASS unmqr RN m=1024 n=1024 k=1024 type=0 rc=0  reldiff vs host=1.78e-15
+PASS unmqr RN m= 576 n= 576 k= 576 type=1 rc=0  reldiff vs host=1.53e-15
+PASS unmqr RN m= 576 n= 576 k= 576 type=5 rc=0  reldiff vs host=1.28e-15
+PASS unmqr RN m= 200 n=  90 k=  70 type=0 rc=0  reldiff vs host=9.02e-16
+PASS unmqr RN m=  90 n= 200 k=  60 type=0 rc=0  reldiff vs host=8.44e-16
+PASS unmqr RN m=1000 n=  33 k=  33 type=0 rc=0  reldiff vs host=1.03e-15
+PASS unmqr RN m=  33 n=1000 k=  33 type=0 rc=0  reldiff vs host=1.79e-15
+PASS unmqr RN m=1300 n= 100 k= 100 type=0 rc=0  reldiff vs host=1.06e-15
+PASS unmqr RN m= 100 n=1300 k= 100 type=0 rc=0  reldiff vs host=1.02e-15
+PASS unmqr RN m=   7 n=   5 k=   5 type=0 rc=0  reldiff vs host=3.11e-16
+PASS unmqr RN m=   1 n=   1 k=   1 type=0 rc=0  reldiff vs host=1.81e-16
+PASS unmqr RN m= 577 n= 577 k= 300 type=0 rc=0  reldiff vs host=1.29e-15
+PASS unmqr RC m=  36 n=  36 k=  36 type=0 rc=0  reldiff vs host=6.59e-16
+PASS unmqr RC m= 144 n= 144 k= 144 type=0 rc=0  reldiff vs host=1.19e-15
+PASS unmqr RC m= 576 n= 576 k= 576 type=0 rc=0  reldiff vs host=1.86e-15
+PASS unmqr RC m=1024 n=1024 k=1024 type=0 rc=0  reldiff vs host=1.99e-15
+PASS unmqr RC m= 576 n= 576 k= 576 type=1 rc=0  reldiff vs host=1.73e-15
+PASS unmqr RC m= 576 n= 576 k= 576 type=5 rc=0  reldiff vs host=1.36e-15
+PASS unmqr RC m= 200 n=  90 k=  70 type=0 rc=0  reldiff vs host=1.04e-15
+PASS unmqr RC m=  90 n= 200 k=  60 type=0 rc=0  reldiff vs host=1.06e-15
+PASS unmqr RC m=1000 n=  33 k=  33 type=0 rc=0  reldiff vs host=1.08e-15
+PASS unmqr RC m=  33 n=1000 k=  33 type=0 rc=0  reldiff vs host=1.37e-15
+PASS unmqr RC m=1300 n= 100 k= 100 type=0 rc=0  reldiff vs host=1.26e-15
+PASS unmqr RC m= 100 n=1300 k= 100 type=0 rc=0  reldiff vs host=1.11e-15
+PASS unmqr RC m=   7 n=   5 k=   5 type=0 rc=0  reldiff vs host=2.08e-16
+PASS unmqr RC m=   1 n=   1 k=   1 type=0 rc=0  reldiff vs host=8.78e-17
+PASS unmqr RC m= 577 n= 577 k= 300 type=0 rc=0  reldiff vs host=1.54e-15
+PASS unitary n=  64  ||Q^H Q - I||=8.88e-16  ||QR-A||/||A||=8.03e-16
+PASS unitary n= 576  ||Q^H Q - I||=1.11e-15  ||QR-A||/||A||=1.82e-15
+PASS unitary n=1024  ||Q^H Q - I||=1.33e-15  ||QR-A||/||A||=2.32e-15
+correctness: 31 failed
+rc=1 wall=9 s

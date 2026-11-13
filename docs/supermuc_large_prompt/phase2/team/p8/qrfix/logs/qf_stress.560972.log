@@ -1,0 +1,65 @@
+start 2026-11-13T11:15:08+01:00 node i20r07c03s02 job 560972
+lib_new rc=0
+lib_tau rc=0
+lib_v rc=0
+-rwxr-xr-x 1 di38zuw hpcusers 4456256 Nov 13 11:15 lib_new/libalfdevqr.so
+-rwxr-xr-x 1 di38zuw hpcusers 4448064 Nov 13 11:15 lib_tau/libalfdevqr.so
+-rwxr-xr-x 1 di38zuw hpcusers 4415296 Nov 13 11:15 lib_v/libalfdevqr.so
+xpu-smi dev 0:       1 | 3. GPU Power               | Status: OK                                                          |
+xpu-smi dev 0:       1 | 5. Xe Link Port            | Status: OK                                                          |
+xpu-smi dev 0:       1 | 6. GPU Frequency           | Status: OK                                                          |
+xpu-smi dev 1:       1 | 3. GPU Power               | Status: OK                                                          |
+xpu-smi dev 1:       1 | 5. Xe Link Port            | Status: OK                                                          |
+xpu-smi dev 1:       1 | 6. GPU Frequency           | Status: OK                                                          |
+xpu-smi dev 2:       1 | 3. GPU Power               | Status: OK                                                          |
+xpu-smi dev 2:       1 | 5. Xe Link Port            | Status: OK                                                          |
+xpu-smi dev 2:       1 | 6. GPU Frequency           | Status: OK                                                          |
+xpu-smi dev 3:       1 | 3. GPU Power               | Status: OK                                                          |
+xpu-smi dev 3:       1 | 5. Xe Link Port            | Status: OK                                                          |
+xpu-smi dev 3:       1 | 6. GPU Frequency           | Status: OK                                                          |
+CASE S1_tau_N576_G1_pd2000 N=576 sec=150 [ALFSH_DEVQR_LIB=/hppfs/scratch/0C/di38zuw/large_prompt/team/p8/qrfix/lib_tau/libalfdevqr.so ALFDEVQR_G=1 QR2_PDELAY=2000] start 2026-11-13T11:15:47+01:00
+mpiexec rc=0
+  ranks finished: 32 of 32; iterations total: 37053; s/iter mean: 0.12975
+  BAD lines: 0; ranks with BAD: 0; by what: 
+  distinct reference hashes over ranks (1 = all ranks bitwise equal): 1
+  device-kernel calls: geqrf_dev 74106 unmqr_dev 0
+CASE S1_tau_N576_G1_pd2000 end 2026-11-13T11:18:21+01:00
+CASE S2_v_N576_G1_pd2000 N=576 sec=150 [ALFSH_DEVQR_LIB=/hppfs/scratch/0C/di38zuw/large_prompt/team/p8/qrfix/lib_v/libalfdevqr.so ALFDEVQR_G=1 QR2_PDELAY=2000] start 2026-11-13T11:18:21+01:00
+mpiexec rc=0
+  ranks finished: 32 of 32; iterations total: 37371; s/iter mean: 0.128469
+  BAD lines: 9; ranks with BAD: 8; by what:       5 G_NVAR1       4 G_NVAR2 
+  distinct reference hashes over ranks (1 = all ranks bitwise equal): 1
+  device-kernel calls: geqrf_dev 74742 unmqr_dev 0
+  BAD rank   25 it     133 G_NVAR1  rel  6.15E-02 nbits   331776 t      17.9
+  BAD rank   28 it     166 G_NVAR2  rel  4.19E-01 nbits   331776 t      22.0
+  BAD rank    5 it     364 G_NVAR1  rel  1.34E-01 nbits   331776 t      47.3
+CASE S2_v_N576_G1_pd2000 end 2026-11-13T11:20:54+01:00
+CASE S3_tau_N576_Gdef_pd2000 N=576 sec=150 [ALFSH_DEVQR_LIB=/hppfs/scratch/0C/di38zuw/large_prompt/team/p8/qrfix/lib_tau/libalfdevqr.so QR2_PDELAY=2000] start 2026-11-13T11:20:54+01:00
+mpiexec rc=0
+  ranks finished: 32 of 32; iterations total: 37683; s/iter mean: 0.127406
+  BAD lines: 0; ranks with BAD: 0; by what: 
+  distinct reference hashes over ranks (1 = all ranks bitwise equal): 1
+  device-kernel calls: geqrf_dev 75366 unmqr_dev 0
+CASE S3_tau_N576_Gdef_pd2000 end 2026-11-13T11:23:27+01:00
+CASE S4_tau_N576_G1_nodelay N=576 sec=150 [ALFSH_DEVQR_LIB=/hppfs/scratch/0C/di38zuw/large_prompt/team/p8/qrfix/lib_tau/libalfdevqr.so ALFDEVQR_G=1] start 2026-11-13T11:23:27+01:00
+mpiexec rc=0
+  ranks finished: 32 of 32; iterations total: 138698; s/iter mean: 0.0347188
+  BAD lines: 0; ranks with BAD: 0; by what: 
+  distinct reference hashes over ranks (1 = all ranks bitwise equal): 1
+  device-kernel calls: geqrf_dev 277396 unmqr_dev 0
+CASE S4_tau_N576_G1_nodelay end 2026-11-13T11:26:00+01:00
+CASE S5_real_N576_G1_pd2000_d3000 N=576 sec=150 [ALFSH_DEVQR_LIB=/hppfs/scratch/0C/di38zuw/large_prompt/team/p8/qrfix/lib_new/libalfdevqr.so ALFDEVQR_G=1 QR2_PDELAY=2000 QR2_DELAY=3000] start 2026-11-13T11:26:00+01:00
+mpiexec rc=0
+  ranks finished: 32 of 32; iterations total: 6081; s/iter mean: 0.790156
+  BAD lines: 0; ranks with BAD: 0; by what: 
+  distinct reference hashes over ranks (1 = all ranks bitwise equal): 1
+  device-kernel calls: geqrf_dev 12162 unmqr_dev 0
+CASE S5_real_N576_G1_pd2000_d3000 end 2026-11-13T11:28:33+01:00
+CASE S6_real_N1024_Gdef_pd2000_d3000 N=1024 sec=150 [ALFSH_DEVQR_LIB=/hppfs/scratch/0C/di38zuw/large_prompt/team/p8/qrfix/lib_new/libalfdevqr.so QR2_PDELAY=2000 QR2_DELAY=3000] start 2026-11-13T11:28:33+01:00
+mpiexec rc=0
+  ranks finished: 32 of 32; iterations total: 1440; s/iter mean: 3.38625
+  BAD lines: 0; ranks with BAD: 0; by what: 
+  distinct reference hashes over ranks (1 = all ranks bitwise equal): 1
+  device-kernel calls: geqrf_dev 2880 unmqr_dev 0
+CASE S6_real_N1024_Gdef_pd2000_d3000 end 2026-11-13T11:31:09+01:00
+end 2026-11-13T11:31:09+01:00

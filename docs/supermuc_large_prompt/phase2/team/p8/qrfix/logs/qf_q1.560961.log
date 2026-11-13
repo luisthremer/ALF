@@ -1,0 +1,54 @@
+start 2026-11-13T11:09:29+01:00 node i20r02c02s10
+GIT_HEAD of the source tree: 7e8b6032a820778caf376a415aaf1cb03098b8f3
+build ex_d rc=0
+build v_d rc=0
+build tau_d rc=0
+build new_d rc=0
+build new_plain rc=0
+build old_d rc=0
+build old_plain rc=0
+builds done in 36 s
+total 0
+-rwxr-xr-x 1 di38zuw hpcusers 4758088 Nov 13 11:10 qr2_ex_d
+-rwxr-xr-x 1 di38zuw hpcusers 4758088 Nov 13 11:10 qr2_new_d
+-rwxr-xr-x 1 di38zuw hpcusers 4684360 Nov 13 11:10 qr2_new_plain
+-rwxr-xr-x 1 di38zuw hpcusers 4753936 Nov 13 11:10 qr2_old_d
+-rwxr-xr-x 1 di38zuw hpcusers 4680208 Nov 13 11:10 qr2_old_plain
+-rwxr-xr-x 1 di38zuw hpcusers 4749896 Nov 13 11:10 qr2_tau_d
+-rwxr-xr-x 1 di38zuw hpcusers 4717128 Nov 13 11:10 qr2_v_d
+049cb32e6244816cf3ce347dfd63ffc5  hdr_ex/alf_la_sycl_qr2.hpp
+7c318a2f226cd35e41aca23b5145d16b  hdr_new/alf_la_sycl_qr2.hpp
+5499050e101ac73bcde74e3e32c3358e  hdr_old/alf_la_sycl_qr2.hpp
+c3c791c75de6f4de91a38bb062e82334  hdr_tau/alf_la_sycl_qr2.hpp
+05a83d9162d1204dc748e41a13da2c62  hdr_v/alf_la_sycl_qr2.hpp
+51b9103f20bcb2b126e27502509b6f0b  src_head/Libraries/Modules/alf_la_sycl_qr2.hpp
+end 2026-11-13T11:13:21+01:00
+--- A_ex_d0: race_apply: 144 cases, 0 failing; failing cases per pattern: none=0 alt=0 z1=0 z2=0 z3=0 rnd=0  rc=0 wall=92 s
+--- A_ex_d3000: race_apply: 144 cases, 120 failing; failing cases per pattern: none=24 alt=24 z1=24 z2=12 z3=12 rnd=24  rc=1 wall=17 s
+--- A_new_d0: race_apply: 144 cases, 0 failing; failing cases per pattern: none=0 alt=0 z1=0 z2=0 z3=0 rnd=0  rc=0 wall=92 s
+--- A_new_d30000: race_apply: 144 cases, 0 failing; failing cases per pattern: none=0 alt=0 z1=0 z2=0 z3=0 rnd=0  rc=0 wall=34 s
+--- A_new_d3000: race_apply: 144 cases, 0 failing; failing cases per pattern: none=0 alt=0 z1=0 z2=0 z3=0 rnd=0  rc=0 wall=18 s
+--- A_new_d300: race_apply: 144 cases, 0 failing; failing cases per pattern: none=0 alt=0 z1=0 z2=0 z3=0 rnd=0  rc=0 wall=16 s
+--- A_new_plain: race_apply: 144 cases, 0 failing; failing cases per pattern: none=0 alt=0 z1=0 z2=0 z3=0 rnd=0  rc=0 wall=92 s
+--- A_old_d0: race_apply: 144 cases, 0 failing; failing cases per pattern: none=0 alt=0 z1=0 z2=0 z3=0 rnd=0  rc=0 wall=92 s
+--- A_old_d30000: race_apply: 144 cases, 80 failing; failing cases per pattern: none=0 alt=24 z1=20 z2=0 z3=12 rnd=24  rc=1 wall=34 s
+--- A_old_d3000: race_apply: 144 cases, 80 failing; failing cases per pattern: none=0 alt=24 z1=20 z2=0 z3=12 rnd=24  rc=1 wall=18 s
+--- A_old_d300: race_apply: 144 cases, 80 failing; failing cases per pattern: none=0 alt=24 z1=20 z2=0 z3=12 rnd=24  rc=1 wall=16 s
+--- A_old_plain: race_apply: 144 cases, 0 failing; failing cases per pattern: none=0 alt=0 z1=0 z2=0 z3=0 rnd=0  rc=0 wall=92 s
+--- P_new_d_d0: race_panel: 70 cases, 0 failing (ALFDEVQR_G=1)  rc=0 wall=7 s
+--- P_new_d_d5000: race_panel: 21 cases, 0 failing (ALFDEVQR_G=1)  rc=0 wall=4 s
+--- P_new_d_d500: race_panel: 21 cases, 0 failing (ALFDEVQR_G=1)  rc=0 wall=3 s
+--- P_new_d_Gdef_d5000: race_panel: 21 cases, 0 failing (ALFDEVQR_G=default)  rc=0 wall=5 s
+--- P_old_d5000: race_panel: 21 cases, 0 failing (ALFDEVQR_G=1)  rc=0 wall=4 s
+--- P_tau_d_d0: race_panel: 70 cases, 0 failing (ALFDEVQR_G=1)  rc=0 wall=7 s
+--- P_tau_d_d5000: race_panel: 21 cases, 21 failing (ALFDEVQR_G=1)  rc=1 wall=4 s
+--- P_tau_d_d500: race_panel: 21 cases, 21 failing (ALFDEVQR_G=1)  rc=1 wall=3 s
+--- P_tau_d_Gdef_d5000: race_panel: 21 cases, 21 failing (ALFDEVQR_G=default)  rc=1 wall=4 s
+--- P_v_d_d0: race_panel: 70 cases, 0 failing (ALFDEVQR_G=1)  rc=0 wall=7 s
+--- P_v_d_d5000: race_panel: 21 cases, 21 failing (ALFDEVQR_G=1)  rc=1 wall=4 s
+--- P_v_d_d500: race_panel: 21 cases, 21 failing (ALFDEVQR_G=1)  rc=1 wall=3 s
+--- P_v_d_Gdef_d5000: race_panel: 21 cases, 21 failing (ALFDEVQR_G=default)  rc=1 wall=4 s
+--- GA_clean: correctness: 0 failed  rc=0 wall=9 s
+--- GA_plant1: correctness: 31 failed  rc=1 wall=9 s
+--- GA_plant2: correctness: 60 failed  rc=1 wall=9 s
+--- GA_plant3: correctness: 56 failed  rc=1 wall=9 s

@@ -1,0 +1,12 @@
+start 2026-11-13T11:10:01+01:00 node i20r02c06s10 HEAD 7e8b6032a820778caf376a415aaf1cb03098b8f3
+-rwxr-xr-x 1 di38zuw hpcusers  4382528 Nov 13 11:11 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/qrfix/build_aottt/Libraries/Modules/libalfdevqr.so
+-rwxr-xr-x 1 di38zuw hpcusers   139168 Nov 13 11:11 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/qrfix/build_aottt/Libraries/Modules/libalfsb.so
+-rwxr-xr-x 1 di38zuw hpcusers     8160 Nov 13 11:11 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/qrfix/build_aottt/Libraries/Modules/libfakeintel.so
+-rwxr-xr-x 1 di38zuw hpcusers 12191360 Nov 13 11:12 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/qrfix/build_aottt/Prog/ALF.out
+-rwxr-xr-x 1 di38zuw hpcusers  1650496 Nov 13 11:11 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/qrfix/build_txtnew/Libraries/Modules/libalfdevqr.so
+-rwxr-xr-x 1 di38zuw hpcusers    90008 Nov 13 11:11 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/qrfix/build_txtnew/Libraries/Modules/libalfsb.so
+-rwxr-xr-x 1 di38zuw hpcusers     8160 Nov 13 11:11 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/qrfix/build_txtnew/Libraries/Modules/libfakeintel.so
+-rwxr-xr-x 1 di38zuw hpcusers  6279896 Nov 13 11:12 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/qrfix/build_txtnew/Prog/ALF.out
+b7ae37501838f4c8fd388f78903432ce  /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/qrfix/build_aottt/Libraries/Modules/libalfdevqr.so
+1c6f74bca7bd9c08bbe2df043e6ebbfb  /hppfs/scratch/0C/di38zuw/large_prompt/team/p5/build_aottt/Libraries/Modules/libalfdevqr.so
+end 2026-11-13T11:12:23+01:00

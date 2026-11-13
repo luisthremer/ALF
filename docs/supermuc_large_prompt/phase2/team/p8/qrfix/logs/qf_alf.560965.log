@@ -1,0 +1,65 @@
+host i20r02c06s10 2026-11-13T11:13:05+01:00  V7 = LIBOMPTARGET_LEVEL_ZERO_STAGING_BUFFER_SIZE=1048576 ALFSH_ASYNCBLK=1 ALFSH_DEVQR=2 ALFSH_DEVUNMQR=1
+cd140cb83bbcd49f654f2338a43f4e09  /hppfs/scratch/0C/di38zuw/large_prompt/team/p5/build_txtnew/Prog/ALF.out
+10af7d3c2fbf932595d622ba64b3e5d8  /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/qrfix/build_txtnew/Prog/ALF.out
+23e7ede795088d5aa6788dcccd133800  /hppfs/scratch/0C/di38zuw/large_prompt/team/p5/build_aottt/Prog/ALF.out
+5a82bd8e19392c627c99b379f6d4a5e5  /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/qrfix/build_aottt/Prog/ALF.out
+######## V7, NEW vs OLD same seed, CMP_TOL=0 (expect bitwise identical)
+[V7 old-vs-new L6F]
+  ab_L6F cpu: rc=0 wall=62.0s
+  ab_L6F gpu: rc=0 wall=30.2s
+  acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+  PASS worst rel dev 0.000e+00 (tol 0) 
+  byte-compare ab_L6F: 12 files, 0 differ
+  PG ab_L6F cpu:   Precision Green  Mean, Max :   4.706121837478791E-015  6.009444318527184E-013
+  PG ab_L6F gpu:   Precision Green  Mean, Max :   4.706121837478791E-015  6.009444318527184E-013
+[V7 old-vs-new L12F]
+  ab_L12F cpu: rc=0 wall=36.5s
+  ab_L12F gpu: rc=0 wall=36.0s
+  acceptance A=0.329644097222 B=0.329644097222  diff=0.00e+00
+  PASS worst rel dev 0.000e+00 (tol 0) 
+  byte-compare ab_L12F: 12 files, 0 differ
+  PG ab_L12F cpu:   Precision Green  Mean, Max :   7.171028881196273E-015  8.284457205490336E-013
+  PG ab_L12F gpu:   Precision Green  Mean, Max :   7.171028881196273E-015  8.284457205490336E-013
+[V7 old-vs-new L24F]
+  ab_L24F cpu: rc=0 wall=110.8s
+  ab_L24F gpu: rc=0 wall=110.5s
+  acceptance A=0.324358000579 B=0.324358000579  diff=0.00e+00
+  PASS worst rel dev 0.000e+00 (tol 0) 
+  byte-compare ab_L24F: 12 files, 0 differ
+  PG ab_L24F cpu:   Precision Green  Mean, Max :   2.288322607023758E-014  3.508963046662523E-011
+  PG ab_L24F gpu:   Precision Green  Mean, Max :   2.288322607023758E-014  3.508963046662523E-011
+######## controls (the check must tell right from wrong)
+[control 1: old vs old, V7, L12F: determinism of the run itself, must be identical]
+  ctl_oo cpu: rc=0 wall=36.1s
+  ctl_oo gpu: rc=0 wall=36.1s
+  acceptance A=0.329644097222 B=0.329644097222  diff=0.00e+00
+  PASS worst rel dev 0.000e+00 (tol 0) 
+  byte-compare ctl_oo: 12 files, 0 differ
+  PG ctl_oo cpu:   Precision Green  Mean, Max :   7.171028881196273E-015  8.284457205490336E-013
+  PG ctl_oo gpu:   Precision Green  Mean, Max :   7.171028881196273E-015  8.284457205490336E-013
+[control 2: new V7 vs new with oneMKL QR (wrapper switches the device QR off), L12F: different rounding, must DIFFER]
+  ctl_nm cpu: rc=0 wall=36.2s
+  ctl_nm gpu: rc=0 wall=17.8s
+  acceptance A=0.329644097222 B=0.329644097222  diff=0.00e+00
+  FAIL worst rel dev 5.403e-15 (tol 0) 
+  DIFF Den_eq
+  DIFF Ener_scal
+  DIFF Green_eq
+  DIFF Kin_scal
+  DIFF Part_scal
+  DIFF Pot_scal
+  DIFF SpinT_eq
+  DIFF SpinXY_eq
+  DIFF SpinZ_eq
+  DIFF SpinZ_local
+  DIFF SpinZ_localtau
+  byte-compare ctl_nm: 12 files, 11 differ
+  PG ctl_nm cpu:   Precision Green  Mean, Max :   7.171028881196273E-015  8.284457205490336E-013
+  PG ctl_nm gpu:   Precision Green  Mean, Max :   7.348650515398805E-015  1.017489117302266E-012
+######## node config (32 ranks, 4/tile, CCS 4, OMPT=3), V7, 3 sweeps, Precision Green of all ranks (previous: mean 1.960957926459005E-014 max 6.536447432744344E-010, job 560724/g2)
+PG NODE_old       mean 1.960957926459005E-014 max 6.536447432744344E-010 -> PASS
+PG NODE_new       mean 1.960957926459005E-014 max 6.536447432744344E-010 -> PASS
+gpu-side kernels used (ALFSH_TIMING absent: check the info line only)
+  Precision Green  Mean, Max :   1.960957926459005E-014  6.536447432744344E-010
+  Precision Green  Mean, Max :   1.960957926459005E-014  6.536447432744344E-010
+end 2026-11-13T11:23:02+01:00
