@@ -48,6 +48,10 @@ Program MaxEnt_Wrapper
        use MaxEnt_Wrapper_mod
        use iso_fortran_env, only: output_unit, error_unit
        use Files_mod, only: str_to_upper
+       Use Random_Wrap, only: lcg
+#ifdef MPI
+       Use mpi
+#endif
 #ifdef _OPENMP
        use check_omp_num_threads_mod
 #endif
@@ -66,16 +70,26 @@ Program MaxEnt_Wrapper
        !----
        Integer                :: iboot, N_boot = 1 ! Set default to 1 in order to be compatible with original parameter files
        Real (Kind=Kind(0.d0)), Allocatable :: U_cov(:,:), Sigma_cov(:), Z_sample(:)
-       Real (Kind=Kind(0.d0)), Allocatable :: A_mean(:,:), A_M2(:,:)
        Real (Kind=Kind(0.d0))              :: u, v, welford_delta, welford_delta2
        logical                             :: initial_checkpoint, N_boot_checkpoint = .false.
        logical                             :: Do_bootstrap, Reference_run
        integer                             :: N_runs
        integer                             :: ia
        Real (Kind=Kind(0.d0))              :: A_err
-       ! Bootstrap of the (F,A) observable (e.g. QFI_ph.dat, DIDV.dat), one value per alpha
-       Real (Kind=Kind(0.d0)), Allocatable :: F_mean(:), F_M2(:), Alpha_F(:)
        Character (len=64)                  :: FA_boot_Name
+       ! Welford accumulators for one bootstrap sample, flattened:
+       !   Buf((ia-1)*Ndis + nw)   = A(om_nw) of Aom_ps_<ia>, ia = 1..N_alpha-10
+       !   Buf(Ndis*N_alpha_1 + n) = (F,A) at alpha_n (QFI_ph.dat, DIDV.dat), n = 1..N_alpha
+       Real (Kind=Kind(0.d0)), Allocatable :: Buf(:), W_mean(:), W_M2(:)
+       Integer                             :: N_buf, N_acc, N_my_runs, k_buf
+       ! MPI: rank 0 does the reference run and accumulates (Welford, online) the samples that
+       ! ranks 1..Isize-1 compute in their own directories MaxSAC_rank_<r>/ with own seeds.
+       Integer                             :: Isize = 1, Irank = 0, ierr, k_seed, i_seed
+       Integer, Allocatable                :: seed_vec(:)
+       Logical                             :: Use_MPI
+#ifdef MPI
+       Integer                             :: mpi_stat(MPI_STATUS_SIZE)
+#endif
       !  Character (len=64)     :: temp, temp2
 
        !TODO: 22.06.2026
@@ -126,6 +140,11 @@ Program MaxEnt_Wrapper
 
        NAMELIST /VAR_errors/    N_skip, N_rebin, N_cov,  N_Back, N_auto,  N_BZ_Zones,  Extended_Zone
 
+#ifdef MPI
+       Call MPI_Init(ierr)
+       Call MPI_Comm_size(MPI_COMM_WORLD, Isize, ierr)
+       Call MPI_Comm_rank(MPI_COMM_WORLD, Irank, ierr)
+#endif
 #ifdef _OPENMP
        call check_omp_num_threads()
 #endif
@@ -140,6 +159,31 @@ Program MaxEnt_Wrapper
           CALL Terminate_on_error(ERROR_MAXENT,__FILE__,__LINE__)
        endif
        close(30)
+
+       ! MPI is only used for the bootstrap samples. Otherwise rank 0 does the usual single run.
+       Use_MPI = Isize > 1 .and. Stochastic .and. N_boot > 1
+       If (Isize > 1 .and. .not. Use_MPI .and. Irank /= 0) then
+#ifdef MPI
+          Call MPI_Finalize(ierr)
+#endif
+          Stop
+       endif
+       If (Use_MPI) then
+          ! Own random number stream for every rank (otherwise all ranks draw the same samples)
+          Call Random_seed(size=k_seed)
+          Allocate(seed_vec(k_seed))
+          i_seed = 8752143 + 104729*Irank
+          Do i = 1, k_seed
+             x = lcg(i_seed)
+             seed_vec(i) = i_seed
+          Enddo
+          Call Random_seed(put=seed_vec)
+          ! Own working directory for the files of MaxEnt_stoch on the worker ranks
+          If (Irank /= 0) then
+             write(MaxEnt_stoch_dir,'("MaxSAC_rank_",I0,"/")') Irank
+             Call EXECUTE_COMMAND_LINE("mkdir -p " // trim(MaxEnt_stoch_dir))
+          endif
+       endif
        
        N = 20
        Call Set_Ra_ba(N)
@@ -172,7 +216,7 @@ Program MaxEnt_Wrapper
        15 format((E25.17E3))
 
        If (Stochastic) then 
-          Open(unit=50,File='Info_MaxEnt',Status="unknown")
+          Open(unit=50,File=trim(MaxEnt_stoch_dir)//'Info_MaxEnt',Status="unknown")
        else
           Open(unit=50,File='Info_MaxEnt_cl',Status="unknown")
        endif
@@ -273,10 +317,9 @@ Program MaxEnt_Wrapper
        N_alpha_1 = N_alpha - 10
        Allocate (xom(Ndis), A(Ndis))
        Allocate(U_cov(Ntau,Ntau), Sigma_cov(Ntau), Z_sample(Ntau)) !Allocate arrays for Gaussian resampling
-       Allocate(A_mean(Ndis, N_alpha_1), A_M2(Ndis, N_alpha_1)) !Allocate arrays for Welford online algorithm
-       A_mean = 0.d0; A_M2 = 0.d0; A_err = 0.d0
-       Allocate(F_mean(N_alpha), F_M2(N_alpha), Alpha_F(N_alpha))
-       F_mean = 0.d0; F_M2 = 0.d0; Alpha_F = 0.d0
+       N_buf = Ndis*N_alpha_1 + N_alpha
+       Allocate(Buf(N_buf), W_mean(N_buf), W_M2(N_buf)) !Allocate arrays for Welford online algorithm
+       Buf = 0.d0; W_mean = 0.d0; W_M2 = 0.d0; N_acc = 0; N_my_runs = 0; A_err = 0.d0
 
        ! Bootstrap only for stochastic MaxEnt with N_boot > 1. The bootstrap samples are followed
        ! by one reference run on the unperturbed data, which provides energies, Best_fit, Data_out,
@@ -290,6 +333,7 @@ Program MaxEnt_Wrapper
        If (.not. Stochastic .and. N_boot > 1) &
             & Write(50,"(A)") 'N_boot > 1 ignored: bootstrap is only implemented for stochastic MaxEnt'
        If (Do_bootstrap) Write(50,12) "N_boot", N_boot
+       If (Use_MPI)      Write(50,12) "MPI ranks", Isize
 
        If (Do_bootstrap) Call Diag(XCOV_st, U_cov, Sigma_cov)  !Considering the usual sizes of Ntau this will mostlikely not be a bottlneck
 
@@ -321,6 +365,16 @@ Program MaxEnt_Wrapper
       ! 1. Box-Mueller Covariance Resampling
        Do iboot = 1, N_runs
             Reference_run = (iboot == N_runs)
+            If (Use_MPI) then
+               ! Rank 0: only the reference run (first, so that it can receive afterwards).
+               ! Ranks 1..Isize-1: the bootstrap samples, round robin.
+               If (Reference_run) then
+                  If (Irank /= 0) cycle
+               else
+                  If (Irank /= 1 + mod(iboot-1, Isize-1)) cycle
+               endif
+            endif
+            N_my_runs = N_my_runs + 1
             XQMC = XQMC_st
             XCOV = XCOV_st
             If (.not. Reference_run) then
@@ -350,10 +404,11 @@ Program MaxEnt_Wrapper
             !   sample if N_boot_checkpoint) is only used as starting configuration: the data
             !   differ, so accumulated histograms must not be reused and the warmup is kept.
             If (Do_bootstrap) then
-               If (iboot == 1) then
-                  If (.not. Initial_Checkpoint) Call EXECUTE_COMMAND_LINE("rm -f dump*")
+               If (N_my_runs == 1) then
+                  If (.not. Initial_Checkpoint) &
+                       & Call EXECUTE_COMMAND_LINE("rm -f " // trim(MaxEnt_stoch_dir) // "dump*")
                Else If (.not. N_boot_checkpoint) then
-                  Call EXECUTE_COMMAND_LINE("rm -f dump*")
+                  Call EXECUTE_COMMAND_LINE("rm -f " // trim(MaxEnt_stoch_dir) // "dump*")
                End If
                MaxEnt_stoch_warm_start_only = .true.
                Checkpoint = Initial_Checkpoint .or. N_boot_checkpoint
@@ -433,52 +488,56 @@ Program MaxEnt_Wrapper
        !TODO: Implement welford in MaxEnt_stpcj directly. -> Write files only after last N_boot
        !TODO: Also bootstrap A_om
        If (Do_bootstrap .and. .not. Reference_run) then
-         Do ia=1, N_alpha_1
-            write(file2, '(A,"_",I0)') "Aom_ps", ia
-            Open(Unit=66, File=file2, status="old")
-            Do nw = 1, Ndis
-               read(66, *) xom(nw), A(nw), x, x1, x2
-               welford_delta = A(nw) - A_mean(nw, ia)  
-               A_mean(nw, ia) = A_mean(nw,ia) + welford_delta/dble(iboot) ! \bar{x}_\text{iboot} = \bar_{x}_{iboot-1} + \frac{(x_{iboot} - \bar{x}_{iboot-1})}{iboot})
-               welford_delta2 = A(nw) - A_mean(nw, ia)  !   (x_{iboot} - \bar{x}_{iboot})
-               A_M2(nw, ia) = A_M2(nw, ia) + welford_delta * welford_delta2  ! M_{2,iboot}= M_{2, iboot-1} + (x_{iboot} - \bar{x}_{iboot - 1}) (x_{iboot} - \bar{x}_{iboot})
-            End Do
-         close(66)
-         End Do
-
-         ! Same for the (F,A) observable: one line (alpha, F, MC error) per alpha.
-         If (len_trim(FA_Name) > 0) then
-            Open(Unit=67, File=trim(FA_Name), status="old")
-            Do ia = 1, N_alpha
-               read(67, *) Alpha_F(ia), x, x1
-               welford_delta  = x - F_mean(ia)
-               F_mean(ia)     = F_mean(ia) + welford_delta/dble(iboot)
-               welford_delta2 = x - F_mean(ia)
-               F_M2(ia)       = F_M2(ia) + welford_delta * welford_delta2
-            End Do
-            close(67)
-         End If
-
-         ! write(temp, '("mkdir ",A,"_",I0)') "Boot", iboot
-         ! write(temp2, '("mv Aom_ps* ",A,"_",I0)') "Boot", iboot
-         ! Call EXECUTE_COMMAND_LINE(trim(temp))
-         ! Call EXECUTE_COMMAND_LINE(trim(temp2))
-
+         Call Read_sample(Buf)
+         If (Use_MPI) then
+#ifdef MPI
+            Call MPI_Send(Buf, N_buf, MPI_DOUBLE_PRECISION, 0, 77, MPI_COMM_WORLD, ierr)
+#endif
+         else
+            Call Welford_add(Buf)
+         endif
          !INJECTION_PART_2_END
       End If
    End Do
+
+#ifdef MPI
+       If (Use_MPI) then
+          If (Irank == 0) then
+             ! Online Welford update in the order in which the samples arrive.
+             Do n = 1, N_boot
+                Call MPI_Recv(Buf, N_buf, MPI_DOUBLE_PRECISION, MPI_ANY_SOURCE, 77, &
+                     &        MPI_COMM_WORLD, mpi_stat, ierr)
+                Call Welford_add(Buf)
+             Enddo
+          else
+             ! Workers are done.
+             If (.not. Checkpoint) &
+                  & Call EXECUTE_COMMAND_LINE("rm -f " // trim(MaxEnt_stoch_dir) // "dump*")
+             close(50)
+             Call MPI_Finalize(ierr)
+             Stop
+          endif
+       endif
+#endif
 
 
          !INJECTION 3
          !Calculate Bootstrap error from variance.
          If (Do_bootstrap) Then
+         ! Frequency grid from the reference run (current directory)
+         Open(Unit=66, File="Aom_ps_1", status="old")
+         Do nw = 1, Ndis
+            read(66,*) xom(nw)
+         Enddo
+         close(66)
          Do ia = 1, N_alpha_1
             write(file_boot, '(A,"_",I0)') "Aom_ps_boot", ia
             open (Unit=12, File=file_boot, Status="unknown", action="write") 
             ! Write(12,"(A14,2x,A16,2x,A16)") "# omega", "A_mean", "A_error"
             Do nw = 1, Ndis
-               A_err = sqrt(A_M2(nw, ia) / dble(max(1, N_boot - 1)))
-               Write(12,"(3(1X,E25.17E3))") xom(nw), A_mean(nw,ia), A_err
+               k_buf = (ia-1)*Ndis + nw
+               A_err = sqrt(W_M2(k_buf) / dble(max(1, N_acc - 1)))
+               Write(12,"(3(1X,E25.17E3))") xom(nw), W_mean(k_buf), A_err
             End Do
             Close(12)
          End Do
@@ -492,8 +551,9 @@ Program MaxEnt_Wrapper
             endif
             open (Unit=12, File=trim(FA_boot_Name), Status="unknown", action="write")
             Do ia = 1, N_alpha
-               Write(12,"(3(1X,E25.17E3))") Alpha_F(ia), F_mean(ia), &
-                    & sqrt(F_M2(ia) / dble(max(1, N_boot - 1)))
+               k_buf = Ndis*N_alpha_1 + ia
+               Write(12,"(3(1X,E25.17E3))") Alpha_tot(ia), W_mean(k_buf), &
+                    & sqrt(W_M2(k_buf) / dble(max(1, N_acc - 1)))
             End Do
             Close(12)
          End If
@@ -660,4 +720,52 @@ Program MaxEnt_Wrapper
        close(43)
 
        call clean_Set_Ra_ba()
+#ifdef MPI
+       Call MPI_Finalize(ierr)
+#endif
+
+     contains
+
+       !> Reads the result of one bootstrap sample (files in MaxEnt_stoch_dir) into B.
+       Subroutine Read_sample(B)
+         Implicit none
+         Real (Kind=Kind(0.d0)), Intent(Out) :: B(:)
+         Integer :: ia_l, nw_l
+         Real (Kind=Kind(0.d0)) :: y0, y2, y3, y4
+         Character (len=320) :: fname
+         B = 0.d0
+         Do ia_l = 1, N_alpha_1
+            write(fname, '(A,"_",I0)') trim(MaxEnt_stoch_dir) // "Aom_ps", ia_l
+            Open(Unit=66, File=trim(fname), status="old")
+            Do nw_l = 1, Ndis
+               read(66, *) y0, B((ia_l-1)*Ndis + nw_l), y2, y3, y4
+            Enddo
+            close(66)
+         Enddo
+         ! (F,A) observable: one line (alpha, F, MC error) per alpha
+         If (len_trim(FA_Name) > 0) then
+            Open(Unit=67, File=trim(MaxEnt_stoch_dir) // trim(FA_Name), status="old")
+            Do ia_l = 1, N_alpha
+               read(67, *) y0, B(Ndis*N_alpha_1 + ia_l), y2
+            Enddo
+            close(67)
+         endif
+       end Subroutine Read_sample
+
+       !> Welford online update of mean and M2 with one more sample B.
+       !> mean_n = mean_{n-1} + (x_n - mean_{n-1})/n
+       !> M2_n   = M2_{n-1} + (x_n - mean_{n-1}) (x_n - mean_n);  variance = M2_n/(n-1)
+       Subroutine Welford_add(B)
+         Implicit none
+         Real (Kind=Kind(0.d0)), Intent(In) :: B(:)
+         Integer :: k
+         N_acc = N_acc + 1
+         Do k = 1, N_buf
+            welford_delta  = B(k) - W_mean(k)
+            W_mean(k)      = W_mean(k) + welford_delta/dble(N_acc)
+            welford_delta2 = B(k) - W_mean(k)
+            W_M2(k)        = W_M2(k) + welford_delta*welford_delta2
+         Enddo
+       end Subroutine Welford_add
+
      end Program MaxEnt_Wrapper

@@ -464,6 +464,7 @@ contains
        use runtime_error_mod
        use iso_fortran_env, only: output_unit, error_unit
        use Files_mod
+       use MaxEnt_stoch_mod, only: MaxEnt_stoch_dir
        
        Implicit none
 
@@ -562,7 +563,7 @@ contains
          Write(error_unit,*) "Channel '" // Channel // "' for  default model not yet implemented"
          CALL Terminate_on_error(ERROR_MAXENT,__FILE__,__LINE__)
        end Select
-       Open (Unit=10,File="Default_used", status="Unknown")
+       Open (Unit=10,File=trim(MaxEnt_stoch_dir)//"Default_used", status="Unknown")  ! own file per MPI rank
        X = 0.d0
        Do  nw = 1, Ndis
           Om = Om_st + dble(nw)*Dom

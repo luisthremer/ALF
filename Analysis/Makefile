@@ -34,6 +34,10 @@ cov_tau_ph.o: cov_tau.F90
 Predefined_Latt_mod.o: ../Prog/Predefined_Latt_mod.F90
 	$(ALF_FC) -c -o $@ $(ALF_FLAGS_ANA) $<
 
+# Max_SAC parallelises the bootstrap with MPI when the libraries are built with MPI.
+Max_SAC.o: Max_SAC.F90
+	$(ALF_FC) -c -o $@ $(ALF_FLAGS_ANA) $(if $(findstring -DMPI,$(ALF_FLAGS_MODULES)),-DMPI) $<
+
 %.o: %.F90
 	$(ALF_FC) -c -o $@ $(ALF_FLAGS_ANA) $<
 
