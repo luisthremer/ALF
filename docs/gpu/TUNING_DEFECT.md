@@ -1,5 +1,9 @@
 # Tuning guide: point defect on the GPU (delayed/submatrix) path
 
+> **Point-defect material.** The space-time point-defect Hubbard model described here lives on branch
+> `gpu-port-unified`; on `gpu-port` `ham_h0` is upstream's static pinning field. See [BRANCHES.md](BRANCHES.md).
+
+
 Measured 2026-11-07 on `nividia`: NVIDIA A30 (24 GB, sm_80), nvfortran 26.9, one process on the GPU, parameters of Jakob's production
 file (`Mz = .F.`, `N_FL = 2`, `N_SUN = 2`, `U = 5`, `h0 = 1`, `Symm = T`, `Dtau = 0.1`, `Ltau = 0`, `Nwrap = 10` unless stated, beta = L).
 Design and tests: [TIMEDEP_HOPPING.md](TIMEDEP_HOPPING.md). Raw tables: `docs/gpu/scripts/defect/bench/*.csv`. Times are seconds per

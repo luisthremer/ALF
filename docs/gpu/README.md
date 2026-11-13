@@ -1,6 +1,13 @@
 # ALF GPU port
 
-This branch (`gpu-port-unified`) runs the ALF auxiliary-field QMC sweep on a GPU. The Green
+> **Branch `gpu-port`: the general GPU code for all ALF users.** Upstream ALF (`master` 521ddfca)
+> plus opt-in GPU backends; the Hubbard model and the measurement window are upstream's, and a
+> `GPU=none` build is bitwise identical to master. The space-time point-defect model lives on
+> `gpu-port-unified`. Where this page or the pages it links mention the defect, `ham_h0` on
+> time slice 1, `SpinZ_localtau` or `LOBS_ST = 0`, they describe that branch. See
+> [BRANCHES.md](BRANCHES.md).
+
+The GPU port runs the ALF auxiliary-field QMC sweep on a GPU. The Green
 function, the delayed and submatrix updates, the wraps, the stabilisation and the equal-time
 measurements stay on the device for the whole sweep. One source tree builds for four targets:
 

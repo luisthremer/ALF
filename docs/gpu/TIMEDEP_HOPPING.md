@@ -1,5 +1,9 @@
 # Time-dependent hopping on the GPU path (space-time point defect)
 
+> **Point-defect material.** The space-time point-defect Hubbard model described here lives on branch
+> `gpu-port-unified`; on `gpu-port` `ham_h0` is upstream's static pinning field. See [BRANCHES.md](BRANCHES.md).
+
+
 Branch `gpu-delayed-submatrix-defect-fullgpu` (from `gpu-delayed-submatrix-defect`, which is `gpu-delayed-submatrix` plus the
 merged `Point_Pin_updated`, NTAU1 fix at 58fc5372). Work done 2026-11-07. Scripts: `docs/gpu/scripts/defect/`.
 Tuning guide and parameter files: [TUNING_DEFECT.md](TUNING_DEFECT.md).

@@ -63,6 +63,9 @@ Changes made after the merges (commit 609a6347):
 
 ## Differences from upstream ALF (`master` 521ddfca) in a `GPU=none` build
 
+> This section describes `gpu-port-unified`. On `gpu-port` both differences below are removed
+> (upstream `LOBS_ST`, upstream `ham_h0`); see [BRANCHES.md](BRANCHES.md).
+
 Checked on 2026-11-13 with gfortran, L = 4, same parameters and seeds. With `LOBS_ST = 1` set
 explicitly every upstream feature tested is bitwise identical to upstream (Hubbard `Mz` T/F,
 `Symm`, `Checkerboard`, `Ltau` 0/1, projector, `N_SUN`, continuous fields, `Propose_S0`, global

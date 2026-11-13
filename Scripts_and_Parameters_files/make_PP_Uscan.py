@@ -2,7 +2,8 @@
 """Set up a PARALLEL_PARAMS (PP) run: one parameter set per U value, several MPI ranks (independent walkers) per set.
 
 Point-defect pi-flux Hubbard model as in the L=24 production run (Beta = L, Dtau = 0.1, N_Phi = L*L/2, N_FL = 2, ham_h0 = 1,
-submatrix updates). Needs only the Python standard library (no f90nml), so it can run on the compute cluster.
+submatrix updates). The point defect exists only on branch gpu-port-unified; on gpu-port ham_h0 is
+upstream's static pinning field (docs/gpu/BRANCHES.md). Needs only the Python standard library (no f90nml), so it can run on the compute cluster.
 
 usage: make_PP_Uscan.py OUTDIR --L 28 --U 5.0 5.1 5.2 [--ranks-per-set 16] [--nsweep 50] [--n-delay 128] [--cpu-max 47.0]
                         [--seed0 1000] [--nbin 100000] [--mz F|T]
