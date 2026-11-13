@@ -3,7 +3,7 @@
 Branch `intel-batched` (from `gpu-port-unified` 33a62652), session 2026-11-13 01:50-03:45 (SuperMUC-NG Phase 2, oneAPI 2025.3.0, 1 node per job,
 `-p preempt`). "C" = measured (job id given), "E" = estimate or data-sheet number.
 Sources, job scripts and raw outputs: `docs/gpu/scripts/intel_batched/` (`ib_bench.cpp`, `ib_omp.F90`, `ib_wtest.cpp`, `ib_s1.sh`, `ib_s2.sh`,
-`ib_tput.sh`, `ib_tput32.sh`, `ib_build.sh`, `ib_sum.py`; raw data in `data/<jobid>/`). Remote: `$SCRATCH/large_prompt/batched/`.
+`ib_tput.sh`, `ib_tput32.sh`, `ib_build.sh`, `ib_sum.py`; corr: `mc_gate.sh`, `mc_gate2.sh`, `mc_tput.sh` with logs `data/mc_*.log`, remote `$SCRATCH/mgr_corr/`; raw data in `data/<jobid>/`). Remote: `$SCRATCH/large_prompt/batched/`.
 Earlier measurements used and not repeated: Phase 7 per-kernel profile (`docs/gpu/sessions/supermuc_large_prompt/phase2/team/p7/NOTES.md`, "p7"),
 Phase 6 batched design study (`.../p6/DESIGN.md`, "p6").
 
@@ -262,11 +262,26 @@ following changes that the evidence of this session makes:
   Default behaviour unchanged: V7 switches, bitwise (CMP_TOL=0) vs `build_spd_txtnew` (819a96ec): L6F, L12F, L6T **PASS 0**. Same seed vs the
   same-compiler CPU build: L6F PASS 2.3e-15, L12F PASS 1.6e-14 (tol 1e-13), L6T FAIL 1.358e-10 (tol 1e-10): **pre-existing**, the baseline binary gives the
   identical 1.358e-10 (us_t2 job 560865) and the known L6T noise limit of the oneMKL path (team session) applies; not caused by this branch.
-- **Work in progress, NOT built, NOT tested:** `alfsb_corr` in `alf_la_sycl_blk.cpp` (SYCL port of the HIP `k_corr`, same interface as `alfhk_corr`;
-  intended switch `ALFSH_OBSCORR=1`), guarded by `#ifdef ALFSB_WIP_CORR` so the default build does not see it. The Fortran side is not written: in `Prog/gpu_obs_mod.F90` `corr`, after the HIP block, add under
-  `#if defined(ALF_LA_ONEMKL)` a call through `!$omp target data use_device_addr(G_d, o_jc, o_inv, acc, acc0)` with the queue from `alfsh_get_queue()`
-  (copy the wrapper `hk_corr` of `alf_hipk_mod.F90`), switch read once from the environment next to `ALF_GPU_OBS_SKIP`. Then gate (`ib_alf.sh`) and time
-  (`ib_tput.sh` alternating old/new).
+- **Observables `corr` on SYCL (this commit, switch `ALFSH_OBSCORR=1`, default off; built, gated, timed).** `alfsb_corr` in `alf_la_sycl_blk.cpp` (SYCL port of
+  the HIP `k_corr`, one work-group of 256 per output element, `reduce_over_group`, the acc0 sums of kinds 3/4 as extra work-groups, waits at the end of the
+  call), wired in `Prog/gpu_obs_mod.F90` `corr` after the HIP block under `ALF_LA_ONEMKL` (`sb_corr`, `use_device_addr`, queue = `alfsh_get_queue()`; the
+  switch is read once in `gpu_obs_setup` next to `ALF_GPU_OBS_SKIP`; announces itself on stdout only when on). Switch off = the OpenMP kernels as before.
+  `-DALFSB_PLANT_CORR` (libalfsb only, off by default) plants one wrong index in kind 2 and one in kind 4 for the gate self-test.
+  *Build* (jobs 560968, `$SCRATCH/mgr_corr/jobs/mc_gate.sh`): txt (JIT) and aottt (AOT PVC + HDF5 + TEAM_TIMERS) of the working tree, both ok first try.
+  *Gates* (V7 switches, fixed seed, `run_cmp_gg/sng.py`; Hubbard defect cases h0 = 1, N_FL = 2: L6F/L12F/L6T/L12T, plus SpinSUN N_FL = 1 h0 = 0: L6S/L12S, job 560978):
+  (a) switch off vs the unmodified build (`build_ib_txtnew`, Prog identical to this branch's HEAD): **bitwise, worst rel dev 0** in all 6 cases;
+  (b) same binary, on vs off: worst rel dev (file-scale norm of `compare.py`) **L6F 4.3e-17, L12F 8.8e-17, L6T 3.2e-17, L12T 4.4e-17, L6S 5.4e-17, L12S 2.0e-16**
+  (max abs 2.8e-14 in Den_eq of L12S, values O(100-1000); the sums over I change order only);
+  (c) on vs the same-compiler CPU build: L6F 2.26e-15, L12F 1.58e-14, L6S 3.0e-15, L12S 1.4e-14 (PASS, tol 1e-13), L6T 1.358e-10, L12T 1.210e-9 (above tol 1e-10:
+  **identical to the switch-off numbers and to the baseline binary**, i.e. the known oneMKL Mz = T noise, not from corr; the existing GPU-vs-CPU deviation is not
+  increased in any case, on = off to all printed digits). *Planted defect* (`plant.sh`: the same binary but a libalfsb with the two wrong indices via LD_LIBRARY_PATH):
+  on-vs-off **FAIL** L6F 1.8e-2 (SpinZ/SpinT), L6T 2.1e-2, L6S 3.7e-2 (SpinZ), L12S 2.0e-2; vs CPU build also FAIL (L6F, L6T); the gate has teeth (the unplanted runs: 1e-16).
+  *Timing* (job 560979, `mc_tput.sh`, the same aottt binary, V7, L = 24 3 sweeps, alternating off/on, 2 repetitions that agree to 0.01 s; mean over ranks, s/sweep per chain):
+  1 chain per tile (8 ranks): sweep **4.55 -> 4.24** (obs 0.86 -> 0.55; -0.31 s, 6.9 %); 4 chains per tile (32 ranks, CCS 4): **8.34 -> 7.56** (obs 2.28 -> 1.33, -0.95 s of obs;
+  upd/stab/cgr rise by 0.03-0.09 each: with the observables shorter the tile is shared more densely), i.e. 0.96 -> **1.06 sweeps/s per card (+10.3 %)**, 0.90 of the H100's 1.176.
+  L = 32 (1 repetition, 2 sweeps): 1 chain 15.82 -> 15.13 (obs 2.74 -> 2.00), 4 chains 44.38 -> 42.39 (obs 10.5 -> 7.7): 0.180 -> **0.189 sweeps/s per card (+4.7 %)**, 0.81 of the H100's 0.232.
+  Precision Green identical on/off in all timing runs (same chain). Not 1/3 of obs but ~1/2.2 at L = 24 (4 chains): the remaining obs time is the three `corr` kinds
+  (one launch + one wait each per measured slice), the scalars and `local_obs` (still OpenMP) and the synchronous `alfsb_wait` per call.
 - `ib_wtest` (job 560867): W = 5 walkers, L = 24 sizes, one walker with smaller k: all multi-walker kernels **bitwise equal** to 5 single-walker calls
   (gather 10,240, scale 3.3 M, C/Qt 69,120, slot, gemm 3.3 M elements: 0 differing); planted defect (one element of one walker's G changed) -> FAIL
   (1 element), rc 1. `gemm_batch` vs loop at this shape: 0 differing.
@@ -276,12 +291,12 @@ following changes that the evidence of this session makes:
 
 ## 6. Handoff (next steps in order)
 
-State at handoff (03:45): branch `intel-batched` pushed; Step 1 complete (all tables above C); multi-walker block kernels written, bitwise-checked and
-built into ALF (default behaviour bitwise unchanged, job 560872), not yet called from Fortran; `alfsb_corr` (SYCL observables kernel) written but not built
-or wired (WIP). The session was interrupted by a usage limit 02:30-03:30, so step 1 below was not started in Fortran. The order below is by expected gain per effort; steps 1 and 2 do not need the walker engine and
+State at handoff (03:45; step 1 below updated 11:30): branch `intel-batched` pushed; Step 1 (measurements) complete (all tables above C); multi-walker block kernels written, bitwise-checked and
+built into ALF (default behaviour bitwise unchanged, job 560872), not yet called from Fortran; `alfsb_corr` (SYCL observables kernel) now wired, gated and timed (section 5, switch
+`ALFSH_OBSCORR=1`, default off, uncommitted in the working tree when this was written). The session was interrupted by a usage limit 02:30-03:30, so step 1 below was not started in Fortran. The order below is by expected gain per effort; steps 1 and 2 do not need the walker engine and
 help both the single chain and the production layout.
 
-1. **Observables: move the big `corr` kernels to SYCL** (measured 1f: the SYCL form with one work-group per output is 2-4.5x faster than today's
+1. **DONE (section 5, 11:30): observables `corr` as SYCL kernels, `ALFSH_OBSCORR=1`: +10.3 % per card at L = 24, +4.7 % at L = 32, gates green. Still open here: make it the default after the next production gate; move `local_obs` and the three scalar reductions to SYCL, and fold the three per-kind launches + waits of a slice into one launch with one wait (obs is still 0.55 s of 4.24 s single chain, 1.33 of 7.56 at 4 chains). Original plan text:** Observables: move the big `corr` kernels to SYCL (measured 1f: the SYCL form with one work-group per output is 2-4.5x faster than today's
    OpenMP kernels; put them next to the block kernels in a SYCL library like `alf_la_sycl_blk.cpp`, queue = the OpenMP interop queue as there). Background: (`Prog/gpu_obs_mod.F90`, the kernels p7 lists as `corr l386/l418/l450` with 512 x 1024 launches and only
    576 outputs each; they are 3.5x slower than their 16 MB data volume and saturate the tile at 4 chains/tile: obs = 2.28 s of 8.38 s at L = 24, 10.6 of
    44.6 s at L = 32, C 1e). Today (`corr`, lines ~420-510) each team computes one output `imj` and its threads read `G_d(j1,i1)` with
@@ -292,7 +307,7 @@ help both the single chain and the production layout.
    under sharing at L = 24; use variant A. Expected: obs -1/3
    -> **+8-10 % per card at L = 24 and L = 32** (E). Gate: same-seed vs CPU (`run_cmp_sng.py`, L6F/L12F 1e-13, L6T 1e-10) + planted defect; time with
    `ib_tput.sh` / `ib_tput32.sh` alternating old/new binaries in one job.
-2. **Update block: fewer submissions per block on the SYCL path** (`Libraries/Modules/alf_la_sycl_blk.cpp`, `Prog/gpu_lowrank_mod.F90` `blk_begin`/`blk_end`/
+2. **NEXT: Update block: fewer submissions per block on the SYCL path** (`Libraries/Modules/alf_la_sycl_blk.cpp`, `Prog/gpu_lowrank_mod.F90` `blk_begin`/`blk_end`/
    `ab_flush_dev`): one packed H->D upload instead of 4 (`ab_up_z/ab_up_i` + nsigma), scale + both flush gathers in one kernel, gemm1 (N x k x k) folded
    into a small own kernel. The block today is ~13 async ops at 3 us each plus one D->H wait; the device needs ~35 us of the ~103 us a lone process spends
    (1d). Expected: single chain -0.3..-0.5 s per sweep (4.04 -> ~3.6, near the H100's 3.51), +3-5 % per card (E). Same gates.
@@ -328,4 +343,7 @@ Open risks / facts for the next session:
 | 560870 | ib_s2: block R (k = 16, 32) | 2.6 min | 1 |
 | 560872 | ib_alf: build of this branch + gates | 3.7 min | 1 |
 | 560873 | ib_s3: corr kernel SYCL A/B | 0.2 min | 1 |
-| **total** | | **20.2 min = 0.34 node-h** (upper bound incl. start-up ~0.4) | |
+| 560968 | mc_gate: build txt + aottt of the corr wiring, planted lib, 20 gate tasks (L6/L12 F/T) | 6.2 min | 1 |
+| 560978 | mc_gate2: SpinSUN (N_FL = 1) gates L6S/L12S incl. planted | 2.8 min | 1 |
+| 560979 | mc_tput: corr off/on, same aottt binary, L = 24 (1, 4 chains/tile x 2 rep) + L = 32 | 10.3 min | 1 |
+| **total** | | **39.5 min = 0.66 node-h** (upper bound incl. start-up ~0.75; corr work alone 19.3 min = 0.32 node-h) | |

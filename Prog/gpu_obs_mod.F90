@@ -39,6 +39,9 @@ Module gpu_obs_mod
 #if defined(ALF_LA_HIP)
   Use alf_hipk_mod
 #endif
+#if defined(ALF_LA_ONEMKL)
+  Use iso_c_binding, only: c_ptr, c_int, c_double, c_loc
+#endif
   Implicit none
   Private
   Logical, Save :: o_symm = .false.
@@ -57,6 +60,20 @@ Module gpu_obs_mod
   Logical, Save :: o_dev = .false.         ! device arrays allocated
   Logical, Save :: o_off = .false.         ! ALF_GPU_NOOBS=1
   Logical, Save :: o_skip(4) = .false.     ! ALF_GPU_OBS_SKIP (kinds 1..4)
+#if defined(ALF_LA_ONEMKL)
+  Logical, Save :: o_corr_sycl = .false.   ! ALFSH_OBSCORR=1: corr as a SYCL kernel (libalfsb alfsb_corr) on the OpenMP interop queue
+  Interface
+    Type (c_ptr) Function alfsh_get_queue() Bind(C, name='alfsh_get_queue')
+      Import :: c_ptr
+    End Function
+    Integer (c_int) Function alfsb_corr(q, kind, k, n, norb, nfl, ns, sq3, wr, wi, ld, g, jc, inv, acc, acc0) Bind(C, name='alfsb_corr')
+      Import :: c_ptr, c_int, c_double
+      Type (c_ptr), Value :: q, g, jc, inv, acc, acc0
+      Integer (c_int), Value :: kind, k, n, norb, nfl, ld
+      Real (c_double), Value :: ns, sq3, wr, wi
+    End Function
+  End Interface
+#endif
   Integer, Save :: o_N, o_Norb, o_NFL, o_NSUN, o_Ndim, o_nk, o_nobs
   Integer, Save :: o_kind(8)               ! per Obs_eq: 1 Green, 2 SpinSUN, 3 Den, 4 SpinMz (fills Obs_eq(k:k+2))
   Integer, Allocatable, Save :: o_inv(:,:), o_jc(:,:), hk_i(:), hk_j(:), hk_f(:)
@@ -99,6 +116,16 @@ Contains
     do k = 1, 4
        if (index(',' // trim(s) // ',', ',' // achar(48 + k) // ',') > 0) o_skip(k) = .true.
     enddo
+#if defined(ALF_LA_ONEMKL)
+    ! opt-in: ALFSH_OBSCORR=1 computes the correlation sums on the device as one SYCL work-group per output element (alfsb_corr);
+    ! summation order over I differs from the OpenMP kernels (rounding level).  Default: OpenMP kernels below.
+    o_corr_sycl = .false.
+    call get_environment_variable('ALFSH_OBSCORR', s)
+    if (trim(s) == '1') then
+       o_corr_sycl = .true.
+       write(output_unit,*) ' gpu_obs: ALFSH_OBSCORR=1, correlation sums as SYCL kernels (alfsb_corr)'
+    endif
+#endif
     o_symm = Symm_
     if (Projector_) return          ! Symm is handled on the device (gpu_symm)
     o_loc = (abs(h0) >= Eps_small)
@@ -414,6 +441,12 @@ Contains
     call hk_corr(kind_k, k, N, Norb, NFL, dble(NSUN), sq3, real(ZW), aimag(ZW), size(G_d,1), G_d(1,1,1), o_jc, o_inv, acc, acc0)
     return
 #endif
+#if defined(ALF_LA_ONEMKL)
+    if (o_corr_sycl) then
+       call sb_corr(kind_k, k, N, Norb, NFL, dble(NSUN), sq3, real(ZW), aimag(ZW), size(G_d,1), G_d(1,1,1), o_jc, o_inv, acc, acc0)
+       return
+    endif
+#endif
     ns = dble(NSUN)
     wr = real(ZW); wi = aimag(ZW)
     if (kind_k == 1) then            ! Green
@@ -523,6 +556,28 @@ Contains
        enddo
     endif
   End Subroutine corr
+
+#if defined(ALF_LA_ONEMKL)
+  !> corr on the SYCL queue of the OpenMP offload runtime (libalfsb): device addresses by use_device_addr as hk_corr of alf_hipk_mod
+  Subroutine sb_corr(kind_k, k, n, norb, nfl, ns, sq3, wr, wi, ld, g, jc, inv, acc, acc0)
+    Implicit none
+    Integer, intent(in) :: kind_k, k, n, norb, nfl, ld
+    Real (Kind=Kind(0.d0)), intent(in) :: ns, sq3, wr, wi
+    Complex (Kind=Kind(0.d0)), Target :: g(*), acc(*), acc0(*)
+    Integer, Target :: jc(*), inv(*)
+    Integer (c_int) :: rc
+    Type (c_ptr) :: qh
+    qh = alfsh_get_queue()
+    !$omp target data use_device_addr(g, jc, inv, acc, acc0)
+    rc = alfsb_corr(qh, int(kind_k,c_int), int(k,c_int), int(n,c_int), int(norb,c_int), int(nfl,c_int), ns, sq3, wr, wi, &
+         int(ld,c_int), c_loc(g(1)), c_loc(jc(1)), c_loc(inv(1)), c_loc(acc(1)), c_loc(acc0(1)))
+    !$omp end target data
+    if (rc /= 0) then
+       write(error_unit,*) 'gpu_obs: alfsb_corr (ALFSH_OBSCORR=1) failed, rc = ', rc
+       call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+    endif
+  End Subroutine sb_corr
+#endif
 
   !> Add the device accumulators to the host Obs_eq (before Pr_obs normalises them) and zero them
   Subroutine gpu_obs_flush()

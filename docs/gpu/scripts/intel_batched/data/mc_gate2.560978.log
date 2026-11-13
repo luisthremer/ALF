@@ -1,0 +1,70 @@
+start 2026-11-13T11:21:22+01:00 i20r01c01s06
+#### a_L6S (gg, tol 0)
+a_L6S cpu: rc=0 wall=59.8s
+a_L6S gpu: rc=0 wall=29.5s
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### b_L6S (gg, tol 1e-12)
+b_L6S cpu: rc=0 wall=69.1s
+b_L6S gpu: rc=0 wall=28.9s
+PASS worst rel dev 5.397e-17 (tol 1e-12) 
+#### con_L6S (sng, tol 1e-13)
+con_L6S cpu: rc=0 wall=7.7s
+con_L6S gpu: rc=0 wall=52.0s
+PASS worst rel dev 2.982e-15 (tol 1e-13) 
+#### coff_L6S (sng, tol 1e-13)
+coff_L6S cpu: rc=0 wall=7.8s
+coff_L6S gpu: rc=0 wall=52.0s
+PASS worst rel dev 2.982e-15 (tol 1e-13) 
+#### p_L6S (gg, tol 1e-12)
+p_L6S cpu: rc=0 wall=69.0s
+p_L6S gpu: rc=0 wall=29.0s
+FAIL worst rel dev 3.712e-02 (tol 1e-12) 
+#### a_L12S (gg, tol 0)
+a_L12S cpu: rc=0 wall=66.6s
+a_L12S gpu: rc=0 wall=34.7s
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### b_L12S (gg, tol 1e-12)
+b_L12S cpu: rc=0 wall=66.2s
+b_L12S gpu: rc=0 wall=35.4s
+PASS worst rel dev 1.974e-16 (tol 1e-12) 
+#### con_L12S (sng, tol 1e-13)
+con_L12S cpu: rc=0 wall=16.6s
+con_L12S gpu: rc=0 wall=50.1s
+PASS worst rel dev 1.430e-14 (tol 1e-13) 
+#### coff_L12S (sng, tol 1e-13)
+coff_L12S cpu: rc=0 wall=14.1s
+coff_L12S gpu: rc=0 wall=34.5s
+PASS worst rel dev 1.430e-14 (tol 1e-13) 
+#### p_L12S (gg, tol 1e-12)
+p_L12S cpu: rc=0 wall=34.9s
+p_L12S gpu: rc=0 wall=34.3s
+FAIL worst rel dev 1.953e-02 (tol 1e-12) 
+---- switch announced in gpu run.log of on/plant runs:
+6
+## b_L12S
+file                         n    max|dif|   max/scale
+Den_eq                     581   2.842e-14   1.974e-16
+Ener_scal                    4   0.000e+00   0.000e+00
+Green_eq                   581   4.441e-16   3.084e-18
+Kin_scal                     4   0.000e+00   0.000e+00
+Part_scal                    4   0.000e+00   0.000e+00
+Pot_scal                     4   0.000e+00   0.000e+00
+SpinZ_eq                   581   3.331e-16   2.313e-18
+confout_0                17282   0.000e+00   0.000e+00
+acceptance A=0.329333043981 B=0.329333043981  diff=0.00e+00
+PASS worst rel dev 1.974e-16 (tol 1e-12) 
+ 
+## p_L6S
+file                         n    max|dif|   max/scale
+Den_eq                     298   1.943e-15   5.397e-17
+Ener_scal                    8   0.000e+00   0.000e+00
+Green_eq                   298   4.441e-16   1.234e-17
+Kin_scal                     8   0.000e+00   0.000e+00
+Part_scal                    8   0.000e+00   0.000e+00
+Pot_scal                     8   0.000e+00   0.000e+00
+SpinZ_eq                   298   1.336e+00   3.712e-02
+confout_0                 2162   0.000e+00   0.000e+00
+acceptance A=0.332418981481 B=0.332418981481  diff=0.00e+00
+FAIL worst rel dev 3.712e-02 (tol 1e-12) 
+ 
+end 2026-11-13T11:24:09+01:00

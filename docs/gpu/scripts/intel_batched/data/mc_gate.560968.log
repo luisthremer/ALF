@@ -1,0 +1,168 @@
+start 2026-11-13T11:13:53+01:00 i20r01c01s06
+Currently Loaded Modulefiles: stack/24.5.0 gcc/15.2.0 python/3.10.12-extended slurm_setup/1.0 intel/2025.3.0 intel-mpi/2021.15.0 intel-mkl/2025.3.0 hdf5/1.14.5-intel25 
+[txt] configure IntelLLVM MPI GPU=intel NO-INTERACTIVE
+
+To compile your program use:    'make'
+
+make[1]: Leaving directory '/hppfs/scratch/0C/di38zuw/mgr_corr/build_txt/Prog'
+
+real	1m45.549s
+user	1m46.641s
+sys	0m40.360s
+[txt] done 2026-11-13T11:16:04+01:00
+-rwxr-xr-x 1 di38zuw hpcusers 1650496 Nov 13 11:15 Libraries/Modules/libalfdevqr.so
+-rwxr-xr-x 1 di38zuw hpcusers  174792 Nov 13 11:15 Libraries/Modules/libalfsb.so
+-rwxr-xr-x 1 di38zuw hpcusers    8160 Nov 13 11:15 Libraries/Modules/libfakeintel.so
+-rwxr-xr-x 1 di38zuw hpcusers 6326728 Nov 13 11:16 Prog/ALF.out
+[aottt] configure IntelLLVM MPI GPU=intel HDF5 NO-INTERACTIVE
+
+To compile your program use:    'make'
+
+make[1]: Leaving directory '/hppfs/scratch/0C/di38zuw/mgr_corr/build_aottt/Prog'
+
+real	2m5.650s
+user	2m23.309s
+sys	1m11.394s
+[aottt] done 2026-11-13T11:16:24+01:00
+-rwxr-xr-x 1 di38zuw hpcusers  4382528 Nov 13 11:15 Libraries/Modules/libalfdevqr.so
+-rwxr-xr-x 1 di38zuw hpcusers   330440 Nov 13 11:15 Libraries/Modules/libalfsb.so
+-rwxr-xr-x 1 di38zuw hpcusers     8160 Nov 13 11:15 Libraries/Modules/libfakeintel.so
+-rwxr-xr-x 1 di38zuw hpcusers 12262480 Nov 13 11:16 Prog/ALF.out
+alfsb_corr symbols in libalfsb: 1
+total 0
+-rwxr-xr-x 1 di38zuw hpcusers 174792 Nov 13 11:16 libalfsb.so
+#### a_L6F (gg: /hppfs/scratch/0C/di38zuw/large_prompt/batched/build_ib_txtnew/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr/build_txt/Prog/ALF.out, tol 0)
+a_L6F cpu: rc=0 wall=63.7s
+a_L6F gpu: rc=0 wall=31.1s
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### b_L6F (gg: /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/on.sh, tol 1e-12)
+b_L6F cpu: rc=0 wall=61.6s
+b_L6F gpu: rc=0 wall=31.4s
+PASS worst rel dev 4.318e-17 (tol 1e-12) 
+#### con_L6F (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/on.sh, tol 1e-13)
+con_L6F cpu: rc=0 wall=8.3s
+con_L6F gpu: rc=0 wall=60.7s
+PASS worst rel dev 2.261e-15 (tol 1e-13) 
+#### coff_L6F (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/off.sh, tol 1e-13)
+coff_L6F cpu: rc=0 wall=8.3s
+coff_L6F gpu: rc=0 wall=61.1s
+PASS worst rel dev 2.271e-15 (tol 1e-13) 
+#### a_L12F (gg: /hppfs/scratch/0C/di38zuw/large_prompt/batched/build_ib_txtnew/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr/build_txt/Prog/ALF.out, tol 0)
+a_L12F cpu: rc=0 wall=66.6s
+a_L12F gpu: rc=0 wall=37.9s
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### b_L12F (gg: /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/on.sh, tol 1e-12)
+b_L12F cpu: rc=0 wall=67.2s
+b_L12F gpu: rc=0 wall=39.9s
+PASS worst rel dev 8.789e-17 (tol 1e-12) 
+#### con_L12F (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/on.sh, tol 1e-13)
+con_L12F cpu: rc=0 wall=20.2s
+con_L12F gpu: rc=0 wall=46.8s
+PASS worst rel dev 1.578e-14 (tol 1e-13) 
+#### coff_L12F (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/off.sh, tol 1e-13)
+coff_L12F cpu: rc=0 wall=19.7s
+coff_L12F gpu: rc=0 wall=49.9s
+PASS worst rel dev 1.578e-14 (tol 1e-13) 
+#### a_L6T (gg: /hppfs/scratch/0C/di38zuw/large_prompt/batched/build_ib_txtnew/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr/build_txt/Prog/ALF.out, tol 0)
+a_L6T cpu: rc=0 wall=33.5s
+a_L6T gpu: rc=0 wall=30.6s
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### b_L6T (gg: /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/on.sh, tol 1e-12)
+b_L6T cpu: rc=0 wall=33.2s
+b_L6T gpu: rc=0 wall=30.6s
+PASS worst rel dev 3.238e-17 (tol 1e-12) 
+#### con_L6T (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/on.sh, tol 1e-10)
+con_L6T cpu: rc=0 wall=5.4s
+con_L6T gpu: rc=0 wall=35.8s
+FAIL worst rel dev 1.358e-10 (tol 1e-10) 
+#### coff_L6T (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/off.sh, tol 1e-10)
+coff_L6T cpu: rc=0 wall=5.3s
+coff_L6T gpu: rc=0 wall=31.4s
+FAIL worst rel dev 1.358e-10 (tol 1e-10) 
+#### a_L12T (gg: /hppfs/scratch/0C/di38zuw/large_prompt/batched/build_ib_txtnew/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr/build_txt/Prog/ALF.out, tol 0)
+a_L12T cpu: rc=0 wall=37.5s
+a_L12T gpu: rc=0 wall=36.1s
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### b_L12T (gg: /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/on.sh, tol 1e-12)
+b_L12T cpu: rc=0 wall=37.0s
+b_L12T gpu: rc=0 wall=36.2s
+PASS worst rel dev 4.386e-17 (tol 1e-12) 
+#### con_L12T (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/on.sh, tol 1e-10)
+con_L12T cpu: rc=0 wall=16.4s
+con_L12T gpu: rc=0 wall=37.9s
+FAIL worst rel dev 1.210e-09 (tol 1e-10) 
+#### coff_L12T (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/off.sh, tol 1e-10)
+coff_L12T cpu: rc=0 wall=17.1s
+coff_L12T gpu: rc=0 wall=39.9s
+FAIL worst rel dev 1.210e-09 (tol 1e-10) 
+#### p_L6F (gg: /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/plant.sh, tol 1e-12)
+p_L6F cpu: rc=0 wall=30.1s
+p_L6F gpu: rc=0 wall=29.2s
+FAIL worst rel dev 1.835e-02 (tol 1e-12) 
+#### pc_L6F (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/plant.sh, tol 1e-13)
+pc_L6F cpu: rc=0 wall=5.3s
+pc_L6F gpu: rc=0 wall=29.7s
+FAIL worst rel dev 1.835e-02 (tol 1e-13) 
+#### p_L6T (gg: /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/plant.sh, tol 1e-12)
+p_L6T cpu: rc=0 wall=32.7s
+p_L6T gpu: rc=0 wall=30.0s
+FAIL worst rel dev 2.083e-02 (tol 1e-12) 
+#### pc_L6T (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr/wrap/plant.sh, tol 1e-10)
+pc_L6T cpu: rc=0 wall=5.3s
+pc_L6T gpu: rc=0 wall=33.1s
+FAIL worst rel dev 2.083e-02 (tol 1e-10) 
+---- on-runs that announced the switch (gpu run.log):
+12
+---- per-file deviation, b_L12T and p_L6T:
+## b_L12T
+file                         n    max|dif|   max/scale
+Den_eq                     581   6.316e-15   4.386e-17
+Ener_scal                    4   0.000e+00   0.000e+00
+Green_eq                   581   4.441e-16   3.084e-18
+Kin_scal                     4   0.000e+00   0.000e+00
+Part_scal                    4   0.000e+00   0.000e+00
+Pot_scal                     4   0.000e+00   0.000e+00
+SpinT_eq                   581   4.441e-16   3.084e-18
+SpinXY_eq                  581   4.441e-16   3.084e-18
+SpinZ_eq                   581   4.441e-16   3.084e-18
+SpinZ_local                579   0.000e+00   0.000e+00
+SpinZ_localtau           35141   0.000e+00   0.000e+00
+confout_0                17282   0.000e+00   0.000e+00
+acceptance A=0.443352141204 B=0.443352141204  diff=0.00e+00
+PASS worst rel dev 4.386e-17 (tol 1e-12) 
+ 
+## p_L6T
+file                         n    max|dif|   max/scale
+Den_eq                     298   1.166e-15   3.238e-17
+Ener_scal                    8   0.000e+00   0.000e+00
+Green_eq                   298   4.441e-16   1.234e-17
+Kin_scal                     8   0.000e+00   0.000e+00
+Part_scal                    8   0.000e+00   0.000e+00
+Pot_scal                     8   0.000e+00   0.000e+00
+SpinT_eq                   298   2.500e-01   6.944e-03
+SpinXY_eq                  298   8.882e-16   2.467e-17
+SpinZ_eq                   298   7.499e-01   2.083e-02
+SpinZ_local                294   0.000e+00   0.000e+00
+SpinZ_localtau            8938   0.000e+00   0.000e+00
+confout_0                 2162   0.000e+00   0.000e+00
+acceptance A=0.449432870370 B=0.449432870370  diff=0.00e+00
+FAIL worst rel dev 2.083e-02 (tol 1e-12) 
+ 
+## p_L6F
+file                         n    max|dif|   max/scale
+Den_eq                     298   1.554e-15   4.318e-17
+Ener_scal                    8   0.000e+00   0.000e+00
+Green_eq                   298   2.220e-16   6.168e-18
+Kin_scal                     8   0.000e+00   0.000e+00
+Part_scal                    8   0.000e+00   0.000e+00
+Pot_scal                     8   0.000e+00   0.000e+00
+SpinT_eq                   298   2.202e-01   6.117e-03
+SpinXY_eq                  298   4.441e-16   1.234e-17
+SpinZ_eq                   298   6.606e-01   1.835e-02
+SpinZ_local                294   0.000e+00   0.000e+00
+SpinZ_localtau            8938   0.000e+00   0.000e+00
+confout_0                 2162   0.000e+00   0.000e+00
+acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+FAIL worst rel dev 1.835e-02 (tol 1e-12) 
+ 
+end 2026-11-13T11:20:07+01:00

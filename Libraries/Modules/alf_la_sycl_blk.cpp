@@ -100,9 +100,9 @@ int alfsb_gemm(int ta, int tb, int m, int n, int k, double ar, double ai, const 
   });
 }
 
-#ifdef ALFSB_WIP_CORR  // WORK IN PROGRESS: not built, not tested (docs/gpu/platforms/INTEL_BATCHED.md section 5); compiled only with -DALFSB_WIP_CORR
 // ---- observables: SYCL port of the HIP k_corr (alf_hip_kernels.hip.cpp), switch ALFSH_OBSCORR=1 in gpu_obs_mod ----------------
-// One work-group (128) per output m = (imj,no,no2); work-groups MT..MT+Norb-1 do the acc0 sums (kinds 3, 4). Same expressions as the
+// (Prog/gpu_obs_mod.F90 corr; not called unless the switch is set. -DALFSB_PLANT_CORR plants two wrong indices (kind 2 and kind 4): gate self-test only.)
+// One work-group (256) per output m = (imj,no,no2); work-groups MT..MT+Norb-1 do the acc0 sums (kinds 3, 4). Same expressions as the
 // OpenMP kernels of gpu_obs_mod corr; the order of the sum over I differs (work-group tree reduction), i.e. rounding-level changes.
 // Callable without the block path: q is the OpenMP interop queue (alfsh_get_queue); waits at the end (acc is read by OpenMP code).
 int alfsb_corr(void *q, int kind, int k, int N, int Norb, int NFL, double ns, double sq3, double wr, double wi, int ld, const cd *G,
@@ -114,7 +114,7 @@ int alfsb_corr(void *q, int kind, int k, int N, int Norb, int NFL, double ns, do
   return guarded("corr", [&] {
     const long MT = (long)N * Norb * Norb;
     const long nwg = MT + ((kind == 3 || kind == 4) ? Norb : 0);
-    constexpr int RB = 128;
+    constexpr int RB = 256;
     Q->parallel_for(sycl::nd_range<1>((size_t)nwg * RB, RB), [=](sycl::nd_item<1> it) {
       const long m = it.get_group(0);
       const bool zero_part = (m >= MT);
@@ -134,7 +134,11 @@ int alfsb_corr(void *q, int kind, int k, int N, int Norb, int NFL, double ns, do
             s1 = s1 + z * ns;
           } else if (kind == 2) {
             cd a = -G[j1 + (long)i1 * ld]; if (i1 == j1) a = a + one;
+#ifdef ALFSB_PLANT_CORR
+            s1 = s1 + (a * G[j1 + (long)i1 * ld]) * ns;
+#else
             s1 = s1 + (a * G[i1 + (long)j1 * ld]) * ns;
+#endif
           } else if (kind == 3) {
             cd zi = 0, zj = 0, z = 0;
             for (int nf = 0; nf < NFL; nf++) {
@@ -143,14 +147,19 @@ int alfsb_corr(void *q, int kind, int k, int N, int Norb, int NFL, double ns, do
               cd a = -G[j1 + (long)i1 * ld + nf * ld2]; if (i1 == j1) a = a + one;
               z = z + a * G[i1 + (long)j1 * ld + nf * ld2];
             }
-            s1 = s1 + ((zi * ns) * (zj * ns) + z * ns);
+            s1 = s1 + (zi * ns) * (zj * ns);
+            s1 = s1 + z * ns;
           } else {
             cd a = -G[j1 + (long)i1 * ld]; if (i1 == j1) a = a + one;
             cd b = -G[j1 + (long)i1 * ld + ld2]; if (i1 == j1) b = b + one;
             cd zxy = a * G[i1 + (long)j1 * ld + ld2] + b * G[i1 + (long)j1 * ld];
             cd zi = (one - G[i1 + (long)i1 * ld + ld2]) - (one - G[i1 + (long)i1 * ld]);
             cd zj = (one - G[j1 + (long)j1 * ld + ld2]) - (one - G[j1 + (long)j1 * ld]);
+#ifdef ALFSB_PLANT_CORR
+            cd zz = a * G[i1 + (long)j1 * ld] + b * G[j1 + (long)i1 * ld + ld2] + zi * zj;
+#else
             cd zz = a * G[i1 + (long)j1 * ld] + b * G[i1 + (long)j1 * ld + ld2] + zi * zj;
+#endif
             s1 = s1 + zz; s2 = s2 + zxy; s3 = s3 + (2.0 * zxy + zz) / 3.0;
           }
         } else {
@@ -187,7 +196,6 @@ int alfsb_corr(void *q, int kind, int k, int N, int Norb, int NFL, double ns, do
   });
 }
 
-#endif  // ALFSB_WIP_CORR
 
 // ---- multi-walker (batched) variants, intel-batched branch, NOT yet called by Fortran (docs/gpu/platforms/INTEL_BATCHED.md) ----
 // W walkers, walker w's arrays at base + w * stride (strides in elements). Per element, every kernel computes exactly the
