@@ -45,6 +45,7 @@
 
 module Control
 
+    use runtime_error_mod, only: alf_exit
     use files_mod
     Use MyMats
     use iso_fortran_env, only: output_unit, error_unit
@@ -105,7 +106,7 @@ module Control
             G_thresh = x
           else
             write(error_unit,*) 'ALF_UNSTABLE_THRESHOLD not a positive number: ', trim(v)
-            stop 2
+            call alf_exit(2)
           endif
         endif
       end subroutine control_read_threshold
