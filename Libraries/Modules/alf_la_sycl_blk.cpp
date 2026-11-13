@@ -99,4 +99,80 @@ int alfsb_gemm(int ta, int tb, int m, int n, int k, double ar, double ai, const 
     oneapi::mkl::blas::column_major::gemm(*Q, t(ta), t(tb), m, n, k, cd(ar, ai), A, lda, B, ldb, cd(br, bi), C, ldc);
   });
 }
+
+// ---- multi-walker (batched) variants, intel-batched branch, NOT yet called by Fortran (docs/gpu/platforms/INTEL_BATCHED.md) ----
+// W walkers, walker w's arrays at base + w * stride (strides in elements). Per element, every kernel computes exactly the
+// expression of the single-walker kernel above (same operands, same order), so walker w of a batched launch is bitwise
+// equal to the single-walker launch on walker w's data. Per-walker scalars (nfa/nfb, k, nf) are the same for all walkers in
+// lockstep (same model, same slice and block); a walker with nothing to do (k = 0 in the flush) is skipped via kw[w] = 0.
+int alfsb_gather_w(int W, int nfl, int nfa, int nfb, int ld, int b, int nd, cd *gbk, int64_t sgb, const int *bsk, int64_t sbs,
+                   const cd *Gk, int64_t sG) {
+  return guarded("gather_w", [&] {
+    Q->parallel_for(sycl::range<3>((size_t)W * nfl, b, b), [=](sycl::id<3> id) {
+      long w = id[0] / nfl, fl = id[0] % nfl, c = id[1], a = id[2];
+      long nf = (fl == 1) ? nfb : nfa;
+      const int *bs = bsk + sbs * w;
+      const cd *G = Gk + sG * w;
+      gbk[sgb * w + a + (long)nd * (c + (long)nd * fl)] =
+          G[(bs[a + (long)nd * fl] - 1) + (long)ld * ((bs[c + (long)nd * fl] - 1) + (long)ld * (nf - 1))];
+    });
+  });
+}
+int alfsb_scale_w(int W, int nfl, int nfa, int nfb, int ld, int b, int nd, int ldc, cd *Gk, int64_t sG, const int *bsk, int64_t sbs,
+                  const cd *cbk, int64_t scb) {
+  return guarded("scale_w", [&] {
+    Q->parallel_for(sycl::range<3>((size_t)W * nfl, b, ld), [=](sycl::id<3> id) {
+      long w = id[0] / nfl, fl = id[0] % nfl, a = id[1] + 1, j = id[2] + 1;
+      long nf = (fl == 1) ? nfb : nfa;
+      const int *bs = bsk + sbs * w;
+      const cd *cb = cbk + scb * w;
+      long sa = bs[(a - 1) + (long)nd * fl];
+      long cj = 0;
+      for (long c = 1; c <= b; ++c)
+        if (bs[(c - 1) + (long)nd * fl] == j) cj = c;
+      cd *Gf = Gk + sG * w + (long)ld * ld * (nf - 1);
+      cd v = cb[(a - 1) + (long)ldc * fl] * Gf[(sa - 1) + (long)ld * (j - 1)];
+      if (cj > 0) v = cb[(nd + cj - 1) + (long)ldc * fl] * v;
+      Gf[(sa - 1) + (long)ld * (j - 1)] = v;
+      if (cj == 0) Gf[(j - 1) + (long)ld * (sa - 1)] = cb[(nd + a - 1) + (long)ldc * fl] * Gf[(j - 1) + (long)ld * (sa - 1)];
+    });
+  });
+}
+// kmax = max over walkers of k; kw[w] = k of walker w (device array), columns m >= kw[w] are not touched
+int alfsb_fgather_w(int W, const cd *G, int64_t sG, int ld, int nrow, const int *S, int64_t sS, const int *kw, int kmax, int nf,
+                    cd *C, int64_t sC, cd *Qt, int64_t sQ, int *slot, int64_t ssl) {
+  return guarded("fgather_w", [&] {
+    Q->parallel_for(sycl::range<2>((size_t)W * kmax, nrow), [=](sycl::id<2> id) {
+      long w = id[0] / kmax, m = id[0] % kmax, i = id[1];
+      if (m >= kw[w]) return;
+      const cd *Gw = G + sG * w;
+      long s = S[sS * w + m];
+      C[sC * w + i + (long)ld * m] = Gw[i + (long)ld * (s - 1)];
+      cd q = -Gw[(s - 1) + (long)ld * i];
+      if (i + 1 == s) {
+        q = q + 1.0;
+        slot[ssl * w + i + (long)ld * (nf - 1)] = 0;
+      }
+      Qt[sQ * w + i + (long)ld * m] = q;
+    });
+  });
+}
+// W gemms with walker strides. mode 0: W separate oneMKL gemm calls (bitwise equal to the single-walker path, one host
+// submission each); mode 1: one oneMKL gemm_batch (strided) call (one submission; NOT bitwise equal to the single call for
+// most N, Phase-6 job 560787). Same k for all walkers (lockstep: walkers with smaller k are padded by the caller).
+int alfsb_gemm_w(int mode, int W, int ta, int tb, int m, int n, int k, double ar, double ai, const cd *A, int lda, int64_t sA,
+                 const cd *B, int ldb, int64_t sB, double br, double bi, cd *C, int ldc, int64_t sC) {
+  auto t = [](int x) {
+    return x == 0 ? oneapi::mkl::transpose::nontrans : (x == 1 ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::conjtrans);
+  };
+  return guarded("gemm_w", [&] {
+    if (mode == 0)
+      for (int w = 0; w < W; ++w)
+        oneapi::mkl::blas::column_major::gemm(*Q, t(ta), t(tb), m, n, k, cd(ar, ai), A + sA * w, lda, B + sB * w, ldb, cd(br, bi),
+                                              C + sC * w, ldc);
+    else
+      oneapi::mkl::blas::column_major::gemm_batch(*Q, t(ta), t(tb), m, n, k, cd(ar, ai), A, lda, sA, B, ldb, sB, cd(br, bi), C, ldc,
+                                                  sC, W);
+  });
+}
 }
