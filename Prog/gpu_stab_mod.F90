@@ -471,9 +471,10 @@ Contains
     call dev_decompose(side, udw_U(1,1,slot,nfe), udw_V(1,1,slot,nfe), udw_D(1,slot,nfe))
     call dev_testscale(udw_D(1,slot,nfe))
 #endif
-#if !defined(ALF_LA_ONEMKL)
+#if !defined(ALF_LA_ONEMKL) || defined(STABLOG)
     ! The LU-free phase is enabled where it has been measured and verified: oneMKL (Max 1550, 2026-11-13: 4.45 -> 4.04 s
     ! per sweep at L=24, phase equal to the LU phase to 6e-15).  HIP: hk_phase does not track det(U).  CUDA: not yet run.
+    ! STABLOG builds keep the LU as well: the tracked phase has only been checked with the default stabilisation.
     dw_ok(slot,nfe) = .false.
 #else
     call k_copy_c(1, st_c(4), st_dw(slot,nfe)); dw_ok(slot,nfe) = .true.   ! det(U)/|det U| of the new U (k_phase)
