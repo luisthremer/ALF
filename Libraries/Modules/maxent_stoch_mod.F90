@@ -314,7 +314,8 @@ Module MaxEnt_stoch_mod
                  nalp2 = nalp1 + 1
                  DeltaE = (Alpha_tot(nalp1)*En_tot(nalp2) + Alpha_tot(nalp2)*En_tot(nalp1))&
                       & -(Alpha_tot(nalp1)*En_tot(nalp1) + Alpha_tot(nalp2)*En_tot(nalp2))
-                 Ratio = exp(-DeltaE)
+                 ! Capped: a ratio >= 1 is accepted anyway; avoids an FP overflow trap in debug builds
+                 Ratio = exp( min(-DeltaE, 700.d0) )
                  if (Ratio.gt.ranf_wrap()) Then
                     Acc_1 = Acc_1 + 1.0
                     !Switch confs an Energies.
@@ -735,7 +736,8 @@ Module MaxEnt_stoch_mod
                  do nt = 1,ntau
                     DeltaE = DeltaE + (Deltah(nt) + 2.0 * h(nt) ) *Deltah(nt)
                  enddo
-                 Ratio = exp( -alpha * DeltaE )
+                 ! Capped: a ratio >= 1 is accepted anyway; avoids an FP overflow trap in debug builds
+                 Ratio = exp( min(-alpha * DeltaE, 700.d0) )
                  ! write(6,*) ' Ratio : ',Ratio, DeltaE
                  if (Ratio .gt. ranf_wrap()) Then
                     ! write(6,*) 'Accepted'

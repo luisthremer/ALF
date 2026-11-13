@@ -16,6 +16,6 @@ bash scripts/obs.sh $P $W/ref > logs/obs.out 2>&1
   echo "== builds";           grep -E '^built|failed' logs/builds.txt
   echo "== T0 (self-test, same-seed)"; grep -E '^st_|^same|T0_DONE' logs/t0.txt | cut -c1-200
   echo "== observables";      grep -E '^run|sum t|RESULT|OBS_DONE' logs/obs.txt | cut -c1-120
-  echo "== transfers (obs_def)"; grep -ahE 'INTERIM 205|interim bytes' runs/obs_def/run.log | cut -c1-300 | tail -3
+  echo "== transfers (obs_def)"; grep -ahE 'INTERIM 205|interim bytes|GPU update transfers|host-fallback bytes' runs/obs_def/run.log | cut -c1-300 | tail -3
   echo "== ctest";            grep -hE 'tests passed' logs/ctest_*.txt 2>/dev/null
   echo FINAL_DONE; } > $S 2>&1

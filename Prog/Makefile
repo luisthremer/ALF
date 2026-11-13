@@ -49,9 +49,13 @@ main.o: git.h
 gpu_state_mod.o: git.h
 
 # Regenerate git.h whenever the commit hash, branch, or dirty state changes.
-# .git/HEAD changes on branch switch; .git/index changes on commit/stage.
+# HEAD changes on branch switch; index changes on commit/stage.
 # $(SRCS) catches unstaged modifications that flip the -dirty suffix.
-git.h: $(wildcard ../.git/HEAD ../.git/index) $(SRCS)
+# The git directory is asked from git, since in a worktree ../.git is a file;
+# without git (tarball) it is empty and the wildcard expands to nothing.
+# (Not named GIT_DIR, which git itself reads from the environment.)
+ALF_GITDIR := $(shell git -C .. rev-parse --absolute-git-dir 2>/dev/null)
+git.h: $(if $(ALF_GITDIR),$(wildcard $(ALF_GITDIR)/HEAD $(ALF_GITDIR)/index)) $(SRCS)
 	./Git_config.sh
 
 .parse_parameters: Hamiltonians.list $(HAM_LIST_D)
