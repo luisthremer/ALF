@@ -107,7 +107,10 @@ of the same compiler, same parameters and seeds. Commits tested: 609a6347, 4919c
 | `GPU=amd` | MI210, gfortran 14 GCN + HIP | pass | 1.15e-14 (L=6), 5.0e-14 (L=12), acceptance identical; same with `ALF_HIP_ASYNC=0`, `ALF_HIP_QR=0` | bitwise identical to 156a0b01 at L=6, 12, 16, 24 | L=24 about 4.5 s per sweep, unchanged |
 | `GPU=intel` | Max 1550 (SuperMUC-NG Phase 2), ifx 2025.3 | pass (JIT and AOT) | default switches: 2.2e-15 (L6F), 1.5e-14 (L12F), 5.5e-11 (L6T). V7 switches: 2.3e-15, 1.6e-14, 1.36e-10 (L6T, same value as before the merge; tolerance 1e-10) | Green functions, scalars, acceptance and configurations bitwise identical to the p5 build; `Den_eq`, `SpinT_eq`, `SpinZ_eq` differ by at most 3.3e-16 (the `acc0` reduction from pp-opt) | L=24, one chain, V7: 4.92 to 4.98 s per sweep before, 4.42 to 4.48 after (observables 1.18 to 0.74 s) |
 | `GPU=nvidia` | A30, nvfortran 26.9 | pass (GPU and CPU reference) | **not run**: the card was occupied by a production run | **not run** | **not run** |
-| `GPU=nvidia` | H100 (Helma), nvhpc 25.7 | HELMA_RESULT_PLACEHOLDER | | | |
+| `GPU=nvidia` | H100 (Helma), nvhpc 25.7 | pass (GPU and CPU reference of 609a6347, GPU of cc473abc and 4919ce0d) | **not run yet**: jobs 1315946 and 1315963 (preempt) queued behind the production chains (account GPU limit) | **not run yet** | **not run yet** |
+
+Helma results will appear in `/hnvme/workspace/b133ae29-ALF_GPU/unified_check/logs/job_1315946.out` and
+`job2_1315963.out` (GPU vs CPU at L=6 and 8, old vs new GPU binary bitwise at L=6 and 12, timing at L=24).
 
 V7 switches: `LIBOMPTARGET_LEVEL_ZERO_STAGING_BUFFER_SIZE=1048576 ALFSH_ASYNCBLK=1 ALFSH_DEVQR=2
 ALFSH_DEVUNMQR=1 ALFSH_QRNB=16`. Intel jobs 560852 to 560860, about 0.85 node-hours. Run
