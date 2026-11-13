@@ -1,0 +1,54 @@
+\section{What is not ported, and what it would take}
+\label{sec:notported}
+
+\subsection{The refusal list}
+
+\texttt{gpu\_supported} (\file{gpu\_state\_mod.F90:499-617}) checks, in this order, and on the first failure writes ``GPU path (gpu\_state): INACTIVE, reason: \ldots'' into \texttt{info}; the run then continues on the CPU, unless \texttt{ALF\_GPU\_SELFTEST} is set, in which case it stops. The checks are on the structure of the model, not on its name.
+
+\begin{enumerate}
+\item \texttt{ALF\_GPU\_DISABLE=1}.
+\item Tempering with exchange (\texttt{TEMPERING} without \texttt{PARALLEL\_PARAMS}).
+\item Stabilisation schemes \texttt{STAB1}, \texttt{STAB2}, \texttt{STAB3} (only the default and \texttt{STABLOG} are ported).
+\item Projector code ($T=0$).
+\item Langevin and HMC updates.
+\item Global moves in space and time (\texttt{Global\_moves}, \texttt{Global\_tau\_moves}, \texttt{N\_Global\_tau}$>0$).
+\item \texttt{Propose\_S0}.
+\item MALA updates.
+\item \texttt{Lowrank\_cross\_slice} (delay across slices).
+\item \texttt{Calc\_Fl} with weight reconstruction.
+\item No OpenMP offload device.
+\item Per vertex $\Op_V(n,f)$: not diagonal; field type other than 1 or 2; field type differing between flavours; $N_{\rm non\text{-}zero}>1$; a time-dependent coupling $g_t$.
+\item Per hopping element: unknown type; time-dependent with \texttt{size(g\_t)}$\ne\Lt$; time-dependent matrices above 2~GB; a static element after a time-dependent one.
+\end{enumerate}
+In addition, after activation, the run stops for a \texttt{Sequential\_scheme} other than standard, delayed or submatrix, and for a NaN scale with the default stabilisation (``Switch to LOG is required''). Device observables exist only for the Hubbard model; any other model measures on the host after a download of $G$. The Hubbard \texttt{Ham\_Set} refuses the pinning field with the projector, Langevin/HMC or a non-default measurement window, in all builds, because of known bugs (\file{CONSOLIDATION.md}).
+
+In practice this covers the predefined Hubbard model with Ising or four-valued fields and its variants with time-dependent hopping. Stock models such as Kondo, t-V or Spin--Peierls have vertices with $N_{\rm non\text{-}zero}>1$ or non-diagonal operators and are refused (\file{NOT\_IMPLEMENTED.md}, lines 45-47).
+
+\subsection{What each item would take}
+
+The estimates are those of \file{GPU\_PLAN\_V2.md} (work package 3; S $<$ 2 days, M 2--10 days, L $>$ 2 weeks), with the technical reason from the code.
+\begin{itemize}
+\item \textbf{General vertices (rank $r$, non-diagonal).} A vertex acting on $r$ sites changes $G$ by a rank-$r$ update with an $r\times r$ ratio matrix. The wrap becomes a product with an $r\times r$ block on rows and columns $P$ instead of a scaling. Work started in ticket 401-A (\texttt{Calc\_Fl} on the device, general vertices, exact-diagonalisation references for Plain\_Vanilla, t-V, Kondo, Spin--Peierls) and was stopped on 2026-11-07; it is not in the unified branch and is ``the main unfinished item of value'' (\file{EVAL\_ORIGINAL\_GPU\_BRANCH.md}). Rebasing it: M; general rank-$r$ vertices in the standard scheme: M--L; delayed/submatrix for rank $r$: M.
+\item \textbf{Observables of other models.} A host fallback (download $G$ per measurement, call \texttt{Obser}/\texttt{ObserT}) is M and works for any model, at the cost of $2\Lt$ transfers of $16N^2\NFL$ bytes per sweep. Device versions need one kernel per observable, model by model.
+\item \textbf{Tempering exchange.} After a swap the device mirror (fields, possibly parameters) must be refreshed: S--M.
+\item \textbf{Global moves and \texttt{Propose\_S0}.} A global move needs $G$ recomputed for the proposed configuration (a full stabilised sweep segment on the device) and a ratio of determinants: M--L.
+\item \textbf{Continuous fields, Langevin, HMC, MALA.} Field types 3 and 4 need new exponential tables; Langevin and HMC need forces $\partial S/\partial\phi$, which are traces of $G$ with vertex derivatives, as new device kernels: L.
+\item \textbf{Projector ($T=0$).} New routines for the trial wave function and \texttt{CGRP}, and the projector $\tau$ pass: L.
+\item \textbf{\texttt{STAB1/2/3}, cross-slice delay}: proposed as permanent refusals unless a user needs them.
+\item \textbf{\texttt{STABLOG} fully on the device} would need a GPU QR with column pivoting that meets the \texttt{STABLOG} precision; none was found (Section~\ref{sec:stab}).
+\end{itemize}
+
+\subsection{Ranked speedup candidates}
+
+\file{SPEEDUPS.md} (state 2026-11-13) separates single-chain latency from production throughput. Available without code changes: the Intel staging buffer, the asynchronous block path, \texttt{ALF\_GPU\_OBS\_SKIP} (7\,\% under MPS), \texttt{Nwrap}=10 instead of 5 (5 costs about 45\,\%), the Intel parallel \texttt{acc0} reduction (about 10\,\%). Implemented but not measured on NVIDIA: the LU-free phase (measured on Intel, 4.45$\to$4.04~s), removal of redundant \texttt{la\_sync} calls (10--20~ms per sweep). % SPEEDUPS.md sec 1-2
+
+The larger candidates, ranked by expected effect on production throughput (\file{SPEEDUPS.md}, section 4; \file{GPU\_PLAN\_V2.md}, WP4):
+\begin{enumerate}
+\item \textbf{Two-level submatrix update.} One flush per slice of rank about 190 instead of one per block with rank 10 to 21, with the $k\times k$ algebra on the device. Targets the flush GEMMs, 47\,\% of the kernel time in production on the A30. Effort L.
+\item \textbf{FFT or band form of the static hopping.} The static hopping of the defect model is translation invariant; an FFT would replace about 5800 dense GEMMs per sweep at $L=24$. Needs an FFT per backend and a demonstration that truncation stays below one unit of rounding. M--L.
+\item \textbf{Coalesced \texttt{corr} kernel.} The Intel correlation kernels are 3.5 times slower than their data volume implies; a tiled transpose would fix the memory access pattern. M.
+\item \textbf{Measure on every second slice.} Halves the 12 to 25\,\% of a sweep spent in measurements; changes the estimator's autocorrelation, so it is a physics decision.
+\item \textbf{QR panel look-ahead} (Intel, AMD): overlap the next panel with the trailing update; single-chain gain. M.
+\item \textbf{Device \texttt{getrf} on Intel}: largely superseded by the LU-free phase.
+\end{enumerate}
+Measured and rejected: a CUDA port of the AMD QR (cuSOLVER QR and LU are about 8\,\% of a sweep), a fused block-end kernel (no gain), $\Nd=128$, \texttt{Nwrap}$\ge20$, oneMKL batched routines, \texttt{nowait} on ifx, CholeskyQR2, \texttt{STABLOG} for speed. Batching several walkers in one process has a realistic ceiling of 1.3 to 1.6 times for 15 to 20 person-days in own kernels only; a full rebuild is not recommended (\file{ISSUE\_INTEL\_VS\_A30.md}, section 8). % ISSUE section 8

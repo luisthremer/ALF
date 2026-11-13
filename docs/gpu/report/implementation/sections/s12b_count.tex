@@ -1,0 +1,26 @@
+\subsection{Counting the operations of one sweep}
+
+The structure of Sections~\ref{sec:wrap} to~\ref{sec:obs} predicts how often each device operation runs. At $L=24$ ($N=576$, $\Lt=240$, \texttt{Nwrap}=10, $\Nd=32$, $\NFL=2$) one sweep visits $2\Lt=480$ slices and has $N_{\rm ST}=24$ stabilisation points per direction. The prediction and the counts measured on the Max~1550 (\file{p7/NOTES.md}, sections 2 and 6) agree:
+
+\begin{table}[h]
+\centering\small
+\caption{Device operations per sweep at $L=24$: count from the algorithm and measured count (\file{p7/NOTES.md}).}
+\label{tab:count}
+\begin{tabular}{@{}llrr@{}}
+\toprule
+Operation & Derivation & Predicted & Measured \\
+\midrule
+$N^3$ GEMM, hopping wraps & $480\times2$ flavours $\times2$ ($G$) + $480\times2\times1$ (\texttt{WRAPUR/UL}) & 2\,880 & 2\,880 \\
+$N^3$ GEMM, \texttt{Symm} for measurements & $480\times2$ flavours $\times2$ & 1\,920 & 1\,920 \\
+QR (\texttt{geqrf}) & $(24+24)\times2$ decompose + same for \texttt{CGR} & 192 & 192 \\
+LU (\texttt{getrf}, before the LU-free phase) & one per \texttt{CGR} & 96 & 96 \\
+blocks & $480\times\lceil576/32\rceil$ & 8\,640 & 8\,640 \\
+flush gathers & $8640\times2$ flavours & 17\,280 & 17\,280 \\
+rank-$k$ GEMM & $8640\times2$ flavours $\times2$ & 34\,560 & 34\,560 \\
+\texttt{corr} kernels & one per measurement and kind group & 480 & 480 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The measured device times per item (Max~1550, V7, in isolation) then give the budget: QR 0.82~s, \texttt{getrf} 0.38~s, hopping GEMMs 0.32~s, rank-$k$ GEMMs 0.31~s, \texttt{corr} 0.47~s, \texttt{unmqr} 0.26~s, \texttt{Symm} GEMMs 0.21~s (\file{report/sections/s6\_performance.tex}, Table ``p7top''). % p7/NOTES.md section 2
+A $576^3$ ZGEMM takes about 109~$\mu$s; at $8\cdot576^3=1.53$~GFlop this is 14~TFlop/s, so the dense part runs at a rate typical of large matrix products on this device. A rank-$k$ GEMM of $576\times576\times k$ with $k\approx12$ takes 9~$\mu$s for $8\cdot576^2\cdot12\approx0.032$~GFlop, about 3.5~TFlop/s: it is bound by reading and writing $G$ ($2\times5.3$~MB in 9~$\mu$s, about 1.2~TB/s). The 8\,640 gathers, scales and copies are each a few microseconds of device time but are submitted one by one; their submission cost dominates the update phase (Section~\ref{sec:updates}).

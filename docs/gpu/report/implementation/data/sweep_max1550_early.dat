@@ -1,0 +1,6 @@
+# Max 1550, early build (no staging buffer, 8 ranks per node, 14 host threads, N_delay 128), s per sweep per chain
+# source: docs/gpu/platforms/intel_pvc_supermuc_ng2.md (benchmark matrix, 1 rank per tile rows)
+L t
+24 8.25
+28 16.2
+32 26.3

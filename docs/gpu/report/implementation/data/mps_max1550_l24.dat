@@ -1,0 +1,7 @@
+# Max 1550 card (2 tiles), L=24, V7, CCS 4: sweeps per second per card; ranks per card = 2 x walkers per tile
+# source: docs/gpu/sessions/supermuc_large_prompt/ISSUE_INTEL_VS_A30.md (section 7, Throughput vs walkers per tile, job 560772; 1/tile 0.365, 2/tile 0.458, 4/tile 0.879, 8/tile 0.261)
+ranks agg
+2 0.365
+4 0.458
+8 0.879
+16 0.261

@@ -1,0 +1,5 @@
+# Max 1550, one chain on one tile, variant V7 (staging buffer, async blocks, device QR and UNMQR), s per sweep
+# source: docs/gpu/sessions/supermuc_large_prompt/ISSUE_INTEL_VS_A30.md (section 2; L=32 range 16.41-16.42, L=24 range 4.95-4.97)
+L t
+24 4.96
+32 16.41

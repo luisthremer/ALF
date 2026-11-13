@@ -1,0 +1,49 @@
+\subsection{What device code looks like}
+
+Two short routines from the code show the style. The first is the wrap of a single-site vertex (\file{gpu\_update\_mod.F90:280-298}), the device version of \texttt{Op\_Wrapup}/\texttt{Op\_Wrapdo} for $N_{\rm non\text{-}zero}=1$:
+\begin{lstlisting}
+  Subroutine k_site_wrap(G, ld, nd, n, t, dir, r, eo, nt)
+    Integer, intent(in) :: ld, nd, n, t, dir, r, eo, nt
+    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,1)
+    Integer :: j, sp
+    Complex (Kind=Kind(0.d0)) :: za, zb
+    !$omp target teams distribute parallel do private(sp, za, zb)
+    do j = 1, nd
+       sp = nint(real(nsigma_d(n,t)))
+       za = V_exp(eo + 1 + (dir*sp + nt))
+       zb = V_exp(eo + 1 + (-dir*sp + nt))
+       if (j == r) then
+          G(r,r) = zb * ( za * G(r,r) )
+       else
+          G(r,j) = za * G(r,j)
+          G(j,r) = zb * G(j,r)
+       endif
+    enddo
+  end subroutine k_site_wrap
+\end{lstlisting}
+The directive turns the loop into a kernel: the $N$ iterations are distributed over teams and threads of the device, each thread handling one $j$, i.e.\ one element of row $r$ and one of column $r$. \texttt{G} is a dummy argument; the caller passes \texttt{G\_d(1,1,nf)}, which is present on the device, so no data move. The field and the exponential table are read from the device mirror (\texttt{nsigma\_d}, \texttt{V\_exp}). The work is $2N$ complex multiplications, which takes the device well under a microsecond; the launch costs several microseconds (Table~\ref{tab:latency}). That ratio is the problem the update schemes of Section~\ref{sec:updates} solve.
+
+The second is \texttt{la\_gemm} (\file{alf\_la\_mod.F90:1505-1533}), shown for the CUDA and host branches:
+\begin{lstlisting}
+  subroutine la_gemm(opa, opb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc)
+    integer, intent(in) :: opa, opb, m, n, k, lda, ldb, ldc
+    complex(8), intent(in) :: alpha, beta
+    complex(8), target :: A(lda,*), B(ldb,*), C(ldc,*)
+    if (m <= 0 .or. n <= 0) return
+#if defined(ALF_LA_OM)
+    call om_gemm(opa, opb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc)
+#elif defined(ALF_LA_CUDA)
+    cab(1) = alpha; cab(2) = beta
+    call pre_lib()
+    !$omp target data use_device_addr(A, B, C)
+    call chk(cublasZgemm_v2(hblas, opa, opb, m, n, k, c_loc(cab(1)), c_loc(A(1,1)), lda, &
+         c_loc(B(1,1)), ldb, c_loc(cab(2)), c_loc(C(1,1)), ldc), 'zgemm')
+    !$omp end target data
+    call post_lib()
+#else
+    LA_GUARD
+    call zgemm(opc(opa), opc(opb), m, n, k, alpha, A, lda, B, ldb, beta, C, ldc)
+#endif
+  end subroutine la_gemm
+\end{lstlisting}
+(Simplified from the source, which nests the \texttt{\#if} blocks and contains \texttt{\#line} directives.) \texttt{use\_device\_addr} replaces, inside the block, the host addresses of \texttt{A}, \texttt{B}, \texttt{C} by their device addresses, which \texttt{c\_loc} passes to cuBLAS. \texttt{cab} is a 16-byte aligned module array for $\alpha$ and $\beta$ (cuBLAS crashed with 8-byte alignment). \texttt{pre\_lib}/\texttt{post\_lib} are empty unless \texttt{ALF\_LA\_SYNC\_ALWAYS} is set. The call returns before the product is finished; ordering with later OpenMP kernels comes from the shared stream.

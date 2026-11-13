@@ -1,0 +1,9 @@
+# L=24, best layout measured: sweeps per second per accelerator
+# A30 8 ranks 0.44 (helma_h100.md 4.1; 0.43 in ISSUE_INTEL_VS_A30.md); H100 8 ranks MPS 25 % 1.176 (helma_h100.md 4.1)
+# Max 1550 card, V7, 4 ranks per tile 0.84-0.88 (ISSUE_INTEL_VS_A30.md section 2; mid-point 0.86)
+# MI210 4 processes at 9.16-9.27 s per sweep: 4/9.21 = 0.434 (SPEEDUPS.md, section 3)
+plat thr
+A30 0.44
+H100 1.176
+Max1550 0.86
+MI210 0.434

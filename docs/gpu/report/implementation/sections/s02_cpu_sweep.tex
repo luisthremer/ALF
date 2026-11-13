@@ -1,0 +1,127 @@
+\section{The sweep as ALF does it on the CPU}
+\label{sec:cpu}
+
+This section restates the finite-temperature sweep of \file{Prog/main.F90} in the notation of the ALF documentation. Its purpose is to name every operation that the GPU code replaces, with its cost, so that the later sections can refer to it.
+
+\subsection{Propagators and the Green function}
+
+For a given configuration of the auxiliary fields $\sigma_{n,\tau}$ the fermion weight is $\prod_{f}\det[1+B_f(\beta,0)]^{N_{\rm SUN}}$, with one propagator per flavour $f$,
+\begin{equation}
+B(\tau_2,\tau_1) = \prod_{\tau=\tau_1+1}^{\tau_2} B_\tau ,\qquad
+B_\tau = e^{-\dt T}\prod_{n} e^{\,g_n\,\eta(\sigma_{n,\tau})\,V_n}\,,
+\end{equation}
+where the order of the factors is that of \texttt{Op\_T} and \texttt{Op\_V} in the Hamiltonian. The hopping exponential $e^{-\dt T}$ is either one dense matrix or a product of \emph{checkerboard} factors, one per element of \texttt{Op\_T}, each acting on a few sites (\texttt{Hop\_mod.F90}). With \texttt{Symm=.T.} the hopping is split symmetrically, $e^{-\dt T/2}\,V\,e^{-\dt T/2}$, and observables are measured on the transformed Green function $e^{\dt T/2}\,G\,e^{-\dt T/2}$ (\texttt{Hop\_mod\_Symm}).
+
+For the Hubbard model each vertex $\Op_V(n)$ acts on one site $p_n$ with $N_{\rm non\text{-}zero}=1$, so $e^{V_n}$ is the identity except for one diagonal element $e^{\alpha\,\sigma}$. The equal-time Green function at slice $\tau$ is
+\begin{equation}
+G(\tau) = \left[1 + B(\tau,0)\,B(\beta,\tau)\right]^{-1}.
+\end{equation}
+
+\subsection{Wrapping}
+
+Between stabilisations, $G$ is moved from slice $\tau$ to $\tau+1$ by a similarity transformation,
+\begin{equation}
+G(\tau+1) = B_{\tau+1}\,G(\tau)\,B_{\tau+1}^{-1},
+\end{equation}
+and in the downward direction by the inverse. In ALF this is \texttt{WRAPGRUP} and \texttt{WRAPGRDO} (\file{Wrapgr\_mod.F90}). They are interleaved with the local updates: on the way up, the hopping is applied (\texttt{Hop\_mod\_mmthr}, \texttt{Hop\_mod\_mmthl\_m1}), then for every vertex $n$ in order the vertex factor of the old field is wrapped in (\texttt{Op\_Wrapup}) and the field on that vertex is updated. On the way down the order is reversed. The wrap of one vertex is a scaling of row $p$ by $z_a$ and column $p$ by $z_b=1/z_a$:
+\begin{equation}
+G_{rj}\to z_a G_{rj},\quad G_{jr}\to z_b G_{jr}\qquad (r=p_n).
+\end{equation}
+The hopping part costs two $N^3$ products per slice with dense hopping, or $O(N^2)$ with checkerboard factors.
+
+\subsection{Stabilisation with $UDV$ stacks}
+
+Products of many $B_\tau$ are ill conditioned: their singular values span many orders of magnitude. ALF therefore keeps the products in factorised form,
+\begin{equation}
+B(\tau,0) = U_R D_R V_R ,\qquad B(\beta,\tau) = V_L^{\dagger} D_L U_L^{\dagger},
+\end{equation}
+with $U$ unitary, $D$ diagonal with the scales, and $V$ well conditioned (upper triangular times a permutation). Every \texttt{Nwrap} slices, \texttt{WRAPUR} (or \texttt{WRAPUL}) multiplies the next \texttt{Nwrap} propagators onto $U D$ and re-factorises with a QR decomposition with column pivoting (\texttt{UDV\_mod}, \texttt{QDRP\_decompose}, LAPACK \texttt{ZGEQP3}):
+\begin{equation}
+B(\tau_2,\tau_1)\,U D = Q R P^{T},\qquad U\leftarrow Q,\; D\leftarrow |{\rm diag}\,R|,\; V\leftarrow D^{-1}R P^{T} V .
+\end{equation}
+The decompositions at the stabilisation points are kept in a stack \texttt{udvst}($N_{\rm ST}$ slots per flavour). On the upward pass the right decompositions are built and the left ones read from the stack; on the downward pass the reverse. With \texttt{STABLOG} the scales are kept as logarithms.
+
+At each stabilisation point $G$ is computed afresh from the two decompositions (\texttt{CGR}, \file{cgr1\_mod.F90}):
+\begin{equation}
+\label{eq:cgr}
+G = \left[1 + U_R D_R V_R V_L D_L U_L^\dagger\right]^{-1}
+  = U_L\left[\,U_R^\dagger U_L + D_R V_R V_L D_L\,\right]^{-1} U_R^\dagger .
+\end{equation}
+The bracket is formed with the scales applied on the outside and is again inverted by a pivoted QR. The phase of $\det G$ is tracked from the same factors. \texttt{Control\_PrecisionG} compares the fresh $G$ with the wrapped one and stops the run when the difference exceeds a threshold.
+
+\subsection{Local updates}
+
+For a proposed change of the field on vertex $n$ at slice $\tau$, with $\Delta = e^{\,g\,(\eta_{\rm new}-\eta_{\rm old})\,V}-1$ on site $p$, the ratio of weights is
+\begin{equation}
+R = \prod_f\left[1+\Delta_f\,(1-G_{pp})\right]^{N_{\rm SUN}}\,\frac{\gamma_{\rm new}}{\gamma_{\rm old}}\,e^{\ldots},
+\end{equation}
+and on acceptance (\texttt{Upgrade2}, Sherman--Morrison)
+\begin{equation}
+\label{eq:rank1}
+G' = G - \frac{\Delta}{1+\Delta(1-G_{pp})}\;G_{:,p}\,\bigl(e_p^T - G_{p,:}\bigr).
+\end{equation}
+This is one \texttt{ZGERU} of size $N\times N$, $8N^2$ flops and $32N^2$ bytes of memory traffic per accepted flip, and there are $2\,N\,\Lt$ proposals per sweep (each vertex on the way up and on the way down). The branch also contains CPU versions of the \emph{delayed} and \emph{submatrix} schemes (\file{Lowrank\_update\_mod.F90}, parameter \texttt{Sequential\_scheme}; ported on 2026-11-06 from the fork branch \texttt{feature/delayed-submatrix-clean}, commit \texttt{80c1c80d}, and listed in \file{GPU\_PLAN\_V2.md} as a prerequisite of an upstream merge), which collect up to $\Nd$ accepted flips and apply them as one matrix product (Section~\ref{sec:updates}).
+
+\subsection{Measurements}
+
+Equal-time observables are measured on every slice from $G(\tau)$ by the Hamiltonian's \texttt{Obser} routine. For the Hubbard model these are the kinetic, potential and total energy, the density, and the equal-time correlation functions (Green, spin, density) accumulated as functions of the distance $i-j$ on the lattice. With \texttt{Ltau=1}, a second pass after the sweep computes $G(\tau,0)$, $G(0,\tau)$ and $G(\tau,\tau)$ for all $\tau$ and calls \texttt{ObserT}. That pass has its own stabilisation, \texttt{CGR2\_2}, which inverts a $2N\times 2N$ block matrix with a pivoted QR.
+
+\subsection{Measured CPU cost per part}
+
+Table~\ref{tab:cpuprof} shows where one CPU core spends its time. The numbers are from stack sampling of upstream ALF (GNU 13.3, OpenBLAS, one rank, one thread) for the plain Hubbard model ($U=4$, $\beta=4$, $\dt=0.1$, \texttt{Nwrap}=10, \texttt{Ltau=1}) on three lattices with checkerboard (cb) and dense hopping (\file{PROFILE.md}). They are for the reference model of the profile, not for the point-defect model.
+
+\begin{table}[h]
+\centering
+\caption{Share of wall time in percent per routine on one CPU core (\file{PROFILE.md}, section ``Result''). $N=144, 400, 1024$.}
+\label{tab:cpuprof}
+\small
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+ & \multicolumn{3}{c}{checkerboard} & \multicolumn{3}{c}{dense} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}
+Routine & $12^2$ & $20^2$ & $32^2$ & $12^2$ & $20^2$ & $32^2$ \\
+\midrule
+\texttt{CGR2\_2} ($\tau$ pass, $2N\times2N$) & 27.7 & 29.4 & 23.6 & 19.1 & 16.5 & 14.4 \\ % PROFILE.md
+\texttt{CGR} & 12.7 & 15.0 & 11.2 & 7.4 & 8.8 & 7.1 \\ % PROFILE.md
+UDV decompose & 6.6 & 11.0 & 7.5 & 5.5 & 6.7 & 4.9 \\ % PROFILE.md
+\texttt{Upgrade2} rank-1 (\texttt{ZGERU}) & 17.2 & 23.5 & 33.3 & 9.7 & 15.2 & 20.1 \\ % PROFILE.md
+\texttt{Upgrade2} ratio & 3.2 & 1.0 & 0.4 & 1.7 & 0.6 & 0.3 \\ % PROFILE.md
+\texttt{Op\_Wrapup/do} & 2.1 & 0.8 & 1.2 & 1.4 & 0.4 & 0.6 \\ % PROFILE.md
+\texttt{WRAPUR/UL} $B$ products & 4.5 & 2.0 & 5.8 & 14.7 & 12.0 & 13.4 \\ % PROFILE.md
+\texttt{PROPR/PROPRM1} & 4.6 & 2.0 & 4.7 & 12.4 & 13.6 & 14.3 \\ % PROFILE.md
+Hopping in \texttt{WRAPGR} & 3.0 & 1.6 & 2.8 & 14.5 & 16.8 & 14.3 \\ % PROFILE.md
+\texttt{ObserT} & 5.0 & 3.9 & 1.9 & 4.3 & 2.2 & 1.2 \\ % PROFILE.md
+\texttt{Obser} & 11.9 & 7.6 & 6.2 & 7.4 & 4.1 & 3.9 \\ % PROFILE.md
+\midrule
+Stabilisation (sum) & 47.0 & 55.4 & 42.3 & 32.0 & 32.0 & 26.4 \\ % PROFILE.md aggregates
+Local updates (sum) & 22.5 & 25.3 & 34.9 & 12.8 & 16.2 & 21.0 \\ % PROFILE.md
+$B$ products (sum) & 12.1 & 5.6 & 13.3 & 41.6 & 42.4 & 42.0 \\ % PROFILE.md
+Measurements (sum) & 16.9 & 11.5 & 8.1 & 11.7 & 6.3 & 5.1 \\ % PROFILE.md
+Whole $\tau$ pass & 41.3 & 40.2 & 34.3 & 40.8 & 36.5 & 35.3 \\ % PROFILE.md
+\midrule
+Wall time per sweep (s) & 0.60 & 8.0 & 193 & 0.80 & 13.7 & 294 \\ % PROFILE.md
+\bottomrule
+\end{tabular}
+\end{table}
+
+The call counts per sweep at $12^2$ with checkerboard are: \texttt{upgrade2} 11\,520, \texttt{op\_wrap} 46\,080, \texttt{cgr} 16, \texttt{cgr2\_2} 8, \texttt{decompose} 24, \texttt{obser} 79, \texttt{obsert} 41 (\file{PROFILE.md}). % PROFILE.md
+By kind of leaf routine, 23\,\% of the time is BLAS-3, 35\,\% BLAS-1/2 and 31\,\% plain Fortran loops of ALF (\file{PROFILE.md}, $12^2$ cb). % PROFILE.md
+
+\input{sections/s02b_model}
+
+\subsection{What this means for a GPU}
+
+A GPU is fast for large dense matrix products and for simple loops over many independent elements, and slow for anything sequential or small (Appendix~\ref{app:glossary}). Read with that in mind, the profile says:
+
+\begin{itemize}
+\item \textbf{Stabilisation} is the largest group (26 to 55\,\%). It consists of QR factorisations, triangular solves and matrix products of size $N$ or $2N$. These map well to vendor libraries, except that \emph{pivoted} QR (\texttt{ZGEQP3}) does not exist on GPUs (Section~\ref{sec:stab}).
+\item \textbf{Local updates} grow with $N$ (17 to 33\,\% for the rank-one update alone). A rank-one update is memory bound and strictly sequential: each proposal needs $G_{pp}$ after the previous acceptance. On a GPU each step costs at least one kernel launch and one transfer of $G_{pp}$ to the host, 10 to 30~$\mu$s, while a CPU core does the whole update at $N=144$ in about 7~$\mu$s (\file{BENCHMARKS.md}, Phase 1: rank-1 update 4.7~$\mu$s device and 6.8~$\mu$s host at $N=144$). % BENCHMARKS.md
+This is the hardest part of the port (Section~\ref{sec:updates}).
+\item \textbf{$B$ products} (wraps) are 6 to 42\,\%: large with dense hopping, small with checkerboard. Dense hopping is a matrix product and maps to the library. Checkerboard needs own kernels (Section~\ref{sec:wrap}).
+\item \textbf{Measurements} are 5 to 17\,\%. They read $G$ on every slice. If they stayed on the host, $G$ would have to cross the bus $2\Lt$ times per sweep, which at $N=576$ is about 5~MB per copy and flavour. They had to move too (Section~\ref{sec:obs}).
+\end{itemize}
+
+So no single part dominates: a port that moves only the matrix products to the GPU gains little, and every part had to move. That is why the port keeps all large data on the device (Section~\ref{sec:data}).
+
+For the production model the hopping is a dense matrix (the \texttt{Checkerboard} flag is ignored when the pinning field is on, \file{TUNING\_DEFECT.md}), so the CPU sweep is dominated by $N^3$ matrix products. One CPU thread needs 1.68, 12.7 and 148.6~s per sweep at $L=12$, 16 and 24 with $\beta=L$ (nvfortran, submatrix $\Nd=8$, \file{TUNING\_DEFECT.md}). % TUNING_DEFECT.md
+A fit gives $t\propto L^{6.44}$ (\file{report/sections/s6\_performance.tex}): $N^3$ per operation times $\Lt\propto L$. % s6_performance.tex tab:fits

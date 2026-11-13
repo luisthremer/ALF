@@ -1,0 +1,185 @@
+\section{Performance}
+\label{sec:perf}
+
+All numbers are for the production model unless stated: Hubbard model with the space-time point defect, \texttt{Mz=.F.}, $\NFL=2$, $N_{\rm SUN}=2$, $U=5$, $h_0=1$, \texttt{Symm=.T.}, $\dt=0.1$, $\beta=L$ (so $\Lt=10L$), \texttt{Ltau=0}, \texttt{Nwrap}=10, submatrix update. One sweep goes up and down through all slices and includes the measurements. The short report (Section 6 of \file{gpu\_port\_report.tex}) states how each number was obtained; the sources are given here in comments. The numbers come from different sessions and timers; the short report lists the differences.
+
+\subsection{Elementary operations}
+
+Table~\ref{tab:kernels} gives the Phase~1 kernel benchmarks on the A30 against one host core. They explain the design: dense products and QR gain 37 to 140 times at $N=1024$, the rank-one update gains little, and a rank-$k$ update costs 25 to 40 times less per update than rank one.
+
+\begin{table}[h]
+\centering\small
+\caption{A30 kernel benchmarks in $\mu$s, device and one host core (\file{BENCHMARKS.md}, Phase 1).}
+\label{tab:kernels}
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+ & \multicolumn{2}{c}{$N=144$} & \multicolumn{2}{c}{$N=400$} & \multicolumn{2}{c}{$N=1024$}\\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+Operation & device & host & device & host & device & host \\
+\midrule
+Dense $B_T$ product & 53 & 1095 & 172 & 22\,941 & 2757 & 388\,561 \\ % BENCHMARKS.md
+Stabilisation QR & 1058 & 1834 & 2822 & 25\,721 & 9956 & 373\,241 \\
+Rank-1 update & 4.7 & 6.8 & 6.6 & 71 & 31.6 & 353 \\
+Rank-$k$ ($k=128$), per update & 0.21 & & 0.37 & & 1.25 & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Time per sweep against $L$}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+\begin{loglogaxis}[
+  width=0.82\textwidth, height=8.2cm,
+  xlabel={$L$ (lattice $L\times L$, $\beta=L$)}, ylabel={seconds per sweep, one chain},
+  xtick={12,16,24,32,48}, xticklabels={12,16,24,32,48},
+  legend pos=north west, ymin=0.8, ymax=400,
+]
+\addplot[cpu] table[x=L,y=t] {data/sweep_cpu1.dat};
+\addplot[a30] table[x=L,y=t] {data/sweep_a30_tuned.dat};
+\addplot[a30, mark=square, only marks] table[x=L,y=t] {data/sweep_a30_untuned.dat};
+\addplot[h100] table[x=L,y=t] {data/sweep_h100.dat};
+\addplot[max] table[x=L,y=t] {data/sweep_max1550_v7.dat};
+\addplot[mi] table[x=L,y=t] {data/sweep_mi210.dat};
+\legend{CPU 1 thread, A30 tuned $\Nd$, A30 $\Nd$ 4 or 8, H100, Max 1550 (V7), MI210}
+\end{loglogaxis}
+\end{tikzpicture}
+\caption{Seconds per sweep for one chain. Sources: CPU and A30 \file{TUNING\_DEFECT.md}; H100 \file{helma\_h100.md}; Max~1550 \file{ISSUE\_INTEL\_VS\_A30.md} (V7, before the \texttt{acc0} and LU-free changes); MI210 \file{amd\_mi210/README.md}. Open squares: A30 with $\Nd$ not tuned.}
+\label{fig:sweepL}
+\end{figure}
+
+\begin{table}[h]
+\centering\small
+\caption{A30, one chain (\file{TUNING\_DEFECT.md}, table ``Time per sweep, beta = L''). Peak device memory and the precision of $G$ (mean / max over the run).}
+\label{tab:a30all}
+\begin{tabular}{@{}rrrrrrrl@{}}
+\toprule
+$L$ & $N$ & $\Lt$ & $\Nd$ & GPU s & CPU 1 thread s & memory MiB & precision \\
+\midrule
+12 & 144 & 120 & 4 & 1.76 & 1.68 & 299 & 1e-14 / 7e-13 \\ % TUNING_DEFECT.md
+16 & 256 & 160 & 32 & 1.33 & 12.7 & 385 & 2e-14 / 3e-12 \\
+20 & 400 & 200 & 4 & 8.55 & & 619 & 5e-14 / 5e-11 \\
+24 & 576 & 240 & 32 & 5.25 & 148.6 & 1069 & 4e-14 / 1e-11 \\
+28 & 784 & 280 & 4 & 30.1 & & 1859 & 6e-14 / 3e-11 \\
+32 & 1024 & 320 & 64 & 18.2 & $\approx$860 (extrap.) & 3077 & 6e-14 / 6e-11 \\
+36 & 1296 & 360 & 8 & 62.0 & & 5189 & 2e-13 / 9e-11 \\
+40 & 1600 & 400 & 8 & 106.7 & & 8391 & 2e-13 / 2e-10 \\
+48 & 2304 & 480 & 32 & 179.3 & & 19\,647 & 6e-13 / 7e-10 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Scaling.} The work per sweep grows as $N^3\Lt\propto L^7$ for the cubic parts (wraps with dense hopping, stabilisation, \texttt{Symm}), as $N^2\Lt\cdot N/\Nd\propto L^7/\Nd$ for the flushes, and as $N\Lt\propto L^3$ for the latency-bound per-block work. Fits $t\propto L^b$ give $b=6.44$ for one CPU thread, 4.45 for the A30 (tuned points $L=16$ to 48, local exponents 3.4, 4.3 and 5.6), 3.58 for the H100 and 4.17 for the Max~1550 (two points each), and 4.78 for the MI210 (\file{report/sections/s6\_performance.tex}, Table ``fits''). % s6_performance.tex tab:fits
+The GPU exponents are well below 7 because at these sizes the device is not yet saturated by the cubic work: the latency-bound part ($\propto L^3$) still matters, and the local exponent rises with $L$ towards the asymptotic value (5.6 between $L=32$ and 48 on the A30).
+
+\paragraph{Comparison with the CPU.} Against one CPU thread of the same build the A30 is 1.0 times as fast at $L=12$, 9.6 times at $L=16$, 28 times at $L=24$ and about 47 times at $L=32$ (the last against an extrapolation from four threads) (\file{TUNING\_DEFECT.md}). % TUNING_DEFECT.md
+This is not the fair comparison. A GPU replaces the cores it displaces: 16 Zen~3 cores per A30 on nividia, 14 Sapphire Rapids cores per Max~1550 tile on SuperMUC (\file{HARD.md}). With perfect scaling over independent chains, 16 cores would give 16 times one thread; then the A30 at $L=24$ (one chain, 5.25~s) is about 1.8 times a 16-core node, and with several chains per GPU more. A measured node-level CPU number for the defect model does not exist \todo{CPU node throughput for the defect model at L=24}. For the plain Hubbard model a 16-rank node delivered 26 chain-sweeps per second at $12\times12$ and 1.8 at $20\times20$ with checkerboard hopping (\file{BENCHMARKS.md}, Phase 0); % BENCHMARKS.md phase 0
+these are not comparable with the defect model, whose hopping is dense.
+
+\paragraph{Small lattices.} At $L=12$ the GPU gains nothing. At $L=32$ the A30 still issued 175\,000 small kernel launches and 220\,000 stream synchronisations per sweep; below $L=16$ the GPU is mostly waiting for the host (\file{TUNING\_DEFECT.md}). % TUNING_DEFECT.md
+
+\subsection{Update scheme and $\Nd$}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+\begin{groupplot}[group style={group size=2 by 1, horizontal sep=1.8cm}, width=0.48\textwidth, height=6.4cm]
+\nextgroupplot[xmode=log, ymode=log, log basis x=2, xlabel={$\Nd$}, ylabel={seconds per sweep}, legend pos=north east, ymin=1, ymax=400, xtick={2,4,8,16,32,64,128}, xticklabels={2,4,8,16,32,64,128}]
+\addplot[a30, mark=o] table[x=nd,y=L16] {data/ndelay_a30.dat};
+\addplot[a30] table[x=nd,y=L24] {data/ndelay_a30.dat};
+\addplot[a30, mark=triangle*, dashed] table[x=nd,y=L32] {data/ndelay_a30.dat};
+\legend{$L=16$, $L=24$, $L=32$}
+\nextgroupplot[ybar, bar width=8pt, symbolic x coords={16,24,32}, xtick={16,24,32}, xlabel={$L$}, ylabel={seconds per sweep}, ymin=0, legend pos=north west, enlarge x limits=0.25]
+\addplot[fill=cCPU!50, draw=white] table[x=L,y=std] {data/schemes_a30.dat};
+\addplot[fill=cH100!70, draw=white] table[x=L,y=dly] {data/schemes_a30.dat};
+\addplot[fill=cA30!80, draw=white] table[x=L,y=sub] {data/schemes_a30.dat};
+\legend{standard, delayed, submatrix}
+\end{groupplot}
+\end{tikzpicture}
+\caption{A30, $\beta=L$. Left: submatrix scheme against $\Nd$. Right: the three schemes, delayed and submatrix at their best measured $\Nd$; standard not measured at $L=32$ (\file{TUNING\_DEFECT.md}, table ``Scheme and N\_delay'').}
+\label{fig:ndelay}
+\end{figure}
+
+The minimum in $\Nd$ (Figure~\ref{fig:ndelay}) is the balance of two costs. Per block there is a fixed cost of about ten device operations and one round trip, so a small $\Nd$ is latency-bound: halving $\Nd$ from 32 to 16 doubles the number of blocks and costs 21 to 29\,\%. A large $\Nd$ increases the host work per proposal, $O(k^2)$ for the small matrix $M$ with $k$ up to $\Nd$, and the cost of the flush GEMMs grows with $k$ while the number of blocks per slice cannot fall below one per $\Nd$ vertices. Above $\Nd=64$ the time rises again (6.81~s at 128 against 5.25~s at 32 for $L=24$). The recommendation is $\Nd=32$ for $L\le28$ and 64 for $L\ge32$; the automatic rule chooses 64 at $L=32$ (\file{TUNING\_DEFECT.md}). % TUNING_DEFECT.md
+With several ranks per GPU the optimum shifts upwards (H100, 8 ranks, $L=32$: 66.5~s at $\Nd=32$, 34.5~s at 64, 34.3~s at 128, \file{helma\_h100.md}, section 4.2). % helma_h100.md
+On Intel the ranking of the schemes differs: delayed was slower than standard there (19.66 against 18.32~s per sweep, \file{p7/NOTES.md}, lines 105-106). % p7/NOTES.md
+
+\subsection{\texttt{Nwrap}}
+
+\begin{table}[h]
+\centering\small
+\caption{A30, $L=24$, submatrix $\Nd=8$ (\file{TUNING\_DEFECT.md}, table ``Nwrap'').}
+\label{tab:nwrap}
+\begin{tabular}{@{}rrrl@{}}
+\toprule
+\texttt{Nwrap} & s/sweep & memory MiB & precision mean / max \\
+\midrule
+5 & 11.8 & 1553 & 2e-14 / 9e-12 \\ % TUNING_DEFECT.md
+10 & 9.9 & 1069 & 4e-14 / 1e-11 \\
+20 & 9.2 & 825 & 3e-13 / 5e-11 \\
+40 & 8.7 & 703 & 6e-11 / 1.6e-8 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Halving \texttt{Nwrap} doubles the number of decompositions and \texttt{CGR} calls and the size of the stack. At $L=24$ \texttt{Nwrap}=5 costs 19\,\% more time and 45\,\% more memory than 10; 20 saves 7\,\% at a precision of $5\times10^{-11}$; 40 saves 12\,\% but the precision drops to $1.6\times10^{-8}$ (Table~\ref{tab:nwrap}). With \texttt{Mz=.T.} at $U=5$, \texttt{Nwrap}=10 is not sufficient (precision maximum $2\times10^{-3}$); 4 to 5 are needed (\file{TUNING\_DEFECT.md}). % TUNING_DEFECT.md
+
+\subsection{Where the time goes}
+
+\paragraph{One chain.} On the A30 at $L=32$ ($\beta=4$, nsys profile), 44\,\% of the kernel time is in 32\,338 small flush ZGEMMs of 52~$\mu$s, 17\,\% in dense GEMMs, about 9\,\% in QR and LU; the kernels run 3.8~s of a 7.5~s sweep, and 65\,\% of the host API time is \texttt{cuStreamSynchronize} (\file{TUNING\_DEFECT.md}). On the Max~1550 at $L=24$ (V7) the phases are updates 1.44~s, stabilisation 0.80~s, \texttt{CGR} 1.21~s, observables 1.18~s (\file{p7/NOTES.md}, section 3); % p7 NOTES
+the largest device items are the device QR (192 calls, 0.82~s), oneMKL \texttt{getrf} (96 calls, 0.38~s, since removed by the LU-free phase), the $576^3$ hopping GEMMs (2880 calls, 0.32~s) and the rank-$k$ flushes (34\,560 calls, 0.31~s). On the MI210 the QR panel is 36\,\% of the kernel time.
+
+\input{sections/s12c_fig}
+
+\paragraph{Production layouts.} With nine ranks on the A30 under MPS a kernel runs 99.97\,\% of the time, 5.6 kernels at once on average; the kernel time splits into flush GEMMs 47\,\%, stabilisation 25\,\%, measurements 17\,\%, block kernels 6\,\%, wraps 5\,\% (\file{PP\_GPU.md}). % PP_GPU.md
+Here the device is full, and only a reduction of device work helps. ``A change that removes launches helps single chains; only a change that removes device work helps production'' (\file{SPEEDUPS.md}).
+
+\input{sections/s12b_count}
+
+\subsection{Throughput per device}
+
+\begin{table}[h]
+\centering\small
+\caption{$L=24$, one chain and best measured layout (\file{report/data/platform\_*.dat} and sources there).}
+\label{tab:platforms}
+\begin{tabular}{@{}lrrl@{}}
+\toprule
+Device & one chain s/sweep & sweeps/s per device & layout \\
+\midrule
+A30 & 5.25 & 0.44 & 8 ranks \\ % TUNING_DEFECT.md; helma_h100.md 4.1
+H100 & 3.51 & 1.176 & 8 ranks, MPS 25\,\% \\ % helma_h100.md
+Max 1550 (card = 2 tiles) & 4.04--4.96 per tile & 0.86 & 4 ranks per tile, CCS 4 (V7) \\ % ISSUE, SPEEDUPS
+MI210 & 4.41 & 0.434 & 4 processes \\ % SPEEDUPS.md sec 3
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+\begin{axis}[width=0.7\textwidth, height=6.4cm, xlabel={ranks per GPU (per card for Max 1550)}, ylabel={sweeps per second per GPU}, xmode=log, log basis x=2, xtick={1,2,4,8,16}, xticklabels={1,2,4,8,16}, legend pos=north west, ymin=0]
+\addplot[h100] table[x=ranks,y=agg] {data/mps_h100_l24.dat};
+\addplot[a30] table[x=ranks,y=agg] {data/mps_a30_l24.dat};
+\addplot[max] table[x=ranks,y=agg] {data/mps_max1550_l24.dat};
+\addplot[h100, mark=triangle, densely dashed] table[x=ranks,y=agg] {data/mps_h100_l32.dat};
+\legend{H100 $L=24$, A30 $L=24$, Max 1550 card $L=24$, H100 $L=32$}
+\end{axis}
+\end{tikzpicture}
+\caption{Aggregate throughput against ranks per device (\file{helma\_h100.md}; \file{ISSUE\_INTEL\_VS\_A30.md}, section 7).}
+\label{fig:mps}
+\end{figure}
+
+\subsection{Tuning rules}
+
+From the measurements (\file{TUNING\_DEFECT.md}, \file{helma\_h100.md}, \file{RUNTIME\_SWITCHES.md}):
+\begin{itemize}
+\item \texttt{Sequential\_scheme="submatrix"}; $\Nd=32$ for $L\le28$, 64 for $L\ge32$ (higher with many ranks per GPU).
+\item \texttt{Nwrap}=10 for \texttt{Mz=.F.}; 4 to 5 for \texttt{Mz=.T.}.
+\item \texttt{Ltau=0}: \texttt{SpinZ\_localtau} comes from the equal-time pass.
+\item \env{OMP\_TARGET\_OFFLOAD=MANDATORY}, so that a failed device initialisation stops the run instead of running on the CPU.
+\item NVIDIA: MPS whenever more than one rank shares a GPU; 8 ranks per H100.
+\item Intel: \env{LIBOMPTARGET\_LEVEL\_ZERO\_STAGING\_BUFFER\_SIZE=1048576}; \texttt{ALFSH\_ASYNCBLK=1}; CCS 4 with 4 ranks per tile; ahead-of-time build.
+\item AMD: the patched GCC plugin, \env{GCN\_NUM\_THREADS=4}; 4 processes per GPU.
+\item Check the \texttt{info} file for ``GPU path (gpu\_state): ACTIVE'' and ``device equal-time measurement ACTIVE''.
+\end{itemize}

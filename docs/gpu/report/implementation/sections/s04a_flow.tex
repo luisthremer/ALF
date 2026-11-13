@@ -1,0 +1,53 @@
+\subsection{The sweep on the device: who does what}
+
+Table~\ref{tab:map} maps each step of the CPU sweep of \file{main.F90} to its device replacement, and Figure~\ref{fig:flow} shows where the data live.
+
+\begin{small}
+\begin{longtable}{@{}p{3.3cm}p{3.5cm}p{3.3cm}p{4.3cm}@{}}
+\caption{CPU routines and their device replacements in one sweep (production path).}\label{tab:map}\\
+\toprule
+CPU (upstream) & Device routine & Module & Host part \\
+\midrule\endfirsthead
+\toprule CPU (upstream) & Device routine & Module & Host part \\ \midrule\endhead
+initial \texttt{WRAPUL} + \texttt{udvst} & \texttt{gpu\_stab\_wrapul}, \texttt{gpu\_stab\_store\_l} & \file{gpu\_stab\_mod} & column-norm sort \\
+initial \texttt{CGR} & \texttt{gpu\_stab\_cgr} (lazy) & \file{gpu\_stab\_mod} & sort, phase scalar \\
+\texttt{WRAPGRUP} & \texttt{gpu\_wrapgrup} & \file{gpu\_update\_mod}, \file{gpu\_lowrank\_mod} & proposals, ratios, decisions, $M$, RNG \\
+\texttt{Hop\_mod\_mmthr}, \texttt{mmthl\_m1} & \texttt{gpu\_mmthr}, \texttt{gpu\_mmthl\_m1} & \file{gpu\_wrap\_mod} & -- \\
+\texttt{Op\_Wrapup} & block scalings in \texttt{blk\_end} & \file{gpu\_lowrank\_mod} & factors recorded on host \\
+\texttt{Upgrade2} / low-rank update & block mode & \file{gpu\_lowrank\_mod} & all per-proposal work \\
+\texttt{WRAPUR} & \texttt{gpu\_stab\_wrapur} & \file{gpu\_stab\_mod} & sort \\
+\texttt{udvl=udvst}, \texttt{udvst=udvr} & \texttt{gpu\_stab\_exchange} & \file{gpu\_stab\_mod} & -- \\
+\texttt{CGR}, \texttt{Control\_PrecisionG} & \texttt{gpu\_stab\_cgr} & \file{gpu\_stab\_mod} & sort, threshold test, phase product \\
+\texttt{Hop\_mod\_Symm} + \texttt{Obser} & \texttt{gpu\_obs\_measure} & \file{gpu\_obs\_mod} & counters, scalar accumulation \\
+\texttt{WRAPGRDO} & \texttt{gpu\_wrapgrdo} & \file{gpu\_update\_mod}, \file{gpu\_lowrank\_mod} & as \texttt{WRAPGRUP} \\
+\texttt{WRAPUL} & \texttt{gpu\_stab\_wrapul} & \file{gpu\_stab\_mod} & sort \\
+\texttt{TAU\_M} (\texttt{Ltau=1}) & \texttt{gpu\_tau\_pass} & \file{gpu\_tau\_mod}, \file{gpu\_obs\_mod} & scalars \\
+\texttt{Pr\_obs} per bin & \texttt{gpu\_obs\_flush}, then \texttt{Pr\_obs} & \file{gpu\_obs\_mod} & binning, MPI, I/O \\
+\bottomrule
+\end{longtable}
+\end{small}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=0.5cm and 0.6cm]
+\node[devbox, text width=4.8cm] (mir) {mirror: hopping, groups, \texttt{Hd}, vertex exponentials, fields};
+\node[devbox, text width=4.8cm, below=of mir] (g) {$G$ per flavour (authoritative), low-rank factors};
+\node[devbox, text width=4.8cm, below=of g] (st) {$UDV$ stack ($N_{\rm ST}$ slots), \texttt{udvl}, \texttt{udvr}, tracked phases};
+\node[devbox, text width=4.8cm, below=of st] (acc) {observable accumulators};
+\node[hostbox, text width=3.9cm, left=3.6cm of mir] (rng) {random numbers, proposals, decisions};
+\node[hostbox, text width=3.9cm, left=3.6cm of g] (blk) {block $G_0(B,B)$, matrix $M$, wrap factors};
+\node[hostbox, text width=3.9cm, left=3.6cm of st] (sort) {column-norm sort; \texttt{ZGEQP3} (\texttt{STABLOG})};
+\node[hostbox, text width=3.9cm, left=3.6cm of acc] (obs) {counters, binning, MPI, I/O, host shadow of $G$};
+\node[above=0.2cm of rng, font=\small\bfseries] {host};
+\node[above=0.2cm of mir, font=\small\bfseries] {device};
+\draw[arr] ([yshift=4pt]blk.east) -- node[above, font=\scriptsize]{sites, $M$, factors} ([yshift=4pt]g.west);
+\draw[arr] ([yshift=-6pt]g.west) -- node[below, font=\scriptsize]{$32\Nd^2$ B per block} ([yshift=-6pt]blk.east);
+\draw[arr] ([yshift=4pt]st.west) -- node[above, font=\scriptsize]{norms $8N$ B} ([yshift=4pt]sort.east);
+\draw[arr] ([yshift=-6pt]sort.east) -- node[below, font=\scriptsize]{permutation $4N$ B} ([yshift=-6pt]st.west);
+\draw[arr] (acc.west) -- node[above, font=\scriptsize]{once per bin} (obs.east);
+\draw[arr] (rng.east) -- node[above, font=\scriptsize]{new fields} (mir.west);
+\end{tikzpicture}
+\caption{Where the data live during a sweep, and what crosses the bus (production path). Grey: host; green: device.}
+\label{fig:flow}
+\end{figure}
+

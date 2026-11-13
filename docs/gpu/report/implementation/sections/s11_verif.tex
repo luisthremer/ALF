@@ -1,0 +1,61 @@
+\section{Verification}
+\label{sec:verif}
+
+A Monte Carlo code is hard to test: the output is noisy, the trajectory is chaotic, and the random number stream differs between compilers. The port went through two verification regimes. The first relied on statistical acceptance gates and was abandoned; the second relies on deterministic comparisons and is the standard now. Both are described, because the contrast is the main lesson.
+
+\subsection{The method that worked}
+
+\paragraph{1. Same-compiler CPU reference at fixed seed.} The host draws the same random numbers in the same order as the CPU code, and makes the same accept/reject decisions from the same ratios. If the device computes $G$ to rounding accuracy, a GPU build and a \texttt{GPU=none} build of the same compiler with the same parameters and seed follow the same Markov chain. A wrong decision would occur only if a ratio lies within rounding of a random number, which over a short run does not happen. The observables then agree to rounding: about $10^{-13}$ with \texttt{Mz=.F.} and about $10^{-10}$ with \texttt{Mz=.T.}, where the coupling is complex and the trajectory more sensitive (\file{README.md}, ``How correctness is checked''). % README.md
+The comparison script is \file{scripts/defect/run\_cmp.py}. The same compiler matters: random streams differ between gfortran, nvfortran, ifx, so trajectories cannot be compared across compilers.
+
+The rule for large lattices was refined on 2026-11-11 (\file{DECISIONS.md}, item 43): for $L\ge16$ on the Max~1550, $10^{-13}$ is not reachable in the imaginary parts of the scalar observables because of the summation order. The rule now is: configurations (\texttt{confout}) bitwise identical; real parts within 10 times the spread between two CPU runs; imaginary parts of the scalars reported only. The bitwise identity of the configurations is the strongest test: it means every one of the millions of decisions was the same.
+
+\paragraph{2. Deterministic kernel tests.} Each device routine has a self-test at fixed fields that compares with the host routine on the same input: the mirror round trip and the wraps (\texttt{ALF\_GPU\_SELFTEST}=1, 2), the stabilisation (3), the $\tau$ pass (4), the update (\texttt{ALF\_GPU\_UPDTEST}), plus unit tests of \texttt{alf\_la} (\texttt{t\_order}, \texttt{t\_info}, \texttt{t\_qrpp}).
+
+\paragraph{3. Bitwise GPU-versus-GPU checks.} After ticket 212 every reduction runs in a fixed order, so two GPU runs with the same input are bitwise identical. A switch that should not change the numerics (the staging buffer, the asynchronous block path, MPS, CU masking) is accepted only if the output is bitwise identical with and without it.
+
+\paragraph{4. Planted defects.} Every check is shown to fail on a deliberately wrong program before it is trusted: the fault switches (\texttt{ALF\_GPU\_FAULT}, \texttt{FAULT\_STAB}, \texttt{FAULT\_TAU} with values such as \texttt{perm}, \texttt{phase}, \texttt{eps:1e-12}) inject a known error. For example, perturbations of $10^{-11}$ and $10^{-12}$ fail the decision-43 rule as they must; the pre-fix device QR library, used as a planted defect, revealed a race that appeared only with four ranks per tile under CCS (\file{EVAL\_ORIGINAL\_GPU\_BRANCH.md}, section 4).
+
+\paragraph{5. A production guard.} In a production run any debug or fault variable stops the run (\file{gpu\_state\_mod.F90:412-421}): ``GPU debug env refused: \ldots (production run; set ALF\_GPU\_DEBUG=1 for a debug run)''. A fault switch left in a job script cannot silently corrupt data.
+
+\paragraph{6. Refusal at setup.} What is not supported is refused before the run, with a reason in the \texttt{info} file (Section~\ref{sec:notported}).
+
+\subsection{What did not work, and why}
+
+The first phase of the port (tickets 201 to 208, October 2026) required, for each ticket, a pre-registered statistical acceptance test with positive and null controls, tiers, an independent verifier and evidence archives (\file{VERIFICATION.md}). It failed in practice (\file{EVAL\_ORIGINAL\_GPU\_BRANCH.md}, sections 3-4; \file{DECISIONS.md}):
+\begin{itemize}
+\item \textbf{The ``sd condition''} of ticket 207 (ratio of standard deviations GPU/CPU at most 1.25) failed on \emph{correct} CPU variants, with values 0.9 to 2.1. % EVAL sec 4
+\item \textbf{The statistical comparison \texttt{compare2}} detected a planted shift of 5 standard errors only about 60\,\% of the time; at 8 standard errors about 99\,\%. A correct implementation failed about 33\,\% of the time by chance, and the false-alarm budget was raised from 0.04 to 0.35. Twice the result was inconclusive and the run length was raised. Its minimal detectable effect at 80\,\% power was 0.47\,\% in the energy, 18\,\% in $S_{zz}(\pi,\pi)$ and 27\,\% in $\chi_{zz}$: ``a gross-error detector'' (\file{BASELINE.md}). % DECISIONS 12/23, 29; BASELINE
+\item \textbf{Tolerances at rounding level as maxima}: the requirement that the maximal $\tau$ precision be within 1.5 times the CPU's failed with ratios 1.8 to 2.1 on identical trajectories. The maximum of a rounding-driven quantity over a run is an extreme-value statistic and fluctuates (\file{DISCREPANCIES.md}, 2026-10-29). Similar: the \texttt{STABLOG} same-seed deviation $1.214\times10^{-9}$ against a bound of $10^{-9}$; later $1.36\times10^{-10}$ against $10^{-10}$ at $L=6$, \texttt{Mz=.T.} on Intel, where oneMKL itself fails 2 of 5 seed sets.
+\item \textbf{A control that could not be killed}: switching off the Newton--Schulz step on oneMKL did not make the precision test fail, because oneMKL's $Q$ does not need the step; it was replaced by a graded fault (\file{DECISIONS.md}, items 24-27).
+\end{itemize}
+The cost: verification infrastructure, process and documents were 62\,\% of the 52\,632 added lines; 172 of 208 commits touched no code; one acceptance test was pre-registered seven times; ticket 207 stalled for about 4.5 days (\file{EVAL\_ORIGINAL\_GPU\_BRANCH.md}, section 3). % EVAL sec 3
+The key finding (section 4 of the same file): every bug in the port code was caught by a cheap deterministic check (a kernel test against the host, a unit test, the same-seed comparison, or a determinism test). No port bug was caught by a statistical gate; the statistical harness found only bugs in itself. On 2026-11-02 the owner closed the process (``If it works it works \ldots We will not make any stricter tests'', \file{DECISIONS.md}, item 41). The next ticket took 9 hours; in about seven further days the delayed and submatrix updates, time-dependent hopping, MPI, parameter-parallel runs, the H100, the Max~1550 production with own QR, and the AMD backend followed.
+
+Why statistical gates are weak here: the GPU and CPU runs at the same seed are not independent samples; at different seeds the comparison has the power of the shorter run and can only detect gross errors. Bounds at rounding level are limited by rounding noise, not by the correctness of the code. A test of identity of trajectories is both stronger and cheaper.
+
+\subsection{Current results per backend}
+
+\begin{table}[h]
+\centering\small
+\caption{Verification of the unified branch (\file{CONSOLIDATION.md}, 2026-11-13, unless stated). Deviations are the largest relative deviation of the observables against the same-compiler CPU build at the same seed.}
+\label{tab:verif}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+Backend & Result \\
+\midrule
+\texttt{GPU=none} & bitwise identical to the pre-merge tip \texttt{cc473abc}; bitwise identical to upstream ALF with \texttt{LOBS\_ST=1} \\
+AMD MI210 & $1.15\times10^{-14}$ ($L=6$), $5.0\times10^{-14}$ ($L=12$), acceptance identical; bitwise identical to the pre-merge AMD tip at $L=6$, 12, 16, 24 \\
+Intel Max~1550 (ifx 2025.3) & default switches: $2.2\times10^{-15}$ ($L=6$, \texttt{Mz=.F.}), $1.5\times10^{-14}$ ($L=12$), $5.5\times10^{-11}$ ($L=6$, \texttt{Mz=.T.}); V7: $2.3\times10^{-15}$, $1.6\times10^{-14}$, $1.36\times10^{-10}$ (tolerance $10^{-10}$); LU-free phase equal to the LU phase to $5.8\times10^{-15}$; $L=16$, 24 pass the decision-43 rule \\
+NVIDIA H100 & $5.2\times10^{-13}$ at $L=8$, acceptance identical (0.3377294921875); restart continues bitwise (\file{helma\_h100.md}, section 3); the row of the unified commit is a placeholder in \file{CONSOLIDATION.md} \todo{H100 check of the unified commit} \\
+NVIDIA A30 & unified build compiled, GPU run not done (card occupied) \todo{A30 check of the unified commit} \\
+Delayed, submatrix & reproduce the standard update to $10^{-12}$; \texttt{SpinZ\_localtau} agrees with the exact $U=0$ result to $4.7\times10^{-14}$ \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+In production the precision of $G$ (maximum over a run) lies between $10^{-10}$ and $3\times10^{-8}$ up to $L=44$; a corrupted $G$ from faulty hardware gave 10 to 28 (\file{DECISIONS.md}, item 46). % DECISIONS 46
+
+\dis{\file{GPU\_PLAN\_V2.md} (section 1) states that no same-seed comparison of AMD against the CPU was found and lists it as work package WP1.3; \file{CONSOLIDATION.md} reports it ($1.15\times10^{-14}$ and $5.0\times10^{-14}$). \file{VERIFICATION.md} (section 7) still says the default path is not bitwise reproducible; ticket 212 fixed that.}
+
+\paragraph{Open items.} An Intel check on the Arc B580 with \texttt{Ltau=1} showed a 6.3$\sigma$ difference in $S_{zz}(\pi,\pi)$, $S_{zz}(\pi,\pi,\beta/2)$ and $\chi_{zz}$; whether this is a fluke or a bug is open (\file{EVAL\_ORIGINAL\_GPU\_BRANCH.md}, section 2). Ticket 213 (the \texttt{STABLOG} same-seed excess) was never started.

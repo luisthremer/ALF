@@ -1,0 +1,7 @@
+# A30, one chain, submatrix, tuned N_delay (16: 32, 24: 32, 32: 64, 48: 32); s per sweep, Beta = L
+# source: docs/gpu/TUNING_DEFECT.md (table "Time per sweep, beta = L")
+L t
+16 1.33
+24 5.25
+32 18.2
+48 179.3
