@@ -139,7 +139,7 @@ Contains
     Logical                   :: LR_n
 
 #ifdef ALF_GPU
-    ! GPU port, ticket 205: device-resident G (INTERIM copies per call), host decision, same RNG order
+    ! GPU port, ticket 205: device-resident G (device-authoritative since ticket 208-1: no per-call G copies), host decision, same RNG order
     if (gpu_upd_enabled()) then
        if (gpu_upd_selftest_due()) call Wrapgr_gpu_selftest(GR,NTAU,PHASE,Propose_S0,Nt_sequential_start, Nt_sequential_end, N_Global_tau)
        if (gpu_trace_on()) call gpu_trace_begin(NTAU+1)

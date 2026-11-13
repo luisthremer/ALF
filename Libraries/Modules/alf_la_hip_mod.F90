@@ -2,8 +2,12 @@
 !   BLAS   : hipBLAS (C shim alf_la_hip_shim.cpp) on the device-resident (mapped) arrays, device pointers via use_device_addr.
 !   LAPACK : hipSOLVER geqrf, ungqr, unmqr, getrf, getrs (int32 pivots, used directly on the caller's device array).
 !   zgeqp3 : host ZGEQP3 with D->H / H->D copies (la_geqp3_host).
-!   Ordering: every shim call ends with hipDeviceSynchronize, because the OpenMP target regions (libgomp GCN plugin) run on
-!   queues of their own; solver info is read back inside the call and checked by la_sync (same contract as the other backends).
+!   Ordering: the OpenMP target regions (libgomp GCN plugin) run on queues of their own, so the HIP work has to be finished
+!   before the plugin touches the device again.  hipSOLVER calls (and om_sync) block: hipDeviceSynchronize plus the read-back of the
+!   solver info inside the call (checked by la_sync, same contract as the other backends).  hipBLAS calls, the own HIP kernels
+!   (alf_hipk_mod) and the own QR (alf_hip_qr.hip.cpp) only MARK the work as pending when the deferred synchronisation is on
+!   (default if the patched libgomp GCN plugin registered its presync hook; ALF_HIP_ASYNC=0 restores a synchronisation after every
+!   call); the plugin then calls alf_hip_presync() before every OpenMP kernel launch and device copy/free (alf_hip_kernels.hip.cpp).
 !   Derived from alf_la_om_mod (oneMKL backend, alf_la_mod.F90); same om_* interface.
 #if defined(ALF_LA_HIP)
 module alf_la_hip_mod

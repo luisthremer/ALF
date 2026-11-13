@@ -44,9 +44,10 @@
 !>     gathered on the device), unpivoted QR (la_geqrf), the exp(L_j - L_i) row scaling and the log update;
 !>   * gpu_stab_cgr: CGR for NVAR = 1 and 2 (cgr1_mod CGR, branches default and STABLOG).  Default: la_qrpp.  STABLOG: host
 !>     ZGEQP3 through la_geqp3_host (ADR-001 section 4: upstream numerics; the N x N matrix goes D->H and the factors H->D).
-!>     D separation, phase (permutation sign, R diagonal, reflector determinants, det of U_R^dagger U_L from the determinant
-!>     phases of the two U factors, tracked per slot since their decompose: see det tracking below; la_getrf only as fallback),
-!>     ZUNMQR, ZTRSM, ZLAPMR/T and the final GEMM on the device;
+!>     D separation, phase (permutation sign, R diagonal, reflector determinants, determinant phase of U_R^dagger U_L), ZUNMQR,
+!>     ZTRSM, ZLAPMR/T and the final GEMM on the device.  The determinant phase comes from the tracked det(U) of the two U factors
+!>     (see "det tracking" below, la_getrf only as fallback) ONLY with the oneMKL backend: decompose_slot sets dw_ok = .false.
+!>     under #if !defined(ALF_LA_ONEMKL), so the CUDA and HIP backends always take the phase from the LU (la_getrf);
 !>   * the precision check of Control_PrecisionG as a device reduction (max |A-B|, sum |A-B|, NaN counts): one D->H of four
 !>     numbers, handed to Control_PrecisionG_vals (control_mod).
 !>
@@ -62,9 +63,11 @@
 !>   decompose, STABLOG : 8 N B D->H (log norms), 4 N B H->D, 0 B for the test
 !>   CGR default        : 8 N + 4 N B (la_qrpp), 16 B D->H (phase)
 !>   CGR STABLOG        : 16 N^2 B D->H + 16 N^2 + 16 N + 4 N B H->D (la_geqp3_host), 16 B D->H (phase)
-!>   INTERIM 206 (removed by 208): G D->H 16 N^2 B (GR is host-authoritative), wrapped G H->D 16 N^2 B (for the precision
-!>   reduction), 32 B D->H (precision numbers); with Ltau = 1 in the backward sweep and the HOST tau path only: udvst(NST) D->H,
-!>   32 N^2 + 16 N B (ticket 207: not done when the device tau pass is active).
+!>   Ticket 206 as first written (the INTERIM copies, removed by 208-1): G D->H 16 N^2 B (GR was host-authoritative), wrapped G H->D
+!>   16 N^2 B (for the precision reduction).  Since 208-1 G is device-authoritative (G_d): the sweep path (lazy = .true.) does neither,
+!>   the precision check reads G_d device to device and the host copy is made only on demand (gpu_g_host).  What remains is 32 B D->H
+!>   (precision numbers); with Ltau = 1 in the backward sweep and the HOST tau path only: udvst(NST) D->H, 32 N^2 + 16 N B (ticket 207:
+!>   not done when the device tau pass is active).
 !>
 !> Self-test ALF_GPU_SELFTEST=3 (oracle = the upstream host routines WRAPUR/WRAPUL/CGR/decompose on host UDV_State objects;
 !> the default path needs a build with -DQR_PREPIVOT, the CPU variant of the same algorithm), timing ALF_GPU_STABTIME=1,

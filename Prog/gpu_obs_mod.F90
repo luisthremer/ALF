@@ -6,22 +6,33 @@
 
 !--------------------------------------------------------------------
 !> @brief
-!> Equal-time observables of the Hubbard model on the device (ticket 208-2).
+!> Observables of the Hubbard model on the device: equal time (ticket 208-2) and time displaced (ticket 208-3).
 !>
 !> @details
-!> Replaces ham%Obser of Hamiltonian_Hubbard_smod for the supported case (N_FL = 1, or N_FL = 2 with N_SUN = 1; |ham_h0| < Eps_small; no
-!> Symm; no Projector; device updates active).  The Green function is read from G_d (device-authoritative since 208-1), so no D->H of G
-!> is needed per time slice.
+!> Replaces ham%Obser (and ham%OBSERT, see below) of Hamiltonian_Hubbard_smod for the supported case: N_FL = 1, or N_FL = 2 with the
+!> Obs_eq layout of the Hubbard model (five observables); |ham_h0| < Eps_small; no Projector (gpu_obs_setup returns before o_ok is
+!> set otherwise); device updates active.  With ham_h0 /= 0 (the static pinning field of upstream, whose local observable Obs_local
+!> is measured by the host Obser) the device measurement declines and the host Obser runs.  On this branch (gpu-port) there are no
+!> device accumulators for local observables at all: the space-time point-defect observables SpinZ_local / SpinZ_localtau and their
+!> HIP kernel (hk_local) exist only on gpu-port-unified (docs/gpu/BRANCHES.md).  Symm (Hop_mod_Symm) IS supported: the measurement
+!> is made on a symmetrised copy of G (gpu_symm, also with time-dependent hopping), G_d is restored afterwards.  The Green function
+!> is read from G_d (device-authoritative since 208-1), so no D->H of G is needed per time slice; the host GR is copied to G_d only
+!> if the device copy is stale.
 !>
-!> Scalars (kin, pot, rho): device reductions, one D->H of three complex numbers per slice (48 B); the host accumulates them in Obs_scal
-!> exactly as Obser does.  Correlations (Green, SpinZ/SpinXY/SpinT or SpinSUN, Den): for every output element (imj, no_I, no_J) of
-!> Obs_Latt a gather over the lattice sites I (the partner site J of I at displacement imj is unique, table o_jc), accumulated on the
-!> device in acc_k (shape of Obs_Latt) and acc0_k (shape of Obs_Latt0); gpu_obs_flush adds them into the host arrays once per bin
-!> (before Pr_obs) and zeroes them.  No atomics: the sum over I is a sequential loop per output element.
+!> Scalars (kin, pot, rho): device reductions (OpenMP target reductions; HIP: hk_scalars), the result is three complex numbers per
+!> slice (48 B back to the host); the host accumulates them in Obs_scal exactly as Obser does.  Correlations (Green, SpinZ/SpinXY/SpinT
+!> or SpinSUN, Den): for every output element (imj, no_I, no_J) of Obs_Latt a gather over the lattice sites I (the partner site J of I at
+!> displacement imj is unique, table o_jc), accumulated on the device in acc (shape of Obs_Latt) and acc0 (shape of Obs_Latt0); the
+!> sum over I is a parallel reduction inside one team per output element (OpenMP) or the HIP kernel hk_corr, not a sequential loop, so
+!> the summation order differs from the host at the 1e-13 level.  gpu_obs_flush adds the accumulators into the host arrays once per
+!> bin (before Pr_obs) and zeroes them.
+!>
+!> Time-displaced observables (Ltau = 1, gpu_obs_tau_active / gpu_obs_tau_measure): the same observables on the device matrices GT0, G0T,
+!> G00, GTT of the tau pass (gpu_tau_mod), accumulated in tacc / tacc0, also with Symm; no D->H per slice.
 !>
 !> The formulas are those of Predefined_Obs_eq_{Green,SpinSUN,SpinMz,Den}_measure and of Obser (GRC(i,j,nf) = delta_ij - GR(j,i,nf)).
 !>
-!> Environment: ALF_GPU_NOOBS=1 keeps the host Obser (A/B tests).
+!> Environment: ALF_GPU_NOOBS=1 keeps the host Obser (A/B tests); ALF_GPU_OBS_SKIP=<kinds> leaves equal-time kinds unmeasured (zero).
 !> Note (nvfortran): the sign/phase weight enters the device loops as two real scalars (wr, wi); a complex scalar there was read as garbage.
 !--------------------------------------------------------------------
 #ifdef ALF_GPU
@@ -96,7 +107,7 @@ Contains
        if (index(',' // trim(s) // ',', ',' // achar(48 + k) // ',') > 0) o_skip(k) = .true.
     enddo
     o_symm = Symm_
-    if (Projector_) return          ! Symm is handled on the device (gpu_symm)
+    if (Projector_) return          ! projector: not supported by the device measurement (host Obser); Symm itself is handled on the device (gpu_symm)
     if (abs(h0) >= Eps_small) return   ! pinning field: its local observable (Obs_local) is measured by the host Obser
     if (N_FL /= 1 .and. N_FL /= 2) return
     if (size(Obs_eq,1) /= merge(5, 3, N_FL == 2)) return
@@ -519,7 +530,7 @@ Contains
     endif
   End Subroutine gpu_obs_finalize
 
-  !> .true. when the device tau-resolved measurement replaces ham%OBSERT (not with Symm / Projector: refused by gpu_obs_setup)
+  !> .true. when the device tau-resolved measurement replaces ham%OBSERT (not with a Projector or ham_h0 /= 0: refused by gpu_obs_setup; Symm is handled)
   Logical Function gpu_obs_tau_active()
     Implicit none
     gpu_obs_tau_active = o_set .and. o_ok .and. o_tau .and. (.not. o_off) .and. gpu_active
