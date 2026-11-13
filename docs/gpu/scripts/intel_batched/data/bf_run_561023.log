@@ -1,0 +1,308 @@
+start 2026-11-13T12:09:37+01:00 i20r01c01s08
+gate tasks: 75
+#### a_L12F (gg, tol 0)
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### a_L12T (gg, tol 0)
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### a_L12S (gg, tol 0)
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### a_L6F (gg, tol 0)
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### a_L6T (gg, tol 0)
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### a_L6S (gg, tol 0)
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### b1_L12F (gg, tol 0)
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### b1_L6S (gg, tol 0)
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### b2_L12F (gg, tol 1e-12)
+PASS worst rel dev 1.063e-15 (tol 1e-12) 
+#### b4_L12F (gg, tol 1e-12)
+PASS worst rel dev 1.001e-15 (tol 1e-12) 
+#### b5_L12F (gg, tol 1e-12)
+PASS worst rel dev 8.370e-16 (tol 1e-12) 
+#### b6_L12F (gg, tol 1e-12)
+PASS worst rel dev 1.001e-15 (tol 1e-12) 
+#### b2_L12T (gg, tol 1e-12)
+PASS worst rel dev 1.846e-25 (tol 1e-12) 
+#### b4_L12T (gg, tol 1e-12)
+PASS worst rel dev 1.575e-25 (tol 1e-12) 
+#### b5_L12T (gg, tol 1e-12)
+PASS worst rel dev 1.795e-25 (tol 1e-12) 
+#### b6_L12T (gg, tol 1e-12)
+PASS worst rel dev 1.575e-25 (tol 1e-12) 
+#### b2_L12S (gg, tol 1e-12)
+PASS worst rel dev 3.086e-14 (tol 1e-12) 
+#### b4_L12S (gg, tol 1e-12)
+PASS worst rel dev 3.736e-14 (tol 1e-12) 
+#### b5_L12S (gg, tol 1e-12)
+PASS worst rel dev 8.133e-15 (tol 1e-12) 
+#### b6_L12S (gg, tol 1e-12)
+PASS worst rel dev 3.736e-14 (tol 1e-12) 
+#### b2_L6F (gg, tol 1e-12)
+PASS worst rel dev 0.000e+00 (tol 1e-12) 
+#### b4_L6F (gg, tol 1e-12)
+PASS worst rel dev 0.000e+00 (tol 1e-12) 
+#### b5_L6F (gg, tol 1e-12)
+PASS worst rel dev 0.000e+00 (tol 1e-12) 
+#### b6_L6F (gg, tol 1e-12)
+PASS worst rel dev 0.000e+00 (tol 1e-12) 
+#### b2_L6T (gg, tol 1e-12)
+PASS worst rel dev 2.269e-27 (tol 1e-12) 
+#### b4_L6T (gg, tol 1e-12)
+PASS worst rel dev 2.983e-27 (tol 1e-12) 
+#### b5_L6T (gg, tol 1e-12)
+PASS worst rel dev 2.264e-27 (tol 1e-12) 
+#### b6_L6T (gg, tol 1e-12)
+PASS worst rel dev 2.983e-27 (tol 1e-12) 
+#### b2_L6S (gg, tol 1e-12)
+PASS worst rel dev 3.392e-17 (tol 1e-12) 
+#### b4_L6S (gg, tol 1e-12)
+PASS worst rel dev 3.392e-17 (tol 1e-12) 
+#### b5_L6S (gg, tol 1e-12)
+PASS worst rel dev 3.488e-17 (tol 1e-12) 
+#### b6_L6S (gg, tol 1e-12)
+PASS worst rel dev 3.392e-17 (tol 1e-12) 
+#### coff_L12F (sng, tol 1e-13)
+PASS worst rel dev 1.578e-14 (tol 1e-13) 
+#### c2_L12F (sng, tol 1e-13)
+PASS worst rel dev 1.542e-14 (tol 1e-13) 
+#### c4_L12F (sng, tol 1e-13)
+PASS worst rel dev 1.502e-14 (tol 1e-13) 
+#### c5_L12F (sng, tol 1e-13)
+PASS worst rel dev 1.542e-14 (tol 1e-13) 
+#### c6_L12F (sng, tol 1e-13)
+PASS worst rel dev 1.502e-14 (tol 1e-13) 
+#### coff_L12T (sng, tol 1e-10)
+FAIL worst rel dev 1.210e-09 (tol 1e-10) 
+#### c2_L12T (sng, tol 1e-10)
+FAIL worst rel dev 1.210e-09 (tol 1e-10) 
+#### c4_L12T (sng, tol 1e-10)
+FAIL worst rel dev 1.210e-09 (tol 1e-10) 
+#### c5_L12T (sng, tol 1e-10)
+FAIL worst rel dev 1.210e-09 (tol 1e-10) 
+#### c6_L12T (sng, tol 1e-10)
+FAIL worst rel dev 1.210e-09 (tol 1e-10) 
+#### coff_L12S (sng, tol 1e-13)
+PASS worst rel dev 1.430e-14 (tol 1e-13) 
+#### c2_L12S (sng, tol 1e-13)
+PASS worst rel dev 4.499e-14 (tol 1e-13) 
+#### c4_L12S (sng, tol 1e-13)
+PASS worst rel dev 5.148e-14 (tol 1e-13) 
+#### c5_L12S (sng, tol 1e-13)
+PASS worst rel dev 2.226e-14 (tol 1e-13) 
+#### c6_L12S (sng, tol 1e-13)
+PASS worst rel dev 5.148e-14 (tol 1e-13) 
+#### coff_L6F (sng, tol 1e-13)
+PASS worst rel dev 2.261e-15 (tol 1e-13) 
+#### c2_L6F (sng, tol 1e-13)
+PASS worst rel dev 2.261e-15 (tol 1e-13) 
+#### c4_L6F (sng, tol 1e-13)
+PASS worst rel dev 2.261e-15 (tol 1e-13) 
+#### c5_L6F (sng, tol 1e-13)
+PASS worst rel dev 2.261e-15 (tol 1e-13) 
+#### c6_L6F (sng, tol 1e-13)
+PASS worst rel dev 2.261e-15 (tol 1e-13) 
+#### coff_L6T (sng, tol 1e-10)
+FAIL worst rel dev 1.358e-10 (tol 1e-10) 
+#### c2_L6T (sng, tol 1e-10)
+FAIL worst rel dev 1.358e-10 (tol 1e-10) 
+#### c4_L6T (sng, tol 1e-10)
+FAIL worst rel dev 1.358e-10 (tol 1e-10) 
+#### c5_L6T (sng, tol 1e-10)
+FAIL worst rel dev 1.358e-10 (tol 1e-10) 
+#### c6_L6T (sng, tol 1e-10)
+FAIL worst rel dev 1.358e-10 (tol 1e-10) 
+#### coff_L6S (sng, tol 1e-13)
+PASS worst rel dev 2.982e-15 (tol 1e-13) 
+#### c2_L6S (sng, tol 1e-13)
+PASS worst rel dev 2.982e-15 (tol 1e-13) 
+#### c4_L6S (sng, tol 1e-13)
+PASS worst rel dev 2.982e-15 (tol 1e-13) 
+#### c5_L6S (sng, tol 1e-13)
+PASS worst rel dev 2.982e-15 (tol 1e-13) 
+#### c6_L6S (sng, tol 1e-13)
+PASS worst rel dev 2.982e-15 (tol 1e-13) 
+#### p1_L6F (gg, tol 1e-12)
+p1_L6F gpu: rc=3 wall=25.2s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+#### p2_L6F (gg, tol 1e-12)
+p2_L6F gpu: rc=3 wall=25.1s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+#### p4_L6F (gg, tol 1e-12)
+FAIL worst rel dev 3.427e-09 (tol 1e-12) 
+#### p4_L6S (gg, tol 1e-12)
+FAIL worst rel dev 2.906e-09 (tol 1e-12) 
+#### p4_L12F (gg, tol 1e-12)
+FAIL worst rel dev 7.270e-09 (tol 1e-12) 
+#### p5_L6F (gg, tol 1e-12)
+FAIL worst rel dev 1.473e-09 (tol 1e-12) 
+#### p5_L6S (gg, tol 1e-12)
+FAIL worst rel dev 1.672e-09 (tol 1e-12) 
+#### p5_L12F (gg, tol 1e-12)
+FAIL worst rel dev 1.630e-09 (tol 1e-12) 
+#### p7_L6F (gg, tol 1e-12)
+FAIL worst rel dev 1.434e-09 (tol 1e-12) 
+#### p7_L6S (gg, tol 1e-12)
+FAIL worst rel dev 1.098e-09 (tol 1e-12) 
+#### p7_L12F (gg, tol 1e-12)
+FAIL worst rel dev 2.554e-09 (tol 1e-12) 
+#### p6_L6F (gg, tol 1e-12)
+p6_L6F gpu: rc=3 wall=24.9s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+#### p6_L6S (gg, tol 1e-12)
+p6_L6S gpu: rc=3 wall=24.4s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+---- runs that announced fused / prefetch (gpu run.log):
+level 1: 2
+level 2: 33
+level 3: 0
+level 4: 28
+prefetch: 29
+---- prefetch hit/miss (b5_L12F, b6_L12S):
+  gpu_lowrank: ALFSH_BLKPF=1, next block's principal block prefetched (host waits for it only)
+  gpu_lowrank: ALFSH_BLKPF=1, next block's principal block prefetched (host waits for it only)
+## b5_L12T
+file                         n    max|dif|   max/scale
+Den_eq                     581   2.583e-23   1.794e-25
+Ener_scal                    4   2.012e-23   1.597e-25
+Green_eq                   581   3.054e-25   2.121e-27
+Kin_scal                     4   3.821e-23   1.586e-25
+Part_scal                    4   2.585e-23   1.795e-25
+Pot_scal                     4   1.798e-23   1.565e-25
+SpinT_eq                   581   3.583e-25   2.488e-27
+SpinXY_eq                  581   4.465e-25   3.101e-27
+SpinZ_eq                   581   4.154e-25   2.885e-27
+SpinZ_local                579   1.978e-25   1.374e-27
+SpinZ_localtau           35141   1.439e-23   9.991e-26
+confout_0                17282   0.000e+00   0.000e+00
+acceptance A=0.443352141204 B=0.443352141204  diff=0.00e+00
+PASS worst rel dev 1.795e-25 (tol 1e-12) 
+ 
+## b6_L12F
+file                         n    max|dif|   max/scale
+Den_eq                     581   6.767e-14   4.699e-16
+Ener_scal                    4   9.948e-14   8.267e-16
+Green_eq                   581   1.236e-15   8.583e-18
+Kin_scal                     4   1.095e-13   4.680e-16
+Part_scal                    4   6.677e-14   4.637e-16
+Pot_scal                     4   1.137e-13   1.001e-15
+SpinT_eq                   581   2.569e-15   1.784e-17
+SpinXY_eq                  581   2.549e-15   1.770e-17
+SpinZ_eq                   581   2.609e-15   1.812e-17
+SpinZ_local                579   8.240e-16   5.722e-18
+SpinZ_localtau           35141   6.343e-14   4.405e-16
+confout_0                17282   0.000e+00   0.000e+00
+acceptance A=0.329644097222 B=0.329644097222  diff=0.00e+00
+PASS worst rel dev 1.001e-15 (tol 1e-12) 
+ 
+## p6_L6F
+ ALF Copyright (C) 2016 - 2026 The ALF project contributors
+ This Program comes with ABSOLUTELY NO WARRANTY; for details see license.GPL
+ This is free software, and you are welcome to redistribute it under certain conditions.
+ No initial configuration
+  gpu_obs: ALFSH_OBSCORR=1, correlation sums as SYCL kernels (alfsb_corr)
+ GPU build: git none backend ONEMKL
+ GPU debug env: none
+ alf_la: ONEMKL device: Intel(R) Data Center GPU Max 1550
+ GPU mirror setup time (incl. host->device copies):     1.8284 s
+  gpu_lowrank: ALFSH_ASYNCBLK=1, submatrix blocks run asynchronously on the SYCL queue
+  gpu_lowrank: ALFSH_BLKFUSE=           2 : fused block steps (fewer host submissions per block)
+  gpu_lowrank: ALFSH_BLKPF=1, next block's principal block prefetched (host waits for it only)
+ 
+ Task           0 of group           0 reports:
+   32.5468003507884       is exceeding the threshold of    10.0000000000000       for G difference!
+   1.90139813704510       is the average deviation!
+ This calculation is unstable and therefore aborted!!!
+ Try with smaller Nwrap or dtau.
+ 
+ control_mod.F90 (522):
+## p7_L6F
+file                         n    max|dif|   max/scale
+Den_eq                     298   8.435e-09   2.343e-10
+Ener_scal                    8   4.221e-08   1.337e-09
+Green_eq                   298   4.489e-10   1.247e-11
+Kin_scal                     8   1.311e-08   2.176e-10
+Part_scal                    8   8.401e-09   2.334e-10
+Pot_scal                     8   4.116e-08   1.434e-09
+SpinT_eq                   298   4.247e-09   1.180e-10
+SpinXY_eq                  298   4.289e-09   1.191e-10
+SpinZ_eq                   298   4.163e-09   1.156e-10
+SpinZ_local                294   3.345e-10   9.292e-12
+SpinZ_localtau            8938   7.645e-09   1.253e-10
+confout_0                 2162   0.000e+00   0.000e+00
+acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+FAIL worst rel dev 1.434e-09 (tol 1e-12) 
+ 
+gates done 2026-11-13T12:19:58+01:00
+MEAN L24_c1_f0_r1     ranks 8  sweep  4.257  upd 1.641  stab 0.942  cgr 0.895  obs 0.555 s/sweep
+  Precision Green  Mean, Max :   1.809410943110277E-014  3.334976231551937E-011
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      0.736      0.686      2.738      0.001      2.732      1.043      0.000
+MEAN L24_c1_f2_r1     ranks 8  sweep  4.015  upd 1.395  stab 0.941  cgr 0.898  obs 0.558 s/sweep
+  Precision Green  Mean, Max :   1.810880653221957E-014  3.273107314209329E-011
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      1.617      1.568      0.876      1.381      0.870      1.072      0.000
+MEAN L24_c1_f2p_r1    ranks 8  sweep  3.783  upd 1.147  stab 0.948  cgr 0.903  obs 0.563 s/sweep
+  Precision Green  Mean, Max :   1.809462205197213E-014  3.298505763962806E-011
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      0.804      0.760      0.926      0.745      0.903      1.096      0.000
+  gpu_lowrank: ALFSH_BLKPF=1, next block's principal block prefetched (host waits for it only)
+MEAN L24_c1_f4_r1     ranks 8  sweep  4.204  upd 1.577  stab 0.946  cgr 0.899  obs 0.559 s/sweep
+  Precision Green  Mean, Max :   1.805671395593929E-014  3.189381986738902E-011
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      2.614      2.565      0.442      2.401      0.436      1.150      0.000
+MEAN L24_c1_f4p_r1    ranks 8  sweep  3.957  upd 1.318  stab 0.949  cgr 0.904  obs 0.559 s/sweep
+  Precision Green  Mean, Max :   1.805671395593929E-014  3.189381986738902E-011
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      1.718      1.674      0.507      1.659      0.481      1.206      0.000
+  gpu_lowrank: ALFSH_BLKPF=1, next block's principal block prefetched (host waits for it only)
+MEAN L24_c1_f0_r2     ranks 8  sweep  4.234  upd 1.626  stab 0.938  cgr 0.894  obs 0.553 s/sweep
+  Precision Green  Mean, Max :   1.809410943110277E-014  3.334976231551937E-011
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      0.664      0.615      2.550      0.001      2.544      0.996      0.000
+MEAN L24_c1_f2_r2     ranks 8  sweep  4.018  upd 1.393  stab 0.944  cgr 0.899  obs 0.559 s/sweep
+  Precision Green  Mean, Max :   1.810880653221957E-014  3.273107314209329E-011
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      1.760      1.711      0.837      1.536      0.830      1.101      0.000
+MEAN L24_c1_f2p_r2    ranks 8  sweep  3.784  upd 1.144  stab 0.950  cgr 0.903  obs 0.562 s/sweep
+  Precision Green  Mean, Max :   1.809462205197213E-014  3.298505763962806E-011
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      0.838      0.795      1.023      0.780      1.001      1.130      0.000
+  gpu_lowrank: ALFSH_BLKPF=1, next block's principal block prefetched (host waits for it only)
+MEAN L24_c1_f4_r2     ranks 8  sweep  4.201  upd 1.573  stab 0.946  cgr 0.902  obs 0.558 s/sweep
+  Precision Green  Mean, Max :   1.805671395593929E-014  3.189381986738902E-011
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      2.669      2.623      0.447      2.458      0.441      1.171      0.000
+MEAN L24_c1_f4p_r2    ranks 8  sweep  3.957  upd 1.321  stab 0.950  cgr 0.904  obs 0.560 s/sweep
+  Precision Green  Mean, Max :   1.805671395593929E-014  3.189381986738902E-011
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      1.712      1.671      0.494      1.658      0.473      1.211      0.000
+  gpu_lowrank: ALFSH_BLKPF=1, next block's principal block prefetched (host waits for it only)
+MEAN L24_c4_f0_r1     ranks 32  sweep  7.559  upd 2.774  stab 1.788  cgr 1.437  obs 1.328 s/sweep
+  Precision Green  Mean, Max :   1.960957926459005E-014  6.536447432744344E-010
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      0.748      0.698      4.242      0.001      4.236      2.913      0.000
+MEAN L24_c4_f2_r1     ranks 32  sweep  7.369  upd 2.503  stab 1.821  cgr 1.460  obs 1.353 s/sweep
+  Precision Green  Mean, Max :   1.961116388613683E-014  6.591162737360573E-010
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      3.126      3.074      0.859      2.893      0.852      3.133      0.000
+MEAN L24_c4_f2p_r1    ranks 32  sweep  7.159  upd 2.260  stab 1.826  cgr 1.447  obs 1.390 s/sweep
+  Precision Green  Mean, Max :   1.961201572518658E-014  6.494785409564671E-010
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      1.932      1.889      0.946      1.873      0.922      3.063      0.000
+  gpu_lowrank: ALFSH_BLKPF=1, next block's principal block prefetched (host waits for it only)
+MEAN L24_c4_f4_r1     ranks 32  sweep  7.867  upd 3.040  stab 1.809  cgr 1.444  obs 1.342 s/sweep
+  Precision Green  Mean, Max :   1.960627185901665E-014  6.532367663690229E-010
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      5.003      4.955      0.449      4.791      0.443      3.205      0.000
+MEAN L24_c4_f4p_r1    ranks 32  sweep  7.682  upd 2.811  stab 1.822  cgr 1.445  obs 1.372 s/sweep
+  Precision Green  Mean, Max :   1.960627185901665E-014  6.532367663690229E-010
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      3.863      3.820      0.518      3.804      0.494      3.347      0.000
+  gpu_lowrank: ALFSH_BLKPF=1, next block's principal block prefetched (host waits for it only)
+MEAN L32_c4_f0_r1     ranks 32  sweep 42.382  upd 14.035  stab 11.083  cgr 8.324  obs 7.880 s/sweep
+  Precision Green  Mean, Max :   5.074707225979650E-014  4.586072956576172E-010
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        40960      1.358      1.265     13.297      0.001     13.289     13.989      0.000
+MEAN L32_c4_f2_r1     ranks 32  sweep 41.818  upd 13.111  stab 11.275  cgr 8.581  obs 7.777 s/sweep
+  Precision Green  Mean, Max :   5.074815223683091E-014  4.590970408900120E-010
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        40960     10.514     10.422      1.394     10.139      1.384     13.758      0.000
+MEAN L32_c4_f2p_r1    ranks 32  sweep 41.413  upd 12.436  stab 11.400  cgr 8.667  obs 7.843 s/sweep
+  Precision Green  Mean, Max :   5.075029829793449E-014  4.594285368922205E-010
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        40960      8.671      8.605      1.538      8.589      1.490     13.857      0.000
+  gpu_lowrank: ALFSH_BLKPF=1, next block's principal block prefetched (host waits for it only)
+MEAN L32_c4_f4p_r1    ranks 32  sweep 45.367  upd 16.940  stab 11.128  cgr 8.516  obs 7.725 s/sweep
+  Precision Green  Mean, Max :   5.074481454041674E-014  4.581270939865246E-010
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        40960     17.768     17.703      0.809     17.686      0.760     14.364      0.000
+  gpu_lowrank: ALFSH_BLKPF=1, next block's principal block prefetched (host waits for it only)
+MEAN L24_count_f0     ranks 1  sweep  3.962  upd 1.451  stab 0.895  cgr 0.832  obs 0.552 s/sweep
+alfsb counts: wait=27360 copy=129600 gather=25920 scale=25920 fgather=51840 gemm=103680 scale_ns=0 flush12=0 rank2=0 gemm_batch=0 corr=4320 gather2=0 wait_mark=0
+MEAN L24_count_f2p    ranks 1  sweep  3.471  upd 0.965  stab 0.893  cgr 0.831  obs 0.550 s/sweep
+alfsb counts: wait=2880 copy=27360 gather=1440 scale=0 fgather=0 gemm=51840 scale_ns=25920 flush12=25920 rank2=0 gemm_batch=0 corr=4320 gather2=24480 wait_mark=24480
+end 2026-11-13T12:36:09+01:00

@@ -1,0 +1,84 @@
+start 2026-11-13T11:55:50+01:00 i20r01c01s06 /hppfs/scratch/0C/di38zuw/mgr_corr2/build_aottt/Prog/ALF.out
+#### p4_L6F
+p4_L6F cpu: rc=0 wall=65.6s
+p4_L6F gpu: rc=0 wall=29.6s
+FAIL worst rel dev 3.427e-09 (tol 1e-12) 
+#### p4_L6S
+p4_L6S cpu: rc=0 wall=64.4s
+p4_L6S gpu: rc=0 wall=28.5s
+FAIL worst rel dev 2.906e-09 (tol 1e-12) 
+#### p4_L12F
+p4_L12F cpu: rc=0 wall=71.1s
+p4_L12F gpu: rc=0 wall=36.0s
+FAIL worst rel dev 7.270e-09 (tol 1e-12) 
+#### p5_L6F
+p5_L6F cpu: rc=0 wall=65.4s
+p5_L6F gpu: rc=0 wall=29.9s
+FAIL worst rel dev 1.473e-09 (tol 1e-12) 
+#### p5_L6S
+p5_L6S cpu: rc=0 wall=64.3s
+p5_L6S gpu: rc=0 wall=28.7s
+FAIL worst rel dev 1.672e-09 (tol 1e-12) 
+#### p5_L12F
+p5_L12F cpu: rc=0 wall=71.2s
+p5_L12F gpu: rc=0 wall=35.7s
+FAIL worst rel dev 1.630e-09 (tol 1e-12) 
+MEAN L24_c1_f0_r1     ranks 8  sweep  4.234  upd 1.637  stab 0.934  cgr 0.889  obs 0.550 s/sweep
+  Precision Green  Mean, Max :   1.809410943110277E-014  3.334976231551937E-011
+MEAN L24_c1_f1_r1     ranks 8  sweep  4.221  upd 1.623  stab 0.935  cgr 0.888  obs 0.551 s/sweep
+  Precision Green  Mean, Max :   1.809410943110277E-014  3.334976231551937E-011
+MEAN L24_c1_f2_r1     ranks 8  sweep  3.997  upd 1.389  stab 0.939  cgr 0.892  obs 0.553 s/sweep
+  Precision Green  Mean, Max :   1.808813933661308E-014  3.348641104319768E-011
+MEAN L24_c1_f3_r1     ranks 8  sweep  4.035  upd 1.421  stab 0.939  cgr 0.894  obs 0.557 s/sweep
+  Precision Green  Mean, Max :   1.809149565951084E-014  3.324671941685216E-011
+MEAN L24_c1_f4_r1     ranks 8  sweep  4.200  upd 1.585  stab 0.939  cgr 0.895  obs 0.556 s/sweep
+  Precision Green  Mean, Max :   1.808757133117851E-014  3.267629450194576E-011
+MEAN L24_c4_f0_r1     ranks 32  sweep  7.557  upd 2.792  stab 1.782  cgr 1.417  obs 1.332 s/sweep
+  Precision Green  Mean, Max :   1.960957926459005E-014  6.536447432744344E-010
+MEAN L24_c4_f1_r1     ranks 32  sweep  7.552  upd 2.749  stab 1.795  cgr 1.438  obs 1.338 s/sweep
+  Precision Green  Mean, Max :   1.960957926459005E-014  6.536447432744344E-010
+MEAN L24_c4_f2_r1     ranks 32  sweep  7.373  upd 2.533  stab 1.811  cgr 1.426  obs 1.371 s/sweep
+  Precision Green  Mean, Max :   1.960969490701234E-014  6.556933429624115E-010
+MEAN L24_c4_f3_r1     ranks 32  sweep  7.427  upd 2.585  stab 1.808  cgr 1.427  obs 1.375 s/sweep
+  Precision Green  Mean, Max :   1.959368362737811E-014  6.537097326391060E-010
+MEAN L24_c4_f4_r1     ranks 32  sweep  7.921  upd 3.113  stab 1.797  cgr 1.415  obs 1.365 s/sweep
+  Precision Green  Mean, Max :   1.960397288562583E-014  6.534290515575115E-010
+MEAN L24_c1_f0_r2     ranks 8  sweep  4.235  upd 1.635  stab 0.935  cgr 0.891  obs 0.549 s/sweep
+  Precision Green  Mean, Max :   1.809410943110277E-014  3.334976231551937E-011
+MEAN L24_c1_f1_r2     ranks 8  sweep  4.229  upd 1.626  stab 0.937  cgr 0.889  obs 0.552 s/sweep
+  Precision Green  Mean, Max :   1.809410943110277E-014  3.334976231551937E-011
+MEAN L24_c1_f2_r2     ranks 8  sweep  3.997  upd 1.389  stab 0.937  cgr 0.894  obs 0.554 s/sweep
+  Precision Green  Mean, Max :   1.808813933661308E-014  3.348641104319768E-011
+MEAN L24_c1_f3_r2     ranks 8  sweep  4.029  upd 1.414  stab 0.942  cgr 0.894  obs 0.555 s/sweep
+  Precision Green  Mean, Max :   1.809149565951084E-014  3.324671941685216E-011
+MEAN L24_c1_f4_r2     ranks 8  sweep  4.199  upd 1.583  stab 0.941  cgr 0.896  obs 0.554 s/sweep
+  Precision Green  Mean, Max :   1.808757133117851E-014  3.267629450194576E-011
+MEAN L24_c4_f0_r2     ranks 32  sweep  7.544  upd 2.784  stab 1.778  cgr 1.419  obs 1.329 s/sweep
+  Precision Green  Mean, Max :   1.960957926459005E-014  6.536447432744344E-010
+MEAN L24_c4_f1_r2     ranks 32  sweep  7.554  upd 2.739  stab 1.800  cgr 1.448  obs 1.332 s/sweep
+  Precision Green  Mean, Max :   1.960957926459005E-014  6.536447432744344E-010
+MEAN L24_c4_f2_r2     ranks 32  sweep  7.378  upd 2.528  stab 1.814  cgr 1.436  obs 1.367 s/sweep
+  Precision Green  Mean, Max :   1.960969490701234E-014  6.556933429624115E-010
+MEAN L24_c4_f3_r2     ranks 32  sweep  7.421  upd 2.589  stab 1.807  cgr 1.416  obs 1.376 s/sweep
+  Precision Green  Mean, Max :   1.959368362737811E-014  6.537097326391060E-010
+MEAN L24_c4_f4_r2     ranks 32  sweep  7.914  upd 3.095  stab 1.800  cgr 1.430  obs 1.357 s/sweep
+  Precision Green  Mean, Max :   1.960397288562583E-014  6.534290515575115E-010
+file                         n    max|dif|   max/scale
+file                         n    max|dif|   max/scale
+file                         n    max|dif|   max/scale
+file                         n    max|dif|   max/scale
+MEAN L32_c4_f0_r1     ranks 32  sweep 42.464  upd 13.845  stab 11.271  cgr 8.546  obs 7.723 s/sweep
+  Precision Green  Mean, Max :   5.074707225979650E-014  4.586072956576172E-010
+MEAN L32_c4_f1_r1     ranks 32  sweep 42.486  upd 13.826  stab 11.235  cgr 8.579  obs 7.766 s/sweep
+  Precision Green  Mean, Max :   5.074707225979650E-014  4.586072956576172E-010
+MEAN L32_c4_f2_r1     ranks 32  sweep 42.006  upd 13.532  stab 11.114  cgr 8.279  obs 8.015 s/sweep
+  Precision Green  Mean, Max :   5.074940353130952E-014  4.588664029173735E-010
+MEAN L32_c4_f3_r1     ranks 32  sweep 42.013  upd 13.082  stab 11.382  cgr 8.751  obs 7.715 s/sweep
+  Precision Green  Mean, Max :   5.074940353130952E-014  4.588664029173735E-010
+MEAN L32_c4_f4_r1     ranks 32  sweep 46.357  upd 17.811  stab 11.201  cgr 8.611  obs 7.671 s/sweep
+  Precision Green  Mean, Max :   5.074638899908676E-014  4.594100950982251E-010
+MEAN L24_count_f0     ranks 1  sweep  4.018  upd 1.493  stab 0.901  cgr 0.836  obs 0.554 s/sweep
+alfsb counts: wait=27360 copy=129600 gather=25920 scale=25920 fgather=51840 gemm=103680 scale_ns=0 flush12=0 rank2=0 gemm_batch=0 corr=4320
+MEAN L24_count_f4     ranks 1  sweep  3.919  upd 1.410  stab 0.900  cgr 0.836  obs 0.548 s/sweep
+alfsb counts: wait=27360 copy=51840 gather=25920 scale=0 fgather=0 gemm=0 scale_ns=25920 flush12=25920 rank2=25920 gemm_batch=0 corr=4320
+end 2026-11-13T12:19:24+01:00

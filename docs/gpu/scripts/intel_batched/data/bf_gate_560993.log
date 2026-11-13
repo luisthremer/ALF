@@ -1,0 +1,390 @@
+start 2026-11-13T11:44:54+01:00 i20r01c01s06
+#### a_L12F (gg: /hppfs/scratch/0C/di38zuw/large_prompt/batched/build_ib_txtnew/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off0.sh, tol 0)
+a_L12F cpu: rc=0 wall=73.0s
+a_L12F gpu: rc=0 wall=37.1s
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### a_L12T (gg: /hppfs/scratch/0C/di38zuw/large_prompt/batched/build_ib_txtnew/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off0.sh, tol 0)
+a_L12T cpu: rc=0 wall=72.4s
+a_L12T gpu: rc=0 wall=38.3s
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### a_L12S (gg: /hppfs/scratch/0C/di38zuw/large_prompt/batched/build_ib_txtnew/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off0.sh, tol 0)
+a_L12S cpu: rc=0 wall=71.4s
+a_L12S gpu: rc=0 wall=38.9s
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### a_L6F (gg: /hppfs/scratch/0C/di38zuw/large_prompt/batched/build_ib_txtnew/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off0.sh, tol 0)
+a_L6F cpu: rc=0 wall=65.8s
+a_L6F gpu: rc=0 wall=32.4s
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### a_L6T (gg: /hppfs/scratch/0C/di38zuw/large_prompt/batched/build_ib_txtnew/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off0.sh, tol 0)
+a_L6T cpu: rc=0 wall=65.2s
+a_L6T gpu: rc=0 wall=32.0s
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### a_L6S (gg: /hppfs/scratch/0C/di38zuw/large_prompt/batched/build_ib_txtnew/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off0.sh, tol 0)
+a_L6S cpu: rc=0 wall=64.4s
+a_L6S gpu: rc=0 wall=30.3s
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### b1_L12F (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on1.sh, tol 0)
+b1_L12F cpu: rc=0 wall=79.2s
+b1_L12F gpu: rc=0 wall=39.7s
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### b2_L12F (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on2.sh, tol 1e-12)
+b2_L12F cpu: rc=0 wall=79.5s
+b2_L12F gpu: rc=0 wall=40.3s
+PASS worst rel dev 1.501e-15 (tol 1e-12) 
+#### b3_L12F (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on3.sh, tol 1e-12)
+b3_L12F cpu: rc=0 wall=38.0s
+b3_L12F gpu: rc=0 wall=38.2s
+PASS worst rel dev 1.501e-15 (tol 1e-12) 
+#### b4_L12F (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on4.sh, tol 1e-12)
+b4_L12F cpu: rc=0 wall=40.1s
+b4_L12F gpu: rc=0 wall=38.6s
+PASS worst rel dev 1.876e-15 (tol 1e-12) 
+#### b1_L12T (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on1.sh, tol 0)
+b1_L12T cpu: rc=0 wall=36.4s
+b1_L12T gpu: rc=0 wall=39.6s
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### b2_L12T (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on2.sh, tol 1e-12)
+b2_L12T cpu: rc=0 wall=42.1s
+b2_L12T gpu: rc=0 wall=39.6s
+FAIL worst rel dev 4.964e-12 (tol 1e-12) 
+#### b3_L12T (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on3.sh, tol 1e-12)
+b3_L12T cpu: rc=0 wall=38.3s
+b3_L12T gpu: rc=0 wall=38.1s
+FAIL worst rel dev 4.964e-12 (tol 1e-12) 
+#### b4_L12T (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on4.sh, tol 1e-12)
+b4_L12T cpu: rc=0 wall=37.6s
+b4_L12T gpu: rc=0 wall=36.9s
+FAIL worst rel dev 1.019e-11 (tol 1e-12) 
+#### b1_L12S (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on1.sh, tol 0)
+b1_L12S cpu: rc=0 wall=39.6s
+b1_L12S gpu: rc=0 wall=37.1s
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### b2_L12S (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on2.sh, tol 1e-12)
+b2_L12S cpu: rc=0 wall=40.2s
+b2_L12S gpu: rc=0 wall=38.6s
+PASS worst rel dev 5.016e-15 (tol 1e-12) 
+#### b3_L12S (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on3.sh, tol 1e-12)
+b3_L12S cpu: rc=0 wall=35.8s
+b3_L12S gpu: rc=0 wall=37.6s
+PASS worst rel dev 5.016e-15 (tol 1e-12) 
+#### b4_L12S (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on4.sh, tol 1e-12)
+b4_L12S cpu: rc=0 wall=39.0s
+b4_L12S gpu: rc=0 wall=36.2s
+PASS worst rel dev 1.462e-14 (tol 1e-12) 
+#### b1_L6F (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on1.sh, tol 0)
+b1_L6F cpu: rc=0 wall=30.5s
+b1_L6F gpu: rc=0 wall=32.0s
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### b2_L6F (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on2.sh, tol 1e-12)
+b2_L6F cpu: rc=0 wall=32.6s
+b2_L6F gpu: rc=0 wall=31.2s
+PASS worst rel dev 3.714e-16 (tol 1e-12) 
+#### b3_L6F (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on3.sh, tol 1e-12)
+b3_L6F cpu: rc=0 wall=33.8s
+b3_L6F gpu: rc=0 wall=33.8s
+PASS worst rel dev 3.714e-16 (tol 1e-12) 
+#### b4_L6F (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on4.sh, tol 1e-12)
+b4_L6F cpu: rc=0 wall=34.0s
+b4_L6F gpu: rc=0 wall=33.1s
+PASS worst rel dev 3.377e-16 (tol 1e-12) 
+#### b1_L6T (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on1.sh, tol 0)
+b1_L6T cpu: rc=0 wall=31.9s
+b1_L6T gpu: rc=0 wall=34.3s
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### b2_L6T (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on2.sh, tol 1e-12)
+b2_L6T cpu: rc=0 wall=32.2s
+b2_L6T gpu: rc=0 wall=30.8s
+FAIL worst rel dev 7.751e-12 (tol 1e-12) 
+#### b3_L6T (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on3.sh, tol 1e-12)
+b3_L6T cpu: rc=0 wall=31.6s
+b3_L6T gpu: rc=0 wall=33.7s
+FAIL worst rel dev 7.751e-12 (tol 1e-12) 
+#### b4_L6T (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on4.sh, tol 1e-12)
+b4_L6T cpu: rc=0 wall=32.6s
+b4_L6T gpu: rc=0 wall=31.9s
+FAIL worst rel dev 8.481e-12 (tol 1e-12) 
+#### b1_L6S (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on1.sh, tol 0)
+b1_L6S cpu: rc=0 wall=32.3s
+b1_L6S gpu: rc=0 wall=32.0s
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### b2_L6S (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on2.sh, tol 1e-12)
+b2_L6S cpu: rc=0 wall=34.3s
+b2_L6S gpu: rc=0 wall=30.4s
+PASS worst rel dev 1.238e-15 (tol 1e-12) 
+#### b3_L6S (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on3.sh, tol 1e-12)
+b3_L6S cpu: rc=0 wall=29.7s
+b3_L6S gpu: rc=0 wall=33.9s
+PASS worst rel dev 1.238e-15 (tol 1e-12) 
+#### b4_L6S (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on4.sh, tol 1e-12)
+b4_L6S cpu: rc=0 wall=31.2s
+b4_L6S gpu: rc=0 wall=30.1s
+PASS worst rel dev 1.238e-15 (tol 1e-12) 
+#### coff_L12F (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh, tol 1e-13)
+coff_L12F cpu: rc=0 wall=18.1s
+coff_L12F gpu: rc=0 wall=38.1s
+PASS worst rel dev 1.578e-14 (tol 1e-13) 
+#### c2_L12F (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on2.sh, tol 1e-13)
+c2_L12F cpu: rc=0 wall=17.0s
+c2_L12F gpu: rc=0 wall=36.5s
+PASS worst rel dev 1.568e-14 (tol 1e-13) 
+#### c3_L12F (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on3.sh, tol 1e-13)
+c3_L12F cpu: rc=0 wall=16.7s
+c3_L12F gpu: rc=0 wall=39.4s
+PASS worst rel dev 1.568e-14 (tol 1e-13) 
+#### c4_L12F (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on4.sh, tol 1e-13)
+c4_L12F cpu: rc=0 wall=16.6s
+c4_L12F gpu: rc=0 wall=41.6s
+PASS worst rel dev 1.560e-14 (tol 1e-13) 
+#### coff_L12T (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh, tol 1e-10)
+coff_L12T cpu: rc=0 wall=17.4s
+coff_L12T gpu: rc=0 wall=40.0s
+FAIL worst rel dev 1.210e-09 (tol 1e-10) 
+#### c2_L12T (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on2.sh, tol 1e-10)
+c2_L12T cpu: rc=0 wall=19.0s
+c2_L12T gpu: rc=0 wall=36.9s
+FAIL worst rel dev 1.210e-09 (tol 1e-10) 
+#### c3_L12T (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on3.sh, tol 1e-10)
+c3_L12T cpu: rc=0 wall=19.1s
+c3_L12T gpu: rc=0 wall=36.5s
+FAIL worst rel dev 1.210e-09 (tol 1e-10) 
+#### c4_L12T (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on4.sh, tol 1e-10)
+c4_L12T cpu: rc=0 wall=17.3s
+c4_L12T gpu: rc=0 wall=37.9s
+FAIL worst rel dev 1.210e-09 (tol 1e-10) 
+#### coff_L12S (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh, tol 1e-13)
+coff_L12S cpu: rc=0 wall=17.9s
+coff_L12S gpu: rc=0 wall=38.6s
+PASS worst rel dev 1.430e-14 (tol 1e-13) 
+#### c2_L12S (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on2.sh, tol 1e-13)
+c2_L12S cpu: rc=0 wall=14.0s
+c2_L12S gpu: rc=0 wall=38.3s
+PASS worst rel dev 1.193e-14 (tol 1e-13) 
+#### c3_L12S (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on3.sh, tol 1e-13)
+c3_L12S cpu: rc=0 wall=16.9s
+c3_L12S gpu: rc=0 wall=35.2s
+PASS worst rel dev 1.193e-14 (tol 1e-13) 
+#### c4_L12S (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on4.sh, tol 1e-13)
+c4_L12S cpu: rc=0 wall=14.3s
+c4_L12S gpu: rc=0 wall=35.7s
+PASS worst rel dev 2.875e-14 (tol 1e-13) 
+#### coff_L6F (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh, tol 1e-13)
+coff_L6F cpu: rc=0 wall=5.6s
+coff_L6F gpu: rc=0 wall=32.2s
+PASS worst rel dev 2.261e-15 (tol 1e-13) 
+#### c2_L6F (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on2.sh, tol 1e-13)
+c2_L6F cpu: rc=0 wall=5.7s
+c2_L6F gpu: rc=0 wall=32.3s
+PASS worst rel dev 2.279e-15 (tol 1e-13) 
+#### c3_L6F (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on3.sh, tol 1e-13)
+c3_L6F cpu: rc=0 wall=5.3s
+c3_L6F gpu: rc=0 wall=30.3s
+PASS worst rel dev 2.279e-15 (tol 1e-13) 
+#### c4_L6F (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on4.sh, tol 1e-13)
+c4_L6F cpu: rc=0 wall=5.3s
+c4_L6F gpu: rc=0 wall=31.0s
+PASS worst rel dev 2.262e-15 (tol 1e-13) 
+#### coff_L6T (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh, tol 1e-10)
+coff_L6T cpu: rc=0 wall=5.3s
+coff_L6T gpu: rc=0 wall=32.3s
+FAIL worst rel dev 1.358e-10 (tol 1e-10) 
+#### c2_L6T (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on2.sh, tol 1e-10)
+c2_L6T cpu: rc=0 wall=5.5s
+c2_L6T gpu: rc=0 wall=33.4s
+FAIL worst rel dev 1.355e-10 (tol 1e-10) 
+#### c3_L6T (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on3.sh, tol 1e-10)
+c3_L6T cpu: rc=0 wall=5.8s
+c3_L6T gpu: rc=0 wall=32.4s
+FAIL worst rel dev 1.355e-10 (tol 1e-10) 
+#### c4_L6T (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on4.sh, tol 1e-10)
+c4_L6T cpu: rc=0 wall=5.7s
+c4_L6T gpu: rc=0 wall=31.1s
+FAIL worst rel dev 1.356e-10 (tol 1e-10) 
+#### coff_L6S (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh, tol 1e-13)
+coff_L6S cpu: rc=0 wall=5.3s
+coff_L6S gpu: rc=0 wall=34.3s
+PASS worst rel dev 2.982e-15 (tol 1e-13) 
+#### c2_L6S (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on2.sh, tol 1e-13)
+c2_L6S cpu: rc=0 wall=5.8s
+c2_L6S gpu: rc=0 wall=30.6s
+PASS worst rel dev 3.070e-15 (tol 1e-13) 
+#### c3_L6S (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on3.sh, tol 1e-13)
+c3_L6S cpu: rc=0 wall=5.1s
+c3_L6S gpu: rc=0 wall=32.8s
+PASS worst rel dev 3.070e-15 (tol 1e-13) 
+#### c4_L6S (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/on4.sh, tol 1e-13)
+c4_L6S cpu: rc=0 wall=7.7s
+c4_L6S gpu: rc=0 wall=29.8s
+PASS worst rel dev 2.982e-15 (tol 1e-13) 
+#### p1_L6F (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/plant1.sh, tol 1e-12)
+p1_L6F cpu: rc=0 wall=33.7s
+p1_L6F gpu: rc=3 wall=28.9s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_sca
+#### p2_L6F (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/plant2.sh, tol 1e-12)
+p2_L6F cpu: rc=0 wall=31.1s
+p2_L6F gpu: rc=3 wall=24.9s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_sca
+#### p3_L6F (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/plant3.sh, tol 1e-12)
+p3_L6F cpu: rc=0 wall=31.3s
+p3_L6F gpu: rc=3 wall=24.6s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_sca
+#### p1_L6T (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/plant1.sh, tol 1e-12)
+p1_L6T cpu: rc=0 wall=31.4s
+p1_L6T gpu: rc=3 wall=24.4s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_sca
+#### p2_L6T (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/plant2.sh, tol 1e-12)
+p2_L6T cpu: rc=0 wall=31.3s
+p2_L6T gpu: rc=3 wall=25.8s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_sca
+#### p3_L6T (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/plant3.sh, tol 1e-12)
+p3_L6T cpu: rc=0 wall=34.4s
+p3_L6T gpu: rc=3 wall=25.6s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_sca
+#### p1_L6S (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/plant1.sh, tol 1e-12)
+p1_L6S cpu: rc=0 wall=29.8s
+p1_L6S gpu: rc=3 wall=26.8s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_sca
+#### p2_L6S (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/plant2.sh, tol 1e-12)
+p2_L6S cpu: rc=0 wall=32.3s
+p2_L6S gpu: rc=3 wall=25.3s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_sca
+#### p3_L6S (gg: /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/off.sh vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/plant3.sh, tol 1e-12)
+p3_L6S cpu: rc=0 wall=30.7s
+p3_L6S gpu: rc=3 wall=24.5s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_sca
+#### pc2_L6F (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/plant1.sh, tol 1e-13)
+pc2_L6F cpu: rc=0 wall=5.2s
+pc2_L6F gpu: rc=3 wall=26.0s
+FAIL worst rel dev 0.000e+00 (tol 1e-13) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_sca
+#### pc2_L6S (sng: /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out vs /hppfs/scratch/0C/di38zuw/mgr_corr2/wrap/plant1.sh, tol 1e-13)
+pc2_L6S cpu: rc=0 wall=4.9s
+pc2_L6S gpu: rc=3 wall=23.9s
+FAIL worst rel dev 0.000e+00 (tol 1e-13) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_sca
+---- runs that announced the fused path (gpu run.log):
+level 1: 9
+level 2: 17
+level 3: 12
+level 4: 15
+## b1_L12T
+file                         n    max|dif|   max/scale
+Den_eq                     581   0.000e+00   0.000e+00
+Ener_scal                    4   0.000e+00   0.000e+00
+Green_eq                   581   0.000e+00   0.000e+00
+Kin_scal                     4   0.000e+00   0.000e+00
+Part_scal                    4   0.000e+00   0.000e+00
+Pot_scal                     4   0.000e+00   0.000e+00
+SpinT_eq                   581   0.000e+00   0.000e+00
+SpinXY_eq                  581   0.000e+00   0.000e+00
+SpinZ_eq                   581   0.000e+00   0.000e+00
+SpinZ_local                579   0.000e+00   0.000e+00
+SpinZ_localtau           35141   0.000e+00   0.000e+00
+confout_0                17282   0.000e+00   0.000e+00
+acceptance A=0.443352141204 B=0.443352141204  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+ 
+## b2_L12T
+file                         n    max|dif|   max/scale
+Den_eq                     581   2.217e-12   1.539e-14
+Ener_scal                    4   2.572e-11   2.042e-13
+Green_eq                   581   3.271e-12   2.272e-14
+Kin_scal                     4   3.047e-11   1.265e-13
+Part_scal                    4   1.165e-12   8.092e-15
+Pot_scal                     4   4.775e-12   4.154e-14
+SpinT_eq                   581   7.375e-12   5.122e-14
+SpinXY_eq                  581   1.025e-11   7.120e-14
+SpinZ_eq                   581   4.946e-12   3.435e-14
+SpinZ_local                579   7.440e-12   5.167e-14
+SpinZ_localtau           35141   7.148e-10   4.964e-12
+confout_0                17282   0.000e+00   0.000e+00
+acceptance A=0.443352141204 B=0.443352141204  diff=0.00e+00
+FAIL worst rel dev 4.964e-12 (tol 1e-12) 
+ 
+## b4_L12T
+file                         n    max|dif|   max/scale
+Den_eq                     581   8.811e-13   6.118e-15
+Ener_scal                    4   3.017e-11   2.396e-13
+Green_eq                   581   5.281e-12   3.668e-14
+Kin_scal                     4   6.091e-11   2.529e-13
+Part_scal                    4   5.116e-13   3.553e-15
+Pot_scal                     4   9.081e-11   7.901e-13
+SpinT_eq                   581   5.495e-12   3.816e-14
+SpinXY_eq                  581   1.186e-11   8.235e-14
+SpinZ_eq                   581   9.181e-12   6.376e-14
+SpinZ_local                579   1.400e-11   9.719e-14
+SpinZ_localtau           35141   1.468e-09   1.019e-11
+confout_0                17282   0.000e+00   0.000e+00
+acceptance A=0.443352141204 B=0.443352141204  diff=0.00e+00
+FAIL worst rel dev 1.019e-11 (tol 1e-12) 
+ 
+## p1_L6F
+ ALF Copyright (C) 2016 - 2026 The ALF project contributors
+ This Program comes with ABSOLUTELY NO WARRANTY; for details see license.GPL
+ This is free software, and you are welcome to redistribute it under certain conditions.
+ No initial configuration
+  gpu_obs: ALFSH_OBSCORR=1, correlation sums as SYCL kernels (alfsb_corr)
+ GPU build: git none backend ONEMKL
+ GPU debug env: none
+ alf_la: ONEMKL device: Intel(R) Data Center GPU Max 1550
+ GPU mirror setup time (incl. host->device copies):     1.9409 s
+  gpu_lowrank: ALFSH_ASYNCBLK=1, submatrix blocks run asynchronously on the SYCL queue
+  gpu_lowrank: ALFSH_BLKFUSE=           2 : fused block steps (fewer host submissions per block)
+ 
+ Task           0 of group           0 reports:
+  1.074082600093918E+065  is exceeding the threshold of    10.0000000000000       for G difference!
+  5.632881558636741E+062  is the average deviation!
+ This calculation is unstable and therefore aborted!!!
+ Try with smaller Nwrap or dtau.
+ 
+ control_mod.F90 (522):
+ Unstable matrix                                                                                     
+ Terminating program
+Abort(3) on node 0 (rank 0 in comm 0): application called MPI_Abort(MPI_COMM_WORLD, 3) - process 0
+file                         n    max|dif|   max/scale
+## p2_L6F
+ ALF Copyright (C) 2016 - 2026 The ALF project contributors
+ This Program comes with ABSOLUTELY NO WARRANTY; for details see license.GPL
+ This is free software, and you are welcome to redistribute it under certain conditions.
+ No initial configuration
+  gpu_obs: ALFSH_OBSCORR=1, correlation sums as SYCL kernels (alfsb_corr)
+ GPU build: git none backend ONEMKL
+ GPU debug env: none
+ alf_la: ONEMKL device: Intel(R) Data Center GPU Max 1550
+ GPU mirror setup time (incl. host->device copies):     1.7484 s
+  gpu_lowrank: ALFSH_ASYNCBLK=1, submatrix blocks run asynchronously on the SYCL queue
+  gpu_lowrank: ALFSH_BLKFUSE=           4 : fused block steps (fewer host submissions per block)
+ 
+ Task           0 of group           0 reports:
+   1148553033886.68       is exceeding the threshold of    10.0000000000000       for G difference!
+   33038377289.8935       is the average deviation!
+ This calculation is unstable and therefore aborted!!!
+ Try with smaller Nwrap or dtau.
+ 
+ control_mod.F90 (522):
+ Unstable matrix                                                                                     
+ Terminating program
+Abort(3) on node 0 (rank 0 in comm 0): application called MPI_Abort(MPI_COMM_WORLD, 3) - process 0
+file                         n    max|dif|   max/scale
+## p3_L6F
+ ALF Copyright (C) 2016 - 2026 The ALF project contributors
+ This Program comes with ABSOLUTELY NO WARRANTY; for details see license.GPL
+ This is free software, and you are welcome to redistribute it under certain conditions.
+ No initial configuration
+  gpu_obs: ALFSH_OBSCORR=1, correlation sums as SYCL kernels (alfsb_corr)
+ GPU build: git none backend ONEMKL
+ GPU debug env: none
+ alf_la: ONEMKL device: Intel(R) Data Center GPU Max 1550
+ GPU mirror setup time (incl. host->device copies):     1.7590 s
+  gpu_lowrank: ALFSH_ASYNCBLK=1, submatrix blocks run asynchronously on the SYCL queue
+  gpu_lowrank: ALFSH_BLKFUSE=           1 : fused block steps (fewer host submissions per block)
+ 
+ Task           0 of group           0 reports:
+   15.5244593670289       is exceeding the threshold of    10.0000000000000       for G difference!
+  0.399223998528371       is the average deviation!
+ This calculation is unstable and therefore aborted!!!
+ Try with smaller Nwrap or dtau.
+ 
+ control_mod.F90 (522):
+ Unstable matrix                                                                                     
+ Terminating program
+Abort(3) on node 0 (rank 0 in comm 0): application called MPI_Abort(MPI_COMM_WORLD, 3) - process 0
+file                         n    max|dif|   max/scale
+end 2026-11-13T11:54:11+01:00

@@ -3,7 +3,7 @@
 Branch `intel-batched` (from `gpu-port-unified` 33a62652), session 2026-11-13 01:50-03:45 (SuperMUC-NG Phase 2, oneAPI 2025.3.0, 1 node per job,
 `-p preempt`). "C" = measured (job id given), "E" = estimate or data-sheet number.
 Sources, job scripts and raw outputs: `docs/gpu/scripts/intel_batched/` (`ib_bench.cpp`, `ib_omp.F90`, `ib_wtest.cpp`, `ib_s1.sh`, `ib_s2.sh`,
-`ib_tput.sh`, `ib_tput32.sh`, `ib_build.sh`, `ib_sum.py`; corr: `mc_gate.sh`, `mc_gate2.sh`, `mc_tput.sh` with logs `data/mc_*.log`, remote `$SCRATCH/mgr_corr/`; raw data in `data/<jobid>/`). Remote: `$SCRATCH/large_prompt/batched/`.
+`ib_tput.sh`, `ib_tput32.sh`, `ib_build.sh`, `ib_sum.py`; corr: `mc_gate.sh`, `mc_gate2.sh`, `mc_tput.sh` with logs `data/mc_*.log`, remote `$SCRATCH/mgr_corr/`; block fusion: `bf_build.sh` (login-node build), `bf_run.sh` (gates + timing + counts) with logs `data/bf_*.log`, remote `$SCRATCH/mgr_corr2..5/`; raw data in `data/<jobid>/`). Remote: `$SCRATCH/large_prompt/batched/`.
 Earlier measurements used and not repeated: Phase 7 per-kernel profile (`docs/gpu/sessions/supermuc_large_prompt/phase2/team/p7/NOTES.md`, "p7"),
 Phase 6 batched design study (`.../p6/DESIGN.md`, "p6").
 
@@ -14,6 +14,7 @@ run at the tile's peak and the remaining time is under-fill. Tonight's binary gi
 **0.179 at L = 32** (H100 0.232, gap 1.29x) (C, jobs 560868/560869). Batching the update block over W walkers (kernels written, bitwise checked) speeds that
 block up 1.7-1.9x per tile at L = 24 (C, emulation) = +7 % of the sweep, and nothing at L = 32. The L = 24 H100 throughput needs the whole multi-walker
 engine plus a remap of the observables kernels (E: 1.30 sweeps/s per card); L = 32 is at best a tie after the full rewrite (E).
+**Update (13:00, section 5 / 6 step 2):** with the observables kernel (`ALFSH_OBSCORR=1`) and the fused update block (`ALFSH_BLKFUSE=5 ALFSH_BLKPF=1`) the L = 24 single chain is at **3.75 s/sweep** (H100 3.51, gap 1.07x; was 4.24 with corr, 4.55 before), the 4-chains-per-tile layout at 7.09 s = **1.128 sweeps/s per card** (H100 1.176, 0.96x), L = 32 at 0.194 (H100 0.232, 0.84x).
 
 ## 1. Step 1 measurements
 
@@ -282,6 +283,45 @@ following changes that the evidence of this session makes:
   L = 32 (1 repetition, 2 sweeps): 1 chain 15.82 -> 15.13 (obs 2.74 -> 2.00), 4 chains 44.38 -> 42.39 (obs 10.5 -> 7.7): 0.180 -> **0.189 sweeps/s per card (+4.7 %)**, 0.81 of the H100's 0.232.
   Precision Green identical on/off in all timing runs (same chain). Not 1/3 of obs but ~1/2.2 at L = 24 (4 chains): the remaining obs time is the three `corr` kinds
   (one launch + one wait each per measured slice), the scalars and `local_obs` (still OpenMP) and the synchronous `alfsb_wait` per call.
+- **Update block with fewer host submissions (this commit; switches `ALFSH_BLKFUSE=1..5` and `ALFSH_BLKPF=1`, both default off, need `ALFSH_ASYNCBLK=1`; built, gated, timed).**
+  *Counting* (`ALFSB_COUNT=1`: submission counters in libalfsb, job 561023/561088, L = 24, 1 rank, 3 sweeps = 25,920 blocks): there is **no per-site device operation** in the submatrix
+  path (the Metropolis steps run on the host copy `Gb`); every device submission is per block (8,640 blocks per sweep). Unfused, a block is **13.06 submissions + 1.06 waits**:
+  5.0 copies (block sites up, G0(B,B) down, cbuf up, pending sites up, nsigma up), **4.0 oneMKL GEMMs** (gemm 1 N x k x k and gemm 2 N x N x k, two flavours), 2.0 flush gathers,
+  1.0 gather, 1.0 scale (= 112,320 submissions + 9,100 waits per sweep; p7 measured 9-10 us host cost per GEMM or copy, 4.4 us per kernel). Fused with level 5 + prefetch the block is
+  **6.1 submissions + 1.05 waits** (copy 1.06 [one packed upload from pinned memory], oneMKL GEMM 2.0, `flush12r` 1.0, `scale_ns2` 1.0, `gather2` 0.94, `wait_mark` 0.94 [a wait, not a submission], `gather` 0.06 only for the first block of a
+  slice): 52,300 per sweep, -53 %. Left over from the other classes, not touched: ~15k OpenMP kernels, ~46k OpenMP H->D copies and 480 synchronous library calls per sweep (p7 section 4), i.e. the host floor is now dominated by them and by the hopping wraps.
+  *What each level does* (code: `alf_la_sycl_blk.cpp` `alfsb_scale_ns`, `alfsb_flush12`, `alfsb_rank2`, `alfsb_flush12r`, `alfsb_scale_ns2`, `alfsb_gather2`, `alfsb_wait_mark`; `gpu_lowrank_mod.F90` `blk_end_fuse`, fused branch in `blk_begin`):
+  level 1 = cbuf + pending sites + nsigma packed into one copy from pinned (host USM) memory, scale kernel and the nsigma copy in one kernel (extra work-items), the block gather written
+  straight into host USM (no D2H copy); level 2 = the two flush gathers and the first flush GEMM (S2 = Qt M^T, an own k x k product per row, local memory) of both flavours in one kernel; level 3 = the two second GEMMs as one
+  `gemm_batch`; level 4 = the two second GEMMs as one own register-blocked rank-k kernel; level 5 = level 2 with the flush gathers reading the unscaled G and applying the block's scale factors on the fly (site -> block-index table from `bidx`), so that
+  the scale kernel is off the critical path. `ALFSH_BLKPF=1` (levels >= 2): right after the flush gathers a small kernel computes the NEXT block's principal block G(B',B') - X(B',:) S2(B',:)^T (the sites of B' are disjoint from B,
+  checked per block against `bidx`; the next block's site list goes along) and writes it into host memory; the host waits for that kernel's event only (`alfsb_wait_mark`) and runs the Metropolis steps of the next block while the two
+  flush GEMMs of this block are still executing. Two device buffers for the block sites (the prefetch writes the other one). Prefetch hits 94 % of the blocks at L = 24 (24,480 of 25,920; the first block of each slice has no predecessor; 80 % at L12), 0 misses (`info`: `GPU block prefetch`).
+  *Gates* (V7 switches + `ALFSH_OBSCORR=1` in on and off, fixed seed, `run_cmp_gg/sng.py`; L6/L12, Hubbard defect N_FL = 2 Mz = F and T, SpinSUN N_FL = 1; jobs 560993, 561023, 561063, 561088): (a) switch off vs the unmodified build
+  (`build_ib_txtnew`): **bitwise, worst rel dev 0 in all 6 cases, in every job**; (b) level 1 vs off: **bitwise 0** (L12F, L6S in 561023; all 6 cases in 560993); levels 2-5, with and without prefetch, vs off, same binary: worst rel dev
+  **F 1.1e-15 (L12) / 0 (L6), S 3.7e-14 (L12) / 3.5e-17 (L6), T 1.8e-25 (L12) / 2.3e-27 (L6)**; (c) on vs the same-compiler CPU build: **F L6 2.3e-15, L12 1.5e-14; S L6 3.0e-15, L12 2.2e-14 (level 5 + prefetch; level 2-4: 1.2e-14 .. 5.1e-14)** against 1e-13: PASS, off is 1.6e-14 / 1.4e-14;
+  T L6 1.358e-10, L12 1.210e-9 (above 1e-10) **identical to the switch-off numbers and to the baseline binary** (known oneMKL Mz = T noise, not increased). The first version of level 5 + prefetch **failed these gates** (jobs 561063: all runs aborted
+  with "unstable matrix"; the prefetch kernel overwrote the site list that the still-queued scale kernel needed): found by the gate, fixed with the second site buffer, gate passed in 561088. *Planted defects* (`-DALFSB_PLANT_FUSE=n`, a libalfsb loaded via LD_LIBRARY_PATH): wrong index in `flush12` (1), `rank2` (2), `scale_ns` nsigma copy (3), `gather2` (6), missing row factor in `flush12r` (8): all **abort** ("unstable matrix", rc 3) in all cases; a relative 1e-9 error in `flush12` (4), `rank2` (5), `gather2` (7), `flush12r` (9): **on-vs-off FAIL at 1.1e-9 .. 7.3e-9** (L6F, L6S, L12F) where the unplanted code gives 1e-15 .. 1e-14 (tol 1e-12).
+  *Timing* (aottt binary, V7 + `ALFSH_OBSCORR=1` in all runs, L = 24, 3 sweeps, mean over ranks, s/sweep per chain; "off" = `ALFSH_BLKFUSE` unset; node-to-node spread of the off value 4.19-4.26 s, compare within a job; jobs 561004, 561023, 561088; repetitions agree to 0.01 s):
+
+  | level (1 chain per tile, 8 ranks) | s/sweep | upd | vs off |
+  |--|--|--|--|
+  | off | 4.24-4.26 | 1.64 | |
+  | 1 (packed upload, direct gather) | 4.22 | 1.62 | -0.3 % (pinned copies change almost nothing) |
+  | 2 (flush12) | 4.00-4.02 | 1.39 | -5.6 % |
+  | 3 (2 + gemm_batch) | 4.03 | 1.42 | -5.0 % (worse than 2) |
+  | 4 (2 + own rank-k kernel) | 4.20 | 1.58 | -1.2 % (own kernel slower than oneMKL; at 4 chains/tile 7.87 vs 7.56 off: worse) |
+  | 2 + prefetch | 3.78-3.79 | 1.15 | -11 % |
+  | 4 + prefetch | 3.96 | 1.32 | -7.0 % |
+  | 5 (flush gathers before the scale kernel, no prefetch) | 3.92 | 1.36 | -6.4 % (job 561063: off 4.19 on that node) |
+  | **5 + prefetch** | **3.74-3.75** | **1.11** | **-11.8 %** |
+  | (1 rank alone on tile 0, `count` runs: off 3.96, 2 + prefetch 3.47, 5 + prefetch 3.44) | | | |
+
+  4 chains per tile (32 ranks, CCS 4): off **7.555** -> 2 7.37 -> 2 + prefetch 7.16 -> **5 + prefetch 7.094** (-6.1 %; upd 2.78 -> 2.18; stab/cgr/obs rise by 0.02-0.06 s each: the shared tile is fuller) = **1.059 -> 1.128 sweeps/s per card (+6.5 %)**, 0.96 of the H100's 1.176.
+  L = 32, 4 chains per tile (2 sweeps): off 42.34 -> 5 + prefetch **41.20** (-2.7 %, upd 13.68 -> 12.06) = 0.189 -> 0.194 sweeps/s per card; level 4 + prefetch 45.37 (worse).
+  1 chain per tile: 2 tiles per card = 0.471 -> **0.534 sweeps/s** (L = 24). Precision Green in all timing runs at the usual level (max 3.3e-11 / 6.5e-10 / 4.6e-10).
+  *Why the levels differ* (P3 timers, `blk_begin` wait): without prefetch the host waits ~53 us per block for the whole queue (the two GEMMs are on the path); with prefetch the wait is ~29 us and the GEMMs overlap the Metropolis steps. Reordering (level 5) moves the scale kernel
+  off the path: only -1.1 % more. oneMKL's GEMM stays faster than my rank-k kernel (levels 3, 4 negative). Per block at level 2 + prefetch (job 561023): `blk_end` 36 us of host submission, `blk_begin` 31 us of which 29 us wait for the prefetch kernel (device chain copy, scale, flush12, gather2).
 - `ib_wtest` (job 560867): W = 5 walkers, L = 24 sizes, one walker with smaller k: all multi-walker kernels **bitwise equal** to 5 single-walker calls
   (gather 10,240, scale 3.3 M, C/Qt 69,120, slot, gemm 3.3 M elements: 0 differing); planted defect (one element of one walker's G changed) -> FAIL
   (1 element), rc 1. `gemm_batch` vs loop at this shape: 0 differing.
@@ -291,7 +331,7 @@ following changes that the evidence of this session makes:
 
 ## 6. Handoff (next steps in order)
 
-State at handoff (03:45; step 1 below updated 11:30): branch `intel-batched` pushed; Step 1 (measurements) complete (all tables above C); multi-walker block kernels written, bitwise-checked and
+State at handoff (03:45; step 1 below updated 11:30, step 2 updated 13:00): branch `intel-batched` pushed; Step 1 (measurements) complete (all tables above C); multi-walker block kernels written, bitwise-checked and
 built into ALF (default behaviour bitwise unchanged, job 560872), not yet called from Fortran; `alfsb_corr` (SYCL observables kernel) now wired, gated and timed (section 5, switch
 `ALFSH_OBSCORR=1`, default off, uncommitted in the working tree when this was written). The session was interrupted by a usage limit 02:30-03:30, so step 1 below was not started in Fortran. The order below is by expected gain per effort; steps 1 and 2 do not need the walker engine and
 help both the single chain and the production layout.
@@ -307,11 +347,14 @@ help both the single chain and the production layout.
    under sharing at L = 24; use variant A. Expected: obs -1/3
    -> **+8-10 % per card at L = 24 and L = 32** (E). Gate: same-seed vs CPU (`run_cmp_sng.py`, L6F/L12F 1e-13, L6T 1e-10) + planted defect; time with
    `ib_tput.sh` / `ib_tput32.sh` alternating old/new binaries in one job.
-2. **NEXT: Update block: fewer submissions per block on the SYCL path** (`Libraries/Modules/alf_la_sycl_blk.cpp`, `Prog/gpu_lowrank_mod.F90` `blk_begin`/`blk_end`/
+2. **DONE (section 5, 13:00): Update block: fewer submissions per block on the SYCL path (`ALFSH_BLKFUSE=5` + `ALFSH_BLKPF=1`): single chain L = 24 4.24 -> 3.75 s/sweep (-11.8 %), 4 chains/tile 7.555 -> 7.094 (+6.5 % per card), L = 32 -2.7 %; gates green.** Original plan text: **Update block: fewer submissions per block on the SYCL path** (`Libraries/Modules/alf_la_sycl_blk.cpp`, `Prog/gpu_lowrank_mod.F90` `blk_begin`/`blk_end`/
    `ab_flush_dev`): one packed H->D upload instead of 4 (`ab_up_z/ab_up_i` + nsigma), scale + both flush gathers in one kernel, gemm1 (N x k x k) folded
    into a small own kernel. The block today is ~13 async ops at 3 us each plus one D->H wait; the device needs ~35 us of the ~103 us a lone process spends
    (1d). Expected: single chain -0.3..-0.5 s per sweep (4.04 -> ~3.6, near the H100's 3.51), +3-5 % per card (E). Same gates.
-3. **Walker engine W per process (4 processes x W = 4, CCS 4) for L = 24**, as in section 4 / p6 sections 1-5: `ALF_GPU_WALKERS`, walker index on the state
+   Open after step 2 (not done): (i) make `ALFSH_BLKFUSE=5 ALFSH_BLKPF=1` the default after the next production gate; (ii) the remaining per-block cost is ~6 submissions (2 of them oneMKL GEMMs at ~10 us host each: a faster own rank-k kernel than my
+   2 x 2 micro-tile one, or a persistent kernel, would save ~10 us per block = 0.09 s per sweep) plus the hopping wraps (~42 us per block, slice level) and the host Metropolis; (iii) a prefetch of the next block's `nsigma`/sites is not needed; (iv) the
+   OpenMP kernels (15k per sweep) and 46k OpenMP H->D copies per sweep are the next submission class (p7 section 4): fusing the per-slice wrap kernels would be the same kind of work.
+3. **Walker engine W per process (4 processes x W = 4, CCS 4) for L = 24 (NEXT)**, as in section 4 / p6 sections 1-5: `ALF_GPU_WALKERS`, walker index on the state
    arrays (`gpu_state_mod.F90`), per-walker host state in `main.F90` (udv stacks, Phase, nsigma, observables, RNG via RANDOM_SEED GET/PUT, files per walker
    id = rank x W + w), lockstep update using the `alfsb_*_w` kernels (done) and `alfsb_gemm_w` mode 1. First milestone: W walkers run sequentially in one
    process (no batching), each walker same-seed-equal to the CPU run of the corresponding rank; then batch the update block (+7 % per card, C emulation),
@@ -346,4 +389,11 @@ Open risks / facts for the next session:
 | 560968 | mc_gate: build txt + aottt of the corr wiring, planted lib, 20 gate tasks (L6/L12 F/T) | 6.2 min | 1 |
 | 560978 | mc_gate2: SpinSUN (N_FL = 1) gates L6S/L12S incl. planted | 2.8 min | 1 |
 | 560979 | mc_tput: corr off/on, same aottt binary, L = 24 (1, 4 chains/tile x 2 rep) + L = 32 | 10.3 min | 1 |
-| **total** | | **39.5 min = 0.66 node-h** (upper bound incl. start-up ~0.75; corr work alone 19.3 min = 0.32 node-h) | |
+| 560993 | bf: gates of levels 1-4 (first kernel version), 66 tasks incl. planted | 9.3 min | 1 |
+| 561004 | bf: timing levels off/1-4 (L24 1 and 4 chains x 2, L32 4 chains), counting runs | 23.6 min | 1 |
+| 561023 | bf: gates (75 tasks) + timing of FMA kernels, prefetch (off/2/2p/4/4p) | 26.5 min | 1 |
+| 561063 | bf: level 5 gates + timing; prefetch + level 5 failed the gate (site-list overwrite), cancelled | 11.2 min | 1 |
+| 561088 | bf: level 5 + prefetch (fixed): gates (32 tasks) + timing (off/2p/5p) + counts | 14.1 min | 1 |
+| (builds) | libalfsb + ALF txt/aottt builds and planted libs of every iteration ran on the login node (`bf_build.sh`, ~4 min each) | 0 | 0 |
+| **subtotal block fusion** | | **84.7 min = 1.41 node-h** (upper bound incl. start-up ~1.5) | |
+| **total** | | **39.5 min = 0.66 node-h** (before block fusion) (upper bound incl. start-up ~0.75; corr work alone 19.3 min = 0.32 node-h) | |

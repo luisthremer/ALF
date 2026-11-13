@@ -1,0 +1,223 @@
+start 2026-11-13T12:29:46+01:00 i20r01c01s10
+gate tasks: 43
+#### a_L12F (gg, tol 0)
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### a_L12T (gg, tol 0)
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### a_L12S (gg, tol 0)
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### a_L6F (gg, tol 0)
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### a_L6T (gg, tol 0)
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### a_L6S (gg, tol 0)
+PASS worst rel dev 0.000e+00 (tol 0) 
+#### b7_L12F (gg, tol 1e-12)
+PASS worst rel dev 1.063e-15 (tol 1e-12) 
+#### b8_L12F (gg, tol 1e-12)
+b8_L12F gpu: rc=3 wall=25.1s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+#### b7_L12T (gg, tol 1e-12)
+PASS worst rel dev 1.846e-25 (tol 1e-12) 
+#### b8_L12T (gg, tol 1e-12)
+b8_L12T gpu: rc=3 wall=25.7s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+#### b7_L12S (gg, tol 1e-12)
+PASS worst rel dev 3.086e-14 (tol 1e-12) 
+#### b8_L12S (gg, tol 1e-12)
+b8_L12S gpu: rc=3 wall=25.4s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+#### b7_L6F (gg, tol 1e-12)
+PASS worst rel dev 0.000e+00 (tol 1e-12) 
+#### b8_L6F (gg, tol 1e-12)
+b8_L6F gpu: rc=3 wall=24.6s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+#### b7_L6T (gg, tol 1e-12)
+PASS worst rel dev 2.269e-27 (tol 1e-12) 
+#### b8_L6T (gg, tol 1e-12)
+b8_L6T gpu: rc=3 wall=25.2s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+#### b7_L6S (gg, tol 1e-12)
+PASS worst rel dev 3.392e-17 (tol 1e-12) 
+#### b8_L6S (gg, tol 1e-12)
+b8_L6S gpu: rc=3 wall=25.3s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+#### coff_L12F (sng, tol 1e-13)
+PASS worst rel dev 1.578e-14 (tol 1e-13) 
+#### c7_L12F (sng, tol 1e-13)
+PASS worst rel dev 1.542e-14 (tol 1e-13) 
+#### c8_L12F (sng, tol 1e-13)
+c8_L12F gpu: rc=3 wall=25.1s
+FAIL worst rel dev 0.000e+00 (tol 1e-13) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+#### coff_L12T (sng, tol 1e-10)
+FAIL worst rel dev 1.210e-09 (tol 1e-10) 
+#### c7_L12T (sng, tol 1e-10)
+FAIL worst rel dev 1.210e-09 (tol 1e-10) 
+#### c8_L12T (sng, tol 1e-10)
+c8_L12T gpu: rc=3 wall=25.0s
+FAIL worst rel dev 0.000e+00 (tol 1e-10) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+#### coff_L12S (sng, tol 1e-13)
+PASS worst rel dev 1.430e-14 (tol 1e-13) 
+#### c7_L12S (sng, tol 1e-13)
+PASS worst rel dev 4.499e-14 (tol 1e-13) 
+#### c8_L12S (sng, tol 1e-13)
+c8_L12S gpu: rc=3 wall=24.6s
+FAIL worst rel dev 0.000e+00 (tol 1e-13) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+#### coff_L6F (sng, tol 1e-13)
+PASS worst rel dev 2.261e-15 (tol 1e-13) 
+#### c7_L6F (sng, tol 1e-13)
+PASS worst rel dev 2.261e-15 (tol 1e-13) 
+#### c8_L6F (sng, tol 1e-13)
+c8_L6F gpu: rc=3 wall=25.2s
+FAIL worst rel dev 0.000e+00 (tol 1e-13) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+#### coff_L6T (sng, tol 1e-10)
+FAIL worst rel dev 1.358e-10 (tol 1e-10) 
+#### c7_L6T (sng, tol 1e-10)
+FAIL worst rel dev 1.358e-10 (tol 1e-10) 
+#### c8_L6T (sng, tol 1e-10)
+c8_L6T gpu: rc=3 wall=25.0s
+FAIL worst rel dev 0.000e+00 (tol 1e-10) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+#### coff_L6S (sng, tol 1e-13)
+PASS worst rel dev 2.982e-15 (tol 1e-13) 
+#### c7_L6S (sng, tol 1e-13)
+PASS worst rel dev 2.982e-15 (tol 1e-13) 
+#### c8_L6S (sng, tol 1e-13)
+c8_L6S gpu: rc=3 wall=24.9s
+FAIL worst rel dev 0.000e+00 (tol 1e-13) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+#### b5_L12S (gg, tol 1e-12)
+PASS worst rel dev 8.133e-15 (tol 1e-12) 
+#### p8_L6F (gg, tol 1e-12)
+p8_L6F gpu: rc=3 wall=25.2s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+#### p8_L6S (gg, tol 1e-12)
+p8_L6S gpu: rc=3 wall=24.7s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+#### p8_L12F (gg, tol 1e-12)
+p8_L12F gpu: rc=3 wall=25.1s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+#### p9_L6F (gg, tol 1e-12)
+p9_L6F gpu: rc=3 wall=24.6s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+#### p9_L6S (gg, tol 1e-12)
+p9_L6S gpu: rc=3 wall=25.0s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+#### p9_L12F (gg, tol 1e-12)
+p9_L12F gpu: rc=3 wall=24.6s
+FAIL worst rel dev 0.000e+00 (tol 1e-12) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Ki
+---- runs that announced fused / prefetch (gpu run.log):
+level 2: 1
+level 4: 0
+level 5: 30
+prefetch: 19
+---- prefetch hit/miss (b8_L12F, b8_L12T):
+## b8_L12T
+ ALF Copyright (C) 2016 - 2026 The ALF project contributors
+ This Program comes with ABSOLUTELY NO WARRANTY; for details see license.GPL
+ This is free software, and you are welcome to redistribute it under certain conditions.
+ No initial configuration
+  gpu_obs: ALFSH_OBSCORR=1, correlation sums as SYCL kernels (alfsb_corr)
+ GPU build: git none backend ONEMKL
+ GPU debug env: none
+ alf_la: ONEMKL device: Intel(R) Data Center GPU Max 1550
+ GPU mirror setup time (incl. host->device copies):     1.8379 s
+  gpu_lowrank: ALFSH_ASYNCBLK=1, submatrix blocks run asynchronously on the SYCL queue
+  gpu_lowrank: ALFSH_BLKFUSE=           5 : fused block steps (fewer host submissions per block)
+  gpu_lowrank: ALFSH_BLKPF=1, next block's principal block prefetched (host waits for it only)
+ 
+ Task           0 of group           0 reports:
+  3.786881274271085E+095  is exceeding the threshold of    10.0000000000000       for G difference!
+  1.643845839909320E+092  is the average deviation!
+ This calculation is unstable and therefore aborted!!!
+ Try with smaller Nwrap or dtau.
+ 
+ control_mod.F90 (522):
+## b7_L12F
+file                         n    max|dif|   max/scale
+Den_eq                     581   1.182e-14   8.211e-17
+Ener_scal                    4   1.279e-13   1.063e-15
+Green_eq                   581   6.661e-16   4.626e-18
+Kin_scal                     4   2.842e-14   1.215e-16
+Part_scal                    4   1.241e-14   8.616e-17
+Pot_scal                     4   9.948e-14   8.756e-16
+SpinT_eq                   581   1.776e-15   1.234e-17
+SpinXY_eq                  581   1.998e-15   1.388e-17
+SpinZ_eq                   581   1.998e-15   1.388e-17
+SpinZ_local                579   8.942e-16   6.210e-18
+SpinZ_localtau           35141   1.103e-13   7.656e-16
+confout_0                17282   0.000e+00   0.000e+00
+acceptance A=0.329644097222 B=0.329644097222  diff=0.00e+00
+PASS worst rel dev 1.063e-15 (tol 1e-12) 
+ 
+## p8_L6F
+ ALF Copyright (C) 2016 - 2026 The ALF project contributors
+ This Program comes with ABSOLUTELY NO WARRANTY; for details see license.GPL
+ This is free software, and you are welcome to redistribute it under certain conditions.
+ No initial configuration
+  gpu_obs: ALFSH_OBSCORR=1, correlation sums as SYCL kernels (alfsb_corr)
+ GPU build: git none backend ONEMKL
+ GPU debug env: none
+ alf_la: ONEMKL device: Intel(R) Data Center GPU Max 1550
+ GPU mirror setup time (incl. host->device copies):     1.9205 s
+  gpu_lowrank: ALFSH_ASYNCBLK=1, submatrix blocks run asynchronously on the SYCL queue
+  gpu_lowrank: ALFSH_BLKFUSE=           5 : fused block steps (fewer host submissions per block)
+  gpu_lowrank: ALFSH_BLKPF=1, next block's principal block prefetched (host waits for it only)
+ 
+ Task           0 of group           0 reports:
+  1.001228540526089E+064  is exceeding the threshold of    10.0000000000000       for G difference!
+  1.935802934036852E+062  is the average deviation!
+ This calculation is unstable and therefore aborted!!!
+ Try with smaller Nwrap or dtau.
+ 
+ control_mod.F90 (522):
+## p9_L6F
+ ALF Copyright (C) 2016 - 2026 The ALF project contributors
+ This Program comes with ABSOLUTELY NO WARRANTY; for details see license.GPL
+ This is free software, and you are welcome to redistribute it under certain conditions.
+ No initial configuration
+  gpu_obs: ALFSH_OBSCORR=1, correlation sums as SYCL kernels (alfsb_corr)
+ GPU build: git none backend ONEMKL
+ GPU debug env: none
+ alf_la: ONEMKL device: Intel(R) Data Center GPU Max 1550
+ GPU mirror setup time (incl. host->device copies):     1.8392 s
+  gpu_lowrank: ALFSH_ASYNCBLK=1, submatrix blocks run asynchronously on the SYCL queue
+  gpu_lowrank: ALFSH_BLKFUSE=           5 : fused block steps (fewer host submissions per block)
+  gpu_lowrank: ALFSH_BLKPF=1, next block's principal block prefetched (host waits for it only)
+ 
+ Task           0 of group           0 reports:
+  1.445591894173039E+092  is exceeding the threshold of    10.0000000000000       for G difference!
+  3.299649864378550E+089  is the average deviation!
+ This calculation is unstable and therefore aborted!!!
+ Try with smaller Nwrap or dtau.
+ 
+ control_mod.F90 (522):
+gates done 2026-11-13T12:35:44+01:00
+MEAN L24_c1_f0_r1     ranks 8  sweep  4.186  upd 1.634  stab 0.916  cgr 0.875  obs 0.537 s/sweep
+  Precision Green  Mean, Max :   1.809410943110277E-014  3.334976231551937E-011
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      0.748      0.703      2.856      0.001      2.850      1.042      0.000
+MEAN L24_c1_f2p_r1    ranks 8  sweep  3.701  upd 1.126  stab 0.924  cgr 0.884  obs 0.543 s/sweep
+  Precision Green  Mean, Max :   1.809462205197213E-014  3.298505763962806E-011
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      0.975      0.934      0.938      0.919      0.916      1.157      0.000
+  gpu_lowrank: ALFSH_BLKPF=1, next block's principal block prefetched (host waits for it only)
+MEAN L24_c1_f5_r1     ranks 8  sweep  3.919  upd 1.354  stab 0.920  cgr 0.878  obs 0.541 s/sweep
+  Precision Green  Mean, Max :   1.810880653221957E-014  3.273107314209329E-011
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      1.580      1.532      0.871      1.353      0.847      1.065      0.000
+  gpu_lowrank: ALFSH_BLKPF=1, next block's principal block prefetched (host waits for it only)
+MEAN L24_c1_f0_r2     ranks 8  sweep  4.189  upd 1.638  stab 0.915  cgr 0.876  obs 0.538 s/sweep
+  Precision Green  Mean, Max :   1.809410943110277E-014  3.334976231551937E-011
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      0.691      0.643      2.538      0.001      2.532      0.887      0.000
+MEAN L24_c1_f2p_r2    ranks 8  sweep  3.702  upd 1.129  stab 0.922  cgr 0.883  obs 0.544 s/sweep
+  Precision Green  Mean, Max :   1.809462205197213E-014  3.298505763962806E-011
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      0.869      0.826      0.976      0.810      0.953      1.122      0.000
+  gpu_lowrank: ALFSH_BLKPF=1, next block's principal block prefetched (host waits for it only)
+MEAN L24_c1_f5_r2     ranks 8  sweep  3.921  upd 1.358  stab 0.920  cgr 0.879  obs 0.541 s/sweep
+  Precision Green  Mean, Max :   1.810880653221957E-014  3.273107314209329E-011
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      1.575      1.528      0.853      1.357      0.828      1.060      0.000
+  gpu_lowrank: ALFSH_BLKPF=1, next block's principal block prefetched (host waits for it only)
+MEAN L24_c4_f0_r1     ranks 32  sweep  7.614  upd 2.825  stab 1.792  cgr 1.429  obs 1.336 s/sweep
+  Precision Green  Mean, Max :   1.960957926459005E-014  6.536447432744344E-010
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      0.781      0.735      4.539      0.001      4.534      2.977      0.000
+MEAN L24_c4_f2p_r1    ranks 32  sweep  7.212  upd 2.301  stab 1.834  cgr 1.441  obs 1.404 s/sweep
+  Precision Green  Mean, Max :   1.961201572518658E-014  6.494785409564671E-010
+ P3_TIMERS blocks, blk_begin, begin_dev, blk_end, end_la_sync, end_dev, slice_level [s]:        25920      2.049      2.007      0.938      1.992      0.914      3.083      0.000
+  gpu_lowrank: ALFSH_BLKPF=1, next block's principal block prefetched (host waits for it only)
+  gpu_lowrank: ALFSH_BLKPF=1, next block's principal block prefetched (host waits for it only)
