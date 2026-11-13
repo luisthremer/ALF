@@ -1,5 +1,9 @@
 # Delayed and submatrix updates (test branch `gpu-port-delayed-submatrix`)
 
+> Note 2026-11-13: the text below is the record of the test branch. The code is part of the production GPU path on `gpu-port` and `gpu-port-unified`; the
+> comment in `Prog/gpu_lowrank_mod.F90` no longer calls it a test branch. The later same-seed GPU-vs-CPU comparisons for the delayed and submatrix schemes are in
+> `CONSOLIDATION.md` (verification table) and `platforms/`.
+
 Test branch, numerical acceptance not pursued (owner, 2026-11-06). Source: `fork/feature/delayed-submatrix-clean`
 (source files only: `Prog/Lowrank_update_mod.F90`, `Operator_mod`, `QMC_runtime_var_mod`, `upgrade_mod`, `Wrapgr_mod`,
 `Timers_mod`, `Trace_updates_mod`, `main.F90` hooks, parameters). Keys: `Sequential_scheme = "standard"|"delayed"|"submatrix"`,

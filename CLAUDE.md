@@ -1,7 +1,9 @@
 # ALF GPU port – guide for agents
 
-> **State 2026-11-13.** The port now lives on the branch `gpu-port-unified` (all lines merged: NVIDIA, Intel, AMD,
-> parallel tempering, point defect, MaxEnt bootstrap). Entry page: `docs/gpu/README.md`; how the branch was built and
+> **State 2026-11-13.** There are two branches (see `docs/gpu/BRANCHES.md`): `gpu-port` (this branch) = the general GPU code (NVIDIA,
+> Intel, AMD, delayed/submatrix updates, MPI and `PARALLEL_PARAMS`, MaxEnt bootstrap; standard Hubbard model, no point defect), and
+> `gpu-port-unified` = the general code plus the space-time point-defect Hubbard model. New general work goes to `gpu-port`, defect-only
+> work to `gpu-port-unified`; never merge `gpu-port-unified` into `gpu-port`. Entry page: `docs/gpu/README.md`; how the unified branch was built and
 > verified: `docs/gpu/CONSOLIDATION.md`; plan: `plan/GPU_PLAN_V2.md` in the project folder next to this clone.
 > Differences from the text below: there are three GPU targets (`GPU=nvidia|intel|amd`); SuperMUC-NG Phase 2 is reachable
 > (see `docs/gpu/platforms/`); in this clone `origin` is the fork `luisthremer/ALF` (check `git remote -v` before

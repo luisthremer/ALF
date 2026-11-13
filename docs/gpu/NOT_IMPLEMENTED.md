@@ -89,10 +89,12 @@ A new `la_*` routine without an `om_*` twin would stop an Intel or AMD run at it
 ### 5.2 Intel (`GPU=intel`)
 - `libalfdevqr.so` and `libalfsb.so` are loaded by `dlopen` only if a switch asks for them; a missing library or symbol stops the run (`alf_la_sycl_shim.cpp:119-148`).
 - Device QR falls back to oneMKL when the device limits are not met (large M).
-- oneAPI 2025.3 compiles, but the OpenMP-to-SYCL interop crashes at run time with the Level Zero V2 adapter; 2025.1 works
-  (`platforms/intel_pvc_supermuc_ng2.md`). Build without `omp_get_interop_*` in `omp_lib` needs the `bind(C)` declarations in `alf_la_mod.F90`.
+- Toolchain (updated 2026-11-13): the first SuperMUC session saw oneAPI 2025.3 crash in the OpenMP-to-SYCL interop (run with `SYCL_UR_USE_LEVEL_ZERO_V2=1`) and
+  used 2025.1. The later sessions and the verification of 2026-11-13 ran 2025.3 successfully with `intel/2025.3.0 intel-mpi/2021.15.0 intel-mkl/2025.3.0
+  hdf5/1.14.5-intel25` and without that variable (`platforms/intel_pvc_supermuc_ng2.md`, update note). Build without `omp_get_interop_*` in `omp_lib` needs
+  the `bind(C)` declarations in `alf_la_mod.F90`.
 - No MPS: ranks sharing a tile time-slice; one rank per tile.
-- Documents disagree on the toolchain of the 2026-11-13 verification: `CONSOLIDATION.md` says ifx 2025.3, the platform page says only 2025.1 works at run time. Not resolved here (not verified).
+- The disagreement of the documents about 2025.1 / 2025.3 is resolved in the platform page (update note of 2026-11-13); the cause of the first-session crash was not isolated by a controlled test.
 
 ### 5.3 AMD (`GPU=amd`)
 - Needs GCC >= 14 with amdgcn offload; `-static` and `-ffast-math` are removed (`configure.sh:622-632`).
@@ -109,13 +111,22 @@ A new `la_*` routine without an `om_*` twin would stop an Intel or AMD run at it
 - `ALF_GPU_CC` exported at run time stops a production run (guard, `RUNTIME_SWITCHES.md` section 0).
 - The unified-commit comparison on the A30 was not run; the H100 row of `CONSOLIDATION.md` is still a placeholder.
 
+### 5.5 MPI rank-to-device binding (all backends, known limitation)
+`gpu_state_mod.F90:552` selects the device with `omp_set_default_device(Mod(env_rank, omp_get_num_devices()))`, and `env_rank` is the rank in
+`MPI_COMM_WORLD` (`env_mpi_ids`, line 327), not the node-local rank and not the rank within the PARALLEL_PARAMS group. Several nodes with a
+different number of devices, or a rank placement that is not block-wise per node, then put the ranks of one node on the wrong or on the same
+devices (for example round-robin placement over 4 nodes with 4 devices per node: ranks 0, 4, 8, ... of a node all get device 0). It is only safe with
+block placement (consecutive ranks fill a node) and a number of ranks per node that is a multiple of the number of visible devices, or when a wrapper
+gives every rank its own single visible device (`ZE_AFFINITY_MASK`, `CUDA_VISIBLE_DEVICES`; then `r mod 1 = 0`). No check and no warning in the code.
+See `MPI_GPU.md` section "Rank-to-device binding". Not changed in the code.
+
 ## 6. Opt-in switches not cleared for production (`RUNTIME_SWITCHES.md`)
 
 `ALFSH_*`, `ALF_HIP_*` and `ALFDEVQR_*` are outside the production guard, so nothing stops a run that sets them. Check them by hand.
 
 | Switch | Backend | Status | Source |
 |---|---|---|---|
-| `ALFSH_ASYNCBLK=1` | Intel | Bitwise identical to off in tests (V2). Release step "V2 next": same-seed check of the production binary first. | `ISSUE_INTEL_VS_A30.md` section 9 |
+| `ALFSH_ASYNCBLK=1` | Intel | Bitwise identical to off (measured, V2); measured gain; not yet cleared for production by the owner. Release step "V2 next": same-seed check of the production binary first. Gain: +15 to 20 % per card (one chain on one card, L=24 7.05 to 6.55 s per sweep) but +3 % per node with 32 ranks (2.57 to 2.65 sweeps/s per node, `phase2/team/p3/STATUS.md`). | `ISSUE_INTEL_VS_A30.md` sections 2 and 9 |
 | `ALFSH_DEVQR=1`, `=2` | Intel | Rounding-level differences from oneMKL. Waits for the numerics review. `=2` also waits for the L6T rule and the tau-slot review. | same, sections 7 and 9 |
 | `ALFSH_DEVUNMQR=1` | Intel | Same status as `DEVQR=2`. | same |
 | `LIBOMPTARGET_LEVEL_ZERO_STAGING_BUFFER_SIZE=1048576` | Intel | "V1", recommended for production, bitwise identical in tests; confirm with one same-seed run. | same, section 9 |

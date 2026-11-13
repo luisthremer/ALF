@@ -13,7 +13,9 @@
 //     the QR (NB reflectors, Q^H) and for the whole unmqr (k reflectors) -- no T factor, no GEMM, one launch each.
 //   * unmqr from the right is C Q^(H) = (Q^(H)^H applied from the left to C^H)^H: transposes through a scratch buffer.
 // Supported sizes: m <= 2304 (else the caller falls back to hipSOLVER). All kernels run on the default stream; the
-// functions synchronise before they return (the OpenMP target regions run on their own queue).
+// functions end in alf_hip_fin(): the work is synchronised before they return, or, with the deferred synchronisation (default when the
+// patched libgomp plugin has the presync hook), only marked as pending and synchronised by alf_hip_presync() before the next OpenMP
+// kernel launch or device copy (the OpenMP target regions run on their own queue).
 #include <hip/hip_runtime.h>
 #include <cstdio>
 

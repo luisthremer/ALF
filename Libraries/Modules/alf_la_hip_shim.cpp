@@ -1,7 +1,10 @@
 // ALF GPU=amd (ALF_LA_HIP): C shim of the alf_la HIP backend (module alf_la_hip_mod).
-// BLAS through hipBLAS, solvers through hipSOLVER, on the null stream. Every call finishes (hipDeviceSynchronize) before it
-// returns: the OpenMP target regions of the offload runtime (libgomp GCN plugin) run on their own queues, so a library call
-// has to be ordered against them explicitly. All pointers are device pointers (from use_device_addr).
+// BLAS through hipBLAS, solvers through hipSOLVER, on the null stream. The OpenMP target regions of the offload runtime (libgomp
+// GCN plugin) run on their own queues, so a library call has to be ordered against them explicitly. hipSOLVER calls (fin) and
+// alfhp_wait finish (hipDeviceSynchronize) before they return. The hipBLAS wrappers (SYNC_RET) end in alf_hip_fin(), which with the
+// deferred synchronisation (default when the patched libgomp plugin has the presync hook, ALF_HIP_ASYNC=0 switches it off) only
+// marks the work as pending; the plugin calls alf_hip_presync() before every OpenMP kernel launch and device copy/free.
+// All pointers are device pointers (from use_device_addr).
 #include <hip/hip_runtime_api.h>
 #include <hipblas/hipblas.h>
 #include <hipsolver/hipsolver.h>

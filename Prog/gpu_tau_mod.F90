@@ -43,7 +43,10 @@
 !>     udw(.,.,2,.) of gpu_stab_mod, ticket 206 blocks, reset at the start of the pass) and CGR2_2 (below) with the left state
 !>     udvst(NST) read on the device from the slot udv(.,.,NST,.) (no D->H export of udvst any more), followed by the four
 !>     Control_Precision_tau checks as device reductions (control_mod: Control_Precision_tau_vals).
-!>   Observables (ham%OBSERT) and Hop_mod_Symm run on the host on the host shadows of the four matrices: INTERIM, removed by 208.
+!>   Observables (ham%OBSERT): since ticket 208-3 they run on the device too (gpu_obs_mod, gpu_obs_tau_measure, with Symm), on the device
+!>   matrices; tau_obs falls back to the host ham%OBSERT / Hop_mod_Symm on the host shadows of the four matrices (with the D->H copies of
+!>   tau_download) only when the device measurement is off (ALF_GPU_NOOBS=1, a model gpu_obs_setup declines, the self-tests and the
+!>   TAUDIAG / QREF debug aids, or no precision report): tobs_dev in tau_begin.
 !>
 !> CGR2_2 on the device (dev_cgr22), the algorithm of cgr2_2_mod (STAB1/2/3 excluded), 2N x 2N, N = Ndim:
 !>   MYU2 = U2^dagger, V1INV = V1^-1 (LU: la_getrf + la_getrs on the identity; upstream INV is ZGETRF + ZGETRI), D1m, D2m = D (default)
@@ -60,9 +63,12 @@
 !>   get_blocks into G00 / G0T / GT0 / GTT.
 !>
 !> Transfers (every one is marked in the code; N = Ndim, F = number of flavours, L = Ltrot, S = number of stabilization points):
-!>   per pass, INTERIM 207 (removed by 208):  H->D  GR, 16 N^2 B per flavour (host-authoritative G at time 0);
+!>   per pass, as first written (ticket 207, INTERIM, 208-1 / 208-3 removed them from the default path):
+!>                                            H->D  GR, 16 N^2 B per flavour (G at time 0 was host-authoritative; since 208-1 it is a
+!>                                                  device-to-device copy of G_d unless the device copy is stale),
 !>                                            D->H  GT0, G0T, GTT, 3 * 16 N^2 B per flavour and slice (for ham%OBSERT / Symm),
 !>                                            D->H  G00, 16 N^2 B per flavour and stabilization point (G00 changes only there);
+!>                                            both D->H now only on the host-observable fallback (tau_download, tobs_dev = .false.);
 !>   per stabilization point and flavour, permanent: CGR2_2 default: 8 * 2N B (column norms, la_qrpp) D->H, 4 * 2N B
 !>                                            (permutation) H->D, 32 B D->H (D1(1), D2(1), complex); 4 * 32 B D->H (precision numbers);
 !>                                            STABLOG: 16 (2N)^2 B D->H and 16 (2N)^2 + 16 * 2N + 4 * 2N B H->D (la_geqp3_host),
@@ -368,7 +374,7 @@ Contains
     n_pass = n_pass + 1
   end subroutine gpu_tau_pass
 
-  !> Observables of one time slice on the host shadows of the device matrices (INTERIM 207: removed by 208).
+  !> Observables of one time slice: on the device matrices (gpu_obs_tau_measure) when tobs_dev, else on the host shadows (ham%OBSERT, fallback).
   Subroutine tau_obs(nt, PHASE, Mc_step_Weight)
     Implicit none
     Integer, intent(in) :: nt
@@ -402,7 +408,8 @@ Contains
   end subroutine tau_obs
 
   !> Start of the pass: G00 = GT0 = GTT = GR, G0T = -(1 - GR) (TAU_M, tau = 0).  The host shadows get the CPU's loop (they feed
-  !> OBSERT at tau = 0); the device gets GR by one H->D copy per flavour and derives the other three on the device.
+  !> OBSERT at tau = 0 when the host fallback measures); the device gets G00 from G_d by a device-to-device copy (208-1; one H->D copy
+  !> of GR per flavour only if the device copy is stale) and derives the other three on the device.
   Subroutine tau_begin(GR)
     Implicit none
     Complex (Kind=Kind(0.d0)), intent(in) :: GR(Ndim,Ndim,N_FL)
@@ -474,13 +481,13 @@ Contains
     if (tobs_dev) return                 ! ticket 208-3: the device measurement reads the device matrices
     do nfe = 1, t_nfe
        nf = Calc_Fl_map(nfe)
-       ! INTERIM 207: removed by 208: D->H of GT0, G0T, GTT (3 * 16 N^2 B per flavour and slice) for ham%OBSERT / Hop_mod_Symm on the host
+       ! host-observable fallback only (not with tobs_dev): D->H of GT0, G0T, GTT (3 * 16 N^2 B per flavour and slice) for ham%OBSERT / Hop_mod_Symm on the host
        call upd_from_c(GT0_d(1,1,nf), t_N*t_N)
        call upd_from_c(G0T_d(1,1,nf), t_N*t_N)
        call upd_from_c(GTT_d(1,1,nf), t_N*t_N)
        b_d2h = b_d2h + 3_int64*16_int64*t_N*t_N
        if (incl00) then
-          ! INTERIM 207: removed by 208: D->H of G00 (16 N^2 B per flavour), only needed after CGR2_2 (tests)
+          ! host-observable fallback only: D->H of G00 (16 N^2 B per flavour), only needed after CGR2_2 (tests)
           call upd_from_c(G00_d(1,1,nf), t_N*t_N)
           b_d2h = b_d2h + 16_int64*t_N*t_N
        endif

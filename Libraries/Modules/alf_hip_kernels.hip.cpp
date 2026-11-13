@@ -1,7 +1,9 @@
 // ALF GPU=amd: small device kernels written in HIP instead of OpenMP target regions.
 // A libgomp-GCN target region with a parallel loop costs ~150 us to launch; a HIP kernel launch + hipDeviceSynchronize ~15 us.
-// Every function takes device pointers (from use_device_addr in alf_hipk_mod) and finishes (synchronises) before it returns,
-// because the OpenMP target regions run on their own queues. Index conventions follow the Fortran arrays (column major).
+// Every function takes device pointers (from use_device_addr in alf_hipk_mod) and ends in fin() = alf_hip_fin(): the work is synchronised
+// before it returns, or, with the deferred synchronisation (below), only marked as pending and synchronised by alf_hip_presync() before
+// the next OpenMP kernel launch or device copy, because the OpenMP target regions run on their own queues. Index conventions follow
+// the Fortran arrays (column major).
 #include <hip/hip_runtime.h>
 #include <cstdio>
 #include <cstdlib>

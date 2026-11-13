@@ -34,7 +34,8 @@
 !> GPU port, ticket 204 (ADR-002): device versions of the hopping exponential B_T (Hop_mod_mmthr, _m1, mmthl, mmthlc,
 !> mmthl_m1) and of the Op_V operators of one time slice (Op_mmultL/R, Op_Wrapup/Op_Wrapdo), acting on DEVICE-RESIDENT
 !> complex matrices, built on the flat arrays of gpu_state_mod and on alf_la.  Compiled only with -DALF_GPU.
-!> Nothing in the sweep calls these yet (tickets 205-207 will).
+!> Called by the sweep: gpu_update_mod (WRAPGRUP/DO, tickets 205/208), gpu_stab_mod (WRAPUR/WRAPUL slice products, 206) and
+!> gpu_tau_mod (tau pass, 207); gpu_obs_mod uses gpu_symm.
 !>
 !> Conventions
 !>   * every matrix argument is an explicit-shape/assumed-size device array M(ld,*) that the caller has mapped; the

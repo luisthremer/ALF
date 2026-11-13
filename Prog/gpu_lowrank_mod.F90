@@ -31,7 +31,8 @@
 
 !--------------------------------------------------------------------
 !> @brief
-!> GPU version of the delayed and submatrix local updates (test branch gpu-port-delayed-submatrix).
+!> GPU version of the delayed and submatrix local updates (merged into the production GPU path; it began as the test branch
+!> gpu-port-delayed-submatrix).
 !> The algebra is that of Prog/Lowrank_update_mod.F90 (docs/algorithm-notes.md sections 3, 4, 12) restricted to what the
 !> GPU path supports (gpu_supported): rank-1 vertices (N_non_zero <= 1), diagonal operators.  Selected by the parameters
 !> Sequential_scheme = "delayed" | "submatrix" and N_delay, the same keys as on the CPU.
@@ -49,8 +50,11 @@
 !>   accept   : host only: M <- M + (Delta/d) a b^T (padding S with p if needed); NO device work at all
 !>   wrap     : G0 as before (one kernel); host M(m,:) *= za, M(:,m) *= zb for a wrapped site in S
 !>   flush    : Qt = E_S - G0(S,:)^T (gather), Y = Qt M^T (ZGEMM), G0 <- G0 - G0(:,S) Y^T (ZGEMM), as the delayed flush
-!> Neither scheme changes the random-number order: the same ratio code, the same draws.  Numerical agreement is not the
-!> goal of this test branch (see the ticket text); the CPU schemes are the reference.
+!> Neither scheme changes the random-number order: the same ratio code, the same draws.  The CPU schemes are the reference:
+!> with the same compiler and seeds the trajectory is the CPU one until round-off first changes a decision, and the observables
+!> are compared with the same-compiler CPU run (docs/gpu/DELAYED_SUBMATRIX.md: per-bin agreement to ~1e-13, identical
+!> acceptance; docs/gpu/CONSOLIDATION.md for the later backends).  Later additions in this file: the fast path (all flavours
+!> in one launch, gpu_lr_step_*), block mode and, with oneMKL, the asynchronous block path (ALFSH_ASYNCBLK, see below).
 !--------------------------------------------------------------------
 #ifdef ALF_GPU
 Module gpu_lowrank_mod
