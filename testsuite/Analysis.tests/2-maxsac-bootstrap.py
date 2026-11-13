@@ -21,12 +21,16 @@ the following properties are checked:
      single run.
 
 Usage:
-    python3 2-maxsac-bootstrap.py [path/to/Max_SAC.out] [--keep]
+    python3 2-maxsac-bootstrap.py [path/to/Max_SAC.out] [--keep] [--mpi N]
+
+--mpi N runs Max_SAC.out with "mpirun -np N" (MPI build needed). Rank 0 then does
+the reference run, ranks 1..N-1 the bootstrap samples in MaxSAC_rank_<r>/.
 
 Exit code 0 if all checks pass, 1 otherwise. Only the Python standard library
 is needed.
 """
 
+import glob
 import math
 import os
 import random
@@ -104,22 +108,29 @@ def write_inputs(wdir, sigma, n_boot, seed):
                                   ndis=NDIS, n_alpha=N_ALPHA, nbins=NBINS, nwarm=NWARM))
 
 
+MPI_NP = 0   # set by --mpi N
+
+
 def run(exe, wdir):
     env = dict(os.environ, OMP_NUM_THREADS="1")
-    res = subprocess.run([exe], cwd=wdir, env=env, capture_output=True, text=True)
+    cmd = ["mpirun", "-np", str(MPI_NP), exe] if MPI_NP > 1 else [exe]
+    res = subprocess.run(cmd, cwd=wdir, env=env, capture_output=True, text=True)
     if res.returncode != 0:
         raise RuntimeError(f"Max_SAC.out failed in {wdir}:\n{res.stdout}\n{res.stderr}")
 
 
 def energy_traces(wdir):
-    """Split the 'Alpha, En_m, Acc' lines of Max_stoch_log into runs."""
+    """'Alpha, En_m, Acc' lines of all Max_stoch_log files (MPI rank directories first,
+    then the current directory, so that the reference run is always the last run)."""
     en, n_fresh = [], 0
-    with open(os.path.join(wdir, "Max_stoch_log")) as f:
-        for line in f:
-            if line.strip().startswith("Alpha, En_m, Acc"):
-                en.append(float(line.split()[4]))
-            elif "No dump data" in line:
-                n_fresh += 1
+    logs = sorted(glob.glob(os.path.join(wdir, "MaxSAC_rank_*", "Max_stoch_log")))
+    for log in logs + [os.path.join(wdir, "Max_stoch_log")]:
+        with open(log) as f:
+            for line in f:
+                if line.strip().startswith("Alpha, En_m, Acc"):
+                    en.append(float(line.split()[4]))
+                elif "No dump data" in line:
+                    n_fresh += 1
     return en, n_fresh
 
 
@@ -145,8 +156,14 @@ def check(cond, msg):
 
 
 def main():
-    args = [a for a in sys.argv[1:] if a != "--keep"]
-    keep = "--keep" in sys.argv[1:]
+    global MPI_NP
+    argv = sys.argv[1:]
+    if "--mpi" in argv:
+        k = argv.index("--mpi")
+        MPI_NP = int(argv[k + 1])
+        del argv[k:k + 2]
+    args = [a for a in argv if a != "--keep"]
+    keep = "--keep" in argv
     here = os.path.dirname(os.path.abspath(__file__))
     exe = os.path.abspath(args[0]) if args else \
         os.path.normpath(os.path.join(here, "..", "..", "Analysis", "Max_SAC.out"))
@@ -155,7 +172,7 @@ def main():
         return 1
 
     root = tempfile.mkdtemp(prefix="maxsac_bootstrap_")
-    print(f"Executable: {exe}\nWork dir:   {root}")
+    print(f"Executable: {exe}\nWork dir:   {root}" + (f"\nMPI ranks:  {MPI_NP}" if MPI_NP > 1 else ""))
     ia_last = N_ALPHA - 10
     n_per_run = NBINS * N_ALPHA        # Nbins * N_alpha log lines per MaxEnt run
 
