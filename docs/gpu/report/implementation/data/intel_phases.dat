@@ -1,0 +1,10 @@
+# Max 1550, L=24, one chain per tile, wall seconds per sweep by phase (U updates, S stabilisation, C CGR, O observables)
+# V0: ISSUE_INTEL_VS_A30.md section 3 (U 5.1-5.6 mid-point 5.35, C 1.74, S 1.39, O 1.18)
+# V2: sessions/supermuc_large_prompt/phase2/team/p7/NOTES.md section 3 (O 1.18, U 1.48, S 1.57, C 2.03)
+# V4: ISSUE_INTEL_VS_A30.md section 2 (U 1.44-1.47 mid 1.455, S 1.40, C 1.83-1.86 mid 1.845, O 1.19)
+# V7: p7/NOTES.md section 3 (U 1.444, S 0.803, C 1.210, O 1.180)
+variant U S C O
+V0 5.35 1.39 1.74 1.18
+V2 1.48 1.57 2.03 1.18
+V4 1.455 1.40 1.845 1.19
+V7 1.444 0.803 1.210 1.180

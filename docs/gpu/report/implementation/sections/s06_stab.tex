@@ -1,0 +1,158 @@
+\section{Stabilisation on the device}
+\label{sec:stab}
+
+The stabilisation is in \file{Prog/gpu\_stab\_mod.F90} (2118 lines). It replaces \texttt{WRAPUR}, \texttt{WRAPUL}, the stack handling of \file{main.F90}, \texttt{CGR} and \texttt{Control\_PrecisionG}. On the device the full sequence runs without moving any $N\times N$ matrix to the host (in the default stabilisation).
+
+\subsection{Stacks and slots}
+
+The stack \texttt{udvst} of ALF becomes \texttt{udv\_U}, \texttt{udv\_V}, \texttt{udv\_D} (or \texttt{udv\_L} for \texttt{STABLOG}) with one slot per stabilisation point and flavour. The two working decompositions \texttt{udvl} and \texttt{udvr} are slots 1 and 2 of \texttt{udw\_*}. The exchanges of \file{main.F90} (``\texttt{udvl = udvst(NST)}; \texttt{udvst(NST) = udvr}'' on the way up, the mirror image on the way down) are device-to-device copies (\texttt{gpu\_stab\_exchange}, \file{gpu\_stab\_mod.F90:350-414}). The tracked phases of $\det U$ (\texttt{st\_dw}, \texttt{st\_dv}) travel with the slots. Only the CPU $\tau$ pass needs the stack on the host; then \texttt{udvst} is downloaded on the way down.
+
+The calls in \file{main.F90} (lines 706-1294) follow the CPU code one to one: \texttt{gpu\_stab\_wrapul} with \texttt{gpu\_stab\_store\_l} builds the initial left stack, \texttt{gpu\_stab\_cgr} computes the initial $G$, and in the sweep \texttt{gpu\_stab\_wrapur}/\texttt{wrapul}, \texttt{gpu\_stab\_exchange} and \texttt{gpu\_stab\_cgr} replace their CPU counterparts at each stabilisation point. \texttt{Op\_phase}, the phase product and \texttt{Control\_PrecisionP} stay on the host; they need only scalars.
+
+\subsection{The QR decomposition with pre-pivoting}
+\label{sec:qrpp}
+
+\paragraph{The problem.} ALF factorises with \texttt{ZGEQP3}, the QR decomposition with column pivoting. At step $j$ it chooses, among the remaining columns, the one with the largest norm \emph{of its component orthogonal to the columns already chosen}, and updates those partial norms after each step. That makes every step depend on the previous one and on a global maximum: it is a sequence of matrix--vector operations and cannot be blocked into matrix products. No GPU library offers it: cuSOLVER and oneMKL have none, and MAGMA's \texttt{zgeqp3} is bound by matrix--vector work and runs only on NVIDIA and AMD (\file{HARD.md}, section 2). Running \texttt{ZGEQP3} on the host would cost a transfer of the matrix both ways and the host time: about 5.7~s per \texttt{CGR2\_2} at $N=1024$, and 14~ms at $N=400$ and 186~ms at $N=1024$ for one \texttt{ZGEQP3} on one core (\file{HARD.md}; \file{ADR-001}, item 4). % HARD.md section 2; ADR-001 item 4
+
+\paragraph{The solution: pre-pivoting.} \texttt{la\_qrpp} (\file{alf\_la\_mod.F90:1974-2065}) sorts the columns once, by their initial norms, in descending order, and then calls the unpivoted, blocked \texttt{la\_geqrf}:
+\begin{enumerate}
+\item \texttt{k\_colnorms}: the scaled 2-norm of every column, one device thread per column with a serial loop (fixed summation order, ticket 212);
+\item D$\to$H of the $N$ norms; check for NaN or Inf;
+\item on the host, a stable insertion sort in descending order, giving a permutation with the semantics of \texttt{ZGEQP3}'s \texttt{jpvt};
+\item H$\to$D of the permutation; \texttt{k\_permute\_cols};
+\item \texttt{la\_geqrf}.
+\end{enumerate}
+Why this suffices for ALF: before the decomposition the columns of $B\,U$ are multiplied by the scales $D$ of the previous decomposition (\texttt{k\_scale\_cols}). These scales span many orders of magnitude, so the initial column norms are already strongly graded, and the order that \texttt{ZGEQP3} would choose differs from the order of the initial norms only among columns of similar size. The scales $|R_{ii}|$ then come out in nearly descending order, which is what the stabilisation needs.
+
+\paragraph{The comparison test.} Ticket 104 compared, on the CPU, ALF with \texttt{ZGEQP3} and ALF with pre-pivoting plus \texttt{ZGEQRF}, at the same seeds. For the default stabilisation the mean precision of $G$ stayed within $\pm5\,\%$ and the Monte Carlo trajectories were identical (\file{HARD.md}, section 2). For \texttt{STABLOG} the maximum deviation of $G$ became up to 14 times larger ($4.4\times10^{-6}\to6.2\times10^{-5}$ at $L=8$, $\beta=20$, $U=4$), with more ``Unstable matrix'' aborts at $U=8$. Ticket 108 tried a two-pass sort and a blocked re-ranking; both failed (outliers up to 4.6 times in the maximum and about 1.4 times higher means). Therefore \texttt{STABLOG} keeps the host \texttt{ZGEQP3} in \texttt{CGR} (\texttt{la\_geqp3\_host}). % HARD.md, ADR-001 item 4, ticket 108
+The unit test \texttt{t\_qrpp} compares \texttt{la\_qrpp} with \texttt{QDRP\_decompose} called with all columns fixed after the same sort; the device and host norms can differ in the last bit, so columns with tied norms may be ordered differently, ``an equally valid pivot order'' (\file{alf\_la\_mod.F90:1980}). The CPU build (\texttt{GPU=none}) keeps \texttt{ZGEQP3} (owner decision at the Phase~1 gate, \file{PLAN.md}, section 5).
+
+\subsection{Decompose (default stabilisation)}
+
+\texttt{dev\_decompose} (\file{gpu\_stab\_mod.F90:489-583}) computes $U D V$ from $\tilde U = B(\tau_2,\tau_1)U_{\rm old}$ (already propagated) in these steps:
+\begin{enumerate}
+\item \texttt{k\_scale\_cols}: $\tilde U_{:,j}\leftarrow \tilde U_{:,j}\,D_j$.
+\item \texttt{la\_qrpp}: $\tilde U P = QR$, Householder scalars $\tau_i$ in \texttt{st\_tau}.
+\item \texttt{k\_diagabs}, \texttt{k\_divrows}: $D_i=|R_{ii}|$, $R_{ij}\leftarrow R_{ij}/|R_{ii}|$ for $j\ge i$ (so $R=D\tilde R$).
+\item \texttt{Pivot\_phase} on the host: the sign of the permutation (from the pivot vector, no transfer of matrices).
+\item \texttt{k\_phase}: one serial device loop computing the phase of $\prod_i \tilde R_{ii}$, and the phase of $\det Q$ from the $\tau_i$ (see below).
+\item \texttt{k\_scale\_row1}: the first row of $\tilde R$ is divided by that phase; ``to set Det(R)=1 [=Det(V)]'' as the CPU code says (\file{udv\_state\_mod.F90:527}); step 10 multiplies the first column of $U$ by it, as the CPU does with \texttt{ZSCAL} (line 614).
+\item Permute the old $V$ with the pivot vector (\texttt{ZLAPMR}/\texttt{ZLAPMT} equivalents), and form $V\leftarrow\tilde R\,V$ (right side) or $V\leftarrow V\tilde R^\dagger$ (left side) with \texttt{la\_gemm}; the triangular factor is multiplied as a full matrix.
+\item Form $Q$ by applying it to the identity with \texttt{la\_ormqr} (not \texttt{la\_ungqr}, see below), copy to $U$.
+\item Newton--Schulz step on $U$ (below).
+\item \texttt{k\_scale\_col1}: $U_{:,1}\leftarrow U_{:,1}\cdot{\rm phase}$.
+\item \texttt{dev\_testscale}: one D$\to$H of three numbers; a NaN scale is an error (``Switch to LOG is required''), $D_1>0.1\,\texttt{huge}$ or $D_N<10\,\texttt{tiny}$ gives a warning.
+\end{enumerate}
+The cost is about $37N^3$ real flops per decompose (\texttt{geqrf} $\tfrac{16}{3}N^3$, \texttt{ormqr} on $I$ $8N^3$, $\tilde RV$ $8N^3$, Newton--Schulz $16N^3$; derived from the code).
+
+\paragraph{Why \texttt{ormqr} on the identity and a Newton--Schulz step.} With \texttt{la\_ungqr} the precision of $G$ in the sweep was 4 times (mean) and 11 times (max) worse than on the CPU at $N=36$; applying $Q$ to $I$ with \texttt{ZUNMQR} restored the CPU level at $N=36$, ``at N = 144 the Newton--Schulz step below is needed in addition'' (\file{gpu\_stab\_mod.F90:559-568}). The cause is that cuSOLVER's $Q$ is less orthogonal than LAPACK's: $\|Q^\dagger Q-I\|$ about $1.6\times10^{-14}$ against $3.3\times10^{-15}$ at $N=400$ (\file{DISCREPANCIES.md}). % DISCREPANCIES.md
+One Newton--Schulz step,
+\begin{equation}
+Q \leftarrow Q\,\tfrac12\bigl(3I - Q^\dagger Q\bigr),
+\end{equation}
+reduces the orthogonality defect quadratically: with $Q^\dagger Q = I+\Delta$, the new $Q$ has $Q^\dagger Q = (I-\tfrac12\Delta)(I+\Delta)(I-\tfrac12\Delta) = I-\tfrac34\Delta^2+O(\Delta^3)$. It costs two GEMMs (\texttt{sA}$=U^\dagger U$, kernel \texttt{k\_ns} forming $-\tfrac12$\texttt{sA}$+\tfrac32I$, \texttt{sB}$=U\,$\texttt{sA}). Measured in ticket 206 ($12\times12$, $\beta=4$, same seeds): without the step, precision of $G$ mean $9.7\times10^{-11}$ and max $1.2\times10^{-6}$; with it $5.4\times10^{-11}$ and $3.8\times10^{-7}$; CPU $4.1\times10^{-11}$ and $7.2\times10^{-7}$ (\file{gpu\_stab\_mod.F90:565-568}). The step is on by default for all backends; \texttt{ALF\_GPU\_NS=0} switches it off (debug only). oneMKL's $Q$ does not need it, but it was kept for uniformity (\file{DECISIONS.md}, item 26).
+
+\subsection{Decompose with \texttt{STABLOG}}
+
+With \texttt{STABLOG} the scales are kept as $\log D$ (\file{gpu\_stab\_mod.F90:515-544}). \texttt{k\_lognorm} computes $\log\|\tilde U_{:,j}\|_2+L_j$ for every column, the host sorts with the CPU's selection sort (\texttt{sort\_stablog}, the same one-sided swap \texttt{tn(pvt)=tn(i)} as the CPU code), the permutation goes back, $U$, $V$ and $L$ are permuted on the device, and an unpivoted \texttt{la\_geqrf} follows. \texttt{k\_stablog\_scale} then applies $U_{ij}\leftarrow U_{ij}\,e^{L_j-L_i}$ for $j>i$ and $L_i\leftarrow\log|R_{ii}|+L_i$. Large and small scales exist only in logarithmic form.
+
+\subsection{Assembling $G$ on the device (\texttt{CGR})}
+
+\texttt{dev\_cgr} and \texttt{cgr\_solve} (\file{gpu\_stab\_mod.F90:869-958}) evaluate Eq.~\eqref{eq:cgr}:
+\begin{align}
+\texttt{sA} &= U_R^\dagger U_L, \qquad \texttt{sB} = V_R V_L,\\
+T &= D_R\,(V_RV_L)\,D_L + U_R^\dagger U_L \qquad(\texttt{k\_tpup}: T_{ij}=D_{R,i}T_{ij}D_{L,j}+\texttt{sA}_{ij}),\\
+G &= U_L\,T^{-1}\,U_R^\dagger .
+\end{align}
+With \texttt{STABLOG}, \texttt{k\_tpup\_log} implements the four sign cases of \file{cgr1\_mod.F90}, so that no exponential overflows; for example $T_{ij}=\texttt{sA}_{ij}+e^{L_{R,i}+L_{L,j}}T_{ij}$ when both logarithms are $\le0$ and $T_{ij}=e^{-L_{R,i}-L_{L,j}}\texttt{sA}_{ij}+T_{ij}$ when both are positive.
+
+$T^{-1}$ is applied through a QR of $T$ with pre-pivoting, $TP=QR=QD\tilde R$, so $T^{-1}=P\tilde R^{-1}D^{-1}Q^\dagger$. For \texttt{NVAR=1}:
+\begin{enumerate}
+\item \texttt{sA}$\leftarrow U_R^\dagger$ (\texttt{k\_ct}); with \texttt{STABLOG} rows are scaled by $e^{-L}$ where $L>0$;
+\item \texttt{la\_ormqr('L','C')}: $Q^\dagger\,\texttt{sA}$;
+\item \texttt{k\_rowdiv}: divide row $i$ by $D_i$ (Smith's complex division in the HIP kernel);
+\item \texttt{la\_trsm('L','U','N','N')} with $\tilde R$;
+\item \texttt{k\_iperm\_rows}: undo $P$ (\texttt{ZLAPMR} backward);
+\item $G = U_L\cdot(\ldots)$ with \texttt{la\_gemm}.
+\end{enumerate}
+\texttt{NVAR=2} works on $T^\dagger$ with right-side operations. The cost is about $41N^3$ flops per \texttt{CGR} (derived). The result \texttt{st\_Gn} is copied device-to-device into \texttt{G\_d}; in the ``lazy'' mode (ticket 208-1) the host $G$ is not written.
+
+\subsection{Precision monitoring}
+
+\texttt{Control\_PrecisionG} compares the wrapped $G$ with the fresh one. On the device (\texttt{dev\_prec}, \texttt{k\_prec}, \file{gpu\_stab\_mod.F90:743-754, 1524-1567}) one kernel computes
+\begin{equation}
+x_{\max}=\max_{ij}|G^{\rm wrap}_{ij}-G^{\rm new}_{ij}|,\quad x_{\rm sum}=\sum_{ij}|G^{\rm wrap}_{ij}-G^{\rm new}_{ij}|,
+\end{equation}
+and the number of NaN entries in each matrix (by a bit test, so that a NaN cannot hide in a comparison). The sum is in fixed order: one thread per column writes its column sum, then one thread adds the column sums. Four numbers go to the host, where \texttt{Control\_PrecisionG\_vals} (\file{control\_mod.F90:463-526}) does what the CPU routine does: abort on NaN, abort if $x_{\max}$ exceeds the threshold (default 10, settable with \texttt{ALF\_UNSTABLE\_THRESHOLD}), otherwise accumulate mean and maximum.
+
+The production threshold was lowered to $10^{-4}$ after a faulty GPU tile produced corrupted Green functions with deviations of 10 to 28, while healthy runs stay between $10^{-10}$ and $3\times10^{-8}$ up to $L=44$ (\file{DECISIONS.md}, item 46). % DECISIONS.md 46
+The run then restarts from the last configuration within the job (at most 10 times).
+
+\subsection{The phase of the determinant}
+
+The phase of the fermion determinant is tracked as in \file{cgr1\_mod.F90}. ALF computes it from two parts: the phase of $\det(U_R^\dagger U_L)$, obtained with an LU decomposition (\texttt{PHASE = CONJG(DET\_C(RHS))}, \file{cgr1\_mod.F90:303}), and the phase of $\det T$ from its QR factors.
+
+\paragraph{Phase of $\det T$ from Householder scalars.} LAPACK represents $Q=H_1H_2\cdots H_n$ with $H_i=I-\tau_iv_iv_i^\dagger$, $v_i(i)=1$. By the matrix determinant lemma
+\begin{equation}
+\det H_i = 1-\tau_i\,v_i^\dagger v_i .
+\end{equation}
+$H_i$ is unitary: $H_i^\dagger H_i = I-(\tau_i+\bar\tau_i)v_iv_i^\dagger+|\tau_i|^2(v_i^\dagger v_i)\,v_iv_i^\dagger = I$, which requires $|\tau_i|^2\,v_i^\dagger v_i = 2\,\Re\tau_i$. Inserting,
+\begin{equation}
+\det H_i = 1-\frac{2\tau_i\Re\tau_i}{|\tau_i|^2} = \frac{|\tau_i|^2-2\tau_i\Re\tau_i}{|\tau_i|^2}.
+\end{equation}
+With $\tau_i=a+ib$ the numerator is $a^2+b^2-2a^2-2iab=-(a+ib)^2=-\tau_i^2$, so
+\begin{equation}
+\label{eq:dethi}
+\det H_i = -\frac{\tau_i^2}{|\tau_i|^2} = -\frac{\tau_i}{\bar\tau_i}\qquad(\tau_i\ne0),\qquad \det H_i=1\quad(\tau_i=0).
+\end{equation}
+It has modulus one and does not depend on the normalisation of $v_i$; only the unitarity of $H_i$ is used. The same formula is in upstream \file{cgr1\_mod.F90:532-536}. The device kernel \texttt{k\_cgr\_phase} (\file{gpu\_stab\_mod.F90:1420-1452}) multiplies the phase by $R_{ii}/|R_{ii}|$ and by Eq.~\eqref{eq:dethi} for every $i$, and by the sign of the permutation. In code: \texttt{z = 1 - 2*(z/|z|)*(Re z/|z|)}, which is Eq.~\eqref{eq:dethi}.
+
+\paragraph{The LU-free phase of $\det(U_R^\dagger U_L)$ (2026-11-13).} On the CPU, and still on NVIDIA and AMD, the device computes $\det(U_R^\dagger U_L)$ with \texttt{la\_getrf} on the product and \texttt{k\_det\_phase} (product of the diagonal, sign flip for each row interchange). That is an extra $N^3$ factorisation per \texttt{CGR}, and on Intel oneMKL's \texttt{getrf} is slow (13~ms at $N=1024$, \file{SPEEDUPS.md}). % SPEEDUPS.md section 4
+Since $\det(U_R^\dagger U_L)=\overline{\det U_R}\,\det U_L$, it suffices to track the phase of $\det U$ for every stored $U$. Every $U$ is produced by a decompose, where $U = Q_{\rm ns}\,\mathrm{diag}(\phi,1,\ldots,1)$ and $Q_{\rm ns}=Q\cdot\tfrac12(3I-Q^\dagger Q)$. The Newton--Schulz factor is Hermitian positive definite, so its determinant is real and positive and does not change the phase. Hence
+\begin{equation}
+\frac{\det U}{|\det U|} = \phi\prod_i\Bigl(-\frac{\tau_i}{\bar\tau_i}\Bigr)\Big/\Bigl|\ldots\Bigr|,
+\end{equation}
+which \texttt{k\_phase} computes during the decompose at no extra cost (\file{gpu\_stab\_mod.F90:1024-1054}; line 1044 reads \texttt{if (a2 > 0) dq = dq*(1 - 2*z*(real(z)/a2))} with \texttt{a2}$=|z|^2$). The value is stored with the slot (\texttt{st\_dw}, \texttt{st\_dv}) and copied with it. In \texttt{CGR}, \texttt{k\_det\_phase\_u} forms $\det=\overline{d_R}\,d_L$ and the phase $\bar d/|d|$, replacing the LU (lines 1076-1086). Reset slots have $\det=1$. If a slot was loaded from the host (no tracked phase), the LU is used as fallback.
+
+This path is enabled only with oneMKL (\texttt{\#if defined(ALF\_LA\_ONEMKL)}, lines 471-477). The comment in the code: ``enabled where it has been measured and verified: oneMKL (Max 1550, 2026-11-13: 4.45 $\to$ 4.04 s per sweep at L=24, phase equal to the LU phase to 6e-15). HIP: \texttt{hk\_phase} does not track det(U). CUDA: not yet run.'' \file{SPEEDUPS.md} gives $5.8\times10^{-15}$ and also 10.06$\to$9.59~s with default switches. % SPEEDUPS.md section 2
+\texttt{ALF\_GPU\_CGR\_LU=2} runs both routes and reports the largest difference.
+
+One caveat follows from the derivation: Eq.~\eqref{eq:dethi} holds for the LAPACK representation. If the own device QR (Section~\ref{sec:ownqr}) is used on Intel together with the LU-free phase, it must produce LAPACK-convention $\tau_i$; the own kernels do follow \texttt{ZLARFG} conventions (\file{alf\_la\_sycl\_devqr.hpp}), and the V7 measurements of 2026-11-13 used both together. \todo{a dedicated test of the LU-free phase with ALFSH\_DEVQR=2 is not documented separately from the V7 run}
+
+\dis{The header of \file{gpu\_stab\_mod.F90} (lines 46-49) says that the phase comes ``from the determinant phases of the two U factors \ldots la\_getrf only as fallback''. In the code only the oneMKL backend tracks $\det U$; CUDA and HIP always use \texttt{la\_getrf}.}
+
+\subsection{Vendor QR and own device QR}
+\label{sec:ownqr}
+
+\texttt{la\_geqrf} and \texttt{la\_ormqr} are the most frequent large operations: at $L=24$ about 217 calls per sweep (\file{alf\_hip\_qr.hip.cpp:3-4}). Their quality differs strongly between vendors:
+\begin{itemize}
+\item \textbf{cuSOLVER} is adequate: at $n=1024$ \texttt{geqrf} 7.8~ms, \texttt{ormqr} 2.2~ms, \texttt{getrf} 4.1~ms, together about 8\,\% of a sweep; a CUDA port of the own QR was therefore not made (\file{SPEEDUPS.md}, section 3). % SPEEDUPS.md
+\item \textbf{oneMKL} \texttt{geqrf} is hybrid: it factorises each panel on the host CPU and updates the trailing matrix on the device. At $L=24$ this cost 2.4~s per sweep (\file{GPU\_PLAN\_V2.md}, section 2). % GPU_PLAN_V2 sec 2
+\item \textbf{rocSOLVER} \texttt{zgeqrf}/\texttt{zunmqr} at $n=576$ launch about 2300 tiny kernels each, 8.8~ms per call, about 0.12~TFlop/s on an MI210; QR was 93\,\% of all kernel dispatches and about 44\,\% of the sweep (\file{alf\_hip\_qr.hip.cpp:3-4}; \file{GPU\_PLAN\_V2.md}). % alf_hip_qr.hip.cpp header
+\end{itemize}
+
+\paragraph{The own HIP QR} (\file{alf\_hip\_qr.hip.cpp}, 347 lines) is a blocked right-looking Householder QR in LAPACK conventions (\texttt{ZLARFG} reflectors, $R$ in the upper triangle, $v$ below with implied unit diagonal, $\tau$), so all consumers use its output unchanged.
+\begin{itemize}
+\item Panel kernel \texttt{k\_qr\_panel<NB,T,R>}: one work-group factorises the whole panel with the panel held in registers; row $i$ lives in thread $i \bmod T$. $NB=16$, $T=256$ threads for $m\le1024$; $NB=8$, $T=512$ for $m\le2304$. Per column: the norm by a wave-level sum plus one exchange through local memory, \texttt{ZLARFG}, then the dot products with the remaining panel columns (three barriers per column). No $T$ factor is formed.
+\item Apply kernel \texttt{k\_apply\_left<Q,NV>}: one 64-lane wave owns $NV$ columns and applies the reflectors one after another (a dot product and a rank-one update per reflector). It does the trailing update of each panel in one launch and also implements \texttt{unmqr}. No compact-WY form and no GEMM.
+\item Right-side \texttt{unmqr} is computed as $(Q^\dagger C^\dagger)^\dagger$ through a transpose kernel.
+\item Limits: $m\le2304$; otherwise hipSOLVER.
+\end{itemize}
+Measured at $n=576$: \texttt{geqrf} 8.8$\to$4.4~ms, \texttt{unmqr} 8.5$\to$1.7~ms (\file{amd\_mi210/README.md}). % amd_mi210/README.md
+After this change the profile at $L=24$ is: QR panel 35.9\,\%, rocBLAS GEMM 23.0\,\%, QR apply 18.8\,\%, \texttt{trsm} 8.6\,\% of 4.71~s kernel time with 118\,303 dispatches per sweep (\file{amd\_mi210/profile\_L24\_counters.txt}). % profile_L24_counters.txt
+The panel is the bottleneck: it runs on one compute unit of 104 while the others wait.
+
+\paragraph{The own SYCL QR} (Intel; \file{alf\_la\_sycl\_devqr.hpp}, \file{alf\_la\_sycl\_qr2.hpp}, loaded at run time from \file{libalfdevqr.so}) has two levels.
+\begin{itemize}
+\item \texttt{ALFSH\_DEVQR=1}: the reference algorithm of \texttt{ZGEQRF}. The panel (\texttt{ZGEQR2} plus \texttt{ZLARFT}, compact-WY $T$ factor) runs in one work-group with one 16-lane sub-group per panel column, the column held in registers. The owner of the next column computes \texttt{ZLARFG} from a norm published one step earlier (look-ahead). The trailing update is \texttt{ZLARFB} as three oneMKL GEMMs: $W=V^\dagger C$, $W_2=T^\dagger W$, $C\leftarrow C-VW_2$. Panel width 32 by default (\texttt{ALFSH\_QRNB}, at most 48: 64 needs 1024 work-items, which fail to launch on the Max 1550). Larger matrices than $M=1536$ go to oneMKL.
+\item \texttt{ALFSH\_DEVQR=2} (``phase 5'', modelled on the HIP version): the panel without $T$ (\texttt{panel2\_t}), and an apply kernel (\texttt{apply2\_t}) that applies a range of reflectors to independent columns, staging chunks of reflectors in shared local memory, double-buffered. One launch per panel for the trailing update. With \texttt{ALFSH\_DEVUNMQR=1} the same kernel implements \texttt{unmqr}. Panel width 16 (32 for $M\le256$).
+\end{itemize}
+Where the time goes, according to the comments: the level-1 panel kernel is bound by instruction issue on the single Xe core it runs on; without the column in registers, global memory latency (about 1~$\mu$s per dependent load) would dominate. Most of the 7~$\mu$s per column step of an earlier version went into the $T$ recurrence ($O(i)$ dependent loads) and the dot products; dropping $T$ (level 2) removed it. The apply kernels are bound by the bandwidth of local memory and by global latency (\file{alf\_la\_sycl\_qr2.hpp:5-6, 238-241}).
+
+Measured inside ALF at $L=24$ on the Max~1550, per call: \texttt{geqrf} 5.48$\to$3.91~ms and \texttt{unmqr} 2.4$\to$1.37~ms with level 2; the sweep went from 6.53--6.59~s (V2) to 6.12--6.18~s (level 1, V4) and 4.95--4.97~s (level 2 plus device \texttt{unmqr}, V7) (\file{ISSUE\_INTEL\_VS\_A30.md}, section 2). % ISSUE_INTEL_VS_A30.md
+The own QR is not yet in production on Intel: \file{RUNTIME\_SWITCHES.md} (line 124) lists it as ``not yet''; the $L=6$, \texttt{Mz=.T.} test with V7 gives $1.36\times10^{-10}$ against a tolerance of $10^{-10}$ (\file{CONSOLIDATION.md}). % CONSOLIDATION.md
+On AMD the own QR is the default.
+
+\subsection{Transfers of the stabilisation}
+
+Per decompose and flavour: $8N$ bytes of norms D$\to$H, $4N$ bytes of permutation H$\to$D, 24 bytes of scale test. Per \texttt{CGR}: the same for the QR of $T$, 16 bytes of phase and 32 bytes of precision numbers. With \texttt{STABLOG}, \texttt{la\_geqp3\_host} adds $16N^2$ bytes each way per \texttt{CGR} (\file{gpu\_stab\_mod.F90:59-67}).

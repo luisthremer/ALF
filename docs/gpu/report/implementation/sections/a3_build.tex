@@ -1,0 +1,38 @@
+\section{Build lines}
+\label{app:build}
+
+\paragraph{Configure.} From \file{docs/gpu/README.md}:
+\begin{lstlisting}
+source configure.sh PGI MPI GPU=nvidia HDF5        # NVIDIA (HELMAGPU on Helma)
+source configure.sh IntelLLVM MPI GPU=intel HDF5   # Intel
+source configure.sh GNU MPI GPU=amd HDF5           # AMD
+make lib program
+\end{lstlisting}
+Parameter-parallel runs replace \texttt{MPI} by \texttt{PP}. A build without \texttt{GPU=} or with \texttt{GPU=none} is the unchanged CPU code.
+
+\paragraph{Flags added by \texttt{configure.sh}} (\file{configure.sh:611-647}).
+\begin{itemize}
+\item \texttt{nvidia}: \texttt{-mp} becomes \texttt{-mp=gpu -gpu=\$\{ALF\_GPU\_CC:-cc80\} -DALF\_GPU -DALF\_LA\_CUDA}; link \texttt{-mp=gpu -gpu=\ldots\ -cudalib=cublas,cusolver}; base flags \texttt{-Mpreprocess -O3 -Mfprelaxed -fast}. \texttt{HELMAGPU} loads \texttt{nvhpc/25.7} and \texttt{openmpi/5.0.8-nvhpc25.7-cuda} and sets \texttt{ALF\_GPU\_CC=cc90,cuda12.9}.
+\item \texttt{intel}: \texttt{-fiopenmp -fopenmp-targets=spir64 -I\$\{MKLROOT\}/include -DALF\_GPU -DALF\_LA\_ONEMKL}, without \texttt{-static}; link \texttt{-qmkl -lmkl\_sycl\_blas -lmkl\_sycl\_lapack -lsycl -lstdc++ -ldl -lalfsb} with an rpath to \file{Libraries/Modules}. The SYCL shim is compiled with \texttt{icpx -fsycl}; \file{libalfsb.so} and \file{libalfdevqr.so} as shared libraries; ahead-of-time compilation of these with \texttt{ALF\_SYCL\_BLK\_FLAGS="-fsycl-targets=spir64\_gen -Xs '-device pvc'"}.
+\item \texttt{amd}: \texttt{-foffload=amdgcn-amdhsa -foffload-options=amdgcn-amdhsa=-march=\$\{ALF\_AMD\_ARCH:-gfx90a\} -DALF\_GPU -DALF\_LA\_HIP}, without \texttt{-static} and \texttt{-ffast-math}; link \texttt{-lhipsolver -lhipblas -lamdhip64 -lstdc++}; HIP kernels with \texttt{hipcc -O2 --offload-arch=gfx90a}, the shim with \texttt{g++ -D\_\_HIP\_PLATFORM\_AMD\_\_}.
+\end{itemize}
+
+\paragraph{Platform recipes.}
+\begin{lstlisting}
+# Helma (H100), helma_h100.md section 2
+export ALF_HDF5_DIR=.../hdf5_257
+. ./configure.sh HELMAGPU PP GPU=nvidia HDF5 NO-INTERACTIVE; make lib program
+# SuperMUC-NG Phase 2 (Max 1550), intel_pvc_supermuc_ng2.md; oneAPI 2025.1 (intel-toolkit/2025.1.0)
+AOT=1 bash -l build.sh prodaot IntelLLVM MPI GPU=intel HDF5 NO-INTERACTIVE
+# AMD MI210: patched libgomp GCN plugin first in LD_LIBRARY_PATH, GCN_NUM_THREADS=4
+\end{lstlisting}
+
+\paragraph{Run.}
+\begin{lstlisting}
+OMP_TARGET_OFFLOAD=MANDATORY OMP_NUM_THREADS=1 mpirun -n N --bind-to core ./ALF.out
+# Intel additionally:
+ZE_FLAT_DEVICE_HIERARCHY=FLAT LIBOMPTARGET_LEVEL_ZERO_STAGING_BUFFER_SIZE=1048576 ALFSH_ASYNCBLK=1
+\end{lstlisting}
+The \texttt{info} file must contain ``GPU path (gpu\_state): ACTIVE''.
+
+\dis{\file{BUILD.md} lists only \texttt{GPU=none|nvidia|intel}, gives nvhpc 24.11 and CUDA 12.6 for Helma (the code defaults to 25.7 and 12.9), omits the SYCL libraries from the Intel link line, and calls ahead-of-time compilation a future ticket.}

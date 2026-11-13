@@ -1,0 +1,199 @@
+\section{Local updates}
+\label{sec:updates}
+
+The local updates are in \file{Prog/gpu\_update\_mod.F90} (633 lines: the loop over vertices, the ratio, the rank-one path) and \file{Prog/gpu\_lowrank\_mod.F90} (1723 lines: delayed and submatrix schemes, block mode, the asynchronous Intel path). This was the hardest part of the port and the part where the algorithm, not the kernel, decided the speed.
+
+\subsection{Why the rank-one update is slow on a GPU}
+
+Each proposal needs $G_{pp}$ of the current $G$, which depends on all earlier acceptances. A device implementation of Eq.~\eqref{eq:rank1} must, per proposal, (i) copy $G_{pp}$ to the host (or decide on the device), (ii) let the host decide, (iii) launch the update kernel. Each of these is a synchronous operation with a fixed cost (\emph{latency}) of several microseconds, independent of $N$. Measured costs:
+
+\begin{table}[h]
+\centering\footnotesize
+\caption{Measured cost of single device operations.}
+\label{tab:latency}
+\begin{tabular}{@{}llr@{}}
+\toprule
+Platform, operation & Source & $\mu$s \\
+\midrule
+A30, empty OpenMP target region, synchronous & \file{BENCHMARKS.md}, ticket 102 & 12.4 \\ % BENCHMARKS.md
+A30, empty OpenMP target, \texttt{nowait} & same & 11.0 \\
+A30, empty OpenACC kernel, \texttt{async} & same & 2.7 \\
+A30, one proposal with host decision & same & 15.2 \\
+A30, D$\to$H$\to$D round trip, $N\le400$ & \file{ADR-001} & 28--34 \\ % ADR-001 context
+A30, rank-1 update $N=144/400/1024$ (device) & \file{BENCHMARKS.md} & 4.7 / 6.6 / 31.6 \\
+A30, rank-$k$ ($k=128$) per update, same $N$ & same & 0.21 / 0.37 / 1.25 \\
+Max 1550, empty synchronous target & \file{SYNC.md} & 6.1 \\ % SYNC.md
+Max 1550, small kernel & same & 9--12 \\
+Max 1550, ZGEMM $1024\times32\times32$ / $1024\times1024\times32$ & same & 17.7 / 55 \\
+Max 1550, D$\to$H 16~B / 512~KB & same & 2.8 / 350 \\
+Max 1550, SYCL submit, asynchronous & \file{p3/STATUS.md} & 4.3 \\ % p3 STATUS phase 3b
+MI210, GCC (libgomp) target region with parallel loop & \file{alf\_hip\_kernels.hip.cpp:2} & $\approx$150 \\
+MI210, HIP launch plus synchronisation & same & $\approx$15 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+With $2N\Lt$ proposals per sweep and about 30~$\mu$s per proposal, a sweep at $L=24$ ($N=576$, $\Lt=240$) would spend $2\cdot576\cdot240\cdot30~\mu{\rm s}\approx8$~s in latency alone, before any arithmetic. The rank-$k$ row of Table~\ref{tab:latency} shows the way out: applying $k=128$ updates as one matrix product costs 25 to 40 times less per update. Two schemes that collect updates, the delayed and the submatrix update, exist as CPU code in \file{Lowrank\_update\_mod.F90} (taken into the branch on 2026-11-06 from a fork branch; the upstream master \texttt{521ddfca} has no such module). The port implements both on the device; the submatrix scheme in \emph{block mode} is the production path.
+
+\subsection{Common part: the ratio and the decision}
+
+For all schemes the host does the same arithmetic as \texttt{Upgrade2} (\file{gpu\_update\_mod.F90:361-465}). Only single-site diagonal vertices are supported ($N_{\rm non\text{-}zero}\le1$). With $z_1=g\,(\eta_{\rm new}-\eta_{\rm old})$, the vertex value $E_1$ and $\alpha$:
+\begin{align}
+\Delta &= e^{z_1E_1}-1, \qquad d = 1+\Delta\,(1-G_{pp}),\\
+R_f &= d\;e^{z_1\alpha},\qquad R = \Bigl(\prod_f R_f\Bigr)^{N_{\rm SUN}}\frac{\gamma_{\rm new}}{\gamma_{\rm old}},\\
+W &= S_0\,T_0\,\left|\Re(\Phi R)/\Re\Phi\right|,\qquad\text{accept if } W>\texttt{ranf\_wrap()}.
+\end{align}
+The random numbers are drawn on the host in the same order as on the CPU (the $T_0$ test draw, then the Metropolis draw). The only input that depends on the scheme is $G_{pp}$. On acceptance the update of $G$ uses $z=\Delta/d$.
+
+\subsection{Standard (rank-one) update}
+
+$G_{pp}$ is copied D$\to$H (16 bytes). On acceptance two kernels run per flavour: \texttt{k\_upd\_prep} sets $x=G_{:,p}$ and $y=-G_{p,:}$ with $y_p=1-G_{pp}$, and \texttt{k\_upd\_geru} performs $G_{ij}\leftarrow G_{ij}-z\,x_iy_j$, which is Eq.~\eqref{eq:rank1} (\file{gpu\_update\_mod.F90:301-334}). The new field is written into \texttt{nsigma\_d} by a 16-byte H$\to$D. The complex scalar $z$ is passed as two reals: nvfortran 26.9 dropped the imaginary part of a complex scalar argument inside a target region, which gave errors of $10^{-3}$ to 1 in $G$ (\file{DISCREPANCIES.md}). % DISCREPANCIES.md
+
+\subsection{Delayed update}
+
+\paragraph{Representation.} Per flavour $G = G_0 - XY^T$ with $G_0=$ \texttt{G\_d} and $X,Y\in\mathbb{C}^{N\times\Nd}$ on the device; $j$ columns are in use (\file{gpu\_lowrank\_mod.F90:39-45}).
+\paragraph{Proposal.} $G_{pp}=(G_0)_{pp}-\sum_{l\le j}X_{pl}Y_{pl}$, computed by a single-thread kernel; two reals go D$\to$H.
+\paragraph{Accept.} One kernel computes the current column and row of $G$ and appends them:
+\begin{align}
+c &= G_0(:,p) - X\,Y(p,:)^T = G(:,p),\qquad r = G_0(p,:) - X(p,:)\,Y^T = G(p,:),\\
+X(:,j{+}1) &= z\,c,\qquad Y(:,j{+}1) = e_p - r^T .
+\end{align}
+Then $G_0-XY^T$ after the append equals $G - z\,G(:,p)\,(e_p^T-G(p,:))$, which is Eq.~\eqref{eq:rank1}. By induction, after $j$ acceptances $G_0-XY^T$ equals $j$ sequential rank-one updates; only the summation order differs.
+\paragraph{Wrap.} The vertex wrap $G\to LGR$ with diagonal $L$, $R$ that differ from the identity only at site $r$ is applied to $G_0$ (row $r$ times $z_a$, column $r$ times $z_b$) and to the factors, $X(r,:)\leftarrow z_aX(r,:)$, $Y(r,:)\leftarrow z_bY(r,:)$. This is exact: $LGR=LG_0R-(LX)(RY)^T$.
+\paragraph{Flush.} $G_0\leftarrow G_0-X(:,1{:}j)\,Y(:,1{:}j)^T$, one \texttt{la\_gemm} of size $N\times N\times j$, when $j=\Nd$, before a vertex with $N>1$ and at the end of every \texttt{WRAPGRUP}/\texttt{WRAPGRDO}. The hopping wraps, stabilisation and measurements always see a flushed $G$.
+
+The delayed scheme removes the $N^2$ work per acceptance but still needs one round trip per proposal. A ``fast'' variant handles both flavours in one launch per site and defers the field write and the next wrap into the arguments of the next launch (\file{gpu\_lowrank\_mod.F90:699-733, 909-1055}).
+
+\subsection{Submatrix update}
+
+\paragraph{Representation.} Per flavour, with the set $S=\{s_1,\ldots,s_k\}$ of distinct pending sites ($k\le\Nd$) and a small matrix $M\in\mathbb{C}^{k\times k}$ kept on the \emph{host} (\file{gpu\_lowrank\_mod.F90:46-51}):
+\begin{equation}
+\label{eq:subrep}
+G = G_0 - G_0(:,S)\;M\;\bigl(E_S^T-G_0(S,:)\bigr),
+\end{equation}
+where $E_S$ is the $N\times k$ matrix of unit columns $e_{s_m}$. Between flushes $G_0$ is not changed by updates.
+
+\paragraph{Proposal.} Let $J=e_{{\rm slot}(p)}\in\mathbb{C}^k$ if $p\in S$ and $J=0$ otherwise. From Eq.~\eqref{eq:subrep}, since $(E_S^T-G_0(S,:))(:,p)=J-G_0(S,p)$,
+\begin{equation}
+G(:,p) = G_0(:,p) - G_0(:,S)\,w,\qquad w = M\,\bigl(J-G_0(S,p)\bigr),\qquad G_{pp} = (G_0)_{pp}-G_0(p,S)\,w .
+\end{equation}
+This needs only $(G_0)_{pp}$, $G_0(S,p)$ and $G_0(p,S)$: $2k+1$ numbers. The code (\texttt{gpu\_lr\_gpp}) computes $w$ and $G_{pp}$ on the host in $O(k^2)$ and caches $w$ and $G_0(p,S)$ for the accept.
+
+\paragraph{Accept (host only).} If $p\notin S$, $S$ is padded with $p$ and $M$ with a zero row and column ($k'=k+1$, slot $i=k'$); otherwise $i={\rm slot}(p)$ and $k'=k$. Define
+\begin{equation}
+a = e_i - \begin{pmatrix} w\\0\end{pmatrix},\qquad b^T = e_i^T + \bigl(G_0(p,S)\,M,\;0\bigr),\qquad M\leftarrow M + z\,a\,b^T .
+\end{equation}
+No device work at all (\file{gpu\_lowrank\_mod.F90:649-696}).
+
+\paragraph{Equivalence with the rank-one update.} With the padded set $S'$ and $C=G_0(:,S')$, $Q=E_{S'}^T-G_0(S',:)$: since $p\in S'$, $G_0(:,p)=Ce_i$, hence $G(:,p)=C(e_i-[w;0])=Ca$. Further $e_p^T-G_0(p,:)$ is row $i$ of $Q$, and $G_0(p,S)MQ_S = [G_0(p,S)M,0]\,Q$, hence $e_p^T-G(p,:)=b^TQ$. The Sherman--Morrison step becomes
+\begin{equation}
+G' = G - z\,G(:,p)\bigl(e_p^T-G(p,:)\bigr) = G_0 - C\,(M+z\,ab^T)\,Q ,
+\end{equation}
+which is the update of $M$ above. The formula covers new, repeated and overlapping sites in one expression, as on the CPU (\file{Lowrank\_update\_mod.F90:1187-1198}).
+
+\paragraph{Wrap.} $G\to LGR$ with $L$, $R$ diagonal and different from $I$ only at site $r$: $G_0\leftarrow LG_0R$ on the device, and if $r\in S$, row ${\rm slot}(r)$ of $M$ times $z_a$ and column ${\rm slot}(r)$ times $z_b$ on the host. Writing $G_0'=LG_0R$ one finds $LG_0(:,S)=G_0'(:,S)R_S^{-1}$ and $(E_S^T-G_0(S,:))R=R_SE_S^T-L_S^{-1}G_0'(S,:)$. The representation is preserved with $M'=L_SMR_S$ exactly when $R_S=L_S^{-1}$, i.e.\ $z_az_b=1$. For the vertices supported this holds: $z_a=E(s)$ and $z_b=E(-s)$ with $\eta(-s)=-\eta(s)$. The code does not assert it.
+
+\paragraph{Flush.} With $C=G_0(:,S)$ and $Q^T=E_S-G_0(S,:)^T$ gathered by one kernel into \texttt{X\_d} and scratch,
+\begin{equation}
+Y = Q^T M^T \;(N\times k\times k),\qquad G_0\leftarrow G_0 - C\,Y^T\;(N\times N\times k),
+\end{equation}
+two \texttt{la\_gemm} calls (\file{gpu\_lowrank\_mod.F90:480-497}). $C\,Y^T=CMQ$ is the correction of Eq.~\eqref{eq:subrep}.
+
+\paragraph{$\Nd$.} If \texttt{N\_delay}$\ge1$ it is used as given; otherwise the static rule of the CPU (\texttt{Lowrank\_static\_N\_delay}) applies, and on the GPU the submatrix scheme additionally uses at least $\min(32,n_{\rm nz})$: ``larger blocks amortise the device round trips'' (\file{gpu\_lowrank\_mod.F90:253}). \texttt{N\_delay=-1} (automatic tuning on the CPU) is treated like 0 on the GPU.
+
+\subsection{Block mode}
+
+The submatrix scheme as described still needs one gather and one D$\to$H per proposal. Block mode removes them (\file{gpu\_lowrank\_mod.F90:1253-1260, 1431-1720}). It is active when the scheme is submatrix and the ``fast'' conditions hold: $N_{\rm FL,eff}\le2$, every vertex a single-site operator, and the sites of different vertices distinct (\texttt{fast\_check}).
+
+\paragraph{Idea.} Between flushes $G_0$ changes only by the diagonal wrap scalings, and a proposal at $p$ needs only $(G_0)_{pp}$, $G_0(p,S)$, $G_0(S,p)$ with $S\subset B$, the sites of the block. So the host can copy the principal block $G_0(B,B)$ once, apply each wrap to its copy, and decide all proposals of the block without the device.
+
+\paragraph{A block} is $b=\min(\Nd,\text{remaining vertices of the slice})$ consecutive vertices in sweep order (ascending in \texttt{WRAPGRUP}, descending in \texttt{WRAPGRDO}); blocks do not cross slices. Since the sites are distinct, $k\le b\le\Nd$, so no capacity flush can happen inside a block.
+
+\paragraph{Sequence of one block.}
+\begin{enumerate}
+\item \texttt{blk\_begin}: the host builds the list of block sites; H$\to$D of the list; kernel \texttt{k\_blk\_gather} copies $G_0(B,B)$ of both flavours into \texttt{gbd}; D$\to$H of \texttt{gbd} ($32\Nd^2$ bytes).
+\item For each vertex, on the host only: wrap of the host block (row $a$ times $z_a$, column $a$ times $z_b$; the factors are recorded) and of $M$; proposal from the host block by the formulas above; accept by the host update of $M$. On the way up the wrap precedes the proposal; on the way down it follows the update with the final field.
+\item \texttt{blk\_end}: the host packs the recorded factors and $M$ into \texttt{cbuf}; H$\to$D of \texttt{cbuf} and of $S$; kernel \texttt{k\_blk\_scale} applies all row factors and then all column factors of the block sites to $G_0$ (both flavours, in the order of the two-kernel version); per flavour the flush (gather plus two GEMMs); H$\to$D of the new fields \texttt{nsigma\_d(vmin:vmax,t)}.
+\end{enumerate}
+A flush with $k=1$ is padded to $k=2$ with a duplicate site and a zero row and column of $M$ (\file{gpu\_lowrank\_mod.F90:1528-1532}); the extra site contributes nothing to $CMQ$ because its row and column of $M$ are zero, so the result is the same as a rank-one flush up to rounding. Neither the code nor the commit that introduced it (\texttt{e70a3061}) gives a reason \todo{reason for the k=1 to k=2 padding in blk\_end; possibly to avoid a library special case for $k=1$, not documented}.
+
+At $L=24$, $\Nd=32$ one sweep has 8\,640 blocks (18 per slice $\times$ 480 slices) with 8\,640 gathers, 17\,280 flush gathers, 8\,640 scale kernels, 34\,560 GEMMs and 43\,200 copies (\file{p7/NOTES.md}, line 94). % p7/NOTES.md
+The flush rank is small: $k$ of 10 to 14 on average (\file{p7/NOTES.md}, line 36). % p7 NOTES
+
+\paragraph{Effect.} On the A30 at $N=400$ the per-proposal path cost 117~$\mu$s per proposal (5.0 of 7.9~s); block mode brought this part to 0.53~s, ten times less (\file{DELAYED\_SUBMATRIX.md}, line 52). % DELAYED_SUBMATRIX.md
+The submatrix scheme with block mode is 2.4 to 5 times faster than the standard update and 1.4 to 2.1 times faster than the delayed scheme at the same $\Nd$ ($L=16$ to 32, A30, \file{TUNING\_DEFECT.md}). % TUNING_DEFECT.md
+
+On nvfortran 26.9 the routine \texttt{blk\_end} is compiled with \texttt{!pgi\$r opt=1}: at \texttt{-O2}/\texttt{-O3} the compiler produced a wrong $G$ after the first stabilisation (\file{gpu\_lowrank\_mod.F90:1496-1499}).
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[x=0.95cm,y=0.8cm]
+\node[anchor=east,font=\small] at (0,2) {host};
+\node[anchor=east,font=\small] at (0,0) {device};
+\draw[gray!50] (0,2.5)--(15.5,2.5); \draw[gray!50] (0,1)--(15.5,1); \draw[gray!50] (0,-0.5)--(15.5,-0.5);
+% block begin
+\filldraw[fill=gray!20] (0.2,1.6) rectangle (1.0,2.4); \node[font=\scriptsize] at (0.6,2.0) {sites};
+\draw[arr] (1.0,1.7) -- (1.3,0.4);
+\filldraw[fill=cA30!30] (1.3,-0.4) rectangle (2.3,0.4); \node[font=\scriptsize] at (1.8,0) {gather};
+\draw[arr] (2.3,0.35) -- (2.7,1.65); \node[font=\scriptsize,red!70!black,anchor=east] at (2.45,1.0) {wait};
+% host proposals
+\foreach \i in {0,...,7} { \filldraw[fill=gray!35] (2.8+\i*0.8,1.6) rectangle (3.5+\i*0.8,2.4); }
+\node[font=\scriptsize,align=center] at (6.0,2.8) {$b$ vertices: wrap block copy, propose, decide, update $M$};
+\draw[arr] (9.2,1.7) -- (9.5,0.4);
+\filldraw[fill=cA30!30] (9.5,-0.4) rectangle (10.5,0.4); \node[font=\scriptsize] at (10.0,0) {scale};
+\filldraw[fill=cA30!50] (10.5,-0.4) rectangle (11.2,0.4); \node[font=\scriptsize] at (10.85,0) {fg};
+\filldraw[fill=cA30!70] (11.2,-0.4) rectangle (12.6,0.4); \node[font=\scriptsize] at (11.9,0) {2 GEMM};
+\filldraw[fill=cA30!50] (12.6,-0.4) rectangle (13.3,0.4); \node[font=\scriptsize] at (12.95,0) {fg};
+\filldraw[fill=cA30!70] (13.3,-0.4) rectangle (14.7,0.4); \node[font=\scriptsize] at (14.0,0) {2 GEMM};
+\node[font=\scriptsize,align=left,anchor=west] at (9.5,-0.95) {flavour 1 \hspace{1.6cm} flavour 2};
+\filldraw[fill=gray!20] (14.6,1.6) rectangle (15.6,2.4); \node[font=\scriptsize] at (15.1,2.0) {next};
+\end{tikzpicture}
+\caption{One block of the submatrix update in block mode (schematic, not to scale). Host work is grey, device work green; ``fg'' is the flush gather. The only unavoidable wait is the copy of $G_0(B,B)$ to the host at the beginning of the block, because the next gather depends on the previous flush. In the synchronous path every arrow is also a wait.}
+\label{fig:block}
+\end{figure}
+
+\subsection{Synchronisation points per block}
+
+In the synchronous OpenMP path every \texttt{target} region and every \texttt{target update} returns only when it is complete. In addition \texttt{alf\_la} calls run asynchronously on NVIDIA (cuBLAS returns before the GEMM is done), so two explicit \texttt{la\_sync} calls are needed. The sequence per block (\file{gpu\_lowrank\_mod.F90:1443-1592}):
+\begin{enumerate}
+\item \texttt{la\_sync} in \texttt{blk\_begin}: the previous flush (asynchronous library calls) must be complete before new uploads overwrite buffers it reads.
+\item \texttt{target update to(bsd)}: the block sites.
+\item \texttt{k\_blk\_gather}.
+\item \texttt{target update from(gbd)}: the host needs $G_0(B,B)$ before it can decide anything. This is the one wait that cannot be removed.
+\item \texttt{la\_sync} in \texttt{blk\_end}: ``the previous block's flush (cuBLAS) is asynchronous: it must be done before cbuf / bS\_d are overwritten''.
+\item \texttt{target update to(cbuf, bS\_d)}.
+\item \texttt{k\_blk\_scale}.
+\item Per flavour: \texttt{k\_sub\_flush\_gather} and two \texttt{la\_gemm}. On Intel the dispatched GEMM includes an implicit wait (\file{SYNC.md}).
+\item \texttt{target update to(nsigma\_d(vmin:vmax,t))}.
+\end{enumerate}
+On the A30 a profile of a production layout showed 72\,\% of host time in \texttt{cuStreamSynchronize}, with about 4\,300 blocks and 44\,000 synchronisations per sweep (\file{PP\_GPU.md}, $L=24$, 9 ranks). % PP_GPU.md
+In the single-chain profile at $L=32$, 44\,\% of the kernel time was in 32\,338 small ZGEMM flushes of 52~$\mu$s each (\file{TUNING\_DEFECT.md}). % TUNING_DEFECT.md
+
+\subsection{Launch-latency budget of a block}
+
+The Intel team measured where the 167~$\mu$s of wall time of one block go at $L=24$ with V7 (\file{p7/NOTES.md}, line 97): % p7 NOTES
+submission of the asynchronous operations 91~$\mu$s, the D$\to$H copy 22~$\mu$s (30 at $L=32$), the hopping 32~$\mu$s, host arithmetic about 20~$\mu$s; the device executes the block in about 65~$\mu$s. The update phase is therefore ``host-submission bound'': the cost of telling the device what to do exceeds the work it does. The per-operation submission costs were 4.4~$\mu$s (gather), 4.5 (flush gather), 4.4 (scale), 9.7 (GEMM) and 9.0 (copy), 0.88~s per sweep in total, 61\,\% of the update phase (\file{p7/NOTES.md}, lines 88-97).
+
+Before the staging buffer setting the D$\to$H of the 32~KB block cost 380~$\mu$s on Intel; with \env{LIBOMPTARGET\_LEVEL\_ZERO\_STAGING\_BUFFER\_SIZE=1048576} it costs 22~$\mu$s, and the update phase went from 4.3 to 1.9~s per sweep (\file{p3/STATUS.md}; \file{ISSUE\_INTEL\_VS\_A30.md}, line 43). % p3 STATUS, ISSUE line 43
+``One environment variable gained more than two code phases'' (\file{GPU\_PLAN\_V2.md}, section 2).
+
+\subsection{The asynchronous block path on Intel}
+\label{sec:asyncblk}
+
+On NVIDIA, cuBLAS calls are asynchronous by default. On Intel, ifx executes OpenMP \texttt{nowait} target tasks undeferred (97 to 103\,\% of the synchronous cost, \file{p3/STATUS.md}), so OpenMP cannot overlap host and device. The asynchronous block path (\texttt{ALFSH\_ASYNCBLK=1}, \file{gpu\_lowrank\_mod.F90:1328-1347, 1605-1617}; \file{alf\_la\_sycl\_blk.cpp}) bypasses OpenMP for the block operations:
+\begin{itemize}
+\item It obtains the SYCL queue that the OpenMP runtime uses (\texttt{alfsh\_get\_queue}, through the interop object of \texttt{alf\_la}) and refuses it if it is not \emph{in-order}. ``The queue must be in-order: that, and nothing else, orders the calls'' (\file{alf\_la\_sycl\_blk.cpp:4}).
+\item The gather, scale and flush-gather kernels are SYCL ports of the OpenMP kernels with the same expressions and order; the GEMM is oneMKL's \texttt{column\_major::gemm} with the same shapes and scalars; copies are \texttt{queue.memcpy}. All are submitted without waiting. The gathered block lands in host USM memory (memory that the device can write directly).
+\item The only wait per block is \texttt{ab\_drain} in \texttt{blk\_begin} after the gather: ``the one unavoidable wait of a block: the host needs G0(B,B)''. \texttt{blk\_end} leaves the block pending; the next \texttt{blk\_begin}, the flush at the end of the slice, or any other device access drains it.
+\item The SYCL code is built as a shared library (\file{libalfsb.so}) because SYCL kernels in an object linked by ifx are not found at run time (``No kernel named \ldots'').
+\end{itemize}
+Results are bitwise identical to the synchronous path. Planted tests: a missing wait gives an ``Unstable matrix'' abort; a missing drain at the end of the slice changes nothing, because the in-order queue orders the OpenMP kernels too (\file{p3/STATUS.md}). Measured effect: $L=24$ 7.05--7.08$\to$6.53--6.59~s per sweep, $L=32$ 23.2$\to$22.0--22.4~s, per card 0.568$\to$0.655--0.688 sweeps/s (\file{ISSUE\_INTEL\_VS\_A30.md}, section 2). % ISSUE section 2
+
+\dis{The release status of \texttt{ALFSH\_ASYNCBLK} differs between notes: \file{RUNTIME\_SWITCHES.md} (line 123) lists it as production, \file{SPEEDUPS.md} (line 21) and \file{NOT\_IMPLEMENTED.md} (line 118) as not yet released. The measured gain is +3\,\% per node in \file{p3/STATUS.md} and +15 to 20\,\% per card in \file{ISSUE\_INTEL\_VS\_A30.md}; the jobs differ.}
+
+\subsection{What remains: the flush}
+
+In production layouts the flush GEMMs are 47\,\% of the kernel time (A30, 9 ranks, \file{PP\_GPU.md}). % PP_GPU.md
+They are rank-$k$ updates with $k\approx10$ to 20, bound by memory bandwidth ($N^2$ elements read and written per flush for $2Nk$ new information). The ranked candidate is a two-level submatrix update: one flush per slice of rank about 190 instead of one per block (\file{SPEEDUPS.md}, section 4). It is estimated at weeks of work and not started.
+
+\dis{The header of \file{gpu\_lowrank\_mod.F90} (lines 34, 52-53) calls the module a ``test branch'' where ``numerical agreement is not the goal''. It is the production path, and \file{DELAYED\_SUBMATRIX.md} reports bin-by-bin agreement. The header also describes only the per-proposal gather; block mode is documented only at line 1253.}

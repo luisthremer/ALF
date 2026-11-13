@@ -1,0 +1,36 @@
+\section{File-by-file guide to the GPU source}
+\label{app:files}
+
+Line counts as of 2026-11-13.
+
+\paragraph{\file{Prog/gpu\_state\_mod.F90} (1902 lines).} Setup and the device mirror. \texttt{gpu\_env\_read} and \texttt{gpu\_env\_check} read every \texttt{ALF\_GPU\_*} and \texttt{ALF\_LA\_TEST\_*} variable from \file{/proc/self/environ}, print the build and the debug environment, and refuse debug variables in production runs. \texttt{gpu\_supported} decides whether the GPU path is used. \texttt{gpu\_state\_setup} builds the flat mirror of hopping, checkerboard groups, vertices and fields, allocates the work arrays and maps everything to the device; it also binds the rank to a device. Contains the mirror self-test and \texttt{report\_layout}, which prints all array sizes. Note: \file{/proc} is read before \texttt{gpu\_supported}, so a GPU build stops on systems without \file{/proc} even with \texttt{ALF\_GPU\_DISABLE=1}.
+
+\paragraph{\file{Prog/gpu\_wrap\_mod.F90} (2660 lines).} Propagation: the five hopping routines with the dense \texttt{Hd} path, the checkerboard group kernels and the dense-element paths; time-dependent hopping; vertex multiplication and wraps, single and fused per slice; \texttt{Symm}; the composites used by the stabilisation. Self-tests and timing for each routine. Initialises \texttt{alf\_la}.
+
+\paragraph{\file{Prog/gpu\_update\_mod.F90} (633 lines).} \texttt{gpu\_wrapgrup} and \texttt{gpu\_wrapgrdo}, the device versions of \texttt{WRAPGRUP}/\texttt{WRAPGRDO}: the loop over vertices, the ratio and the Metropolis decision on the host, the rank-one update kernels, and the dispatch to the low-rank module. Manages the host/device validity flags of $G$ (\texttt{g\_in}, \texttt{g\_out}, \texttt{gpu\_g\_host}). Trace and update self-test.
+
+\paragraph{\file{Prog/gpu\_lowrank\_mod.F90} (1723 lines).} Delayed and submatrix updates on the device: the low-rank representations, proposals, accepts, wraps and flushes; the fast variants; block mode (\texttt{blk\_begin}, \texttt{blk\_end}, \texttt{blk\_flush}, host block wraps and proposals); the asynchronous Intel block path (\texttt{ab\_*}, via \file{libalfsb.so}); the choice of $\Nd$.
+
+\paragraph{\file{Prog/gpu\_stab\_mod.F90} (2118 lines).} Stabilisation: the device stack and work slots, \texttt{gpu\_stab\_wrapur/ul}, decompose (default and \texttt{STABLOG}), \texttt{gpu\_stab\_exchange}, \texttt{CGR} with precision check and phase, the LU-free phase tracking, Newton--Schulz, the scale test, and the stabilisation self-test.
+
+\paragraph{\file{Prog/gpu\_tau\_mod.F90} (2627 lines).} The time-displaced pass on the device: propagation of $G(\tau,0)$, $G(0,\tau)$, $G(\tau,\tau)$, \texttt{CGR2\_2} on $2N\times2N$ matrices, the four precision checks, and the interface to the device $\tau$ observables. Contains extensive diagnostics (\texttt{TAUDIAG*}, a quad-precision reference comparison) used during development.
+
+\paragraph{\file{Prog/gpu\_obs\_mod.F90} (785 lines).} Equal-time and time-displaced observables of the Hubbard model on the device: scalars, correlation functions with \texttt{acc0}, point-defect local observables, \texttt{Symm}, and the per-bin flush of the accumulators.
+
+\paragraph{\file{Libraries/Modules/alf\_la\_mod.F90} (2115 lines).} The library layer: the oneMKL module \texttt{alf\_la\_om\_mod} and the public \texttt{alf\_la\_mod} with host and CUDA code, \texttt{la\_qrpp}, \texttt{la\_geqp3\_host}, info slots, stream setup and test hooks (Table~\ref{tab:la}).
+
+\paragraph{\file{alf\_la\_sycl\_shim.cpp} (304 lines).} C++ shim for oneMKL LAPACK on the interop SYCL queue (\texttt{alfsh\_*}): \texttt{geqrf}, \texttt{ungqr}, \texttt{unmqr}, \texttt{getrf}, \texttt{getrs}; loads \file{libalfdevqr.so} at run time; timing and launch benchmarks; test hooks.
+
+\paragraph{\file{alf\_la\_sycl\_blk.cpp} (102 lines).} \file{libalfsb.so}: the asynchronous block operations (gather, scale, flush gather, GEMM, copies) on the in-order interop queue.
+
+\paragraph{\file{alf\_la\_sycl\_devqr.hpp} (349), \file{alf\_la\_sycl\_qr2.hpp} (456), \file{alf\_la\_sycl\_devqr.cpp} (95).} \file{libalfdevqr.so}: the own SYCL QR, level 1 (panel with $T$, \texttt{ZLARFB} by GEMMs) and level 2 (T-free panel, apply kernel, device \texttt{unmqr}).
+
+\paragraph{\file{alf\_la\_hip\_mod.F90} (830), \file{alf\_la\_hip\_shim.cpp} (132).} The HIP backend of \texttt{alf\_la}: hipBLAS/hipSOLVER through a C++ shim, own QR selection, \texttt{la\_qrpp} with HIP kernels.
+
+\paragraph{\file{alf\_hipk\_mod.F90} (578), \file{alf\_hip\_kernels.hip.cpp} (621).} HIP kernels for the small operations of the update, observables and stabilisation, and the deferred-synchronisation hook for the patched GCC plugin.
+
+\paragraph{\file{alf\_hip\_qr.hip.cpp} (347).} Own HIP QR and \texttt{unmqr} (panel in registers, wave-per-columns apply).
+
+\paragraph{Hooks in CPU files.} \file{main.F90} (setup, stack initialisation, the stabilisation points of the sweep, measurement transfers, $\tau$ pass, flush per bin, finalise); \file{Wrapgr\_mod.F90:141-149, 353-360} (early branches of \texttt{WRAPGRUP}/\texttt{DO}); \file{tau\_m\_mod.F90:52, 80} ($\tau$ pass); \file{Hamiltonian\_Hubbard\_smod.F90:134, 786, 831} (observables); \file{Hop\_mod.F90:301-392}, \file{Operator\_mod.F90:1180-1199}, \file{control\_mod.F90:457, 542}, \file{Hamiltonian\_main\_mod.F90:141} (read-only accessors and the precision routines on scalars). \file{Lowrank\_update\_mod.F90} and \file{upgrade\_mod.F90} have no GPU code.
+
+\paragraph{Build files.} \file{configure.sh} (\texttt{GPU=} switch, machine profiles \texttt{PGI}, \texttt{HELMAGPU}, \texttt{IntelLLVM}, \texttt{GNU}); \file{Prog/Makefile:16-24} (GPU modules, a stamp file so that the tree can switch backend without \texttt{make clean}); \file{Libraries/Modules/Makefile:39-70} (SYCL and HIP objects and libraries).

@@ -1,0 +1,5 @@
+# H100, L=32, N_delay 64, no MPS: 1 rank 9.82 s; 2 ranks 42.7 s; 4 and 8 ranks did not finish 6 sweeps in 420 s (not plotted)
+# source: docs/gpu/platforms/helma_h100.md (section 4.2)
+ranks agg tchain
+1 0.102 9.82
+2 0.047 42.7

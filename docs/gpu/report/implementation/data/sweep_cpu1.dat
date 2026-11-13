@@ -1,0 +1,6 @@
+# same source, GPU=none, nvfortran, one thread, submatrix N_delay 8, s per sweep, Beta = L
+# source: docs/gpu/TUNING_DEFECT.md (table "Time per sweep, beta = L")
+L t
+12 1.68
+16 12.7
+24 148.6

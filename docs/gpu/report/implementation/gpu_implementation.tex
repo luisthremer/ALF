@@ -1,0 +1,109 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{xcolor}
+\usepackage{amsmath,amssymb}
+\usepackage{pgfplots}
+\usepackage{pgfplotstable}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage[colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black]{hyperref}
+\pgfplotsset{compat=1.17}
+\usepgfplotslibrary{groupplots}
+\usetikzlibrary{positioning,arrows.meta,shapes.misc,fit,calc}
+\captionsetup{font=small,labelfont=bf}
+\setlist{nosep,leftmargin=1.4em}
+\setlength{\parindent}{0pt}
+\setlength{\emergencystretch}{3em}
+\renewcommand{\_}{\textunderscore\hspace{0pt}}
+\setlength{\parskip}{0.45em}
+\renewcommand{\arraystretch}{1.08}
+\usepackage[compact]{titlesec}
+\titlespacing*{\section}{0pt}{1.4em}{0.5em}
+\titlespacing*{\subsection}{0pt}{1.0em}{0.35em}
+\setcounter{tocdepth}{2}
+\renewcommand{\floatpagefraction}{0.8}
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\textfraction}{0.1}
+
+\lstset{basicstyle=\ttfamily\small,columns=fullflexible,breaklines=true,frame=single,framerule=0.3pt,rulecolor=\color{gray!60},xleftmargin=0.5em,xrightmargin=0.5em}
+
+% open items are shown in red
+\newcommand{\todo}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
+\newcommand{\file}[1]{\texttt{\small #1}}
+\newcommand{\env}[1]{\texttt{#1}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\sweep}{s\,/\,sweep}
+\newcommand{\dis}[1]{\par\smallskip\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule}{\small\textbf{Code and documents disagree.} #1}}\par\smallskip}
+\newcommand{\Ndim}{N}
+\newcommand{\Lt}{L_{\rm trot}}
+\newcommand{\NFL}{N_{\rm FL}}
+\newcommand{\Nd}{N_{\rm d}}
+\newcommand{\Op}{\mathrm{Op}}
+\newcommand{\dt}{\Delta\tau}
+
+% plot styles (colour-blind safe, also distinguishable by marker); same as the short report
+\definecolor{cA30}{HTML}{1B9E77}
+\definecolor{cH100}{HTML}{D95F02}
+\definecolor{cMAX}{HTML}{7570B3}
+\definecolor{cMI}{HTML}{E7298A}
+\definecolor{cCPU}{HTML}{666666}
+\pgfplotsset{
+  every axis/.append style={
+    grid=major, grid style={gray!25}, tick label style={font=\small},
+    label style={font=\small}, legend style={font=\scriptsize, fill=white, fill opacity=0.85, text opacity=1, draw=gray!50},
+    unbounded coords=jump,
+  },
+  a30/.style={color=cA30, mark=square*, thick},
+  h100/.style={color=cH100, mark=triangle*, thick},
+  max/.style={color=cMAX, mark=diamond*, thick},
+  mi/.style={color=cMI, mark=*, thick},
+  cpu/.style={color=cCPU, mark=x, thick},
+  mybars/.style={ybar, bar width=9pt},
+}
+\tikzset{
+  box/.style={draw, rounded corners=2pt, align=center, font=\small, inner sep=4pt},
+  hostbox/.style={box, fill=gray!12},
+  devbox/.style={box, fill=cA30!15},
+  arr/.style={-{Stealth[length=2mm]}, thick},
+}
+
+\title{How ALF was ported to GPUs\\[0.3em]
+\large The implementation of the auxiliary-field QMC sweep on NVIDIA, Intel and AMD accelerators\\[0.2em]
+\normalsize Branch \texttt{gpu-port-unified}, state of 2026-11-13}
+\author{[author]}
+\date{2026-11-13}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\input{sections/s01_guide}
+\input{sections/s02_cpu_sweep}
+\input{sections/s03_design}
+\input{sections/s04_data}
+\input{sections/s05_wrap}
+\input{sections/s06_stab}
+\input{sections/s07_updates}
+\input{sections/s08_obs}
+\input{sections/s09_mpi}
+\input{sections/s10_backends}
+\input{sections/s11_verif}
+\input{sections/s12_perf}
+\input{sections/s13_notported}
+\input{sections/s14_lessons}
+\appendix
+\input{sections/a1_glossary}
+\input{sections/a2_files}
+\input{sections/a3_build}
+\input{sections/a4_switches}
+
+\end{document}

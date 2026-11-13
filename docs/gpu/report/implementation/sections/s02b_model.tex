@@ -1,0 +1,11 @@
+\subsection{The production model}
+
+The port was driven by one model: the Hubbard model on the square lattice with $\pi$ flux and a space-time point defect (\file{point\_defect\_math.tex}; the predefined \texttt{Hamiltonian\_Hubbard} with \texttt{ham\_h0}$\ne0$):
+\begin{equation}
+H = -t\sum_{\langle ij\rangle\sigma}\bigl(e^{iA_{ij}}c^\dagger_{i\sigma}c_{j\sigma}+{\rm h.c.}\bigr) + U\sum_i\bigl(n_{i\uparrow}-\tfrac12\bigr)\bigl(n_{i\downarrow}-\tfrac12\bigr),
+\end{equation}
+with $N=L^2$ sites and discrete Ising auxiliary fields; the production parameter file has $\NFL=2$ and $N_{\rm SUN}=2$ (\file{TUNING\_DEFECT.md}), and the pinning field requires $\NFL=2$. The defect is a pinning field on one site at one time slice. In the code (\file{Hamiltonian\_Hubbard\_smod.F90:495-525}) it is a second hopping element per flavour, \texttt{Op\_T(2,nf)}, diagonal with $\mp h_0$ on the pin site $N/2-L/2$, with a time-dependent coupling $g_t(\tau)$ that is $-1$ on the first slice and 0 elsewhere. So the propagator of slice 1 carries the extra factor $e^{\pm h_0 n_{p\sigma}}$, a pulse of strength $h_0$ in $S^z_p$ at $\tau=0$. The static hopping \texttt{Op\_T(1,nf)} is a dense $N\times N$ matrix; the \texttt{Checkerboard} flag is ignored when the pin is on. The production parameters are \texttt{Mz=.F.}, $U=5$ (and a scan 5.15 to 5.425), $h_0=1$, \texttt{Symm=.T.}, $\dt=0.1$, $\beta=L$ (so $\Lt=10L$), \texttt{Ltau=0}, \texttt{Nwrap}=10 (\file{TUNING\_DEFECT.md}; \file{DECISIONS.md}, item 47). The new observables are \texttt{SpinZ\_local} and \texttt{SpinZ\_localtau}, the response $\langle S^z_j(\tau)\rangle$ to the pulse.
+
+For the GPU the model has three consequences: the hopping is dense, so the wraps are matrix products (good for a GPU); the defect is a time-dependent hopping element, which needed its own device path (Section~\ref{sec:wrap}); and the vertices are single-site and diagonal, which makes the submatrix update in block mode possible (Section~\ref{sec:updates}).
+
+\dis{\file{point\_defect\_math.tex} places the pulse on the two slices $\Lt/2$ and $\Lt/2+1$ with $g_t=-\tfrac12$ each, and recommends the projector code and \texttt{Mz=.T.}. The code puts the pulse on slice 1 with $g_t=-1$ (after the merge of 2026-11-09), \texttt{Ham\_Set} refuses the pin with the projector, and production uses finite temperature with \texttt{Mz=.F.}.}

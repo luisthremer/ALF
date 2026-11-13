@@ -1,0 +1,7 @@
+# H100, L=32, N_delay 64, MPS 25 %: aggregate sweeps per second per GPU
+# source: docs/gpu/platforms/helma_h100.md (section 4.2)
+ranks agg tchain
+2 0.123 16.26
+4 0.200 19.98
+8 0.232 34.49
+16 0.250 63.99

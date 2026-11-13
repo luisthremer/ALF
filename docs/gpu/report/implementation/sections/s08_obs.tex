@@ -1,0 +1,79 @@
+\section{Observables}
+\label{sec:obs}
+
+Measurements in ALF are model code: each Hamiltonian's \texttt{Obser} and \texttt{ObserT} read $G$ and accumulate into observable objects. A general port would need a device version of every model's measurement routine. The port does this for the predefined Hubbard model only (\file{Prog/gpu\_obs\_mod.F90}, 785 lines; time-displaced part in \file{gpu\_tau\_mod.F90}). For other models the GPU path downloads $G$ and the host measures.
+
+\subsection{Hook-up and conditions}
+
+\texttt{gpu\_obs\_setup} is called at the end of \texttt{Alloc\_obs} of \file{Hamiltonian\_Hubbard\_smod.F90} (lines 788-789) with the lattice, the hopping matrix and the parameters. \texttt{Obser} begins with
+\begin{lstlisting}
+if (gpu_obs_active()) then; call gpu_obs_measure(...); return
+\end{lstlisting}
+(lines 831-837). \texttt{gpu\_obs\_active} requires: setup done, the model checks passed, \texttt{ALF\_GPU\_NOOBS} not set, the GPU path and the device update active. The model checks (\file{gpu\_obs\_mod.F90:92-184}) are: no projector; $\NFL\in\{1,2\}$; the expected number of equal-time observables (5 for $\NFL=2$, else 3); $N=N_{\rm cell}N_{\rm orb}$; the displacement table \texttt{Latt\%imj} a bijection per site; with the pinning field ($h_0\ne0$) $\NFL=2$ and two local observables. If a check fails the run measures on the host; this is a silent fallback, not a refusal.
+
+In \file{main.F90} (lines 1033, 1109) the download of $G$ before the measurement is skipped when the device measures, and \texttt{Hop\_mod\_Symm} is skipped when the device applies \texttt{Symm}.
+
+\subsection{What is measured}
+
+Let $\bar G_{ij}=\delta_{ij}-G_{ji}$ (\texttt{GRC} in ALF) and $w=Z_PZ_S$ the phase and sign weight, passed to the kernels as two reals.
+
+\paragraph{Scalars} (\file{gpu\_obs\_mod.F90:300-341}):
+\begin{align}
+Z_{\rm kin} &= N_{\rm SUN}\sum_{k} h_k\,\bar G_{i_k j_k f_k}, \\
+Z_{\rm pot} &= \sum_{I,o}U_o\,(1-G_{ii,\uparrow})(1-G_{ii,\downarrow}),\qquad
+Z_\rho = N_{\rm SUN}\sum_{i,f}(1-G_{ii,f}),
+\end{align}
+and the total energy $Z_{\rm kin}+Z_{\rm pot}$. The kinetic energy is a sparse linear functional of $G$, built once on the host as a list of $(h_k,i_k,j_k,f_k)$ from the hopping matrix (a copy of \texttt{Predefined\_Hoppings\_Compute\_Kin}, without the pinning term).
+
+\paragraph{Correlation functions} (\file{gpu\_obs\_mod.F90:404-525}). For $\NFL=2$ the kinds are Green, SpinZ, SpinXY, SpinT and Den; for $\NFL=1$ Green, SpinZ (SU($N$)) and Den. For each pair of sites $(i,j)$ with displacement $d=i-j$ and orbitals $(o,o')$ the kernel accumulates into $\texttt{acc}(d,o,o',\text{kind})$ the expressions of \texttt{Predefined\_Obs\_eq\_*\_measure}, for example
+\begin{align}
+\text{Green:}&\quad N_{\rm SUN}\sum_f\bar G_{ij,f},\qquad
+\text{SpinSUN:}\quad N_{\rm SUN}\,\bar G_{ij}G_{ij},\\
+\text{Den:}&\quad z_iz_j + N_{\rm SUN}\sum_f\bar G_{ij,f}G_{ij,f},\qquad z_i=N_{\rm SUN}\sum_f (1-G_{ii,f}),
+\end{align}
+and for $N_{\rm SUN}=1$ the $zz$, $xy$ and $T=(2xy+zz)/3$ spin correlations in one kernel.
+
+\paragraph{The \texttt{acc0} terms.} ALF stores with each correlation function the one-site expectation per orbital, \texttt{Obs\_Latt0}, which the analysis subtracts to obtain connected correlations. The device keeps it in \texttt{acc0}$(N_{\rm orb},n_{\rm obs})$: for Den, $N_{\rm SUN}\sum_I\sum_f(1-G_{ii,f})\,w$; for SpinZ, $\sum_I[(1-G_{ii,2})-(1-G_{ii,1})]\,w$, and the same divided by $\sqrt3$ for SpinT; Green and SpinXY have none (\file{gpu\_obs\_mod.F90:471-523}; host: \file{Predefined\_Obs\_mod.F90:190-191, 322}). The \texttt{acc0} sum used to run serially on one GPU thread, 760~$\mu$s per call and 7\,\% of the kernel time at $L=24$; it is now one team per orbital with a parallel reduction (comment at lines 471-472). On NVIDIA this gave no measurable gain (88.9~s against 88.9~s, \file{PP\_GPU.md}); on Intel it gave 4.92--4.98$\to$4.42--4.48~s per sweep at $L=24$ (\file{SPEEDUPS.md}, section 1). % PP_GPU.md lines 41-42; SPEEDUPS.md sec 1
+Results changed by at most $3.3\times10^{-16}$ (\file{CONSOLIDATION.md}).
+
+\paragraph{Point-defect observables} (\file{gpu\_obs\_mod.F90:361-402}). Per site and orbital $d=(G_{ii,2}-G_{ii,1})\,w$ is accumulated into \texttt{lacc1} (\texttt{SpinZ\_local}) and into \texttt{lacc2}$(\cdot,\tau,\cdot)$ (\texttt{SpinZ\_localtau}) with index $\tau+1-T_{\rm htrot}$, weight 2 at the end points; the counter is incremented at $\tau=\Lt/2$. This mirrors \file{Hamiltonian\_Hubbard\_smod.F90:901-922}.
+
+\subsection{How the reductions are organised}
+
+A reduction (a sum of many numbers into one) is the operation where a GPU and a CPU differ most. A naive parallel sum with \emph{atomic} additions is non-deterministic: the order of additions, and so the rounding, changes from run to run. The port avoids atomics everywhere:
+\begin{itemize}
+\item \textbf{Scalars} (OpenMP path): one \texttt{target teams distribute parallel do reduction(+:...)} kernel per scalar.
+\item \textbf{Correlations} (OpenMP path): one \emph{team} (a group of threads that can synchronise) per output element $m=(d,o,o')$, via \texttt{target teams distribute} over $N_{\rm cell}N_{\rm orb}^2$ elements; inside the team a \texttt{parallel do reduction(+:...)} over the $N$ sites; then one thread adds the result into \texttt{acc}. Each output element belongs to exactly one team, so there are no conflicts.
+\item \textbf{HIP path} (AMD): \texttt{hk\_scalars} is one block of 128 threads with strided partial sums and a tree reduction in shared memory; six doubles come back in one copy. \texttt{hk\_corr} launches one block per output element plus $N_{\rm orb}$ blocks for the \texttt{acc0} sums, each with a tree reduction (\file{alf\_hip\_kernels.hip.cpp:157-262}).
+\end{itemize}
+The work per measurement is $O(N^2)$ per kind (all pairs $i,j$), the same as on the CPU.
+
+\paragraph{Transfers.} $G$ is read from \texttt{G\_d} directly. The reduced scalars come back per measurement. The accumulators \texttt{acc}, \texttt{acc0}, \texttt{lacc1}, \texttt{lacc2}, \texttt{tacc}, \texttt{tacc0} are downloaded once per bin by \texttt{gpu\_obs\_flush} (called from \file{main.F90:1337} before \texttt{Pr\_obs}), zeroed and uploaded. Counters, the scalar accumulation into \texttt{Obs\_scal}, normalisation, binning, the MPI reduction and I/O stay on the host.
+
+\paragraph{\texttt{Symm}.} With the symmetric Trotter decomposition, $G$ is saved, transformed in place by $A(A_{td}GB_{td})B$ (two to four GEMMs) and restored after the measurement (\file{gpu\_obs\_mod.F90:268-284, 354-358}).
+
+\paragraph{Skipping.} \texttt{ALF\_GPU\_OBS\_SKIP} takes a list of kinds 1 to 4 (Green, SpinSUN, Den, SpinMz) that are not measured and stay zero. Skipping Green and Den saved 7\,\% under MPS (\file{PP\_GPU.md}). % PP_GPU.md
+It is meant for production runs that do not need those observables.
+
+\dis{The header of \file{gpu\_obs\_mod.F90} says the supported case needs ``$|h_0|<$ Eps\_small; no Symm'' (line 12), that the sum over $I$ is ``a sequential loop per output element'' (line 20), and that the scalars are ``one D$\to$H of three complex numbers per slice'' (line 16). The code supports the defect and \texttt{Symm}, sums with a parallel reduction inside each team, and on the OpenMP path returns three separate reduction results.}
+
+\subsection{The time-displaced pass}
+
+With \texttt{Ltau=1}, \file{tau\_m\_mod.F90:82-83} calls \texttt{gpu\_tau\_pass} when the device $\tau$ pass is on. Conditions (\file{gpu\_tau\_mod.F90:234-283}): device stabilisation on, \texttt{Ltau=1}, no projector, no weight reconstruction. Setup reserves all library work space and runs one $2N$ QR so that nothing is allocated during the sweep.
+
+\paragraph{Algorithm.} \texttt{tau\_begin} sets on the device $G(0,0)=G(\tau,0)=G(\tau,\tau)=G$ and $G(0,\tau)=-(1-G)$, keeps a copy of $G$ as precision reference, and resets the right $UDV$ slot. For each slice (\texttt{tau\_slice}, lines 448-467):
+\begin{align}
+G(\tau{+}1,0) &= B_{\tau+1}\,G(\tau,0) \qquad(\texttt{gpu\_mmthr}, \texttt{gpu\_Vslice\_R}),\\
+G(0,\tau{+}1) &= G(0,\tau)\,B_{\tau+1}^{-1}\qquad(\texttt{gpu\_mmthl\_m1}, \texttt{gpu\_Vslice\_L}),\\
+G(\tau{+}1,\tau{+}1) &= B_{\tau+1}\,G(\tau,\tau)\,B_{\tau+1}^{-1}.
+\end{align}
+At every stabilisation point the right state is propagated and decomposed on the device, the left state is read in place from the stack slot (no copy), and \texttt{dev\_cgr22} recomputes the four Green functions from the $2N\times2N$ block matrix of \texttt{CGR2\_2}. The steps of \texttt{dev\_cgr22} (lines 574-678): the branch $D_1(1)>D_2(1)$ from two scalars D$\to$H; $V_1^{-1}$ by LU (\texttt{getrf} plus \texttt{getrs} on the identity, where the CPU uses \texttt{ZGETRI}); the scale splitting; the $2N\times2N$ matrix; QR with pre-pivoting (or host \texttt{ZGEQP3} with \texttt{STABLOG}); triangular solve and scaling; $QX$ through an explicit $Q$ with a Newton--Schulz step and a GEMM. With cuSOLVER's \texttt{ZUNMQR} applied directly the precision of the $\tau$ pass was 17\,\% worse on average and up to 2 times worse at the maximum than on the CPU; with the explicit $Q$ and the step it was $6.75\times10^{-12}$ against $7.36\times10^{-12}$ on the CPU (header lines 56-59). % gpu_tau_mod.F90 header
+The four precision checks of \texttt{Control\_Precision\_tau} run as device reductions, four numbers each.
+
+\paragraph{Observables.} If \texttt{gpu\_obs\_tau\_active()}, every slice calls \texttt{gpu\_obs\_tau\_measure} with the four device matrices. The kernel \texttt{tcorr} (\file{gpu\_obs\_mod.F90:648-783}) accumulates the same kinds as the equal-time measurement, resolved in $\tau$, into \texttt{tacc}$(N,N_\tau,N_{\rm orb},N_{\rm orb},n_{\rm obs})$, e.g.\ SpinSUN $-N_{\rm SUN}\,G(0,\tau)_{ji}\,G(\tau,0)_{ij}$. This removes a D$\to$H of $3N^2$ complex numbers per slice and flavour. The \texttt{tacc0} loops are still serial over $N$ per orbital; under HIP \texttt{tcorr} stays an OpenMP kernel with a serial inner sum, unlike the equal-time HIP kernels.
+
+\paragraph{What is refused.} The device $\tau$ pass is off with \texttt{Ltau}$\ne1$, the projector, weight reconstruction or without device stabilisation; then the CPU pass runs on downloaded data. The device $\tau$ observables are off with the point defect; in practice this case cannot occur because \texttt{Ham\_Set} sets $h_0=0$ when \texttt{Ltau=1} (\file{Hamiltonian\_Hubbard\_smod.F90:247-259}). Debug and fault variables of the $\tau$ pass are refused in production runs.
+
+\dis{The header of \file{gpu\_tau\_mod.F90} (line 46) and the info line printed at setup (line 275) still say ``observables on the host, interim''; since ticket 208-3 they are measured on the device. \file{TUNING\_DEFECT.md} also says ``host ObserT''. The device $\tau$ observables apply only the static \texttt{Symm} matrices, while the host path calls \texttt{Hop\_mod\_Symm} with the slice arguments; this matters only with time-dependent hopping, which is switched off for \texttt{Ltau=1}. \texttt{gpu\_obs\_tau\_active} does not test \texttt{gpu\_upd\_enabled}, while \texttt{gpu\_obs\_active} does: with \texttt{ALF\_GPU\_NOUPDATE=1} the equal-time observables move to the host and the $\tau$ observables stay on the device. \file{main.F90:1301} downloads $G$ before every $\tau$ pass although the device pass does not need it.}
+
+\paragraph{Evidence.} \texttt{Ltau=1} has been run on NVIDIA; it has not been run on the Max~1550 or the MI210 according to \file{FEATURES.md} (lines 61, 97).

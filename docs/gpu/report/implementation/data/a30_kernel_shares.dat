@@ -1,0 +1,8 @@
+# A30, 9 ranks, MPS 25 %, L=24, N_delay 64: share of kernel time of rank 0 in percent
+# source: docs/gpu/PP_GPU.md (section "Profile of the production run")
+cat share
+flushGEMMs 47
+stabilisation 25
+measurement 17
+blockkernels 6
+wraps 5

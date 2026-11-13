@@ -1,0 +1,44 @@
+\section{Run-time switches}
+\label{app:switches}
+
+The complete list with source lines is \file{docs/gpu/RUNTIME\_SWITCHES.md}. Table~\ref{tab:switches} gives the ones that matter for production and the main debug switches, checked against the code.
+
+\begin{footnotesize}
+\begin{longtable}{@{}>{\raggedright}p{4.3cm}>{\raggedright}p{2.6cm}>{\raggedright\arraybackslash}p{8.0cm}@{}}
+\caption{Run-time switches (environment variables). ``Guarded'': refused in a production run unless \texttt{ALF\_GPU\_DEBUG} is set.}\label{tab:switches}\\
+\toprule
+Name & Values & Effect \\
+\midrule\endfirsthead
+\toprule Name & Values & Effect \\ \midrule\endhead
+\texttt{OMP\_TARGET\_OFFLOAD} & \texttt{MANDATORY} & stop instead of silently running on the CPU if no device \\
+\texttt{ALF\_GPU\_DISABLE} & \texttt{1} & run the CPU path in a GPU build \\
+\texttt{ALF\_GPU\_DEBUG} & not \texttt{0} & declares a debug run; lifts the guard \\
+\texttt{ALF\_UNSTABLE\_THRESHOLD} & real, default 10 & abort threshold of the precision check of $G$ (production: $10^{-4}$) \\
+\texttt{ALF\_GPU\_OBS\_SKIP} & list of 1..4 & equal-time observables not measured (stay zero) \\
+\texttt{ALF\_GPU\_NOOBS}, \texttt{ALF\_GPU\_NOUPDATE} & \texttt{1} & host observables / host update (A/B tests); guarded \\
+\texttt{ALF\_GPU\_SELFTEST} & 1, 2, 3, 4 & mirror, wrap, stabilisation, $\tau$ self-tests; guarded \\
+\texttt{ALF\_GPU\_UPDTEST}, \texttt{\_TIMING}, \texttt{\_STABTIME}, \texttt{\_TAUTIME}, \texttt{\_EXIT} & \texttt{1} & update test, timing hooks, exit after a hook; guarded \\
+\texttt{ALF\_GPU\_NS}, \texttt{ALF\_GPU\_TAU\_NS} & \texttt{0} & switch off the Newton--Schulz step; guarded \\
+\texttt{ALF\_GPU\_CGR\_LU} & 1, 2 & always LU phase / both and compare; guarded \\
+\texttt{ALF\_GPU\_FAULT}, \texttt{\_FAULT\_STAB}, \texttt{\_FAULT\_TAU}, \texttt{\_FAULT\_TAU\_AT} & see text & planted defects; guarded \\
+\texttt{ALF\_GPU\_STABCHECK}, \texttt{\_STABMIX}, \texttt{\_TAUSWAP}, \texttt{\_TAUDIAG*}, \texttt{\_TRACE} & & host checks, isolation and diagnostic experiments; guarded \\
+\texttt{ALF\_GPU\_TL}, \texttt{\_TR}, \texttt{\_VB} & integers 1, 2, 8 & columns or rows per thread of the wrap kernels; guarded \\
+\texttt{LIBOMPTARGET\_LEVEL\_ZERO\_STAGING\_BUFFER\_SIZE} & \texttt{1048576} & Intel: 32~KB copies 380$\to$22~$\mu$s \\
+\texttt{ZE\_FLAT\_DEVICE\_HIERARCHY} & \texttt{FLAT} & Intel: each tile is a device \\
+\texttt{ZEX\_NUMBER\_OF\_CCS} & \texttt{0:4,...,7:4} & Intel: four hardware queues per tile \\
+\texttt{ALFSH\_ASYNCBLK} & \texttt{1} & Intel: asynchronous block path \\
+\texttt{ALFSH\_DEVQR} & 1, 2 & Intel: own device QR (level 1, level 2) \\
+\texttt{ALFSH\_DEVUNMQR} & \texttt{1} & Intel: own device \texttt{unmqr} \\
+\texttt{ALFSH\_QRNB}, \texttt{ALFDEVQR\_*} & integers & Intel: QR block sizes, kernel variants \\
+\texttt{ALFSH\_TIMING}, \texttt{ALFSH\_LAUNCHBENCH} & & Intel: per-routine timing, launch benchmark \\
+\texttt{ALF\_HIP\_QR} & \texttt{0} & AMD: hipSOLVER instead of the own QR \\
+\texttt{ALF\_HIP\_ASYNC} & \texttt{0} & AMD: synchronise after every HIP call \\
+\texttt{GCN\_NUM\_THREADS} & 4 & AMD: threads of the libgomp GCN runtime \\
+\texttt{CUDA\_VISIBLE\_DEVICES}, \texttt{CUDA\_MPS\_*} & & NVIDIA: rank binding and MPS share \\
+\bottomrule
+\end{longtable}
+\end{footnotesize}
+
+The guard covers only variables named \texttt{ALF\_GPU\_*} and \texttt{ALF\_LA\_TEST\_*}. The \texttt{ALFSH\_*}, \texttt{ALF\_HIP\_*} and \texttt{ALFDEVQR\_*} variables are read by C++ code and are not guarded; \file{GPU\_PLAN\_V2.md} (A9) proposes to print each of them into \texttt{info}.
+
+\dis{\file{RUNTIME\_SWITCHES.md} (line 82) says \texttt{ALF\_GPU\_SELFTEST} runs the mirror self-test for any value except 0, 2, 3, 4; the code excludes only 3 and 4, so \texttt{SELFTEST=2} runs the mirror self-test and then the wrap self-test. \texttt{ALF\_GPU\_CGR\_LU} is not in the document. \texttt{ALF\_GPU\_DEBUG} declares a debug run for any value other than \texttt{0}, not only \texttt{1}.}

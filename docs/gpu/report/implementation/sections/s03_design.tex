@@ -1,0 +1,129 @@
+\section{Design decisions and why}
+\label{sec:design}
+
+\subsection{Constraints}
+
+The brief of the port fixed four constraints (\file{ADR-001-programming-model.md}, ``Context''; \file{CLAUDE.md}):
+\begin{enumerate}
+\item One Fortran source tree for NVIDIA and Intel GPUs (AMD was added later). The backend is chosen when the code is configured.
+\item A build with \texttt{GPU=none} must behave exactly like upstream ALF and must not become slower.
+\item No polymorphism or deep copies of derived types on the device; data stay on the device across the sweep; every host--device transfer is documented.
+\item The default and the \texttt{STABLOG} stabilisation are the targets.
+\end{enumerate}
+The compilers set the second boundary. nvfortran (NVIDIA HPC SDK) supports OpenMP offload, OpenACC, CUDA Fortran and offload of \texttt{do concurrent}. ifx (Intel) supports OpenMP offload but not OpenACC. gfortran supports OpenMP offload to AMD GPUs (\file{ADR-001}).
+
+\subsection{Programming model: OpenMP target offload plus vendor libraries}
+
+The decision (ADR-001, accepted 2026-10-27 at the Phase~1 gate) has two parts. % ADR-001-programming-model.md
+\begin{enumerate}
+\item \textbf{Own kernels are OpenMP 5.x \texttt{target} regions}, written in the Fortran modules next to the data they touch. A conservative subset is used that both nvfortran and ifx compile correctly: \texttt{target enter/exit data}, \texttt{target update}, \texttt{target teams distribute parallel do} over explicit-shape arrays, \texttt{use\_device\_addr}, and \texttt{interop} only inside the library layer. Not used on the device: \texttt{declare mapper}, unified shared memory, the \texttt{loop} construct, polymorphism, allocation, type-bound procedures (\file{ADR-001}, ``Decision'', item 1).
+\item \textbf{The cubic work goes to vendor libraries} behind one module, \texttt{alf\_la} (ADR-002): cuBLAS and cuSOLVER on NVIDIA, oneMKL on Intel, hipBLAS and hipSOLVER on AMD, plain BLAS and LAPACK in the CPU build.
+\end{enumerate}
+
+\paragraph{Why not the alternatives.} The ADR lists them with the reason for rejection (\file{ADR-001}, ``Alternatives considered''):
+\begin{itemize}
+\item \emph{OpenACC}: NVIDIA only in practice (ifx has none), so a second set of directives would be needed for Intel. A measurement on the A30 found one real advantage, the asynchronous launch: 2.7~$\mu$s for an empty asynchronous OpenACC kernel against 11.0~$\mu$s for OpenMP \texttt{nowait}. % BENCHMARKS.md ticket 102
+For synchronous launches, library calls and a host decision there was no gain. Even with a device-side decision the single-site update would have stayed about two times slower than a 16-core node at $N=144$. The lever had to be algorithmic (delayed and submatrix updates), which works in either model (\file{ADR-001}, item 6).
+\item \emph{CUDA Fortran}: NVIDIA only and more invasive than OpenACC.
+\item \emph{\texttt{do concurrent} offload} (\texttt{-stdpar}): relies on unified memory, gives no control over residency and transfers, and the interplay with libraries was unclear.
+\item \emph{A rewrite of the hot path in SYCL, C++ or Kokkos}: a large rewrite of Fortran code built on class-based Hamiltonians, against the spirit of one source tree. C++ is limited to small shims (SYCL for oneMKL, HIP for AMD).
+\item \emph{MAGMA} for pivoted QR: NVIDIA and AMD only, and its \texttt{zgeqp3} is bound by matrix--vector work. Kept as an option, not used.
+\end{itemize}
+
+\paragraph{What the decision cost later.} OpenMP alone was not enough on two of the three vendors (\file{GPU\_PLAN\_V2.md}, section 2). ifx executes \texttt{nowait} target tasks undeferred (they cost 97 to 103\,\% of a synchronous launch, \file{p3/STATUS.md}), so asynchrony on Intel needed SYCL kernels on the interop queue (\file{libalfsb.so}, Section~\ref{sec:asyncblk}). % SYNC.md / p3 STATUS
+The GCC runtime for AMD costs about 150~$\mu$s per target region with a parallel loop, against about 15~$\mu$s for a HIP launch; AMD needed HIP kernels for all small operations and a patched GCC plugin (Section~\ref{sec:amd}). % alf_hip_kernels.hip.cpp header; amd_mi210/README.md
+The lesson recorded in \file{GPU\_PLAN\_V2.md}: OpenMP target offload is the portable base for bulk kernels, plus a small native kernel layer per vendor behind \texttt{alf\_la}.
+
+\subsection{One source tree, backend by preprocessor}
+
+\texttt{configure.sh} accepts \texttt{GPU=none|nvidia|intel|amd} (\file{configure.sh:5, 31-36}). For a GPU target it adds \texttt{-DALF\_GPU} and exactly one of \texttt{-DALF\_LA\_CUDA}, \texttt{-DALF\_LA\_ONEMKL}, \texttt{-DALF\_LA\_HIP}, plus the offload flags of the compiler (Appendix~\ref{app:build}). \file{Prog/Makefile:16-24} then adds the seven modules \file{gpu\_state}, \file{gpu\_wrap}, \file{gpu\_lowrank}, \file{gpu\_update}, \file{gpu\_stab}, \file{gpu\_tau}, \file{gpu\_obs}.
+
+The CPU code is changed only by \emph{guarded early branches}: at the start of a CPU routine, inside \texttt{\#ifdef ALF\_GPU}, a test whether the device path is active, a call of the device routine and a \texttt{return}. Example, \file{Wrapgr\_mod.F90:141-149}:
+\begin{lstlisting}
+#ifdef ALF_GPU
+    ! GPU port, ticket 205: device-resident G (INTERIM copies per call), host decision, same RNG order
+    if (gpu_upd_enabled()) then
+       if (gpu_upd_selftest_due()) call Wrapgr_gpu_selftest(GR,NTAU,PHASE,...)
+       if (gpu_trace_on()) call gpu_trace_begin(NTAU+1)
+       call gpu_wrapgrup(GR,NTAU,PHASE,Propose_S0,Nt_sequential_start, Nt_sequential_end, N_Global_tau)
+       if (gpu_trace_on()) call gpu_trace_end('U',NTAU+1,PHASE)
+       return
+    endif
+#endif
+\end{lstlisting}
+(The comment ``INTERIM copies per call'' is stale: since ticket 208-1 no copy of $G$ is made per call.) Hooks of this kind are in \file{main.F90}, \file{Wrapgr\_mod.F90}, \file{tau\_m\_mod.F90}, \file{Hamiltonian\_Hubbard\_smod.F90} (observables), and read-only accessors in \file{Hop\_mod.F90:301-392}, \file{Operator\_mod.F90:1180-1199} and \file{control\_mod.F90:457, 542}. With \texttt{GPU=none} none of this code is compiled; the consolidation check found the CPU build bitwise identical to upstream (\file{CONSOLIDATION.md}).
+
+\dis{\file{RUNTIME\_SWITCHES.md} (line 53) names \file{upgrade\_mod.F90} as a hook location; it contains no GPU code. The hooks are in the files listed above.}
+
+\subsection{Device-resident Green function and stacks}
+
+The central decision of the data model (ADR-002, ticket 208-1): the Green function, the $UDV$ stacks and all work arrays live on the device for the whole run. The host keeps a \emph{shadow} copy of $G$ that is brought up to date only when host code reads it (a host observable, the $\tau$ pass of the CPU, output). Two logical flags per flavour, \texttt{g\_dev\_ok} and \texttt{g\_host\_ok} (\file{gpu\_state\_mod.F90:161-164}), say which copy is current. \texttt{g\_in} uploads only stale flavours, \texttt{g\_out} only marks the host copy stale, and \texttt{gpu\_g\_host} downloads on demand (\file{gpu\_update\_mod.F90:240-248}).
+
+\dis{ADR-002 still states ``host objects stay the source of truth''. Since ticket 208-1 the device copy of $G$ is authoritative and the host copy is lazily stale.}
+
+\subsection{Plain arrays instead of ALF's derived types}
+
+ALF describes the model through derived types: \texttt{Op\_T} and \texttt{Op\_V} arrays of \texttt{type(Operator)} with allocatable components, a polymorphic hopping class in \file{Hop\_mod}, and \texttt{class(ham\_base)} for the Hamiltonian. Such objects cannot be used inside device kernels with the compilers in use: a deep copy of nested allocatables to the device is not portable, polymorphic calls do not exist in device code, and allocation inside kernels is forbidden by the subset.
+
+The port therefore builds, once at setup, a \emph{flat mirror}: integer index arrays and real or complex value arrays that contain everything the kernels need (\file{gpu\_state\_mod.F90}, \texttt{build\_hopping}, \texttt{build\_groups}, \texttt{build\_V}, \texttt{build\_vrows}; Section~\ref{sec:data}). Hamiltonian objects are read only through accessor routines. Anything that cannot be expressed in the mirror is refused at setup by \texttt{gpu\_supported}, and the run continues on the CPU (Section~\ref{sec:notported}).
+
+\subsection{What ``host-assisted'' means}
+
+Some steps stay on the host on purpose, even in a GPU build (\file{GPU\_PLAN\_V2.md}, architecture item A6):
+\begin{itemize}
+\item \textbf{The random numbers, the proposal and the Metropolis decision.} The host draws the same random numbers in the same order as the CPU code, so a GPU run follows the same Markov chain as a CPU run of the same compiler and seed. This is the basis of the verification (Section~\ref{sec:verif}). The cost is a transfer of a few numbers per proposal or per block.
+\item \textbf{The sort of the column norms} in the pre-pivoted QR: $N$ numbers go D$\to$H, a permutation of $N$ integers goes back.
+\item \textbf{\texttt{ZGEQP3} under \texttt{STABLOG}}: no device QR with column pivoting exists, so the matrix goes to the host and back (Section~\ref{sec:stab}).
+\item \textbf{Inside oneMKL}: the default \texttt{geqrf} of oneMKL factorises its panels on the host CPU (``hybrid''), and its \texttt{getrf} on Intel was measured at 13~ms at $N=1024$ (\file{SPEEDUPS.md}, section 4). % SPEEDUPS.md
+\item \textbf{Small dense algebra}: in the submatrix update the $k\times k$ matrix $M$ ($k\le\Nd$) and the block $G_0(B,B)$ live on the host (Section~\ref{sec:updates}).
+\item \textbf{Bookkeeping}: counters, binning, MPI reductions and output.
+\end{itemize}
+
+\subsection{The library layer \texttt{alf\_la}}
+
+\texttt{alf\_la} (\file{Libraries/Modules/alf\_la\_mod.F90}, 2115 lines) is the only place where vendor libraries are called. Its interface follows LAPACK conventions: explicit-shape arrays with leading dimensions, \texttt{complex(8)} throughout, 32-bit pivots, work space owned and grown by the module (\file{alf\_la\_mod.F90:38-46}). Arguments are host arrays that have been mapped to the device; inside, each routine obtains the device address with \texttt{!\$omp target data use\_device\_addr(...)} and passes \texttt{c\_loc} of it to a \texttt{bind(C)} interface of the library. The module is not thread safe.
+
+The file contains two modules: \texttt{alf\_la\_om\_mod} for oneMKL (lines 125-978) and the public \texttt{alf\_la\_mod} (lines 980-2115) with the host and CUDA code inline. For Intel and AMD it forwards to routines named \texttt{om\_*}; the AMD module \texttt{alf\_la\_hip\_mod} exports the same names, so both share one interface (\texttt{ALF\_LA\_OM} is defined for both, lines 104-114). A guard macro, \texttt{LA\_GUARD}, stops the run if a host code path is reached in a GPU build, so host BLAS can never touch device addresses (lines 117-123).
+
+Table~\ref{tab:la} lists every public routine and its implementation per backend.
+
+\begin{footnotesize}\setlength{\tabcolsep}{3pt}
+\begin{longtable}{@{}>{\raggedright}p{2.5cm}>{\raggedright}p{2.5cm}>{\raggedright}p{2.1cm}>{\raggedright}p{2.8cm}>{\raggedright}p{2.8cm}>{\raggedright\arraybackslash}p{2.6cm}@{}}
+\caption{The public routines of \texttt{alf\_la} (\file{alf\_la\_mod.F90:999-1004}) and their implementation. H: \texttt{GPU=none}; N: NVIDIA; I: Intel; A: AMD. ``dispatch'' means \texttt{!\$omp dispatch} on a oneMKL BLAS routine, which ifx replaces by the device variant.}\label{tab:la}\\
+\toprule
+Routine & Purpose & H & N & I & A \\
+\midrule\endfirsthead
+\toprule
+Routine & Purpose & H & N & I & A \\
+\midrule\endhead
+\texttt{la\_init} & handles, stream, info slots & no-op & cuBLAS/cuSOLVER handles on the OpenACC sync stream; deterministic mode & interop SYCL queue, \texttt{alfsh\_init}, device identity check & \texttt{hipSetDevice}, hipBLAS/hipSOLVER handles \\
+\texttt{la\_finalize} & free & -- & destroy handles & destroy interop & \texttt{alfhp\_finalize} \\
+\texttt{la\_sync} & wait, check info & no-op & stream synchronise + slot read & \texttt{wait\_and\_throw} + slot check & presync + \texttt{hipDeviceSynchronize} \\
+\texttt{la\_backend\_name} & string & host & cuda & onemkl & hip \\
+\texttt{la\_reserve\_work} & grow work & host & host + device & device & device \\
+\texttt{la\_gemm} & ZGEMM & \texttt{zgemm} & \texttt{cublasZgemm\_v2} & dispatch \texttt{zgemm} & \texttt{hipblasZgemm} \\
+\texttt{la\_gemm\_cr} & complex$\times$real as DGEMM on interleaved view & \texttt{dgemm} & \texttt{cublasDgemm\_v2} & dispatch \texttt{dgemm} & \texttt{hipblasDgemm} \\
+\texttt{la\_gemm\_batched} & strided batch & loop & cuBLAS strided batched & dispatch \texttt{zgemm\_batch\_strided} & hipBLAS strided batched \\
+\texttt{la\_geru} & rank-1 & \texttt{zgeru} & \texttt{cublasZgeru\_v2} & dispatch \texttt{zgeru} & \texttt{hipblasZgeru} \\
+\texttt{la\_trsm} & triangular solve & \texttt{ztrsm} & \texttt{cublasZtrsm\_v2} & dispatch \texttt{ztrsm} & \texttt{hipblasZtrsm} \\
+\texttt{la\_geqrf(\_lwork)} & QR, no pivoting & \texttt{zgeqrf} & \texttt{cusolverDnZgeqrf} & oneMKL \texttt{geqrf} via SYCL shim (hybrid); own device QR with \texttt{ALFSH\_DEVQR} & own HIP QR ($m\le2304$), else hipSOLVER \\
+\texttt{la\_ungqr(\_lwork)} & form $Q$ & \texttt{zungqr} & \texttt{cusolverDnZungqr} & oneMKL \texttt{ungqr} & hipSOLVER \\
+\texttt{la\_ormqr(\_lwork)} & apply $Q$ & \texttt{zunmqr} & \texttt{cusolverDnZunmqr} & oneMKL \texttt{unmqr}; own kernel with \texttt{ALFSH\_DEVUNMQR=1} & own HIP kernel ($n\le2304$, not \texttt{C}), else hipSOLVER \\
+\texttt{la\_getrf(\_lwork)} & LU & \texttt{zgetrf} & \texttt{cusolverDnZgetrf} & oneMKL \texttt{getrf}, 64-bit pivots converted on device & \texttt{hipsolverZgetrf} \\
+\texttt{la\_getrs} & LU solve & \texttt{zgetrs} & \texttt{cusolverDnZgetrs} & oneMKL \texttt{getrs} & \texttt{hipsolverZgetrs} \\
+\texttt{la\_qrpp} & column-norm pre-pivot + \texttt{la\_geqrf} & host norms, sort & device norms (\texttt{k\_colnorms}), host sort, device permute & same, OpenMP kernels & same, HIP kernels \\
+\texttt{la\_geqp3\_host} & QR with column pivoting (\texttt{STABLOG}) & \texttt{zgeqp3} & D$\to$H, host \texttt{zgeqp3}, H$\to$D & same & same \\
+\texttt{la\_debug\_poison\_last\_info} & test hook & stop & poison device slot & host slot & host slot \\
+\bottomrule
+\end{longtable}
+\end{footnotesize}
+
+\paragraph{Error handling without synchronisation.} cuSOLVER returns its \texttt{info} value in device memory. Reading it after every call would force a synchronisation. \texttt{alf\_la} therefore gives each solver call its own slot in a device array of 4096 integers and reads all slots back in \texttt{la\_sync}, or when the slots run out (\file{alf\_la\_mod.F90:997-998, 1398-1415}). A non-zero \texttt{info} then stops the run. \texttt{la\_getrf} tolerates \texttt{info}$>0$ (exactly singular matrix), as the CPU code does.
+
+\paragraph{Ordering of library calls and kernels.} A library call and an OpenMP kernel are executed in order only if they are submitted to the same \emph{stream} (Appendix~\ref{app:glossary}). nvfortran does not implement \texttt{!\$omp interop}, so the stream of the OpenMP runtime is obtained through the OpenACC runtime, \texttt{acc\_get\_cuda\_stream(acc\_async\_sync)}, which returned \texttt{cudaStreamPerThread} with nvfortran 26.9 (\file{alf\_la\_mod.F90:48-61}). A separately created stream, the legacy null stream and the stream of \texttt{nowait} regions all failed the ordering test \texttt{t\_order}. Consequently no \texttt{nowait} region is used around \texttt{alf\_la} calls on NVIDIA. On Intel the SYCL queue of the OpenMP runtime is obtained with \texttt{!\$omp interop init(prefer\_type("sycl"), targetsync: iop)}, and the shim waits after every LAPACK call. On AMD the HIP libraries run on the default stream and synchronise per call, unless the patched GCC plugin defers the synchronisation (Section~\ref{sec:amd}).
+
+\paragraph{Reproducibility.} Ticket 212 made every reduction in the port run in a fixed order, so that two GPU runs with the same input are bitwise identical. OpenMP device reductions combine partial sums in an unspecified order and had made near-tied pivots flip from run to run (\file{alf\_la\_mod.F90:1449-1450}). The column norms are therefore computed by one thread per column with a serial loop; cuSOLVER is put into deterministic mode (\texttt{cusolverDnSetDeterministicMode}) and cuBLAS atomics are switched off (lines 1212-1217).
+
+\dis{ADR-002 lists only the backends HOST, CUDA and ONEMKL, still names a routine \texttt{la\_gemm\_rc} that does not exist, says that \texttt{la\_sync} is the only blocking call (the oneMKL shim and every hipSOLVER call block), and does not mention the own QR kernels, \file{libalfsb.so} or \file{alf\_hipk\_mod}. The AMD backend also needed HIP kernels outside \texttt{alf\_la}, contrary to ``adding a backend means implementing \texttt{alf\_la} only''.}
+
+\input{sections/s03b_example}

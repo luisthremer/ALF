@@ -1,0 +1,95 @@
+\section{Propagation on the device}
+\label{sec:wrap}
+
+The propagation routines are in \file{Prog/gpu\_wrap\_mod.F90} (2660 lines). They reproduce the routines of \file{Hop\_mod.F90} and \file{Operator\_mod.F90} on device matrices, in the same order of factors, so that the device result agrees with the CPU to rounding.
+
+\subsection{Hopping: five routines, three code paths}
+
+ALF applies $e^{\pm\dt T}$ through five routines that differ in side (left or right multiplication), matrix (exponential or inverse) and the order of the elements. The device versions are listed in Table~\ref{tab:hop}.
+
+\begin{table}[h]
+\centering\small
+\caption{Device hopping routines (\file{gpu\_wrap\_mod.F90:117-173}). ``left'' acts on the rows of $M$, ``right'' on its columns. Matrix index $k$: 1 $e^{-\dt T}$, 2 inverse, 3 and 4 half steps for \texttt{Symm}.}
+\label{tab:hop}
+\begin{tabular}{@{}lllll@{}}
+\toprule
+Device routine & ALF routine & Side & $k$ & Element order \\
+\midrule
+\texttt{gpu\_mmthr} & \texttt{Hop\_mod\_mmthr} & left & 1 & descending \\
+\texttt{gpu\_mmthr\_m1} & \texttt{Hop\_mod\_mmthr\_m1} & left & 2 & ascending \\
+\texttt{gpu\_mmthl} & \texttt{Hop\_mod\_mmthl} & right & 1 & ascending \\
+\texttt{gpu\_mmthlc} & \texttt{Hop\_mod\_mmthlc} & left & 1 & ascending \\
+\texttt{gpu\_mmthl\_m1} & \texttt{Hop\_mod\_mmthl\_m1} & right & 2 & descending \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{(a) Dense precomputed product (\texttt{Hd}).} For $N\le\texttt{HOPD\_NMAX}=800$ (\file{gpu\_wrap\_mod.F90:104}) each of the four hopping sequences used in the sweep is applied once at setup to the identity. The result is a dense $N\times N$ matrix per flavour and sequence, \texttt{Hd}$(N,N,\NFL,4)$ (\texttt{hopd\_build}, lines 262-285). Applying a sequence is then one \texttt{la\_gemm} into scratch plus a copy kernel (lines 287-303). The comment at lines 252-254: ``applying one is a GEMM plus a copy instead of one launch per checkerboard group. Used for Ndim $\le$ HOPD\_NMAX; above that the group kernels are cheaper.'' This path is used regardless of the \texttt{Checkerboard} flag. For the production model the static hopping is dense anyway. \texttt{gpu\_mmthlc} has no \texttt{Hd} variant, so \texttt{WRAPUL} uses the group kernels.
+
+Mathematically $\texttt{Hd}=\prod_e B_e$ is the same matrix as the product of the elements; numerically it differs from applying the elements one by one in the rounding of the product, at the level of $10^{-16}$ relative per application.
+
+\paragraph{(b) Checkerboard groups.} When all elements have $n_d\le8$ sites, consecutive elements whose site lists are pairwise disjoint are combined into a \emph{group} (\file{gpu\_state\_mod.F90:66-73}). Elements of a group commute, so one kernel launch can apply all of them in parallel. For the square lattice with nearest-neighbour hopping there are four groups, so one $B_T$ costs four launches. The kernels are \texttt{k\_cb\_left\_g} and \texttt{k\_cb\_right\_g} (lines 638-669):
+\begin{itemize}
+\item \texttt{k\_cb\_left\_g}: \texttt{target teams distribute parallel do collapse(2)} over (column tile, element). Each thread handles \texttt{gpu\_tl} consecutive columns (default 1) and computes, for its element $e$ and column $j$, the $n_d$ new values $M_{P_e(i),j}\leftarrow\sum_l (B_e)_{il}M_{P_e(l),j}$.
+\item \texttt{k\_cb\_right\_g}: the same over (element, row tile), \texttt{gpu\_tr}=2 rows per thread by default, ``tuned on the A30''.
+\end{itemize}
+The inner sums are written out by hand for $n_d=1$ (a scale), $n_d=2$ (an explicit $2\times2$) and general $n_d\le8$ (the element is gathered into a local array \texttt{w(8)}), in the order $l=1\ldots n_d$ of ALF's \texttt{ZDSLSYMM} and \texttt{ZSLHEMM} (\texttt{el\_left\_d}, \texttt{el\_right\_d}, lines 479-633). Real elements are applied with real arithmetic on the real and imaginary parts of $M$ separately, as ALF does.
+
+A variant that applied all groups in one launch with a barrier between groups was removed in ticket 205: ``slower on the A30 and wrong on the Arc B580'' (lines 47-51).
+
+\paragraph{(c) Dense elements ($n_d>8$).} If the site list is not the identity, the rows (or columns) are gathered into scratch, multiplied, and scattered back (\texttt{dense\_left}, \texttt{dense\_right}, lines 674-741). Complex elements use \texttt{la\_gemm}. For a real element times a complex matrix ALF uses \texttt{ZLARCM}; the device uses \texttt{la\_gemm\_cr}, which views the complex matrix as a real matrix of twice the height and calls one DGEMM:
+\begin{equation}
+M B \;\text{with $B$ real}:\quad \begin{pmatrix}\Re M\\ \Im M\end{pmatrix}_{\text{interleaved}} B ,
+\end{equation}
+which costs half the flops of a ZGEMM. For a left multiplication $BM$ the interleaving does not work directly. Two modes exist (\texttt{gpu\_dense\_left\_mode}, line 95; automatic: mode 1 for $n_d\le400$, mode 2 above, line 687): mode 1 multiplies with a complex copy \texttt{hop\_Ac} (four times the flops), mode 2 transposes, uses $(BM)^T=M^TB^T$ with \texttt{hop\_At} and \texttt{la\_gemm\_cr}, and transposes back.
+
+\subsection{Time-dependent hopping (the point defect)}
+
+The point defect is a hopping element whose coupling depends on the slice, $g_t(\tau)$ (\file{TIMEDEP\_HOPPING.md}). The element is $A(g)=U e^{gE}U^\dagger$. Instead of uploading a new matrix per slice, setup appends ordinary complex elements to the mirror, one per active slice and kind (\file{gpu\_wrap\_mod.F90:117-120, 176-212}):
+\begin{itemize}
+\item propagation: $A(g_t)$ as $k=1$ and $A(-g_t)$ as $k=2$;
+\item \texttt{Symm}: $A(\bar g/2)$ and $A(-\bar g/2)$ as $k=3,4$, with $\bar g$ the average of $g_t(\tau)$ and $g_t(\tau-1)$.
+\end{itemize}
+Each sits in a group of its own. The host table \texttt{td\_grp}$(\tau,\text{kind},j,f)$ names the group to launch, 0 meaning inactive. Since $E$ has a single non-zero eigenvalue for the defect, the support reduction \texttt{td\_reduce} stores only the rows where eigenvectors with $E_k\ne0$ are non-zero (relative threshold $10^{-13}$): one site. Without it the set of matrices at $L=32$ would need more than 2~GB; \texttt{gpu\_supported} refuses sets above 2~GB (\file{gpu\_state\_mod.F90:601-602}).
+
+Because time-dependent elements are the last of their flavour (\texttt{gpu\_supported} requires this), they are applied first in the descending routines and last in the ascending ones, around the static \texttt{Hd} product.
+
+\subsection{Interaction vertices}
+
+Each vertex $\Op_V(n)$ of the Hubbard model acts on one site $p_n$. Its exponential for field value $s$ is the diagonal factor \texttt{E\_exp}$(1,s)$, stored in \texttt{V\_exp}. The field is read on the device as $s=\mathrm{nint}(\Re\,\texttt{nsigma\_d}(n,\tau))$.
+
+\begin{itemize}
+\item \texttt{gpu\_Vop\_R}, \texttt{gpu\_Vop\_L} (lines 856-917): \texttt{Op\_mmultR} and \texttt{Op\_mmultL} for one vertex: scale rows (or columns) $P(i)$.
+\item \texttt{gpu\_Vop\_wrap} (lines 921-963): \texttt{Op\_Wrapup}/\texttt{Op\_Wrapdo}: rows by $E(i,\pm s)$, then columns by $E(i,\mp s)$.
+\item \texttt{k\_vslice\_R}, \texttt{k\_vslice\_L} (lines 980-1124): all vertices of a slice in one launch. Threads run over (column block of \texttt{gpu\_vb}=8 columns, row $r$). For row $r$ all vertices containing $r$ are applied in ALF's order through \texttt{vr\_ptr}/\texttt{vr\_ent}. Up to four factors per row are precomputed per thread. ``the same product sequence as the loop of calls'' (lines 966-968).
+\item \texttt{k\_vwrap\_all} (lines 1137-1190): the whole-slice wrap in one launch; row and column factors are merged in operator order.
+\item \texttt{k\_site\_wrap} (\file{gpu\_update\_mod.F90:280-298}): the single-site wrap used inside the update loop:
+\begin{equation}
+G_{rj}\leftarrow z_a G_{rj},\; G_{jr}\leftarrow z_b G_{jr}\;(j\ne r),\qquad G_{rr}\leftarrow z_b(z_a G_{rr}),
+\end{equation}
+with $z_a=$ \texttt{V\_exp}$(\cdot,\,{\rm dir}\cdot s)$ and $z_b=$ \texttt{V\_exp}$(\cdot,-{\rm dir}\cdot s)$. The diagonal is scaled row first, then column, ``ALF's \texttt{ZSCAL} order''.
+\end{itemize}
+In the sweep the wrap of $G$ cannot use the fused slice kernels: wraps and updates alternate vertex by vertex. In the delayed and submatrix schemes the per-vertex wrap is not applied to the device $G$ at all but folded into the low-rank representation (Section~\ref{sec:updates}).
+
+\subsection{Composite operations}
+
+\begin{itemize}
+\item In the sweep (\file{gpu\_update\_mod.F90:470-629}): \texttt{gpu\_wrapgrup} applies \texttt{gpu\_mmthr} and \texttt{gpu\_mmthl\_m1} to $G$, i.e.\ $G\leftarrow e^{-\dt T}Ge^{\dt T}$, then loops over the vertices with wrap and update. \texttt{gpu\_wrapgrdo} does the updates first, then \texttt{gpu\_mmthl} and \texttt{gpu\_mmthr\_m1}.
+\item For the stabilisation (\file{gpu\_wrap\_mod.F90:1196-1217}): \texttt{gpu\_wrapur\_slices} applies, for $\tau=\tau_1+1\ldots\tau_2$, \texttt{gpu\_mmthr} then \texttt{gpu\_Vslice\_R}, i.e.\ $U\leftarrow B_\tau U$. \texttt{gpu\_wrapul\_slices} applies the conjugate factors in reverse order for the left side.
+\item \texttt{Symm} (\texttt{gpu\_symm}, lines 217-249): groups in descending order, half steps $k=3$ from the left and $k=4$ from the right. For the measurements \texttt{gpu\_symm\_build} (lines 360-390) forms the static matrices $A$ and $B$ once, so that $\mathrm{Symm}(G)=AGB$ is two GEMMs; \texttt{gpu\_symm\_td} adds the time-dependent half steps, $A(A_{td}GB_{td})B$.
+\end{itemize}
+The flavour loop is on the host: \texttt{do nfe=1,N\_FL\_eff; nf=Calc\_Fl\_map(nfe)}. There is no batching over flavours.
+
+\dis{The header of \file{gpu\_wrap\_mod.F90} (line 37) says ``Nothing in the sweep calls these yet''; the routines are called by the update, stabilisation, $\tau$ and observable modules. \file{HARD.md} plans ``one kernel per checkerboard family'' and ``both flavours per launch''; the code launches per group, loops over flavours on the host, and uses the dense \texttt{Hd} product for $N\le800$ even with checkerboard hopping.}
+
+\subsection{Operation counts}
+
+The following counts are derived from the code, not measured. Per slice and flavour:
+\begin{itemize}
+\item \texttt{Hd} path, $G\leftarrow BGB^{-1}$: 2 ZGEMMs of size $N$, $2\times8N^3$ real flops, plus two copies of $N^2$. At $N=576$ this is 3.1~GFlop per slice and flavour, or about 2.9~TFlop per sweep ($2\Lt=480$ slices, 2 flavours). At the FP64 peak of an A30 (about 10~TFlop/s with tensor cores according to the vendor data sheet, not measured here) that alone is at least 0.3~s of the 5.25~s sweep.
+\item Checkerboard path, square lattice: about $2N$ bonds, each $2\times2$ on $N$ columns, about $24N^2$ flops per $B_T$ in four launches.
+\item Vertex wraps: $N_{\rm op}=N$ single-site launches of $2N$ complex multiplications each, i.e.\ $O(N^2)$ work in $N$ launches. These launches are the reason for the block mode of Section~\ref{sec:updates}.
+\item \texttt{WRAPUR} per slice: 1 ZGEMM (or 4 group launches) plus 1 fused vertex launch.
+\end{itemize}
+The kernel benchmark of Phase~1 on the A30 gives the scale (\file{BENCHMARKS.md}): a dense $B_T$ product takes 53, 172 and 2757~$\mu$s at $N=144$, 400, 1024 on the device against 1095, 22\,941 and 388\,561~$\mu$s on one host core; the vertex wrap with one launch per site took 1621~$\mu$s at $N=144$ (host 199~$\mu$s), and fused into one launch 13~$\mu$s (host 36~$\mu$s). % BENCHMARKS.md Phase 1
+The last pair shows the problem of launch latency in one number: a fused kernel is 125 times faster than one launch per site.

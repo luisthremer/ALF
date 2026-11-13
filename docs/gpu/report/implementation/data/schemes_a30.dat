@@ -1,0 +1,6 @@
+# A30, s per sweep, beta = L: standard; delayed (best measured N_delay); submatrix (best N_delay)
+# source: docs/gpu/TUNING_DEFECT.md (table "Scheme and N_delay"); L=16 delayed 4: 3.53; L=24 delayed 8: 13.4; L=32 delayed 32: 39.3
+L std dly sub
+16 7.09 3.53 1.33
+24 23.5 13.4 5.25
+32 nan 39.3 18.2

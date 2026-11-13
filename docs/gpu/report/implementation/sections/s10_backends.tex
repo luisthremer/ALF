@@ -1,0 +1,103 @@
+\section{The three backends in detail}
+\label{sec:backends}
+
+The physics code is the same for all three vendors. What differs is the compiler, the library behind \texttt{alf\_la}, and, on Intel and AMD, a layer of native kernels. Table~\ref{tab:backends} gives the overview; the subsections give the problems met and how they were solved.
+
+\begin{table}[h]
+\centering\small
+\caption{Backends as built and run.}
+\label{tab:backends}
+\begin{tabularx}{\textwidth}{@{}lXXX@{}}
+\toprule
+ & NVIDIA & Intel & AMD \\
+\midrule
+Macro & \texttt{ALF\_LA\_CUDA} & \texttt{ALF\_LA\_ONEMKL} & \texttt{ALF\_LA\_HIP} \\
+Hardware run & A30 (nividia), H100 (Helma) & Max 1550 (SuperMUC-NG Phase 2); Arc B580 for tests & MI210 \\
+Compiler & nvfortran 26.9 (A30), nvhpc 25.7 (H100) & ifx 2025.1 (production), 2025.3 & gfortran 14 with amdgcn offload \\
+Offload flags & \texttt{-mp=gpu -gpu=cc80|cc90} & \texttt{-fiopenmp -fopenmp-targets=spir64} & \texttt{-foffload=amdgcn-amdhsa} \\
+BLAS/LAPACK & cuBLAS, cuSOLVER & oneMKL (OpenMP dispatch + SYCL shim) & hipBLAS, hipSOLVER, own HIP QR \\
+Native kernels & none & SYCL: \file{libalfsb.so}, \file{libalfdevqr.so} & HIP: \file{alf\_hip\_kernels}, \file{alf\_hip\_qr} \\
+Stream handling & \texttt{acc\_async\_sync} stream & interop in-order SYCL queue & default stream, deferred sync \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{NVIDIA}
+
+\paragraph{Toolchain.} On the development machine nividia (A30, 24~GB) nvfortran 26.9; on Helma (4$\times$H100 per node, 95.8~GB) nvhpc 25.7 with Open MPI 5.0.8 and \texttt{-gpu=cc90,cuda12.9} (\file{helma\_h100.md}, section 2). cuBLAS and cuSOLVER are linked with \texttt{-cudalib=cublas,cusolver}.
+
+\paragraph{Problems and solutions.}
+\begin{itemize}
+\item \textbf{Complex scalar arguments in target regions.} nvfortran dropped the imaginary part of a complex scalar \texttt{intent(in)} dummy inside a target region; $G$ was wrong by $10^{-3}$ to 1. All complex scalars passed to kernels are now two reals (\file{DISCREPANCIES.md}; \file{gpu\_update\_mod.F90:316-317}, \file{gpu\_obs\_mod.F90:25}).
+\item \textbf{Stream ordering.} A created CUDA stream did not order cuBLAS calls against OpenMP target regions. The fix is the stream \texttt{acc\_get\_cuda\_stream(acc\_async\_sync)}; the unit test \texttt{t\_order} detects a wrong choice (\file{alf\_la\_mod.F90:48-61}). nvfortran does not implement \texttt{!\$omp interop} (warning W-0287), hence the detour through the OpenACC runtime.
+\item \textbf{Alignment.} cuBLAS crashed when complex \texttt{alpha}/\texttt{beta} were only 8-byte aligned; they are now held in a 16-byte aligned module array (ticket 101).
+\item \textbf{Miscompilation of \texttt{blk\_end}.} At \texttt{-O2}/\texttt{-O3} nvfortran 26.9 produced a wrong $G$ after the first stabilisation; the routine is pinned to \texttt{-O1} (\texttt{!pgi\$r opt=1}).
+\item \textbf{Stale \texttt{target update from}.} At \texttt{-fast} a \texttt{target update from} of a module allocatable returned stale data, and a fourth $N\times N\times\NFL$ array in \file{gpu\_state\_mod} crashed the compiler (heap corruption in \texttt{fort1}) when compiling \file{gpu\_stab\_mod}. Workaround: helper routines \texttt{upd\_*} and moving \texttt{G00\_d} to \file{gpu\_tau\_mod} (\file{gpu\_tau\_mod.F90:103, 141-144, 515}).
+\item \textbf{\texttt{present} map modifier} is rejected by nvfortran 26.9; \texttt{map(alloc:)} is used.
+\item \textbf{nvhpc 24.11} on Helma needs CUDA 12.6 (CUDA 11.8 lacks \texttt{cusolverDnSetDeterministicMode}) and then aborts at $L=8$ with ``la\_qrpp: NaN or Inf in the matrix''; 25.7 works (\file{helma\_h100.md}, section 2; \file{configure.sh:502-510}).
+\item \textbf{Orthogonality of cuSOLVER's $Q$} needed the Newton--Schulz step (Section~\ref{sec:stab}).
+\item \textbf{Processes without MPS} are time-sliced and very slow (Section~\ref{sec:mpi}).
+\end{itemize}
+
+\subsection{Intel}
+\label{sec:intel}
+
+\paragraph{Toolchain.} ifx with OpenMP offload to SPIR-V (\texttt{-fopenmp-targets=spir64}), oneMKL with its OpenMP offload interface for BLAS, and a C++/SYCL shim for LAPACK. On SuperMUC-NG Phase 2 only oneAPI 2025.1 works in production: 2025.3 compiles, but the OpenMP-to-SYCL interop crashes with the Level Zero V2 adapter (\file{intel\_pvc\_supermuc\_ng2.md}; \file{GPU\_PLAN\_V2.md}, section 2).
+
+\dis{\file{CONSOLIDATION.md} records the verification of 2026-11-13 on the Max~1550 with ifx 2025.3, while the platform page says 2025.3 crashes at run time. \file{PLAN.md} and \file{DECISIONS.md} item 13 pin ifx 2026.2 for the test workstation. \file{NOT\_IMPLEMENTED.md} (line 95) lists the question as open.}
+
+\paragraph{How BLAS and LAPACK reach the device.} BLAS calls are written as ordinary Fortran calls preceded by \texttt{!\$omp dispatch}; with \texttt{use onemkl\_blas\_omp\_offload\_lp64} ifx replaces the call by oneMKL's device variant when the arguments are mapped. LAPACK through \texttt{dispatch} would run partly on the host, so the factorisations go through a SYCL shim (\file{alf\_la\_sycl\_shim.cpp}): the Fortran side creates an OpenMP interop object of type SYCL, extracts the \texttt{sycl::queue*}, and passes it with device addresses to C++ routines that call \texttt{oneapi::mkl::lapack::*} on that queue and wait. A probe checks that the OpenMP default device is the queue's device.
+
+\paragraph{Problems and solutions.}
+\begin{itemize}
+\item \textbf{Missing interop symbols.} ifx up to 2025.3 lacks \texttt{omp\_get\_interop\_int/ptr} and the \texttt{omp\_ipr\_*} constants in \texttt{omp\_lib}; they are declared with \texttt{bind(C)} and the OpenMP 5.1 values in \file{alf\_la\_mod.F90:142-145, 175-189}.
+\item \textbf{SYCL kernels in ifx-linked objects} are not found at run time; the SYCL code is built into shared libraries (\file{libalfsb.so}, \file{libalfdevqr.so}).
+\item \textbf{Unmapped arrays.} An unmapped array passed to the queue once hard-reset the Arc workstation; \texttt{need\_present} checks the first and last element with \texttt{omp\_target\_is\_present} before every queued call (\file{alf\_la\_mod.F90:290-306}).
+\item \textbf{Descriptor copies.} ifx copies the descriptors of module allocatables referenced in target regions at every launch; explicit-shape dummies cut the first-private arrays from 168\,800 to 28\,544 and launches from about 75\,000 to 49\,530 per sweep, worth 0.4 to 1.2~s at $L=24$ (\file{report/sections/s6\_performance.tex}, from \file{ISSUE\_INTEL\_VS\_A30.md}). % ISSUE_INTEL_VS_A30.md
+\item \textbf{Staging buffer.} The default Level Zero staging buffer made the 32~KB block copy cost 380~$\mu$s; a 1~MB buffer brings it to 22~$\mu$s (Section~\ref{sec:updates}).
+\item \textbf{No asynchrony through OpenMP.} ifx runs \texttt{nowait} target tasks undeferred; asynchrony through SYCL on the interop queue (Section~\ref{sec:asyncblk}).
+\item \textbf{Hybrid oneMKL QR and slow \texttt{getrf}.} Own device QR (Section~\ref{sec:ownqr}) and the LU-free phase (Section~\ref{sec:stab}). \texttt{getrf} uses 64-bit pivots; a target loop converts them to the 32-bit pivots of the interface.
+\item \textbf{Ahead-of-time compilation.} A wrapper rewrites the target flag to \texttt{spir64\_gen -device pvc}; start-up falls from about 65~s (just-in-time compilation of the kernels) to 14~s (\file{intel\_pvc\_supermuc\_ng2.md}). % intel_pvc_supermuc_ng2.md
+\item \textbf{Faulty hardware.} All seven ``Unstable matrix'' aborts of a production series came from tile 1 of one node; the node is excluded and the precision threshold lowered (\file{DECISIONS.md}, item 46).
+\end{itemize}
+
+\paragraph{The optimisation steps, measured.} Each step is a run-time switch of one binary, measured by alternating runs in one job (\file{ISSUE\_INTEL\_VS\_A30.md}, section 2). Table~\ref{tab:intelsteps}.
+
+\begin{table}[h]
+\centering\small
+\caption{Max~1550, one chain per tile, seconds per sweep; per card with 4 ranks per tile and CCS 4. Mid-points of the measured ranges (\file{ISSUE\_INTEL\_VS\_A30.md}, section 2; \file{SPEEDUPS.md}).}
+\label{tab:intelsteps}
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+Step & Switch & $L=24$ & $L=32$ & sweeps/s per card \\
+\midrule
+V0 & none & 10.6 & 31.0 & 0.549 \\ % ISSUE sec 2
+V1 & staging buffer 1~MB & 7.07 & 23.2 & 0.568 \\
+V2 & + \texttt{ALFSH\_ASYNCBLK=1} & 6.56 & 22.2 & 0.67 \\
+V4 & + \texttt{ALFSH\_DEVQR=1} & 6.15 & 19.4 & 0.76 \\
+V7 & + \texttt{DEVQR=2}, \texttt{DEVUNMQR=1} & 4.96 & 16.4 & 0.86 \\
+& + parallel \texttt{acc0} & 4.42--4.48 & & \\ % SPEEDUPS.md sec 1
+& + LU-free phase & 4.04 & & \\ % SPEEDUPS.md sec 2
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{AMD}
+\label{sec:amd}
+
+\paragraph{Toolchain.} gfortran 14 with offload to \texttt{amdgcn-amdhsa} (\texttt{-march=gfx90a}); hipBLAS and hipSOLVER through a small C++ shim compiled with g++; own kernels compiled with \texttt{hipcc}. \texttt{-ffast-math} is removed for \texttt{GPU=amd}: the $L=6$ test became unstable with it (\file{configure.sh:624-630}).
+
+\paragraph{The launch cost of the GCC runtime.} The OpenMP runtime of GCC (libgomp) launches kernels on AMD GPUs through its GCN plugin. An empty target region cost 253~$\mu$s, a target region with a parallel loop about 150~$\mu$s, against about 15~$\mu$s for a HIP launch plus synchronisation (\file{amd\_mi210/README.md}; \file{alf\_hip\_kernels.hip.cpp:2}). % amd README
+With tens of thousands of launches per sweep this alone made the port useless. Three measures:
+\begin{enumerate}
+\item \textbf{A patched plugin} (\file{plugin-gcn-pool-prof.patch} for GCC 14.2.0): it pools the kernel argument block and the completion signal and small device allocations. An empty target region falls from 253 to 37~$\mu$s; about 3 times faster on the real run. \env{GCN\_NUM\_THREADS=4} instead of 16 was best.
+\item \textbf{HIP kernels} for all small operations (\file{alf\_hip\_kernels.hip.cpp}, 621 lines, called through \file{alf\_hipk\_mod.F90}): block gather, scale, fused block end, flush gather, the observable kernels, the stabilisation helpers (row division, Newton--Schulz, phase, precision check, permutations), the vertex slice multiplication, the column norms and permutations of \texttt{la\_qrpp}. Under \texttt{\#if defined(ALF\_LA\_HIP)} they replace OpenMP kernels in \file{Prog/gpu\_*.F90}.
+\item \textbf{Deferred synchronisation} (\file{plugin-gcn-presync-hook.patch}, \env{ALF\_HIP\_ASYNC}): normally every HIP call ends with \texttt{hipDeviceSynchronize}. With the patch the plugin calls a function registered by ALF before it launches an OpenMP kernel or copies data; only then are pending HIP operations synchronised. Output is bit-identical.
+\end{enumerate}
+Together with the own QR (Section~\ref{sec:ownqr}): $L=16$, two sweeps, 66~s with stock GCC, 21~s with the plugin, threads and observable kernels, 6~s with the HIP kernels; $L=24$ 95$\to$19~s (\file{amd\_mi210/README.md}). Steady state: 4.41~s per sweep at $L=24$ and 17.5~s at $L=32$. % amd README
+
+\dis{The comments in \file{alf\_la\_hip\_mod.F90} (lines 5-6) and \file{alf\_la\_hip\_shim.cpp} (lines 2-4) say every call ends with \texttt{hipDeviceSynchronize}; with the patched plugin this is no longer true for BLAS and own kernels. The \texttt{ALF\_LA\_TEST\_*} hooks are declared but not armed in the HIP backend.}
+
+\subsection{What would a fourth backend need}
+
+From the three experiences: an implementation of the \texttt{om\_*} (or CUDA-style) routines of \texttt{alf\_la}; a check that library calls and OpenMP kernels are ordered (the test \texttt{t\_order}); a measurement of the launch cost of OpenMP target regions, and if it exceeds about 20~$\mu$s, native kernels for the small operations; a measurement of the vendor QR, and an own QR if it is slow or hybrid. An Apple GPU was evaluated and rejected: Metal has no double precision; emulated double-double ZGEMM reached 290~GFlop/s against 460 to 520~GFlop/s of the CPU's matrix unit, and inside ALF at $L=24$ it saved 0.6~s of 115~s while worsening the precision of $G$ from $1.6\times10^{-12}$ to $6.7\times10^{-11}$ (\file{APPLE\_GPU\_FEASIBILITY.md}). % APPLE_GPU_FEASIBILITY.md

@@ -1,0 +1,23 @@
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+\begin{groupplot}[group style={group size=2 by 1, horizontal sep=1.6cm}, height=6.2cm]
+\nextgroupplot[width=0.58\textwidth, xbar stacked, bar width=13pt,
+  symbolic y coords={V0,V2,V4,V7}, ytick=data, y dir=reverse,
+  xlabel={seconds per sweep, $L=24$, one tile}, xmin=0, xmax=11,
+  legend style={at={(0.5,1.04)}, anchor=south, legend columns=4, font=\tiny}, enlarge y limits=0.2]
+\addplot[fill=cA30!70, draw=white] table[y=variant, x=U] {data/intel_phases.dat};
+\addplot[fill=cH100!75, draw=white] table[y=variant, x=S] {data/intel_phases.dat};
+\addplot[fill=cMAX!70, draw=white] table[y=variant, x=C] {data/intel_phases.dat};
+\addplot[fill=gray!60, draw=white] table[y=variant, x=O] {data/intel_phases.dat};
+\legend{updates, stabilisation, CGR, observables}
+\nextgroupplot[width=0.36\textwidth, mybars,
+  symbolic x coords={flushGEMMs,stabilisation,measurement,blockkernels,wraps},
+  xtick=data, xticklabels={flush GEMM,stab.,meas.,block,wraps}, x tick label style={rotate=40, anchor=east, font=\scriptsize},
+  ylabel={\% of kernel time}, ymin=0, ymax=55, nodes near coords, every node near coord/.append style={font=\tiny}, enlarge x limits=0.15]
+\addplot[fill=cA30!70, draw=white] table[x=cat, y=share] {data/a30_kernel_shares.dat};
+\end{groupplot}
+\end{tikzpicture}
+\caption{Left: Max~1550, $L=24$, one chain per tile, wall time per sweep by phase for the variants of Table~\ref{tab:intelsteps} (\file{ISSUE\_INTEL\_VS\_A30.md}, section 3; \file{p7/NOTES.md}, section 3). The update phase falls with the staging buffer (V0$\to$V1, not shown separately) and the asynchronous path; stabilisation and \texttt{CGR} fall with the own QR (V4, V7). Right: A30, 9 ranks under MPS, $L=24$, share of the kernel time of one rank (\file{PP\_GPU.md}).}
+\label{fig:phases}
+\end{figure}

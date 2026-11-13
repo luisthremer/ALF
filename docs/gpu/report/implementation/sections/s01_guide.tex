@@ -1,0 +1,65 @@
+\section{Reader's guide and summary}
+\label{sec:guide}
+
+\subsection{What this document is}
+
+This document describes how the finite-temperature sweep of ALF was moved onto graphics processors (GPUs). It is written for a reader who knows the auxiliary-field QMC algorithm and the CPU code of ALF well, but who has not programmed a GPU. It complements the shorter report \file{docs/gpu/report/gpu\_port\_report.tex}, which summarises status, speed and open items. That report is not repeated here. This document explains the implementation: which data live where, which mathematics each device routine evaluates, why the code is organised the way it is, and what each design choice cost or gained.
+
+The ground truth is the source code of the branch \texttt{gpu-port-unified} as of 2026-11-13. File and line references are given as \file{file:line}. The Markdown notes in \file{docs/gpu/} are used for history, measurements and decisions. Every number taken from a note carries a \LaTeX{} comment with the source file next to it. Where the code and a note disagree, the text follows the code and a framed box records the disagreement. Items that could not be determined are marked \todo{like this}.
+
+\subsection{How to read it}
+
+\begin{itemize}
+\item Section~\ref{sec:cpu} restates the CPU sweep in the notation of the ALF documentation and gives the measured CPU cost of each part. It says which operations had to move and why.
+\item Section~\ref{sec:design} gives the design decisions: the programming model, the library layer \texttt{alf\_la} with a table of every routine and its implementation per vendor, and the principle of a device-resident Green function.
+\item Section~\ref{sec:data} lists every device array, its size as a function of $N$, $\Lt$, $\NFL$ and \texttt{Nwrap}, and every transfer between host and device in one sweep.
+\item Sections~\ref{sec:wrap} to~\ref{sec:obs} are the core: propagation, stabilisation, local updates and measurements on the device, each with the formulas as coded.
+\item Section~\ref{sec:mpi} covers MPI, parameter-parallel runs and sharing a GPU between ranks.
+\item Section~\ref{sec:backends} describes the three vendor backends, the problems met and their solutions.
+\item Sections~\ref{sec:verif} and~\ref{sec:perf} give verification and performance.
+\item Sections~\ref{sec:notported} and~\ref{sec:lessons} say what is not ported, what it would take, and what we learned for a port of the whole of ALF.
+\item The appendix has a glossary of GPU terms (Appendix~\ref{app:glossary}); readers new to GPUs may want to read it first. It also has a file-by-file guide to the GPU source and the build lines.
+\end{itemize}
+
+\subsection{Summary of the implementation}
+
+\paragraph{What runs where.} In a GPU build the following parts of the sweep run on the accelerator (the \emph{device}); the CPU is called the \emph{host}.
+\begin{itemize}
+\item The Green function $G$ of every flavour lives on the device for the whole sweep. The host copy is updated only when host code needs it (ticket 208-1, \file{gpu\_update\_mod.F90:52-53}).
+\item Propagation $G\to B G B^{-1}$ by the hopping and the interaction vertices: own kernels for checkerboard groups and vertices, vendor matrix products for dense hopping.
+\item Stabilisation: the $UDV$ stacks, the QR decompositions, the assembly of $G$ from the left and right decompositions (\texttt{CGR}), the precision check and the phase of the determinant.
+\item Local updates: the gathers of matrix elements and the flushes of the delayed and submatrix schemes. The proposal, the ratio arithmetic on small matrices, the Metropolis decision and the random numbers stay on the host, so that the GPU run follows the same Markov chain as the CPU run with the same seed.
+\item Equal-time observables of the Hubbard model (including the point-defect observables) and the time-displaced pass with its observables.
+\end{itemize}
+
+\paragraph{How.} Own kernels are written as OpenMP \texttt{target} regions in the existing Fortran files. All dense linear algebra goes through one new module, \texttt{alf\_la}, whose routines call cuBLAS/cuSOLVER (NVIDIA), oneMKL (Intel) or hipBLAS/hipSOLVER and own HIP kernels (AMD), or plain BLAS/LAPACK in a CPU build. The backend is selected by \texttt{configure.sh GPU=none|nvidia|intel|amd}. A build with \texttt{GPU=none} is bitwise identical to upstream ALF (with \texttt{LOBS\_ST=1}; \file{CONSOLIDATION.md}). The GPU code is in seven new modules \file{Prog/gpu\_*.F90} (about 12\,500 lines) plus the library layer (about 5\,900 lines of Fortran, C++, SYCL and HIP). The CPU code is touched only by guarded early branches.
+
+\paragraph{The four ideas that made it fast.}
+\begin{enumerate}
+\item \textbf{Keep $G$ and the stacks on the device.} Moving an $N\times N$ complex matrix across PCIe costs more than most operations on it. Only scalars, short vectors and small blocks cross the bus during a sweep (Section~\ref{sec:data}).
+\item \textbf{Replace the rank-one update by the submatrix update in block mode.} One sequential rank-one update per site is bound by the latency of the device (about 10 to 30~$\mu$s per operation), not by its arithmetic. The block mode moves all per-site work to a small host matrix and leaves the device two matrix products per block (Section~\ref{sec:updates}). On the A30 this is 2.4 to 5 times faster than the standard update.
+\item \textbf{Replace pivoted QR by pre-pivoted QR.} No GPU library has a fast QR with column pivoting. Sorting the columns by their norms once and then doing an unpivoted QR gives the same precision for the default stabilisation (Section~\ref{sec:stab}).
+\item \textbf{Write own kernels where the vendor library is weak.} oneMKL's QR runs its panels on the host, rocSOLVER's QR launches thousands of tiny kernels, and the OpenMP runtime of GCC for AMD costs 150~$\mu$s per launch. Own QR kernels in SYCL and HIP, HIP kernels for the small operations, an asynchronous SYCL path for the update blocks, and a patched GCC plugin removed these bottlenecks (Section~\ref{sec:backends}).
+\end{enumerate}
+
+\paragraph{Results.} For the production model (Hubbard model with a space-time point defect, $\beta=L$, $\dt=0.1$, $N=L^2$) one sweep at $L=24$ takes 3.5 to 5.3~s on one GPU (H100 3.51, Max~1550 tile 4.04 to 4.96, MI210 4.41, A30 5.25). % helma_h100.md 4.1; SPEEDUPS.md; amd_mi210/README.md; TUNING_DEFECT.md
+On one CPU thread the same build takes 148.6~s (A30 host, \file{TUNING\_DEFECT.md}). % TUNING_DEFECT.md
+One chain does not fill a GPU; with several chains per GPU (MPS on NVIDIA, CCS on Intel) the throughput per GPU rises by a factor 2 to 4 (Section~\ref{sec:mpi}). The GPU runs reproduce the CPU runs of the same compiler and seed to $10^{-13}$ to $10^{-15}$ in the observables for \texttt{Mz=.F.} (Section~\ref{sec:verif}).
+
+\paragraph{Limits.} The port covers one model family: Hubbard-type models with diagonal single-site vertices and discrete fields, finite temperature, sequential local updates. Everything else is refused at setup and runs on the CPU (Section~\ref{sec:notported}).
+
+\input{sections/s01b_history}
+
+\subsection{Notation}
+
+\begin{tabular}{@{}lp{11.5cm}@{}}
+$N$ & number of orbitals, \texttt{Ndim}; $N=L^2$ for the square lattice of side $L$\\
+$\Lt$ & number of time slices, $\beta/\dt$\\
+$\NFL$ & number of flavours; $N_{\rm FL,eff}$ the number actually computed (\texttt{Calc\_Fl})\\
+$\Nd$ & \texttt{N\_delay}, the maximal rank of a pending low-rank correction\\
+$N_{\rm ST}$ & number of stabilisation points, \texttt{NSTM}, about $\Lt/\texttt{Nwrap}$\\
+$B_\tau$ & propagator of slice $\tau$, $B_\tau = e^{-\dt K}\,\prod_n e^{V_n(\sigma_{n,\tau})}$ (order as in ALF)\\
+$B(\tau_2,\tau_1)$ & $B_{\tau_2}\cdots B_{\tau_1+1}$\\
+$G(\tau)$ & equal-time Green function $\langle c_i c_j^\dagger\rangle$ at slice $\tau$, $[1+B(\tau,0)B(\beta,\tau)]^{-1}$\\
+D$\to$H, H$\to$D & copy from device to host, from host to device\\
+\end{tabular}

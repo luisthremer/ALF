@@ -1,0 +1,7 @@
+# A30, L=24, N_delay 32: aggregate sweeps per second per GPU = ranks / (CPU time of rank 0 / sweeps); MPS use in the B runs not recorded
+# source: docs/gpu/platforms/helma_h100.md (section 4.1, table "Old A30 numbers")
+ranks agg tchain
+1 0.18 5.5
+2 0.29 7.0
+4 0.38 10.6
+8 0.44 18.2

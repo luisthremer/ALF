@@ -1,0 +1,135 @@
+\section{Data model}
+\label{sec:data}
+
+\input{sections/s04a_flow}
+\subsection{How residency is expressed}
+
+All device data are Fortran module allocatables with a host twin of the same name. Residency is expressed with OpenMP data directives only (\file{gpu\_state\_mod.F90:1165-1206}):
+\begin{itemize}
+\item \texttt{!\$omp target enter data map(to: ...)} once at setup for the constant mirror (the model), which copies the host values to newly allocated device memory;
+\item \texttt{!\$omp target enter data map(alloc: ...)} for work arrays, which allocates device memory without a copy;
+\item \texttt{!\$omp target update to(...)} and \texttt{from(...)}, often on array sections, for the transfers during the run;
+\item \texttt{!\$omp target exit data map(delete: ...)} at the end.
+\end{itemize}
+Kernels are \texttt{!\$omp target teams distribute parallel do} loops over these arrays; the OpenMP runtime finds the device copy because the array is present. \texttt{alf\_la} obtains device addresses with \texttt{use\_device\_addr}. There is no \texttt{is\_device\_ptr}, \texttt{omp\_target\_alloc} or unified memory anywhere in \file{Prog/gpu\_*.F90}. Arrays are passed to kernels as explicit-shape dummy arguments: ifx copies the descriptors of module allocatables that are referenced inside a target region at every launch (16.0 against 10.7~$\mu$s per launch, \file{gpu\_lowrank\_mod.F90:1364-1366}). % gpu_lowrank_mod.F90 comment
+
+\subsection{The constant mirror of the model}
+
+Built on the host in \texttt{gpu\_state\_setup} (\file{gpu\_state\_mod.F90:620-703}) and uploaded once. Table~\ref{tab:mirror} lists it.
+
+\begin{small}
+\begin{longtable}{@{}p{2.9cm}p{3.6cm}p{8.4cm}@{}}
+\caption{The constant device mirror (\file{gpu\_state\_mod.F90:40-97, 146-172}). $n_{\rm el}$: number of active hopping elements; $n_d$: number of sites of an element; $N_{\rm op}$: number of vertices per slice.}\label{tab:mirror}\\
+\toprule
+Array & Shape, type & Content \\
+\midrule\endfirsthead
+\toprule Array & Shape, type & Content \\ \midrule\endhead
+\texttt{hop\_start} & $\NFL+1$, int & first element of each flavour \\
+\texttt{hop\_meta} & $(4,n_{\rm el})$, int & kind (1 real, 2 complex), $n_d$, offset into site list, offset into matrices \\
+\texttt{hop\_P} & $\sum n_d$, int & site list $P$ of each element \\
+\texttt{hop\_Rval} & $\sum 4n_d^2$, real(8) & for real elements: $e^{-\dt T_e}$, its inverse, and the half steps for \texttt{Symm} (\texttt{mat}, \texttt{invmat}, \texttt{mat\_1D2}, \texttt{invmat\_1D2}) \\
+\texttt{hop\_Cval} & $\sum 4n_d^2$ + td part, complex & the same for complex elements, followed by one matrix per (time-dependent element, slice, kind) \\
+\texttt{hop\_gptr} & $n_{\rm groups}+1+n_{\rm td}$, int & checkerboard groups: start of each group in the element list \\
+\texttt{hop\_aux} & $(2,n_{\rm el})$, int & offset into the dense copies, flag ``$P$ is the identity'' \\
+\texttt{hop\_At}, \texttt{hop\_Ac} & $4n_d^2$ per dense element & transposed real and complex copies of dense ($n_d>8$) elements, for the left-multiply variants \\
+\texttt{V\_meta} & $(4,N_{\rm op},\NFL)$, int & $N$ of the vertex, offset into sites, offset into exponentials, skip flag ($|g|<\epsilon$) \\
+\texttt{V\_type} & $N_{\rm op}$, int & field type (1 Ising, 2 four-valued) \\
+\texttt{V\_P} & $\sum N$, int & sites of each vertex \\
+\texttt{V\_exp} & $\sum N(2t+1)$, complex & the table \texttt{E\_exp}$(i,s)$, $s=-t\ldots t$, of the exponentials $e^{g\eta(s)V}$ \\
+\texttt{vr\_ptr}, \texttt{vr\_ent} & $(N+1,\NFL)$, $(2,\cdot)$ & for each site $r$, the list of (vertex, position) pairs in ALF's operator order; used by the fused slice kernels \\
+\texttt{nsigma\_d} & $(N_{\rm op},\Lt)$, complex & the auxiliary field; kept current during the sweep \\
+\texttt{nsigma\_t} & $N_{\rm op}$, int & field type per vertex \\
+\bottomrule
+\end{longtable}
+\end{small}
+
+Three details matter for exact agreement with the CPU:
+\begin{itemize}
+\item For real elements the lower triangle is filled from the upper one, as ALF's symmetric multiply routines read only the upper triangle; real elements with $n_d>8$ keep the full stored matrix, because ALF's \texttt{ZLARCM} uses all of it (\file{gpu\_state\_mod.F90:765-778}).
+\item For complex elements with $n_d>8$ the imaginary part of the diagonal is set to zero, as \texttt{ZHEMM} ignores it (lines 779-786).
+\item Inactive elements ($|g|^2\le$ \texttt{Zero}) are not stored, as the host skips them.
+\end{itemize}
+Host-only tables: \texttt{hop\_gstart}, \texttt{hop\_big} and, for time-dependent hopping, \texttt{td\_grp}$(\Lt,2,n_{\rm td,max},\NFL)$ and \texttt{td\_n}. These select which group a kernel launch processes and need not be on the device.
+
+\dis{ADR-002 (section 2) describes arrays \texttt{cb\_idx}, \texttt{cb\_exp} (bond pairs and $2\times2$ exponentials), \texttt{T\_exp}$(N,N,F,4)$, \texttt{V\_site} and \texttt{rnd\_d}. None exists. The code uses a general element list with blocks of any size $n_d$, checkerboard groups and dense copies, and time-dependent hopping, which the ADR does not cover.}
+
+\subsection{Work arrays}
+
+\begin{small}
+\begin{longtable}{@{}p{3.3cm}p{4.0cm}p{7.6cm}@{}}
+\caption{Device work arrays. $N_{\rm ST}$: stabilisation slots (\texttt{NSTM}); $F$: $\NFL$; $F_e$: $N_{\rm FL,eff}$. All mapped with \texttt{map(alloc:)}.}\label{tab:work}\\
+\toprule
+Array (module) & Shape & Mirrors / role \\
+\midrule\endfirsthead
+\toprule Array (module) & Shape & Mirrors / role \\ \midrule\endhead
+\texttt{G\_d} (state) & $(N,N,F)$ & \texttt{GR}; authoritative copy of $G$ \\
+\texttt{udv\_U}, \texttt{udv\_V} (state) & $(N,N,N_{\rm ST},F_e)$ & the stack \texttt{udvst}: $U$ and $V$ of each stabilisation point \\
+\texttt{udv\_D} / \texttt{udv\_L} & $(N,N_{\rm ST},F_e)$ & scales: complex $D$ (default) or real $\log D$ (\texttt{STABLOG}); the other is a $1\times1\times1$ dummy \\
+\texttt{udw\_U}, \texttt{udw\_V} & $(N,N,2,F_e)$ & slot 1 = \texttt{udvl}, slot 2 = \texttt{udvr} \\
+\texttt{udw\_D} / \texttt{udw\_L} & $(N,2,F_e)$ & their scales \\
+\texttt{GT0\_d}, \texttt{G0T\_d}, \texttt{GTT\_d} & $(N,N,F)$ & only with \texttt{Ltau=1}: $G(\tau,0)$, $G(0,\tau)$, $G(\tau,\tau)$ \\
+\texttt{scr\_c}, \texttt{scr\_vec}, \texttt{scr\_r}, \texttt{scr\_ipiv}, \texttt{scr\_work} & $(N,N,2)$, $(N,4)$, $(N,2)$, $N$, $64N+64$ & scratch; \texttt{scr\_vec(:,1:2)} holds the rank-one vectors \\
+\texttt{Hd} (wrap) & $(N,N,F,4)$ & precomputed dense hopping products, only for $N\le800$ (Section~\ref{sec:wrap}) \\
+\texttt{sA}, \texttt{sB}, \texttt{sC}, \texttt{st\_Gn}, \texttt{st\_Gt} (stab) & $(N,N)$ each & stabilisation scratch, new and wrapped $G$ \\
+\texttt{st\_tau}, \texttt{st\_Dl}, \texttt{st\_nrm}, \texttt{st\_ipvt}, \ldots & $N$ & Householder scalars, scales, norms, pivots \\
+\texttt{st\_dw}, \texttt{st\_dv} & $(2,F_e)$, $(N_{\rm ST},F_e)$ & tracked phases $\det U/|\det U|$ of the work slots and the stack \\
+\texttt{t\_H1}, \texttt{t\_H2}, \texttt{t\_Q}, \texttt{t\_A}, \texttt{t\_B} (tau) & $(2N,2N)$ & \texttt{CGR2\_2} work; $Q$, $A$, $B$ only with the Newton--Schulz step \\
+\texttt{G00\_d}, \texttt{t\_GR}, \texttt{t\_old}, \texttt{t\_S} (tau) & $(N,N,F)$, $(N,N,F)$, $(N,N,3)$, $(N,N,4)$ & $G(0,0)$, reference copy, previous values for the precision check \\
+\texttt{X\_d}, \texttt{Y\_d} (lowrank) & $(N,\Nd,F)$ & low-rank factors; \texttt{Y\_d} only for the delayed scheme \\
+\texttt{gbd}, \texttt{cbuf}, \texttt{bsd}, \texttt{bS\_d} (lowrank) & $(\Nd,\Nd,2)$, $(2\Nd+\Nd^2)\cdot 2$, \ldots & block-mode buffers (Section~\ref{sec:updates}) \\
+\texttt{acc}, \texttt{acc0}, \texttt{tacc}, \texttt{tacc0}, \texttt{lacc1}, \texttt{lacc2} (obs) & per observable & accumulators of the device observables \\
+\bottomrule
+\end{longtable}
+\end{small}
+
+\subsection{Memory footprint}
+
+Summing the shapes (complex numbers are 16 bytes) gives, per run,
+\begin{equation}
+M \approx 16N^2\Bigl[\underbrace{4N_{\rm ST}}_{\text{stack }U,V\;(F_e=2)} + \underbrace{2}_{G} + \underbrace{8}_{\rm udw} + \underbrace{2}_{\rm scr} + \underbrace{5}_{\rm stab} + \underbrace{16}_{\text{dense hop}} + \underbrace{8}_{\texttt{Hd}} \Bigr] + O(N N_{\rm ST}) .
+\end{equation}
+The dense hopping term is $\texttt{hop\_Rval}+\texttt{hop\_At}+\texttt{hop\_Ac}$, about $128N^2$ bytes per flavour. The bracket without the stack is 41, which agrees with the empirical rule of \file{TUNING\_DEFECT.md}, % TUNING_DEFECT.md "Memory"
+\begin{equation}
+M_{\rm peak} \approx (4N_{\rm ST}+40)\cdot16N^2\ \text{bytes} + 0.3~\text{GB (CUDA context)},
+\end{equation}
+which was checked at $L=48$, $\beta=48$ (19.7~GB predicted, 19.6~GB measured) and $L=32$ (2.8 predicted, 3.1 measured). % TUNING_DEFECT.md
+With \texttt{Ltau=1} the $\tau$ pass adds about $480N^2+32N^2F$ bytes. The stack dominates: it grows as $N^2\Lt/\texttt{Nwrap}\propto L^5/\texttt{Nwrap}$ at $\beta\propto L$. This is why \texttt{Nwrap}=5 costs 45\,\% more memory than \texttt{Nwrap}=10 at $L=24$ (1553 against 1069 MiB, \file{TUNING\_DEFECT.md}). % TUNING_DEFECT.md Nwrap table
+The host does not mirror the stack; the resident set of the host process at $L=36$ was 1.9~GB while the device held 5.2~GB (\file{TUNING\_DEFECT.md}). % TUNING_DEFECT.md
+
+The code prints the size of every \texttt{gpu\_state} array and their total into the \texttt{info} file (\texttt{report\_layout}, \file{gpu\_state\_mod.F90:1223-1271}). That total does not include the arrays of the other modules.
+
+\subsection{All host--device transfers in one sweep}
+
+Table~\ref{tab:transfers} is the complete list for the production path (device updates in submatrix block mode, device stabilisation, device observables, \texttt{Ltau=0}), assembled from the code. Sizes are in bytes.
+
+\begin{small}
+\begin{longtable}{@{}p{3.6cm}p{2.9cm}p{3.4cm}p{4.9cm}@{}}
+\caption{Host--device transfers per sweep, production path. $b\le\Nd$: vertices in a block; $k$: pending sites at a flush.}\label{tab:transfers}\\
+\toprule
+When & Direction & Size & What and where \\
+\midrule\endfirsthead
+\toprule When & Direction & Size & What and where \\ \midrule\endhead
+per proposal & -- & 0 & nothing; decided from the host block (\file{gpu\_lowrank\_mod.F90:1693-1720}) \\
+per block, begin & H$\to$D & $8\Nd$ & block sites \texttt{bsd} \\
+per block, begin & D$\to$H & $32\Nd^2$ & block $G_0(B,B)$ for 2 flavours, \texttt{gbd}; 32~KB at $\Nd=32$ \\
+per block, end & H$\to$D & $32(2\Nd+\Nd^2)$ & \texttt{cbuf}: wrap factors and packed $M$; 34.8~KB at $\Nd=32$ \\
+per block, end & H$\to$D & $8\Nd$, $16b$ & pending sites \texttt{bS\_d}; new fields \texttt{nsigma\_d(vmin:vmax,t)} \\
+per slice & -- & 0 & $G$ is not moved (\texttt{g\_in} is a no-op, \texttt{g\_out} sets a flag) \\
+per decompose (each flavour) & D$\to$H, H$\to$D & $8N$, $4N$ & column norms, permutation (\texttt{la\_qrpp}) \\
+per decompose & D$\to$H & 24 & scale test (\texttt{dev\_testscale}) \\
+per \texttt{CGR} & D$\to$H, H$\to$D & $8N$, $4N$ & \texttt{la\_qrpp} of the middle matrix \\
+per \texttt{CGR} & D$\to$H & 16 + 32 & phase; precision numbers (max, sum, two NaN counts) \\
+per \texttt{CGR} (\texttt{STABLOG}) & D$\to$H, H$\to$D & $16N^2$, $16N^2+20N$ & \texttt{la\_geqp3\_host} \\
+per measurement & D$\to$H & 3 reductions & kinetic, potential energy, density \\
+per bin & D$\to$H, H$\to$D & size of accumulators & \texttt{gpu\_obs\_flush}: download, zero, upload \\
+amortised & D$\to$H & $4\times$ slots & \texttt{info} slots of \texttt{alf\_la} \\
+\bottomrule
+\end{longtable}
+\end{small}
+
+At $L=24$ and $\Nd=32$ there are 8\,640 blocks per sweep (18 per slice $\times$ 480 slices) and 43\,200 copies, four H$\to$D and one D$\to$H per block (\file{p7/NOTES.md}, line 94). % p7/NOTES.md
+Before block mode, the per-proposal transfers dominated: on the A30 at $N=400$ there were 432\,000 stream synchronisations and 46\,000 small D$\to$H copies per run of six sweeps, and the kernels ran only 1.4~s out of 24~s (\file{DELAYED\_SUBMATRIX.md}). % DELAYED_SUBMATRIX.md lines 45-46
+
+Other paths add transfers: a host observable needs $16N^2$ per flavour and measured slice (\texttt{gpu\_g\_host}); the standard rank-one update needs 16 bytes of $G_{pp}$ per proposal and flavour and 16 bytes of field per acceptance; the $\tau$ pass with host observables needs $3\cdot16N^2$ per slice and flavour. With \texttt{Ltau=1}, \file{main.F90:1301} downloads $G$ once before every $\tau$ pass even when the pass runs entirely on the device.
+
+\dis{The info line of \file{gpu\_update\_mod.F90:109} still says ``INTERIM per-slice G copies''; lines 52-53 of the same file and the code say that $G$ is device-authoritative and never copied per slice.}

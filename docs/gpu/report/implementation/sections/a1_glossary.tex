@@ -1,0 +1,31 @@
+\section{Glossary of GPU terms for a QMC physicist}
+\label{app:glossary}
+
+\begin{description}
+\item[Host, device.] The CPU with its memory, and the GPU with its own memory. They are connected by a bus (PCIe or a faster link). Data must be copied explicitly between the two memories (or migrated by the driver with unified memory, which the port does not use).
+\item[Transfer, D$\to$H, H$\to$D.] A copy between device and host memory. It costs a fixed latency (a few $\mu$s) plus the size divided by the bandwidth (10 to 50~GB/s). An $N\times N$ complex matrix at $N=576$ is 5.3~MB.
+\item[Kernel.] A function that runs on the device, executed by many threads in parallel. In OpenMP it is the body of a \texttt{target} region.
+\item[Launch, launch latency.] Starting a kernel. The host sends a command to the device; this costs several $\mu$s (Table~\ref{tab:latency}) regardless of the size of the kernel. Many small kernels are therefore slow.
+\item[Synchronisation.] The host waits until the device has finished submitted work. A \emph{synchronous} operation returns only when complete; an \emph{asynchronous} one returns at once, and the host can prepare the next operation while the device works.
+\item[Stream, queue.] An ordered list of device operations (CUDA: stream; SYCL: queue). Operations in one stream run in order; operations in different streams may overlap. An \emph{in-order} SYCL queue behaves like a CUDA stream.
+\item[Thread, team, block, work-group, wave.] The device runs threads in groups that can share fast local memory and synchronise among themselves: a \emph{team} (OpenMP), \emph{block} (CUDA/HIP) or \emph{work-group} (SYCL). Within a group, 32 or 64 threads (a \emph{warp} or \emph{wave}; on Intel a \emph{sub-group} of 16) execute the same instruction together.
+\item[\texttt{target teams distribute parallel do}.] The OpenMP construct that runs a loop on the device: iterations are distributed over teams, and within a team over threads.
+\item[\texttt{target enter data}, \texttt{target update}.] OpenMP directives that create a device copy of a host array (with or without copying the values) and copy values between the two copies.
+\item[\texttt{use\_device\_addr}.] OpenMP clause that gives host code the device address of a mapped array, to pass to a library.
+\item[Interop.] OpenMP mechanism (\texttt{!\$omp interop}) to obtain the native stream or queue that the OpenMP runtime uses, so that library calls can be ordered with OpenMP kernels.
+\item[Reduction.] Combining many values into one (sum, maximum). On a device it is done as a tree of partial sums. An \emph{atomic} addition lets many threads add into one location safely, but in a non-deterministic order.
+\item[Shared/local memory, registers.] Small fast memory per team (tens of KB) and per thread. Kernels that keep data there avoid the latency of the main device memory (about 1~$\mu$s per dependent access on the Max~1550).
+\item[Occupancy, utilisation.] The fraction of the device's compute units that have work. A single small matrix product uses a fraction of a large GPU.
+\item[Memory bound, compute bound.] A kernel limited by the speed of reading and writing memory (rank-one update: 32 bytes per 8 flops) or by arithmetic (large matrix product: $16N^3$ flops for $48N^2$ bytes).
+\item[FP64.] Double precision. Data-centre GPUs (A30, H100, Max~1550, MI210) have fast FP64; consumer and Apple GPUs do not.
+\item[cuBLAS, cuSOLVER, oneMKL, hipBLAS, hipSOLVER, rocSOLVER.] Vendor libraries for BLAS and LAPACK on NVIDIA, Intel and AMD devices.
+\item[Hybrid routine.] A library routine that runs part of its work on the host CPU (oneMKL's \texttt{geqrf} factorises panels on the host).
+\item[Panel, trailing update, compact WY.] A blocked QR factorises a narrow block of columns (the panel) with Householder reflectors, then applies them to the remaining columns (the trailing update). Compact WY writes the product of $nb$ reflectors as $I-VTV^\dagger$, so the update becomes matrix products.
+\item[MPS.] NVIDIA Multi-Process Service: lets kernels of several processes run concurrently on one GPU. Without it processes are time-sliced.
+\item[CCS.] Intel compute command streamer mode: splits a Max~1550 tile into several hardware queues (\env{ZEX\_NUMBER\_OF\_CCS}).
+\item[Tile, card.] A Max~1550 card has two tiles, each a separate device under \env{ZE\_FLAT\_DEVICE\_HIERARCHY=FLAT}.
+\item[JIT, AOT.] Just-in-time compilation of device code at program start, or ahead-of-time compilation for a specific device at build time.
+\item[Level Zero.] Intel's low-level GPU driver interface; the staging buffer for small copies is one of its settings.
+\item[libgomp, GCN plugin.] GCC's OpenMP runtime and its back end for AMD GPUs (GCN is the AMD GPU architecture family).
+\item[USM.] Unified shared memory in SYCL: host memory that the device can access directly.
+\end{description}

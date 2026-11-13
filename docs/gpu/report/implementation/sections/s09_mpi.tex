@@ -1,0 +1,69 @@
+\section{MPI, parallel parameters and sharing a GPU}
+\label{sec:mpi}
+
+\subsection{What MPI does in a GPU run}
+
+ALF's MPI parallelism is over independent Markov chains: each rank runs its own sweep, and only the observables are reduced at the end of a bin. The GPU port keeps this. Every rank builds its own device mirror and its own device $G$ and stacks, draws its own random numbers on the host, and talks to the other ranks only through the host-side observable reduction (\file{gpu\_state\_mod.F90:516-519}). No GPU-aware MPI is needed.
+
+\paragraph{Rank-to-device binding.} The code sets the OpenMP default device to
+\begin{lstlisting}
+call omp_set_default_device(mod(env_rank, omp_get_num_devices()))
+\end{lstlisting}
+(\file{gpu\_state\_mod.F90:550-552}), where \texttt{env\_rank} is the rank in \texttt{MPI\_COMM\_WORLD}. In practice the job scripts restrict each rank to one device before the program starts, so the rule always yields device 0:
+\begin{itemize}
+\item NVIDIA (Helma): a wrapper sets \env{CUDA\_VISIBLE\_DEVICES} $=r/\text{ranks per GPU}$ from the Open MPI rank $r$, and with MPS the pipe and log directory of that GPU's MPS daemon (\file{docs/gpu/scripts/helma/rank\_wrap.sh}). The device used by the OpenACC stream query (Section~\ref{sec:design}) must be the OpenMP default device, which this binding guarantees.
+\item Intel (SuperMUC-NG Phase 2): \env{ZE\_FLAT\_DEVICE\_HIERARCHY=FLAT} exposes the 8 tiles of a node's four Max~1550 cards as 8 devices, so rank $r$ uses tile $r\bmod8$; with fewer ranks \env{ZE\_AFFINITY\_MASK} binds them (\file{intel\_pvc\_supermuc\_ng2.md:26-27}).
+\item AMD: no MPI run is documented (\file{FEATURES.md}, line 47).
+\end{itemize}
+
+\dis{The binding uses the global rank, not the node-local rank. On several nodes the mapping is right only if the ranks are placed in blocks and the number of ranks per node is a multiple of the number of devices. This is not documented; the job scripts avoid the issue by setting the visible devices per rank.}
+
+\paragraph{Correctness.} One MPI rank reproduces the non-MPI run to $10^{-12}$ (energy $7\times10^{-12}$, \texttt{SpinZ\_localtau} $1.4\times10^{-12}$, \texttt{SpinZ\_local} $7\times10^{-15}$), and acceptance (0.3375) and precision ($10^{-14}$) do not depend on the number of ranks (\file{MPI\_GPU.md}). % MPI_GPU.md
+
+\subsection{Parallel parameters and tempering}
+
+With \texttt{TEMPERING} and \texttt{PARALLEL\_PARAMS} ALF runs groups of ranks with different parameter sets. Real parallel tempering (exchange of configurations between parameter sets) is refused on the GPU path. Parameter-parallel runs without exchange are allowed: the groups are independent, and \file{main.F90} skips \texttt{Exchange\_Step} (\file{PP\_GPU.md}). Build: \texttt{configure.sh PGI PP GPU=nvidia HDF5} with \texttt{PP = -DMPI -DTEMPERING -DPARALLEL\_PARAMS}.
+
+\subsection{Several ranks on one GPU}
+
+One chain does not fill a GPU: on the A30 one chain kept the GPU busy 58\,\% of the time, two chains 82\,\% (\file{MPI\_GPU.md}, \texttt{nvidia-smi dmon}); on the H100 at $L=32$ one chain used 55\,\% of the streaming multiprocessors (\file{helma\_h100.md}, section 4.2). % MPI_GPU.md; helma_h100.md 4.2
+The reason is the structure of the work: most kernels are small (block gathers, rank-$k$ flushes, single-vertex wraps) and the host spends time between them. Running several chains per GPU fills the gaps. How well this works depends on how the GPU shares itself between processes.
+
+\paragraph{NVIDIA: MPS.} Without help, processes on one NVIDIA GPU are \emph{time-sliced}: the GPU switches between their contexts, and kernels of different processes never run at the same time. The \emph{Multi-Process Service} (MPS) merges the processes into one context, so their kernels run concurrently. \env{CUDA\_MPS\_ACTIVE\_THREAD\_PERCENTAGE} limits the share of the GPU each client can use. Measured:
+\begin{itemize}
+\item Without MPS, two processes on the A30 ran 13 to 15 times slower each (\file{CLAUDE.md}); on the H100 two ranks were 6.5 times slower per chain at $L=24$ (29.5 against 4.54~s per sweep) and 2.6 times at $L=32$; four or eight ranks at $L=32$ did not finish six sweeps in 420~s (\file{helma\_h100.md}, section 4). % helma_h100.md
+\item With MPS the throughput rises with the number of ranks. Table~\ref{tab:mps} gives the A30 at $L=16$.
+\item A 25\,\% thread share was 12\,\% faster than no limit with 9 ranks at $L=24$ (86.9 against 98.3~s for 10 sweeps, \file{PP\_GPU.md}); 25\,\% and 50\,\% agree within 2\,\% on the H100. % PP_GPU.md; helma_h100.md
+\end{itemize}
+
+\begin{table}[h]
+\centering\small
+\caption{A30, $L=16$, submatrix $\Nd=32$, 30 sweeps, with MPS (\file{MPI\_GPU.md}).}
+\label{tab:mps}
+\begin{tabular}{@{}rlrrr@{}}
+\toprule
+Ranks & MPS share & Time per chain (s) & vs 1 rank & Sweeps/s per GPU \\
+\midrule
+1 & 100\,\% & 38.8 & -- & 0.73 \\ % MPI_GPU.md
+2 & 50\,\% & 45.3 & +17\,\% & 1.25 \\
+4 & 25\,\% & 54.6 & +41\,\% & 2.09 \\
+8 & 13\,\% & 81.4 & +110\,\% & 2.83 \\
+16 & default & 145.6 & +275\,\% & 3.18 \\
+16 & 25\,\% & -- & -- & 4.68 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+On the H100 at $L=24$ one rank gives 0.285 sweeps per second, eight ranks with MPS at 25\,\% give 1.176, 4.1 times more, while each chain becomes 1.9 times slower (6.80 against 3.51~s per sweep). At $L=32$: 0.102 with one rank, 0.232 with eight and 0.250 with sixteen (\file{helma\_h100.md}, sections 4.1-4.2). % helma_h100.md
+MPS does not change the results: two MPS clients produced output bit-identical to a solo run (\file{CLAUDE.md}).
+
+\paragraph{Intel: CCS.} The Max~1550 has no MPS. Ranks sharing a tile are time-sliced by default. The compute command streamer setting \env{ZEX\_NUMBER\_OF\_CCS=0:4,\ldots,7:4} splits each tile into four hardware queues, so four processes can run concurrently on one tile. With the V7 switches at $L=24$ the throughput per card is 0.365, 0.458, 0.879 and 0.261 sweeps per second for 1, 2, 4 and 8 walkers per tile (\file{ISSUE\_INTEL\_VS\_A30.md}, section 7). % ISSUE section 7
+Four walkers per tile (32 ranks per node) is the optimum.
+
+\dis{\file{intel\_pvc\_supermuc\_ng2.md} (line 45, 2026-11-10) reports that CCS 4 gave ``no gain'' and recommends one rank per tile (line 47); \file{RUNTIME\_SWITCHES.md} (line 173) and the later session notes report CCS 4 with 32 ranks per node as the throughput optimum. The later measurement is the one used in production.}
+
+\paragraph{AMD.} Four concurrent processes on the MI210 without any sharing service gave 1.95 times the throughput of one (\file{SPEEDUPS.md}, section 3); compute-unit masking (\env{HSA\_CU\_MASK}) gave nothing. % SPEEDUPS.md
+
+\subsection{The production layout}
+
+The production layout is a measured per-platform setting (\file{GPU\_PLAN\_V2.md}, section 2): on the H100, eight ranks per GPU with MPS at 25\,\%, $\Nd=64$ at $L=32$ (\file{helma\_h100.md}, section 7); on the Max~1550, four ranks per tile with CCS 4; on the A30 the owner decided on one rank per GPU (2026-11-08, \file{MPI\_GPU.md}). The choice of $\Nd$ interacts with the layout: with eight ranks on the H100 at $L=32$, $\Nd=32$ gave 66.5~s per sweep per chain and $\Nd=64$ gave 34.5~s (\file{helma\_h100.md}, section 4.2). % helma_h100.md
