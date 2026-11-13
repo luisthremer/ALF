@@ -66,3 +66,72 @@ the GPU code paths are the same, apart from the time-dependent hopping.
   `gpu_obs_mod.F90` outside `local_obs`) is made on `gpu-port` and merged.
 - Check after a merge: `GPU=none` of `gpu-port` vs `master` bitwise (stock parameters), and
   `gpu-port-unified` vs `gpu-port` bitwise with `ham_h0 = 0` and `LOBS_ST = 1`.
+
+## All branches (state 2026-11-13)
+
+Merged-ness: `git merge-base --is-ancestor <branch> origin/gpu-port-unified` (and `origin/gpu-port`); "+N" = `git rev-list --count origin/gpu-port-unified..<branch>`. `[L]` = also a local branch (all equal to their origin copy; there is no local-only branch), `[WT]` = has a worktree (remove it before deleting the branch). `defect/*` are remote-tracking refs of the sibling repo `../ALF_Defect-2` (as of the last fetch), not branches of `origin`. A local branch named `origin` does not exist: `git branch -a` prints the symbolic ref `refs/remotes/origin/HEAD` as `origin` (likewise `defect`). Deleting means the local branch and the `origin` copy, nothing was deleted.
+
+| Branch | What it is | Merged into | May be deleted? |
+|---|---|---|---|
+| `gpu-port` [L][WT] | general GPU port, no defect (main branch) | main (contained in `gpu-port-unified`) | no (main branch) |
+| `gpu-port-unified` [L][WT] | `gpu-port` plus point-defect model, all GPU lines (main branch) | main (contains `gpu-port`; 10 commits not in `gpu-port`) | no (main branch) |
+| `master` [L] | upstream ALF 521ddfca | both | no (upstream mirror) |
+| `luis_playground` | your MaxEnt playground (Gaussian bootstrap) | both (all commits; 13 scratch files left out) | no (main branch; scratch files stay) |
+| `JAKOB_BACKUP` [L] | Jakob's defect backup, pin on first time slice | both | no (main branch, Jakob's data line) |
+| `intel-batched` [L][WT] | Intel bottleneck study, batched rewrite begun | none (+5; +8 vs `gpu-port`) | no (active, not merged) |
+| `fix/amd-checkerboard` [L][WT] | AMD checkerboard hang fix (`!GCC$ novector`) | both | no (active, AMD checks still open) |
+| `speedup/unified` [WT] | LU-free det phase (S1), `la_sync` removal on CUDA (S2), nsys script (S4) | S1 in both (as 985e1b0e + 72a3900f, enabled for oneMKL only); S2, S4 in none (+3 by ancestry) | no (S2 waits for an NVIDIA run) |
+| `speedup/nvidia` [WT] | same three changes, separate commits | as `speedup/unified` | no (S2 waits for an NVIDIA run) |
+| `gpu-port-apple-metal` [L][WT] | Apple Metal float-float ZGEMM prototype | none (+1) | no (not merged, no gain on M1) |
+| `gpu-port-unified-maxent` [L][WT] | work branch: MaxEnt bootstrap merge, PP tool | `gpu-port-unified` (+2 vs `gpu-port`: `prepare_sim.py`, Helma docs) | yes (merged; remove worktree) |
+| `gpu-port-unified-tests` [L][WT] | work branch: Run.tests, `run-local` | both | yes (merged; remove worktree) |
+| `gpu-delayed-submatrix-defect-production-old-Ntau` [L] | defect variant with old tau labelling of `SpinZ_localtau` | none (+4) | owner decides (4 commits unmerged; kept for old data) |
+| `production-mpi-intel-unstable-guard-asyncblk-test` [L][WT] | merge of unstable-guard and team-combined at older tips | none (+1, a merge commit only) | owner decides (1 commit unmerged, merge only) |
+| `gpu-delayed-submatrix-defect` [L] | first defect GPU port, delayed/submatrix | both | yes (merged) |
+| `gpu-delayed-submatrix-defect-fullgpu` [L] | defect port with full GPU path | both | yes (merged) |
+| `gpu-delayed-submatrix-defect-production` [L] | production line, JAKOB_BACKUP merged | both | yes (merged) |
+| `gpu-delayed-submatrix-defect-production-mpi` [L] | MPI with GPU path; base of `gpu-port-unified` | both | yes (merged) |
+| `gpu-delayed-submatrix-defect-production-mpi-amd` [L][WT] | `GPU=amd` HIP line | both | yes (merged; remove worktree) |
+| `gpu-delayed-submatrix-defect-production-mpi-pp` [L] | parallel tempering on the GPU path | both | yes (merged) |
+| `gpu-delayed-submatrix-defect-production-mpi-pp-helma` [L][WT] | Helma H100 PP production chains | both | yes (merged; remove worktree) |
+| `gpu-delayed-submatrix-defect-production-mpi-pp-opt` [L][WT] | PP profiling, `acc0` reduction (worktree in `/private/var/...wt_pp`) | both | yes (merged; remove worktree) |
+| `production-mpi-intel-large-prompt` [L] | Intel SuperMUC large-prompt production | both | yes (merged) |
+| `production-mpi-intel-large-prompt-team` [L][WT] | Intel team issue, staging-buffer check | both | yes (merged; remove worktree) |
+| `production-mpi-intel-large-prompt-team-async` [L][WT] | Intel async block path (phase 3b) | both | yes (merged; remove worktree) |
+| `production-mpi-intel-large-prompt-team-combined` [L][WT] | Intel device QR, async, explicit-shape kernels | both | yes (merged; remove worktree) |
+| `production-mpi-intel-large-prompt-team-sycqr` [L][WT] | Intel SYCL device Householder QR | both | yes (merged; remove worktree) |
+| `production-mpi-intel-unstable-guard` [L][WT] | `ALF_UNSTABLE_THRESHOLD`, SuperMUC scripts | both | yes (merged; remove worktree) |
+| `intel-supermuc-ng2` [L] | SuperMUC-NG Phase 2 session, benchmarks | both | yes (merged) |
+| `gpu-port-207-tau` | ticket 207: quad-precision tau reference | both | yes (merged) |
+| `gpu-port-207-2` | ticket 207-2: gate fix | both | yes (merged) |
+| `gpu-port-207-r` | merge of 207-2 into 207-r | both | yes (merged) |
+| `gpu-port-207-3` | ticket 207-3: device correct-side test | both | yes (merged) |
+| `gpu-port-207-final` | ticket 207 closing sections | both | yes (merged) |
+| `gpu-port-207-4` | 207-4: beta=10 NVIDIA calibration scripts | none (+1) | owner decides (1 commit unmerged) |
+| `gpu-port-207-harness` | 207-5: harness QREF gates | none (+4) | owner decides (4 commits unmerged) |
+| `gpu-port-207-wip` | 207 evidence record, scripts (on hold) | none (+5) | owner decides (5 commits unmerged) |
+| `gpu-port-208-1` | ticket 208-1 closed | both | yes (merged) |
+| `gpu-port-208-2` | ticket 208-2 closed | both | yes (merged) |
+| `gpu-port-208-3` | ticket 208-3 closed (old `gpu-port` tip 43045813) | both | yes (merged) |
+| `gpu-port-212-hardening` | 212: pre-registration only | none (+2) | owner decides (2 commits unmerged) |
+| `gpu-port-212-hardening-b` | 212: T2 pass, closed | both | yes (merged) |
+| `gpu-port-302a-onemkl` | 302a oneMKL, T2 pass | both | yes (merged) |
+| `gpu-port-302b` | 302b ticket, pre-registration | both | yes (merged) |
+| `gpu-port-302b-docs` | 302b review and T1/T2 record | none (+2) | owner decides (2 commits unmerged) |
+| `gpu-port-302b-impl` | 302b candidate 1 | both | yes (merged) |
+| `gpu-port-302b-impl2` | 207 split into 207-1 ... 207-7, PLAN | both | yes (merged) |
+| `gpu-port-302c` | 302c-1: device tau pass, `GPU=intel` | both | yes (merged) |
+| `gpu-port-302c-2` | 302c-2: B580 control ladders | both | yes (merged) |
+| `gpu-port-delayed-submatrix` | NOT_IMPLEMENTED.md, PARKING.md | both | yes (merged) |
+| `gpu-port-harness-302b` | acceptance harness after review (c) | both | yes (merged) |
+| `gpu-port-harness-gpunone` | harness exclusion list, `GPU=none` | both | yes (merged) |
+| `gpu-port-process-lanes` | harness fixes, fourth review | both | yes (merged) |
+| `feature/delayed-submatrix` | early delayed-submatrix work (SuperMUC tests) | none (+265) | owner decides (265 commits unmerged) |
+| `feature/delayed-submatrix-clean` | same, large text files removed from history | none (+132) | owner decides (132 commits unmerged) |
+| `s-wave-Pairing_correlations` | on-site pairing correlation (2026-09) | none (+1) | owner decides (1 commit unmerged) |
+| `defect/master` | sibling repo: master mirror | both | yes (merged; ref only) |
+| `defect/Point_Pin` | sibling repo: first point-pin version | both | yes (merged; ref only) |
+| `defect/Point_Pin_updated` | sibling repo: Point_Pin plus master (its HEAD) | both | yes (merged; ref only) |
+| `defect/localtau` | sibling repo: local SpinZ correlation observable | none (+6) | owner decides (6 commits unmerged) |
+| `defect/localtau_Obs` | sibling repo: two bug fixes | none (+1) | owner decides (1 commit unmerged) |
+| `defect/Predefined_Hoppings_set_OPT-pinning` | sibling repo: predefined hoppings, pinning runs (2025-11) | none (+37) | owner decides (37 commits unmerged) |
