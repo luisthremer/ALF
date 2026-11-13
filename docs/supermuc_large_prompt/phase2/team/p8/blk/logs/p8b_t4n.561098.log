@@ -1,0 +1,45 @@
+start 2026-11-13T13:02:45+01:00 i20r02c05s08 job 561098
+m=0 nd=64
+n0_nd64_1419             ranks 32 sweep 9.103 upd 2.464 stab 1.708 cgr 1.874 obs 2.747
+PG n0_nd64_1419   mean 1.963248079752794E-014 max 6.536440615758303E-010 -> PASS
+m=1 nd=64
+n1_nd64_26817            ranks 32 sweep 9.258 upd 2.536 stab 1.731 cgr 1.886 obs 2.797
+PG n1_nd64_26817  mean 1.963248079752794E-014 max 6.536440615758303E-010 -> PASS
+m=2 nd=64
+n2_nd64_3618             ranks 32 sweep 9.246 upd 2.507 stab 1.737 cgr 1.886 obs 2.808
+PG n2_nd64_3618   mean 1.962646385535329E-014 max 6.571068907411357E-010 -> PASS
+m=2 nd=64
+n2_nd64_22697            ranks 32 sweep 9.188 upd 2.474 stab 1.734 cgr 1.897 obs 2.776
+PG n2_nd64_22697  mean 1.962646385535329E-014 max 6.571068907411357E-010 -> PASS
+m=1 nd=64
+n1_nd64_21708            ranks 32 sweep 9.222 upd 2.518 stab 1.729 cgr 1.893 obs 2.775
+PG n1_nd64_21708  mean 1.963248079752794E-014 max 6.536440615758303E-010 -> PASS
+m=0 nd=64
+n0_nd64_32573            ranks 32 sweep 9.092 upd 2.463 stab 1.704 cgr 1.871 obs 2.738
+PG n0_nd64_32573  mean 1.963248079752794E-014 max 6.536440615758303E-010 -> PASS
+m=0 nd=32
+n0_nd32_31576            ranks 32 sweep 9.321 upd 2.722 stab 1.697 cgr 1.872 obs 2.727
+PG n0_nd32_31576  mean 1.960957926459005E-014 max 6.536447432744344E-010 -> PASS
+m=1 nd=32
+n1_nd32_18098            ranks 32 sweep 9.225 upd 2.579 stab 1.709 cgr 1.875 obs 2.757
+PG n1_nd32_18098  mean 1.960957926459005E-014 max 6.536447432744344E-010 -> PASS
+m=2 nd=32
+n2_nd32_9012             ranks 32 sweep 9.137 upd 2.477 stab 1.715 cgr 1.872 obs 2.766
+PG n2_nd32_9012   mean 1.960969490701234E-014 max 6.556933429624115E-010 -> PASS
+m=2 nd=32
+n2_nd32_1824             ranks 32 sweep 9.116 upd 2.468 stab 1.711 cgr 1.872 obs 2.758
+PG n2_nd32_1824   mean 1.960969490701234E-014 max 6.556933429624115E-010 -> PASS
+m=1 nd=32
+n1_nd32_13925            ranks 32 sweep 9.214 upd 2.572 stab 1.709 cgr 1.880 obs 2.746
+PG n1_nd32_13925  mean 1.960957926459005E-014 max 6.536447432744344E-010 -> PASS
+m=0 nd=32
+n0_nd32_28022            ranks 32 sweep 9.354 upd 2.737 stab 1.702 cgr 1.866 obs 2.745
+PG n0_nd32_28022  mean 1.960957926459005E-014 max 6.536447432744344E-010 -> PASS
+=== bitwise old vs new (same nd): compare.py tol 0
+nd=64 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/blk/work_t4n/runs/n0_nd64_1419 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/blk/work_t4n/runs/n1_nd64_21708
+acceptance A=0.327208907516 B=0.327208907516  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+nd=32 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/blk/work_t4n/runs/n0_nd32_28022 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/blk/work_t4n/runs/n1_nd32_13925
+acceptance A=0.327208907516 B=0.327208907516  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+end 2026-11-13T13:47:12+01:00

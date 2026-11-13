@@ -1,0 +1,36 @@
+start 2026-11-13T11:23:14+01:00 i20r02c02s10 job 560980
+=== one chain, tile 0
+m=0 nd=32
+RESULT c0_nd32_23705  sweep   4.91  upd  1.47  stab  0.81  cgr  1.21  obs  1.18 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+RESULT c0_nd32_23705  blocks/sweep 0  blk_begin 0.195  begin_dev 0.801  blk_end 0.000  end_dev 0.276  slice 0.000 s/sweep
+m=1 nd=32
+RESULT c1_nd32_20560  sweep   4.80  upd  1.34  stab  0.81  cgr  1.23  obs  1.20 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+RESULT c1_nd32_20560  blocks/sweep 0  blk_begin 0.396  begin_dev 0.436  blk_end 0.000  end_dev 0.289  slice 0.000 s/sweep
+m=1 nd=32
+RESULT c1_nd32_5175   sweep   4.80  upd  1.34  stab  0.81  cgr  1.23  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+RESULT c1_nd32_5175   blocks/sweep 0  blk_begin 0.397  begin_dev 0.433  blk_end 0.000  end_dev 0.288  slice 0.000 s/sweep
+m=0 nd=32
+RESULT c0_nd32_17026  sweep   4.95  upd  1.50  stab  0.81  cgr  1.23  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+RESULT c0_nd32_17026  blocks/sweep 0  blk_begin 0.198  begin_dev 0.807  blk_end 0.000  end_dev 0.277  slice 0.000 s/sweep
+m=0 nd=64
+RESULT c0_nd64_30181  sweep   4.72  upd  1.26  stab  0.81  cgr  1.23  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.983526787254018E-014  2.517937356581995E-011
+RESULT c0_nd64_30181  blocks/sweep 0  blk_begin 0.110  begin_dev 0.515  blk_end 0.000  end_dev 0.277  slice 0.000 s/sweep
+m=1 nd=64
+RESULT c1_nd64_6193   sweep   4.72  upd  1.26  stab  0.81  cgr  1.23  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.983526787254018E-014  2.517937356581995E-011
+RESULT c1_nd64_6193   blocks/sweep 0  blk_begin 0.367  begin_dev 0.241  blk_end 0.000  end_dev 0.296  slice 0.000 s/sweep
+m=1 nd=64
+RESULT c1_nd64_32740  sweep   4.70  upd  1.25  stab  0.81  cgr  1.23  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.983526787254018E-014  2.517937356581995E-011
+RESULT c1_nd64_32740  blocks/sweep 0  blk_begin 0.365  begin_dev 0.242  blk_end 0.000  end_dev 0.293  slice 0.000 s/sweep
+m=0 nd=64
+RESULT c0_nd64_6278   sweep   4.71  upd  1.26  stab  0.81  cgr  1.24  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.983526787254018E-014  2.517937356581995E-011
+RESULT c0_nd64_6278   blocks/sweep 0  blk_begin 0.109  begin_dev 0.514  blk_end 0.000  end_dev 0.278  slice 0.000 s/sweep
+=== one rank per tile (8 ranks, OMP 14)
+end 2026-11-13T11:36:21+01:00

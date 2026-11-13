@@ -1,0 +1,58 @@
+host i20r02c06s10 2026-11-13T11:38:14+01:00 part v7
+######## G1 bitwise V7: LIBOMPTARGET_LEVEL_ZERO_STAGING_BUFFER_SIZE=1048576 ALFSH_ASYNCBLK=1 ALFSH_DEVQR=2 ALFSH_DEVUNMQR=1
+## V7 L6F_nd8
+V7_L6F_nd8 cpu: rc=0 wall=11.0s
+V7_L6F_nd8 gpu: rc=0 wall=9.0s
+acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+## V7 L6F_nd4
+V7_L6F_nd4 cpu: rc=0 wall=9.7s
+V7_L6F_nd4 gpu: rc=0 wall=9.9s
+acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+## V7 L6T_nd8
+V7_L6T_nd8 cpu: rc=0 wall=9.2s
+V7_L6T_nd8 gpu: rc=0 wall=9.0s
+acceptance A=0.449432870370 B=0.449432870370  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+## V7 L12F_nd32
+V7_L12F_nd32 cpu: rc=0 wall=15.0s
+V7_L12F_nd32 gpu: rc=0 wall=15.0s
+acceptance A=0.329644097222 B=0.329644097222  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+## V7 L24F_nd32
+V7_L24F_nd32 cpu: rc=0 wall=94.8s
+V7_L24F_nd32 gpu: rc=0 wall=94.3s
+acceptance A=0.327305169753 B=0.327305169753  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+## V7 L24F_nd64
+V7_L24F_nd64 cpu: rc=0 wall=94.0s
+V7_L24F_nd64 gpu: rc=0 wall=95.7s
+acceptance A=0.327305169753 B=0.327305169753  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+######## BLKPACK=2 (not bitwise by design) vs ALFSH_BLKPACK unset, V7, tol 1e-10
+## V7 pack2 L6F_nd8
+V7_p2_L6F_nd8 cpu: rc=0 wall=9.2s
+V7_p2_L6F_nd8 gpu: rc=0 wall=8.7s
+acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+PASS worst rel dev 3.714e-16 (tol 1e-10) 
+   BLKPACK active in B: 1  in A: 0
+## V7 pack2 L12F_nd32
+V7_p2_L12F_nd32 cpu: rc=0 wall=15.0s
+V7_p2_L12F_nd32 gpu: rc=0 wall=14.8s
+acceptance A=0.329644097222 B=0.329644097222  diff=0.00e+00
+PASS worst rel dev 1.376e-15 (tol 1e-10) 
+   BLKPACK active in B: 1  in A: 0
+## V7 pack2 L24F_nd32
+V7_p2_L24F_nd32 cpu: rc=0 wall=94.6s
+V7_p2_L24F_nd32 gpu: rc=0 wall=95.4s
+acceptance A=0.327305169753 B=0.327305169753  diff=0.00e+00
+PASS worst rel dev 2.542e-15 (tol 1e-10) 
+   BLKPACK active in B: 1  in A: 0
+done 2026-11-13T11:50:02+01:00

@@ -1,0 +1,8 @@
+start 2026-11-13T11:13:05+01:00 i20r07c03s02
+Compilation from IR - skipping loading of FCL
+Build succeeded.
+Compilation from IR - skipping loading of FCL
+Build succeeded.
+terminate called after throwing an instance of 'sycl::_V1::exception'
+  what():  level_zero backend failed with error: 37 (UR_RESULT_ERROR_UNINITIALIZED)
+end 2026-11-13T11:13:41+01:00

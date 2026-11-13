@@ -1,0 +1,7 @@
+work_t4l/runs/c0_nd32_29714 blocks/sweep 8640 blk_begin 0.214 blk_end 0.793 slice 0.275 s/sweep (begin+end 116.6 us/block)
+work_t4l/runs/c1_nd32_13887 blocks/sweep 8640 blk_begin 0.431 blk_end 0.428 slice 0.287 s/sweep (begin+end 99.3 us/block)
+work_t4l/runs/c2_nd32_807 blocks/sweep 8640 blk_begin 0.489 blk_end 0.264 slice 0.292 s/sweep (begin+end 87.2 us/block)
+work_t4l/runs/abl_gdev_3148 blocks/sweep 8640 blk_begin 0.375 blk_end 0.454 slice 0.289 s/sweep (begin+end 95.9 us/block)
+work_g4a2/runs/c0_nd64_14517 blocks/sweep 4320 blk_begin 0.140 blk_end 0.505 slice 0.276 s/sweep (begin+end 149.2 us/block)
+work_g4a2/runs/c1_nd64_28783 blocks/sweep 4320 blk_begin 0.412 blk_end 0.243 slice 0.293 s/sweep (begin+end 151.6 us/block)
+work_g4a2/runs/c2_nd64_26121 blocks/sweep 4320 blk_begin 0.476 blk_end 0.144 slice 0.302 s/sweep (begin+end 143.5 us/block)

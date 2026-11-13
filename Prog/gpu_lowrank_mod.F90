@@ -128,6 +128,18 @@ Module gpu_lowrank_mod
   Logical, Save :: ab_on = .false., ab_pending = .false.
   Type (c_ptr), Save :: ab_pG, ab_pX, ab_pS, ab_pBs, ab_pBS2, ab_pCb, ab_pSl, ab_pNs, ab_pGb, ab_ph
   Complex (Kind=Kind(0.d0)), Pointer, Save :: gbh(:,:,:) => null()      ! host-USM landing buffer of the block gather
+  ! ALFSH_BLKPACK=1 (needs ALFSH_ASYNCBLK=1; same arithmetic, fewer / cheaper host submissions): the block sites go to the gather kernel
+  ! by value, the gather writes into the host-USM landing buffer directly (no bsd upload, no D2H copy), the end-of-block data (wrap
+  ! factors, block sites, pending sites S, packed M, new field values) are packed into ONE host-USM staging buffer, uploaded by one copy;
+  ! the scale kernel also scatters the field values to nsigma_d; one fgather launch for both flavours.  ALFSH_BLKPACK_PLANT=1,2,3
+  ! plants a defect (debug only, the packed-upload checks must fail): 1 wrong offset of the M segment of flavour 1, 2 wrong offset of the
+  ! field values, 3 no wait after the gather, 4 M of flavour 1 used for flavour 2, 5 the last field value is not scattered.
+  ! ALFSH_BLKPACK=2: in addition the first flush GEMM (Y = Qt M^T) is fused into the fgather kernel (own k-sum order: NOT bitwise equal to 0/1)
+  Logical, Save :: ab_pack = .false., ab_pack2 = .false.
+  Integer, Save :: ab_plant = 0, ab_offM(2) = 0
+  Type (c_ptr), Save :: ab_hp, ab_dp, ab_pQ1
+  Complex (Kind=Kind(0.d0)), Pointer, Save :: pkz(:) => null()           ! host staging, complex view (1-based)
+  Integer, Pointer, Save :: pki(:) => null()                              ! the same memory, integer view
   Interface
     Type (c_ptr) Function alfsh_get_queue() Bind(C, name='alfsh_get_queue')
       Import :: c_ptr
@@ -162,6 +174,38 @@ Module gpu_lowrank_mod
       Import :: c_ptr, c_int
       Integer (c_int), Value :: ld, nrow, k, nf
       Type (c_ptr), Value :: G, S, C, Qt, slot
+    End Function
+    Type (c_ptr) Function alfsb_alloc_dev(nbytes) Bind(C, name='alfsb_alloc_dev')
+      Import :: c_ptr, c_int64_t
+      Integer (c_int64_t), Value :: nbytes
+    End Function
+    Integer (c_int) Function alfsb_upload(dst, src, nbytes) Bind(C, name='alfsb_upload')
+      Import :: c_ptr, c_int, c_int64_t
+      Type (c_ptr), Value :: dst, src
+      Integer (c_int64_t), Value :: nbytes
+    End Function
+    Integer (c_int) Function alfsb_gatherv(nfl, nfa, nfb, ld, b, nd, gbk, bs, Gk) Bind(C, name='alfsb_gatherv')
+      Import :: c_ptr, c_int
+      Integer (c_int), Value :: nfl, nfa, nfb, ld, b, nd
+      Type (c_ptr), Value :: gbk, Gk
+      Integer (c_int), Intent(in) :: bs(*)
+    End Function
+    Integer (c_int) Function alfsb_scalep(nfl, nfa, nfb, ld, b, ldz, Gk, bsk, cbk, nsd, nss, nns) Bind(C, name='alfsb_scalep')
+      Import :: c_ptr, c_int
+      Integer (c_int), Value :: nfl, nfa, nfb, ld, b, ldz, nns
+      Type (c_ptr), Value :: Gk, bsk, cbk, nsd, nss
+    End Function
+    Integer (c_int) Function alfsb_fgather2(nfl, ld, nrow, kk0, kk1, nf0, nf1, G0, G1, S0, S1, C0, C1, Q0, Q1, slot) &
+         & Bind(C, name='alfsb_fgather2')
+      Import :: c_ptr, c_int
+      Integer (c_int), Value :: nfl, ld, nrow, kk0, kk1, nf0, nf1
+      Type (c_ptr), Value :: G0, G1, S0, S1, C0, C1, Q0, Q1, slot
+    End Function
+    Integer (c_int) Function alfsb_fgemm1(nfl, ld, nrow, kk0, kk1, nf0, nf1, G0, G1, S0, S1, M0, M1, C0, C1, Y0, Y1, slot) &
+         & Bind(C, name='alfsb_fgemm1')
+      Import :: c_ptr, c_int
+      Integer (c_int), Value :: nfl, ld, nrow, kk0, kk1, nf0, nf1
+      Type (c_ptr), Value :: G0, G1, S0, S1, M0, M1, C0, C1, Y0, Y1, slot
     End Function
     Integer (c_int) Function alfsb_gemm(ta, tb, m, n, k, ar, ai, A, lda, B, ldb, br, bi, C, ldc) Bind(C, name='alfsb_gemm')
       Import :: c_ptr, c_int, c_double
@@ -1320,7 +1364,7 @@ Contains
 
   Subroutine ab_setup()
     Character(len=8) :: v
-    Integer :: st
+    Integer :: st, ncap
     Type (c_ptr) :: qh
     ab_on = .false.
     v = ''
@@ -1337,6 +1381,28 @@ Contains
     if (.not. c_associated(ab_ph)) call ab_check(-1_c_int, 'host USM allocation')
     call c_f_pointer(ab_ph, gbh, [nd, nd, 2])
     write(output_unit,*) ' gpu_lowrank: ALFSH_ASYNCBLK=1, submatrix blocks run asynchronously on the SYCL queue'
+    v = ''
+    call get_environment_variable('ALFSH_BLKPACK', v, status=st)
+    if (st == 0 .and. (trim(v) == '1' .or. trim(v) == '2')) then
+       if (nd > 64) then
+          write(output_unit,*) ' gpu_lowrank: ALFSH_BLKPACK=1 ignored: N_delay > 64'
+       else
+          ab_pack = .true.
+          ab_pack2 = (trim(v) == '2')
+          ncap = 8*nd + 2*nd*nd + 128
+          ab_hp = alfsb_alloc_host(16_c_int64_t*ncap)
+          ab_dp = alfsb_alloc_dev(16_c_int64_t*ncap)
+          ab_pQ1 = alfsb_alloc_dev(16_c_int64_t*Ndim*nd)
+          if (.not. (c_associated(ab_hp) .and. c_associated(ab_dp) .and. c_associated(ab_pQ1))) &
+               & call ab_check(-1_c_int, 'BLKPACK staging allocation')
+          call c_f_pointer(ab_hp, pkz, [ncap])
+          call c_f_pointer(ab_hp, pki, [4*ncap])
+          v = ''
+          call get_environment_variable('ALFSH_BLKPACK_PLANT', v, status=st)
+          if (st == 0 .and. len_trim(v) > 0) read(v,*) ab_plant
+          write(output_unit,*) ' gpu_lowrank: ALFSH_BLKPACK=1, packed block uploads, by-value gather, one fgather launch (2: + fused flush GEMM 1, not bitwise)', ab_plant, ab_pack2
+       endif
+    endif
   end subroutine ab_setup
 #endif
 
@@ -1447,7 +1513,11 @@ Contains
     tb = p3_now()
 #endif
 #if defined(ALF_LA_ONEMKL)
-    if (ab_on) then
+    if (ab_on .and. ab_pack) then
+       call ab_check(alfsb_gatherv(N_FL_eff, nfm(1), nfm(2), Ndim, b, nd, ab_ph, bsd, ab_pG), 'gatherv')
+       ab_pending = .true.
+       if (ab_plant /= 3) call ab_drain()      ! plant 3: no wait, the host reads a stale landing buffer
+    else if (ab_on) then
        call ab_up_i(ab_pBs, bsd, size(bsd))
        call ab_check(alfsb_gather(N_FL_eff, nfm(1), nfm(2), Ndim, b, nd, ab_pGb, ab_pBs, ab_pG), 'gather')
        call ab_check(alfsb_copy(ab_ph, ab_pGb, 16_c_int64_t*nd*nd*2), 'copy gbd')
@@ -1502,6 +1572,19 @@ Contains
 #ifdef ALF_TEAM_TIMERS
     p3t(4) = p3t(4) + (p3_now() - ta)
 #endif
+    vmin = min(blk_v1, blk_v1 + blk_dv*(b-1)); vmax = max(blk_v1, blk_v1 + blk_dv*(b-1))
+    do fl = 1, N_FL_eff
+       nfm(fl) = Calc_Fl_map(fl)
+    enddo
+    if (N_FL_eff == 1) nfm(2) = nfm(1)
+#if defined(ALF_LA_ONEMKL)
+    if (ab_on .and. ab_pack) then
+#ifdef ALF_TEAM_TIMERS
+       tb = p3_now()
+#endif
+       call ab_pack_end(t, vmin, vmax, nfm)        ! packs, uploads (one copy), scale + field values, fgather of both flavours
+    else
+#endif
     ! cbuf: za, zb of every block site (1 if not wrapped), M packed after them; bS_d: pending sites
     do fl = 1, N_FL_eff
        nf = Calc_Fl_map(fl)
@@ -1546,6 +1629,9 @@ Contains
 #if defined(ALF_LA_ONEMKL)
     endif
 #endif
+#if defined(ALF_LA_ONEMKL)
+    endif
+#endif
     upd_cnt(4) = upd_cnt(4) + 1
     do fl = 1, N_FL_eff
        nf = Calc_Fl_map(fl)
@@ -1556,9 +1642,10 @@ Contains
           bidx(bs_h(a,fl),nf) = 0
        enddo
     enddo
-    vmin = min(blk_v1, blk_v1 + blk_dv*(b-1)); vmax = max(blk_v1, blk_v1 + blk_dv*(b-1))
 #if defined(ALF_LA_ONEMKL)
-    if (ab_on) then
+    if (ab_on .and. ab_pack) then
+       ab_pending = .true.          ! the field values went to nsigma_d with the scale kernel
+    else if (ab_on) then
        call ab_up_z(offp(ab_pNs, 16_int64*((vmin-1) + int(size(nsigma_d,1),int64)*(t-1))), nsigma_d(vmin,t), vmax-vmin+1)
        ab_pending = .true.          ! drained by the next blk_begin, or by the flush / sync entry points at the end of the slice
     else
@@ -1591,6 +1678,133 @@ Contains
   end subroutine ab_flush_dev
 #endif
 
+#if defined(ALF_LA_ONEMKL)
+  Integer function ab_r4(n)         ! n rounded up to a multiple of 4 (64 bytes of complex data)
+    Integer, intent(in) :: n
+    ab_r4 = 4*((n + 3)/4)
+  end function ab_r4
+
+!> ALFSH_BLKPACK=1, end of a block: pack za/zb, block sites, pending sites S, packed M and the new field values of the block into the
+!> host-USM staging buffer, ONE upload, then the scale kernel (+ field values to nsigma_d) and the fgather kernel of both flavours.
+!> Staging layout (units of 16 bytes = one complex; every M segment starts on 64 bytes):
+!>   [0, 2b*N_FL_eff)  za(1:b), zb(1:b) per flavour;  then ints: bs(1:b) per flavour, S(1:kk) per flavour;  then M(kk,kk) per flavour;
+!>   then the field values nsigma_d(vmin:vmax,t).   kk = pending count k (2 if k = 1, as in the other paths), 0 if nothing is pending.
+  Subroutine ab_pack_end(t, vmin, vmax, nfm)
+    Integer, intent(in) :: t, vmin, vmax, nfm(2)
+    Integer :: fl, nf, a, m, r, k, b, kk(2), nns, off, offi, offN, ib, is, nused, iz, ii
+    Integer (int64) :: nsoff
+    b = blk_b; nns = vmax - vmin + 1
+    kk = 0
+    do fl = 1, N_FL_eff
+       k = jc(Calc_Fl_map(fl))
+       kk(fl) = k
+       if (k == 1 .and. nd >= 2) kk(fl) = 2
+    enddo
+    off = ab_r4(2*b*N_FL_eff)
+    offi = off
+    off = off + ab_r4((N_FL_eff*b + kk(1) + kk(2) + 3)/4)
+    ab_offM = 0
+    do fl = 1, N_FL_eff
+       if (kk(fl) > 0) then
+          ab_offM(fl) = off
+          off = off + ab_r4(kk(fl)*kk(fl))
+       endif
+    enddo
+    offN = off
+    nused = off + nns
+    is = 4*offi + N_FL_eff*b             ! integer index (0-based) of the first S entry
+    do fl = 1, N_FL_eff
+       nf = Calc_Fl_map(fl)
+       k = jc(nf)
+       iz = 2*b*(fl-1)
+       do a = 1, b
+          pkz(iz + a) = zab_h(a,1,fl)
+          pkz(iz + b + a) = zab_h(a,2,fl)
+          pki(4*offi + b*(fl-1) + a) = bs_h(a,fl)
+       enddo
+       if (k > 0) then
+          do m = 1, k
+             pki(is + m) = S_h(m,nf)
+          enddo
+          if (kk(fl) == 2 .and. k == 1) pki(is + 2) = S_h(1,nf)
+          do m = 1, kk(fl)
+             do r = 1, kk(fl)
+                pkz(ab_offM(fl) + (m-1)*kk(fl) + r) = czero_c
+             enddo
+          enddo
+          do m = 1, k
+             do r = 1, k
+                pkz(ab_offM(fl) + (m-1)*kk(fl) + r) = M_h(r,m,nf)
+             enddo
+          enddo
+       endif
+       is = is + kk(fl)
+    enddo
+    do a = 1, nns
+       pkz(offN + a) = nsigma_d(vmin+a-1,t)
+    enddo
+    call ab_check(alfsb_upload(ab_dp, ab_hp, 16_c_int64_t*nused), 'upload (pack)')
+    nsoff = 16_int64*((vmin-1) + int(size(nsigma_d,1),int64)*(t-1))
+    if (ab_plant == 2) nsoff = nsoff + 16_int64
+    call ab_check(alfsb_scalep(N_FL_eff, nfm(1), nfm(2), Ndim, b, 2*b, ab_pG, offp(ab_dp, 16_int64*offi), ab_dp, &
+         & offp(ab_pNs, nsoff), offp(ab_dp, 16_int64*offN), nns - merge(1, 0, ab_plant == 5 .and. nns > 1)), 'scalep')
+    if (kk(1) > 0 .or. kk(2) > 0) then
+       call ab_fg2(nfm, kk, offi, N_FL_eff*b)
+    endif
+  end subroutine ab_pack_end
+
+  Subroutine ab_fg2(nfm, kk, offi, nsb)
+    Integer, intent(in) :: nfm(2), kk(2), offi, nsb
+    Integer (int64) :: oG(2), oX(2), oS(2)
+    Integer :: fl
+    do fl = 1, N_FL_eff
+       oG(fl) = 16_int64*size(G_d,1)*size(G_d,2)*(nfm(fl)-1)
+       oX(fl) = 16_int64*size(X_d,1)*size(X_d,2)*(nfm(fl)-1)
+    enddo
+    oS(1) = 4_int64*(4_int64*offi + nsb)
+    oS(2) = oS(1) + 4_int64*kk(1)
+    if (N_FL_eff == 1) then
+       oG(2) = oG(1); oX(2) = oX(1); oS(2) = oS(1)
+    endif
+    if (ab_pack2) then
+       call ab_check(alfsb_fgemm1(N_FL_eff, Ndim, Ndim, kk(1), kk(2), nfm(1), nfm(2), offp(ab_pG,oG(1)), offp(ab_pG,oG(2)), &
+            & offp(ab_dp,oS(1)), offp(ab_dp,oS(2)), offp(ab_dp,16_int64*ab_offM(1)), offp(ab_dp,16_int64*ab_offM(2)), &
+            & offp(ab_pX,oX(1)), offp(ab_pX,oX(2)), offp(ab_pS,16_int64*size(scr_c,1)*size(scr_c,2)), ab_pQ1, ab_pSl), 'fgemm1')
+    else
+    call ab_check(alfsb_fgather2(N_FL_eff, Ndim, Ndim, kk(1), kk(2), nfm(1), nfm(2), offp(ab_pG,oG(1)), offp(ab_pG,oG(2)), &
+         & offp(ab_dp,oS(1)), offp(ab_dp,oS(2)), offp(ab_pX,oX(1)), offp(ab_pX,oX(2)), ab_pS, ab_pQ1, ab_pSl), 'fgather2')
+    endif
+  end subroutine ab_fg2
+
+!> the two GEMMs of blk_flush (same shapes / ops / scalars / leading dimensions as ab_flush_dev; fgather already done by ab_fg2)
+  Subroutine ab_flush_dev_p(nf, fl, kk)
+    Integer, intent(in) :: nf, fl, kk
+    Integer (int64) :: oG, oX, oS2, oM
+    Type (c_ptr) :: qt
+    oG  = 16_int64*size(G_d,1)*size(G_d,2)*(nf-1)
+    oX  = 16_int64*size(X_d,1)*size(X_d,2)*(nf-1)
+    oS2 = 16_int64*size(scr_c,1)*size(scr_c,2)
+    oM  = 16_int64*ab_offM(fl)
+    if (ab_plant == 1 .and. fl == 2) oM = oM + 16_int64
+    if (ab_plant == 4 .and. fl == 2) oM = 16_int64*ab_offM(1)     ! M of the wrong flavour: plausible numbers, no abort
+    qt = ab_pS
+    if (fl == 2) qt = ab_pQ1
+    if (ab_pack2) then          ! Y of flavour 1 is in scr_c(:,:,2), that of flavour 2 in the Qt1 buffer (fgemm1 computed both)
+       if (fl == 2) then
+          call ab_check(alfsb_gemm(0, 1, Ndim, Ndim, kk, -1.d0, 0.d0, offp(ab_pX,oX), Ndim, ab_pQ1, Ndim, 1.d0, 0.d0, &
+               offp(ab_pG,oG), Ndim), 'gemm2')
+       else
+          call ab_check(alfsb_gemm(0, 1, Ndim, Ndim, kk, -1.d0, 0.d0, offp(ab_pX,oX), Ndim, offp(ab_pS,oS2), Ndim, 1.d0, 0.d0, &
+               offp(ab_pG,oG), Ndim), 'gemm2')
+       endif
+       return
+    endif
+    call ab_check(alfsb_gemm(0, 1, Ndim, kk, kk, 1.d0, 0.d0, qt, Ndim, offp(ab_dp,oM), kk, 0.d0, 0.d0, offp(ab_pS,oS2), Ndim), 'gemm1')
+    call ab_check(alfsb_gemm(0, 1, Ndim, Ndim, kk, -1.d0, 0.d0, offp(ab_pX,oX), Ndim, offp(ab_pS,oS2), Ndim, 1.d0, 0.d0, &
+         offp(ab_pG,oG), Ndim), 'gemm2')
+  end subroutine ab_flush_dev_p
+#endif
+
 !> flush from the already uploaded S and packed M (bS_d, cbuf): same device sequence as gpu_lr_flush, no further uploads
   Subroutine blk_flush(nf, fl)
     Implicit none
@@ -1602,7 +1816,9 @@ Contains
     if (k == 1 .and. nd >= 2) kk = 2
     n_flush(3) = n_flush(3) + 1; n_flush(2) = n_flush(2) + 1
 #if defined(ALF_LA_ONEMKL)
-    if (ab_on) then
+    if (ab_on .and. ab_pack) then
+       call ab_flush_dev_p(nf, fl, kk)
+    else if (ab_on) then
        call ab_flush_dev(nf, fl, kk)
     else
 #endif

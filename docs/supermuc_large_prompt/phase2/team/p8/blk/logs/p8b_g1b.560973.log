@@ -1,0 +1,77 @@
+host i20r07c02s10 2026-11-13T11:16:10+01:00
+######## G1 bitwise: ALFSH_BLKPACK unset (A) vs 1 (B), same binary /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/blk/build_aottxt/Prog/ALF.out
+#### V7: LIBOMPTARGET_LEVEL_ZERO_STAGING_BUFFER_SIZE=1048576 ALFSH_ASYNCBLK=1 ALFSH_DEVQR=2 ALFSH_DEVUNMQR=1
+## V7 L6F_nd8
+V7_L6F_nd8 cpu: rc=0 wall=16.9s
+V7_L6F_nd8 gpu: rc=0 wall=10.4s
+acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+## V7 L6F_nd4
+V7_L6F_nd4 cpu: rc=0 wall=11.3s
+V7_L6F_nd4 gpu: rc=0 wall=10.9s
+acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+## V7 L6T_nd8
+V7_L6T_nd8 cpu: rc=0 wall=10.6s
+V7_L6T_nd8 gpu: rc=0 wall=10.5s
+acceptance A=0.449432870370 B=0.449432870370  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+## V7 L12F_nd32
+V7_L12F_nd32 cpu: rc=0 wall=16.5s
+V7_L12F_nd32 gpu: rc=0 wall=16.5s
+acceptance A=0.329644097222 B=0.329644097222  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+## V7 L24F_nd32
+V7_L24F_nd32 cpu: rc=0 wall=96.2s
+V7_L24F_nd32 gpu: rc=0 wall=95.7s
+acceptance A=0.327305169753 B=0.327305169753  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+## V7 L24F_nd64
+V7_L24F_nd64 cpu: rc=0 wall=95.3s
+V7_L24F_nd64 gpu: rc=0 wall=95.3s
+acceptance A=0.327305169753 B=0.327305169753  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+#### V2: LIBOMPTARGET_LEVEL_ZERO_STAGING_BUFFER_SIZE=1048576 ALFSH_ASYNCBLK=1 ALFSH_DEVQR=0
+## V2 L6F_nd8
+V2_L6F_nd8 cpu: rc=0 wall=11.9s
+V2_L6F_nd8 gpu: rc=0 wall=11.8s
+acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+## V2 L6F_nd4
+V2_L6F_nd4 cpu: rc=0 wall=12.7s
+V2_L6F_nd4 gpu: rc=0 wall=11.7s
+acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+## V2 L6T_nd8
+V2_L6T_nd8 cpu: rc=0 wall=11.7s
+V2_L6T_nd8 gpu: rc=0 wall=11.7s
+acceptance A=0.449432870370 B=0.449432870370  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+## V2 L12F_nd32
+V2_L12F_nd32 cpu: rc=0 wall=17.7s
+V2_L12F_nd32 gpu: rc=0 wall=16.9s
+acceptance A=0.329644097222 B=0.329644097222  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+## V2 L24F_nd32
+V2_L24F_nd32 cpu: rc=0 wall=113.4s
+V2_L24F_nd32 gpu: rc=0 wall=112.5s
+acceptance A=0.327305169753 B=0.327305169753  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+## V2 L24F_nd64
+V2_L24F_nd64 cpu: rc=0 wall=112.0s
+V2_L24F_nd64 gpu: rc=0 wall=113.3s
+acceptance A=0.327305169753 B=0.327305169753  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+done 2026-11-13T11:33:38+01:00

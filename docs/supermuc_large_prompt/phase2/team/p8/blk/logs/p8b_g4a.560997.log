@@ -1,0 +1,23 @@
+start 2026-11-13T11:50:52+01:00 i20r02c06s10 job 560997
+=== one chain, tile 0
+m=0 nd=32
+RESULT c0_nd32_5323   sweep   4.79  upd  1.39  stab  0.80  cgr  1.19  obs  1.18 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+m=1 nd=32
+RESULT c1_nd32_2831   sweep   4.74  upd  1.30  stab  0.80  cgr  1.23  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+m=2 nd=32
+RESULT c2_nd32_30964  sweep   4.67  upd  1.21  stab  0.81  cgr  1.23  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.988680233656234E-014  2.515040285638742E-011
+m=2 nd=32
+RESULT c2_nd32_6205   sweep   4.67  upd  1.21  stab  0.81  cgr  1.22  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.988680233656234E-014  2.515040285638742E-011
+m=1 nd=32
+RESULT c1_nd32_27258  sweep   4.75  upd  1.31  stab  0.81  cgr  1.22  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+m=0 nd=32
+RESULT c0_nd32_19431  sweep   4.90  upd  1.45  stab  0.81  cgr  1.23  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+m=0 nd=64
+RESULT c0_nd64_23500  sweep   4.68  upd  1.23  stab  0.80  cgr  1.23  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.983526787254018E-014  2.517937356581995E-011

@@ -1,0 +1,34 @@
+start 2026-11-13T12:17:38+01:00 i20r07c02s10 job 561035
+=== one chain, tile 0
+m=0 nd=64
+RESULT c0_nd64_14517  sweep   4.66  upd  1.23  stab  0.80  cgr  1.20  obs  1.18 s/sweep
+  Precision Green  Mean, Max :   1.983526787254018E-014  2.517937356581995E-011
+m=1 nd=64
+RESULT c1_nd64_28783  sweep   4.68  upd  1.25  stab  0.81  cgr  1.22  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.983526787254018E-014  2.517937356581995E-011
+m=2 nd=64
+RESULT c2_nd64_26121  sweep   4.66  upd  1.21  stab  0.81  cgr  1.23  obs  1.18 s/sweep
+  Precision Green  Mean, Max :   1.985757868978761E-014  2.507628631870617E-011
+m=2 nd=64
+RESULT c2_nd64_6001   sweep   4.66  upd  1.22  stab  0.81  cgr  1.23  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.985757868978761E-014  2.507628631870617E-011
+m=1 nd=64
+RESULT c1_nd64_2516   sweep   4.70  upd  1.25  stab  0.81  cgr  1.22  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.983526787254018E-014  2.517937356581995E-011
+m=0 nd=64
+RESULT c0_nd64_14080  sweep   4.70  upd  1.25  stab  0.81  cgr  1.22  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.983526787254018E-014  2.517937356581995E-011
+=== one rank per tile (8 ranks, OMP 14)
+RESULT t0_nd64_2317   ranks 8 (1/tile) nd 64 BLKPACK 0  s/sweep/chain 4.982  sweeps/s/node 1.606  per card 0.401
+PG t0_nd64_2317_s3 mean 1.812856597139737E-014 max 3.577040657300234E-011 -> PASS
+RESULT t1_nd64_9552   ranks 8 (1/tile) nd 64 BLKPACK 1  s/sweep/chain 5.415  sweeps/s/node 1.477  per card 0.369
+PG t1_nd64_9552_s3 mean 1.812856597139737E-014 max 3.577040657300234E-011 -> PASS
+RESULT t2_nd64_14945  ranks 8 (1/tile) nd 64 BLKPACK 2  s/sweep/chain 5.219  sweeps/s/node 1.533  per card 0.383
+PG t2_nd64_14945_s3 mean 1.812570791634108E-014 max 3.679575904318305E-011 -> PASS
+RESULT t2_nd64_22754  ranks 8 (1/tile) nd 64 BLKPACK 2  s/sweep/chain 5.016  sweeps/s/node 1.595  per card 0.399
+PG t2_nd64_22754_s3 mean 1.812570791634108E-014 max 3.679575904318305E-011 -> PASS
+RESULT t1_nd64_10281  ranks 8 (1/tile) nd 64 BLKPACK 1  s/sweep/chain 4.947  sweeps/s/node 1.617  per card 0.404
+PG t1_nd64_10281_s3 mean 1.812856597139737E-014 max 3.577040657300234E-011 -> PASS
+RESULT t0_nd64_11605  ranks 8 (1/tile) nd 64 BLKPACK 0  s/sweep/chain 5.405  sweeps/s/node 1.480  per card 0.370
+PG t0_nd64_11605_s3 mean 1.812856597139737E-014 max 3.577040657300234E-011 -> PASS
+end 2026-11-13T12:46:08+01:00

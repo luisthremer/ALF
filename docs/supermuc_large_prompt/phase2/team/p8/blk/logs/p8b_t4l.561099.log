@@ -1,0 +1,41 @@
+start 2026-11-13T13:02:45+01:00 i20r02c05s10 job 561099
+== c0_nd32_29714 nd=32 ALFSH_BLKPACK=0
+RESULT c0_nd32_29714  sweep   4.89  upd  1.46  stab  0.81  cgr  1.22  obs  1.18 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+== c1_nd32_13887 nd=32 ALFSH_BLKPACK=1
+RESULT c1_nd32_13887  sweep   4.77  upd  1.32  stab  0.81  cgr  1.23  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+== c2_nd32_807 nd=32 ALFSH_BLKPACK=2
+RESULT c2_nd32_807    sweep   4.68  upd  1.22  stab  0.81  cgr  1.23  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.988680233656234E-014  2.515040285638742E-011
+== c2_nd32_2698 nd=32 ALFSH_BLKPACK=2
+RESULT c2_nd32_2698   sweep   4.68  upd  1.23  stab  0.81  cgr  1.24  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.988680233656234E-014  2.515040285638742E-011
+== c1_nd32_24574 nd=32 ALFSH_BLKPACK=1
+RESULT c1_nd32_24574  sweep   4.81  upd  1.34  stab  0.81  cgr  1.24  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+== c0_nd32_55 nd=32 ALFSH_BLKPACK=0
+RESULT c0_nd32_55     sweep   4.95  upd  1.49  stab  0.81  cgr  1.23  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+== abl_gdev_3148 nd=32 ALFSH_BLKPACK=1 ALFSB_GDEV=1
+RESULT abl_gdev_3148  sweep   4.77  upd  1.29  stab  0.81  cgr  1.24  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+== abl_noenq_17923 nd=32 ALFSH_BLKPACK=1 ALFSB_NOENQ=1
+RESULT abl_noenq_17923 sweep   4.78  upd  1.31  stab  0.81  cgr  1.24  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+== abl_both_8224 nd=32 ALFSH_BLKPACK=1 ALFSB_NOENQ=1 ALFSB_GDEV=1
+RESULT abl_both_8224  sweep   4.75  upd  1.29  stab  0.81  cgr  1.24  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+== e0_nd32_12149 nd=32 ALFSH_BLKPACK=0
+RESULT e0_nd32_12149  sweep   4.95  upd  1.49  stab  0.81  cgr  1.23  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+== e1_nd32_31797 nd=32 ALFSH_BLKPACK=1
+RESULT e1_nd32_31797  sweep   4.80  upd  1.33  stab  0.81  cgr  1.24  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+== e0_nd32_13943 nd=32 ALFSH_BLKPACK=0
+RESULT e0_nd32_13943  sweep   4.96  upd  1.50  stab  0.81  cgr  1.23  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+== e1_nd32_7856 nd=32 ALFSH_BLKPACK=1
+RESULT e1_nd32_7856   sweep   4.81  upd  1.34  stab  0.81  cgr  1.24  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+end 2026-11-13T13:23:34+01:00

@@ -1,0 +1,76 @@
+host i20r02c02s10 2026-11-13T11:14:35+01:00
+######## G1 bitwise: ALFSH_BLKPACK unset (A) vs 1 (B), same binary /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/blk/build_aottxt/Prog/ALF.out
+#### V7: LIBOMPTARGET_LEVEL_ZERO_STAGING_BUFFER_SIZE=1048576 ALFSH_ASYNCBLK=1 ALFSH_DEVQR=2 ALFSH_DEVUNMQR=1
+## V7 L6F_nd8
+V7_L6F_nd8 cpu: rc=0 wall=14.5s
+V7_L6F_nd8 gpu: rc=0 wall=12.0s
+acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+#### V2: LIBOMPTARGET_LEVEL_ZERO_STAGING_BUFFER_SIZE=1048576 ALFSH_ASYNCBLK=1 ALFSH_DEVQR=0
+## V2 L6F_nd8
+V2_L6F_nd8 cpu: rc=0 wall=13.1s
+V2_L6F_nd8 gpu: rc=0 wall=12.9s
+acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+######## default build vs previous binary (p5 txtnew), no ALFSH switches except staging (bitwise)
+g_L6F cpu: rc=0 wall=15.6s
+g_L6F gpu: rc=0 wall=16.0s
+PASS worst rel dev 0.000e+00 (tol 0) 
+g_L12F cpu: rc=0 wall=22.2s
+g_L12F gpu: rc=0 wall=22.0s
+PASS worst rel dev 0.000e+00 (tol 0) 
+######## same, ALFSH_ASYNCBLK=1 (new blk_end structure, BLKPACK unset)
+ga_L6F cpu: rc=0 wall=15.1s
+ga_L6F gpu: rc=0 wall=15.1s
+PASS worst rel dev 0.000e+00 (tol 0) 
+ga_L12F cpu: rc=0 wall=20.3s
+ga_L12F gpu: rc=0 wall=20.3s
+PASS worst rel dev 0.000e+00 (tol 0) 
+######## G2 planted defects (V7, B = BLKPACK=1 + plant; each must FAIL): 1 wrong M offset (flavour 2), 2 wrong field-value offset, 3 no wait after the gather
+## plant 1 L6F_nd8
+V7_pl1_L6F_nd8 cpu: rc=0 wall=12.1s
+V7_pl1_L6F_nd8 gpu: rc=1 wall=6.1s
+ GPU mirror setup time (incl. host->device copies):     0.2210 s
+ Generic error                                                                                       
+acceptance A=0.330798611111 B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_scal (missing)', 'SpinT_eq (missing)', 'SpinXY_eq (missing)', 'SpinZ_eq (missing)', 'SpinZ_local (missing)', 'SpinZ_localtau (missing)', 'confout_0 (missing)']
+   BLKPACK active in B: 1  in A: 0
+## plant 1 L12F_nd32
+V7_pl1_L12F_nd32 cpu: rc=0 wall=17.8s
+V7_pl1_L12F_nd32 gpu: rc=1 wall=6.1s
+ GPU mirror setup time (incl. host->device copies):     0.2429 s
+ Generic error                                                                                       
+acceptance A=0.329644097222 B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_scal (missing)', 'SpinT_eq (missing)', 'SpinXY_eq (missing)', 'SpinZ_eq (missing)', 'SpinZ_local (missing)', 'SpinZ_localtau (missing)', 'confout_0 (missing)']
+   BLKPACK active in B: 1  in A: 0
+## plant 2 L6F_nd8
+V7_pl2_L6F_nd8 cpu: rc=0 wall=11.9s
+V7_pl2_L6F_nd8 gpu: rc=3 wall=6.0s
+ GPU mirror setup time (incl. host->device copies):     0.2194 s
+acceptance A=0.330798611111 B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_scal (missing)', 'SpinT_eq (missing)', 'SpinXY_eq (missing)', 'SpinZ_eq (missing)', 'SpinZ_local (missing)', 'SpinZ_localtau (missing)', 'confout_0 (missing)']
+   BLKPACK active in B: 1  in A: 0
+## plant 2 L12F_nd32
+V7_pl2_L12F_nd32 cpu: rc=0 wall=17.8s
+V7_pl2_L12F_nd32 gpu: rc=3 wall=6.1s
+ GPU mirror setup time (incl. host->device copies):     0.2231 s
+acceptance A=0.329644097222 B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_scal (missing)', 'SpinT_eq (missing)', 'SpinXY_eq (missing)', 'SpinZ_eq (missing)', 'SpinZ_local (missing)', 'SpinZ_localtau (missing)', 'confout_0 (missing)']
+   BLKPACK active in B: 1  in A: 0
+## plant 3 L6F_nd8
+V7_pl3_L6F_nd8 cpu: rc=0 wall=12.0s
+V7_pl3_L6F_nd8 gpu: rc=3 wall=5.9s
+ GPU mirror setup time (incl. host->device copies):     0.2205 s
+acceptance A=0.330798611111 B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_scal (missing)', 'SpinT_eq (missing)', 'SpinXY_eq (missing)', 'SpinZ_eq (missing)', 'SpinZ_local (missing)', 'SpinZ_localtau (missing)', 'confout_0 (missing)']
+   BLKPACK active in B: 1  in A: 0
+## plant 3 L12F_nd32
+V7_pl3_L12F_nd32 cpu: rc=0 wall=17.8s
+V7_pl3_L12F_nd32 gpu: rc=3 wall=6.1s
+ GPU mirror setup time (incl. host->device copies):     0.2236 s
+acceptance A=0.329644097222 B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_scal (missing)', 'SpinT_eq (missing)', 'SpinXY_eq (missing)', 'SpinZ_eq (missing)', 'SpinZ_local (missing)', 'SpinZ_localtau (missing)', 'confout_0 (missing)']
+   BLKPACK active in B: 1  in A: 0
+done 2026-11-13T11:20:01+01:00

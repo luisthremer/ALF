@@ -1,0 +1,10 @@
+start 2026-11-13T11:10:33+01:00 i20r07c02s10
+-rwxr-xr-x 1 di38zuw hpcusers 4382528 Nov 13 11:12 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/blk/build_aottxt/Libraries/Modules/libalfdevqr.so
+-rwxr-xr-x 1 di38zuw hpcusers  260544 Nov 13 11:12 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/blk/build_aottxt/Libraries/Modules/libalfsb.so
+-rwxr-xr-x 1 di38zuw hpcusers    8160 Nov 13 11:11 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/blk/build_aottxt/Libraries/Modules/libfakeintel.so
+-rwxr-xr-x 1 di38zuw hpcusers 7659400 Nov 13 11:13 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/blk/build_aottxt/Prog/ALF.out
+-rwxr-xr-x 1 di38zuw hpcusers 1650496 Nov 13 11:12 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/blk/build_txtnew/Libraries/Modules/libalfdevqr.so
+-rwxr-xr-x 1 di38zuw hpcusers  154048 Nov 13 11:12 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/blk/build_txtnew/Libraries/Modules/libalfsb.so
+-rwxr-xr-x 1 di38zuw hpcusers    8160 Nov 13 11:11 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/blk/build_txtnew/Libraries/Modules/libfakeintel.so
+-rwxr-xr-x 1 di38zuw hpcusers 6293752 Nov 13 11:12 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/blk/build_txtnew/Prog/ALF.out
+end 2026-11-13T11:13:04+01:00

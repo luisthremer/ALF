@@ -1,0 +1,121 @@
+host i20r02c05s10 2026-11-13T12:49:44+01:00 part v2
+######## G1 bitwise V2: LIBOMPTARGET_LEVEL_ZERO_STAGING_BUFFER_SIZE=1048576 ALFSH_ASYNCBLK=1 ALFSH_DEVQR=0
+## V2 L6F_nd8
+V2_L6F_nd8 cpu: rc=0 wall=53.9s
+V2_L6F_nd8 gpu: rc=0 wall=11.8s
+acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+## V2 L6F_nd4
+V2_L6F_nd4 cpu: rc=0 wall=12.2s
+V2_L6F_nd4 gpu: rc=0 wall=11.8s
+acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+## V2 L6T_nd8
+V2_L6T_nd8 cpu: rc=0 wall=12.2s
+V2_L6T_nd8 gpu: rc=0 wall=11.8s
+acceptance A=0.449432870370 B=0.449432870370  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+## V2 L12F_nd32
+V2_L12F_nd32 cpu: rc=0 wall=17.3s
+V2_L12F_nd32 gpu: rc=0 wall=17.9s
+acceptance A=0.329644097222 B=0.329644097222  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+## V2 L24F_nd32
+V2_L24F_nd32 cpu: rc=0 wall=112.8s
+V2_L24F_nd32 gpu: rc=0 wall=112.8s
+acceptance A=0.327305169753 B=0.327305169753  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+   BLKPACK active in B: 1  in A: 0
+######## default build vs previous binary (p5 txtnew), no ALFSH switches (bitwise)
+g_L6F cpu: rc=0 wall=14.6s
+g_L6F gpu: rc=0 wall=15.1s
+PASS worst rel dev 0.000e+00 (tol 0) 
+g_L12F cpu: rc=0 wall=21.6s
+g_L12F gpu: rc=0 wall=21.0s
+PASS worst rel dev 0.000e+00 (tol 0) 
+######## same with ALFSH_ASYNCBLK=1 (V2 switches, BLKPACK unset), bitwise
+ga_L6F cpu: rc=0 wall=13.7s
+ga_L6F gpu: rc=0 wall=14.0s
+PASS worst rel dev 0.000e+00 (tol 0) 
+ga_L12F cpu: rc=0 wall=19.0s
+ga_L12F gpu: rc=0 wall=19.1s
+PASS worst rel dev 0.000e+00 (tol 0) 
+######## G2 planted defects (V7, B = BLKPACK=1 + plant; each must FAIL): 1 wrong M offset (flavour 2), 2 wrong field-value offset, 3 no wait after the gather, 4 M of the wrong flavour, 5 last field value not uploaded
+## plant 1 L6F_nd8
+V7_pl1_L6F_nd8 cpu: rc=0 wall=11.6s
+V7_pl1_L6F_nd8 gpu: rc=1 wall=4.8s
+ GPU mirror setup time (incl. host->device copies):     0.2217 s
+ Generic error                                                                                       
+acceptance A=0.330798611111 B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_scal (missing)', 
+   BLKPACK active in B: 1  in A: 0
+## plant 1 L12F_nd32
+V7_pl1_L12F_nd32 cpu: rc=0 wall=16.5s
+V7_pl1_L12F_nd32 gpu: rc=1 wall=4.8s
+ GPU mirror setup time (incl. host->device copies):     0.2260 s
+ Generic error                                                                                       
+acceptance A=0.329644097222 B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_scal (missing)', 
+   BLKPACK active in B: 1  in A: 0
+## plant 2 L6F_nd8
+V7_pl2_L6F_nd8 cpu: rc=0 wall=10.8s
+V7_pl2_L6F_nd8 gpu: rc=3 wall=4.8s
+ GPU mirror setup time (incl. host->device copies):     0.2211 s
+acceptance A=0.330798611111 B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_scal (missing)', 
+   BLKPACK active in B: 1  in A: 0
+## plant 2 L12F_nd32
+V7_pl2_L12F_nd32 cpu: rc=0 wall=16.5s
+V7_pl2_L12F_nd32 gpu: rc=3 wall=4.8s
+ GPU mirror setup time (incl. host->device copies):     0.2264 s
+acceptance A=0.329644097222 B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_scal (missing)', 
+   BLKPACK active in B: 1  in A: 0
+## plant 3 L6F_nd8
+V7_pl3_L6F_nd8 cpu: rc=0 wall=10.7s
+V7_pl3_L6F_nd8 gpu: rc=3 wall=4.7s
+ GPU mirror setup time (incl. host->device copies):     0.2217 s
+acceptance A=0.330798611111 B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_scal (missing)', 
+   BLKPACK active in B: 1  in A: 0
+## plant 3 L12F_nd32
+V7_pl3_L12F_nd32 cpu: rc=0 wall=16.5s
+V7_pl3_L12F_nd32 gpu: rc=3 wall=4.8s
+ GPU mirror setup time (incl. host->device copies):     0.2261 s
+acceptance A=0.329644097222 B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_scal (missing)', 
+   BLKPACK active in B: 1  in A: 0
+## plant 4 L6F_nd8
+V7_pl4_L6F_nd8 cpu: rc=0 wall=10.7s
+V7_pl4_L6F_nd8 gpu: rc=1 wall=4.7s
+ GPU mirror setup time (incl. host->device copies):     0.2216 s
+ Generic error                                                                                       
+acceptance A=0.330798611111 B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_scal (missing)', 
+   BLKPACK active in B: 1  in A: 0
+## plant 4 L12F_nd32
+V7_pl4_L12F_nd32 cpu: rc=0 wall=16.5s
+V7_pl4_L12F_nd32 gpu: rc=3 wall=5.2s
+ GPU mirror setup time (incl. host->device copies):     0.2252 s
+acceptance A=0.329644097222 B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_scal (missing)', 
+   BLKPACK active in B: 1  in A: 0
+## plant 5 L6F_nd8
+V7_pl5_L6F_nd8 cpu: rc=0 wall=10.8s
+V7_pl5_L6F_nd8 gpu: rc=3 wall=5.0s
+ GPU mirror setup time (incl. host->device copies):     0.2218 s
+acceptance A=0.330798611111 B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_scal (missing)', 
+   BLKPACK active in B: 1  in A: 0
+## plant 5 L12F_nd32
+V7_pl5_L12F_nd32 cpu: rc=0 wall=16.7s
+V7_pl5_L12F_nd32 gpu: rc=3 wall=5.2s
+ GPU mirror setup time (incl. host->device copies):     0.2242 s
+acceptance A=0.329644097222 B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) ['Den_eq (missing)', 'Ener_scal (missing)', 'Green_eq (missing)', 'Kin_scal (missing)', 'Part_scal (missing)', 'Pot_scal (missing)', 
+   BLKPACK active in B: 1  in A: 0
+done 2026-11-13T13:01:33+01:00
