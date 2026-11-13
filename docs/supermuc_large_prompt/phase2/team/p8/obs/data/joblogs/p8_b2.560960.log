@@ -1,0 +1,105 @@
+start 2026-11-13T11:09:00+01:00 i20r02c02s10 job 560960
+obsbench.F90(334): warning #6477: Fortran 2008 does not allow this statement or directive.
+!dir$ unroll(32)
+------^
+obsbench.F90(334): warning #6477: Fortran 2008 does not allow this statement or directive.
+!dir$ unroll(32)
+------^
+Compilation from IR - skipping loading of FCL
+Build succeeded.
+=== L 24 Norb 1
+OB N=576 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      155.2 us/call
+OB TIME old_spin       699.3 us/call
+OB TIME old_den        849.1 us/call
+OB ts_green vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME ts_green       165.3 us/call
+OB TIME ser_green      939.9 us/call
+OB acc0_den_new bitwise vs old: T
+OB acc0_den_new1 bitwise vs old: T
+OB TIME acc0_den_new       124.0 us/call
+OB TIME acc0_den_new1      136.0 us/call
+OB hypothesis H (host halving tree) mismatches: 576 of 576
+OB tree_green vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tree_green        97.2 us/call
+OB TIME old_acc0_den      639.7 us/call
+OB acc0_den_chunk bitwise vs old: T
+OB TIME acc0_den_chunk      780.0 us/call
+=== L 6 Norb 1
+OB N=36 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green       33.6 us/call
+OB TIME old_spin        88.6 us/call
+OB TIME old_den         87.9 us/call
+OB ts_green vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME ts_green        46.9 us/call
+OB TIME ser_green       61.3 us/call
+OB acc0_den_new bitwise vs old: T
+OB acc0_den_new1 bitwise vs old: T
+OB TIME acc0_den_new        33.0 us/call
+OB TIME acc0_den_new1       25.7 us/call
+OB hypothesis H (host halving tree) mismatches: 36 of 36
+OB tree_green vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tree_green        61.8 us/call
+OB TIME old_acc0_den       52.6 us/call
+OB acc0_den_chunk bitwise vs old: T
+OB TIME acc0_den_chunk       67.1 us/call
+=== L 12 Norb 1
+OB N=144 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green       56.0 us/call
+OB TIME old_spin       204.7 us/call
+OB TIME old_den        230.6 us/call
+OB ts_green vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB TIME ts_green        67.7 us/call
+OB TIME ser_green      192.1 us/call
+OB acc0_den_new bitwise vs old: T
+OB acc0_den_new1 bitwise vs old: T
+OB TIME acc0_den_new        55.0 us/call
+OB TIME acc0_den_new1       50.5 us/call
+OB hypothesis H (host halving tree) mismatches: 144 of 144
+OB tree_green vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB TIME tree_green        70.9 us/call
+OB TIME old_acc0_den      168.6 us/call
+OB acc0_den_chunk bitwise vs old: T
+OB TIME acc0_den_chunk      205.8 us/call
+=== L 32 Norb 1
+OB N=1024 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      230.9 us/call
+OB TIME old_spin      1235.7 us/call
+OB TIME old_den       1500.3 us/call
+OB ts_green vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB TIME ts_green       246.9 us/call
+OB TIME ser_green     1675.7 us/call
+OB acc0_den_new bitwise vs old: T
+OB acc0_den_new1 bitwise vs old: T
+OB TIME acc0_den_new       208.0 us/call
+OB TIME acc0_den_new1      237.0 us/call
+OB hypothesis H (host halving tree) mismatches: 1024 of 1024
+OB tree_green vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB TIME tree_green       131.0 us/call
+OB TIME old_acc0_den     1148.1 us/call
+OB acc0_den_chunk bitwise vs old: T
+OB TIME acc0_den_chunk     1388.0 us/call
+=== L 24 Norb 2
+OB N=576 Norb=2 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      492.6 us/call
+OB TIME old_spin      1643.0 us/call
+OB TIME old_den       1359.4 us/call
+OB ts_green vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME ts_green       477.3 us/call
+OB TIME ser_green      974.1 us/call
+OB acc0_den_new bitwise vs old: T
+OB acc0_den_new1 bitwise vs old: T
+OB TIME acc0_den_new       123.6 us/call
+OB TIME acc0_den_new1      162.2 us/call
+OB hypothesis H (host halving tree) mismatches: 2304 of 2304
+OB tree_green vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tree_green       124.9 us/call
+OB TIME old_acc0_den      652.3 us/call
+OB acc0_den_chunk bitwise vs old: T
+OB TIME acc0_den_chunk      786.7 us/call
+end 2026-11-13T11:09:06+01:00

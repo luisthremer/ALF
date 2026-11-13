@@ -1,0 +1,339 @@
+diff --git a/Prog/gpu_obs_mod.F90 b/Prog/gpu_obs_mod.F90
+index 382f8935..7283a652 100644
+--- a/Prog/gpu_obs_mod.F90
++++ b/Prog/gpu_obs_mod.F90
+@@ -22,6 +22,11 @@
+ !> The formulas are those of Predefined_Obs_eq_{Green,SpinSUN,SpinMz,Den}_measure and of Obser (GRC(i,j,nf) = delta_ij - GR(j,i,nf)).
+ !>
+ !> Environment: ALF_GPU_NOOBS=1 keeps the host Obser (A/B tests).
++!> ALF_GPU_OBSPAR=1 (default off = the kernels above, unchanged) replaces the correlation kernels by a parallel mapping that reproduces the
++!> summation order of the old kernels bit for bit (see corr_par): the old `parallel do reduction(+:s)` over I = 1..N (N <= 1024 work-items) is a
++!> halving tree on the work-item index (A_s(t) = A_2s(t) + A_2s(t+s), s = 512..1, zero padded); the new code evaluates the same tree in two
++!> stages (partial trees over I = tp + 32*kk, then over tp), with one work-item per (partial, output), all kinds fused in one launch.  The serial
++!> acc0 sums keep their order I = 1..N.  ALF_GPU_OBSPAR_PLANT=1 (debug only, with OBSPAR=1): one Green output is multiplied by 1+1e-12.
+ !> Note (nvfortran): the sign/phase weight enters the device loops as two real scalars (wr, wi); a complex scalar there was read as garbage.
+ !--------------------------------------------------------------------
+ #ifdef ALF_GPU
+@@ -65,6 +70,15 @@ Module gpu_obs_mod
+   Integer, Save :: o_Nt
+   Complex (Kind=Kind(0.d0)), Allocatable, Save :: tacc(:,:,:,:,:)   ! (N,Nt,Norb,Norb,nobs)
+   Complex (Kind=Kind(0.d0)), Allocatable, Save :: tacc0(:,:)        ! (Norb,nobs)
++  ! ALF_GPU_OBSPAR=1: parallel correlation kernels (bitwise equal to the old ones)
++  Logical, Save :: o_par = .false., o_plant = .false., o_par_dev = .false., o_skip_acc0 = .false.
++  Integer, Parameter :: PQB = 5, PNP = 2**PQB, PNBK = 10 - PQB, PNK = 2**PNBK, PCH = 16     ! 2^PQB partial trees of 2^PNBK leaves; chunk of the acc0 sums
++  Integer, Allocatable, Save :: o_jct(:,:)                      ! (imj, I): o_jc transposed (lanes over outputs read neighbours)
++  Complex (Kind=Kind(0.d0)), Allocatable, Save :: pq(:,:,:)     ! (N*Norb*Norb, 0:PNP-1, 5) partial tree values per output
++  Complex (Kind=Kind(0.d0)), Allocatable, Save :: zdn(:,:), zsp(:,:)   ! (N,Norb) terms of the serial acc0 sums (Den, SpinMz)
++  ! runtime zero: the compiler must not fold the leaf s = 0 + term (same code shape as the old reduction).  PUBLIC on purpose: in a PRIVATE
++  ! module variable that is never written (or only written with 0) the compiler folds the constant and then fuses the leaf differently.
++  Complex (Kind=Kind(0.d0)), Save, Public :: gpu_obs_zq = (0.d0, 0.d0)
+ 
+ Contains
+ 
+@@ -88,6 +102,11 @@ Contains
+     o_set = .true.; o_ok = .false.; o_tau = .false.
+     call get_environment_variable('ALF_GPU_NOOBS', s)
+     o_off = (trim(s) == '1')
++    call get_environment_variable('ALF_GPU_OBSPAR', s)
++    o_par = (trim(s) == '1')
++    gpu_obs_zq = (0.d0, 0.d0)
++    call get_environment_variable('ALF_GPU_OBSPAR_PLANT', s)
++    o_plant = (trim(s) == '1')
+     o_symm = Symm_
+     if (Projector_) return          ! Symm is handled on the device (gpu_symm)
+     o_loc = (abs(h0) >= Eps_small)
+@@ -101,6 +120,7 @@ Contains
+     o_N = Latt%N; o_Norb = Latt_unit%Norb; o_NFL = N_FL; o_NSUN = N_SUN; o_Ndim = size(List,1)
+     if (o_Ndim /= o_N*o_Norb) return
+     allocate(o_inv(o_N,o_Norb), o_jc(o_N,o_N), o_uo(o_Norb))
++    if (o_par .and. o_N > 1024) o_par = .false.     ! the tree reproduced by corr_par is that of at most 1024 work-items
+     o_inv = Invlist(1:o_N, 1:o_Norb)
+     ! partner table: o_jc(I, imj) = the J with imj(I,J) = imj; it must be a bijection per I
+     allocate(cnt(o_N,o_N)); cnt = 0; o_jc = 0
+@@ -222,10 +242,17 @@ Contains
+     allocate(acc(o_N,1,o_Norb,o_Norb,o_nobs), acc0(o_Norb,o_nobs))
+     acc = (0.d0, 0.d0); acc0 = (0.d0, 0.d0)
+     !$omp target enter data map(to: o_inv, o_jc, o_uo, hk_i, hk_j, hk_f, hk_c, acc, acc0)
++    if (o_par) then
++       allocate(o_jct(o_N,o_N), pq(o_N*o_Norb*o_Norb, 0:PNP-1, 5), zdn(o_N,o_Norb), zsp(o_N,o_Norb))
++       o_jct = transpose(o_jc)
++       !$omp target enter data map(to: o_jct) map(alloc: pq, zdn, zsp)
++       o_par_dev = .true.
++    endif
+     o_dev = .true.
+     write(line,'(A,I0,A,I0,A,L1,A,L1,A,L1)') 'GPU observables: device equal-time measurement ACTIVE (N_FL ', o_NFL, ', N_SUN ', o_NSUN, &
+          & ', Symm ', o_symm, ', point-defect local observables ', o_loc, ', tau-resolved on device ', o_tau
+     call info_line(line)
++    if (o_par) call info_line('GPU observables: ALF_GPU_OBSPAR=1, parallel correlation kernels (same summation order as the old kernels)')
+   End Subroutine alloc_dev
+ 
+   !> ham%Obser on the device.  GR (host) is read only when the device copy of a flavour is not current.
+@@ -319,12 +346,16 @@ Contains
+     if (o_loc) call local_obs(ZW, rs, Ntau)
+ 
+     ! ---- correlations: one gather per output element (imj, no, no2)
++    if (o_par) then
++       call corr_par(ZW, N, Norb, NFL, NSUN, sq3)
++    else
+     do k = 1, o_nobs
+        kind_k = o_kind(k)
+        if (kind_k == 4 .and. k /= 2) cycle        ! SpinMz fills Obs_eq(2:4) from k = 2
+        if (kind_k == 4 .and. o_NSUN /= 1) cycle   ! host Predefined_Obs_eq_SpinMz_measure measures only N_SUN = 1 (it just counts otherwise)
+        call corr(k, kind_k, ZW, N, Norb, NFL, NSUN, sq3)
+     enddo
++    endif
+     if (o_symm) then
+        do nf = 1, o_NFL
+           call k_cpy(o_Ndim*o_Ndim, Gsv(1,1,nf), G_d(1,1,nf))
+@@ -434,6 +465,7 @@ Contains
+                 !$omp end parallel do
+                 acc(imj,1,no,no2,k) = acc(imj,1,no,no2,k) + s1*cmplx(wr,wi,kind(0.d0))
+        enddo
++    if (.not. o_skip_acc0) then        ! (OBSPAR=1 does this sum in corr_par)
+        !$omp target teams distribute parallel do private(I,i1,zi,nf,zs0)
+        do no = 1, Norb
+           zs0 = (0.d0, 0.d0)
+@@ -446,6 +478,7 @@ Contains
+           enddo
+           acc0(no,k) = acc0(no,k) + zs0*cmplx(wr,wi,kind(0.d0))
+        enddo
++    endif
+     else                             ! SpinMz (N_FL = 2, N_SUN = 1): Obs_eq(k) = SpinZ, k+1 = SpinXY, k+2 = SpinT
+        !$omp target teams distribute private(imj,no,no2,s1,s2,s3)
+        do m = 0, N*Norb*Norb - 1
+@@ -484,6 +517,201 @@ Contains
+     endif
+   End Subroutine corr
+ 
++  !> Work-item index bit reversal (nb bits)
++  Integer Function pq_brev(j, nb)
++    Implicit none
++    !$omp declare target
++    Integer, intent(in) :: j, nb
++    Integer :: b
++    pq_brev = 0
++    do b = 0, nb-1
++       pq_brev = ior(ishft(pq_brev,1), iand(ishft(j,-b),1))
++    enddo
++  end function pq_brev
++
++  !> Pairwise sum of the PNP partial values pq(m+1, 0:PNP-1, w) in the order of the halving tree over the index tp (strides PNP/2 ... 1):
++  !> the leaves are taken in bit-reversed order and merged like a binary counter, which gives (x(tp) + x(tp+s)) at every level.
++  Complex (Kind=Kind(0.d0)) Function pq_tree(pqa, M0, m, w)
++    Implicit none
++    !$omp declare target
++    Integer, intent(in) :: M0, m, w
++    Complex (Kind=Kind(0.d0)), intent(in) :: pqa(M0,0:PNP-1,5)
++    Complex (Kind=Kind(0.d0)) :: st(0:10), v
++    Integer :: jj, c, lv
++    st = (0.d0, 0.d0)
++    do jj = 0, PNP-1
++       v = pqa(m+1, pq_brev(jj,PQB), w)
++       c = jj; lv = 0
++       do while (iand(c,1) == 1)
++          v = st(lv) + v; c = ishft(c,-1); lv = lv + 1
++       enddo
++       st(lv) = v
++    enddo
++    pq_tree = st(PQB)
++  end function pq_tree
++
++  !> Correlations of all kinds with the same results as the loop over corr(), bit for bit (N <= 1024); see the module header.
++  !> The old kernel per output m: `parallel do reduction(+:s)` over I = 1..N.  Its value is the halving tree over the work-item index t = I-1
++  !> (zero padded to 1024): A_1024(t) = leaf_t, A_s(t) = A_2s(t) + A_2s(t+s), result A_1(0).  Split at stride PNP: the PNP partial trees
++  !> over the leaves t = tp + PNP*kk (kk = 0..PNK-1, halving over kk) are stage 1 (one work-item per (tp, output), outputs on consecutive
++  !> lanes), the tree over tp is stage 2 (one work-item per output).  Each leaf is formed as gpu_obs_zq + term (gpu_obs_zq is a runtime zero), the
++  !> code shape of the old `s1 = s1 + term` with the reduction identity; leaves t >= N are +0.  Parallel here: Green, SpinMz (three sums) or SpinSUN.
++  !> The extra work-items of stage 1 evaluate the terms of the serial acc0 sums (zdn, zsp), the extra ones of stage 2 do those sums (order
++  !> I = 1..N as before, in chunks of PCH loads).  The Den correlation (the one kind whose compiled leaf differed from the old kernel in the last bit
++  !> for some entries when written as above, measured) keeps the old kernel: corr(kd, 3, ...) with its serial acc0 kernel skipped (o_skip_acc0).
++  !> Bitwise: Green (additions only, so independent of how the compiler fuses), Den (old kernel), the acc0 sums and the SpinMz / SpinSUN sums
++  !> (same expressions; compiler dependent in principle, equal to the old kernels in every gate run).
++  Subroutine corr_par(ZW, N, Norb, NFL, NSUN, sq3)
++    Implicit none
++    Integer, intent(in) :: N, Norb, NFL, NSUN
++    Complex (Kind=Kind(0.d0)), intent(in) :: ZW
++    Real (Kind=Kind(0.d0)), intent(in) :: sq3
++    Integer :: k, kg, kd, ks, ku, M0, NL, lin, tp, m, imj, no, no2, I, Ic, J, i1, j1, nf, kk, lev, sst, d, I0, c
++    Logical :: fd, fs, fu
++    Complex (Kind=Kind(0.d0)) :: sg, s1, s2, s3, zg, zi, a, b, gA, gB, zxy, zz, zj, zq_, zs0
++    Complex (Kind=Kind(0.d0)) :: x1(0:PNK-1), x3(0:PNK-1), x4(0:PNK-1), x5(0:PNK-1), zb(0:PCH-1), t1
++    Real (Kind=Kind(0.d0)) :: ns, wr, wi
++
++    ns = dble(NSUN); wr = real(ZW); wi = aimag(ZW)
++    kg = 0; kd = 0; ks = 0; ku = 0
++    do k = 1, o_nobs
++       select case (o_kind(k))
++       case (1); kg = k
++       case (2); ku = k
++       case (3); kd = k
++       case (4); if (k == 2 .and. o_NSUN == 1) ks = k      ! SpinMz: k = 2 fills Obs_eq(2:4); host measures only N_SUN = 1
++       end select
++    enddo
++    fd = (kd > 0); fs = (ks > 0); fu = (ku > 0)
++    M0 = N*Norb*Norb; NL = PNP*M0; zq_ = gpu_obs_zq
++    ! ---- stage 1
++    !$omp target teams distribute parallel do private(m,imj,no,no2,I,Ic,J,i1,j1,nf,tp,kk,lev,sst,d,sg,s1,s2,s3,zg,zi,zj,a,b,gA,gB,zxy,zz,x1,x3,x4,x5)
++    do lin = 0, NL + N*Norb - 1
++       if (lin < NL) then
++          tp = lin / M0; m = lin - tp*M0
++          imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
++          do kk = 0, PNK-1
++             I = tp + PNP*kk + 1; Ic = min(I,N)
++             J = o_jct(imj,Ic); i1 = o_inv(Ic,no); j1 = o_inv(J,no2)
++             zg = (0.d0, 0.d0)                                   ! Green
++             do nf = 1, NFL
++                a = -G_d(j1,i1,nf); if (i1 == j1) a = a + (1.d0, 0.d0)
++                zg = zg + a
++             enddo
++             sg = zq_; sg = sg + zg*ns
++             if (I > N) sg = (0.d0, 0.d0)
++             x1(kk) = sg
++             if (fs) then                                        ! SpinMz (N_FL = 2, N_SUN = 1)
++                a = -G_d(j1,i1,1); if (i1 == j1) a = a + (1.d0, 0.d0)
++                b = -G_d(j1,i1,2); if (i1 == j1) b = b + (1.d0, 0.d0)
++                gA = G_d(i1,j1,1); gB = G_d(i1,j1,2)
++                zxy = a*gB + b*gA
++                zi = ((1.d0, 0.d0) - G_d(i1,i1,2)) - ((1.d0, 0.d0) - G_d(i1,i1,1))
++                zj = ((1.d0, 0.d0) - G_d(j1,j1,2)) - ((1.d0, 0.d0) - G_d(j1,j1,1))
++                zz = a*gA + b*gB + zi*zj
++                s1 = zq_; s2 = zq_; s3 = zq_
++                s1 = s1 + zz
++                s2 = s2 + zxy
++                s3 = s3 + (2.d0*zxy + zz)/3.d0
++                if (I > N) then; s1 = (0.d0, 0.d0); s2 = (0.d0, 0.d0); s3 = (0.d0, 0.d0); endif
++                x3(kk) = s1; x4(kk) = s2; x5(kk) = s3
++             elseif (fu) then                                    ! SpinSUN (N_FL = 1)
++                a = -G_d(j1,i1,1); if (i1 == j1) a = a + (1.d0, 0.d0)
++                s1 = zq_; s1 = s1 + a*G_d(i1,j1,1)*ns
++                if (I > N) s1 = (0.d0, 0.d0)
++                x3(kk) = s1
++             endif
++          enddo
++          do lev = PNBK-1, 0, -1                                 ! halving tree over kk
++             sst = ishft(1,lev)
++             do kk = 0, sst-1
++                x1(kk) = x1(kk) + x1(kk+sst)
++                if (fs .or. fu) x3(kk) = x3(kk) + x3(kk+sst)
++                if (fs) then; x4(kk) = x4(kk) + x4(kk+sst); x5(kk) = x5(kk) + x5(kk+sst); endif
++             enddo
++          enddo
++          pq(m+1,tp,1) = x1(0)
++          if (fs .or. fu) pq(m+1,tp,3) = x3(0)
++          if (fs) then; pq(m+1,tp,4) = x4(0); pq(m+1,tp,5) = x5(0); endif
++       else                                                      ! terms of the serial acc0 sums
++          d = lin - NL; no = d / N + 1; I = d - (no-1)*N + 1
++          i1 = o_inv(I,no)
++          if (fd) then
++             zi = (0.d0, 0.d0)
++             do nf = 1, NFL
++                zi = zi + ((1.d0, 0.d0) - G_d(i1,i1,nf))
++             enddo
++             zdn(I,no) = zi
++          endif
++          if (fs) zsp(I,no) = ((1.d0, 0.d0) - G_d(i1,i1,2)) - ((1.d0, 0.d0) - G_d(i1,i1,1))
++       endif
++    enddo
++    ! ---- stage 2
++    !$omp target teams distribute parallel do private(m,imj,no,no2,d,I,I0,c,zs0,zb,t1)
++    do lin = 0, M0 + 2*Norb - 1
++       if (lin < M0) then
++          m = lin
++          imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
++          t1 = pq_tree(pq, M0, m, 1)
++          acc(imj,1,no,no2,kg) = acc(imj,1,no,no2,kg) + t1*cmplx(wr,wi,kind(0.d0))
++          if (fu) then
++             t1 = pq_tree(pq, M0, m, 3)
++             acc(imj,1,no,no2,ku) = acc(imj,1,no,no2,ku) + t1*cmplx(wr,wi,kind(0.d0))
++          endif
++          if (fs) then
++             t1 = pq_tree(pq, M0, m, 3)
++             acc(imj,1,no,no2,ks) = acc(imj,1,no,no2,ks) + t1*cmplx(wr,wi,kind(0.d0))
++             t1 = pq_tree(pq, M0, m, 4)
++             acc(imj,1,no,no2,ks+1) = acc(imj,1,no,no2,ks+1) + t1*cmplx(wr,wi,kind(0.d0))
++             t1 = pq_tree(pq, M0, m, 5)
++             acc(imj,1,no,no2,ks+2) = acc(imj,1,no,no2,ks+2) + t1*cmplx(wr,wi,kind(0.d0))
++          endif
++       else
++          d = lin - M0
++          if (d < Norb) then                                     ! Den: acc0 = sum_I zi(I)*ns, I = 1..N in order
++             no = d + 1
++             if (fd) then
++                zs0 = (0.d0, 0.d0)
++                do I0 = 1, N, PCH
++                   do c = 0, PCH-1
++                      zb(c) = zdn(min(I0+c,N),no)
++                   enddo
++                   do c = 0, PCH-1
++                      if (I0+c <= N) zs0 = zs0 + zb(c)*ns
++                   enddo
++                enddo
++                acc0(no,kd) = acc0(no,kd) + zs0*cmplx(wr,wi,kind(0.d0))
++             endif
++          else                                                   ! SpinMz: acc0
++             no = d - Norb + 1
++             if (fs) then
++                zs0 = (0.d0, 0.d0)
++                do I0 = 1, N, PCH
++                   do c = 0, PCH-1
++                      zb(c) = zsp(min(I0+c,N),no)
++                   enddo
++                   do c = 0, PCH-1
++                      if (I0+c <= N) zs0 = zs0 + zb(c)
++                   enddo
++                enddo
++                acc0(no,ks)   = acc0(no,ks)   + zs0*cmplx(wr,wi,kind(0.d0))
++                acc0(no,ks+2) = acc0(no,ks+2) + zs0*cmplx(wr,wi,kind(0.d0))/sq3
++             endif
++          endif
++       endif
++    enddo
++    if (fd) then          ! Den: the old kernel, without its serial acc0 kernel (done above)
++       o_skip_acc0 = .true.
++       call corr(kd, 3, ZW, N, Norb, NFL, NSUN, sq3)
++       o_skip_acc0 = .false.
++    endif
++    if (o_plant) then          ! debug only (ALF_GPU_OBSPAR_PLANT=1, needs ALF_GPU_DEBUG=1): one Green output x (1+1e-12) in a separate kernel; the bitwise gate must fail
++       !$omp target
++       acc(2,1,1,1,kg) = acc(2,1,1,1,kg)*(1.d0 + 1.d-12)
++       !$omp end target
++    endif
++  End Subroutine corr_par
++
+   !> Add the device accumulators to the host Obs_eq (before Pr_obs normalises them) and zero them
+   Subroutine gpu_obs_flush()
+     Implicit none
+@@ -539,6 +767,11 @@ Contains
+        deallocate(tacc, tacc0)
+        o_tdev = .false.
+     endif
++    if (o_par_dev) then
++       !$omp target exit data map(delete: o_jct, pq, zdn, zsp)
++       deallocate(o_jct, pq, zdn, zsp)
++       o_par_dev = .false.
++    endif
+     if (o_dev) then
+        !$omp target exit data map(delete: o_inv, o_jc, o_uo, hk_i, hk_j, hk_f, hk_c, acc, acc0)
+        deallocate(acc, acc0)
+diff --git a/Prog/gpu_state_mod.F90 b/Prog/gpu_state_mod.F90
+index 43b6bb38..f4bc02e4 100644
+--- a/Prog/gpu_state_mod.F90
++++ b/Prog/gpu_state_mod.F90
+@@ -355,7 +355,7 @@ Contains
+ 
+ !--------------------------------------------------------------------
+ !> Ticket 212, at setup of every GPU run: build stamp, debug-env line, allow-list (production runs refuse every set
+-!> ALF_GPU_* variable except DISABLE and DEBUG), value check of the fault variables, armed-fault lines.
++!> ALF_GPU_* variable except DISABLE, DEBUG and OBSPAR), value check of the fault variables, armed-fault lines.
+ !--------------------------------------------------------------------
+   Subroutine gpu_env_check()
+     Implicit none
+@@ -403,7 +403,7 @@ Contains
+     If (.not. debug_run) then
+        Do i = 1, env_n
+           Select case (trim(env_name(i)))
+-          Case ('ALF_GPU_DISABLE', 'ALF_GPU_DEBUG')
++          Case ('ALF_GPU_DISABLE', 'ALF_GPU_DEBUG', 'ALF_GPU_OBSPAR')      ! OBSPAR: p8 parallel observables kernels (bitwise equal), a production switch
+           Case default
+              Call env_fail('GPU debug env refused: '//trim(env_name(i))// &
+                   & ' (production run; set ALF_GPU_DEBUG=1 for a debug run)')

@@ -1,0 +1,14 @@
+G1_L6_nfl1 cpu: rc=0 wall=11.8s
+G1_L6_nfl1 gpu: rc=0 wall=11.0s
+file                         n    max|dif|   max/scale
+Den_eq                     298   0.000e+00   0.000e+00
+Ener_scal                    8   0.000e+00   0.000e+00
+Green_eq                   298   0.000e+00   0.000e+00
+Kin_scal                     8   0.000e+00   0.000e+00
+Part_scal                    8   0.000e+00   0.000e+00
+Pot_scal                     8   0.000e+00   0.000e+00
+SpinZ_eq                   298   0.000e+00   0.000e+00
+confout_0                 2162   0.000e+00   0.000e+00
+acceptance A=0.332418981481 B=0.332418981481  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+ 

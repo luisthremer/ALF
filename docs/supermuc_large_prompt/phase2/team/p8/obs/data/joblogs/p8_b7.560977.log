@@ -1,0 +1,74 @@
+start 2026-11-13T11:19:40+01:00 i20r07c05s02 job 560977
+################ QB=5
+=== L 24 Norb 1
+OB N=576 Norb=1 NFL=2 devices=1
+OB TIME old_all     1702.1 us/call
+OB chunk mode 0 acc0 bitwise: T  acc bitwise: T
+OB TIME tf_all      557.0 us/call
+OB chunk mode 1 acc0 bitwise: T  acc bitwise: T
+OB TIME tf_all      448.6 us/call
+=== L 24 Norb 2
+OB N=576 Norb=2 NFL=2 devices=1
+OB TIME old_all     3500.4 us/call
+OB chunk mode 0 acc0 bitwise: T  acc bitwise: T
+OB TIME tf_all     1915.1 us/call
+OB chunk mode 1 acc0 bitwise: T  acc bitwise: T
+OB TIME tf_all     1753.8 us/call
+=== L 32 Norb 1
+OB N=1024 Norb=1 NFL=2 devices=1
+OB TIME old_all     2988.2 us/call
+OB chunk mode 0 acc0 bitwise: T  acc bitwise: T
+OB TIME tf_all     1018.9 us/call
+OB chunk mode 1 acc0 bitwise: T  acc bitwise: T
+OB TIME tf_all      817.0 us/call
+=== L 6 Norb 1
+OB N=36 Norb=1 NFL=2 devices=1
+OB TIME old_all      220.3 us/call
+OB chunk mode 0 acc0 bitwise: T  acc bitwise: T
+OB TIME tf_all      246.1 us/call
+OB chunk mode 1 acc0 bitwise: T  acc bitwise: T
+OB TIME tf_all      251.0 us/call
+=== L 12 Norb 1
+OB N=144 Norb=1 NFL=2 devices=1
+OB TIME old_all      505.1 us/call
+OB chunk mode 0 acc0 bitwise: T  acc bitwise: T
+OB TIME tf_all      272.9 us/call
+OB chunk mode 1 acc0 bitwise: T  acc bitwise: T
+OB TIME tf_all      273.1 us/call
+################ QB=6
+=== L 24 Norb 1
+OB N=576 Norb=1 NFL=2 devices=1
+OB TIME old_all     1675.3 us/call
+OB chunk mode 0 acc0 bitwise: T  acc bitwise: T
+OB TIME tf_all      572.0 us/call
+OB chunk mode 1 acc0 bitwise: T  acc bitwise: T
+OB TIME tf_all      513.9 us/call
+=== L 24 Norb 2
+OB N=576 Norb=2 NFL=2 devices=1
+OB TIME old_all     3493.5 us/call
+OB chunk mode 0 acc0 bitwise: T  acc bitwise: T
+OB TIME tf_all     1949.4 us/call
+OB chunk mode 1 acc0 bitwise: T  acc bitwise: T
+OB TIME tf_all     1881.5 us/call
+=== L 32 Norb 1
+OB N=1024 Norb=1 NFL=2 devices=1
+OB TIME old_all     2976.3 us/call
+OB chunk mode 0 acc0 bitwise: T  acc bitwise: T
+OB TIME tf_all     1055.4 us/call
+OB chunk mode 1 acc0 bitwise: T  acc bitwise: T
+OB TIME tf_all      858.4 us/call
+=== L 6 Norb 1
+OB N=36 Norb=1 NFL=2 devices=1
+OB TIME old_all      223.7 us/call
+OB chunk mode 0 acc0 bitwise: T  acc bitwise: T
+OB TIME tf_all      274.5 us/call
+OB chunk mode 1 acc0 bitwise: T  acc bitwise: T
+OB TIME tf_all      274.4 us/call
+=== L 12 Norb 1
+OB N=144 Norb=1 NFL=2 devices=1
+OB TIME old_all      505.0 us/call
+OB chunk mode 0 acc0 bitwise: T  acc bitwise: T
+OB TIME tf_all      300.9 us/call
+OB chunk mode 1 acc0 bitwise: T  acc bitwise: T
+OB TIME tf_all      304.2 us/call
+end 2026-11-13T11:19:58+01:00

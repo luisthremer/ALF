@@ -1,0 +1,30 @@
+start 2026-11-13T12:01:57+01:00 i20r07c02s10 job 561012
+## V0_L12F: FAIL worst rel dev 5.483e-18 (tol 0) 
+Den_eq                     581   7.895e-16   5.483e-18
+## V0_L6F: FAIL worst rel dev 2.313e-17 (tol 0) 
+Den_eq                     298   8.327e-16   2.313e-17
+## V1_L12F: FAIL worst rel dev 5.483e-18 (tol 0) 
+Den_eq                     581   7.895e-16   5.483e-18
+## V1_L6F: FAIL worst rel dev 2.313e-17 (tol 0) 
+Den_eq                     298   8.327e-16   2.313e-17
+## V2_L12F: FAIL worst rel dev 5.483e-18 (tol 0) 
+Den_eq                     581   7.895e-16   5.483e-18
+## V2_L6F: FAIL worst rel dev 2.313e-17 (tol 0) 
+Den_eq                     298   8.327e-16   2.313e-17
+## V3_L12F: FAIL worst rel dev 5.493e-18 (tol 0) 
+Den_eq                     581   7.910e-16   5.493e-18
+## V3_L6F: FAIL worst rel dev 2.313e-17 (tol 0) 
+Den_eq                     298   8.327e-16   2.313e-17
+## V4_L12F: FAIL worst rel dev 5.483e-18 (tol 0) 
+Den_eq                     581   7.895e-16   5.483e-18
+## V4_L6F: FAIL worst rel dev 2.313e-17 (tol 0) 
+Den_eq                     298   8.327e-16   2.313e-17
+## V5_L12F: FAIL worst rel dev 6.939e-18 (tol 0) 
+Den_eq                     581   9.992e-16   6.939e-18
+## V5_L6F: FAIL worst rel dev 2.313e-17 (tol 0) 
+Den_eq                     298   8.327e-16   2.313e-17
+## V6_L12F: FAIL worst rel dev 6.939e-18 (tol 0) 
+Den_eq                     581   9.992e-16   6.939e-18
+## V6_L6F: FAIL worst rel dev 2.313e-17 (tol 0) 
+Den_eq                     298   8.327e-16   2.313e-17
+end 2026-11-13T12:03:11+01:00

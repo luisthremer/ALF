@@ -1,0 +1,18 @@
+G2_L24F cpu: rc=0 wall=183.1s
+G2_L24F gpu: rc=0 wall=180.4s
+file                         n    max|dif|   max/scale
+Den_eq                    4618   0.000e+00   0.000e+00
+Ener_scal                    8   0.000e+00   0.000e+00
+Green_eq                  4618   2.860e-13   4.965e-16
+Kin_scal                     8   0.000e+00   0.000e+00
+Part_scal                    8   0.000e+00   0.000e+00
+Pot_scal                     8   0.000e+00   0.000e+00
+SpinT_eq                  4618   0.000e+00   0.000e+00
+SpinXY_eq                 4618   0.000e+00   0.000e+00
+SpinZ_eq                  4618   0.000e+00   0.000e+00
+SpinZ_local               4614   0.000e+00   0.000e+00
+SpinZ_localtau          557578   0.000e+00   0.000e+00
+confout_0               138242   0.000e+00   0.000e+00
+acceptance A=0.324358000579 B=0.324358000579  diff=0.00e+00
+FAIL worst rel dev 4.965e-16 (tol 0) 
+ 

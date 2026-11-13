@@ -1,0 +1,41 @@
+start 2026-11-13T11:31:13+01:00 i20r02c06s10 job 560984
+## G1d_L12F: G1d_L12F cpu: rc=0 wall=20.1s G1d_L12F gpu: rc=0 wall=21.0s 
+acceptance A=0.329644097222 B=0.329644097222  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+## G1d_L6F: G1d_L6F cpu: rc=0 wall=15.3s G1d_L6F gpu: rc=0 wall=14.0s 
+acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+## G1_L12F: G1_L12F cpu: rc=1 wall=4.7s G1_L12F gpu: rc=1 wall=3.0s 
+acceptance A=nan B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) 
+## G1_L12F_V7: G1_L12F_V7 cpu: rc=1 wall=2.6s G1_L12F_V7 gpu: rc=1 wall=2.7s 
+acceptance A=nan B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) 
+## G1_L24F: G1_L24F cpu: rc=1 wall=6.5s G1_L24F gpu: rc=1 wall=4.7s 
+acceptance A=nan B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) 
+## G1_L6_bil: G1_L6_bil cpu: rc=1 wall=2.9s G1_L6_bil gpu: rc=1 wall=2.9s 
+acceptance A=nan B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) 
+## G1_L6F: G1_L6F cpu: rc=1 wall=4.7s G1_L6F gpu: rc=1 wall=2.9s 
+acceptance A=nan B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) 
+## G1_L6_nfl1: G1_L6_nfl1 cpu: rc=1 wall=2.7s G1_L6_nfl1 gpu: rc=1 wall=2.9s 
+acceptance A=nan B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) 
+## G1_L6_nsun4: G1_L6_nsun4 cpu: rc=1 wall=3.0s G1_L6_nsun4 gpu: rc=1 wall=2.7s 
+acceptance A=nan B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) 
+## G1_L6T: G1_L6T cpu: rc=1 wall=3.0s G1_L6T gpu: rc=1 wall=2.9s 
+acceptance A=nan B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) 
+## G2_L12F: G2_L12F cpu: rc=1 wall=3.0s G2_L12F gpu: rc=1 wall=2.8s 
+acceptance A=nan B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) 
+## G2_L24F: G2_L24F cpu: rc=1 wall=4.8s G2_L24F gpu: rc=1 wall=5.0s 
+acceptance A=nan B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) 
+## G2_L6F: G2_L6F cpu: rc=1 wall=4.6s G2_L6F gpu: rc=1 wall=3.0s 
+acceptance A=nan B=nan  diff=nan
+FAIL worst rel dev 0.000e+00 (tol 0) 
+end 2026-11-13T11:32:25+01:00

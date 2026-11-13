@@ -1,0 +1,2 @@
+#!/bin/bash
+exec env ALF_GPU_OBSPAR=1 ALF_GPU_OBSPAR_VAR=$WVAR ALF_GPU_DEBUG=1 "$WBIN" "$@"

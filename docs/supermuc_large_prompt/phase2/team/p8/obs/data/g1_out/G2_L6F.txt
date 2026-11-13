@@ -1,0 +1,18 @@
+G2_L6F cpu: rc=0 wall=39.5s
+G2_L6F gpu: rc=0 wall=13.6s
+file                         n    max|dif|   max/scale
+Den_eq                     298   0.000e+00   0.000e+00
+Ener_scal                    8   0.000e+00   0.000e+00
+Green_eq                   298   2.441e-11   6.779e-13
+Kin_scal                     8   0.000e+00   0.000e+00
+Part_scal                    8   0.000e+00   0.000e+00
+Pot_scal                     8   0.000e+00   0.000e+00
+SpinT_eq                   298   0.000e+00   0.000e+00
+SpinXY_eq                  298   0.000e+00   0.000e+00
+SpinZ_eq                   298   0.000e+00   0.000e+00
+SpinZ_local                294   0.000e+00   0.000e+00
+SpinZ_localtau            8938   0.000e+00   0.000e+00
+confout_0                 2162   0.000e+00   0.000e+00
+acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+FAIL worst rel dev 6.779e-13 (tol 0) 
+ 

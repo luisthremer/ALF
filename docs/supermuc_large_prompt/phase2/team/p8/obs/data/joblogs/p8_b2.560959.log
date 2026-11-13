@@ -1,0 +1,77 @@
+start 2026-11-13T11:08:00+01:00 i20r02c02s10 job 560959
+obsbench.F90(325): error #6418: This name has already been assigned a data type.   [J]
+    integer :: m, imj, no, no2, I, J, i1, j1, nf, tp, M0, j, kk
+----------------------------------------------------------^
+obsbench.F90(334): warning #6477: Fortran 2008 does not allow this statement or directive.
+!dir$ unroll(32)
+------^
+obsbench.F90(339): error #8093: A do-variable within a DO body shall not appear in a variable definition context.   [J]
+                J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
+----------------^
+compilation aborted for obsbench.F90 (code 1)
+=== L 24 Norb 1
+OB N=576 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      154.5 us/call
+OB TIME old_spin       695.2 us/call
+OB TIME old_den        840.3 us/call
+OB ts_green vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME ts_green       162.9 us/call
+OB TIME ser_green      944.0 us/call
+OB acc0_den_new bitwise vs old: T
+OB acc0_den_new1 bitwise vs old: T
+OB TIME acc0_den_new       124.8 us/call
+OB TIME acc0_den_new1      139.0 us/call
+=== L 6 Norb 1
+OB N=36 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green       35.2 us/call
+OB TIME old_spin        88.7 us/call
+OB TIME old_den         89.4 us/call
+OB ts_green vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME ts_green        47.1 us/call
+OB TIME ser_green       74.8 us/call
+OB acc0_den_new bitwise vs old: T
+OB acc0_den_new1 bitwise vs old: T
+OB TIME acc0_den_new        34.1 us/call
+OB TIME acc0_den_new1       26.9 us/call
+=== L 12 Norb 1
+OB N=144 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green       56.8 us/call
+OB TIME old_spin       203.2 us/call
+OB TIME old_den        230.6 us/call
+OB ts_green vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB TIME ts_green        68.8 us/call
+OB TIME ser_green      192.3 us/call
+OB acc0_den_new bitwise vs old: T
+OB acc0_den_new1 bitwise vs old: T
+OB TIME acc0_den_new        50.3 us/call
+OB TIME acc0_den_new1       48.9 us/call
+=== L 32 Norb 1
+OB N=1024 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      231.4 us/call
+OB TIME old_spin      1249.6 us/call
+OB TIME old_den       1498.7 us/call
+OB ts_green vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB TIME ts_green       251.3 us/call
+OB TIME ser_green     1673.1 us/call
+OB acc0_den_new bitwise vs old: T
+OB acc0_den_new1 bitwise vs old: T
+OB TIME acc0_den_new       206.6 us/call
+OB TIME acc0_den_new1      237.6 us/call
+=== L 24 Norb 2
+OB N=576 Norb=2 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      486.3 us/call
+OB TIME old_spin      1644.6 us/call
+OB TIME old_den       1382.8 us/call
+OB ts_green vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME ts_green       476.9 us/call
+OB TIME ser_green      983.6 us/call
+OB acc0_den_new bitwise vs old: T
+OB acc0_den_new1 bitwise vs old: T
+OB TIME acc0_den_new       131.1 us/call
+OB TIME acc0_den_new1      167.6 us/call
+end 2026-11-13T11:08:03+01:00

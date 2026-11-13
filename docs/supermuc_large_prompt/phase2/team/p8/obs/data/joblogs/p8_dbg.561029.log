@@ -1,0 +1,26 @@
+start 2026-11-13T12:14:07+01:00 i20r07c02s10 job 561029
+-rwxr-xr-x 1 di38zuw hpcusers 6643216 Nov 13 12:15 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/obs/build_txt9/Prog/ALF.out
+## V0_L12F: PASS worst rel dev 0.000e+00 (tol 0) 
+## V0_L6F: FAIL worst rel dev 2.313e-17 (tol 0) 
+## V1_L12F: FAIL worst rel dev 5.483e-18 (tol 0) 
+## V1_L6F: FAIL worst rel dev 2.313e-17 (tol 0) 
+## V2_L12F: FAIL worst rel dev 5.483e-18 (tol 0) 
+## V2_L6F: FAIL worst rel dev 2.313e-17 (tol 0) 
+## V3_L12F: FAIL worst rel dev 5.493e-18 (tol 0) 
+## V3_L6F: FAIL worst rel dev 2.313e-17 (tol 0) 
+## V4_L12F: FAIL worst rel dev 5.483e-18 (tol 0) 
+## V4_L6F: FAIL worst rel dev 2.313e-17 (tol 0) 
+## V5_L12F: FAIL worst rel dev 6.939e-18 (tol 0) 
+## V5_L6F: FAIL worst rel dev 2.313e-17 (tol 0) 
+## V6_L12F: FAIL worst rel dev 6.939e-18 (tol 0) 
+## V6_L6F: FAIL worst rel dev 2.313e-17 (tol 0) 
+## V9_L12F: PASS worst rel dev 0.000e+00 (tol 0) 
+## V9_L6F: FAIL worst rel dev 2.313e-17 (tol 0) 
+DBG call 1 acc differing entries: 1 acc0 new   3.6000000000000043E+01  1.9139017798189278E-01 old   3.6000000000000043E+01  1.9139017798189278E-01
+DBG   DIFF imj 21 new   3.1925523955465749E+01  3.8278035596080301E-01 old   3.1925523955465746E+01  3.8278035596080301E-01 pre   0.0000000000000000E+00  0.0000000000000000E+00 ZW   1.0000E+00  7.4532E-14
+DBG call 2 acc differing entries: 0 acc0 new   7.2000000000000099E+01  3.3252338749333316E-01 old   7.2000000000000099E+01  3.3252338749333316E-01
+DBG call 3 acc differing entries: 0 acc0 new   1.0800000000000017E+02  5.2033433444220645E-01 old   1.0800000000000017E+02  5.2033433444220645E-01
+DBG call 4 acc differing entries: 0 acc0 new   1.4400000000000026E+02  6.8479673693635423E-01 old   1.4400000000000026E+02  6.8479673693635423E-01
+DBG call 5 acc differing entries: 0 acc0 new   1.8000000000000037E+02  8.1222526689917585E-01 old   1.8000000000000037E+02  8.1222526689917585E-01
+DBG call 6 acc differing entries: 0 acc0 new   2.1600000000000054E+02  1.0404904584021446E+00 old   2.1600000000000054E+02  1.0404904584021446E+00
+end 2026-11-13T12:16:36+01:00

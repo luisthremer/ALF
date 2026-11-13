@@ -1,0 +1,10 @@
+start 2026-11-12T23:47:22+01:00 i20r08c02s08 job 560850
+obsbench.F90(300): error #6401: The attributes of this name conflict with those made accessible by a USE statement.   [T1]
+  real(dp) :: t0, t1
+------------------^
+compilation aborted for obsbench.F90 (code 1)
+=== Norb 1
+/var/spool/slurm/job560850/slurm_script: line 21: ./obsbench: No such file or directory
+=== Norb 2
+/var/spool/slurm/job560850/slurm_script: line 21: ./obsbench: No such file or directory
+end 2026-11-12T23:47:23+01:00

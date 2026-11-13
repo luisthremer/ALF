@@ -1,0 +1,16 @@
+G1_L6_bil cpu: rc=0 wall=18.2s
+G1_L6_bil gpu: rc=0 wall=17.6s
+file                         n    max|dif|   max/scale
+Den_eq                     734   0.000e+00   0.000e+00
+Ener_scal                    8   0.000e+00   0.000e+00
+Green_eq                   734   0.000e+00   0.000e+00
+Kin_scal                     8   0.000e+00   0.000e+00
+Part_scal                    8   0.000e+00   0.000e+00
+Pot_scal                     8   0.000e+00   0.000e+00
+SpinT_eq                   734   0.000e+00   0.000e+00
+SpinXY_eq                  734   0.000e+00   0.000e+00
+SpinZ_eq                   734   0.000e+00   0.000e+00
+confout_0                 4322   0.000e+00   0.000e+00
+acceptance A=0.441591435185 B=0.441591435185  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+ 

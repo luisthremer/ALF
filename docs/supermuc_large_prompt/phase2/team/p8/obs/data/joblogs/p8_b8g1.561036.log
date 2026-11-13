@@ -1,0 +1,53 @@
+start 2026-11-13T12:18:38+01:00 i20r07c05s02 job 561036
+-rwxr-xr-x 1 di38zuw hpcusers 12633240 Nov 13 12:20 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/obs/build_aottt/Prog/ALF.out
+-rwxr-xr-x 1 di38zuw hpcusers  6607272 Nov 13 12:20 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/obs/build_txt/Prog/ALF.out
+/hppfs/scratch/0C/di38zuw/large_prompt/team/p8/obs/build_txt/make.log:0
+/hppfs/scratch/0C/di38zuw/large_prompt/team/p8/obs/build_aottt/make.log:0
+start 2026-11-13T12:20:28+01:00 i20r07c05s02 job 561036
+## G1d_L12F: G1d_L12F cpu: rc=0 wall=18.6s G1d_L12F gpu: rc=0 wall=19.2s 
+acceptance A=0.329644097222 B=0.329644097222  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+## G1d_L6F: G1d_L6F cpu: rc=0 wall=39.7s G1d_L6F gpu: rc=0 wall=13.6s 
+acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+## G1_L12F_long: G1_L12F_long cpu: rc=0 wall=54.6s G1_L12F_long gpu: rc=0 wall=48.2s 
+acceptance A=0.333402054398 B=0.333402054398  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+## G1_L12F: G1_L12F cpu: rc=0 wall=47.0s G1_L12F gpu: rc=0 wall=20.5s 
+acceptance A=0.329644097222 B=0.329644097222  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+## G1_L12F_V7: G1_L12F_V7 cpu: rc=0 wall=37.0s G1_L12F_V7 gpu: rc=0 wall=36.9s 
+acceptance A=0.329644097222 B=0.329644097222  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+## G1_L24F: G1_L24F cpu: rc=0 wall=207.2s G1_L24F gpu: rc=0 wall=183.5s 
+acceptance A=0.324358000579 B=0.324358000579  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+## G1_L6_bil: G1_L6_bil cpu: rc=0 wall=18.2s G1_L6_bil gpu: rc=0 wall=17.6s 
+acceptance A=0.441591435185 B=0.441591435185  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+## G1_L6F_long: G1_L6F_long cpu: rc=0 wall=53.0s G1_L6F_long gpu: rc=0 wall=52.1s 
+acceptance A=0.333103137860 B=0.333103137860  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+## G1_L6F: G1_L6F cpu: rc=0 wall=39.7s G1_L6F gpu: rc=0 wall=13.7s 
+acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+## G1_L6_nfl1: G1_L6_nfl1 cpu: rc=0 wall=11.8s G1_L6_nfl1 gpu: rc=0 wall=11.0s 
+acceptance A=0.332418981481 B=0.332418981481  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+## G1_L6_nsun4: G1_L6_nsun4 cpu: rc=0 wall=12.9s G1_L6_nsun4 gpu: rc=0 wall=13.2s 
+acceptance A=0.342152777778 B=0.342152777778  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+## G1_L6T: G1_L6T cpu: rc=0 wall=13.5s G1_L6T gpu: rc=0 wall=12.8s 
+acceptance A=0.449432870370 B=0.449432870370  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+## G2_L12F: G2_L12F cpu: rc=0 wall=19.8s G2_L12F gpu: rc=0 wall=18.7s 
+acceptance A=0.329644097222 B=0.329644097222  diff=0.00e+00
+FAIL worst rel dev 1.053e-15 (tol 0) 
+## G2_L24F: G2_L24F cpu: rc=0 wall=183.1s G2_L24F gpu: rc=0 wall=180.4s 
+acceptance A=0.324358000579 B=0.324358000579  diff=0.00e+00
+FAIL worst rel dev 4.965e-16 (tol 0) 
+## G2_L6F: G2_L6F cpu: rc=0 wall=39.5s G2_L6F gpu: rc=0 wall=13.6s 
+acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+FAIL worst rel dev 6.779e-13 (tol 0) 
+end 2026-11-13T12:28:15+01:00
+end 2026-11-13T12:28:15+01:00

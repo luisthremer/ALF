@@ -1,0 +1,92 @@
+start 2026-11-12T23:47:39+01:00 i20r08c02s08 job 560851
+Compilation from IR - skipping loading of FCL
+Build succeeded.
+=== Norb 1
+OB N=576 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      154.4 us/call
+OB TIME old_spin       687.8 us/call
+OB TIME old_den        839.2 us/call
+OB old_green thread_limit 1024 num_teams 512
+OB   tl-variant vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB   time/call      155.1 us
+OB old_green thread_limit 1024 num_teams 576
+OB   tl-variant vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB   time/call      141.7 us
+OB old_green thread_limit 1024 num_teams 128
+OB   tl-variant vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB   time/call      147.1 us
+OB old_green thread_limit 576 num_teams 576
+OB   tl-variant vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB   time/call      106.2 us
+OB old_green thread_limit 640 num_teams 576
+OB   tl-variant vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB   time/call      109.9 us
+OB old_green thread_limit 512 num_teams 576
+OB   tl-variant vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB   time/call      108.6 us
+OB old_green thread_limit 256 num_teams 576
+OB   tl-variant vs old: n differing = 374 max|d| =   9.93E-16 of 576
+OB   time/call       98.8 us
+OB old_green thread_limit 128 num_teams 576
+OB   tl-variant vs old: n differing = 483 max|d| =   1.99E-15 of 576
+OB   time/call       71.2 us
+OB old_green thread_limit 32 num_teams 576
+OB   tl-variant vs old: n differing = 526 max|d| =   1.27E-13 of 576
+OB   time/call       75.2 us
+OB old_green thread_limit 64 num_teams 576
+OB   tl-variant vs old: n differing = 514 max|d| =   8.88E-16 of 576
+OB   time/call       67.2 us
+OB ts_green vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME ts_green       163.3 us/call
+OB ser_green vs old: n differing = 573 max|d| =   3.60E-13 of 576
+OB TIME ser_green      946.1 us/call
+OB acc0_den_new bitwise vs old: T
+OB acc0_den_new1 bitwise vs old: T
+OB TIME acc0_den_new       123.3 us/call
+OB TIME acc0_den_new1      136.5 us/call
+=== Norb 2
+OB N=576 Norb=2 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      488.7 us/call
+OB TIME old_spin      1628.7 us/call
+OB TIME old_den       1374.9 us/call
+OB old_green thread_limit 1024 num_teams 512
+OB   tl-variant vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB   time/call      492.6 us
+OB old_green thread_limit 1024 num_teams 576
+OB   tl-variant vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB   time/call      482.4 us
+OB old_green thread_limit 1024 num_teams 128
+OB   tl-variant vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB   time/call      480.4 us
+OB old_green thread_limit 576 num_teams 576
+OB   tl-variant vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB   time/call      373.9 us
+OB old_green thread_limit 640 num_teams 576
+OB   tl-variant vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB   time/call      382.8 us
+OB old_green thread_limit 512 num_teams 576
+OB   tl-variant vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB   time/call      391.3 us
+OB old_green thread_limit 256 num_teams 576
+OB   tl-variant vs old: n differing = 111 max|d| =   2.51E-15 of 2304
+OB   time/call      402.7 us
+OB old_green thread_limit 128 num_teams 576
+OB   tl-variant vs old: n differing = 1007 max|d| =   3.20E-15 of 2304
+OB   time/call      287.4 us
+OB old_green thread_limit 32 num_teams 576
+OB   tl-variant vs old: n differing = 1785 max|d| =   3.20E-15 of 2304
+OB   time/call      260.0 us
+OB old_green thread_limit 64 num_teams 576
+OB   tl-variant vs old: n differing = 1533 max|d| =   1.96E-15 of 2304
+OB   time/call      243.5 us
+OB ts_green vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME ts_green       476.7 us/call
+OB ser_green vs old: n differing = 2253 max|d| =   8.66E-13 of 2304
+OB TIME ser_green      978.1 us/call
+OB acc0_den_new bitwise vs old: T
+OB acc0_den_new1 bitwise vs old: T
+OB TIME acc0_den_new       124.5 us/call
+OB TIME acc0_den_new1      163.5 us/call
+end 2026-11-12T23:47:55+01:00

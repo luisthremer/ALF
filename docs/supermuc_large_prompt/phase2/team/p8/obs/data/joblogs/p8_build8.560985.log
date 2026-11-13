@@ -1,0 +1,4 @@
+start 2026-11-13T11:33:44+01:00 i20r02c06s10 job 560985
+-rwxr-xr-x 1 di38zuw hpcusers 12583064 Nov 13 11:35 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/obs/build_aottt/Prog/ALF.out
+-rwxr-xr-x 1 di38zuw hpcusers  6549224 Nov 13 11:35 /hppfs/scratch/0C/di38zuw/large_prompt/team/p8/obs/build_txt/Prog/ALF.out
+end 2026-11-13T11:35:29+01:00

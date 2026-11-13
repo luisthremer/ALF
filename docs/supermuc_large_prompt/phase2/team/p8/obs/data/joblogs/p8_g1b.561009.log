@@ -1,0 +1,14 @@
+start 2026-11-13T11:57:26+01:00 i20r07c02s10 job 561009
+## V0_L12F: FAIL worst rel dev 5.483e-18 (tol 0) 
+Den_eq                     581   7.895e-16   5.483e-18
+## V0_L6F: FAIL worst rel dev 2.313e-17 (tol 0) 
+Den_eq                     298   8.327e-16   2.313e-17
+## V1_L12F: FAIL worst rel dev 5.483e-18 (tol 0) 
+Den_eq                     581   7.895e-16   5.483e-18
+## V1_L6F: FAIL worst rel dev 2.313e-17 (tol 0) 
+Den_eq                     298   8.327e-16   2.313e-17
+## V2_L12F: FAIL worst rel dev 5.483e-18 (tol 0) 
+Den_eq                     581   7.895e-16   5.483e-18
+## V2_L6F: FAIL worst rel dev 2.313e-17 (tol 0) 
+Den_eq                     298   8.327e-16   2.313e-17
+end 2026-11-13T11:58:41+01:00

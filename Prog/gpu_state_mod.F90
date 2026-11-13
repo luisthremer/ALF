@@ -355,7 +355,7 @@ Contains
 
 !--------------------------------------------------------------------
 !> Ticket 212, at setup of every GPU run: build stamp, debug-env line, allow-list (production runs refuse every set
-!> ALF_GPU_* variable except DISABLE and DEBUG), value check of the fault variables, armed-fault lines.
+!> ALF_GPU_* variable except DISABLE, DEBUG and OBSPAR), value check of the fault variables, armed-fault lines.
 !--------------------------------------------------------------------
   Subroutine gpu_env_check()
     Implicit none
@@ -403,7 +403,7 @@ Contains
     If (.not. debug_run) then
        Do i = 1, env_n
           Select case (trim(env_name(i)))
-          Case ('ALF_GPU_DISABLE', 'ALF_GPU_DEBUG')
+          Case ('ALF_GPU_DISABLE', 'ALF_GPU_DEBUG', 'ALF_GPU_OBSPAR')      ! OBSPAR: p8 parallel observables kernels (bitwise equal), a production switch
           Case default
              Call env_fail('GPU debug env refused: '//trim(env_name(i))// &
                   & ' (production run; set ALF_GPU_DEBUG=1 for a debug run)')

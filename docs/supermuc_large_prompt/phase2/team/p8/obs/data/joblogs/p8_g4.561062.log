@@ -1,0 +1,328 @@
+start 2026-11-13T12:29:10+01:00 i20r07c05s02 job 561062
+######## A: one chain (1 rank, tile 0, OMP 8), V7, alternating OBSPAR 0/1, 3 sweeps, phase timers
+RESULT A_p0_1         sweep   4.95  upd  1.50  stab  0.81  cgr  1.23  obs  1.19 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+RESULT A_p1_1         sweep   4.38  upd  1.50  stab  0.81  cgr  1.23  obs  0.62 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+RESULT A_p0_2         sweep   4.92  upd  1.47  stab  0.80  cgr  1.23  obs  1.18 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+RESULT A_p1_2         sweep   4.38  upd  1.48  stab  0.81  cgr  1.23  obs  0.62 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+RESULT A_p0_3         sweep   4.91  upd  1.48  stab  0.80  cgr  1.22  obs  1.18 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+RESULT A_p1_3         sweep   4.38  upd  1.49  stab  0.81  cgr  1.23  obs  0.62 s/sweep
+  Precision Green  Mean, Max :   1.991901531068687E-014  2.578022397483383E-011
+######## B/C: per card from the CPU-time difference of 1 vs 3 sweeps (as p6/m_tput.sh), alternating OBSPAR 0/1
+RESULT T1_V7_p0_1   ranks  8 OMP 14 OBSPAR 0  s/sweep/chain 5.571  sweeps/s/node 1.4360  per card 0.3590
+PG T1_V7_p0_1_s3  mean 1.809410943110277E-014 max 3.334976231551937E-011 -> PASS
+RESULT T1_V7_p0_1_s3  sweep   5.59  upd  1.75  stab  0.93  cgr  1.29  obs  1.35 s/sweep
+RESULT T1_V7_p0_1_s3  sweep   5.64  upd  1.77  stab  0.93  cgr  1.31  obs  1.36 s/sweep
+RESULT T1_V7_p0_1_s3  sweep   5.65  upd  1.77  stab  0.93  cgr  1.30  obs  1.37 s/sweep
+RESULT T1_V7_p0_1_s3  sweep   5.52  upd  1.69  stab  0.92  cgr  1.29  obs  1.36 s/sweep
+RESULT T1_V7_p0_1_s3  sweep   5.65  upd  1.77  stab  0.94  cgr  1.30  obs  1.37 s/sweep
+RESULT T1_V7_p0_1_s3  sweep   5.58  upd  1.72  stab  0.94  cgr  1.30  obs  1.35 s/sweep
+RESULT T1_V7_p0_1_s3  sweep   5.56  upd  1.69  stab  0.93  cgr  1.30  obs  1.36 s/sweep
+RESULT T1_V7_p0_1_s3  sweep   5.45  upd  1.65  stab  0.92  cgr  1.28  obs  1.33 s/sweep
+RESULT T1_V7_p1_1   ranks  8 OMP 14 OBSPAR 1  s/sweep/chain 4.994  sweeps/s/node 1.6019  per card 0.4005
+PG T1_V7_p1_1_s3  mean 1.809410943110277E-014 max 3.334976231551937E-011 -> PASS
+RESULT T1_V7_p1_1_s3  sweep   5.07  upd  1.80  stab  0.95  cgr  1.31  obs  0.74 s/sweep
+RESULT T1_V7_p1_1_s3  sweep   4.96  upd  1.71  stab  0.94  cgr  1.30  obs  0.73 s/sweep
+RESULT T1_V7_p1_1_s3  sweep   5.03  upd  1.78  stab  0.93  cgr  1.30  obs  0.74 s/sweep
+RESULT T1_V7_p1_1_s3  sweep   4.95  upd  1.71  stab  0.94  cgr  1.30  obs  0.73 s/sweep
+RESULT T1_V7_p1_1_s3  sweep   5.03  upd  1.79  stab  0.93  cgr  1.29  obs  0.74 s/sweep
+RESULT T1_V7_p1_1_s3  sweep   5.10  upd  1.81  stab  0.95  cgr  1.31  obs  0.76 s/sweep
+RESULT T1_V7_p1_1_s3  sweep   4.95  upd  1.71  stab  0.94  cgr  1.30  obs  0.73 s/sweep
+RESULT T1_V7_p1_1_s3  sweep   4.88  upd  1.68  stab  0.93  cgr  1.28  obs  0.72 s/sweep
+RESULT T4_V7_p0_1   ranks 32 OMP  3 OBSPAR 0  s/sweep/chain 9.405  sweeps/s/node 3.4025  per card 0.8506
+PG T4_V7_p0_1_s3  mean 1.960957926459005E-014 max 6.536447432744344E-010 -> PASS
+RESULT T4_V7_p0_1_s3  sweep   9.33  upd  2.73  stab  1.71  cgr  1.86  obs  2.72 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.31  upd  2.69  stab  1.71  cgr  1.91  obs  2.71 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.33  upd  2.71  stab  1.70  cgr  1.87  obs  2.75 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.22  upd  2.71  stab  1.68  cgr  1.82  obs  2.70 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.23  upd  2.67  stab  1.69  cgr  1.87  obs  2.68 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.35  upd  2.78  stab  1.68  cgr  1.87  obs  2.71 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.22  upd  2.71  stab  1.67  cgr  1.86  obs  2.68 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.29  upd  2.73  stab  1.67  cgr  1.86  obs  2.72 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.47  upd  2.79  stab  1.73  cgr  1.90  obs  2.74 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.34  upd  2.75  stab  1.67  cgr  1.89  obs  2.72 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.27  upd  2.69  stab  1.69  cgr  1.86  obs  2.72 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.33  upd  2.70  stab  1.70  cgr  1.87  obs  2.75 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.44  upd  2.76  stab  1.73  cgr  1.89  obs  2.75 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.37  upd  2.76  stab  1.71  cgr  1.87  obs  2.72 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.40  upd  2.79  stab  1.69  cgr  1.88  obs  2.76 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.23  upd  2.67  stab  1.68  cgr  1.85  obs  2.72 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.32  upd  2.69  stab  1.72  cgr  1.86  obs  2.73 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.31  upd  2.73  stab  1.68  cgr  1.87  obs  2.71 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.35  upd  2.72  stab  1.71  cgr  1.90  obs  2.72 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.20  upd  2.68  stab  1.68  cgr  1.85  obs  2.69 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.16  upd  2.66  stab  1.66  cgr  1.84  obs  2.69 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.45  upd  2.81  stab  1.71  cgr  1.87  obs  2.77 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.36  upd  2.72  stab  1.70  cgr  1.88  obs  2.76 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.44  upd  2.78  stab  1.70  cgr  1.88  obs  2.78 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.33  upd  2.75  stab  1.69  cgr  1.86  obs  2.73 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.25  upd  2.68  stab  1.70  cgr  1.86  obs  2.72 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.27  upd  2.71  stab  1.69  cgr  1.85  obs  2.73 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.33  upd  2.77  stab  1.69  cgr  1.87  obs  2.70 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.41  upd  2.80  stab  1.70  cgr  1.87  obs  2.74 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.25  upd  2.69  stab  1.68  cgr  1.86  obs  2.71 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.20  upd  2.65  stab  1.67  cgr  1.86  obs  2.72 s/sweep
+RESULT T4_V7_p0_1_s3  sweep   9.13  upd  2.63  stab  1.69  cgr  1.85  obs  2.65 s/sweep
+RESULT T4_V7_p1_1   ranks 32 OMP  3 OBSPAR 1  s/sweep/chain 8.695  sweeps/s/node 3.6804  per card 0.9201
+PG T4_V7_p1_1_s3  mean 1.960957926459005E-014 max 6.536447432744344E-010 -> PASS
+RESULT T4_V7_p1_1_s3  sweep   8.71  upd  2.81  stab  1.84  cgr  1.93  obs  1.82 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.81  upd  2.96  stab  1.71  cgr  1.92  obs  1.91 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.62  upd  2.75  stab  1.79  cgr  1.94  obs  1.84 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.59  upd  2.73  stab  1.79  cgr  1.92  obs  1.83 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.70  upd  2.81  stab  1.76  cgr  1.93  obs  1.88 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.72  upd  2.87  stab  1.74  cgr  1.92  obs  1.89 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.65  upd  2.78  stab  1.79  cgr  1.91  obs  1.86 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.70  upd  2.92  stab  1.70  cgr  1.87  obs  1.90 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.81  upd  2.93  stab  1.80  cgr  1.86  obs  1.92 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.67  upd  2.80  stab  1.79  cgr  1.91  obs  1.86 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.76  upd  2.86  stab  1.79  cgr  1.92  obs  1.85 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.69  upd  2.82  stab  1.81  cgr  1.86  obs  1.89 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.66  upd  2.81  stab  1.75  cgr  1.91  obs  1.87 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.80  upd  2.91  stab  1.80  cgr  1.86  obs  1.92 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.72  upd  2.89  stab  1.73  cgr  1.92  obs  1.88 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.69  upd  2.87  stab  1.71  cgr  1.93  obs  1.88 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.78  upd  2.94  stab  1.70  cgr  1.93  obs  1.92 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.66  upd  2.80  stab  1.79  cgr  1.90  obs  1.87 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.75  upd  2.90  stab  1.75  cgr  1.92  obs  1.88 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.66  upd  2.82  stab  1.76  cgr  1.89  obs  1.88 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.60  upd  2.77  stab  1.76  cgr  1.90  obs  1.88 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.79  upd  2.91  stab  1.78  cgr  1.90  obs  1.90 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.72  upd  2.85  stab  1.74  cgr  1.92  obs  1.91 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.81  upd  2.95  stab  1.73  cgr  1.88  obs  1.95 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.70  upd  2.87  stab  1.76  cgr  1.86  obs  1.91 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.69  upd  2.82  stab  1.75  cgr  1.92  obs  1.89 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.66  upd  2.78  stab  1.78  cgr  1.91  obs  1.88 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.72  upd  2.94  stab  1.69  cgr  1.88  obs  1.91 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.66  upd  2.89  stab  1.71  cgr  1.85  obs  1.90 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.73  upd  2.79  stab  1.83  cgr  1.96  obs  1.86 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.73  upd  2.90  stab  1.77  cgr  1.85  obs  1.89 s/sweep
+RESULT T4_V7_p1_1_s3  sweep   8.57  upd  2.76  stab  1.75  cgr  1.91  obs  1.85 s/sweep
+RESULT T4_V2_p1_1   ranks 32 OMP  3 OBSPAR 1  s/sweep/chain 11.259  sweeps/s/node 2.8423  per card 0.7106
+PG T4_V2_p1_1_s3  mean 1.680882848565433E-014 max 3.682285526457003E-010 -> PASS
+RESULT T4_V2_p1_1_s3  sweep  11.26  upd  2.73  stab  3.05  cgr  3.30  obs  1.74 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.04  upd  2.68  stab  2.99  cgr  3.26  obs  1.73 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.10  upd  2.68  stab  3.01  cgr  3.29  obs  1.76 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.10  upd  2.69  stab  3.00  cgr  3.28  obs  1.75 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.08  upd  2.69  stab  3.01  cgr  3.29  obs  1.72 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.17  upd  2.69  stab  3.04  cgr  3.30  obs  1.76 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.38  upd  2.80  stab  3.05  cgr  3.36  obs  1.77 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.16  upd  2.70  stab  3.04  cgr  3.27  obs  1.75 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.40  upd  2.78  stab  3.07  cgr  3.34  obs  1.76 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.19  upd  2.72  stab  3.02  cgr  3.30  obs  1.76 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.19  upd  2.73  stab  3.03  cgr  3.30  obs  1.75 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.24  upd  2.82  stab  2.98  cgr  3.29  obs  1.78 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.13  upd  2.70  stab  3.02  cgr  3.27  obs  1.76 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.19  upd  2.73  stab  3.02  cgr  3.29  obs  1.75 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.47  upd  2.82  stab  3.05  cgr  3.36  obs  1.79 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.21  upd  2.76  stab  3.03  cgr  3.30  obs  1.75 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.14  upd  2.69  stab  3.04  cgr  3.30  obs  1.73 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.27  upd  2.77  stab  3.04  cgr  3.31  obs  1.76 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.25  upd  2.75  stab  3.02  cgr  3.29  obs  1.77 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.19  upd  2.69  stab  3.07  cgr  3.33  obs  1.74 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.11  upd  2.67  stab  3.01  cgr  3.28  obs  1.75 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.29  upd  2.75  stab  3.04  cgr  3.32  obs  1.76 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.13  upd  2.73  stab  3.01  cgr  3.28  obs  1.74 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.13  upd  2.68  stab  3.05  cgr  3.29  obs  1.74 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.18  upd  2.72  stab  3.03  cgr  3.31  obs  1.75 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.40  upd  2.76  stab  3.09  cgr  3.38  obs  1.72 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.23  upd  2.74  stab  3.03  cgr  3.30  obs  1.77 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.25  upd  2.74  stab  3.04  cgr  3.29  obs  1.76 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.31  upd  2.77  stab  3.07  cgr  3.32  obs  1.76 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.22  upd  2.77  stab  3.03  cgr  3.27  obs  1.77 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.22  upd  2.75  stab  3.05  cgr  3.31  obs  1.74 s/sweep
+RESULT T4_V2_p1_1_s3  sweep  11.09  upd  2.66  stab  3.02  cgr  3.29  obs  1.73 s/sweep
+RESULT T4_V2_p0_1   ranks 32 OMP  3 OBSPAR 0  s/sweep/chain 11.844  sweeps/s/node 2.7018  per card 0.6755
+PG T4_V2_p0_1_s3  mean 1.680882848565433E-014 max 3.682285526457003E-010 -> PASS
+RESULT T4_V2_p0_1_s3  sweep  11.98  upd  2.69  stab  2.99  cgr  3.28  obs  2.61 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  12.08  upd  2.71  stab  3.02  cgr  3.33  obs  2.57 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  11.87  upd  2.64  stab  2.99  cgr  3.26  obs  2.59 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  11.95  upd  2.69  stab  3.01  cgr  3.27  obs  2.58 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  11.90  upd  2.66  stab  3.00  cgr  3.26  obs  2.61 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  11.81  upd  2.62  stab  2.97  cgr  3.24  obs  2.59 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  12.00  upd  2.72  stab  3.02  cgr  3.32  obs  2.56 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  11.96  upd  2.65  stab  3.04  cgr  3.29  obs  2.58 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  11.96  upd  2.67  stab  3.01  cgr  3.28  obs  2.57 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  12.02  upd  2.65  stab  3.04  cgr  3.35  obs  2.56 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  12.08  upd  2.74  stab  3.04  cgr  3.28  obs  2.60 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  12.00  upd  2.70  stab  3.04  cgr  3.30  obs  2.58 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  12.00  upd  2.66  stab  3.02  cgr  3.33  obs  2.58 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  11.87  upd  2.67  stab  2.96  cgr  3.28  obs  2.59 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  12.09  upd  2.70  stab  3.03  cgr  3.30  obs  2.61 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  11.98  upd  2.62  stab  3.04  cgr  3.34  obs  2.60 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  11.81  upd  2.62  stab  2.99  cgr  3.24  obs  2.57 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  11.91  upd  2.69  stab  3.01  cgr  3.25  obs  2.59 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  12.15  upd  2.73  stab  3.04  cgr  3.32  obs  2.61 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  12.05  upd  2.74  stab  3.03  cgr  3.33  obs  2.58 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  12.13  upd  2.72  stab  3.03  cgr  3.34  obs  2.58 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  12.01  upd  2.73  stab  3.04  cgr  3.27  obs  2.60 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  11.97  upd  2.70  stab  2.99  cgr  3.27  obs  2.59 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  11.90  upd  2.64  stab  3.00  cgr  3.27  obs  2.60 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  12.07  upd  2.68  stab  3.05  cgr  3.31  obs  2.61 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  11.91  upd  2.66  stab  3.01  cgr  3.27  obs  2.59 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  11.80  upd  2.61  stab  2.99  cgr  3.25  obs  2.57 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  11.98  upd  2.69  stab  3.02  cgr  3.28  obs  2.56 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  11.96  upd  2.65  stab  3.03  cgr  3.29  obs  2.60 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  11.96  upd  2.72  stab  3.00  cgr  3.27  obs  2.60 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  11.93  upd  2.66  stab  3.01  cgr  3.32  obs  2.57 s/sweep
+RESULT T4_V2_p0_1_s3  sweep  11.80  upd  2.62  stab  2.98  cgr  3.24  obs  2.58 s/sweep
+RESULT T1_V7_p0_2   ranks  8 OMP 14 OBSPAR 0  s/sweep/chain 5.639  sweeps/s/node 1.4186  per card 0.3547
+PG T1_V7_p0_2_s3  mean 1.809410943110277E-014 max 3.334976231551937E-011 -> PASS
+RESULT T1_V7_p0_2_s3  sweep   5.59  upd  1.75  stab  0.93  cgr  1.30  obs  1.34 s/sweep
+RESULT T1_V7_p0_2_s3  sweep   5.55  upd  1.70  stab  0.93  cgr  1.29  obs  1.36 s/sweep
+RESULT T1_V7_p0_2_s3  sweep   5.69  upd  1.79  stab  0.95  cgr  1.31  obs  1.37 s/sweep
+RESULT T1_V7_p0_2_s3  sweep   5.57  upd  1.71  stab  0.93  cgr  1.30  obs  1.36 s/sweep
+RESULT T1_V7_p0_2_s3  sweep   5.56  upd  1.71  stab  0.93  cgr  1.29  obs  1.36 s/sweep
+RESULT T1_V7_p0_2_s3  sweep   5.67  upd  1.77  stab  0.94  cgr  1.31  obs  1.37 s/sweep
+RESULT T1_V7_p0_2_s3  sweep   5.65  upd  1.79  stab  0.93  cgr  1.30  obs  1.36 s/sweep
+RESULT T1_V7_p0_2_s3  sweep   5.48  upd  1.68  stab  0.91  cgr  1.28  obs  1.33 s/sweep
+RESULT T1_V7_p1_2   ranks  8 OMP 14 OBSPAR 1  s/sweep/chain 5.057  sweeps/s/node 1.5818  per card 0.3955
+PG T1_V7_p1_2_s3  mean 1.809410943110277E-014 max 3.334976231551937E-011 -> PASS
+RESULT T1_V7_p1_2_s3  sweep   4.93  upd  1.70  stab  0.93  cgr  1.29  obs  0.73 s/sweep
+RESULT T1_V7_p1_2_s3  sweep   5.07  upd  1.80  stab  0.94  cgr  1.31  obs  0.75 s/sweep
+RESULT T1_V7_p1_2_s3  sweep   5.04  upd  1.78  stab  0.94  cgr  1.30  obs  0.74 s/sweep
+RESULT T1_V7_p1_2_s3  sweep   4.95  upd  1.71  stab  0.94  cgr  1.30  obs  0.73 s/sweep
+RESULT T1_V7_p1_2_s3  sweep   4.95  upd  1.70  stab  0.95  cgr  1.30  obs  0.74 s/sweep
+RESULT T1_V7_p1_2_s3  sweep   5.08  upd  1.81  stab  0.95  cgr  1.31  obs  0.75 s/sweep
+RESULT T1_V7_p1_2_s3  sweep   5.05  upd  1.79  stab  0.94  cgr  1.31  obs  0.74 s/sweep
+RESULT T1_V7_p1_2_s3  sweep   4.89  upd  1.69  stab  0.92  cgr  1.28  obs  0.72 s/sweep
+RESULT T4_V7_p0_2   ranks 32 OMP  3 OBSPAR 0  s/sweep/chain 9.380  sweeps/s/node 3.4114  per card 0.8529
+PG T4_V7_p0_2_s3  mean 1.960957926459005E-014 max 6.536447432744344E-010 -> PASS
+RESULT T4_V7_p0_2_s3  sweep   9.33  upd  2.73  stab  1.69  cgr  1.87  obs  2.73 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.41  upd  2.81  stab  1.69  cgr  1.88  obs  2.72 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.25  upd  2.67  stab  1.70  cgr  1.86  obs  2.71 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.24  upd  2.67  stab  1.72  cgr  1.86  obs  2.69 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.32  upd  2.77  stab  1.66  cgr  1.84  obs  2.75 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.47  upd  2.79  stab  1.71  cgr  1.88  obs  2.77 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.34  upd  2.76  stab  1.70  cgr  1.83  obs  2.74 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.37  upd  2.77  stab  1.70  cgr  1.89  obs  2.69 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.18  upd  2.64  stab  1.69  cgr  1.85  obs  2.69 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.45  upd  2.78  stab  1.71  cgr  1.88  obs  2.77 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.29  upd  2.72  stab  1.70  cgr  1.87  obs  2.70 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.24  upd  2.69  stab  1.67  cgr  1.87  obs  2.71 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.43  upd  2.79  stab  1.72  cgr  1.86  obs  2.75 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.34  upd  2.69  stab  1.72  cgr  1.86  obs  2.76 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.23  upd  2.68  stab  1.68  cgr  1.86  obs  2.73 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.35  upd  2.73  stab  1.71  cgr  1.88  obs  2.73 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.35  upd  2.76  stab  1.68  cgr  1.88  obs  2.73 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.34  upd  2.72  stab  1.72  cgr  1.85  obs  2.75 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.39  upd  2.76  stab  1.70  cgr  1.87  obs  2.75 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.32  upd  2.72  stab  1.69  cgr  1.86  obs  2.76 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.38  upd  2.79  stab  1.69  cgr  1.88  obs  2.71 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.46  upd  2.78  stab  1.74  cgr  1.89  obs  2.73 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.26  upd  2.70  stab  1.69  cgr  1.86  obs  2.70 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.35  upd  2.76  stab  1.67  cgr  1.87  obs  2.74 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.25  upd  2.66  stab  1.70  cgr  1.86  obs  2.72 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.30  upd  2.73  stab  1.70  cgr  1.87  obs  2.69 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.27  upd  2.72  stab  1.67  cgr  1.86  obs  2.71 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.30  upd  2.70  stab  1.69  cgr  1.87  obs  2.74 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.35  upd  2.75  stab  1.70  cgr  1.88  obs  2.71 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.34  upd  2.77  stab  1.68  cgr  1.88  obs  2.71 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.27  upd  2.69  stab  1.67  cgr  1.86  obs  2.75 s/sweep
+RESULT T4_V7_p0_2_s3  sweep   9.18  upd  2.67  stab  1.66  cgr  1.85  obs  2.70 s/sweep
+RESULT T4_V7_p1_2   ranks 32 OMP  3 OBSPAR 1  s/sweep/chain 8.715  sweeps/s/node 3.6716  per card 0.9179
+PG T4_V7_p1_2_s3  mean 1.960957926459005E-014 max 6.536447432744344E-010 -> PASS
+RESULT T4_V7_p1_2_s3  sweep   8.71  upd  2.87  stab  1.78  cgr  1.88  obs  1.88 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.70  upd  2.80  stab  1.81  cgr  1.93  obs  1.86 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.72  upd  2.82  stab  1.75  cgr  1.99  obs  1.86 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.72  upd  2.90  stab  1.74  cgr  1.91  obs  1.88 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.75  upd  2.90  stab  1.75  cgr  1.92  obs  1.88 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.74  upd  2.92  stab  1.72  cgr  1.89  obs  1.91 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.74  upd  2.91  stab  1.71  cgr  1.91  obs  1.90 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.69  upd  2.81  stab  1.78  cgr  1.98  obs  1.82 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.63  upd  2.80  stab  1.74  cgr  1.94  obs  1.84 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.56  upd  2.75  stab  1.77  cgr  1.86  obs  1.86 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.71  upd  2.83  stab  1.78  cgr  1.93  obs  1.85 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.66  upd  2.83  stab  1.77  cgr  1.93  obs  1.83 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.75  upd  2.84  stab  1.75  cgr  1.96  obs  1.89 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.62  upd  2.75  stab  1.79  cgr  1.93  obs  1.85 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.65  upd  2.78  stab  1.78  cgr  1.94  obs  1.84 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.67  upd  2.78  stab  1.81  cgr  1.91  obs  1.87 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.66  upd  2.84  stab  1.74  cgr  1.90  obs  1.87 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.65  upd  2.75  stab  1.80  cgr  1.96  obs  1.84 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.75  upd  2.89  stab  1.72  cgr  1.95  obs  1.88 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.66  upd  2.77  stab  1.80  cgr  1.92  obs  1.87 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.66  upd  2.80  stab  1.76  cgr  1.92  obs  1.88 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.65  upd  2.79  stab  1.77  cgr  1.91  obs  1.87 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.70  upd  2.83  stab  1.77  cgr  1.93  obs  1.87 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.72  upd  2.85  stab  1.78  cgr  1.91  obs  1.88 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.67  upd  2.80  stab  1.76  cgr  1.93  obs  1.87 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.67  upd  2.80  stab  1.77  cgr  1.91  obs  1.89 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.73  upd  2.89  stab  1.76  cgr  1.88  obs  1.90 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.70  upd  2.88  stab  1.74  cgr  1.89  obs  1.88 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.79  upd  2.89  stab  1.79  cgr  1.95  obs  1.86 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.76  upd  2.87  stab  1.83  cgr  1.90  obs  1.87 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.78  upd  2.90  stab  1.75  cgr  1.95  obs  1.88 s/sweep
+RESULT T4_V7_p1_2_s3  sweep   8.57  upd  2.77  stab  1.74  cgr  1.86  obs  1.89 s/sweep
+RESULT T4_V2_p1_2   ranks 32 OMP  3 OBSPAR 1  s/sweep/chain 13.380  sweeps/s/node 2.3916  per card 0.5979
+PG T4_V2_p1_2_s3  mean 1.680882848565433E-014 max 3.682285526457003E-010 -> PASS
+RESULT T4_V2_p1_2_s3  sweep  12.75  upd  2.84  stab  3.70  cgr  4.04  obs  1.74 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.04  upd  2.73  stab  2.96  cgr  3.23  obs  1.75 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.21  upd  2.75  stab  3.04  cgr  3.30  obs  1.75 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  13.01  upd  2.90  stab  3.77  cgr  4.15  obs  1.76 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.02  upd  2.78  stab  2.93  cgr  3.20  obs  1.75 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.16  upd  2.69  stab  3.05  cgr  3.30  obs  1.74 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.24  upd  2.75  stab  3.03  cgr  3.29  obs  1.76 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  10.91  upd  2.73  stab  2.91  cgr  3.16  obs  1.74 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  12.68  upd  2.78  stab  3.70  cgr  4.04  obs  1.74 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.08  upd  2.67  stab  3.03  cgr  3.29  obs  1.71 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  10.95  upd  2.71  stab  2.91  cgr  3.20  obs  1.75 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.06  upd  2.71  stab  2.96  cgr  3.23  obs  1.73 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.22  upd  2.76  stab  3.04  cgr  3.28  obs  1.76 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  10.76  upd  2.64  stab  2.89  cgr  3.15  obs  1.72 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.30  upd  2.80  stab  3.03  cgr  3.32  obs  1.76 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.35  upd  2.77  stab  3.07  cgr  3.33  obs  1.76 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.15  upd  2.67  stab  3.04  cgr  3.30  obs  1.74 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.22  upd  2.68  stab  3.05  cgr  3.32  obs  1.74 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.04  upd  2.77  stab  2.93  cgr  3.22  obs  1.75 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.28  upd  2.77  stab  3.04  cgr  3.29  obs  1.76 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.17  upd  2.73  stab  3.03  cgr  3.28  obs  1.76 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.29  upd  2.78  stab  3.04  cgr  3.32  obs  1.75 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.88  upd  2.75  stab  3.33  cgr  3.65  obs  1.75 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.29  upd  2.77  stab  3.09  cgr  3.31  obs  1.75 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.25  upd  2.76  stab  3.02  cgr  3.29  obs  1.76 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  12.60  upd  2.79  stab  3.65  cgr  4.01  obs  1.73 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.12  upd  2.67  stab  3.03  cgr  3.29  obs  1.74 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.20  upd  2.68  stab  3.03  cgr  3.31  obs  1.75 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  10.81  upd  2.64  stab  2.90  cgr  3.16  obs  1.74 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  12.17  upd  2.82  stab  3.44  cgr  3.75  obs  1.75 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.10  upd  2.69  stab  2.97  cgr  3.24  obs  1.75 s/sweep
+RESULT T4_V2_p1_2_s3  sweep  11.05  upd  2.65  stab  3.02  cgr  3.27  obs  1.72 s/sweep
+RESULT T4_V2_p0_2   ranks 32 OMP  3 OBSPAR 0  s/sweep/chain 11.676  sweeps/s/node 2.7406  per card 0.6851
+PG T4_V2_p0_2_s3  mean 1.680882848565433E-014 max 3.682285526457003E-010 -> PASS
+RESULT T4_V2_p0_2_s3  sweep  12.13  upd  2.70  stab  3.09  cgr  3.37  obs  2.59 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  11.87  upd  2.66  stab  2.98  cgr  3.29  obs  2.57 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  12.00  upd  2.69  stab  3.02  cgr  3.30  obs  2.60 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  11.97  upd  2.66  stab  3.04  cgr  3.28  obs  2.60 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  11.85  upd  2.63  stab  3.00  cgr  3.26  obs  2.58 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  12.11  upd  2.70  stab  3.06  cgr  3.33  obs  2.58 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  11.84  upd  2.63  stab  2.98  cgr  3.25  obs  2.60 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  12.04  upd  2.74  stab  3.00  cgr  3.31  obs  2.61 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  12.06  upd  2.66  stab  3.03  cgr  3.33  obs  2.61 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  11.91  upd  2.68  stab  2.99  cgr  3.28  obs  2.58 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  12.08  upd  2.70  stab  3.04  cgr  3.35  obs  2.61 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  11.95  upd  2.70  stab  3.01  cgr  3.27  obs  2.60 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  11.91  upd  2.70  stab  2.98  cgr  3.26  obs  2.60 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  12.15  upd  2.75  stab  3.07  cgr  3.32  obs  2.58 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  12.10  upd  2.74  stab  3.06  cgr  3.31  obs  2.62 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  11.94  upd  2.75  stab  2.97  cgr  3.26  obs  2.59 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  12.03  upd  2.68  stab  3.03  cgr  3.30  obs  2.61 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  12.01  upd  2.66  stab  3.04  cgr  3.30  obs  2.60 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  12.07  upd  2.71  stab  3.05  cgr  3.31  obs  2.62 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  11.93  upd  2.66  stab  3.01  cgr  3.27  obs  2.61 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  11.97  upd  2.68  stab  3.02  cgr  3.31  obs  2.58 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  11.86  upd  2.66  stab  2.98  cgr  3.25  obs  2.61 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  11.84  upd  2.61  stab  3.01  cgr  3.26  obs  2.57 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  12.13  upd  2.73  stab  3.06  cgr  3.32  obs  2.61 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  11.90  upd  2.69  stab  2.98  cgr  3.25  obs  2.59 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  12.06  upd  2.69  stab  3.03  cgr  3.29  obs  2.59 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  12.00  upd  2.72  stab  3.01  cgr  3.31  obs  2.59 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  11.90  upd  2.63  stab  3.01  cgr  3.29  obs  2.59 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  12.03  upd  2.75  stab  3.00  cgr  3.31  obs  2.61 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  11.98  upd  2.69  stab  3.02  cgr  3.27  obs  2.61 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  11.84  upd  2.62  stab  3.00  cgr  3.25  obs  2.59 s/sweep
+RESULT T4_V2_p0_2_s3  sweep  11.82  upd  2.62  stab  3.00  cgr  3.25  obs  2.58 s/sweep
+end 2026-11-13T12:44:01+01:00

@@ -1,0 +1,41 @@
+start 2026-11-13T11:47:49+01:00 i20r07c02s10 job 560995
+## G1d_L12F: G1d_L12F cpu: rc=0 wall=20.3s G1d_L12F gpu: rc=0 wall=20.9s 
+acceptance A=0.329644097222 B=0.329644097222  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+## G1d_L6F: G1d_L6F cpu: rc=0 wall=15.9s G1d_L6F gpu: rc=0 wall=13.0s 
+acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+## G1_L12F: G1_L12F cpu: rc=0 wall=23.0s G1_L12F gpu: rc=0 wall=19.5s 
+acceptance A=0.329644097222 B=0.329644097222  diff=0.00e+00
+FAIL worst rel dev 5.483e-18 (tol 0) 
+## G1_L12F_V7: G1_L12F_V7 cpu: rc=0 wall=37.0s G1_L12F_V7 gpu: rc=0 wall=36.8s 
+acceptance A=0.329644097222 B=0.329644097222  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+## G1_L24F: G1_L24F cpu: rc=0 wall=187.1s G1_L24F gpu: rc=0 wall=183.4s 
+acceptance A=0.324358000579 B=0.324358000579  diff=0.00e+00
+FAIL worst rel dev 5.483e-18 (tol 0) 
+## G1_L6_bil: G1_L6_bil cpu: rc=0 wall=17.2s G1_L6_bil gpu: rc=0 wall=18.0s 
+acceptance A=0.441591435185 B=0.441591435185  diff=0.00e+00
+FAIL worst rel dev 2.242e-29 (tol 0) 
+## G1_L6F: G1_L6F cpu: rc=0 wall=16.4s G1_L6F gpu: rc=0 wall=13.1s 
+acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+FAIL worst rel dev 2.313e-17 (tol 0) 
+## G1_L6_nfl1: G1_L6_nfl1 cpu: rc=0 wall=11.1s G1_L6_nfl1 gpu: rc=0 wall=11.2s 
+acceptance A=0.332418981481 B=0.332418981481  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+## G1_L6_nsun4: G1_L6_nsun4 cpu: rc=0 wall=12.7s G1_L6_nsun4 gpu: rc=0 wall=13.2s 
+acceptance A=0.342152777778 B=0.342152777778  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+## G1_L6T: G1_L6T cpu: rc=0 wall=13.2s G1_L6T gpu: rc=0 wall=13.4s 
+acceptance A=0.449432870370 B=0.449432870370  diff=0.00e+00
+FAIL worst rel dev 5.609e-30 (tol 0) 
+## G2_L12F: G2_L12F cpu: rc=0 wall=19.1s G2_L12F gpu: rc=0 wall=19.8s 
+acceptance A=0.329644097222 B=0.329644097222  diff=0.00e+00
+FAIL worst rel dev 1.053e-15 (tol 0) 
+## G2_L24F: G2_L24F cpu: rc=0 wall=180.2s G2_L24F gpu: rc=0 wall=180.8s 
+acceptance A=0.324358000579 B=0.324358000579  diff=0.00e+00
+FAIL worst rel dev 4.965e-16 (tol 0) 
+## G2_L6F: G2_L6F cpu: rc=0 wall=16.1s G2_L6F gpu: rc=0 wall=13.3s 
+acceptance A=0.330798611111 B=0.330798611111  diff=0.00e+00
+FAIL worst rel dev 6.779e-13 (tol 0) 
+end 2026-11-13T11:55:15+01:00

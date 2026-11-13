@@ -1,0 +1,258 @@
+start 2026-11-13T11:13:34+01:00 i20r02c02s10 job 560967
+################ QB=5
+=== L 24 Norb 1
+OB N=576 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      154.3 us/call
+OB TIME old_spin       692.7 us/call
+OB TIME old_den        841.0 us/call
+OB TIME old_acc0_den      636.8 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_green      116.2 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_den(G)      200.5 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_den(GT)      175.1 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_spin(G)      256.9 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_spin(GT)      225.8 us/call
+=== L 24 Norb 2
+OB N=576 Norb=2 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      494.7 us/call
+OB TIME old_spin      1643.3 us/call
+OB TIME old_den       1385.8 us/call
+OB TIME old_acc0_den      651.9 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_green      183.9 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_den(G)      506.6 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_den(GT)      371.8 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_spin(G)      789.1 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_spin(GT)      665.7 us/call
+=== L 6 Norb 1
+OB N=36 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green       34.5 us/call
+OB TIME old_spin        89.8 us/call
+OB TIME old_den         90.5 us/call
+OB TIME old_acc0_den       53.5 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_green       79.1 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_den(G)       92.6 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_den(GT)      101.0 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_spin(G)      116.2 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_spin(GT)      121.0 us/call
+################ QB=6
+=== L 24 Norb 1
+OB N=576 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      152.2 us/call
+OB TIME old_spin       688.4 us/call
+OB TIME old_den        834.2 us/call
+OB TIME old_acc0_den      633.7 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_green      104.0 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_den(G)      183.3 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_den(GT)      146.9 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_spin(G)      281.7 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_spin(GT)      257.6 us/call
+=== L 24 Norb 2
+OB N=576 Norb=2 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      487.6 us/call
+OB TIME old_spin      1633.4 us/call
+OB TIME old_den       1390.0 us/call
+OB TIME old_acc0_den      652.8 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_green      161.6 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_den(G)      485.8 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_den(GT)      341.5 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_spin(G)      692.8 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_spin(GT)      594.0 us/call
+=== L 6 Norb 1
+OB N=36 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green       34.3 us/call
+OB TIME old_spin        89.9 us/call
+OB TIME old_den         89.8 us/call
+OB TIME old_acc0_den       53.8 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_green       84.9 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_den(G)       89.2 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_den(GT)       93.8 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_spin(G)      144.1 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_spin(GT)      146.3 us/call
+################ QB=7
+=== L 24 Norb 1
+OB N=576 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      153.4 us/call
+OB TIME old_spin       689.8 us/call
+OB TIME old_den        832.0 us/call
+OB TIME old_acc0_den      632.2 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_green      119.4 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_den(G)      166.3 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_den(GT)      153.6 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_spin(G)      278.4 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_spin(GT)      262.9 us/call
+=== L 24 Norb 2
+OB N=576 Norb=2 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      486.8 us/call
+OB TIME old_spin      1624.2 us/call
+OB TIME old_den       1383.2 us/call
+OB TIME old_acc0_den      646.4 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_green      170.9 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_den(G)      325.0 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_den(GT)      258.2 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_spin(G)      458.1 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_spin(GT)      373.1 us/call
+=== L 6 Norb 1
+OB N=36 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green       34.0 us/call
+OB TIME old_spin        88.9 us/call
+OB TIME old_den         89.2 us/call
+OB TIME old_acc0_den       53.2 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_green       98.4 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_den(G)      106.9 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_den(GT)      108.2 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_spin(G)      214.2 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_spin(GT)      214.6 us/call
+################ QB=8
+=== L 24 Norb 1
+OB N=576 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      153.4 us/call
+OB TIME old_spin       686.2 us/call
+OB TIME old_den        836.2 us/call
+OB TIME old_acc0_den      633.5 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_green      181.8 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_den(G)      229.0 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_den(GT)      210.7 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_spin(G)      433.8 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_spin(GT)      416.2 us/call
+=== L 24 Norb 2
+OB N=576 Norb=2 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      486.5 us/call
+OB TIME old_spin      1630.6 us/call
+OB TIME old_den       1377.5 us/call
+OB TIME old_acc0_den      648.5 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_green      233.7 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_den(G)      437.9 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_den(GT)      347.4 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_spin(G)      630.4 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_spin(GT)      554.5 us/call
+=== L 6 Norb 1
+OB N=36 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green       34.7 us/call
+OB TIME old_spin        88.8 us/call
+OB TIME old_den         89.0 us/call
+OB TIME old_acc0_den       53.0 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_green      154.8 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_den(G)      168.4 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_den(GT)      169.9 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_spin(G)      376.5 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_spin(GT)      377.6 us/call
+end 2026-11-13T11:14:01+01:00

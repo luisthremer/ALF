@@ -1,0 +1,170 @@
+start 2026-11-13T11:18:10+01:00 i20r07c05s02 job 560976
+################ QB=5
+=== L 24 Norb 1
+OB N=576 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_all     1679.9 us/call
+OB tf green vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tf den vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tf spin k vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tf spin k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tf spin k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tf acc0 bitwise: T
+OB TIME tf_all      540.4 us/call
+=== L 24 Norb 2
+OB N=576 Norb=2 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_all     3479.2 us/call
+OB tf green vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tf den vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tf spin k vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tf spin k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tf spin k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tf acc0 bitwise: T
+OB TIME tf_all     1875.4 us/call
+=== L 32 Norb 1
+OB N=1024 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_all     2974.4 us/call
+OB tf green vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tf den vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tf spin k vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tf spin k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tf spin k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tf acc0 bitwise: T
+OB TIME tf_all      999.5 us/call
+=== L 6 Norb 1
+OB N=36 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_all      213.7 us/call
+OB tf green vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tf den vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tf spin k vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tf spin k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tf spin k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tf acc0 bitwise: T
+OB TIME tf_all      240.0 us/call
+=== L 12 Norb 1
+OB N=144 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_all      492.6 us/call
+OB tf green vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tf den vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tf spin k vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tf spin k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tf spin k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tf acc0 bitwise: T
+OB TIME tf_all      267.0 us/call
+################ QB=6
+=== L 24 Norb 1
+OB N=576 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_all     1673.3 us/call
+OB tf green vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tf den vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tf spin k vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tf spin k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tf spin k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tf acc0 bitwise: T
+OB TIME tf_all      559.0 us/call
+=== L 24 Norb 2
+OB N=576 Norb=2 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_all     3466.4 us/call
+OB tf green vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tf den vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tf spin k vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tf spin k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tf spin k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tf acc0 bitwise: T
+OB TIME tf_all     1941.4 us/call
+=== L 32 Norb 1
+OB N=1024 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_all     2993.6 us/call
+OB tf green vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tf den vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tf spin k vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tf spin k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tf spin k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tf acc0 bitwise: T
+OB TIME tf_all     1053.8 us/call
+=== L 6 Norb 1
+OB N=36 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_all      213.0 us/call
+OB tf green vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tf den vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tf spin k vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tf spin k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tf spin k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tf acc0 bitwise: T
+OB TIME tf_all      268.7 us/call
+=== L 12 Norb 1
+OB N=144 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_all      493.5 us/call
+OB tf green vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tf den vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tf spin k vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tf spin k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tf spin k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tf acc0 bitwise: T
+OB TIME tf_all      292.3 us/call
+################ QB=7
+=== L 24 Norb 1
+OB N=576 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_all     1670.4 us/call
+OB tf green vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tf den vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tf spin k vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tf spin k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tf spin k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tf acc0 bitwise: T
+OB TIME tf_all      648.0 us/call
+=== L 24 Norb 2
+OB N=576 Norb=2 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_all     3497.9 us/call
+OB tf green vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tf den vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tf spin k vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tf spin k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tf spin k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tf acc0 bitwise: T
+OB TIME tf_all     1613.3 us/call
+=== L 32 Norb 1
+OB N=1024 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_all     2970.2 us/call
+OB tf green vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tf den vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tf spin k vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tf spin k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tf spin k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tf acc0 bitwise: T
+OB TIME tf_all      899.0 us/call
+=== L 6 Norb 1
+OB N=36 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_all      214.1 us/call
+OB tf green vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tf den vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tf spin k vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tf spin k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tf spin k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tf acc0 bitwise: T
+OB TIME tf_all      381.0 us/call
+=== L 12 Norb 1
+OB N=144 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_all      497.5 us/call
+OB tf green vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tf den vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tf spin k vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tf spin k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tf spin k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tf acc0 bitwise: T
+OB TIME tf_all      401.4 us/call
+end 2026-11-13T11:18:52+01:00

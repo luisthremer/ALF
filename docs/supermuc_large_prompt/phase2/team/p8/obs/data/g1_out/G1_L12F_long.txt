@@ -1,0 +1,18 @@
+G1_L12F_long cpu: rc=0 wall=54.6s
+G1_L12F_long gpu: rc=0 wall=48.2s
+file                         n    max|dif|   max/scale
+Den_eq                    1162   0.000e+00   0.000e+00
+Ener_scal                    8   0.000e+00   0.000e+00
+Green_eq                  1162   0.000e+00   0.000e+00
+Kin_scal                     8   0.000e+00   0.000e+00
+Part_scal                    8   0.000e+00   0.000e+00
+Pot_scal                     8   0.000e+00   0.000e+00
+SpinT_eq                  1162   0.000e+00   0.000e+00
+SpinXY_eq                 1162   0.000e+00   0.000e+00
+SpinZ_eq                  1162   0.000e+00   0.000e+00
+SpinZ_local               1158   0.000e+00   0.000e+00
+SpinZ_localtau           70282   0.000e+00   0.000e+00
+confout_0                17282   0.000e+00   0.000e+00
+acceptance A=0.333402054398 B=0.333402054398  diff=0.00e+00
+PASS worst rel dev 0.000e+00 (tol 0) 
+ 

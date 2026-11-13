@@ -1,0 +1,374 @@
+start 2026-11-13T11:17:12+01:00 i20r07c05s02 job 560975
+obsbench.F90(835): error #6410: This name has not been declared as an array or a function.   [ZD]
+obsbench.F90(841): error #6404: This name does not have a type, and must have an explicit type.   [JJ]
+obsbench.F90(841): error #6404: This name does not have a type, and must have an explicit type.   [ST1]
+obsbench.F90(841): error #6404: This name does not have a type, and must have an explicit type.   [ST2]
+obsbench.F90(841): error #6404: This name does not have a type, and must have an explicit type.   [ST3]
+obsbench.F90(841): error #6404: This name does not have a type, and must have an explicit type.   [ST4]
+obsbench.F90(841): error #6404: This name does not have a type, and must have an explicit type.   [ST5]
+obsbench.F90(841): error #6404: This name does not have a type, and must have an explicit type.   [ZS0]
+obsbench.F90(849): error #6638: An actual argument is an expression or constant; this is not valid since the associated dummy argument has the explicit INTENT(OUT) or INTENT(INOUT) attribute.   [ST1]
+obsbench.F90(849): error #7112: This actual argument must not be the name of a procedure.   [ST1]
+obsbench.F90(853): error #6638: An actual argument is an expression or constant; this is not valid since the associated dummy argument has the explicit INTENT(OUT) or INTENT(INOUT) attribute.   [ST1]
+obsbench.F90(853): error #7112: This actual argument must not be the name of a procedure.   [ST1]
+obsbench.F90(857): error #6638: An actual argument is an expression or constant; this is not valid since the associated dummy argument has the explicit INTENT(OUT) or INTENT(INOUT) attribute.   [ST1]
+obsbench.F90(857): error #7112: This actual argument must not be the name of a procedure.   [ST1]
+obsbench.F90(859): error #6638: An actual argument is an expression or constant; this is not valid since the associated dummy argument has the explicit INTENT(OUT) or INTENT(INOUT) attribute.   [ST1]
+obsbench.F90(859): error #7112: This actual argument must not be the name of a procedure.   [ST1]
+obsbench.F90(861): error #6638: An actual argument is an expression or constant; this is not valid since the associated dummy argument has the explicit INTENT(OUT) or INTENT(INOUT) attribute.   [ST1]
+obsbench.F90(861): error #7112: This actual argument must not be the name of a procedure.   [ST1]
+obsbench.F90(835): error #6410: This name has not been declared as an array or a function.   [ZD]
+obsbench.F90(841): error #6404: This name does not have a type, and must have an explicit type.   [JJ]
+obsbench.F90(841): error #6404: This name does not have a type, and must have an explicit type.   [ST1]
+obsbench.F90(841): error #6404: This name does not have a type, and must have an explicit type.   [ST2]
+obsbench.F90(841): error #6404: This name does not have a type, and must have an explicit type.   [ST3]
+obsbench.F90(841): error #6404: This name does not have a type, and must have an explicit type.   [ST4]
+obsbench.F90(841): error #6404: This name does not have a type, and must have an explicit type.   [ST5]
+obsbench.F90(841): error #6404: This name does not have a type, and must have an explicit type.   [ZS0]
+obsbench.F90(849): error #6638: An actual argument is an expression or constant; this is not valid since the associated dummy argument has the explicit INTENT(OUT) or INTENT(INOUT) attribute.   [ST1]
+obsbench.F90(849): error #7112: This actual argument must not be the name of a procedure.   [ST1]
+obsbench.F90(853): error #6638: An actual argument is an expression or constant; this is not valid since the associated dummy argument has the explicit INTENT(OUT) or INTENT(INOUT) attribute.   [ST1]
+obsbench.F90(853): error #7112: This actual argument must not be the name of a procedure.   [ST1]
+obsbench.F90(857): error #6638: An actual argument is an expression or constant; this is not valid since the associated dummy argument has the explicit INTENT(OUT) or INTENT(INOUT) attribute.   [ST1]
+obsbench.F90(857): error #7112: This actual argument must not be the name of a procedure.   [ST1]
+obsbench.F90(859): error #6638: An actual argument is an expression or constant; this is not valid since the associated dummy argument has the explicit INTENT(OUT) or INTENT(INOUT) attribute.   [ST1]
+obsbench.F90(859): error #7112: This actual argument must not be the name of a procedure.   [ST1]
+obsbench.F90(861): error #6638: An actual argument is an expression or constant; this is not valid since the associated dummy argument has the explicit INTENT(OUT) or INTENT(INOUT) attribute.   [ST1]
+obsbench.F90(861): error #7112: This actual argument must not be the name of a procedure.   [ST1]
+obsbench.F90(835): error #6410: This name has not been declared as an array or a function.   [ZD]
+obsbench.F90(841): error #6404: This name does not have a type, and must have an explicit type.   [JJ]
+obsbench.F90(841): error #6404: This name does not have a type, and must have an explicit type.   [ST1]
+obsbench.F90(841): error #6404: This name does not have a type, and must have an explicit type.   [ST2]
+obsbench.F90(841): error #6404: This name does not have a type, and must have an explicit type.   [ST3]
+obsbench.F90(841): error #6404: This name does not have a type, and must have an explicit type.   [ST4]
+obsbench.F90(841): error #6404: This name does not have a type, and must have an explicit type.   [ST5]
+obsbench.F90(841): error #6404: This name does not have a type, and must have an explicit type.   [ZS0]
+obsbench.F90(849): error #6638: An actual argument is an expression or constant; this is not valid since the associated dummy argument has the explicit INTENT(OUT) or INTENT(INOUT) attribute.   [ST1]
+obsbench.F90(849): error #7112: This actual argument must not be the name of a procedure.   [ST1]
+obsbench.F90(853): error #6638: An actual argument is an expression or constant; this is not valid since the associated dummy argument has the explicit INTENT(OUT) or INTENT(INOUT) attribute.   [ST1]
+obsbench.F90(853): error #7112: This actual argument must not be the name of a procedure.   [ST1]
+obsbench.F90(857): error #6638: An actual argument is an expression or constant; this is not valid since the associated dummy argument has the explicit INTENT(OUT) or INTENT(INOUT) attribute.   [ST1]
+obsbench.F90(857): error #7112: This actual argument must not be the name of a procedure.   [ST1]
+obsbench.F90(859): error #6638: An actual argument is an expression or constant; this is not valid since the associated dummy argument has the explicit INTENT(OUT) or INTENT(INOUT) attribute.   [ST1]
+obsbench.F90(859): error #7112: This actual argument must not be the name of a procedure.   [ST1]
+obsbench.F90(861): error #6638: An actual argument is an expression or constant; this is not valid since the associated dummy argument has the explicit INTENT(OUT) or INTENT(INOUT) attribute.   [ST1]
+obsbench.F90(861): error #7112: This actual argument must not be the name of a procedure.   [ST1]
+################ QB=5
+=== L 24 Norb 1
+OB N=576 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      154.6 us/call
+OB TIME old_spin       686.6 us/call
+OB TIME old_den        838.8 us/call
+OB TIME old_acc0_den      635.1 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_green      111.0 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_den(G)      189.6 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_den(GT)      166.8 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_spin(G)      253.9 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_spin(GT)      219.7 us/call
+=== L 24 Norb 2
+OB N=576 Norb=2 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      487.4 us/call
+OB TIME old_spin      1639.7 us/call
+OB TIME old_den       1362.8 us/call
+OB TIME old_acc0_den      650.1 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_green      163.9 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_den(G)      459.3 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_den(GT)      317.8 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_spin(G)      694.0 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_spin(GT)      600.4 us/call
+=== L 32 Norb 1
+OB N=1024 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      233.0 us/call
+OB TIME old_spin      1252.4 us/call
+OB TIME old_den       1493.5 us/call
+OB TIME old_acc0_den     1142.1 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB TIME tx_green      129.2 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB TIME tx_den(G)      256.4 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB TIME tx_den(GT)      216.5 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB TIME tx_spin(G)      385.4 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB TIME tx_spin(GT)      333.9 us/call
+=== L 6 Norb 1
+OB N=36 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green       34.4 us/call
+OB TIME old_spin        90.3 us/call
+OB TIME old_den         90.4 us/call
+OB TIME old_acc0_den       54.2 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_green       87.0 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_den(G)       95.4 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_den(GT)      104.4 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_spin(G)      118.4 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_spin(GT)      121.9 us/call
+=== L 12 Norb 1
+OB N=144 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green       56.1 us/call
+OB TIME old_spin       205.7 us/call
+OB TIME old_den        230.6 us/call
+OB TIME old_acc0_den      170.8 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB TIME tx_green       88.3 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB TIME tx_den(G)      110.7 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB TIME tx_den(GT)      118.4 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB TIME tx_spin(G)      133.4 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB TIME tx_spin(GT)      134.1 us/call
+################ QB=6
+=== L 24 Norb 1
+OB N=576 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      153.2 us/call
+OB TIME old_spin       689.1 us/call
+OB TIME old_den        842.3 us/call
+OB TIME old_acc0_den      636.8 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_green       98.2 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_den(G)      164.1 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_den(GT)      136.6 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_spin(G)      274.6 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_spin(GT)      248.1 us/call
+=== L 24 Norb 2
+OB N=576 Norb=2 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      491.7 us/call
+OB TIME old_spin      1628.8 us/call
+OB TIME old_den       1377.7 us/call
+OB TIME old_acc0_den      650.5 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_green      148.6 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_den(G)      464.4 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_den(GT)      320.5 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_spin(G)      631.6 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_spin(GT)      537.0 us/call
+=== L 32 Norb 1
+OB N=1024 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      231.2 us/call
+OB TIME old_spin      1247.4 us/call
+OB TIME old_den       1493.3 us/call
+OB TIME old_acc0_den     1139.3 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB TIME tx_green      108.3 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB TIME tx_den(G)      249.5 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB TIME tx_den(GT)      195.7 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB TIME tx_spin(G)      383.6 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB TIME tx_spin(GT)      324.2 us/call
+=== L 6 Norb 1
+OB N=36 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green       33.6 us/call
+OB TIME old_spin        90.5 us/call
+OB TIME old_den         90.3 us/call
+OB TIME old_acc0_den       53.8 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_green       92.0 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_den(G)       89.7 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_den(GT)       94.2 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_spin(G)      144.8 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_spin(GT)      146.8 us/call
+=== L 12 Norb 1
+OB N=144 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green       56.8 us/call
+OB TIME old_spin       203.2 us/call
+OB TIME old_den        230.4 us/call
+OB TIME old_acc0_den      168.6 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB TIME tx_green       87.9 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB TIME tx_den(G)      100.7 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB TIME tx_den(GT)      105.1 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB TIME tx_spin(G)      161.7 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB TIME tx_spin(GT)      161.0 us/call
+################ QB=7
+=== L 24 Norb 1
+OB N=576 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      154.4 us/call
+OB TIME old_spin       695.6 us/call
+OB TIME old_den        836.5 us/call
+OB TIME old_acc0_den      637.8 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_green      112.4 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_den(G)      162.2 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_den(GT)      148.7 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_spin(G)      275.6 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 576
+OB TIME tx_spin(GT)      257.8 us/call
+=== L 24 Norb 2
+OB N=576 Norb=2 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      486.8 us/call
+OB TIME old_spin      1628.5 us/call
+OB TIME old_den       1354.4 us/call
+OB TIME old_acc0_den      647.4 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_green      154.1 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_den(G)      293.7 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_den(GT)      235.7 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_spin(G)      427.9 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 2304
+OB TIME tx_spin(GT)      353.5 us/call
+=== L 32 Norb 1
+OB N=1024 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green      231.8 us/call
+OB TIME old_spin      1251.7 us/call
+OB TIME old_den       1497.3 us/call
+OB TIME old_acc0_den     1142.4 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB TIME tx_green      122.1 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB TIME tx_den(G)      193.5 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB TIME tx_den(GT)      171.2 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB TIME tx_spin(G)      314.2 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 1024
+OB TIME tx_spin(GT)      288.2 us/call
+=== L 6 Norb 1
+OB N=36 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green       34.3 us/call
+OB TIME old_spin        89.3 us/call
+OB TIME old_den         88.8 us/call
+OB TIME old_acc0_den       52.7 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_green      104.6 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_den(G)      108.1 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_den(GT)      108.6 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_spin(G)      215.0 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 36
+OB TIME tx_spin(GT)      216.2 us/call
+=== L 12 Norb 1
+OB N=144 Norb=1 NFL=2 devices=1
+OB old run-to-run bitwise: T
+OB TIME old_green       56.0 us/call
+OB TIME old_spin       206.1 us/call
+OB TIME old_den        229.9 us/call
+OB TIME old_acc0_den      168.7 us/call
+OB tx_green vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB TIME tx_green      101.0 us/call
+OB tx_den(G) vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB TIME tx_den(G)      113.9 us/call
+OB tx_den(GT) vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB TIME tx_den(GT)      113.9 us/call
+OB tx_spin(G) k vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tx_spin(G) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tx_spin(G) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB TIME tx_spin(G)      221.8 us/call
+OB tx_spin(GT) k vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tx_spin(GT) k+1 vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB tx_spin(GT) k+2 vs old: n differing = 0 max|d| =   0.00E+00 of 144
+OB TIME tx_spin(GT)      221.8 us/call
+end 2026-11-13T11:17:27+01:00
