@@ -182,7 +182,7 @@ Program Main
         Integer :: NBC, NSW
         ! Completed sweeps across bins, saturating at 4 (automatic N_delay: Lowrank_autotune_finish)
         Integer (Kind=Kind(0_8)) :: N_sweeps_done
-        Integer :: NTAU, NTAU1, nt_obs
+        Integer :: NTAU, NTAU1
         Character (len=64) :: file_seeds, file_info, file_git_info
         Integer :: Seed_in
         Complex (Kind=Kind(0.d0)) , allocatable, dimension(:,:) :: Initial_field
@@ -1088,9 +1088,6 @@ Program Main
                  NST = NSTM-1
                  DO NTAU = LTROT,1,-1
                     NTAU1 = NTAU - 1
-                    ! GR is at time slice NTAU1 = NTAU-1 after WRAPGRDO: measure and label with NTAU1 (slices 0..LTROT-1 in the
-                    ! down sweep, 1..LTROT in the up sweep).  Tau-resolved local observables weight the endpoints in ham%Obser.
-                    nt_obs = NTAU1
 #ifdef ALF_TEAM_TIMERS
                     call system_clock(tt_c0)
 #endif
@@ -1101,7 +1098,7 @@ Program Main
 #ifdef ALF_TEAM_TIMERS
                     call system_clock(tt_c1); tt(2) = tt(2) + real(tt_c1-tt_c0,8)/real(tt_rate,8)
 #endif
-                    IF (nt_obs.GE. get_LOBS_ST() .AND. nt_obs.LE. get_LOBS_EN() ) THEN
+                    IF (NTAU1.GE. get_LOBS_ST() .AND. NTAU1.LE. get_LOBS_EN() ) THEN
                        If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Obser (down sweep)", .false.)
                        !write(*,*) "GR before obser sum: ",sum(GR(:,:,1))
                        !write(*,*) "Phase before obser : ",phase
@@ -1121,7 +1118,7 @@ Program Main
 #ifdef ALF_TEAM_TIMERS
                           call system_clock(tt_c0)
 #endif
-                          CALL ham%Obser( GR_Tilde, PHASE, nt_obs, Mc_step_weight )
+                          CALL ham%Obser( GR_Tilde, PHASE, Ntau1, Mc_step_weight )
 #ifdef ALF_TEAM_TIMERS
                           call system_clock(tt_c1); tt(6) = tt(6) + real(tt_c1-tt_c0,8)/real(tt_rate,8)
 #endif
@@ -1133,7 +1130,7 @@ Program Main
 #ifdef ALF_TEAM_TIMERS
                           call system_clock(tt_c0)
 #endif
-                          CALL ham%Obser( GR, PHASE, nt_obs, Mc_step_weight )
+                          CALL ham%Obser( GR, PHASE, Ntau1,Mc_step_weight )
 #ifdef ALF_TEAM_TIMERS
                           call system_clock(tt_c1); tt(6) = tt(6) + real(tt_c1-tt_c0,8)/real(tt_rate,8)
 #endif
