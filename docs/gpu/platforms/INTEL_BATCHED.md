@@ -123,6 +123,22 @@ W = 4 walkers in each of the 4 CCS processes gives **20.4 / 23.5 us = 1.73x / 1.
 nothing is gained: the production layout (60.9 / 77.9 us) is already as good as or better than any batched variant (the G set leaves L2; HBM 1.0 TB/s
 per tile, 1a).
 
+### 1f. Observables `corr` kernel: OpenMP today vs SYCL (`ib_bench corr`, job 560873)
+
+The SpinMz form of `corr` (3 complex sums over I per output d, reads G(J,I,1:2), G(I,J,1:2) and diagonals; square lattice, Norb = 1) written in SYCL:
+A = the same mapping as the OpenMP kernel (one work-group of 256 per output, `reduce_over_group`); B = two-pass, column-coalesced (B1 terms into
+T(d,I), B2 chunked reduction, B3 sum of chunks). Results of A and B agree to 2.3e-16. us per call:
+
+| | L = 24, A | L = 24, B | L = 32, A | L = 32, B |
+|--|--|--|--|--|
+| 1 process, tile alone | **69.6** | 65.4 | 114.7 | 166.1 |
+| 4 processes per tile, CCS 4 (per process) | 160 (tile: 40) | 116 (tile: 29) | 383 (tile: 96) | 593 |
+| OpenMP kernels of today, for comparison (p7, alone, L = 24) | `corr l386` 142, `l418` 187, `l450` 319 (different kinds; SpinMz is the heaviest) | | | |
+
+Reading: a plain SYCL version of the kernel with an explicit work-group reduction is **2-4.5x faster than the ifx-generated OpenMP kernel** at L = 24
+(C for SYCL, p7 C for OpenMP; the kinds are not matched one to one, so the factor is E). The two-pass form helps only under sharing at L = 24 (1.38x)
+and is worse at L = 32. So the observables lever is "move `corr` to SYCL (variant A)", not a new algorithm.
+
 ### 1e. Throughput of tonight's best binary (unified `build_spd_aottt`, commit 819a96ec, V7 switches + LU-free CGR), L = 24, 3 sweeps, 2 repetitions (job 560868)
 
 | chains per tile (ranks, CCS) | s per sweep per chain (mean over ranks) | upd | stab | cgr | obs | sweeps/s per card | vs H100 1.176 |
@@ -242,6 +258,15 @@ following changes that the evidence of this session makes:
 - `Libraries/Modules/alf_la_sycl_blk.cpp`: `alfsb_gather_w`, `alfsb_scale_w`, `alfsb_fgather_w` (per-walker k via `kw`), `alfsb_gemm_w` (mode 0 loop /
   mode 1 `gemm_batch`). Same per-element expressions as the single-walker kernels. Bind(C) interfaces in `Prog/gpu_lowrank_mod.F90`; **not called yet**
   (the default build is unchanged in behaviour; the new symbols are only added to libalfsb).
+- **ALF build of this branch (commit 2de23b72 content, job 560872, `ib_alf.sh`)**: builds (txtnew recipe, 1 m 45 s), libalfsb exports the 4 `_w` symbols.
+  Default behaviour unchanged: V7 switches, bitwise (CMP_TOL=0) vs `build_spd_txtnew` (819a96ec): L6F, L12F, L6T **PASS 0**. Same seed vs the
+  same-compiler CPU build: L6F PASS 2.3e-15, L12F PASS 1.6e-14 (tol 1e-13), L6T FAIL 1.358e-10 (tol 1e-10): **pre-existing**, the baseline binary gives the
+  identical 1.358e-10 (us_t2 job 560865) and the known L6T noise limit of the oneMKL path (team session) applies; not caused by this branch.
+- **Work in progress, NOT built, NOT tested:** `alfsb_corr` in `alf_la_sycl_blk.cpp` (SYCL port of the HIP `k_corr`, same interface as `alfhk_corr`;
+  intended switch `ALFSH_OBSCORR=1`), guarded by `#ifdef ALFSB_WIP_CORR` so the default build does not see it. The Fortran side is not written: in `Prog/gpu_obs_mod.F90` `corr`, after the HIP block, add under
+  `#if defined(ALF_LA_ONEMKL)` a call through `!$omp target data use_device_addr(G_d, o_jc, o_inv, acc, acc0)` with the queue from `alfsh_get_queue()`
+  (copy the wrapper `hk_corr` of `alf_hipk_mod.F90`), switch read once from the environment next to `ALF_GPU_OBS_SKIP`. Then gate (`ib_alf.sh`) and time
+  (`ib_tput.sh` alternating old/new).
 - `ib_wtest` (job 560867): W = 5 walkers, L = 24 sizes, one walker with smaller k: all multi-walker kernels **bitwise equal** to 5 single-walker calls
   (gather 10,240, scale 3.3 M, C/Qt 69,120, slot, gemm 3.3 M elements: 0 differing); planted defect (one element of one walker's G changed) -> FAIL
   (1 element), rc 1. `gemm_batch` vs loop at this shape: 0 differing.
@@ -251,13 +276,20 @@ following changes that the evidence of this session makes:
 
 ## 6. Handoff (next steps in order)
 
-State at handoff: branch `intel-batched` pushed; Step 1 complete (all tables above C); multi-walker block kernels written and bitwise-checked, not yet
-called from Fortran; no change to the ALF binary's behaviour. The order below is by expected gain per effort; steps 1 and 2 do not need the walker engine and
+State at handoff (03:45): branch `intel-batched` pushed; Step 1 complete (all tables above C); multi-walker block kernels written, bitwise-checked and
+built into ALF (default behaviour bitwise unchanged, job 560872), not yet called from Fortran; `alfsb_corr` (SYCL observables kernel) written but not built
+or wired (WIP). The session was interrupted by a usage limit 02:30-03:30, so step 1 below was not started in Fortran. The order below is by expected gain per effort; steps 1 and 2 do not need the walker engine and
 help both the single chain and the production layout.
 
-1. **Observables: remap the big `corr` kernels** (`Prog/gpu_obs_mod.F90`, the kernels p7 lists as `corr l386/l418/l450` with 512 x 1024 launches and only
+1. **Observables: move the big `corr` kernels to SYCL** (measured 1f: the SYCL form with one work-group per output is 2-4.5x faster than today's
+   OpenMP kernels; put them next to the block kernels in a SYCL library like `alf_la_sycl_blk.cpp`, queue = the OpenMP interop queue as there). Background: (`Prog/gpu_obs_mod.F90`, the kernels p7 lists as `corr l386/l418/l450` with 512 x 1024 launches and only
    576 outputs each; they are 3.5x slower than their 16 MB data volume and saturate the tile at 4 chains/tile: obs = 2.28 s of 8.38 s at L = 24, 10.6 of
-   44.6 s at L = 32, C 1e). Map one work-group per output row with a reduction inside, or express as zgemm where the access pattern allows. Expected: obs -1/3
+   44.6 s at L = 32, C 1e). Today (`corr`, lines ~420-510) each team computes one output `imj` and its threads read `G_d(j1,i1)` with
+   `J = o_jc(I,imj)`: for consecutive threads (I) both the row and the column jump, so every read is uncoalesced. Since for a fixed column I the map
+   J -> imj is a bijection, a coalesced form is: kernel 1 reads column I contiguously (`G_d(:,i1,nf)`, threads over the row) and writes the term
+   `f(G(j1,i1))` to `T(imj(I,J), I)`; kernel 2 reduces `T(imj,:)` over I with threads over imj (contiguous). Both are streaming N^2 passes (L2-resident).
+   Summation order changes (rounding level, gate vs CPU at 1e-13 applies). The two-pass form was measured (1f, variant B) and is NOT better except
+   under sharing at L = 24; use variant A. Expected: obs -1/3
    -> **+8-10 % per card at L = 24 and L = 32** (E). Gate: same-seed vs CPU (`run_cmp_sng.py`, L6F/L12F 1e-13, L6T 1e-10) + planted defect; time with
    `ib_tput.sh` / `ib_tput32.sh` alternating old/new binaries in one job.
 2. **Update block: fewer submissions per block on the SYCL path** (`Libraries/Modules/alf_la_sycl_blk.cpp`, `Prog/gpu_lowrank_mod.F90` `blk_begin`/`blk_end`/
@@ -294,4 +326,6 @@ Open risks / facts for the next session:
 | 560868 | ib_tput L = 24, 1/2/4 chains per tile x 2 | 3.1 min | 1 |
 | 560869 | ib_tput32 L = 32, 1/2/4 chains per tile | 4.8 min | 1 |
 | 560870 | ib_s2: block R (k = 16, 32) | 2.6 min | 1 |
-| **total** | | **16.3 min = 0.27 node-h** (upper bound incl. start-up ~0.35) | |
+| 560872 | ib_alf: build of this branch + gates | 3.7 min | 1 |
+| 560873 | ib_s3: corr kernel SYCL A/B | 0.2 min | 1 |
+| **total** | | **20.2 min = 0.34 node-h** (upper bound incl. start-up ~0.4) | |

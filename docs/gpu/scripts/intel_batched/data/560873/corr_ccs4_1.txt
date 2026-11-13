@@ -1,0 +1,7 @@
+device Intel(R) Data Center GPU Max 1550 CUs=512
+corr L=24 N=576 variant=A_today t_us=160.0
+corr L=24 N=576 variant=B_twopass t_us=115.6
+corr L=24 check maxabs_diff=2.225e-16 max=1.018e+00
+corr L=32 N=1024 variant=A_today t_us=383.1
+corr L=32 N=1024 variant=B_twopass t_us=592.4
+corr L=32 check maxabs_diff=2.266e-16 max=1.714e+00

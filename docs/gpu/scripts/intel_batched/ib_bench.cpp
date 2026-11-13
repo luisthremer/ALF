@@ -257,6 +257,100 @@ static void block(sycl::queue &q, int N, int b, int k, double tmin) {
   }
 }
 
+
+// ---- observables corr kernel (SpinMz kind of gpu_obs_mod corr): today's mapping vs a column-coalesced two-pass form ----------
+// square lattice L x L, N = L^2, Norb = 1. acc(d) += sum_I f(G(J,I,:), G(I,J,:), G(I,I,:), G(J,J,:)), J = I + d.
+// A (today): one work-group per output d, work-items over I (both G(J,I) and G(I,J) uncoalesced).
+// B: B1 one work-item per (J fastest, I): reads G(J,I) contiguous, writes T(d, I) at [I*N + d] (d = J - I: contiguous in J except
+//    at row wraps); B2 reduces over I in C chunks with work-items over d (coalesced), B3 adds the C partials.
+static void corrbench(sycl::queue &q, int L, double tmin) {
+  const int N = L * L;
+  const size_t NN = (size_t)N * N;
+  cd *G = sycl::malloc_device<cd>(NN * 2, q);
+  fill(q, G, NN * 2, 0.01);
+  std::vector<int> hjc(NN), hinv(NN);
+  for (int I = 0; I < N; ++I)
+    for (int d = 0; d < N; ++d) {
+      int x = I % L, y = I / L, dx = d % L, dy = d / L;
+      int J = (x + dx) % L + L * ((y + dy) % L);
+      hjc[I + (size_t)N * d] = J; hinv[J + (size_t)N * I] = d;
+    }
+  int *jc = sycl::malloc_device<int>(NN, q), *inv = sycl::malloc_device<int>(NN, q);
+  q.memcpy(jc, hjc.data(), NN * 4); q.memcpy(inv, hinv.data(), NN * 4); q.wait();
+  cd *acc = sycl::malloc_device<cd>((size_t)3 * N, q);
+  const int C = 16;
+  cd *T = sycl::malloc_device<cd>(NN * 3, q), *P = sycl::malloc_device<cd>((size_t)3 * N * C, q);
+  auto term = [](const cd *G, size_t NN, int N, int I, int J, cd &s1, cd &s2, cd &s3) {
+    cd a = -G[J + (size_t)N * I], b = -G[J + (size_t)N * I + NN];
+    if (I == J) { a += 1.0; b += 1.0; }
+    cd gij1 = G[I + (size_t)N * J], gij2 = G[I + (size_t)N * J + NN];
+    cd zxy = a * gij2 + b * gij1;
+    cd zi = (1.0 - G[I + (size_t)N * I + NN]) - (1.0 - G[I + (size_t)N * I]);
+    cd zj = (1.0 - G[J + (size_t)N * J + NN]) - (1.0 - G[J + (size_t)N * J]);
+    cd zz = a * gij1 + b * gij2 + zi * zj;
+    s1 = zz; s2 = zxy; s3 = (2.0 * zxy + zz) / 3.0;
+  };
+  const int WG = 256;
+  auto runA = [&] {
+    q.parallel_for(sycl::nd_range<1>((size_t)N * WG, WG), [=](sycl::nd_item<1> it) {
+      int d = it.get_group(0);
+      double r[6] = {0, 0, 0, 0, 0, 0};
+      for (int I = it.get_local_id(0); I < N; I += WG) {
+        int J = jc[I + (size_t)N * d];
+        cd s1, s2, s3;
+        term(G, NN, N, I, J, s1, s2, s3);
+        r[0] += s1.real(); r[1] += s1.imag(); r[2] += s2.real(); r[3] += s2.imag(); r[4] += s3.real(); r[5] += s3.imag();
+      }
+      for (int c = 0; c < 6; ++c) r[c] = sycl::reduce_over_group(it.get_group(), r[c], sycl::plus<double>());
+      if (it.get_local_id(0) == 0) {
+        acc[d] += cd(r[0], r[1]); acc[d + N] += cd(r[2], r[3]); acc[d + 2 * N] += cd(r[4], r[5]);
+      }
+    });
+  };
+  auto runB = [&] {
+    q.parallel_for(sycl::range<2>(N, N), [=](sycl::id<2> id) {
+      int I = id[0], J = id[1];
+      int d = inv[J + (size_t)N * I];
+      cd s1, s2, s3;
+      term(G, NN, N, I, J, s1, s2, s3);
+      size_t o = (size_t)I * N + d;
+      T[o] = s1; T[o + NN] = s2; T[o + 2 * NN] = s3;
+    });
+    q.parallel_for(sycl::range<2>(C, N), [=](sycl::id<2> id) {
+      int c = id[0], d = id[1];
+      int i0 = (int)((long)N * c / C), i1 = (int)((long)N * (c + 1) / C);
+      cd r1 = 0, r2 = 0, r3 = 0;
+      for (int I = i0; I < i1; ++I) { size_t o = (size_t)I * N + d; r1 += T[o]; r2 += T[o + NN]; r3 += T[o + 2 * NN]; }
+      P[d + (size_t)N * (c + C * 0)] = r1; P[d + (size_t)N * (c + C * 1)] = r2; P[d + (size_t)N * (c + C * 2)] = r3;
+    });
+    q.parallel_for(sycl::range<2>(3, N), [=](sycl::id<2> id) {
+      int k = id[0], d = id[1];
+      cd r = 0;
+      for (int c = 0; c < C; ++c) r += P[d + (size_t)N * (c + C * k)];
+      acc[d + (size_t)N * k] += r;
+    });
+  };
+  std::vector<cd> ra(3 * N), rb(3 * N);
+  for (int v = 0; v < 2; ++v) {
+    q.memset(acc, 0, 16 * 3 * N).wait();
+    if (v == 0) runA(); else runB();
+    q.wait();
+    q.memcpy(v == 0 ? ra.data() : rb.data(), acc, 16 * 3 * N).wait();
+    for (int r = 0; r < 3; ++r) { if (v == 0) runA(); else runB(); }
+    q.wait();
+    int reps = 0;
+    double t0 = now(), t;
+    do { if (v == 0) runA(); else runB(); ++reps; if (reps % 16 == 0) q.wait(); t = now() - t0; } while (t < tmin || reps % 16);
+    q.wait();
+    t = (now() - t0) / reps;
+    std::printf("corr L=%d N=%d variant=%s t_us=%.1f\n", L, N, v == 0 ? "A_today" : "B_twopass", t * 1e6);
+  }
+  double md = 0, mx = 0;
+  for (int i = 0; i < 3 * N; ++i) { md = std::max(md, std::abs(ra[i] - rb[i])); mx = std::max(mx, std::abs(ra[i])); }
+  std::printf("corr L=%d check maxabs_diff=%.3e max=%.3e\n", L, md, mx);
+  sycl::free(G, q); sycl::free(jc, q); sycl::free(inv, q); sycl::free(acc, q); sycl::free(T, q); sycl::free(P, q);
+}
+
 int main(int argc, char **argv) {
   std::string mode = argc > 1 ? argv[1] : "all";
   double tmin = argc > 2 ? atof(argv[2]) : 1.0;
@@ -279,6 +373,10 @@ int main(int argc, char **argv) {
   std::fflush(stdout);
   if (mode == "gemm" || mode == "all") gemm(q, tmin);
   std::fflush(stdout);
+  if (mode == "corr") {
+    corrbench(q, 24, tmin);
+    corrbench(q, 32, tmin);
+  }
   if (mode == "block" || mode == "all") {
     int kb = getenv("IB_BLK_K") ? atoi(getenv("IB_BLK_K")) : 32;
     block(q, 576, 32, kb, tmin);
