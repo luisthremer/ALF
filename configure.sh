@@ -2,7 +2,7 @@
 # shellcheck disable=SC2059
 # This script sets necessary environment variables for compiling ALF.
 # You need to source it prior to executing make.
-USAGE="usage 'source configure.sh MACHINE MODE STAB [HDF5] [Devel] [GPU=none|nvidia|intel|amd]'
+USAGE="usage 'source configure.sh MACHINE MODE STAB [HDF5] [Devel] [GPU=none|nvidia|intel|amd|apple]'
 
 Please choose one of the following MACHINEs:
  * GNU
@@ -266,11 +266,11 @@ while [ "$#" -gt "0" ]; do
       INTELLLVMOPTFLAGS="$INTELLLVMOPTFLAGS $INTELLLVMDEVFLAGS"
       PGIOPTFLAGS="$PGIOPTFLAGS $PGIDEVFLAGS"
     ;;
-    GPU=NONE|GPU=NVIDIA|GPU=INTEL|GPU=AMD)
+    GPU=NONE|GPU=NVIDIA|GPU=INTEL|GPU=AMD|GPU=APPLE)
       GPU_TARGET="$(echo "${ARG#GPU=}" | tr '[:upper:]' '[:lower:]')"
     ;;
     GPU=*)
-      printf "${RED}Error: unknown GPU target '%s'. Allowed: GPU=none, GPU=nvidia, GPU=intel, GPU=amd.${NC}\n" "${ARG#GPU=}" 1>&2
+      printf "${RED}Error: unknown GPU target '%s'. Allowed: GPU=none, GPU=nvidia, GPU=intel, GPU=amd, GPU=apple.${NC}\n" "${ARG#GPU=}" 1>&2
       rm -r "$tmpdir"
       return 1
     ;;
@@ -642,8 +642,25 @@ case "$GPU_TARGET" in
     export ALF_GPU="intel"
     printf "\nGPU target: ${GREEN}intel${NC} (ifx, OpenMP offload spir64 JIT, oneMKL)\n"
   ;;
+  apple)
+    # Apple silicon (macOS, MACHINE GNU): the CPU build unchanged, except that large ZGEMMs (all of M,N,K >= ALF_METAL_MIN)
+    # are split between Accelerate (CPU) and a float-float Metal kernel on the GPU (Libraries/Modules/alf_la_metal_shim.m,
+    # which defines zgemm_). Not a device-resident port: ALF_GPU stays unset, so Prog/ compiles exactly as for GPU=none.
+    if [ "$(uname -s)" != "Darwin" ]; then
+      printf "${RED}Error: GPU=apple requires macOS (Metal).${NC}\n" 1>&2
+      rm -r "$tmpdir"
+      return 1
+    fi
+    unset ALF_GPU
+    export ALF_METAL=1
+    ALF_FLAGS_MODULES="${ALF_FLAGS_MODULES} -DALF_LA_METAL"
+    ALF_FLAGS_PROG="${ALF_FLAGS_PROG} -DALF_LA_METAL"
+    ALF_LIB="${ALF_LIB} -framework Metal -framework Foundation -framework Accelerate -lobjc"
+    printf "\nGPU target: ${GREEN}apple${NC} (CPU build + Metal float-float split ZGEMM above ALF_METAL_MIN)\n"
+  ;;
   *)
     unset ALF_GPU
+    unset ALF_METAL
     printf "\nGPU target: none (CPU build)\n"
   ;;
 esac

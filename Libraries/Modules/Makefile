@@ -67,6 +67,13 @@ alf_hip_qr.o: alf_hip_qr.hip.cpp
 	$(HIPCC) -O2 --offload-arch=$(ALF_AMD_ARCH) -I$(ROCM_INC) -c $< -o $@
 endif
 
+# GPU=apple (ALF_METAL=1): Objective-C Metal shim defining zgemm_ (float-float split ZGEMM)
+ifeq ($(ALF_METAL),1)
+SHIMOBJ = alf_la_metal_shim.o
+alf_la_metal_shim.o: alf_la_metal_shim.m
+	clang -O3 -fobjc-arc -c $< -o $@
+endif
+
 $(LIB): $(DEPSFILE) $(OBJS) $(SHIMOBJ)
 	ar -r $(LIB) $(OBJS) $(SHIMOBJ)
 
