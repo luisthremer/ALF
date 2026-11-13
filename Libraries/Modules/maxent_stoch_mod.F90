@@ -67,6 +67,10 @@ Module MaxEnt_stoch_mod
        !     reset and the warmup is carried out, as required when the input data changed
        !     (e.g. a new bootstrap sample).
        Logical, public :: MaxEnt_stoch_warm_start_only = .false.
+       ! Directory (with trailing "/") into which all files of MaxEnt_stoch are written and from
+       ! which dumps are read. Empty (default) = current directory. Used to give every MPI rank
+       ! its own working directory.
+       Character (len=256), public :: MaxEnt_stoch_dir = ""
        
        contains
 
@@ -94,7 +98,7 @@ Module MaxEnt_stoch_mod
            Real (Kind=Kind(0.d0)) :: Aom, om, XMAX, tau
            Real (Kind=Kind(0.d0)) :: CPUT, F_A
            Integer :: ICPU_1, ICPU_2, N_P_SEC
-           Character (64) :: File_root, File1, File_conf, File_Aom
+           Character (320) :: File_root, File1, File_conf, File_Aom
            Real (Kind=Kind(0.d0)), allocatable :: Xker_table(:,:), U(:,:), sigma(:)
            ! Space for moments.
            Real (Kind=Kind(0.d0)), allocatable:: Mom_M_tot(:,:), Mom_E_tot(:,:)
@@ -187,8 +191,8 @@ Module MaxEnt_stoch_mod
            Allocate(Iseed_vec(L_seed))
            Iseed_vec = 0
            If (MaxEnt_stoch_reset_seed) Call Ranset(Iseed_vec)
-           File_conf = "dump_conf"
-           File_Aom  = "dump_Aom"
+           File_conf = trim(MaxEnt_stoch_dir) // "dump_conf"
+           File_Aom  = trim(MaxEnt_stoch_dir) // "dump_Aom"
            Open(unit=41,file=File_conf,status='old',action='read', iostat=io_error)
            Open(unit=42,file=File_Aom, status='old',action='read', iostat=io_error1)
            Nwarm_eff = Nwarm   ! Local copy: do not overwrite the caller's Nwarm
@@ -207,7 +211,7 @@ Module MaxEnt_stoch_mod
                     read(42,*) Xn_m_tot(nd,ns), Xn_e_tot(nd,ns)
                  enddo
               enddo
-              Open (Unit=44,File='Max_stoch_log', Status="unknown", position="append")
+              Open (Unit=44,File=trim(MaxEnt_stoch_dir)//'Max_stoch_log', Status="unknown", position="append")
               Write(44,*) 'Read from dump: nc = ', nc
               If (MaxEnt_stoch_warm_start_only) then
                  ! Keep only the configurations Xn_tot. The data changed, so the accumulated
@@ -238,7 +242,7 @@ Module MaxEnt_stoch_mod
               F_A_m    = 0.d0
               F_A_e    = 0.d0
               nc = 0
-              Open (Unit=44,File='Max_stoch_log', Status="unknown", position="append")
+              Open (Unit=44,File=trim(MaxEnt_stoch_dir)//'Max_stoch_log', Status="unknown", position="append")
               Write(44,*) ' No dump data '
               close(44)
            endif
@@ -264,7 +268,7 @@ Module MaxEnt_stoch_mod
                     Xn_tot(ng,2,ns) = Xn(ng,2)
                  enddo
                  En_tot(ns) = En ! this is the energy of the configuration Xn_tot for simulation ns
-                 Open (Unit=44,File='Max_stoch_log', Status="unknown", position="append")
+                 Open (Unit=44,File=trim(MaxEnt_stoch_dir)//'Max_stoch_log', Status="unknown", position="append")
                 Write(44,"('Alpha, En_m, Acc ', E25.17E3, 2x, E25.17E3, 2x, E25.17E3, 2x, E25.17E3, 2x, E25.17E3)") 1.d0/Alpha, En_m, Acc_1, Acc_2
                  close(44)
                  if (nb.gt.nwarm_eff) then
@@ -334,14 +338,14 @@ Module MaxEnt_stoch_mod
                  endif
               enddo
               Acc_1 = Acc_1/dble(Nex)
-              Open (Unit=44,File='Max_stoch_log', Status="unknown", position="append")
+              Open (Unit=44,File=trim(MaxEnt_stoch_dir)//'Max_stoch_log', Status="unknown", position="append")
               Write(44,*) 'Acc Exchange: ', Acc_1
               close(44)
            enddo
            CALL SYSTEM_CLOCK(COUNT=ICPU_2)
            CPUT = 0.D0
            CPUT = DBLE(ICPU_2 - ICPU_1)/DBLE(N_P_SEC)
-           Open (Unit=44,File='Max_stoch_log', Status="unknown", position="append")
+           Open (Unit=44,File=trim(MaxEnt_stoch_dir)//'Max_stoch_log', Status="unknown", position="append")
            Write(44,*) 'Total time: ', CPUT
            close(44)
            ! dump so as to restart.
@@ -364,7 +368,7 @@ Module MaxEnt_stoch_mod
            close(41)
            close(42)
            ! Stop dump
-           Open(Unit=66,File="energies",status="unknown")
+           Open(Unit=66,File=trim(MaxEnt_stoch_dir)//"energies",status="unknown")
            do ns = 1,Nsims
               En_m_tot(ns) = En_m_tot(ns) / dble(nc)
               En_e_tot(ns) = En_e_tot(ns) / dble(nc)
@@ -379,7 +383,7 @@ Module MaxEnt_stoch_mod
            close(66)
 
            If (Present(Filename_F)) then
-              Open(Unit=67,File=Filename_F,status="unknown")
+              Open(Unit=67,File=trim(MaxEnt_stoch_dir)//trim(Filename_F),status="unknown")
               do ns = 1,Nsims
                F_A_m(ns) = F_A_m(ns) / dble(nc)
                F_A_e(ns) = F_A_e(ns) / dble(nc)
@@ -393,7 +397,7 @@ Module MaxEnt_stoch_mod
               enddo
               close(67)
            endif
-           Open(Unit=66,File="moments",status="unknown")
+           Open(Unit=66,File=trim(MaxEnt_stoch_dir)//"moments",status="unknown")
            do ns = 1,Nsims
               do n = 1,Size(Mom_m_tot,1)
                  Mom_m_tot(n,ns) = Mom_m_tot(n,ns) / dble(nc1)
@@ -413,7 +417,7 @@ Module MaxEnt_stoch_mod
            File_root = "Aom"
            do ns = 1,Nsims
               write(File1,'(A,"_",I0)') trim(File_root), ns
-              Open(Unit=66,File=File1,status="unknown")
+              Open(Unit=66,File=trim(MaxEnt_stoch_dir)//trim(File1),status="unknown")
               do nd = 1,Ndis
                  Xn_m_tot(nd,ns) = Xn_m_tot(nd,ns) / dble(nc) ! * delta /(dble(nc)*pi)
                  Xn_e_tot(nd,ns) = Xn_e_tot(nd,ns) / dble(nc) ! * delta /(dble(nc)*pi)
@@ -447,7 +451,7 @@ Module MaxEnt_stoch_mod
                  Xn_e(nd) = Xn_e(nd) / (En_m_tot(p_star) - En_m_tot(NSims))
               enddo
               write(File1,'(A,"_",I0)') trim(File_root), p_star
-              Open(Unit=66,File=File1,status="unknown")
+              Open(Unit=66,File=trim(MaxEnt_stoch_dir)//trim(File1),status="unknown")
               XMAX = 0.d0
               Do nd = 1,Ndis
                  om =  Om_st_1 +  dble(nd-1)*Dom_spectral  !  PhiM1(dble(nd)/dble(NDis)) HERE
@@ -464,7 +468,7 @@ Module MaxEnt_stoch_mod
               enddo
               close(66)
            enddo
-           Open (Unit=41,File='Best_fit', Status="unknown")
+           Open (Unit=41,File=trim(MaxEnt_stoch_dir)//'Best_fit', Status="unknown")
            do ng = 1,Ngamma
               Write(41,*) Phim1(Xn_tot(ng,1,Nsims)) , Xn_tot(ng,2,Nsims)
            enddo
