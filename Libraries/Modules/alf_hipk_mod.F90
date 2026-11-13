@@ -8,7 +8,7 @@ module alf_hipk_mod
   implicit none
   private
   public :: hk_blk_end, hk_copyz, hk_blk_gather, hk_blk_scale_rows, hk_blk_scale_cols, hk_flush_gather, hk_scatter_rows
-  public :: hk_corr, hk_scalars, hk_local
+  public :: hk_corr, hk_scalars
   public :: hk_vslice_r
   public :: hk_divrows, hk_rowdiv, hk_scale_cols, hk_tpup, hk_ns, hk_cgr_phase, hk_prec
   public :: hk_ident, hk_setd, hk_setl, hk_diagabs, hk_phase, hk_det_phase, hk_scale_row1, hk_scale_col1, hk_triu, hk_perm, hk_perm_vec, hk_ct, hk_colinv, hk_testscale, hk_colnorms, hk_permute_cols
@@ -60,12 +60,6 @@ module alf_hipk_mod
       integer(c_int), value :: nk, n, norb, nfl, dec, ld
       type(c_ptr), value :: hi, hj, hf, hc, g, inv, uo
       real(c_double) :: hres(6)
-    end function
-    integer(c_int) function alfhk_local(n, norb, lnt, it, dec, wt, wr, wi, ld, inv, g, lacc1, lacc2) bind(C, name='alfhk_local')
-      import :: c_ptr, c_int, c_double
-      integer(c_int), value :: n, norb, lnt, it, dec, ld
-      real(c_double), value :: wt, wr, wi
-      type(c_ptr), value :: inv, g, lacc1, lacc2
     end function
     integer(c_int) function alfhk_divrows(n, ld, u, d) bind(C, name='alfhk_divrows')
       import :: c_ptr, c_int
@@ -308,19 +302,6 @@ contains
     !$omp end target data
     call chk(rc, 'scalars')
   end subroutine hk_scalars
-
-  subroutine hk_local(n, norb, lnt, it, dec, wt, wr, wi, ld, inv, g, lacc1, lacc2)
-    integer, intent(in) :: n, norb, lnt, it, dec, ld
-    real(8), intent(in) :: wt, wr, wi
-    integer, target :: inv(*)
-    complex(8), target :: g(*), lacc1(*), lacc2(*)
-    integer(c_int) :: rc
-    !$omp target data use_device_addr(inv, g, lacc1, lacc2)
-    rc = alfhk_local(int(n,c_int), int(norb,c_int), int(lnt,c_int), int(it,c_int), int(dec,c_int), wt, wr, wi, int(ld,c_int), &
-         c_loc(inv(1)), c_loc(g(1)), c_loc(lacc1(1)), c_loc(lacc2(1)))
-    !$omp end target data
-    call chk(rc, 'local')
-  end subroutine hk_local
 
   subroutine hk_divrows(n, ld, u, d)
     integer, intent(in) :: n, ld

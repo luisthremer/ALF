@@ -262,20 +262,6 @@ __global__ void k_scalars(int nk, const int* hi, const int* hj, const int* hf, c
   if (threadIdx.x == 0) for (int q = 0; q < 6; q++) out[q] = red[q][0];
 }
 
-// local observables: d = (G(i1,i1,dec) - G(i1,i1,1)) * w; lacc1(I,no) += d; lacc2(I,it,no) += wt*d
-__global__ void k_local(int N, int Norb, int lNt, int it, int dec, double wt, double wr, double wi, int ld, const int* inv,
-                        const cd* G, cd* lacc1, cd* lacc2) {
-  long t = (long)blockIdx.x * blockDim.x + threadIdx.x;
-  if (t >= (long)N * Norb) return;
-  int I = t % N, no = t / N;
-  int i1 = inv[I + (long)no * N] - 1;
-  const long ld2 = (long)ld * ld;
-  cd d = (G[i1 + (long)i1 * ld + (long)(dec - 1) * ld2] - G[i1 + (long)i1 * ld]) * cd(wr, wi);
-  lacc1[I + (long)no * N] += d;
-  lacc2[I + (long)(it - 1) * N + (long)no * N * lNt] += wt * d;
-}
-
-
 // ---- stabilisation helpers ----------------------------------------------------------------------------------------
 __device__ inline cd conjg(cd a) { return cd(a.r, -a.i); }
 __device__ inline double cabsd(cd a) { return hypot(a.r, a.i); }
@@ -581,12 +567,6 @@ int alfhk_scalars(int nk, void* hi, void* hj, void* hf, void* hc, int N, int Nor
   int r = fin();
   if (r) return r;
   return hipMemcpy(hres, dres, 6 * sizeof(double), hipMemcpyDeviceToHost) == hipSuccess ? 0 : 4;
-}
-int alfhk_local(int N, int Norb, int lNt, int it, int dec, double wt, double wr, double wi, int ld, void* inv, void* G, void* lacc1,
-                void* lacc2) {
-  long tot = (long)N * Norb; if (tot <= 0) return 0;
-  LAUNCH(k_local, nb(tot, 256), 256, N, Norb, lNt, it, dec, wt, wr, wi, ld, (const int*)inv, (const cd*)G, (cd*)lacc1, (cd*)lacc2);
-  return fin();
 }
 
 

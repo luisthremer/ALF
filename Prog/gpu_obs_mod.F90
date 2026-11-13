@@ -31,7 +31,7 @@ Module gpu_obs_mod
   Use Natural_Constants, only: Eps_small
   Use Lattices_v3
   Use Predefined_Hoppings
-  Use Hamiltonian_main, only: Obs_scal, Obs_eq, Obs_tau, Obs_local, Thtrot, Ltrot
+  Use Hamiltonian_main, only: Obs_scal, Obs_eq, Obs_tau
   Use gpu_state_mod
   Use gpu_update_mod, only: gpu_upd_enabled
   Use gpu_wrap_mod, only: gpu_symm, gpu_symm_build, gpu_symm_td
@@ -43,10 +43,6 @@ Module gpu_obs_mod
   Private
   Logical, Save :: o_symm = .false.
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: Gsv(:,:,:), Gw(:,:,:), Ts(:,:,:,:), Asy(:,:,:), Bsy(:,:,:), Tmp(:,:)
-  ! point defect (ham_h0 /= 0): local observables SpinZ_local (Obs_local(1), tau-averaged) and SpinZ_localtau (Obs_local(2)), device accumulators
-  Logical, Save :: o_loc = .false., o_ldev = .false.
-  Integer, Save :: o_lNt = 0
-  Complex (Kind=Kind(0.d0)), Allocatable, Save :: lacc1(:,:), lacc2(:,:,:)       ! (N,Norb), (N,Nt,Norb)
   Logical, Save :: symm_built = .false.
   Integer, Save :: k_b = 0
   Public :: gpu_obs_setup, gpu_obs_active, gpu_obs_measure, gpu_obs_flush, gpu_obs_finalize, gpu_obs_symm
@@ -101,12 +97,7 @@ Contains
     enddo
     o_symm = Symm_
     if (Projector_) return          ! Symm is handled on the device (gpu_symm)
-    o_loc = (abs(h0) >= Eps_small)
-    if (o_loc) then      ! point defect: needs the local observables and N_FL = 2
-       if (N_FL /= 2) return
-       if (.not. allocated(Obs_local)) return
-       if (size(Obs_local,1) /= 2) return
-    endif
+    if (abs(h0) >= Eps_small) return   ! pinning field: its local observable (Obs_local) is measured by the host Obser
     if (N_FL /= 1 .and. N_FL /= 2) return
     if (size(Obs_eq,1) /= merge(5, 3, N_FL == 2)) return
     o_N = Latt%N; o_Norb = Latt_unit%Norb; o_NFL = N_FL; o_NSUN = N_SUN; o_Ndim = size(List,1)
@@ -176,7 +167,7 @@ Contains
     endif
     o_ok = .true.
     ! tau-resolved observables (allocated by Alloc_obs only for Ltau = 1): the same observables, one per Obs_eq
-    if (allocated(Obs_tau) .and. .not. o_loc) then      ! tau-resolved device measurement: not with the defect (host path)
+    if (allocated(Obs_tau)) then
        if (size(Obs_tau,1) == o_nobs) then
           o_Nt = size(Obs_tau(1)%Obs_Latt,2)
           o_tau = .true.
@@ -238,8 +229,8 @@ Contains
     acc = (0.d0, 0.d0); acc0 = (0.d0, 0.d0)
     !$omp target enter data map(to: o_inv, o_jc, o_uo, hk_i, hk_j, hk_f, hk_c, acc, acc0)
     o_dev = .true.
-    write(line,'(A,I0,A,I0,A,L1,A,L1,A,L1)') 'GPU observables: device equal-time measurement ACTIVE (N_FL ', o_NFL, ', N_SUN ', o_NSUN, &
-         & ', Symm ', o_symm, ', point-defect local observables ', o_loc, ', tau-resolved on device ', o_tau
+    write(line,'(A,I0,A,I0,A,L1,A,L1)') 'GPU observables: device equal-time measurement ACTIVE (N_FL ', o_NFL, ', N_SUN ', o_NSUN, &
+         & ', Symm ', o_symm, ', tau-resolved on device ', o_tau
     call info_line(line)
   End Subroutine alloc_dev
 
@@ -340,9 +331,6 @@ Contains
     Obs_scal(3)%Obs_vec(1) = Obs_scal(3)%Obs_vec(1) + Zrho*ZP*ZS
     Obs_scal(4)%Obs_vec(1) = Obs_scal(4)%Obs_vec(1) + (Zkin + Zpot)*ZP*ZS
 
-    ! ---- point defect: local observables (n_up - n_dn per site) = GRC(i,i,1) - GRC(i,i,dec) = G(i,i,dec) - G(i,i,1); only the diagonal of G
-    if (o_loc) call local_obs(ZW, rs, Ntau)
-
     ! ---- correlations: one gather per output element (imj, no, no2)
     do k = 1, o_nobs
        kind_k = o_kind(k)
@@ -357,49 +345,6 @@ Contains
        enddo
     endif
   End Subroutine gpu_obs_measure
-
-  !> ham%Obser, local part: Obs_local(1) every slice, Obs_local(2)%Obs_Latt(:,Ntau+1-Thtrot,:) (Nt = Ltrot+1-2 Thtrot slices, tau = 0..beta);
-  !> the endpoints Ntau = Thtrot, Ltrot-Thtrot are visited half as often and get weight 2 in Obs_local(2) only; counters as the host
-  Subroutine local_obs(ZW, rs, Ntau)
-    Implicit none
-    Complex (Kind=Kind(0.d0)), intent(in) :: ZW
-    Real (Kind=Kind(0.d0)), intent(in) :: rs
-    Integer, intent(in) :: Ntau
-    Integer :: I, no, i1, N, Norb, dec, it
-    Complex (Kind=Kind(0.d0)) :: d, w
-    Real (Kind=Kind(0.d0)) :: wt
-    if (.not. o_ldev) then
-       o_lNt = size(Obs_local(2)%Obs_Latt,2)
-       allocate(lacc1(o_N,o_Norb), lacc2(o_N,o_lNt,o_Norb))
-       lacc1 = (0.d0,0.d0); lacc2 = (0.d0,0.d0)
-       !$omp target enter data map(to: lacc1, lacc2)
-       o_ldev = .true.
-    endif
-    Obs_local(1)%N = Obs_local(1)%N + 1
-    Obs_local(1)%Ave_sign = Obs_local(1)%Ave_sign + rs
-    if (Ntau == Ltrot/2) then
-       Obs_local(2)%N = Obs_local(2)%N + 1
-       Obs_local(2)%Ave_sign = Obs_local(2)%Ave_sign + rs
-    endif
-    it = Ntau + 1 - Thtrot
-    wt = 1.d0
-    if (Ntau == Thtrot .or. Ntau == Ltrot - Thtrot) wt = 2.d0
-    if (it < 1 .or. it > o_lNt) call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
-    N = o_N; Norb = o_Norb; dec = o_dec; w = ZW
-#if defined(ALF_LA_HIP)
-    call hk_local(N, Norb, o_lNt, it, dec, wt, real(w), aimag(w), size(G_d,1), o_inv, G_d(1,1,1), lacc1, lacc2)
-#else
-    !$omp target teams distribute parallel do collapse(2) private(i1,d)
-    do no = 1, Norb
-       do I = 1, N
-          i1 = o_inv(I,no)
-          d = (G_d(i1,i1,dec) - G_d(i1,i1,1))*w
-          lacc1(I,no) = lacc1(I,no) + d
-          lacc2(I,it,no) = lacc2(I,it,no) + wt*d
-       enddo
-    enddo
-#endif
-  End Subroutine local_obs
 
   Subroutine corr(k, kind_k, ZW, N, Norb, NFL, NSUN, sq3)
     Implicit none
@@ -537,13 +482,6 @@ Contains
        tacc = (0.d0, 0.d0); tacc0 = (0.d0, 0.d0)
        !$omp target update to(tacc, tacc0)
     endif
-    if (o_ldev) then
-       !$omp target update from(lacc1, lacc2)
-       Obs_local(1)%Obs_Latt(:,1,:) = Obs_local(1)%Obs_Latt(:,1,:) + lacc1
-       Obs_local(2)%Obs_Latt = Obs_local(2)%Obs_Latt + lacc2
-       lacc1 = (0.d0,0.d0); lacc2 = (0.d0,0.d0)
-       !$omp target update to(lacc1, lacc2)
-    endif
     if (.not. o_dev) return
     !$omp target update from(acc, acc0)
     do k = 1, o_nobs
@@ -559,11 +497,6 @@ Contains
     if (allocated(Gsv)) then
        !$omp target exit data map(delete: Gsv, Gw)
        deallocate(Gsv, Gw)
-    endif
-    if (o_ldev) then
-       !$omp target exit data map(delete: lacc1, lacc2)
-       deallocate(lacc1, lacc2)
-       o_ldev = .false.
     endif
     if (allocated(Ts)) then
        !$omp target exit data map(delete: Ts)
