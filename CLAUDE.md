@@ -1,5 +1,13 @@
 # ALF GPU port – guide for agents
 
+> **State 2026-11-13.** The port now lives on the branch `gpu-port-unified` (all lines merged: NVIDIA, Intel, AMD,
+> parallel tempering, point defect, MaxEnt bootstrap). Entry page: `docs/gpu/README.md`; how the branch was built and
+> verified: `docs/gpu/CONSOLIDATION.md`; plan: `plan/GPU_PLAN_V2.md` in the project folder next to this clone.
+> Differences from the text below: there are three GPU targets (`GPU=nvidia|intel|amd`); SuperMUC-NG Phase 2 is reachable
+> (see `docs/gpu/platforms/`); in this clone `origin` is the fork `luisthremer/ALF` (check `git remote -v` before
+> pushing); the ticket and acceptance-harness process described below was replaced by the lean standard in
+> `plan/GPU_PLAN_V2.md` section 4 (owner decision 41). The machine rules and the correctness rules still hold.
+
 Branch `gpu-port` of a fork of ALF (Algorithms for Lattice Fermions, modern Fortran, GPL).
 Goal: port the **finite-temperature DQMC** to GPUs with one source tree, two equal targets:
 
