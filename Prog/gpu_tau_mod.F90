@@ -278,7 +278,7 @@ Contains
     call la_sync()
     gpu_tau_on = .true.
     gpu_stab_tau_dev = .true.
-    write(line,'(A,I0,A,I0,A,I0)') 'GPU tau pass (207): ACTIVE (propagation, WRAPUR, CGR2_2 and precision check on the device; observables on the host, interim), N = ', &
+    write(line,'(A,I0,A,I0,A,I0)') 'GPU tau pass (207): ACTIVE (propagation, WRAPUR, CGR2_2 and precision check on the device; observables on the device unless a host fallback is selected), N = ', &
          & n, ', Nstm = ', NSTM, ', flavours ', t_nfe
 #if defined(STABLOG)
     line = trim(line)//', CGR2_2 QR: host ZGEQP3 (STABLOG)'
@@ -322,7 +322,7 @@ Contains
     Character (len=256) :: line
     if (.not. gpu_tau_on) return
     write(line,'(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A)') 'GPU tau pass counters: passes ', n_pass, ', CGR2_2 calls ', n_cgr, &
-         & ' (branch D1(1) > D2(1): ', n_branch(1), ', else: ', n_branch(2), '), interim bytes H->D ', b_h2d, ' and D->H ', b_d2h, ' (INTERIM 207)'
+         & ' (branch D1(1) > D2(1): ', n_branch(1), ', else: ', n_branch(2), '), host-fallback bytes H->D ', b_h2d, ' and D->H ', b_d2h
     call info_line(line)
     if (tau_ns) then
        !$omp target exit data map(delete: t_Q, t_A, t_B)

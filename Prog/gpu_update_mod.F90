@@ -106,7 +106,7 @@ Contains
              enabled = .false.
              call info_line('GPU update path (ticket 205): DISABLED by ALF_GPU_NOUPDATE=1, host WRAPGRUP/DO')
           else
-             call info_line('GPU update path (ticket 205): ACTIVE (device wraps + rank-1 update, host decision; INTERIM per-slice G copies)')
+             call info_line('GPU update path (ticket 205): ACTIVE (device wraps + rank-1 update, host decision; G stays on the device, host copies only on demand)')
           endif
        endif
        checked = .true.

@@ -1214,8 +1214,8 @@ Contains
          & upd_cnt(1), ', accepted ', upd_cnt(2), ', site-wrap launches ', upd_cnt(3), ', update launches ', upd_cnt(4)
     call info_line(line)
     write(line,'(A,I0,A,I0,A,I0,A,I0,A,I0,A)') 'GPU update transfers: ratio-block D->H elements ', upd_cnt(5), &
-         & ', field H->D scalars ', upd_cnt(6), ', interim G copies H->D ', upd_cnt(7), ' and D->H ', upd_cnt(8), &
-         & ' (', upd_cnt(9), ' bytes, INTERIM 205)'
+         & ', field H->D scalars ', upd_cnt(6), ', on-demand G copies H->D ', upd_cnt(7), ' and D->H ', upd_cnt(8), &
+         & ' (', upd_cnt(9), ' bytes)'
     call info_line(line)
   end subroutine report_update_counts
 
