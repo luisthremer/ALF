@@ -124,7 +124,7 @@ Counts of the action column: 1 trunk, 1 variant, 3 keep, 6 rename, 4 tag as prod
 
 - Delete now, after the owner's yes (32 branches on `origin`, no worktree, each has its tag): all rows "tag as archive
   and delete" except the nine listed under "later".
-- Rename now, after the owner's yes: `s-wave-Pairing_correlations` to `feat/s-wave-pairing`.
+- Renamed 2026-11-14 (owner's yes): `s-wave-Pairing_correlations` is now `feat/s-wave-pairing` (ccab1c6f).
 - Later (worktree or running session): `fix/amd-checkerboard`, `gpu-delayed-submatrix-defect-production-mpi-pp-opt`,
   `gpu-port-unified-maxent`, `gpu-port-unified-tests`, `production-mpi-intel-large-prompt-team`, `-team-async`,
   `-team-sycqr`, `production-mpi-intel-unstable-guard-asyncblk-test`, `speedup/unified` (delete); the five other
