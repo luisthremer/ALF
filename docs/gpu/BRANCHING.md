@@ -1,6 +1,6 @@
 # Branching scheme for the ALF GPU repository
 
-**Status: approved by the owner 2026-11-14. Tags created, pushed and verified 2026-11-14 (44 tags, each equal to its branch tip on `origin`). No branch has been deleted or renamed yet; that needs the owner's yes on the list in the section "Carried out".**
+**Status: approved by the owner and carried out 2026-11-14. 40 archived branches are deleted on `origin` (each kept as a tag), 16 branches remain. The mapping table below shows the state before; the section "Carried out" shows what was done and what is left.**
 
 ## Scheme
 
@@ -120,14 +120,35 @@ Counts of the action column: 1 trunk, 1 variant, 3 keep, 6 rename, 4 tag as prod
   `archive/tickets/gpu-port-delayed-submatrix-rank-nd` (24c85e9e, WIP 401-A, general vertices on the device, **not in the trunk**),
   `archive/tickets/harness-e2e-local` (f02ee2d5), `archive/tickets/harness-e2e2-local` (f5f7ffee).
 
-### Open: deleting and renaming (waits for the owner)
+### 2026-11-14: deleted and renamed (owner's yes on the shown lists)
 
-- Delete now, after the owner's yes (32 branches on `origin`, no worktree, each has its tag): all rows "tag as archive
-  and delete" except the nine listed under "later".
-- Renamed 2026-11-14 (owner's yes): `s-wave-Pairing_correlations` is now `feat/s-wave-pairing` (ccab1c6f).
-- Later (worktree or running session): `fix/amd-checkerboard`, `gpu-delayed-submatrix-defect-production-mpi-pp-opt`,
-  `gpu-port-unified-maxent`, `gpu-port-unified-tests`, `production-mpi-intel-large-prompt-team`, `-team-async`,
-  `-team-sycqr`, `production-mpi-intel-unstable-guard-asyncblk-test`, `speedup/unified` (delete); the five other
-  renames; the four production branches; the local branches and 25 worktrees of the old checkout `CLAUDE/ALF`;
-  the `defect/*` refs of `../ALF_Defect-2`.
+- Before deleting, each tag was compared again with the branch tip on `origin` (40 of 40 equal).
+- Deleted on `origin`: the 32 branches without a worktree, then the 8 branches whose worktrees were removed first
+  (`fix/amd-checkerboard`, `gpu-port-unified-maxent`, `gpu-port-unified-tests`,
+  `production-mpi-intel-large-prompt-team`, `-team-async`, `-team-sycqr`,
+  `production-mpi-intel-unstable-guard-asyncblk-test`, `speedup/unified`). 14 local copies deleted as well.
+- Removed worktrees: `ALF_wt_fix_amd_cb`, `ALF_wt_unified_maxent`, `ALF_wt_unified_tests`, `ALF_wt_large_prompt_team`,
+  `ALF_wt_lp_team_async`, `ALF_wt_lp_team_sycqr`, `ALF_wt_asyncblk_test`, `ALF_wt_speedup_unified` (all clean and pushed).
+- Renamed: `s-wave-Pairing_correlations` is now `feat/s-wave-pairing` (ccab1c6f).
+- Restore any deleted branch with `git switch -c <name> archive/<name>` (or `archive/tickets/<name>`).
 
+### Branches on `origin` now (16)
+
+| Branch | Role | Still to do |
+|---|---|---|
+| `gpu-port` | trunk | - |
+| `gpu-port-unified` | variant (trunk plus point defect) | - |
+| `master`, `JAKOB_BACKUP`, `luis_playground` | kept | - |
+| `feat/s-wave-pairing` | feature | - |
+| `gpu-delayed-submatrix-defect-production-mpi-amd` | AMD HIP line (worktree `ALF_wt_amd`) | rename to `feat/amd-hip` |
+| `gpu-port-apple-metal` | prototype (worktree `ALF_wt_apple_metal`) | rename to `exp/apple-metal` |
+| `intel-batched` | Intel speed work (worktree, running session) | rename to `feat/intel-batched` |
+| `production-mpi-intel-large-prompt-team-combined` | Intel team (worktree, running session) | rename to `feat/intel-devqr-team` |
+| `speedup/nvidia` | CUDA speedups (worktree `ALF_wt_speedup_nv`) | rename to `feat/speedup-cuda-lasync` |
+| `gpu-delayed-submatrix-defect-production-mpi-pp` | production base, tagged `prod/2026-11-10-a30-L24` | delete when the A30 run is finished |
+| `gpu-delayed-submatrix-defect-production-mpi-pp-helma` | Helma production (worktree `ALF_GPU_SUBMATRIX`), tagged `prod/2026-11-11-helma-L32` | delete when the Helma runs are finished |
+| `production-mpi-intel-large-prompt` | SuperMUC production, tagged `prod/2026-11-12-smuc-large-prompt` | delete when the runs are finished |
+| `production-mpi-intel-unstable-guard` | SuperMUC production, still moving (worktree `ALF_wt_large_prompt`) | `prod/` tag when it stops moving, then delete |
+| `gpu-delayed-submatrix-defect-production-mpi-pp-opt` | archived as a tag; its worktree is in a temporary folder | remove the worktree entry, then delete |
+
+Also left: the local branches and 25 worktrees of the old checkout `CLAUDE/ALF`, and the `defect/*` refs of `../ALF_Defect-2`.
