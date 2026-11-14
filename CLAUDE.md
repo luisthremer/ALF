@@ -171,3 +171,7 @@ host↔device transfer is documented. Target the default and `STABLOG` stabiliza
   manager sequences edits of shared files; the `alf_la` interface is frozen while both lanes run.
 - Stuck after 2–3 different approaches: write down what was tried and ask the owner.
 - Phases end at gates (owner review): summary, numbers, plan changes, open decisions, next tickets.
+
+## Whiteboard (rule for every session)
+
+Before a session ends its work, it updates its stream card in `~/Documents/_WORK/WHITEBOARD/streams/` (fields `stand`, `naechster_schritt`, `datum`; keep it short, write "unbekannt" for what you did not check). The page `~/Documents/_WORK/WHITEBOARD/index.html` is rebuilt with `python3 ~/Documents/_WORK/WHITEBOARD/whiteboard.py`. Branch rules: `docs/gpu/BRANCHING.md`.
