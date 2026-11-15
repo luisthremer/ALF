@@ -1,0 +1,113 @@
+start 2026-11-13T22:45:33+01:00 i20r01c01s06 job 561181
+21ea431ad92304aac1e14ce9392c6aac  /hppfs/scratch/0C/di38zuw/large_prompt/team/build_cpu-txt/Prog/ALF.out
+b3bf3ea6ea7ba7d8f1452973fef630ef  /hppfs/scratch/0C/di38zuw/large_prompt/team/p9/l6t/build_txt/Prog/ALF.out
+d4754282254f8cdb1e1ea43da2d7aab2  /hppfs/scratch/0C/di38zuw/large_prompt/team/p9/l6t/build_txt/Libraries/Modules/libalfdevqr.so
+seed set k=41 first seed        46379 tile 0
+RES L6T   k=41  oneMKL  worst 3.822e-11 accdiff=0.00e+00
+RES L6T   k=41  V7      worst 9.314e-11 accdiff=0.00e+00
+RES L6F   k=41  V7      worst 2.788e-15 accdiff=0.00e+00
+RES L12F  k=41  V7      worst 3.022e-14 accdiff=0.00e+00
+seed set k=51 first seed       497340 tile 0
+RES L6T   k=51  oneMKL  worst 1.163e-09 accdiff=0.00e+00
+RES L6T   k=51  V7      worst 1.411e-09 accdiff=0.00e+00
+RES L6F   k=51  V7      worst 3.202e-15 accdiff=0.00e+00
+RES L12F  k=51  V7      worst 3.737e-15 accdiff=0.00e+00
+seed set k=61 first seed       102605 tile 0
+RES L6T   k=61  oneMKL  worst 7.914e-11 accdiff=0.00e+00
+RES L6T   k=61  V7      worst 4.460e-11 accdiff=0.00e+00
+RES L6F   k=61  V7      worst 3.158e-15 accdiff=0.00e+00
+RES L12F  k=61  V7      worst 1.135e-14 accdiff=0.00e+00
+seed set k=71 first seed       957426 tile 0
+RES L6T   k=71  oneMKL  worst 5.396e-11 accdiff=0.00e+00
+RES L6T   k=71  V7      worst 1.389e-10 accdiff=0.00e+00
+RES L6F   k=71  V7      worst 2.059e-15 accdiff=0.00e+00
+RES L12F  k=71  V7      worst 1.218e-14 accdiff=0.00e+00
+seed set k=43 first seed       210334 tile 1
+RES L6T   k=43  oneMKL  worst 2.861e-11 accdiff=0.00e+00
+RES L6T   k=43  V7      worst 7.802e-11 accdiff=0.00e+00
+RES L6F   k=43  V7      worst 6.107e-15 accdiff=0.00e+00
+RES L12F  k=43  V7      worst 8.888e-15 accdiff=0.00e+00
+seed set k=53 first seed       472980 tile 1
+RES L6T   k=53  oneMKL  worst 4.193e-11 accdiff=0.00e+00
+RES L6T   k=53  V7      worst 5.300e-11 accdiff=0.00e+00
+RES L6F   k=53  V7      worst 1.771e-13 accdiff=0.00e+00
+RES L12F  k=53  V7      worst 2.356e-15 accdiff=0.00e+00
+seed set k=63 first seed       599781 tile 1
+RES L6T   k=63  oneMKL  worst 1.003e-10 accdiff=0.00e+00
+RES L6T   k=63  V7      worst 7.507e-11 accdiff=0.00e+00
+RES L6F   k=63  V7      worst 2.494e-15 accdiff=0.00e+00
+RES L12F  k=63  V7      worst 1.855e-14 accdiff=0.00e+00
+seed set k=73 first seed       907106 tile 1
+RES L6T   k=73  oneMKL  worst 5.379e-11 accdiff=0.00e+00
+RES L6T   k=73  V7      worst 7.827e-11 accdiff=0.00e+00
+RES L6F   k=73  V7      worst 1.039e-14 accdiff=0.00e+00
+RES L12F  k=73  V7      worst 3.657e-15 accdiff=0.00e+00
+seed set k=45 first seed       974820 tile 2
+RES L6T   k=45  oneMKL  worst 3.233e-11 accdiff=0.00e+00
+RES L6T   k=45  V7      worst 3.476e-11 accdiff=0.00e+00
+RES L6F   k=45  V7      worst 4.974e-15 accdiff=0.00e+00
+RES L12F  k=45  V7      worst 1.392e-14 accdiff=0.00e+00
+seed set k=55 first seed       307776 tile 2
+RES L6T   k=55  oneMKL  worst 6.860e-11 accdiff=0.00e+00
+RES L6T   k=55  V7      worst 1.081e-10 accdiff=0.00e+00
+RES L6F   k=55  V7      worst 3.312e-15 accdiff=0.00e+00
+RES L12F  k=55  V7      worst 1.108e-14 accdiff=0.00e+00
+seed set k=65 first seed       422490 tile 2
+RES L6T   k=65  oneMKL  worst 4.374e-11 accdiff=0.00e+00
+RES L6T   k=65  V7      worst 5.090e-11 accdiff=0.00e+00
+RES L6F   k=65  V7      worst 1.019e-14 accdiff=0.00e+00
+RES L12F  k=65  V7      worst 1.134e-14 accdiff=0.00e+00
+seed set k=75 first seed       759152 tile 2
+RES L6T   k=75  oneMKL  worst 1.478e-10 accdiff=0.00e+00
+RES L6T   k=75  V7      worst 2.952e-10 accdiff=0.00e+00
+RES L6F   k=75  V7      worst 3.246e-15 accdiff=0.00e+00
+RES L12F  k=75  V7      worst 8.022e-15 accdiff=0.00e+00
+seed set k=47 first seed       274404 tile 3
+RES L6T   k=47  oneMKL  worst 1.224e-10 accdiff=0.00e+00
+RES L6T   k=47  V7      worst 1.178e-10 accdiff=0.00e+00
+RES L6F   k=47  V7      worst 4.863e-15 accdiff=0.00e+00
+RES L12F  k=47  V7      worst 3.770e-15 accdiff=0.00e+00
+seed set k=57 first seed       699773 tile 3
+RES L6T   k=57  oneMKL  worst 2.609e-11 accdiff=0.00e+00
+RES L6T   k=57  V7      worst 1.803e-11 accdiff=0.00e+00
+RES L6F   k=57  V7      worst 1.957e-15 accdiff=0.00e+00
+RES L12F  k=57  V7      worst 1.424e-14 accdiff=0.00e+00
+seed set k=67 first seed       542867 tile 3
+RES L6T   k=67  oneMKL  worst 7.069e-11 accdiff=0.00e+00
+RES L6T   k=67  V7      worst 6.948e-11 accdiff=0.00e+00
+RES L6F   k=67  V7      worst 2.994e-15 accdiff=0.00e+00
+RES L12F  k=67  V7      worst 3.989e-14 accdiff=0.00e+00
+seed set k=77 first seed       749907 tile 3
+RES L6T   k=77  oneMKL  worst 2.303e-10 accdiff=0.00e+00
+RES L6T   k=77  V7      worst 7.682e-11 accdiff=0.00e+00
+RES L6F   k=77  V7      worst 3.423e-15 accdiff=0.00e+00
+RES L12F  k=77  V7      worst 1.839e-14 accdiff=0.00e+00
+seed set k=49 first seed       593079 tile 4
+RES L6T   k=49  oneMKL  worst 2.031e-10 accdiff=0.00e+00
+RES L6T   k=49  V7      worst 1.026e-10 accdiff=0.00e+00
+RES L6F   k=49  V7      worst 4.176e-15 accdiff=0.00e+00
+RES L12F  k=49  V7      worst 2.158e-14 accdiff=0.00e+00
+seed set k=59 first seed       708323 tile 4
+RES L6T   k=59  oneMKL  worst 4.477e-11 accdiff=0.00e+00
+RES L6T   k=59  V7      worst 2.866e-11 accdiff=0.00e+00
+RES L6F   k=59  V7      worst 2.501e-15 accdiff=0.00e+00
+RES L12F  k=59  V7      worst 2.432e-14 accdiff=0.00e+00
+seed set k=69 first seed       417774 tile 4
+RES L6T   k=69  oneMKL  worst 9.052e-11 accdiff=0.00e+00
+RES L6T   k=69  V7      worst 5.761e-11 accdiff=0.00e+00
+RES L6F   k=69  V7      worst 3.422e-15 accdiff=0.00e+00
+RES L12F  k=69  V7      worst 2.464e-14 accdiff=0.00e+00
+seed set k=79 first seed       433810 tile 4
+RES L6T   k=79  oneMKL  worst 2.205e-11 accdiff=0.00e+00
+RES L6T   k=79  V7      worst 9.942e-11 accdiff=0.00e+00
+RES L6F   k=79  V7      worst 2.205e-15 accdiff=0.00e+00
+RES L12F  k=79  V7      worst 7.783e-15 accdiff=0.00e+00
+seed sets: [41, 43, 45, 47, 49, 51, 53, 55, 57, 59, 61, 63, 65, 67, 69, 71, 73, 75, 77, 79]
+k                41         43         45         47         49         51         53         55         57         59         61         63         65         67         69         71         73         75         77         79
+L6T:oneM  3.822e-11  2.861e-11  3.233e-11  1.224e-10  2.031e-10  1.163e-09  4.193e-11  6.860e-11  2.609e-11  4.477e-11  7.914e-11  1.003e-10  4.374e-11  7.069e-11  9.052e-11  5.396e-11  5.379e-11  1.478e-10  2.303e-10  2.205e-11   L6T oneMKL
+L6T:V7    9.314e-11  7.802e-11  3.476e-11  1.178e-10  1.026e-10  1.411e-09  5.300e-11  1.081e-10  1.803e-11  2.866e-11  4.460e-11  7.507e-11  5.090e-11  6.948e-11  5.761e-11  1.389e-10  7.827e-11  2.952e-10  7.682e-11  9.942e-11   L6T V7
+L6F:V7    2.788e-15  6.107e-15  4.974e-15  4.863e-15  4.176e-15  3.202e-15  1.771e-13  3.312e-15  1.957e-15  2.501e-15  3.158e-15  2.494e-15  1.019e-14  2.994e-15  3.422e-15  2.059e-15  1.039e-14  3.246e-15  3.423e-15  2.205e-15   L6F V7
+L12F:V7   3.022e-14  8.888e-15  1.392e-14  3.770e-15  2.158e-14  3.737e-15  2.356e-15  1.108e-14  1.424e-14  2.432e-14  1.135e-14  1.855e-14  1.134e-14  3.989e-14  2.464e-14  1.218e-14  3.657e-15  8.022e-15  1.839e-14  7.783e-15   L12F V7
+oneMKL L6T: median 6.128e-11  max 1.163e-09
+RULE V7     L6T median 7.742e-11 (ratio 1.26, limit 2) ok | max 1.411e-09 (ratio 1.21, limit 3) ok | Mz=F max 1.771e-13 over 40/40 runs FAIL | L6T part PASS | overall FAIL
+end 2026-11-13T22:55:35+01:00

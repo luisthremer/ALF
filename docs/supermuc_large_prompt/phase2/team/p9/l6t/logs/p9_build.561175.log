@@ -1,0 +1,30 @@
+start 2026-11-13T22:36:11+01:00 i20r03c02s04 job 561175 HEAD 5924614fe40b71d29e3eeeda549ed7823f16650d
+plant P0: 0 line(s) changed
+plant P12: 1 line(s) changed
+plant P11: 1 line(s) changed
+plant P10: 1 line(s) changed
+plant P12 rc=0
+plant P11 rc=0
+plant P0 rc=0
+plant P10 rc=0
+152c152
+<           if (g == 0 && lane == 0) { tau[2 * i] = t.r * (i == 0 ? 1.0 + 1e-10 : 1.0); tau[2 * i + 1] = t.i * (i == 0 ? 1.0 + 1e-10 : 1.0); tb[2 * buf] = t.r; tb[2 * buf + 1] = t.i; }
+---
+>           if (g == 0 && lane == 0) { tau[2 * i] = t.r; tau[2 * i + 1] = t.i; tb[2 * buf] = t.r; tb[2 * buf + 1] = t.i; }
+-rwxr-xr-x 1 di38zuw hpcusers 1650496 Nov 13 22:37 /hppfs/scratch/0C/di38zuw/large_prompt/team/p9/l6t/build_txt/Libraries/Modules/libalfdevqr.so
+-rwxr-xr-x 1 di38zuw hpcusers  183208 Nov 13 22:37 /hppfs/scratch/0C/di38zuw/large_prompt/team/p9/l6t/build_txt/Libraries/Modules/libalfsb.so
+-rwxr-xr-x 1 di38zuw hpcusers    8160 Nov 13 22:37 /hppfs/scratch/0C/di38zuw/large_prompt/team/p9/l6t/build_txt/Libraries/Modules/libfakeintel.so
+-rwxr-xr-x 1 di38zuw hpcusers 6620920 Nov 13 22:37 /hppfs/scratch/0C/di38zuw/large_prompt/team/p9/l6t/build_txt/Prog/ALF.out
+-rwxr-xr-x 1 di38zuw hpcusers 1650496 Nov 13 22:36 /hppfs/scratch/0C/di38zuw/large_prompt/team/p9/l6t/plant/P0/libalfdevqr.so
+-rwxr-xr-x 1 di38zuw hpcusers 1654592 Nov 13 22:36 /hppfs/scratch/0C/di38zuw/large_prompt/team/p9/l6t/plant/P10/libalfdevqr.so
+-rwxr-xr-x 1 di38zuw hpcusers 1654592 Nov 13 22:36 /hppfs/scratch/0C/di38zuw/large_prompt/team/p9/l6t/plant/P11/libalfdevqr.so
+-rwxr-xr-x 1 di38zuw hpcusers 1654592 Nov 13 22:36 /hppfs/scratch/0C/di38zuw/large_prompt/team/p9/l6t/plant/P12/libalfdevqr.so
+sys	0m37.622s
+2026-11-13T22:37:48+01:00
+-rwxr-xr-x 1 di38zuw hpcusers 6620920 Nov 13 22:37 Prog/ALF.out
+d4754282254f8cdb1e1ea43da2d7aab2  /hppfs/scratch/0C/di38zuw/large_prompt/team/p9/l6t/build_txt/Libraries/Modules/libalfdevqr.so
+d4754282254f8cdb1e1ea43da2d7aab2  /hppfs/scratch/0C/di38zuw/large_prompt/team/p9/l6t/plant/P0/libalfdevqr.so
+2bc0c8cdef02e5b85846dd844eb01b1c  /hppfs/scratch/0C/di38zuw/large_prompt/team/p9/l6t/plant/P10/libalfdevqr.so
+e463b0f5ec37305fd2e2ac486161fca7  /hppfs/scratch/0C/di38zuw/large_prompt/team/p9/l6t/plant/P11/libalfdevqr.so
+9138dee294264b63087c77104448746f  /hppfs/scratch/0C/di38zuw/large_prompt/team/p9/l6t/plant/P12/libalfdevqr.so
+end 2026-11-13T22:37:48+01:00
