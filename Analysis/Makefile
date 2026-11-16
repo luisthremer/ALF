@@ -3,6 +3,7 @@
 SRCS = Max_SAC.F90 \
 	ana.F90 \
 	ana_hdf5.F90 \
+	ana_localtau_mod.F90 \
 	ana_mod.F90 \
 	convert_latt.F90 \
 	convert_local.F90 \
@@ -37,6 +38,15 @@ Predefined_Latt_mod.o: ../Prog/Predefined_Latt_mod.F90
 # Max_SAC parallelises the bootstrap with MPI when the libraries are built with MPI.
 Max_SAC.o: Max_SAC.F90
 	$(ALF_FC) -c -o $@ $(ALF_FLAGS_ANA) $(if $(findstring -DMPI,$(ALF_FLAGS_MODULES)),-DMPI) $<
+
+# ana_hdf5 needs the localtau module and libdl (dlopen of numpy's OpenBLAS).
+# Precise FP model so the q/qr setup matches numpy bit for bit.
+LOCALTAU_FPFLAGS := $(if $(or $(findstring ifx,$(ALF_FC)),$(findstring ifort,$(ALF_FC))),-fp-model=precise)
+ana_localtau_mod.o: ana_localtau_mod.F90
+	$(ALF_FC) -c -o $@ $(ALF_FLAGS_ANA) $(LOCALTAU_FPFLAGS) $<
+
+ana_hdf5.out: $(OBJS1) ana_localtau_mod.o ana_hdf5.o
+	$(ALF_FC) -o $@ $^ $(ALF_LIB) -ldl
 
 %.o: %.F90
 	$(ALF_FC) -c -o $@ $(ALF_FLAGS_ANA) $<

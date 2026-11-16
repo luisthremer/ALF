@@ -43,6 +43,7 @@
 !--------------------------------------------------------------------
       use hdf5
       use ana_mod
+      use ana_localtau_mod, only: Cov_localtau
 #ifdef _OPENMP
       use check_omp_num_threads_mod
 #endif
@@ -123,6 +124,21 @@
               print *, ''
               print '(A,A)', "analyzing time displaced correlation ", name
               call Cov_tau(name, File_in)
+           endif
+         endif
+      enddo
+
+      ! Local time-displaced observables (e.g. SpinZ_localtau), stored in real space.
+      ! Fourier transformed exactly as in make_SpinZlocal_tau.py, then analysed by ana_tau.
+      ! Output prefix: <name>local (SpinZ_localtau -> SpinZlocal_*).
+      do n=1, size(names)
+         name = names(n)
+         i = len(trim(name)) -8
+         if ( i > 1 ) then
+           if ( name(i:) == '_localtau' ) then
+              print *, ''
+              print '(A,A)', "analyzing time displaced local observable ", name
+              call Cov_localtau(name, File_in)
            endif
          endif
       enddo
