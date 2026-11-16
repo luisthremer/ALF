@@ -15,7 +15,8 @@
 #   rc_recover        step b: if RUNNING exists: check files; a damaged Temp_i is restored from its newest complete rolling snapshot
 #                     (Temp_i/.snap/A|B), else the other slot, else Temp_i/.segbak (segment start); undamaged sets are not touched; remove RUNNING
 #   rc_out_to_in      step c: confout_* -> confin_* in every Temp_i (refuses if plain and .h5 confout coexist)
-#   rc_backup         step d: Temp_i/.segbak/ := data.h5 + confin_*  (cp -p; old backup cleared first; COMPLETE marker last)
+#   rc_backup         step d: Temp_i/.segbak/ := data.h5 + confin_*  (cp -p into .segbak.new, COMPLETE marker last, then swapped in;
+#                     the old backup is removed only after the new one is complete)
 #   rc_log_segment    step e: append a line to segments.log (date, job id, restart count, bins per set, recovery action)
 #   rc_prepare        b + c + d + e in this order; return non-zero = do NOT start ALF
 #   rc_segment_end RC log exit code and bins after the run to segments.log
@@ -253,7 +254,8 @@ rc_snapshot_loop() {
 # ---- restore ---------------------------------------------------------------------------------------------------------------------
 # Restore Temp_i from a source directory: kind "snap" (data.h5 + confout_*.h5, validated against its COMPLETE marker) or "segbak" (optional data.h5 + confin_*).
 # Everything is first copied to temporary names next to the live files; the live data.h5 / confin_* are only replaced (mv) after ALL copies succeeded,
-# so a full disk or a kill during the copy never destroys the live data. Return 0 if restored (RC_RBINS = bins), 1 otherwise (nothing changed).
+# so a full disk or a kill during the copy never destroys the live data. Return 0 if restored (RC_RBINS = bins), 1 if the source is not valid,
+# 2 if a copy failed (disk full / quota / I/O error); nothing is changed in both failure cases.
 rc_restore_from() {   # $1 = Temp_i, $2 = source dir, $3 = snap|segbak
   local d=$1 s=$2 kind=$3 f k b=0 n=0 pre
   if [ "$kind" = snap ]; then
@@ -276,10 +278,10 @@ rc_restore_from() {   # $1 = Temp_i, $2 = source dir, $3 = snap|segbak
   rm -f "$d"/*.rtmp
   for f in "$s/${pre}"_*; do
     [ -e "$f" ] || continue
-    cp -p "$f" "$d/confin_${f##*/${pre}_}.rtmp" || { rc_log "$d: copy of ${f##*/} FAILED (disk full?), nothing changed"; rm -f "$d"/*.rtmp; return 1; }
+    cp -p "$f" "$d/confin_${f##*/${pre}_}.rtmp" || { rc_log "$d: copy of ${f##*/} FAILED (disk full?), nothing changed"; rm -f "$d"/*.rtmp; return 2; }
   done
   if [ -f "$s/data.h5" ]; then
-    cp -p "$s/data.h5" "$d/data.h5.rtmp" && [ -f "$d/data.h5.rtmp" ] || { rc_log "$d: copy of data.h5 FAILED (disk full?), nothing changed"; rm -f "$d"/*.rtmp; return 1; }
+    cp -p "$s/data.h5" "$d/data.h5.rtmp" && [ -f "$d/data.h5.rtmp" ] || { rc_log "$d: copy of data.h5 FAILED (disk full?), nothing changed"; rm -f "$d"/*.rtmp; return 2; }
   fi
   # all copies are on disk: now switch over
   for f in "$d"/confin_*.rtmp; do [ -e "$f" ] && { mv -f "$f" "${f%.rtmp}" || return 1; }; done
@@ -293,7 +295,7 @@ rc_restore_from() {   # $1 = Temp_i, $2 = source dir, $3 = snap|segbak
 # $1 = Temp_i, $2 = bins before the damage ("?" if unreadable). Sources: the valid snapshot slots and .segbak; the one with the most bins wins
 # (ties: snapshot). Sets RC_RWHAT (what was used) and RC_RBINS (bins restored).
 rc_restore_set() {
-  local d=$1 before=${2:-?} line b p kind name cands
+  local d=$1 before=${2:-?} line b p kind name cands rr
   RC_RWHAT=""; RC_RBINS=0
   : > "$d/.restoring"           # present until the restore is complete: a kill in between makes the next start restore again
   cands=$( {
@@ -305,7 +307,11 @@ rc_restore_set() {
   if [ -z "$cands" ]; then rc_log "FATAL: $d is damaged but there is neither a usable snapshot nor a complete $d/.segbak"; return 1; fi
   while read -r b _ p kind name; do
     [ -n "$p" ] || continue
-    if rc_restore_from "$d" "$p" "$kind"; then RC_RWHAT="$name"; break; fi
+    rc_restore_from "$d" "$p" "$kind"; rr=$?
+    if [ $rr -eq 0 ]; then RC_RWHAT="$name"; break; fi
+    # 2026-11-16 (quota crash): a failed COPY says nothing about the source. Falling back to the next (older) source then silently
+    # threw away up to 1201 bins. Stop instead; the damaged set and all sources stay as they are for a manual decision.
+    if [ $rr -eq 2 ]; then rc_log "FATAL: $d: copying $name (bins $b) failed (disk full / quota?); NOT falling back to an older source"; return 1; fi
     rc_log "$d: source $name (bins $b) not usable, trying the next"
   done <<EOF
 $cands
@@ -393,17 +399,20 @@ rc_out_to_in() {
 
 # d) backup of the state a new segment starts from
 rc_backup() {
-  local d b f
+  # The new backup is written to .segbak.new; the old .segbak is replaced only after every copy succeeded
+  # (2026-11-16: the old version deleted .segbak first, so a full disk left the set without any segment-start backup).
+  local d b n f
   for d in $(rc_sets); do
-    b=$d/.segbak
-    rm -rf "$b" || return 1
-    mkdir "$b" || return 1
-    if [ -f "$d/data.h5" ]; then cp -p "$d/data.h5" "$b/" || return 1; fi
+    b=$d/.segbak; n=$d/.segbak.new
+    rm -rf "$n" || return 1
+    mkdir "$n" || return 1
+    if [ -f "$d/data.h5" ]; then cp -p "$d/data.h5" "$n/" || { rc_log "$d: backup copy of data.h5 FAILED (disk full / quota?), old .segbak kept"; rm -rf "$n"; return 1; }; fi
     for f in "$d"/confin_*; do
       [ -e "$f" ] || continue
-      cp -p "$f" "$b/" || return 1
+      cp -p "$f" "$n/" || { rc_log "$d: backup copy of ${f##*/} FAILED (disk full / quota?), old .segbak kept"; rm -rf "$n"; return 1; }
     done
-    : > "$b/COMPLETE"
+    : > "$n/COMPLETE" || { rm -rf "$n"; return 1; }
+    rm -rf "$b" && mv "$n" "$b" || return 1
   done
   return 0
 }
