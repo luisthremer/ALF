@@ -80,7 +80,9 @@ Program MaxEnt_Wrapper
        ! Welford accumulators for one bootstrap sample, flattened:
        !   Buf((ia-1)*Ndis + nw)   = A(om_nw) of Aom_ps_<ia>, ia = 1..N_alpha-10
        !   Buf(Ndis*N_alpha_1 + n) = (F,A) at alpha_n (QFI_ph.dat, DIDV.dat), n = 1..N_alpha
-       Real (Kind=Kind(0.d0)), Allocatable :: Buf(:), W_mean(:), W_M2(:)
+       !   Buf(Ndis*N_alpha_1 + N_alpha + p) = (F,A) averaged over alpha >= alpha_p with the weights of
+       !                           Aom_ps_<p> (FA_ps, see FA_ps_from_files), p = 1..N_alpha-10
+       Real (Kind=Kind(0.d0)), Allocatable :: Buf(:), W_mean(:), W_M2(:), FA_ps_ref(:)
        Integer                             :: N_buf, N_acc, N_my_runs, k_buf
        ! MPI: rank 0 does the reference run and accumulates (Welford, online) the samples that
        ! ranks 1..Isize-1 compute in their own directories MaxSAC_rank_<r>/ with own seeds.
@@ -322,7 +324,7 @@ Program MaxEnt_Wrapper
        N_alpha_1 = N_alpha - 10
        Allocate (xom(Ndis), A(Ndis))
        Allocate(U_cov(Ntau,Ntau), Sigma_cov(Ntau), Z_sample(Ntau)) !Allocate arrays for Gaussian resampling
-       N_buf = Ndis*N_alpha_1 + N_alpha
+       N_buf = Ndis*N_alpha_1 + N_alpha + N_alpha_1
        Allocate(Buf(N_buf), W_mean(N_buf), W_M2(N_buf)) !Allocate arrays for Welford online algorithm
        Buf = 0.d0; W_mean = 0.d0; W_M2 = 0.d0; N_acc = 0; N_my_runs = 0; A_err = 0.d0
 
@@ -561,10 +563,39 @@ Program MaxEnt_Wrapper
                     & sqrt(W_M2(k_buf) / dble(max(1, N_acc - 1)))
             End Do
             Close(12)
+            ! alpha-averaged (F,A): <name>_ps_boot.dat with p, alpha_p, bootstrap mean, bootstrap error
+            ! (FA_ps computed per sample, then mean and standard deviation over the samples).
+            i = index(FA_boot_Name, "_boot", back=.true.)
+            open (Unit=12, File=FA_boot_Name(1:i-1) // "_ps_boot" // FA_boot_Name(i+5:), &
+                 & Status="unknown", action="write")
+            Do ia = 1, N_alpha_1
+               k_buf = Ndis*N_alpha_1 + N_alpha + ia
+               Write(12,"(I6,3(1X,E25.17E3))") ia, Alpha_tot(ia), W_mean(k_buf), &
+                    & sqrt(W_M2(k_buf) / dble(max(1, N_acc - 1)))
+            End Do
+            Close(12)
          End If
          End If
 
          !INJECTION 3 END
+         ! alpha-averaged (F,A) of the reference run (files in the current directory): <name>_ps.dat
+         ! with p, alpha_p, FA_ps(p), p = 1..N_alpha-10 (the same weights as Aom_ps_<p>).
+         If (Stochastic .and. len_trim(FA_Name) > 0) then
+            Allocate (FA_ps_ref(N_alpha_1))
+            Call FA_ps_from_files("", FA_ps_ref)
+            i = index(FA_Name, ".dat", back=.true.)
+            If (i > 1) then
+               FA_boot_Name = FA_Name(1:i-1) // "_ps.dat"
+            else
+               FA_boot_Name = trim(FA_Name) // "_ps"
+            endif
+            open (Unit=12, File=trim(FA_boot_Name), Status="unknown", action="write")
+            Do ia = 1, N_alpha_1
+               Write(12,"(I6,2(1X,E25.17E3))") ia, Alpha_tot(ia), FA_ps_ref(ia)
+            End Do
+            Close(12)
+            Deallocate (FA_ps_ref)
+         End If
       
          If  ( Stochastic )   then
          If ( .not.  Checkpoint  ) then
@@ -773,8 +804,39 @@ Program MaxEnt_Wrapper
                read(67, *) y0, B(Ndis*N_alpha_1 + ia_l), y2
             Enddo
             close(67)
+            Call FA_ps_from_files(trim(MaxEnt_stoch_dir), B(Ndis*N_alpha_1 + N_alpha + 1 : &
+                 &                                            Ndis*N_alpha_1 + N_alpha + N_alpha_1))
          endif
        end Subroutine Read_sample
+
+       !> (F,A) averaged over alpha >= alpha_p with the weights of Aom_ps_<p>, from the files
+       !> <dir><FA_Name> (alpha, F, error) and <dir>energies (alpha, <chi^2>, error):
+       !>   FA_ps(p) = sum_{n=p}^{N_alpha-1} (chi2_n - chi2_{n+1}) F_n / (chi2_p - chi2_{N_alpha})
+       Subroutine FA_ps_from_files(dir, FA_ps)
+         Implicit none
+         Character (len=*), Intent(In) :: dir
+         Real (Kind=Kind(0.d0)), Intent(Out) :: FA_ps(:)
+         Real (Kind=Kind(0.d0)) :: F_l(N_alpha), E_l(N_alpha), y0, y2, den
+         Integer :: n_l, p_l
+         Open(Unit=68, File=trim(dir) // trim(FA_Name), status="old")
+         Do n_l = 1, N_alpha
+            read(68, *) y0, F_l(n_l), y2
+         Enddo
+         close(68)
+         Open(Unit=68, File=trim(dir) // "energies", status="old")
+         Do n_l = 1, N_alpha
+            read(68, *) y0, E_l(n_l), y2
+         Enddo
+         close(68)
+         Do p_l = 1, size(FA_ps)
+            den = E_l(p_l) - E_l(N_alpha)
+            FA_ps(p_l) = 0.d0
+            Do n_l = p_l, N_alpha - 1
+               FA_ps(p_l) = FA_ps(p_l) + (E_l(n_l) - E_l(n_l+1)) * F_l(n_l)
+            Enddo
+            If (abs(den) > 0.d0) FA_ps(p_l) = FA_ps(p_l) / den
+         Enddo
+       end Subroutine FA_ps_from_files
 
        !> Welford online update of mean and M2 with one more sample B.
        !> mean_n = mean_{n-1} + (x_n - mean_{n-1})/n
