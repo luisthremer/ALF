@@ -84,6 +84,7 @@ def main():
     ap.add_argument("--only", nargs="*")
     ap.add_argument("--max-bins", type=int, default=None)
     ap.add_argument("--tol", type=float, default=1e-8)
+    ap.add_argument("--launcher", default=None, help='e.g. "mpirun -np 2" for MPI builds')
     args = ap.parse_args()
 
     with open(os.path.join(args.start, "parameters")) as f:
@@ -112,7 +113,7 @@ def main():
         for scheme in SCHEMES:
             text = base + '\n&VAR_LOWRANK\nSequential_scheme = "%s"\nN_delay = 0\n/\n' % scheme
             dirs[scheme] = os.path.join(args.work, name, scheme)
-            rcs[scheme] = run(os.path.abspath(args.exe), dirs[scheme], text, seeds)
+            rcs[scheme] = run(os.path.abspath(args.exe), dirs[scheme], text, seeds, args.launcher)
         if rcs["standard"] != 0:
             print("SKIP  %s (standard run stops with exit code %d)" % (name, rcs["standard"]))
             continue

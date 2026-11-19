@@ -56,7 +56,7 @@ def make_parameters(template, pars, max_bins):
     return text, missing
 
 
-def run(exe, directory, parameters, seeds):
+def run(exe, directory, parameters, seeds, launcher=None):
     if os.path.exists(directory):
         shutil.rmtree(directory)
     os.makedirs(directory)
@@ -65,7 +65,8 @@ def run(exe, directory, parameters, seeds):
     shutil.copy(seeds, os.path.join(directory, "seeds"))
     env = dict(os.environ, OMP_NUM_THREADS="1")
     with open(os.path.join(directory, "stdout"), "w") as out:
-        res = subprocess.run([exe], cwd=directory, stdout=out,
+        cmd = (launcher.split() if launcher else []) + [exe]
+        res = subprocess.run(cmd, cwd=directory, stdout=out,
                              stderr=subprocess.STDOUT, env=env)
     return res.returncode
 
@@ -95,6 +96,7 @@ def main():
     ap.add_argument("--work", default="baseline_guard_runs")
     ap.add_argument("--only", nargs="*", help="run only these scenarios")
     ap.add_argument("--max-bins", type=int, default=None, help="cap NBin to save time")
+    ap.add_argument("--launcher", default=None, help='e.g. "mpirun -np 2" for MPI builds')
     args = ap.parse_args()
 
     with open(os.path.join(args.start, "parameters")) as f:
@@ -118,7 +120,7 @@ def main():
         rcs = {}
         for tag, exe in (("ref", args.ref), ("test", args.test)):
             dirs[tag] = os.path.join(args.work, name, tag)
-            rcs[tag] = run(os.path.abspath(exe), dirs[tag], parameters, seeds)
+            rcs[tag] = run(os.path.abspath(exe), dirs[tag], parameters, seeds, args.launcher)
         if rcs["ref"] != 0 and rcs["test"] == rcs["ref"]:
             # The template does not suit this scenario (for example a missing
             # lattice setting); both builds refuse it in the same way.

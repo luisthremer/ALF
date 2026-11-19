@@ -3,6 +3,15 @@
 *Written with AI assistance on `master_ai`; not part of the ALF baseline. `CHANGELOG.md` is a
 baseline file and stays as on `master`; entries for the AI features go here, in the same format.*
 
+### 2026-11-20 AI branch CI gates; LOWRANK checked with MPI and tempering
+Author: L. Thremer, with AI assistance
+
+1. New workflow `.github/workflows/master-ai.yml` (branches master_ai, master_ai_cpu, ai/**): hook lint,
+   baseline guard against ALF master, LOWRANK build + tests with GNU, PGI, Intel and IntelLLVM (noMPI, MPI).
+2. `baseline_guard.py` and `compare_schemes.py`: option `--launcher` (e.g. "mpirun -np 2").
+3. Checked locally (GNU, MPICH): MPI with 2 ranks, 17 scenarios, delayed/submatrix vs standard max rel.
+   difference 3.4e-11; parallel tempering with 2 replicas (U = 3, 5) max 2.8e-11.
+
 ### 2026-11-20 LOWRANK: sequential MALA, Global_tau moves, CPU branch master_ai_cpu
 Author: L. Thremer, with AI assistance
 
