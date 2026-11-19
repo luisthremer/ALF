@@ -3,6 +3,19 @@
 *Written with AI assistance on `master_ai`; not part of the ALF baseline. `CHANGELOG.md` is a
 baseline file and stays as on `master`; entries for the AI features go here, in the same format.*
 
+### 2026-11-20 LOWRANK: sequential MALA, Global_tau moves, CPU branch master_ai_cpu
+Author: L. Thremer, with AI assistance
+
+1. The low-rank schemes now work together with sequential MALA updates and with Global_tau moves
+   (`Global_tau_moves`, `Global_tau_MALA_moves`); the run no longer stops. MALA vertices and the
+   Global_tau moves run exactly as in the baseline, after the pending updates are applied.
+2. The hooks in `Prog/Wrapgr_mod.F90` pass all arguments of WRAPGRUP/WRAPGRDO and the three Global_tau
+   routines of Wrapgr_mod to the feature; see `HOOKS.md`.
+3. Tests: unit test `36-lowrank-unit` (kernels against an exact Green function) and
+   `compare_schemes.py`, both in CTest for builds with `LOWRANK` (hook in `testsuite/CMakeLists.txt`).
+4. Branch `master_ai_cpu` = ALF master + this feature, built from the cleaned CPU research branch
+   `feature/delayed-submatrix` (timing, trace and debug code removed).
+
 ### 2026-11-19 Delayed and submatrix sequential updates (feature LOWRANK)
 Author: L. Thremer, with AI assistance
 

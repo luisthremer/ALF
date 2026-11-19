@@ -100,7 +100,7 @@ module Lowrank_update_mod
    Integer, parameter, public :: SCHEME_STANDARD = 0, SCHEME_DELAYED = 1, SCHEME_SUBMATRIX = 2
 
    public :: Lowrank_init, Lowrank_finalize, Lowrank_initialised, Lowrank_active, Lowrank_eligible, &
-        &    Lowrank_pending, Lowrank_assert_flushed
+        &    Lowrank_pending, Lowrank_assert_flushed, Lowrank_max_pending_cols
    public :: Lowrank_static_N_delay, Lowrank_current_N_delay
    public :: Lowrank_propose, Lowrank_accept, Upgrade_lowrank, Lowrank_wrap_hook, &
         &    Lowrank_flush, Lowrank_current_G
@@ -117,6 +117,7 @@ module Lowrank_update_mod
    Integer              :: lr_M = 0, lr_Ndim = 0, lr_N_FL_eff = 0  ! sizes at init, checked in Lowrank_propose
    Logical, allocatable :: eligible(:)          ! eligible(n), n = 1..size(Op_V,1)
    Integer, allocatable :: n_cols(:)            ! used columns per computed flavour
+   Integer              :: last_accept_cols = 0 ! maxval(n_cols) right after the last accept (unit tests)
 
    ! ---- automatic N_delay (module header) ---------------------------------
    Integer, parameter   :: ND_U_DELAYED = 128, ND_U_SUBMATRIX = 256, ND_L = 16  ! clamp [ND_L, U] of the static rule
@@ -187,7 +188,7 @@ contains
 !>  Ignored for "standard".
 !> \endverbatim
 !> @param [in] Nt_start, Nt_end
-!> Integer
+!> Integer, optional (default 1, size(Op_V,1))
 !> \verbatim
 !>  Sequential vertex range (Nt_sequential_start/end); only used for max_pend of the automatic N_delay.
 !> \endverbatim
@@ -204,7 +205,7 @@ contains
 
       Character (len=*), Intent(In) :: scheme_name
       Integer,           Intent(In) :: N_delay
-      Integer,           Intent(In) :: Nt_start, Nt_end
+      Integer, optional, Intent(In) :: Nt_start, Nt_end
 
       Character (len=:), allocatable :: name
       Character (len=256)            :: line, line2, line_inel
@@ -259,8 +260,10 @@ contains
 
       ! max_pend: the largest pending rank one slice of the sequential range can produce;
       ! nd_any: a non-diagonal eligible vertex in that range (K_ND note in the report)
-      nts = max(Nt_start, 1)
-      nte = min(Nt_end, M)
+      nts = 1
+      nte = M
+      if (present(Nt_start)) nts = max(Nt_start, 1)
+      if (present(Nt_end))   nte = min(Nt_end, M)
       max_pend = 0
       nd_any   = .false.
       do n = nts, nte
@@ -475,6 +478,7 @@ contains
       N_cols_max = 0
       n_pend     = 0
       lr_n0          = 0
+      last_accept_cols = 0
       blk_nondiag = .false.
       lr_M = 0; lr_Ndim = 0; lr_N_FL_eff = 0
    end subroutine Lowrank_finalize
@@ -526,6 +530,16 @@ contains
       Implicit none
       Lowrank_pending = n_pend
    end function Lowrank_pending
+
+!--------------------------------------------------------------------
+!> @brief
+!> For the unit tests: the largest pending rank of any computed flavour right after the append of the
+!> last Lowrank_accept, before its capacity flush (never above max(N_delay, r)); 0 before the first accept.
+!--------------------------------------------------------------------
+   integer function Lowrank_max_pending_cols()
+      Implicit none
+      Lowrank_max_pending_cols = last_accept_cols
+   end function Lowrank_max_pending_cols
 
 !--------------------------------------------------------------------
 !> @brief
@@ -986,6 +1000,7 @@ contains
       nsigma%f(n_op,nt) = Hs_new
 
       n_pend = n_pend + 1
+      last_accept_cols = maxval(n_cols)
       ! Flush when a flavour's pending rank reaches N_delay (delayed: or the capacity)
       if (maxval(n_cols) >= ncap) call Lowrank_flush(GR)
 

@@ -30,7 +30,7 @@ Module `Wrapgr_mod`: makes the dispatch functions visible.
 `Sequential_scheme = "standard"` the function returns `.false.` and the baseline code runs.
 ```
 #ifdef ALF_LOWRANK
-    if (Lowrank_wrapgrup(GR,NTAU,PHASE,Propose_S0,Nt_sequential_start,Nt_sequential_end,N_Global_tau,Sequential_MALA,N_Global_tau_MALA)) return
+    if (Lowrank_wrapgrup(GR,NTAU,PHASE,Propose_S0,Nt_sequential_start,Nt_sequential_end,N_Global_tau,Sequential_MALA,Delta_t_MALA_sequential,Max_Force_MALA_sequential,N_Global_tau_MALA,Delta_t_MALA_global_tau,Max_Force_MALA_global_tau,Wrapgr_Random_update,Wrapgr_Langevin_update,Wrapgr_PlaceGR)) return
 #endif
 ```
 
@@ -38,7 +38,7 @@ Module `Wrapgr_mod`: makes the dispatch functions visible.
 `WRAPGRDO`, first executable statement: as for `WRAPGRUP`.
 ```
 #ifdef ALF_LOWRANK
-    if (Lowrank_wrapgrdo(GR,NTAU,PHASE,Propose_S0,Nt_sequential_start,Nt_sequential_end,N_Global_tau,Sequential_MALA,N_Global_tau_MALA)) return
+    if (Lowrank_wrapgrdo(GR,NTAU,PHASE,Propose_S0,Nt_sequential_start,Nt_sequential_end,N_Global_tau,Sequential_MALA,Delta_t_MALA_sequential,Max_Force_MALA_sequential,N_Global_tau_MALA,Delta_t_MALA_global_tau,Max_Force_MALA_global_tau,Wrapgr_Random_update,Wrapgr_Langevin_update,Wrapgr_PlaceGR)) return
 #endif
 ```
 
@@ -82,4 +82,12 @@ fi
 Appendix page of the feature.
 ```
 \input{lowrank}
+```
+
+### testsuite/CMakeLists.txt
+Tests of the feature, only for builds with the switch.
+```
+if("${FLAG_LIST}" MATCHES "-DALF_LOWRANK")
+  add_subdirectory(Lowrank.tests)
+endif()
 ```

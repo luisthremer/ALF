@@ -30,6 +30,22 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from baseline_guard import make_parameters, run  # noqa: E402
 
 SCHEMES = ("standard", "delayed", "submatrix")
+
+# Scenarios beyond test_branch_parameters.json: the low-rank schemes together with Global_tau
+# moves, sequential MALA, global-tau MALA, continuous fields and the projector code
+_HUB = {"Model": "Hubbard", "Lattice_type": "N_leg_ladder", "L1": 6, "L2": 2, "Beta": 4.0,
+        "Ham_U": 4.0, "Ham_T": 1.0, "Nsweep": 20, "NBin": 5, "Ltau": 1, "Mz": True}
+EXTRA = {
+    # sequential vertices 1..12 (all sites) followed by the Global_tau moves on every slice
+    "Hubbard_Global_tau": dict(_HUB, Global_tau_moves=True, N_Global_tau=2,
+                               Nt_sequential_start=1, Nt_sequential_end=12),
+    "Hubbard_Global_tau_MALA_seq": dict(_HUB, Continuous=True, Global_tau_MALA_moves=True,
+                                        Nt_sequential_start=1, Nt_sequential_end=12),
+    "Hubbard_Continuous": dict(_HUB, Continuous=True),
+    "Hubbard_Sequential_MALA": dict(_HUB, Continuous=True, Sequential_MALA=True),
+    "Hubbard_Global_tau_MALA": dict(_HUB, Continuous=True, Global_tau_MALA_moves=True),
+    "Hubbard_Projector": dict(_HUB, Projector=True, Theta=4.0),
+}
 IGNORED = {"info", "info_git", "parameters", "seeds", "stdout"}
 NUMBER = re.compile(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eEdD][-+]?\d+)?")
 
@@ -76,6 +92,9 @@ def main():
     with open(args.scenarios) as f:
         scenarios = json.load(f)
 
+    for name, pars in EXTRA.items():
+        scenarios[name] = ("Hubbard", pars)
+
     failed = 0
     for name, (_, pars) in scenarios.items():
         if args.only and name not in args.only:
@@ -86,6 +105,7 @@ def main():
             continue  # no sequential updates: nothing to compare
         base, missing = make_parameters(template, pars, args.max_bins)
         if missing:
+            print("SKIP  %s (keys not in template: %s)" % (name, ", ".join(missing)))
             continue
         dirs = {}
         rcs = {}
