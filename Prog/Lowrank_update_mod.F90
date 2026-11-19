@@ -135,10 +135,6 @@
 module Lowrank_update_mod
    use runtime_error_mod
    use iso_fortran_env, only: output_unit, error_unit
-#ifdef ALF_TIMERS
-   use Timers_mod, only: timer_flush_reason, FR_CAPACITY, FR_READ_POINT, timer_flush_begin, timer_flush_end, &
-        &                timer_flush_skip
-#endif
    implicit none
    private
 
@@ -156,9 +152,6 @@ module Lowrank_update_mod
    ! Cross-slice delay (spec D10, opt-in)
    public :: Lowrank_cross_slice_active, Lowrank_hop_up, Lowrank_hop_down, Lowrank_carry_similarity, &
         &    Lowrank_read_point
-#ifdef ALF_LOWRANK_DEBUG
-   public :: Lowrank_debug_check
-#endif
 
    !> Maximal support (Op_V(n,nf)%N) of a vertex eligible for a low-rank scheme (D1)
    Integer, parameter, public :: N_P_LIM = 8
@@ -236,29 +229,6 @@ module Lowrank_update_mod
    ! j x Ndim buffer for Y^T (pointer-remapped to a contiguous (1:j,1:Ndim) array for the Hop_mod routines)
    Complex (Kind=Kind(0.d0)), allocatable, target :: YTbuf(:)
 
-#ifdef ALF_LOWRANK_DEBUG
-   ! ---- debug: shadow G with standard rank-r updates ---------------------
-   Real (Kind=Kind(0.d0)), parameter      :: DBG_TOL = 1.d-10     ! TOL_UNIT (CLAUDE.md, Tolerances)
-   Complex (Kind=Kind(0.d0)), allocatable :: Gsh(:,:,:)
-   Real (Kind=Kind(0.d0))                 :: dbg_max_err  = 0.d0
-   Integer (Kind=Kind(0_8))               :: dbg_n_checks = 0
-   Integer                                :: dbg_last_nop = 0, dbg_last_nt = 0  ! last accept
-   Real (Kind=Kind(0.d0))                 :: dbg_max_derr = 0.d0  ! max relative error of d
-#ifdef LOWRANK_DEBUG_SELFTEST_PROPOSE
-   Logical                                :: dbg_selftest_prop_done = .false.  ! perturbed proposal accepted
-   Logical                                :: dbg_prop_perturbed     = .false.  ! last proposal perturbed
-#endif
-#ifdef LOWRANK_DEBUG_SELFTEST
-   Logical                                :: dbg_selftest_done = .false.
-#endif
-   Integer (Kind=Kind(0_8))               :: dbg_n_pad_acc  = 0   ! submatrix: sites added to S by accepts
-   Integer (Kind=Kind(0_8))               :: dbg_n_pad_hook = 0   ! submatrix: sites padded by hooks (P \ S)
-   Integer (Kind=Kind(0_8))               :: dbg_n_carry = 0      ! cross-slice: pending blocks carried through a hopping wrap
-   ! Submatrix M-form holds non-diagonal content (an accepted non-diagonal update or a non-diagonal hook
-   ! transform), tracked independently of blk_nondiag for the K_ND guard assertion (Dbg_check_nd_guard)
-   Logical                                :: dbg_nd_in_M = .false.
-   Integer (Kind=Kind(0_8))               :: dbg_n_conv  = 0      ! cross-slice: submatrix blocks converted to delayed form
-#endif
 
 contains
 
@@ -481,12 +451,6 @@ contains
             Y = cmplx(0.d0, 0.d0, kind(0.d0))
          endif
       end select
-#ifdef ALF_LOWRANK_DEBUG
-      dbg_n_pad_acc  = 0
-      dbg_n_pad_hook = 0
-      dbg_n_carry    = 0
-      dbg_n_conv     = 0
-#endif
 
       ! Report (group rank 0 only)
       if (N_delay >= 1) then
@@ -839,9 +803,6 @@ contains
       if (allocated(prop_Delta)) deallocate (prop_Delta)
       if (allocated(prop_Mat))   deallocate (prop_Mat)
       if (allocated(prop_d))     deallocate (prop_d)
-#ifdef ALF_LOWRANK_DEBUG
-      if (allocated(Gsh))        deallocate (Gsh)
-#endif
       prop_valid = .false.
       lr_initialised = .false.
       lr_scheme  = SCHEME_STANDARD
@@ -1024,9 +985,6 @@ contains
       endif
 
       Call nsigma_new%make(1,1)
-#if defined(ALF_LOWRANK_DEBUG) && defined(LOWRANK_DEBUG_SELFTEST_PROPOSE)
-      dbg_prop_perturbed = .false.
-#endif
 
       ! Workspace of Det (r > 2), sized as Upgrade2's Mat: the largest N_non_zero of the computed flavours
       op_dim = Op_V(n_op,Calc_Fl_map(1))%N_non_zero
@@ -1054,14 +1012,6 @@ contains
          case (SCHEME_DELAYED)
             ! G_PP = G0(P_a,P_a) - X(P_a,1:j) Y(P_a,1:j)^T  (no complex BLAS functions)
             correct_Gpp = (j > 0)
-#if defined(ALF_LOWRANK_DEBUG) && defined(LOWRANK_DEBUG_SELFTEST_PROPOSE)
-            ! Self-test of the Mat check: read the stale G0(P_a,P_a) (omit the X.Y correction) until a
-            ! perturbed proposal has been accepted
-            if (j > 0 .and. r > 0 .and. .not. dbg_selftest_prop_done) then
-               dbg_prop_perturbed = .true.
-               correct_Gpp = .false.
-            endif
-#endif
             do m = 1, r
                do n = 1, r
                   Gb(n,m) = GR(Op_V(n_op,nf)%P(n), Op_V(n_op,nf)%P(m), nf)
@@ -1226,12 +1176,6 @@ contains
       Integer                   :: nf, nf_eff, p, j, r, m, info, ncap, kp, mode_before
       Logical                   :: nd_here
       Integer                   :: r_add(lr_N_FL_eff), ipiv(N_P_LIM)
-#ifdef ALF_LOWRANK_DEBUG
-      Complex (Kind=Kind(0.d0)), allocatable :: Csh(:,:), Rsh(:,:)
-      Complex (Kind=Kind(0.d0))              :: Mat_sh(N_P_LIM,N_P_LIM), Ksh(N_P_LIM,N_P_LIM)
-      Real    (Kind=Kind(0.d0))              :: derr, dscale
-      Integer                                :: n
-#endif
 
       if (.not. Lowrank_eligible(n_op)) then
          Write(error_unit,'(A,I0)') ' Lowrank_accept: vertex not eligible, n_op = ', n_op
@@ -1269,9 +1213,6 @@ contains
       call Accept_capacity(nd_here, ncap)
       if (any(n_cols > 0 .and. n_cols + r_add > ncap)) then
          mode_before = lr_mode
-#ifdef ALF_TIMERS
-         timer_flush_reason = FR_CAPACITY
-#endif
          call Lowrank_flush(GR)
          ! Cross-slice: the flush may have returned a converted (delayed-form) block to the submatrix form
          ! (lr_mode = lr_scheme), so this accept now takes the submatrix branch: the capacity, including the
@@ -1281,74 +1222,6 @@ contains
       endif
       if (nd_here .and. lr_mode == SCHEME_SUBMATRIX) blk_nondiag = .true.
 
-#ifdef ALF_LOWRANK_DEBUG
-      ! Shadow: G before the first accept after a flush is G0; then the rank-r Woodbury update
-      ! G' = G - G(:,P_a) Delta Mat^{-1} (E_P^T - G(P_a,:)) (docs/algorithm-notes.md, section 10)
-      if (.not. allocated(Gsh)) allocate (Gsh(Ndim,Ndim,N_FL))
-      if (n_pend == 0) then
-         Do nf_eff = 1,N_FL_eff
-            nf = Calc_Fl_map(nf_eff)
-            Gsh(:,:,nf) = GR(:,:,nf)
-         Enddo
-      endif
-#ifdef LOWRANK_DEBUG_SELFTEST_PROPOSE
-      if (dbg_prop_perturbed) dbg_selftest_prop_done = .true.
-#endif
-      allocate (Csh(Ndim,N_P_LIM), Rsh(N_P_LIM,Ndim))
-      Do nf_eff = 1,N_FL_eff
-         nf = Calc_Fl_map(nf_eff)
-         r  = prop_r(nf_eff)
-         if (r == 0) cycle
-         ! Mat from the shadow (Upgrade2's loop), independent of the low-rank G_PP read in Lowrank_propose
-         do m = 1, r
-            do n = 1, r
-               Mat_sh(n,m) = - prop_Delta(m,nf_eff) * Gsh(Op_V(n_op,nf)%P(n), Op_V(n_op,nf)%P(m), nf)
-            enddo
-            Mat_sh(m,m) = 1.d0 + prop_Delta(m,nf_eff) + Mat_sh(m,m)
-         enddo
-         dscale = max(maxval(abs(Mat_sh(1:r,1:r))), maxval(abs(prop_Mat(1:r,1:r,nf_eff))))
-         derr   = maxval(abs(Mat_sh(1:r,1:r) - prop_Mat(1:r,1:r,nf_eff)))
-         if (dscale > 0.d0) derr = derr/dscale
-         ! .not. (derr <= tol) also catches NaN
-         if (.not. (derr <= DBG_TOL)) then
-            Write(error_unit,'(A)')                   ' Lowrank_debug: proposal ratio from a stale G (Mat /= Mat_shadow) at Lowrank_accept'
-            Write(error_unit,'(A,I0,A,I0,A,I0,A,I0,A,I0)') '   n_op = ', n_op, ', nt = ', nt, ', nf = ', nf, &
-                 &                                     ', n_pend = ', n_pend, ', r = ', r
-            Write(error_unit,'(A,2ES23.15)')          '   Mat(1,1) (Lowrank_propose) = ', prop_Mat(1,1,nf_eff)
-            Write(error_unit,'(A,2ES23.15)')          '   Mat_sh(1,1) (shadow G)     = ', Mat_sh(1,1)
-            Write(error_unit,'(A,ES12.4,A,ES12.4)')   '   max|Mat - Mat_sh|/max(|Mat|,|Mat_sh|) = ', derr, &
-                 &                                     ' > TOL_UNIT = ', DBG_TOL
-            CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
-         endif
-         if (derr > dbg_max_derr) dbg_max_derr = derr
-         if (all(prop_Delta(1:r,nf_eff) == czero)) cycle
-         ! Ksh = Delta Mat_sh^{-1}
-         Mi(1:r,1:r) = Mat_sh(1:r,1:r)
-         call ZGETRF(r, r, Mi, N_P_LIM, ipiv, info)
-         Ksh = czero
-         do m = 1, r
-            Ksh(m,m) = cone
-         enddo
-         if (info == 0) call ZGETRS('N', r, r, Mi, N_P_LIM, ipiv, Ksh, N_P_LIM, info)
-         if (info /= 0) then
-            Write(error_unit,'(A,I0)') ' Lowrank_debug: singular Mat_sh at Lowrank_accept, info = ', info
-            CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
-         endif
-         do m = 1, r
-            Ksh(m,1:r) = prop_Delta(m,nf_eff) * Ksh(m,1:r)
-         enddo
-         ! Csh = Gsh(:,P_a),  Rsh = E_P^T - Gsh(P_a,:)  ->  Rsh <- Ksh Rsh,  Gsh <- Gsh - Csh Rsh
-         do m = 1, r
-            p = Op_V(n_op,nf)%P(m)
-            Csh(:,m) = Gsh(:,p,nf)
-            Rsh(m,:) = - Gsh(p,:,nf)
-            Rsh(m,p) = Rsh(m,p) + 1.d0
-         enddo
-         Rsh(1:r,:) = dbg_mm(Ksh(1:r,1:r), Rsh(1:r,:))
-         call ZGEMM('N', 'N', Ndim, Ndim, r, cmone, Csh, Ndim, Rsh, N_P_LIM, cone, Gsh(1,1,nf), Ndim)
-      Enddo
-      deallocate (Csh, Rsh)
-#endif
 
       select case (lr_mode)
       case (SCHEME_DELAYED)
@@ -1432,18 +1305,12 @@ contains
             if (all(prop_Delta(1:r,nf_eff) == czero)) cycle      ! D14: no padding, no change
             nf = Calc_Fl_map(nf_eff)
             j  = n_cols(nf_eff)                                   ! k (0 after a capacity flush)
-#ifdef ALF_LOWRANK_DEBUG
-            if (.not. Op_V(n_op,nf)%diag) dbg_nd_in_M = .true.
-#endif
             ! Pad S with the active sites not yet pending: zero rows / columns of M (exact)
             kp = j
             do m = 1, r
                p = Op_V(n_op,nf)%P(m)
                if (slot(p,nf_eff) == 0) then
                   call Submatrix_pad(nf_eff, p, kp)
-#ifdef ALF_LOWRANK_DEBUG
-                  dbg_n_pad_acc = dbg_n_pad_acc + 1
-#endif
                endif
             enddo
             ! a = J - [W; 0] (k' x r),  b^T = J^T + [G0(P_a,S) M, 0] (r x k')
@@ -1492,19 +1359,8 @@ contains
 
       n_pend = n_pend + 1
       last_accept_cols = maxval(n_cols)
-#ifdef ALF_LOWRANK_DEBUG
-      dbg_last_nop = n_op
-      dbg_last_nt  = nt
-      call Lowrank_debug_check(GR, n_op, nt, "Lowrank_accept")
-#endif
       ! Flush when a flavour's pending rank reaches N_delay (delayed: or the capacity)
-#ifdef ALF_TIMERS
-      timer_flush_reason = FR_CAPACITY
-#endif
       if (maxval(n_cols) >= ncap) call Lowrank_flush(GR)
-#ifdef ALF_LOWRANK_DEBUG
-      call Dbg_check_nd_guard(n_op, nt, "Lowrank_accept")
-#endif
 
    end subroutine Lowrank_accept
 
@@ -1563,9 +1419,6 @@ contains
       Use Hamiltonian_main, only: Ndim, N_FL
       Use Random_wrap
       Use Control
-#ifdef ALF_TRACE_UPDATES
-      Use Trace_updates_mod
-#endif
       Implicit none
 
       Complex (Kind=Kind(0.d0)), Intent(InOut) :: GR(Ndim,Ndim,N_FL)
@@ -1595,9 +1448,6 @@ contains
       endif
       prop_valid = .false.
 
-#ifdef ALF_TRACE_UPDATES
-      Call Trace_update_write(nt, n_op, Ratiotot, Weight, ranf_val, toggle)
-#endif
       Call Control_upgrade(toggle)
       Call Control_upgrade_eff(toggle)
 
@@ -1674,9 +1524,6 @@ contains
       Integer                   :: nf, nf_eff, i, j, q, m, N, nov
       Integer                   :: sl(N_P_LIM)
       Logical                   :: need_scale
-#if defined(ALF_LOWRANK_DEBUG) && defined(LOWRANK_DEBUG_SELFTEST)
-      Logical                   :: skip_scale
-#endif
 
       prop_valid = .false.
       if (n_pend == 0) return
@@ -1704,9 +1551,7 @@ contains
             enddo
          end select
       Enddo
-#ifndef ALF_LOWRANK_DEBUG
       if (.not. need_scale) return
-#endif
 
       ! One single-field object per hook call: phi = Phi(HS_field) for the field type of each flavour's
       ! operator (Wrap_phi_g sets the type only: no allocation per flavour)
@@ -1726,14 +1571,7 @@ contains
                do i = 1,N
                   q = Op_V(n_op,nf)%P(i)
                   t = exp( real(dir, kind(0.d0)) * g_loc * phi * Op_V(n_op,nf)%E(i) )
-#if defined(ALF_LOWRANK_DEBUG) && defined(LOWRANK_DEBUG_SELFTEST)
-                  ! Self-test of the debug check: deliberately skip one X-row scaling (first time only)
-                  skip_scale = .not. dbg_selftest_done
-                  dbg_selftest_done = .true.
-                  if (.not. skip_scale) X(q,1:j,nf_eff) = X(q,1:j,nf_eff) * t
-#else
                   X(q,1:j,nf_eff) = X(q,1:j,nf_eff) * t
-#endif
                   Y(q,1:j,nf_eff) = Y(q,1:j,nf_eff) / t
                enddo
             else
@@ -1773,32 +1611,19 @@ contains
                   m = slot(q,nf_eff)
                   if (m == 0) cycle
                   t = exp( real(dir, kind(0.d0)) * g_loc * phi * Op_V(n_op,nf)%E(i) )
-#if defined(ALF_LOWRANK_DEBUG) && defined(LOWRANK_DEBUG_SELFTEST)
-                  ! Self-test of the debug check: deliberately skip one M row scaling (first row transform)
-                  skip_scale = .not. dbg_selftest_done
-                  dbg_selftest_done = .true.
-                  if (.not. skip_scale) Msub(m,1:j,nf_eff) = Msub(m,1:j,nf_eff) * t
-#else
                   Msub(m,1:j,nf_eff) = Msub(m,1:j,nf_eff) * t
-#endif
                   Msub(1:j,m,nf_eff) = Msub(1:j,m,nf_eff) / t
                enddo
             else
                ! A non-diagonal transform mixes pending rows/columns: the block counts as non-diagonal for the
                ! accuracy guard K_ND, as after a non-diagonal accept (Task 5 review, minor 1)
                blk_nondiag = .true.
-#ifdef ALF_LOWRANK_DEBUG
-               dbg_nd_in_M = .true.
-#endif
                ! Partial overlap with a non-diagonal wrap: pad P \ S first (zeros only, no G0 read)
                if (nov < N) then
                   do i = 1,N
                      q = Op_V(n_op,nf)%P(i)
                      if (slot(q,nf_eff) == 0) then
                         call Submatrix_pad(nf_eff, q, j)
-#ifdef ALF_LOWRANK_DEBUG
-                        dbg_n_pad_hook = dbg_n_pad_hook + 1
-#endif
                      endif
                   enddo
                   n_cols(nf_eff) = j
@@ -1813,12 +1638,6 @@ contains
                   Xg(i,1:j) = Msub(sl(i),1:j,nf_eff)
                enddo
                call ZGEMM('N', 'N', N, j, N, cone, L, N_P_LIM, Xg, N_P_LIM, czero, Tg, N_P_LIM)
-#if defined(ALF_LOWRANK_DEBUG) && defined(LOWRANK_DEBUG_SELFTEST)
-               ! Self-test of the debug check: deliberately skip the row transform (first row transform)
-               skip_scale = .not. dbg_selftest_done
-               dbg_selftest_done = .true.
-               if (skip_scale) Tg(1:N,1:j) = Xg(1:N,1:j)
-#endif
                do i = 1,N
                   Msub(sl(i),1:j,nf_eff) = Tg(i,1:j)
                enddo
@@ -1834,47 +1653,18 @@ contains
          Enddo
       end select
 
-#ifdef ALF_LOWRANK_DEBUG
-      ! Shadow: the same wrap G <- L G R for every computed flavour (also those without pending
-      ! columns, whose GR was wrapped by ALF as well)
-      Do nf_eff = 1,N_FL_eff
-         nf = Calc_Fl_map(nf_eff)
-         N  = Op_V(n_op,nf)%N
-         if (Op_V(n_op,nf)%diag) then
-            if (wkind == 2) cycle
-            call Wrap_phi_g(nsigma_single, n_op, nf, nt, phi, g_loc)
-            do i = 1,N
-               q = Op_V(n_op,nf)%P(i)
-               t = exp( real(dir, kind(0.d0)) * g_loc * phi * Op_V(n_op,nf)%E(i) )
-               Gsh(q,:,nf) = Gsh(q,:,nf) * t
-               Gsh(:,q,nf) = Gsh(:,q,nf) / t
-            enddo
-         else
-            call Wrap_phi_g(nsigma_single, n_op, nf, nt, phi, g_loc)
-            call Wrap_LR(n_op, nf, phi, g_loc, wkind, dir, L, Rt)
-            Gsh(Op_V(n_op,nf)%P,:,nf) = dbg_mm(L(1:N,1:N), Gsh(Op_V(n_op,nf)%P,:,nf))
-            Gsh(:,Op_V(n_op,nf)%P,nf) = dbg_mm(Gsh(:,Op_V(n_op,nf)%P,nf), transpose(Rt(1:N,1:N)))
-         endif
-      Enddo
-#endif
       Call nsigma_single%clear()
       ! Debug check: WRAPGRUP/WRAPGRDO call Lowrank_debug_check right after each hook (under
       ! ALF_LOWRANK_DEBUG); the shadow is wrapped above, before the capacity flush checks GR against it.
 
       ! Submatrix capacity (D5): flush after the padding and transform if a pending rank reached N_delay
       if (lr_mode == SCHEME_SUBMATRIX) then
-#ifdef ALF_TIMERS
-         timer_flush_reason = FR_CAPACITY
-#endif
          if (blk_nondiag) then
             if (maxval(n_cols) >= min(lr_N_delay, K_ND)) call Lowrank_flush(GR)
          else
             if (maxval(n_cols) >= lr_N_delay) call Lowrank_flush(GR)
          endif
       endif
-#ifdef ALF_LOWRANK_DEBUG
-      call Dbg_check_nd_guard(n_op, nt, "Lowrank_wrap_hook")
-#endif
 
    end subroutine Lowrank_wrap_hook
 
@@ -1983,16 +1773,7 @@ contains
 
       Integer :: nf, nf_eff, j
 
-#ifdef ALF_TIMERS
-      ! Timing split: count the flush by the caller's reason and time it as T_FLUSH (exclusive)
-      if (n_pend == 0) then
-         call timer_flush_skip()
-         return
-      endif
-      call timer_flush_begin(maxval(n_cols))
-#else
       if (n_pend == 0) return
-#endif
       Do nf_eff = 1,N_FL_eff
          j = n_cols(nf_eff)
          if (j == 0) cycle
@@ -2011,21 +1792,8 @@ contains
       n_cols = 0
       blk_nondiag = .false.
       lr_mode = lr_scheme          ! a converted (cross-slice) submatrix block returns to the submatrix form
-#ifdef ALF_LOWRANK_DEBUG
-      dbg_nd_in_M = .false.
-#endif
-#ifdef ALF_LOWRANK_DEBUG
-      ! n_cols = 0 and n_pend > 0: Lowrank_current_G returns GR, which must equal the shadow
-      call Lowrank_debug_check(GR, dbg_last_nop, dbg_last_nt, "Lowrank_flush (n_op, nt of last accept)")
-#endif
       n_pend     = 0
       prop_valid = .false.
-#ifdef ALF_LOWRANK_DEBUG
-      call Lowrank_debug_summary()
-#endif
-#ifdef ALF_TIMERS
-      call timer_flush_end()
-#endif
 
    end subroutine Lowrank_flush
 
@@ -2097,16 +1865,7 @@ contains
       Complex (Kind=Kind(0.d0)), Intent(InOut) :: GR(Ndim,Ndim,N_FL)
       Character (len=*),         Intent(In)    :: where
       Logical,                   Intent(In)    :: expect_flushed
-#ifdef ALF_LOWRANK_DEBUG
-      if (expect_flushed) call Lowrank_assert_flushed(where)
-#endif
-#ifdef ALF_TIMERS
-      timer_flush_reason = FR_READ_POINT
-#endif
       call Lowrank_flush(GR)
-#ifdef ALF_LOWRANK_DEBUG
-      call Lowrank_assert_flushed(where)
-#endif
    end subroutine Lowrank_read_point
 
 !--------------------------------------------------------------------
@@ -2169,13 +1928,6 @@ contains
       Enddo
       lr_mode     = SCHEME_DELAYED
       blk_nondiag = .false.          ! the K_ND guard concerns the M-form only
-#ifdef ALF_LOWRANK_DEBUG
-      dbg_nd_in_M = .false.
-#endif
-#ifdef ALF_LOWRANK_DEBUG
-      dbg_n_conv = dbg_n_conv + 1
-      call Lowrank_debug_check(GR, dbg_last_nop, dbg_last_nt, "Lowrank_to_delayed (n_op, nt of last accept)")
-#endif
 
    end subroutine Lowrank_to_delayed
 
@@ -2276,20 +2028,6 @@ contains
          enddo
          nullify (YT)
       Enddo
-#ifdef ALF_LOWRANK_DEBUG
-      ! Shadow: the same hopping wrap as ALF's on G0 (same calls and order as WRAPGRUP / WRAPGRDO)
-      Do nf_eff = 1,N_FL_eff
-         nf = Calc_Fl_map(nf_eff)
-         if (dir == 1) then
-            call Hop_mod_mmthr   (Gsh(:,:,nf), nf, nt)
-            call Hop_mod_mmthl_m1(Gsh(:,:,nf), nf, nt)
-         else
-            call Hop_mod_mmthl   (Gsh(:,:,nf), nf, nt)
-            call Hop_mod_mmthr_m1(Gsh(:,:,nf), nf, nt)
-         endif
-      Enddo
-      dbg_n_carry = dbg_n_carry + 1
-#endif
 
    end subroutine Cross_slice_hop
 
@@ -2312,9 +2050,6 @@ contains
 
       Complex (Kind=Kind(0.d0)), allocatable :: T(:,:)
       Integer :: nf_eff, j
-#ifdef ALF_LOWRANK_DEBUG
-      Integer :: nf
-#endif
 
       call Cross_slice_require("Lowrank_carry_similarity")
       prop_valid = .false.
@@ -2330,13 +2065,6 @@ contains
          Y(:,1:j,nf_eff) = T(:,1:j)
       Enddo
       deallocate (T)
-#ifdef ALF_LOWRANK_DEBUG
-      Do nf_eff = 1,N_FL_eff
-         nf = Calc_Fl_map(nf_eff)
-         Gsh(:,:,nf) = dbg_mm(Sm, dbg_mm(Gsh(:,:,nf), Sminv))
-      Enddo
-      dbg_n_carry = dbg_n_carry + 1
-#endif
 
    end subroutine Lowrank_carry_similarity
 
@@ -2398,128 +2126,6 @@ contains
 
    end subroutine Submatrix_pad
 
-#ifdef ALF_LOWRANK_DEBUG
-!--------------------------------------------------------------------
-!> @author
-!> ALF-project
-!
-!> @brief
-!> Debug builds only (-DALF_LOWRANK_DEBUG): checks that the current Green function
-!> Lowrank_current_G(GR, nf) equals the shadow Gsh(:,:,nf) for every computed flavour,
-!> max|Gcur - Gsh| / max|Gsh| <= TOL_UNIT = 1e-10; terminates otherwise. No-op when nothing is
-!> pending (the shadow is then not in use). Records the largest relative error seen.
-!> @param [in] GR(Ndim,Ndim,N_FL)
-!> Complex
-!> \verbatim
-!>  G0 (flushed part of G).
-!> \endverbatim
-!> @param [in] n_op, nt
-!> Integer
-!> \verbatim
-!>  Vertex and time slice, reported on a violation.
-!> \endverbatim
-!> @param [in] where
-!> Character
-!> \verbatim
-!>  Calling site, reported on a violation.
-!> \endverbatim
-!--------------------------------------------------------------------
-   subroutine Lowrank_debug_check(GR, n_op, nt, where)
-
-      Use Hamiltonian_main, only: Ndim, N_FL, N_FL_eff, Calc_Fl_map
-      Implicit none
-
-      Complex (Kind=Kind(0.d0)), Intent(In) :: GR(Ndim,Ndim,N_FL)
-      Integer,                   Intent(In) :: n_op, nt
-      Character (len=*),         Intent(In) :: where
-
-      Complex (Kind=Kind(0.d0)), allocatable :: Gcur(:,:)
-      Real    (Kind=Kind(0.d0))              :: err, scale
-      Integer                                :: nf, nf_eff
-
-      if (n_pend == 0) return
-      if (.not. allocated(Gsh)) then
-         Write(error_unit,'(A,A)') ' Lowrank_debug_check: shadow G not allocated at ', trim(where)
-         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
-      endif
-      allocate (Gcur(Ndim,Ndim))
-      Do nf_eff = 1,N_FL_eff
-         nf = Calc_Fl_map(nf_eff)
-         call Lowrank_current_G(GR, nf, Gcur)
-         scale = maxval(abs(Gsh(:,:,nf)))
-         err   = maxval(abs(Gcur - Gsh(:,:,nf)))
-         if (scale > 0.d0) err = err/scale
-         dbg_n_checks = dbg_n_checks + 1
-         ! .not. (err <= tol) also catches NaN
-         if (.not. (err <= DBG_TOL)) then
-            Write(error_unit,'(A,A)')               ' Lowrank_debug_check: stale G (low-rank G /= shadow G) at ', &
-                 &                                   trim(where)
-            Write(error_unit,'(A,I0,A,I0,A,I0,A,I0)') '   n_op = ', n_op, ', nt = ', nt, ', nf = ', nf, &
-                 &                                   ', n_pend = ', n_pend
-            Write(error_unit,'(A,ES12.4,A,ES12.4)')  '   max|G_lowrank - G_shadow|/max|G_shadow| = ', err, &
-                 &                                   ' > TOL_UNIT = ', DBG_TOL
-            CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
-         endif
-         if (err > dbg_max_err) dbg_max_err = err
-      Enddo
-      deallocate (Gcur)
-
-   end subroutine Lowrank_debug_check
-
-   subroutine Dbg_check_nd_guard(n_op, nt, where)
-!> Debug builds only: the submatrix accuracy guard (spec D15). After an accept or a hook (after its
-!> capacity flush), a block whose M-form holds non-diagonal content (dbg_nd_in_M, tracked independently of
-!> blk_nondiag) must have been flushed at min(N_delay, K_ND) pending sites, and blk_nondiag must be set.
-!> Terminates otherwise.
-      Implicit none
-      Integer,           Intent(In) :: n_op, nt
-      Character (len=*), Intent(In) :: where
-      if (lr_mode /= SCHEME_SUBMATRIX .or. .not. dbg_nd_in_M) return
-      if (.not. blk_nondiag .or. maxval(n_cols) >= min(lr_N_delay, K_ND)) then
-         Write(error_unit,'(A,A)') ' Lowrank_debug: K_ND guard violated (non-diagonal content kept in the M-form) at ', &
-              &                    trim(where)
-         Write(error_unit,'(A,I0,A,I0,A,I0,A,L1,A,I0)') '   n_op = ', n_op, ', nt = ', nt, ', max pending sites = ', &
-              &   maxval(n_cols), ', blk_nondiag = ', blk_nondiag, ', K_ND = ', K_ND
-         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
-      endif
-   end subroutine Dbg_check_nd_guard
-
-!--------------------------------------------------------------------
-!> @brief
-!> Debug builds only: (re)writes lowrank_debug_summary.txt in the run directory with the number
-!> of shadow-G checks, the largest relative error so far and (submatrix) the numbers of sites added
-!> to S by accepts and padded by hooks. Called after every flush, so the file holds the totals of
-!> the run when it ends.
-!--------------------------------------------------------------------
-   subroutine Lowrank_debug_summary()
-      Implicit none
-      Integer :: unit_dbg
-      Open(newunit=unit_dbg, file="lowrank_debug_summary.txt", status="replace", action="write")
-      Write(unit_dbg,'(A,I0)')    'shadow-G checks         : ', dbg_n_checks
-      Write(unit_dbg,'(A,ES12.4)') 'max relative error of G : ', dbg_max_err
-      Write(unit_dbg,'(A,ES12.4)') 'max rel. error of Mat(d): ', dbg_max_derr
-      Write(unit_dbg,'(A,ES12.4)') 'TOL_UNIT                : ', DBG_TOL
-      if (lr_scheme == SCHEME_SUBMATRIX) then
-         Write(unit_dbg,'(A,I0)')  'padded sites (accepts)  : ', dbg_n_pad_acc
-         Write(unit_dbg,'(A,I0)')  'padded sites (hooks)    : ', dbg_n_pad_hook
-      endif
-      if (lr_cross) then
-         Write(unit_dbg,'(A,I0)')  'cross-slice carries     : ', dbg_n_carry
-         Write(unit_dbg,'(A,I0)')  'submatrix -> delayed    : ', dbg_n_conv
-      endif
-      Close(unit_dbg)
-   end subroutine Lowrank_debug_summary
-
-!> Dense product A B for the debug shadow (ZGEMM: ifort -O3 -parallel -ipo turns matmul into matmul_mkl_c128, which the ALF
-!> link line does not provide, and -qopt-matmul- does not reach the link-time code generation).
-   function dbg_mm(A, B) result(C)
-      Implicit none
-      Complex (Kind=Kind(0.d0)), intent(in) :: A(:,:), B(:,:)
-      Complex (Kind=Kind(0.d0)) :: C(size(A,1), size(B,2))
-      call ZGEMM('N', 'N', size(A,1), size(B,2), size(A,2), cmplx(1.d0, 0.d0, kind(0.d0)), A, size(A,1), B, size(B,1), &
-           &     cmplx(0.d0, 0.d0, kind(0.d0)), C, size(A,1))
-   end function dbg_mm
-#endif
 
 end module Lowrank_update_mod
 
