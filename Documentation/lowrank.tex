@@ -1,0 +1,67 @@
+% Copyright (c) 2026 The ALF project.
+% This is a part of the ALF project documentation.
+% The ALF project documentation by the ALF contributors is licensed
+% under a Creative Commons Attribution-ShareAlike 4.0 International License.
+% For the licensing details of the documentation see license.CCBYSA.
+% !TEX root = doc.tex
+%-------------------------------------------------------------------------------------
+\section{Delayed and submatrix sequential updates (\texttt{master\_ai})} \label{sec:lowrank}
+%-------------------------------------------------------------------------------------
+%
+\emph{This feature exists only on the AI branches (\texttt{master\_ai}, \texttt{master\_ai\_cpu}). It was written with AI assistance
+and is not part of the ALF baseline.}
+
+\paragraph{Purpose.}
+The standard sequential update (Sec.~\ref{sec:updating}) applies every accepted local move to the
+Green function at once, a rank-$r$ update of cost $N_{\text{dim}}^2$ per move with BLAS level-2
+efficiency. The delayed and submatrix schemes keep up to \texttt{N\_delay} accepted moves pending
+in low-rank form and apply them together in one matrix product. This changes only the order of the
+arithmetic: the acceptance ratios and the Green function are the same quantities, and the random
+numbers are drawn in the same order, so a run reproduces the Markov chain of the standard update
+up to roundoff.
+
+\paragraph{Build.}
+\texttt{source configure.sh <MACHINE> <MODE> LOWRANK}. Without \texttt{LOWRANK} nothing of the
+feature is compiled, and the program is identical to the baseline.
+
+\paragraph{Parameters.}
+Optional namelist in the file \texttt{parameters}; without it the standard update is used:
+\begin{verbatim}
+&VAR_LOWRANK
+Sequential_scheme = "delayed"   ! "standard" | "delayed" | "submatrix"
+N_delay           = 0           ! 0: automatic, >= 1: fixed
+/
+\end{verbatim}
+The choice is written to the \texttt{info} file. With \texttt{N\_delay = 0} the bound is set from
+$N_{\text{dim}}$ and from the largest pending rank one time slice can produce.
+
+\paragraph{Supported cases.}
+A vertex is handled by the low-rank scheme if its operator acts on at most 8 sites in every flavour;
+other vertices first apply the pending moves and then use the standard update. Vertices updated by
+sequential MALA (\texttt{Sequential\_MALA}) are treated the same way: the pending moves are applied,
+then the MALA update runs exactly as in the baseline. All pending moves are applied at the end of the
+sequential part of every time slice, so the Global\_tau moves (\texttt{Global\_tau\_moves},
+\texttt{Global\_tau\_MALA\_moves}), the measurements, the stabilisation and all other parts of ALF see
+the full Green function. Global moves, Langevin and HMC do not use the sequential update and are
+unaffected. Detailed derivations: \texttt{Documentation/lowrank/*.md}.
+
+\paragraph{Numerics compared with the baseline.}
+\begin{itemize}
+\item Same quantities, different summation order (roundoff-level differences).
+\item Submatrix scheme: blocks with non-diagonal content (bond operators) are applied immediately,
+because the submatrix form lost accuracy there: during development, a Kondo run without this rule
+reached a Green function precision of $3\times10^{-9}$, against $4\times10^{-11}$ with the standard
+update. The delayed scheme has no such loss and is the better choice for models with bond operators.
+\end{itemize}
+
+\paragraph{Verification.}
+\texttt{testsuite/Lowrank.tests/compare\_schemes.py} runs the serial scenarios of
+\texttt{testsuite/test\_branch\_parameters.json}, plus Hubbard runs with Global\_tau moves (alone and
+with global-tau MALA), sequential MALA, continuous fields and the projector code, with the standard,
+delayed and submatrix schemes and the same seeds, and compares every number in the output. On the
+GNU build (2026-11-20) the largest relative difference was $3\times10^{-11}$ (Global\_tau MALA), with
+$\le 9\times10^{-12}$ for all other runs. The unit test \texttt{36-lowrank-unit} compares the low-rank
+kernels with an exactly recomputed Green function on 23 operator types (diagonal and bond operators,
+field types 1--4, ill-conditioned cases). Both are registered in CTest for builds with
+\texttt{LOWRANK}. \texttt{testsuite/baseline\_guard.py} shows that a build without the switch, and a
+\texttt{LOWRANK} build with the standard scheme, give output bit-identical to \texttt{master}.

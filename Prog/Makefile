@@ -8,6 +8,9 @@ SRCS = Hamiltonians/LRC_mod.F90 control_mod.F90 Fields_mod.F90 Operator_mod.F90 
 	wrapul_mod.F90 cgr1_mod.F90 wrapur_mod.F90 cgr2_2_mod.F90 upgrade_mod.F90 Set_random_mod.F90 \
 	Global_mod.F90 Langevin_HMC_mod.F90 Wrapgr_mod.F90 tau_m_mod.F90 tau_p_mod.F90 QMC_runtime_var_mod.F90 \
 	main.F90
+ifneq (,$(findstring -DALF_LOWRANK,$(ALF_FLAGS_PROG)))
+SRCS += Lowrank/Lowrank_update_mod.F90 Lowrank/Lowrank_wrapgr_mod.F90
+endif
 
 # Dependency helper variables
 DEPSFILE := .deps.mk

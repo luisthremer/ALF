@@ -52,6 +52,9 @@ Module Wrapgr_mod
   Use Hamiltonian_main
   Use Hop_mod
   use upgrade_mod
+#ifdef ALF_LOWRANK
+  use Lowrank_wrapgr_mod, only: Lowrank_wrapgrup, Lowrank_wrapgrdo
+#endif
   use Langevin_HMC_mod
 
   Implicit none
@@ -116,6 +119,9 @@ Contains
     Character (Len=64)        :: Mode
     Logical                   :: Acc, toggle1, L_MALA
 
+#ifdef ALF_LOWRANK
+    if (Lowrank_wrapgrup(GR,NTAU,PHASE,Propose_S0,Nt_sequential_start,Nt_sequential_end,N_Global_tau,Sequential_MALA,Delta_t_MALA_sequential,Max_Force_MALA_sequential,N_Global_tau_MALA,Delta_t_MALA_global_tau,Max_Force_MALA_global_tau,Wrapgr_Random_update,Wrapgr_Langevin_update,Wrapgr_PlaceGR)) return
+#endif
     ! Only used for MALA fields, where they are set before use.
     phase_st  = cmplx(1.d0,0.d0,kind(0.d0))
     nsigma_st = cmplx(0.d0,0.d0,kind(0.d0))
@@ -270,6 +276,9 @@ Contains
     Character (Len=64)        :: Mode
     Logical                   :: Acc, toggle1, L_MALA
 
+#ifdef ALF_LOWRANK
+    if (Lowrank_wrapgrdo(GR,NTAU,PHASE,Propose_S0,Nt_sequential_start,Nt_sequential_end,N_Global_tau,Sequential_MALA,Delta_t_MALA_sequential,Max_Force_MALA_sequential,N_Global_tau_MALA,Delta_t_MALA_global_tau,Max_Force_MALA_global_tau,Wrapgr_Random_update,Wrapgr_Langevin_update,Wrapgr_PlaceGR)) return
+#endif
     ! Only used for MALA fields, where they are set before use.
     phase_st  = cmplx(1.d0,0.d0,kind(0.d0))
     nsigma_st = cmplx(0.d0,0.d0,kind(0.d0))

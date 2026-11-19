@@ -28,6 +28,7 @@ Possible STABs are:
 Further optional arguments: 
   Devel: Compile with additional flags for development and debugging
   HDF5: Compile with HDF5
+  LOWRANK: Compile the delayed/submatrix sequential update (master_ai, AI-written)
   NO-INTERACTIVE: Do not ask for user confirmation during excution of this script
   NO-FALLBACK: Do not use a fallback option in case of an unknown/no machine,
                but instead return with value 1
@@ -228,6 +229,7 @@ modev=0
 STAB=""
 stabv=0
 HDF5_ENABLED=""
+LOWRANK_ENABLED=""
 NO_INTERACTIVE=""
 NO_FALLBACK=""
 
@@ -251,6 +253,9 @@ while [ "$#" -gt "0" ]; do
     ;;
     HDF5)
       HDF5_ENABLED="1"
+    ;;
+    LOWRANK)
+      LOWRANK_ENABLED="1"
     ;;
     DEVEL|DEVELOPMENT)
       #DEVEL="1"
@@ -565,6 +570,9 @@ if [ "${HDF5_ENABLED}" = "1" ]; then
   ALF_FLAGS_MODULES="${ALF_FLAGS_MODULES} ${INC_HDF5} -DHDF5 -DHDF5_ZLIB"
   ALF_FLAGS_ANA="${ALF_FLAGS_ANA} ${INC_HDF5} -DHDF5 -DHDF5_ZLIB"
   ALF_FLAGS_PROG="${ALF_FLAGS_PROG} -DHDF5 -DHDF5_ZLIB"
+fi
+if [ "${LOWRANK_ENABLED}" = "1" ]; then
+  ALF_FLAGS_PROG="${ALF_FLAGS_PROG} -DALF_LOWRANK"
 fi
 export ALF_FLAGS_QRREF
 export ALF_FLAGS_MODULES
