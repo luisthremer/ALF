@@ -1,4 +1,4 @@
-!  Copyright (C) 2016 - 2022 The ALF project
+!  Copyright (C) 2016 - 2026 The ALF project
 !
 !     The ALF project is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -28,10 +28,6 @@
 !
 !     - If you make substantial changes to the program we require you to either consider contributing
 !       to the ALF project or to mark your material in a reasonable way as different from the original version.
-!
-!  Modified 2026 on the delayed/submatrix research branch (feature/delayed-submatrix): low-rank
-!  read points, automatic N_delay tuning calls, and scheme/N_delay provenance in data.h5. See
-!  docs/algorithm-notes.md.
 
 
 !--------------------------------------------------------------------
@@ -134,8 +130,6 @@ Program Main
         Use Global_mod
         Use UDV_State_mod
         Use Wrapgr_mod
-        use Lowrank_update_mod, only: Lowrank_read_point, Lowrank_autotune_finish, Lowrank_report_final, &
-             &                        Lowrank_current_N_delay
         Use Fields_mod
         Use WaveFunction_mod
         use entanglement_mod
@@ -160,8 +154,6 @@ Program Main
         COMPLEX (Kind=Kind(0.d0)), Dimension(:)  , Allocatable   :: Phase_array
        
         Integer :: NBC, NSW
-        ! Completed sweeps across bins, saturating at 4 (automatic N_delay: Lowrank_autotune_finish)
-        Integer (Kind=Kind(0_8)) :: N_sweeps_done
         Integer :: NTAU, NTAU1
         Character (len=64) :: file_seeds, file_info, file_git_info
         Integer :: Seed_in
@@ -174,13 +166,12 @@ Program Main
 #ifdef HDF5
         INTEGER(HID_T) :: file_id
         Logical :: file_exists
-        Integer :: nd_buf(1)       ! delayed/submatrix provenance attributes of data.h5
 #endif
          
         !General
         Integer :: NSTM, NT, NT1, NVAR
         Integer :: I, nf, nf_eff, nst, n, n1, N_op, NBin_eff
-        Integer :: tmp_Nt_sequential_start, tmp_Nt_sequential_end, tmp_N_Global_tau
+        Integer :: tmp_Nt_sequential_start, tmp_Nt_sequential_end, tmp_N_Global_tau, tmp_N_Global_tau_MALA
         Logical :: Toggle,  Toggle1
         Complex (Kind=Kind(0.d0)) :: Phase, Z, Z1
         Real    (Kind=Kind(0.d0)) :: ZERO = 10D-8
@@ -213,7 +204,7 @@ Program Main
         
         If (  Irank == 0 ) then
 #endif
-           write (*,*) "ALF Copyright (C) 2016 - 2022 The ALF project contributors"
+           write (*,*) "ALF Copyright (C) 2016 - 2026 The ALF project contributors"
            write (*,*) "This Program comes with ABSOLUTELY NO WARRANTY; for details see license.GPL"
            write (*,*) "This is free software, and you are welcome to redistribute it under certain conditions."
 
@@ -326,6 +317,9 @@ Program Main
         leap_frog_bulk = .false.
         Call ham%Ham_set()
         Call Validate_Ham_Variables()
+        If ( allocated(Calc_Fl) ) then
+           if ( any(.not. Calc_Fl) ) call check_compatibility_reconstruct_greens_function()
+        endif
         ! Test  if  user  has  specified  correct  array  size  for time dependent Hamiltonians
         N_op = Size(OP_V,1)
         do n = 1, N_op
@@ -384,23 +378,24 @@ Program Main
         
         Call set_default_values_measuring_interval(Thtrot, Ltrot, Projector)
 
-        If ( .not. get_Global_tau_moves() )  then
+        If ( .not. ( get_Global_tau_moves() .or. get_Global_tau_MALA_moves() ) )  then
            ! This  corresponds to the default updating scheme
            call set_Nt_sequential_start(1)
            call set_Nt_sequential_end(Size(OP_V,1))
            call set_N_Global_tau(0)
+           call set_N_Global_tau_MALA(0)
         else
            !  Gives the possibility to set parameters in the Hamiltonian file
            tmp_Nt_sequential_start = get_Nt_sequential_start()
            tmp_Nt_sequential_end   = get_Nt_sequential_end()
            tmp_N_Global_tau        = get_N_Global_tau()
-           Call ham%Overide_global_tau_sampling_parameters(tmp_Nt_sequential_start,tmp_Nt_sequential_end,tmp_N_Global_tau)
+           tmp_N_Global_tau_MALA   = get_N_Global_tau_MALA()
+           Call ham%Overide_global_tau_sampling_parameters(tmp_Nt_sequential_start,tmp_Nt_sequential_end,tmp_N_Global_tau,tmp_N_Global_tau_MALA)
            call set_Nt_sequential_start(tmp_Nt_sequential_start)
            call set_Nt_sequential_end(tmp_Nt_sequential_end)
            call set_N_Global_tau(tmp_N_Global_tau)
+           call set_N_Global_tau_MALA(tmp_N_Global_tau_MALA)
         endif
-        ! Cross-slice delay (Lowrank_cross_slice, spec D10): refused with Global_tau moves
-        call validate_lowrank_cross_slice()
         
         call nsigma%make(N_op, Ltrot)
         Do n = 1,N_op
@@ -422,7 +417,7 @@ Program Main
         Call Hop_mod_init
 
         IF (ABS(get_CPU_MAX()) > Zero ) call set_NBin(10000000)
-        If (get_N_Global_tau() > 0) then
+        If (get_N_Global_tau() > 0 .or. get_N_Global_tau_MALA() > 0 .or. get_Sequential_MALA() ) then
            Call Wrapgr_alloc
         endif
         
@@ -444,15 +439,6 @@ Program Main
             call h5fclose_f(file_id, ierr)
           endif
           call ham%write_parameters_hdf5(file_dat)
-          ! Delayed/submatrix branch provenance: requested scheme and N_delay as attributes of '/'
-          ! (only for a non-standard scheme, so that standard runs keep the baseline data.h5)
-          if (str_to_upper(trim(adjustl(get_Sequential_scheme()))) /= "STANDARD") then
-             CALL h5fopen_f(file_dat, H5F_ACC_RDWR_F, file_id, ierr)
-             call h5ltset_attribute_string_f(file_id, '/', 'Sequential_scheme', trim(adjustl(get_Sequential_scheme())), ierr)
-             nd_buf(1) = get_N_delay()
-             call h5ltset_attribute_int_f(file_id, '/', 'N_delay_requested', nd_buf, int(1,size_t), ierr)
-             call h5fclose_f(file_id, ierr)
-          endif
 
 #if defined(MPI)
         endif
@@ -478,7 +464,7 @@ Program Main
 
       !   Sequential = .true.
         !TODO: check if sequential is done if some fields are discrete (Warning or error termination?)
-        if ( get_Langevin() .or.  get_HMC()  ) then
+        if ( get_Langevin() .or.  get_HMC() ) then
            if ( get_Langevin() ) then
 #if defined(MPI)
                 if ( Irank_g == 0 ) then
@@ -493,19 +479,39 @@ Program Main
 #if defined(MPI)
                 endif
 #endif
-              call set_sequential(.False.)
-              call set_HMC(.False.)
-              call set_Global_moves(.False.)
-              call set_Global_tau_moves(.False.)
+               call set_sequential(.False.)
+               call set_HMC(.False.)
+               call set_Global_MALA_moves(.False.)
+               call set_Global_moves(.False.)
+               call set_Global_tau_moves(.False.)
+               call set_Global_tau_MALA_moves(.False.)
 #if defined(TEMPERING)
               call set_N_exchange_steps(0)
 #endif
            endif
-           Call Langevin_HMC%make(get_Langevin(), get_HMC() , get_Delta_t_Langevin_HMC(), get_Max_Force(), get_Leapfrog_Steps())
+           Call Langevin_HMC%make(get_Langevin(), get_HMC() , get_Global_MALA_moves(), get_Delta_t_Langevin_HMC(), get_Max_Force(), get_Leapfrog_Steps())
         else
-           Call Langevin_HMC%set_Update_scheme(get_Langevin(), get_HMC() )
+           Call Langevin_HMC%set_Update_scheme(get_Langevin(), get_HMC(), .false. )
         endif
+        if (get_Global_MALA_moves()) then
+           Call Metropolis_Langevin%make(.False., .False., get_Global_MALA_moves(), get_Delta_t_MALA_global(), get_MAX_Force_MALA_global(), get_Leapfrog_Steps())
+        else
+           Call Metropolis_Langevin%set_Update_scheme(.False., .False., get_Global_MALA_moves() )
+        endif 
+        Call check_MALA_variables()
         Call check_update_schemes_compatibility()
+
+        if ( get_Sequential_MALA() .or. get_Global_tau_MALA_moves() ) then
+         Do n = 1,N_op
+          if ( nsigma%t(n) /= 3 ) then
+             write(output_unit,*)
+             WRITE(output_unit,*) 'Warning:    Not all fields are of type 3.'
+             WRITE(output_unit,*) 'Fields that are not of type 3 will not be updated with MALA updates.'
+             write(output_unit,*)
+           exit
+          endif
+         enddo
+        endif
 
 #if defined(MPI)
         if ( Irank_g == 0 ) then
@@ -525,35 +531,61 @@ Program Main
            Write(50,*) '# of interacting Ops per time slice : ', Size(OP_V,1)
            If ( get_Propose_S0() ) &
                 &  Write(50,*) 'Propose Ising moves according to  bare Ising action'
-           If ( get_Global_moves() ) Then
-              Write(50,*) 'Global moves are enabled   '
-              Write(50,*) '# of global moves / sweep :', get_N_Global()
-           Endif
            if ( get_sequential() ) then
+               Write(50,*)  '-------  Space-sequential Time-sequential moves -------' 
+               Write(50,*) 'Nt_sequential_start: ', get_Nt_sequential_start()
+               Write(50,*) 'Nt_sequential_end  : ', get_Nt_sequential_end()
+               If (get_Sequential_MALA()) then 
+                  Write(50,*) 'MALA Update          '
+                  Write(50,*) 'delta_t            : ', get_Delta_t_MALA_sequential() 
+                  Write(50,*) 'Max_force          : ', get_Max_Force_MALA_sequential()
+               endif
+            endif    
+            if ( get_Global_tau_moves() .or. get_Global_tau_MALA_moves() ) Then
+               Write(50,*)  '-------  Space-global     Time-sequential moves -------' 
                If ( get_Global_tau_moves() ) Then
-                  Write(50,*) 'Nt_sequential_start: ', get_Nt_sequential_start()
-                  Write(50,*) 'Nt_sequential_end  : ', get_Nt_sequential_end()
+                  Write(50,*) 'Metropolis'
                   Write(50,*) 'N_Global_tau       : ', get_N_Global_tau()
-               else
-                  Write(50,*) 'Default sequential updating '
+               endif
+               If ( get_Global_tau_MALA_moves() ) Then
+                  Write(50,*) 'MALA'
+                  Write(50,*) 'N_Global_tau_MALA  : ', get_N_Global_tau_MALA()
+                  Write(50,*) 'delta_t            : ', get_Delta_t_MALA_global_tau()
+                  Write(50,*) 'Max_Force          : ', get_Max_Force_MALA_global_tau()
                endif
             endif
-           if ( get_Langevin() ) then
-              Write(50,*) 'Langevin del_t: ', get_Delta_t_Langevin_HMC()
-              Write(50,*) 'Max Force     : ', get_Max_Force()
-           endif
-           if ( get_HMC() ) then
-              Write(50,*) 'HMC del_t     : ', get_Delta_t_Langevin_HMC()
-              Write(50,*) 'Leapfrog_Steps: ', get_Leapfrog_steps()
-              Write(50,*) 'HMC_Sweeps:     ', get_N_HMC_sweeps()
-           endif
+            if ( get_Global_moves() .or. get_Langevin() .or. get_HMC() .or. get_Global_MALA_moves() ) then 
+               Write(50,*)  '-------  Space-global     Time-global     moves -------' 
+               if ( get_HMC() ) then
+                  Write(50,*) ' HMC '
+                  Write(50,*) 'Leapfrog_Steps    : ', get_Leapfrog_steps()
+                  Write(50,*) 'delta _t          : ', get_Delta_t_Langevin_HMC()
+                  Write(50,*) 'HMC_Sweeps        : ', get_N_HMC_sweeps()
+               endif
+               if ( get_Global_MALA_moves() ) then
+                  Write(50,*) 'User Defined MALA '
+                  Write(50,*) '# moves / sweep    : ', get_N_Global_MALA_sweeps()
+                  Write(50,*) 'delta_t            : ', get_Delta_t_MALA_global()
+                  Write(50,*) 'Max_Force          : ', get_MAX_Force_MALA_global()
+               endif
+               If ( get_Global_moves() ) Then
+                  Write(50,*) 'User Defined Metropolis   '
+                  Write(50,*) '#  moves / sweep   :', get_N_Global()
+               Endif
+               if (get_Langevin() ) then
+                  Write(50,*) 'Langevin '     
+                  Write(50,*) 'delta_t            : ', get_Delta_t_Langevin_HMC()
+                  Write(50,*) 'Max_Force          : ', get_Max_Force()
+               endif
+            endif
+          
 
            !Write out info  for  amplitude and flip_protocol
            Toggle  = .false.
            Do n = 1,N_op
               if (nsigma%t(n) == 3 .or. nsigma%t(n) == 4)  Toggle = .true.
            Enddo
-           if ( Toggle ) then
+           if ( Toggle .and. (.not.get_Sequential_MALA()) ) then
               Write(50,*) 'Amplitude  for  t=3,4  vertices is  set to: ', get_Amplitude()
            endif
            Toggle  = .false.
@@ -659,7 +691,6 @@ Program Main
 
         Call Control_init(Group_Comm)
 
-        N_sweeps_done = 0
         DO  NBC = 1, get_NBin()
            ! Here, you have the green functions on time slice 1.
            ! Set bin observables to zero.
@@ -676,17 +707,14 @@ Program Main
 #if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
               IF (MOD(NSW,get_N_Tempering_frequency()) == 0) then
                  !Write(6,*) "Irank, Call tempering", Irank, NSW, get_N_exchange_steps()
-                 If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Exchange_Step", .true.)
                  CALL Exchange_Step(Phase,GR,udvr, udvl,Stab_nt, udvst, get_N_exchange_steps(), get_Tempering_calc_det())
               endif
 #endif
               ! Global updates
-              If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Global_Updates", .true.)
               If ( get_Global_moves() ) Call Global_Updates(Phase, GR, udvr, udvl, Stab_nt, udvst, get_N_Global() )
 
 
               If ( str_to_upper(Langevin_HMC%get_Update_scheme()) == "LANGEVIN" )  then
-                 If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Langevin update", .true.)
                  !  Carry out a Langevin update and calculate equal time observables.
                  Call Langevin_HMC%update(Phase, GR, GR_Tilde, Test, udvr, udvl, Stab_nt, udvst, &
                       &                   get_LOBS_ST(), get_LOBS_EN(), get_Ltau())
@@ -704,8 +732,8 @@ Program Main
               endif
 
               If (  str_to_upper(Langevin_HMC%get_Update_scheme()) == "HMC" )  then
-                 If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "HMC update", .true.)
-                 if ( get_sequential() ) call Langevin_HMC%set_L_Forces(.False.)
+                 ! A preceding MALA sweep may have changed both the forces and determinants.
+                 if ( get_sequential() .or. get_Global_MALA_moves() ) call Langevin_HMC%set_L_Forces(.False.)
                  Do n=1, get_N_HMC_sweeps()
                      !  Carry out a Langevin update and calculate equal time observables.
                      Call Langevin_HMC%update(Phase, GR, GR_Tilde, Test, udvr, udvl, Stab_nt, udvst, &
@@ -736,7 +764,53 @@ Program Main
                  endif
               endif
 
-              If ( get_sequential() )  then 
+              If (  str_to_upper(Metropolis_Langevin%get_Update_scheme()) == "MALA" )  then
+                 ! The stored forces and determinants are only valid if no other update
+                 ! has changed the configuration since they were computed.
+                 if ( get_sequential() .or. get_Global_moves() .or. get_HMC() .or. get_Langevin() ) then
+                    call Metropolis_Langevin%set_L_Forces(.False.)
+                 endif
+#if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
+                 IF (MOD(NSW,get_N_Tempering_frequency()) == 0) call Metropolis_Langevin%set_L_Forces(.False.)
+#endif
+                 Do n=1, get_N_Global_MALA_sweeps()
+                     Call Metropolis_Langevin%update(Phase, GR, GR_Tilde, Test, udvr, udvl, Stab_nt, udvst, &
+                          &                   get_LOBS_ST(), get_LOBS_EN(), get_Ltau())
+                     if (n /= get_N_Global_MALA_sweeps()) then
+                        Call Metropolis_Langevin%calc_Forces(Phase, GR, GR_Tilde, Test, udvr, udvl, Stab_nt, udvst,&
+                             &  get_LOBS_ST(), get_LOBS_EN(), .True. )
+                        Call Langevin_HMC_Reset_storage(Phase, GR, udvr, udvl, Stab_nt, udvst)
+                        call Metropolis_Langevin%set_L_Forces(.true.)
+                     endif
+                 enddo
+
+                 ! Measure only after the MALA acceptance/rejection decision and storage reset.
+                 If ( .not. get_sequential() ) then
+                    IF ( get_Ltau() == 1 ) then
+                       ! Tau_m/Tau_p measure equal-time observables only for Langevin/HMC.
+                       ! Without HMC, measure the retained MALA configuration here, including
+                       ! the restored old configuration after a rejected proposal.
+                       if ( .not. get_HMC() ) then
+                          Call Metropolis_Langevin%calc_Forces(Phase, GR, GR_Tilde, Test, udvr, udvl, Stab_nt, udvst,&
+                               &  get_LOBS_ST(), get_LOBS_EN(), .True. )
+                          Call Langevin_HMC_Reset_storage(Phase, GR, udvr, udvl, Stab_nt, udvst)
+                       endif
+                       If (Projector) then
+                          NST = 0
+                          Call Tau_p ( udvl, udvr, udvst, GR, PHASE, NSTM, STAB_NT, NST, get_LOBS_ST(), get_LOBS_EN())
+                       else
+                          Call Tau_m( udvst, GR, PHASE, NSTM, get_Nwrap(), STAB_NT, get_LOBS_ST(), get_LOBS_EN() )
+                       endif
+                    else
+                       Call Metropolis_Langevin%calc_Forces(Phase, GR, GR_Tilde, Test, udvr, udvl, Stab_nt, udvst,&
+                       &  get_LOBS_ST(), get_LOBS_EN(), .True. )
+                       Call Langevin_HMC_Reset_storage(Phase, GR, udvr, udvl, Stab_nt, udvst)
+                    endif
+                    call Metropolis_Langevin%set_L_Forces(.true.)
+                 endif
+              endif
+
+              If (get_sequential())  then 
                  ! Propagation from 1 to Ltrot
                  ! Set the right storage to 1
                  do nf_eff = 1,N_FL_eff
@@ -751,10 +825,12 @@ Program Main
                  NST = 1
                  DO NTAU = 0, LTROT-1
                     NTAU1 = NTAU + 1
-                    CALL WRAPGRUP(GR,NTAU,PHASE,get_Propose_S0(), get_Nt_sequential_start(), get_Nt_sequential_end(), get_N_Global_tau())
+                    CALL WRAPGRUP(GR,NTAU,PHASE,get_Propose_S0(), get_Nt_sequential_start(), get_Nt_sequential_end(), &    
+                         &        get_N_Global_tau(), &
+                         &        get_Sequential_MALA(), get_Delta_t_MALA_sequential(), get_Max_Force_MALA_sequential(), &
+                         &        get_N_Global_tau_MALA(), get_delta_t_MALA_global_tau(), get_Max_Force_MALA_global_tau())
                     
                     If (NTAU1 == Stab_nt(NST) ) then
-                       If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "CGR (up sweep)", .false.)
                        NT1 = Stab_nt(NST-1)
                        CALL WRAPUR(NT1, NTAU1, udvr)
                        Phase_array = cmplx(1.d0, 0.d0, kind(0.D0))
@@ -781,7 +857,6 @@ Program Main
                     ENDIF
                     
                     IF (NTAU1.GE. get_LOBS_ST() .AND. NTAU1.LE. get_LOBS_EN() ) THEN
-                       If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Obser (up sweep)", .false.)
                        !Call  Global_tau_mod_Test(Gr,ntau1)
                        !Stop
                        !write(*,*) "GR before obser sum: ",sum(GR(:,:,1))
@@ -799,8 +874,6 @@ Program Main
                        endif
                     ENDIF
                  ENDDO
-                 ! End of the up sweep (NTAU1 = LTROT is a stabilisation point, so G is flushed)
-                 If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "end of the up sweep", .true.)
                  
                  Do nf_eff = 1,N_FL_eff
                     nf=Calc_Fl_map(nf_eff)
@@ -814,9 +887,11 @@ Program Main
                  NST = NSTM-1
                  DO NTAU = LTROT,1,-1
                     NTAU1 = NTAU - 1
-                    CALL WRAPGRDO(GR,NTAU, PHASE,get_Propose_S0(),get_Nt_sequential_start(), get_Nt_sequential_end(), get_N_Global_tau())
+                    CALL WRAPGRDO(GR,NTAU, PHASE,get_Propose_S0(),get_Nt_sequential_start(), get_Nt_sequential_end(), & 
+                         &        get_N_Global_tau(), &
+                         &        get_Sequential_MALA(), get_Delta_t_MALA_sequential(), get_Max_Force_MALA_sequential(), &
+                         &        get_N_Global_tau_MALA(), get_delta_t_MALA_global_tau(), get_Max_Force_MALA_global_tau())
                     IF (NTAU1.GE. get_LOBS_ST() .AND. NTAU1.LE. get_LOBS_EN() ) THEN
-                       If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Obser (down sweep)", .false.)
                        !write(*,*) "GR before obser sum: ",sum(GR(:,:,1))
                        !write(*,*) "Phase before obser : ",phase
                        Mc_step_weight = 1.d0
@@ -832,7 +907,6 @@ Program Main
                        endif
                     ENDIF
                     IF ( Stab_nt(NST) == NTAU1 .AND. NTAU1.NE.0 ) THEN
-                       If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "CGR (down sweep)", .false.)
                        NT1 = Stab_nt(NST+1)
                        !Write(6,*) 'Wrapul : ', NT1, NTAU1
                        CALL WRAPUL(NT1, NTAU1, udvl)
@@ -858,15 +932,12 @@ Program Main
                        Call Control_PrecisionP(Z,Phase)
                        Phase = Z
                        IF( get_Ltau() == 1 .and. Projector .and. Stab_nt(NST)<=THTROT+1 .and. THTROT+1<Stab_nt(NST+1) ) then
-                          If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Tau_p (projector, down sweep)", .true.)
                           Call tau_p ( udvl, udvr, udvst, GR, PHASE, NSTM, STAB_NT, NST,  get_LOBS_ST(), get_LOBS_EN() )
                        endif
                        NST = NST -1
                     ENDIF
                  ENDDO
                  
-                 ! End of the down sweep: the last WRAPGRDO may return a pending state (time slice 0)
-                 If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "CGR (time slice 0, end of the down sweep)", .false.)
                  !Calculate and compare green functions on time slice 0.
                  NT1 = Stab_nt(0)
                  NT  = Stab_nt(1)
@@ -906,7 +977,6 @@ Program Main
                  enddo
                  
                  IF ( get_Ltau() == 1 .and. .not. Projector ) then
-                    If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Tau_m", .true.)
                     Call TAU_M( udvst, GR, PHASE, NSTM, get_Nwrap(), STAB_NT, get_LOBS_ST(), get_LOBS_EN() )
                  endif
                  ! When Nwrap > Thtrot+1, the smallest Stab_nt(1)=Nwrap already exceeds
@@ -917,15 +987,10 @@ Program Main
                  ! udvst(1..Nstm) contains fresh left propagations from the backward
                  ! sweep, so calling tau_p with NST_IN=0 is correct here.
                  IF ( get_LTAU() == 1 .and. Projector .and. Stab_nt(1) > THTROT+1 ) then
-                    If (get_Lowrank_cross_slice()) Call Lowrank_read_point(GR, "Tau_p (projector, end of the sweep)", .true.)
                     Call tau_p ( udvl, udvr, udvst, GR, PHASE, NSTM, STAB_NT, 0, get_LOBS_ST(), get_LOBS_EN() )
                  endif
               endif
 
-              ! Automatic N_delay (N_delay = -1): on every rank after every sweep; timing starts after sweep 1, the
-              ! decision after sweep 3 contains the only MPI collective (Group_Comm). No-op otherwise.
-              If (N_sweeps_done < 4_8) N_sweeps_done = N_sweeps_done + 1_8
-              Call Lowrank_autotune_finish(N_sweeps_done)
            ENDDO
            Call ham%Pr_obs(get_Ltau())
 #if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
@@ -944,23 +1009,6 @@ Program Main
               exit !exit the loop over the bin index, labelled NBC.
            Endif
         Enddo
-        ! Automatic N_delay: "tuning incomplete" if the run ended before the decision (no-op otherwise)
-        Call Lowrank_report_final()
-#if defined(HDF5)
-        ! Delayed/submatrix branch provenance: the N_delay in use at the end of the run (resolved auto value)
-#if defined(MPI)
-        if ( Irank_g == 0 ) then
-#endif
-          if (str_to_upper(trim(adjustl(get_Sequential_scheme()))) /= "STANDARD") then
-             CALL h5fopen_f(file_dat, H5F_ACC_RDWR_F, file_id, ierr)
-             nd_buf(1) = Lowrank_current_N_delay()
-             call h5ltset_attribute_int_f(file_id, '/', 'N_delay_used', nd_buf, int(1,size_t), ierr)
-             call h5fclose_f(file_id, ierr)
-          endif
-#if defined(MPI)
-        endif
-#endif
-#endif
 
         ! Deallocate things
         DO nf_eff = 1, N_FL_eff
@@ -979,7 +1027,7 @@ Program Main
         DEALLOCATE(udvl, udvr, udvst)
         DEALLOCATE(GR, TEST, Stab_nt,GR_Tilde)
         if (Projector) DEALLOCATE(WF_R, WF_L)
-        If (get_N_Global_tau() > 0) then
+        If (get_N_Global_tau() > 0 .or. get_N_Global_tau_MALA() > 0 .or. get_Sequential_MALA()) then
            Call Wrapgr_dealloc
         endif
         do nf = 1, N_FL
@@ -997,7 +1045,8 @@ Program Main
         call deallocate_all_shared_memory
 #endif
 
-        Call Control_Print(Group_Comm, Langevin_HMC%get_Update_scheme())
+        Call Control_Print(Group_Comm, Langevin_HMC%get_Update_scheme(), get_Global_MALA_moves(), &
+             &              get_Sequential_MALA(), get_Global_tau_MALA_moves())
 
 #if defined(MPI)
         If (Irank_g == 0 ) then
@@ -1013,6 +1062,7 @@ Program Main
 #endif
         
         Call Langevin_HMC%clean()
+        Call Metropolis_Langevin%clean()
         deallocate(Calc_Fl_map,Phase_array)
 
          ! Delete the file RUNNING since the simulation finished successfully

@@ -37,9 +37,8 @@ add_executable(32-Op-validate-1x1-fail 32-Op-validate-1x1-fail.F90)
 add_executable(33-Op-equal 33-Op-equal.F90)
 add_executable(34-Op-V-symm-pass 34-Op-V-symm-pass.F90)
 add_executable(35-Op-V-symm-fail 35-Op-V-symm-fail.F90)
-add_executable(37-Op-V-symm-fast 37-Op-V-symm-fast.F90)
 # set(operatorparts 1-copy-sel-rows 2-copy-sel-columns 3-opmult 4-opmultct 5-FillExpOps 6-opexpmult-1 6-opexpmult-2 7-opexpmultct-1 7-opexpmultct-2 9-Op-Phase 10-Op-mmultL 11-Op-mmultR 13-Op-Wrapup 14-Op-Wrapdo 21-Op-make 22-sl-mat-mults)
-set(operatorparts 9-Op-Phase 10-Op-mmultL 11-Op-mmultR 13-Op-Wrapup 14-Op-Wrapdo 21-Op-make 22-sl-mat-mults 26-Test-Polymorphic-Fortran 27-Op-mmultL-m1.F90 28-Op-validate 29-Op-validate-hermitian-fail 30-Op-validate-type-fail 31-Op-validate-projector-fail 32-Op-validate-1x1-fail 33-Op-equal 34-Op-V-symm-pass 35-Op-V-symm-fail 37-Op-V-symm-fast)
+set(operatorparts 9-Op-Phase 10-Op-mmultL 11-Op-mmultR 13-Op-Wrapup 14-Op-Wrapdo 21-Op-make 22-sl-mat-mults 26-Test-Polymorphic-Fortran 27-Op-mmultL-m1.F90 28-Op-validate 29-Op-validate-hermitian-fail 30-Op-validate-type-fail 31-Op-validate-projector-fail 32-Op-validate-1x1-fail 33-Op-equal 34-Op-V-symm-pass 35-Op-V-symm-fail)
 set(cgr2_2tests 16-get-blocks 17-solve-extended-system)
 #set(cgr2_1tests 8-scalematrix-1 8-scalematrix-2)
 set(cgr1tests 15-cgr 20-qdrp 23-cgrp)
@@ -87,21 +86,6 @@ foreach(iter ${progtests})
   target_link_libraries(${iter} ${LIB_LIST})
 endforeach(iter)
 
-
-# 36-lowrank-unit: unit-level harness for the low-rank local updates. It drives the real
-# Upgrade2 / Op_Wrapup / Op_Wrapdo, so it links every Prog object except main.o, plus the
-# Hamiltonian submodules (Hamiltonian_main needs them). Run `make program` before cmake.
-add_executable(36-lowrank-unit 36-lowrank-unit.F90)
-file(GLOB LOWRANK_UNIT_PROG_OBJS ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/*.o)
-list(FILTER LOWRANK_UNIT_PROG_OBJS EXCLUDE REGEX ".*/main\\.o$")
-list(REMOVE_DUPLICATES LOWRANK_UNIT_PROG_OBJS)
-file(GLOB LOWRANK_UNIT_HAM_OBJS ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/Hamiltonians/*.o)
-target_link_libraries(36-lowrank-unit ${LOWRANK_UNIT_PROG_OBJS} ${LOWRANK_UNIT_HAM_OBJS} ${LIB_LIST})
-foreach(iflag ${FLAG_LIST})
-  target_compile_options(36-lowrank-unit PRIVATE ${iflag})
-endforeach(iflag)
-target_include_directories(36-lowrank-unit PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/)
-target_include_directories(36-lowrank-unit PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules/)
 
 target_include_directories(26-Test-Polymorphic-Fortran PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/)
 target_link_libraries(26-Test-Polymorphic-Fortran ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/OpTTypes_mod.o ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/DynamicMatrixArray_mod.o ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/ContainerElementBase_mod.o)
@@ -152,15 +136,3 @@ add_test(33-Op-equal 33-Op-equal)
 add_test(34-Op-V-symm-pass 34-Op-V-symm-pass)
 add_test(35-Op-V-symm-fail 35-Op-V-symm-fail)
 set_tests_properties(35-Op-V-symm-fail PROPERTIES WILL_FAIL TRUE)
-add_test(36-lowrank-unit 36-lowrank-unit)
-# Lowrank_set_N_delay must terminate with pending accepts / above the allocated capacity (auto N_delay, Phase 6).
-# Own working directories: Lowrank_init appends to ./info, which 36-lowrank-unit checks and removes.
-file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/36-pending ${CMAKE_CURRENT_BINARY_DIR}/36-capacity)
-# They pass only on the specific error message (not on any non-zero exit), so a crash elsewhere cannot pass them.
-add_test(NAME 36-lowrank-unit-pending COMMAND 36-lowrank-unit pending WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/36-pending)
-set_tests_properties(36-lowrank-unit-pending PROPERTIES
-  PASS_REGULAR_EXPRESSION "Lowrank_set_N_delay: 1 accepted vertices pending \\(G must be flushed first\\)")
-add_test(NAME 36-lowrank-unit-capacity COMMAND 36-lowrank-unit capacity WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/36-capacity)
-set_tests_properties(36-lowrank-unit-capacity PROPERTIES
-  PASS_REGULAR_EXPRESSION "Lowrank_set_N_delay: N_delay = 17 outside 1 \\.\\. 16 \\(allocated capacity\\)")
-add_test(37-Op-V-symm-fast 37-Op-V-symm-fast)

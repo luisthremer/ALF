@@ -11,7 +11,8 @@ Please choose one of the following MACHINEs:
  * PGI
  * SuperMUC-NG
  * JUWELS
- * FRITZ
+ * FRITZ-ifort
+ * FRITZ-ifx
  * HELMA
 Possible MODEs are:
  * MPI (default)
@@ -27,6 +28,7 @@ Possible STABs are:
 Further optional arguments: 
   Devel: Compile with additional flags for development and debugging
   HDF5: Compile with HDF5
+  LOWRANK: Compile the delayed/submatrix sequential update (master_ai, AI-written)
   NO-INTERACTIVE: Do not ask for user confirmation during excution of this script
   NO-FALLBACK: Do not use a fallback option in case of an unknown/no machine,
                but instead return with value 1
@@ -227,6 +229,7 @@ modev=0
 STAB=""
 stabv=0
 HDF5_ENABLED=""
+LOWRANK_ENABLED=""
 NO_INTERACTIVE=""
 NO_FALLBACK=""
 
@@ -250,6 +253,9 @@ while [ "$#" -gt "0" ]; do
     ;;
     HDF5)
       HDF5_ENABLED="1"
+    ;;
+    LOWRANK)
+      LOWRANK_ENABLED="1"
     ;;
     DEVEL|DEVELOPMENT)
       #DEVEL="1"
@@ -445,11 +451,11 @@ case $MACHINE in
     INC_HDF5=""
   ;;
 
-  #NHR@FAU Fritz cluster
-  FRITZ)
-    module load intel
-    module load intelmpi
-    module load mkl
+  #NHR@FAU Fritz cluster with ifort
+  FRITZ-IFORT)
+    module load intel/2023.2.1
+    module load intelmpi/2021.16.0
+    module load mkl/2024.2.2
 
     F90OPTFLAGS="$INTELOPTFLAGS"
     F90USEFULFLAGS="$INTELUSEFULFLAGS"
@@ -460,6 +466,24 @@ case $MACHINE in
       set_intelcc
       set_intelcxx
       set_hdf5_flags "$INTELCC" ifort "$INTELCXX" || return 1
+    fi
+  ;;
+
+  #NHR@FAU Fritz cluster with ifx
+  FRITZ-IFX)
+    module load intel/2025.2.0
+    module load intelmpi/2021.16.0
+    module load mkl/2024.2.2
+
+    F90OPTFLAGS="$INTELLLVMOPTFLAGS"
+    F90USEFULFLAGS="$INTELLLVMUSEFULFLAGS"
+    ALF_FC="$INTELLLVMCOMPILER"
+    find_mkl_flag || return 1
+    LIB_BLAS_LAPACK="${INTELMKL}"
+    if [ "${HDF5_ENABLED}" = "1" ]; then
+      set_intelcc
+      set_intelcxx
+      set_hdf5_flags "$INTELCC" ifx "$INTELCXX" || return 1
     fi
   ;;
 
@@ -546,6 +570,9 @@ if [ "${HDF5_ENABLED}" = "1" ]; then
   ALF_FLAGS_MODULES="${ALF_FLAGS_MODULES} ${INC_HDF5} -DHDF5 -DHDF5_ZLIB"
   ALF_FLAGS_ANA="${ALF_FLAGS_ANA} ${INC_HDF5} -DHDF5 -DHDF5_ZLIB"
   ALF_FLAGS_PROG="${ALF_FLAGS_PROG} -DHDF5 -DHDF5_ZLIB"
+fi
+if [ "${LOWRANK_ENABLED}" = "1" ]; then
+  ALF_FLAGS_PROG="${ALF_FLAGS_PROG} -DALF_LOWRANK"
 fi
 export ALF_FLAGS_QRREF
 export ALF_FLAGS_MODULES

@@ -28,10 +28,6 @@
 ! 
 !     - If you make substantial changes to the program we require you to either consider contributing
 !       to the ALF project or to mark your material in a reasonable way as different from the original version.
-!
-!  Modified 2026 on the delayed/submatrix research branch (feature/delayed-submatrix): VAR_QMC
-!  keys Sequential_scheme, N_delay, Lowrank_cross_slice with their validation. See
-!  docs/algorithm-notes.md.
 
 Module QMC_runtime_var
         
@@ -56,9 +52,6 @@ Module QMC_runtime_var
         Integer :: Nt_sequential_start, Nt_sequential_end, mpi_per_parameter_set
         Integer :: N_Global_tau
         Logical :: Sequential
-        Character (len=64) :: Sequential_scheme  !  "standard", "delayed" or "submatrix"; validated in validate_sequential_scheme and Lowrank_init
-        Integer :: N_delay                        !  bound on the pending rank before a flush (delayed/submatrix): >= 1 fixed, 0 automatic (default), -1 automatic with warm-up timing
-        Logical :: Lowrank_cross_slice            !  cross-slice delay prototype (delayed/submatrix; spec D10); default .false.
         real (Kind=Kind(0.d0)) ::  Amplitude  !    Needed for  update of  type  3  and  4  fields.
 
         Character (len=64) :: ham_name
@@ -70,7 +63,13 @@ Module QMC_runtime_var
         Logical                      :: Langevin,  HMC
         Integer                      :: Leapfrog_Steps, N_HMC_sweeps
         Real  (Kind=Kind(0.d0))      :: Delta_t_Langevin_HMC, Max_Force
- 
+
+        !  Space for MALA moves.
+        Logical                      :: Global_MALA_moves, Sequential_MALA, Global_tau_MALA_moves
+        Integer                      :: N_Global_MALA_sweeps
+        Integer                      :: N_Global_tau_MALA
+        real  (kind=kind(0.d0))      :: MAX_Force_MALA_global, Max_Force_MALA_global_tau, Max_Force_MALA_sequential
+        real  (kind=kind(0.d0))      :: Delta_t_MALA_sequential, Delta_t_MALA_global_tau, Delta_t_MALA_global
           
 #if defined(TEMPERING)
         Integer :: N_exchange_steps, N_Tempering_frequency
@@ -82,7 +81,9 @@ Module QMC_runtime_var
               &               Nt_sequential_start, Nt_sequential_end, N_Global_tau, &
               &               sequential, Langevin, HMC, Delta_t_Langevin_HMC, &
               &               Max_Force, Leapfrog_steps, N_HMC_sweeps, Amplitude, &
-              &               Sequential_scheme, N_delay, Lowrank_cross_slice
+              &               Global_MALA_moves, Sequential_MALA, N_Global_MALA_sweeps, N_Global_tau_MALA, Global_tau_MALA_moves, &
+              &               MAX_Force_MALA_global, Max_Force_MALA_global_tau, Max_Force_MALA_sequential, &
+              &               Delta_t_MALA_sequential, Delta_t_MALA_global_tau, Delta_t_MALA_global
        
         NAMELIST /VAR_HAM_NAME/ ham_name
 
@@ -93,6 +94,8 @@ Module QMC_runtime_var
     public :: set_default_values_measuring_interval
     public :: check_langevin_schemes_and_variables
     public :: check_update_schemes_compatibility
+    public :: check_MALA_variables
+    public :: check_compatibility_reconstruct_greens_function
 #ifdef MPI
     public :: broadcast_QMC_runtime_var
 #endif
@@ -100,7 +103,6 @@ Module QMC_runtime_var
     public :: read_and_broadcast_TEMPERING_var
 #endif
     public :: read_and_broadcast_QMC_var_and_ham_name
-    public :: validate_sequential_scheme
 
     public :: lock_QMC_runtime_settings
 
@@ -128,12 +130,19 @@ Module QMC_runtime_var
     public :: get_Delta_t_Langevin_HMC, set_Delta_t_Langevin_HMC
     public :: get_Amplitude,         set_Amplitude
     public :: get_ham_name,          set_ham_name
-    public :: get_Sequential_scheme, set_Sequential_scheme
-    public :: get_N_delay,           set_N_delay
-    public :: get_Lowrank_cross_slice, set_Lowrank_cross_slice
-    public :: validate_lowrank_cross_slice
     public :: get_mpi_per_parameter_set, set_mpi_per_parameter_set
     public :: get_Tempering_calc_det, set_Tempering_calc_det
+    public :: get_Global_MALA_moves, set_Global_MALA_moves
+    public :: get_Sequential_MALA,    set_Sequential_MALA
+    public :: get_N_Global_MALA_sweeps,      set_N_Global_MALA_sweeps
+    public :: get_N_Global_tau_MALA,  set_N_Global_tau_MALA
+    public :: get_Global_tau_MALA_moves, set_Global_tau_MALA_moves
+    public :: get_MAX_Force_MALA_global,     set_MAX_Force_MALA_global
+    public :: get_Max_Force_MALA_global_tau, set_Max_Force_MALA_global_tau
+    public :: get_Max_Force_MALA_sequential, set_Max_Force_MALA_sequential
+    public :: get_Delta_t_MALA_sequential,   set_Delta_t_MALA_sequential
+    public :: get_Delta_t_MALA_global_tau,   set_Delta_t_MALA_global_tau
+    public :: get_Delta_t_MALA_global,       set_Delta_t_MALA_global
 #if defined(TEMPERING)
     public :: get_N_exchange_steps,  set_N_exchange_steps
     public :: get_N_Tempering_frequency, set_N_Tempering_frequency
@@ -161,11 +170,45 @@ Module QMC_runtime_var
             Global_tau_moves = .false.; sequential = .true.; Langevin = .false. ; HMC =.false.
             Delta_t_Langevin_HMC = 0.d0;  Max_Force = 0.d0 ; Leapfrog_steps = 0; N_HMC_sweeps = 1
             Nt_sequential_start = 1 ;  Nt_sequential_end  = 0;  N_Global_tau  = 0;  Amplitude = 1.d0
-            Sequential_scheme = "standard";  N_delay = 0;  Lowrank_cross_slice = .false.
             settings_locked = .false.
+            Sequential_MALA = .false.; Delta_t_MALA_sequential = 0.1d0; Max_Force_MALA_sequential = 1.d0
+            Global_tau_MALA_moves = .false.; N_Global_tau_MALA = 1; Delta_t_MALA_global_tau = 0.1d0
+            Max_Force_MALA_global_tau = 1.d0; Global_MALA_moves = .false.; N_Global_MALA_sweeps = 1
+            Delta_t_MALA_global = 0.1d0; Max_Force_MALA_global = 1.d0
 
         end subroutine set_QMC_runtime_default_var
 
+
+        subroutine  check_compatibility_reconstruct_greens_function
+
+            implicit none
+
+            if (Sequential_MALA) then
+                write(error_unit,*) "Error: reconstruction of the Green function is not supported (at present) for this update: Sequential_MALA."
+                CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+            endif
+
+            if (Global_tau_MALA_moves) then
+                write(error_unit,*) "Error: reconstruction of the Green function is not supported (at present) for this update: Global_tau_MALA_moves."
+                CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+            endif
+
+            if (Global_MALA_moves) then
+                write(error_unit,*) "Error: reconstruction of the Green function is not supported (at present) for this update: Global_MALA_moves."
+                CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+            endif
+
+            if (Langevin) then
+                write(error_unit,*) "Error: reconstruction of the Green function is not supported (at present) for this update: Langevin."
+                CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+            endif
+
+            if (HMC) then
+                write(error_unit,*) "Error: reconstruction of the Green function is not supported (at present) for this update: HMC."
+                CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+            endif
+
+        end subroutine check_compatibility_reconstruct_greens_function
 
         subroutine set_default_values_measuring_interval(Thtrot, Ltrot, Projector)
 
@@ -223,6 +266,14 @@ Module QMC_runtime_var
                 write(output_unit,*) "Langevin mode does not allow global tau updates."
                 write(output_unit,*) "Overriding Global_tau_moves=.True. from parameter files."
             endif
+            if (Global_tau_MALA_moves) then
+                write(output_unit,*) "Langevin mode does not allow global tau MALA updates."
+                write(output_unit,*) "Overriding Global_tau_MALA_moves=.True. from parameter files."
+            endif
+            if (Global_MALA_moves) then
+                write(output_unit,*) "Langevin mode does not allow MALA updates."
+                write(output_unit,*) "Overriding Global_MALA_moves=.True. from parameter files."
+            endif
 
         end subroutine check_langevin_schemes_and_variables
        
@@ -237,18 +288,88 @@ Module QMC_runtime_var
                 write(output_unit,*) "Sequential is set to .False. ."
             endif
 
-            if ( .not. Sequential .and. .not. HMC .and. .not. Langevin .and. .not. Global_moves) then
-                write(output_unit,*) "Warning: no updates will occur as Sequential, HMC, Langevin, and"
-                write(output_unit,*) "Global_moves are all .False. in the parameter file."
-            endif
-
             if ( Sequential .and. Nt_sequential_end < Nt_sequential_start ) then
                 write(output_unit,*) "Warning: Nt_sequential_end is smaller than Nt_sequential_start"
             endif
 
+
+            if ( .not. Sequential .and. Global_tau_MALA_moves) then
+                write(output_unit,*) "Warning: Sequential = .False. and Global_tau_MALA_moves = .True."
+                write(output_unit,*) "in the parameter file. Global Langevin tau updates will not occur if"
+                write(output_unit,*) "Sequential is set to .False. ."
+            endif
+
+            if ( .not. Sequential .and. .not. HMC .and. .not. Langevin .and. .not. Global_moves .and. .not. Global_MALA_moves) then
+                write(output_unit,*) "Warning: no updates will occur as Sequential, HMC, Langevin, Global_MALA_moves, and"
+                write(output_unit,*) "Global_moves are all .False. in the parameter file."
+            endif
+
+
             call lock_QMC_runtime_settings()
             
-        end subroutine 
+        end subroutine check_update_schemes_compatibility
+
+        !--------------------------------------------------------------------
+        !> @brief
+        !> Ensures that, whenever a MALA-type update is enabled, its
+        !> associated Delta_t and Max_Force parameters are strictly positive
+        !> and its number of updates is at least one. Counts of disabled
+        !> global tau schemes are set to zero.
+        !> Has to be called before the settings are locked.
+        !--------------------------------------------------------------------
+        subroutine check_MALA_variables()
+
+            implicit none
+
+            if (Sequential_MALA) then
+                if (Delta_t_MALA_sequential <= 0.d0) then
+                    write(error_unit,*) "Error: Sequential_MALA=.True. requires Delta_t_MALA_sequential > 0."
+                    CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+                endif
+                if (Max_Force_MALA_sequential <= 0.d0) then
+                    write(error_unit,*) "Error: Sequential_MALA=.True. requires Max_Force_MALA_sequential > 0."
+                    CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+                endif
+            endif
+
+            if (Global_tau_MALA_moves) then
+                if (Delta_t_MALA_global_tau <= 0.d0) then
+                    write(error_unit,*) "Error: Global_tau_MALA_moves=.True. requires Delta_t_MALA_global_tau > 0."
+                    CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+                endif
+                if (Max_Force_MALA_global_tau <= 0.d0) then
+                    write(error_unit,*) "Error: Global_tau_MALA_moves=.True. requires Max_Force_MALA_global_tau > 0."
+                    CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+                endif
+                if (N_Global_tau_MALA < 1) then
+                    write(error_unit,*) "Error: Global_tau_MALA_moves=.True. requires N_Global_tau_MALA >= 1."
+                    CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+                endif
+            else
+                call set_N_Global_tau_MALA(0)
+            endif
+
+            if (.not. Global_tau_moves) call set_N_Global_tau(0)
+
+            if (Global_MALA_moves) then
+                if (Delta_t_MALA_global <= 0.d0) then
+                    write(error_unit,*) "Error: Global_MALA_moves=.True. requires Delta_t_MALA_global > 0."
+                    CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+                endif
+                if (MAX_Force_MALA_global <= 0.d0) then
+                    write(error_unit,*) "Error: Global_MALA_moves=.True. requires MAX_Force_MALA_global > 0."
+                    CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+                endif
+                if (N_Global_MALA_sweeps < 1) then
+                    write(error_unit,*) "Error: Global_MALA_moves=.True. requires N_Global_MALA_sweeps >= 1."
+                    CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+                endif
+            else
+                call set_N_Global_MALA_sweeps(0)
+            endif
+
+        end subroutine check_MALA_variables
+
 
         subroutine lock_QMC_runtime_settings()
             settings_locked = .true.
@@ -543,36 +664,117 @@ Module QMC_runtime_var
             ham_name = val
         end subroutine set_ham_name
 
-        character(len=64) function get_Sequential_scheme() result(val)
-            val = Sequential_scheme
-        end function get_Sequential_scheme
+        ! MALA getters/setters
+        logical function get_Global_MALA_moves() result(val)
+            val = Global_MALA_moves
+        end function get_Global_MALA_moves
 
-        subroutine set_Sequential_scheme(val)
-            character(len=*), intent(in) :: val
-            call ensure_settings_unlocked("set_Sequential_scheme")
-            Sequential_scheme = val
-        end subroutine set_Sequential_scheme
-
-        integer function get_N_delay() result(val)
-            val = N_delay
-        end function get_N_delay
-
-        subroutine set_N_delay(val)
-            integer, intent(in) :: val
-            call ensure_settings_unlocked("set_N_delay")
-            N_delay = val
-        end subroutine set_N_delay
-
-        logical function get_Lowrank_cross_slice() result(val)
-            val = Lowrank_cross_slice
-        end function get_Lowrank_cross_slice
-
-        subroutine set_Lowrank_cross_slice(val)
+        subroutine set_Global_MALA_moves(val)
             logical, intent(in) :: val
-            call ensure_settings_unlocked("set_Lowrank_cross_slice")
-            Lowrank_cross_slice = val
-        end subroutine set_Lowrank_cross_slice
-     
+            call ensure_settings_unlocked("set_Global_MALA_moves")
+            Global_MALA_moves = val
+        end subroutine set_Global_MALA_moves
+
+        logical function get_Sequential_MALA() result(val)
+            val = Sequential_MALA
+        end function get_Sequential_MALA
+
+        subroutine set_Sequential_MALA(val)
+            logical, intent(in) :: val
+            call ensure_settings_unlocked("set_Sequential_MALA")
+            Sequential_MALA = val
+        end subroutine set_Sequential_MALA
+
+        integer function get_N_Global_MALA_sweeps() result(val)
+            val = N_Global_MALA_sweeps
+        end function get_N_Global_MALA_sweeps
+
+        subroutine set_N_Global_MALA_sweeps(val)
+            integer, intent(in) :: val
+            call ensure_settings_unlocked("set_N_Global_MALA_sweeps")
+            N_Global_MALA_sweeps = val
+        end subroutine set_N_Global_MALA_sweeps
+
+        integer function get_N_Global_tau_MALA() result(val)
+            val = N_Global_tau_MALA
+        end function get_N_Global_tau_MALA
+
+        subroutine set_N_Global_tau_MALA(val)
+            integer, intent(in) :: val
+            call ensure_settings_unlocked("set_N_Global_tau_MALA")
+            N_Global_tau_MALA = val
+        end subroutine set_N_Global_tau_MALA
+
+        logical function get_Global_tau_MALA_moves() result(val)
+            val = Global_tau_MALA_moves
+        end function get_Global_tau_MALA_moves
+
+        subroutine set_Global_tau_MALA_moves(val)
+            logical, intent(in) :: val
+            call ensure_settings_unlocked("set_Global_tau_MALA_moves")
+            Global_tau_MALA_moves = val
+        end subroutine set_Global_tau_MALA_moves
+
+        real(kind=kind(0.d0)) function get_MAX_Force_MALA_global() result(val)
+            val = MAX_Force_MALA_global
+        end function get_MAX_Force_MALA_global
+
+        subroutine set_MAX_Force_MALA_global(val)
+            real(kind=kind(0.d0)), intent(in) :: val
+            call ensure_settings_unlocked("set_MAX_Force_MALA_global")
+            MAX_Force_MALA_global = val
+        end subroutine set_MAX_Force_MALA_global
+
+        real(kind=kind(0.d0)) function get_Max_Force_MALA_global_tau() result(val)
+            val = Max_Force_MALA_global_tau
+        end function get_Max_Force_MALA_global_tau
+
+        subroutine set_Max_Force_MALA_global_tau(val)
+            real(kind=kind(0.d0)), intent(in) :: val
+            call ensure_settings_unlocked("set_Max_Force_MALA_global_tau")
+            Max_Force_MALA_global_tau = val
+        end subroutine set_Max_Force_MALA_global_tau
+
+        real(kind=kind(0.d0)) function get_Max_Force_MALA_sequential() result(val)
+            val = Max_Force_MALA_sequential
+        end function get_Max_Force_MALA_sequential
+
+        subroutine set_Max_Force_MALA_sequential(val)
+            real(kind=kind(0.d0)), intent(in) :: val
+            call ensure_settings_unlocked("set_Max_Force_MALA_sequential")
+            Max_Force_MALA_sequential = val
+        end subroutine set_Max_Force_MALA_sequential
+
+        real(kind=kind(0.d0)) function get_Delta_t_MALA_sequential() result(val)
+            val = Delta_t_MALA_sequential
+        end function get_Delta_t_MALA_sequential
+
+        subroutine set_Delta_t_MALA_sequential(val)
+            real(kind=kind(0.d0)), intent(in) :: val
+            call ensure_settings_unlocked("set_Delta_t_MALA_sequential")
+            Delta_t_MALA_sequential = val
+        end subroutine set_Delta_t_MALA_sequential
+
+        real(kind=kind(0.d0)) function get_Delta_t_MALA_global_tau() result(val)
+            val = Delta_t_MALA_global_tau
+        end function get_Delta_t_MALA_global_tau
+
+        subroutine set_Delta_t_MALA_global_tau(val)
+            real(kind=kind(0.d0)), intent(in) :: val
+            call ensure_settings_unlocked("set_Delta_t_MALA_global_tau")
+            Delta_t_MALA_global_tau = val
+        end subroutine set_Delta_t_MALA_global_tau
+
+        real(kind=kind(0.d0)) function get_Delta_t_MALA_global() result(val)
+            val = Delta_t_MALA_global
+        end function get_Delta_t_MALA_global
+
+        subroutine set_Delta_t_MALA_global(val)
+            real(kind=kind(0.d0)), intent(in) :: val
+            call ensure_settings_unlocked("set_Delta_t_MALA_global")
+            Delta_t_MALA_global = val
+        end subroutine set_Delta_t_MALA_global
+
 
 !--------------------------------------------------------------------
 !> @author
@@ -615,9 +817,17 @@ Module QMC_runtime_var
             CALL MPI_BCAST(Max_Force            ,1 ,MPI_REAL8    ,0,MPI_COMM_i,ierr)
             CALL MPI_BCAST(Delta_t_Langevin_HMC ,1 ,MPI_REAL8    ,0,MPI_COMM_i,ierr)
             CALL MPI_BCAST(Amplitude            ,1 ,MPI_REAL8    ,0,MPI_COMM_i,ierr)
-            CALL MPI_BCAST(Sequential_scheme    ,64,MPI_CHARACTER,0,MPI_COMM_i,ierr)
-            CALL MPI_BCAST(N_delay              ,1 ,MPI_INTEGER  ,0,MPI_COMM_i,ierr)
-            CALL MPI_BCAST(Lowrank_cross_slice  ,1 ,MPI_LOGICAL  ,0,MPI_COMM_i,ierr)
+            CALL MPI_BCAST(Global_MALA_moves          ,1 ,MPI_LOGICAL  ,0,MPI_COMM_i,ierr)
+            CALL MPI_BCAST(Sequential_MALA            ,1 ,MPI_LOGICAL  ,0,MPI_COMM_i,ierr)
+            CALL MPI_BCAST(N_Global_MALA_sweeps              ,1 ,MPI_Integer  ,0,MPI_COMM_i,ierr)
+            CALL MPI_BCAST(N_Global_tau_MALA          ,1 ,MPI_Integer  ,0,MPI_COMM_i,ierr)
+            CALL MPI_BCAST(Global_tau_MALA_moves      ,1 ,MPI_LOGICAL  ,0,MPI_COMM_i,ierr)
+            CALL MPI_BCAST(MAX_Force_MALA_global      ,1 ,MPI_REAL8    ,0,MPI_COMM_i,ierr)
+            CALL MPI_BCAST(Max_Force_MALA_global_tau  ,1 ,MPI_REAL8    ,0,MPI_COMM_i,ierr)
+            CALL MPI_BCAST(Max_Force_MALA_sequential  ,1 ,MPI_REAL8    ,0,MPI_COMM_i,ierr)
+            CALL MPI_BCAST(Delta_t_MALA_sequential    ,1 ,MPI_REAL8    ,0,MPI_COMM_i,ierr)
+            CALL MPI_BCAST(Delta_t_MALA_global_tau    ,1 ,MPI_REAL8    ,0,MPI_COMM_i,ierr)
+            CALL MPI_BCAST(Delta_t_MALA_global        ,1 ,MPI_REAL8    ,0,MPI_COMM_i,ierr)
 
         end subroutine broadcast_QMC_runtime_var
 #endif           
@@ -701,82 +911,7 @@ Module QMC_runtime_var
            call broadcast_QMC_runtime_var(MPI_COMM_i)
            CALL MPI_BCAST(ham_name,64,MPI_CHARACTER,0,MPI_COMM_i,ierr)
 #endif
-           ! Fail before the (possibly long) Hamiltonian setup, not at the first sweep
-           call validate_sequential_scheme()
 
         end subroutine read_and_broadcast_QMC_var_and_ham_name
-
-!--------------------------------------------------------------------
-!> @brief
-!> Terminates if Sequential_scheme is not "standard", "delayed" or "submatrix" (case-insensitive),
-!> or if N_delay < -1 for a non-standard scheme (>= 1 fixed, 0 automatic, -1 automatic with warm-up
-!> timing; Lowrank_update_mod). Lowrank_init repeats the check.
-!--------------------------------------------------------------------
-        subroutine validate_sequential_scheme()
-
-          implicit none
-
-          Character (len=64) :: name
-
-          name = scheme_upper()
-          select case (trim(name))
-          case ("STANDARD")
-          case ("DELAYED", "SUBMATRIX")
-             if (N_delay < -1) then
-                write(error_unit,'(A,I0,A)') ' VAR_QMC: N_delay = ', N_delay, &
-                     & ' must be >= 1 (fixed), 0 (automatic) or -1 (automatic with warm-up timing)'
-                call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
-             endif
-          case default
-             write(error_unit,*) 'VAR_QMC: unknown Sequential_scheme "', trim(Sequential_scheme), &
-                  &              '" (allowed: standard, delayed, submatrix)'
-             call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
-          end select
-
-        end subroutine validate_sequential_scheme
-
-!--------------------------------------------------------------------
-!> @brief
-!> Cross-slice delay (spec D10): terminates if Lowrank_cross_slice = .T. with a low-rank scheme
-!> (delayed, submatrix) and N_Global_tau > 0 (after the Hamiltonian's override of the Global_tau
-!> parameters). No effect for Sequential_scheme = "standard" or Lowrank_cross_slice = .F.
-!> Lowrank_init repeats the check.
-!--------------------------------------------------------------------
-        subroutine validate_lowrank_cross_slice()
-
-          implicit none
-
-          Character (len=64) :: name
-
-          if (.not. Lowrank_cross_slice) return
-          name = scheme_upper()
-          if (trim(name) == "STANDARD") return
-          if (N_Global_tau > 0) then
-             write(error_unit,'(A,A,A,I0,A)') ' VAR_QMC: Lowrank_cross_slice = .T. with Sequential_scheme = ', &
-                  & trim(name), ' is not supported with Global_tau moves (N_Global_tau = ', N_Global_tau, &
-                  & ' > 0); set Lowrank_cross_slice = .F.'
-             call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
-          endif
-
-        end subroutine validate_lowrank_cross_slice
-
-!--------------------------------------------------------------------
-!> @brief
-!> Sequential_scheme, left-adjusted and in upper case (ASCII), for the validation routines.
-!--------------------------------------------------------------------
-        function scheme_upper() result(name)
-
-          implicit none
-
-          Character (len=64) :: name
-          Integer :: i, ic
-
-          name = adjustl(Sequential_scheme)
-          do i = 1, len_trim(name)
-             ic = iachar(name(i:i))
-             if (ic >= iachar('a') .and. ic <= iachar('z')) name(i:i) = achar(ic - 32)
-          enddo
-
-        end function scheme_upper
         
 end Module QMC_runtime_var
