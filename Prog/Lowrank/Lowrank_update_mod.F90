@@ -139,7 +139,8 @@ module Lowrank_update_mod
    Integer              :: last_accept_cols = 0 ! maxval(n_cols) right after the last accept (unit tests)
 
    ! ---- automatic N_delay (module header) ---------------------------------
-   Integer, parameter   :: ND_U_DELAYED = 128, ND_U_SUBMATRIX = 256, ND_L = 16  ! clamp [ND_L, U] of the static rule
+   Integer, parameter   :: ND_U_DELAYED = 128, ND_U_SUBMATRIX = 256, ND_L = 16  ! submatrix: clamp [ND_L, U] of the static rule (delayed: ND_L_DELAYED, below)
+   Integer, parameter   :: ND_L_DELAYED = 1     ! delayed: lower clamp 1 (measured optimum N = 1-2 for Ndim <= 100, SuperMUC scan 2026-11-20)
    Integer              :: lr_n0 = 0            ! static value (automatic N_delay)
    Integer              :: lr_N_delay_cap = 0   ! largest N_delay the arrays are sized for (Lowrank_set_N_delay bound)
    Logical              :: lr_print_info = .false.   ! this rank writes the info lines (group rank 0)
@@ -436,13 +437,13 @@ contains
 !--------------------------------------------------------------------
 !> @brief
 !> Static automatic N_delay , in this order:
-!> 1. raw = 2**nint(log2(Ndim/20)) (delayed) or 2**floor(log2(Ndim/12)) (submatrix); raw = 1 for
-!>    Ndim < 20 (delayed) / Ndim < 12 (submatrix);
-!> 2. n = max(16, min(U, raw)), U = 128 (delayed) or 256 (submatrix);
+!> 1. raw = 2**nint(log2(Ndim/32)) (delayed) or 2**floor(log2(Ndim/12)) (submatrix); raw = 1 for
+!>    Ndim < 23 (delayed) / Ndim < 12 (submatrix);
+!> 2. n = max(L, min(U, raw)), L = 1 (delayed) or 16 (submatrix), U = 128 (delayed) or 256 (submatrix);
 !> 3. n = min(n, max_pend); submatrix also n = min(n, Ndim);
 !> 4. n rounded down to a power of two, n = max(n, 1) (max_pend = 0 gives 1).
 !> Steps 1 and 4 in integer arithmetic (no log2 rounding at exact powers of two): delayed raw doubles
-!> while Ndim**2 >= 2 (20 raw)**2 (i.e. log2(Ndim/20) >= log2(raw) + 1/2; no ties, sqrt(2) is irrational),
+!> while Ndim**2 >= 2 (32 raw)**2 (i.e. log2(Ndim/32) >= log2(raw) + 1/2; no ties, sqrt(2) is irrational),
 !> submatrix while Ndim >= 12 (2 raw).
 !> @param [in] scheme  SCHEME_DELAYED or SCHEME_SUBMATRIX (any other value: result 0)
 !> @param [in] Ndim    dimension of G
@@ -458,7 +459,7 @@ contains
       select case (scheme)
       case (SCHEME_DELAYED)
          U = ND_U_DELAYED
-         do while (raw < U .and. nd8 * nd8 >= 2_8 * (20_8 * raw)**2)
+         do while (raw < U .and. nd8 * nd8 >= 2_8 * (32_8 * raw)**2)
             raw = 2 * raw
          enddo
       case (SCHEME_SUBMATRIX)
@@ -470,7 +471,11 @@ contains
          n = 0
          return
       end select
-      n = max(ND_L, min(U, raw))
+      if (scheme == SCHEME_DELAYED) then
+         n = max(ND_L_DELAYED, min(U, raw))
+      else
+         n = max(ND_L, min(U, raw))
+      endif
       n = Static_clamp(scheme, Ndim, max_pend, n)
    end function Lowrank_static_N_delay
 
