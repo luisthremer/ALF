@@ -151,7 +151,29 @@ def h5_text(path):
         res = subprocess.run([exe, path], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True)
     except (OSError, subprocess.CalledProcessError):
         return None
-    return res.stdout.decode(errors="replace")
+    return strip_h5_metadata(res.stdout.decode(errors="replace"))
+
+
+def strip_h5_metadata(text):
+    """Remove the attributes and the string datasets from an h5dump listing: they hold the run
+    parameters and the info text (for example N_delay and the scheme line), which differ between the runs."""
+    lines = text.splitlines()
+    out = []
+    i = 0
+    while i < len(lines):
+        head = lines[i].strip()
+        string_dataset = head.startswith("DATASET ") and any("H5T_STRING" in l for l in lines[i + 1:i + 6])
+        if head.startswith("ATTRIBUTE ") or string_dataset:
+            depth = 0
+            while i < len(lines):
+                depth += lines[i].count("{") - lines[i].count("}")
+                i += 1
+                if depth <= 0:
+                    break
+            continue
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out)
 
 
 def numbers(path):
@@ -234,7 +256,8 @@ def load_scenarios(path):
 
 
 # With one replica these models stop in a TEMPERING build of ALF master itself (checked with upstream/master:
-# Z2_Matter "Error in field setup", Hubbard_Plain_Vanilla a BLAS argument error)
+# Z2_Matter "Error in field setup", Hubbard_Plain_Vanilla a BLAS argument error). In a TEMPERING build no
+# serial scenario is run at all (see runs_here): the exchange needs two replicas.
 NO_SINGLE_REPLICA = ("Z2_Matter", "Hubbard_Plain_Vanilla")
 
 
@@ -242,8 +265,9 @@ def runs_here(sc, build, test_models):
     if sc.get("testmodel") and not test_models:
         return False
     mode = sc.get("mode", "serial")
-    if mode == "serial" and build in ("tempering", "parallel_params") \
-            and sc["pars"].get("Model") in NO_SINGLE_REPLICA:
+    if mode == "serial" and build == "tempering":
+        return False  # a single replica has no partner to exchange with; stops in ALF master as well
+    if mode == "serial" and build == "parallel_params" and sc["pars"].get("Model") in NO_SINGLE_REPLICA:
         return False
     if mode == "tempering":
         return build in ("tempering", "parallel_params")
