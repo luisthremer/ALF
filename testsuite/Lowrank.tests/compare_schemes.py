@@ -34,6 +34,7 @@ Usage:
                        [--n-delay 0 3 -1 ...] [--test-models] [--report FILE]
 """
 import argparse
+import difflib
 import filecmp
 import glob
 import json
@@ -221,7 +222,12 @@ def compare(dir_a, dir_b):
                 continue
             x, y = numbers(a), numbers(b)
             if len(x) != len(y):
-                return conf_same, worst, "%s has a different number of entries" % os.path.join(rel, name)
+                what = "%s has a different number of entries" % os.path.join(rel, name)
+                if name.endswith(".h5"):  # show where the listings differ
+                    diff = [l for l in difflib.unified_diff(h5_text(a).splitlines(), h5_text(b).splitlines(),
+                                                            lineterm="", n=0) if l[:1] in "+-" and l[:3] not in ("+++", "---")]
+                    what += "; first differing lines: " + " | ".join(l.strip() for l in diff[:8])
+                return conf_same, worst, what
             for u, v in zip(x, y):
                 worst = max(worst, abs(u - v) / max(abs(u), abs(v), 1.0))
     if n_conf == 0:
