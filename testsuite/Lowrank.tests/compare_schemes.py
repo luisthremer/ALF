@@ -163,6 +163,10 @@ def strip_h5_metadata(text):
     i = 0
     while i < len(lines):
         head = lines[i].strip()
+        if head.startswith("HDF5 "):  # the first line names the file, whose path differs between the runs
+            i += 1
+            out.append("HDF5 {")
+            continue
         string_dataset = head.startswith("DATASET ") and any("H5T_STRING" in l for l in lines[i + 1:i + 6])
         if head.startswith("ATTRIBUTE ") or string_dataset:
             depth = 0
