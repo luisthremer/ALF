@@ -15,14 +15,33 @@ endforeach(iflag)
 target_include_directories(36-lowrank-unit PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/)
 target_include_directories(36-lowrank-unit PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules/)
 enable_testing()
-add_test(NAME 36-lowrank-unit COMMAND 36-lowrank-unit)
+
+# MPI builds must be started through the MPI launcher (a bare singleton start needs the daemon of the MPI
+# installation, which is missing in some containers). One rank; as root Open MPI needs two extra flags.
+set(LOWRANK_LAUNCHER "")
+if("${FLAG_LIST}" MATCHES "-D(MPI|TEMPERING|PARALLEL_PARAMS)")
+  find_program(LOWRANK_MPIEXEC NAMES mpiexec mpirun REQUIRED)
+  set(LOWRANK_LAUNCHER ${LOWRANK_MPIEXEC})
+  execute_process(COMMAND ${LOWRANK_MPIEXEC} --version OUTPUT_VARIABLE LOWRANK_MPI_VERSION ERROR_QUIET)
+  if("${LOWRANK_MPI_VERSION}" MATCHES "Open MPI|OpenRTE")
+    list(APPEND LOWRANK_LAUNCHER --allow-run-as-root --oversubscribe)
+  endif()
+  list(APPEND LOWRANK_LAUNCHER -np 1)
+endif()
+add_test(NAME 36-lowrank-unit COMMAND ${LOWRANK_LAUNCHER} $<TARGET_FILE:36-lowrank-unit>)
 
 # Delayed and submatrix against the standard update on fixed seeds, whole runs (all serial scenarios of
 # test_branch_parameters.json plus Global_tau, MALA, continuous-field and projector runs; 2 bins each).
 find_package(Python3 COMPONENTS Interpreter)
 if(Python3_FOUND)
+  set(LOWRANK_COMPARE_LAUNCHER "")
+  if(LOWRANK_LAUNCHER)
+    string(REPLACE ";" " " LOWRANK_COMPARE_LAUNCHER "${LOWRANK_LAUNCHER}")
+    set(LOWRANK_COMPARE_LAUNCHER --launcher "${LOWRANK_COMPARE_LAUNCHER}")
+  endif()
   add_test(NAME lowrank-compare-schemes
            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/compare_schemes.py
+                   ${LOWRANK_COMPARE_LAUNCHER}
                    --exe ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/ALF.out
                    --start ${CMAKE_CURRENT_SOURCE_DIR}/../../Scripts_and_Parameters_files/Start
                    --work ${CMAKE_CURRENT_BINARY_DIR}/compare_schemes_runs --max-bins 2)
