@@ -31,6 +31,7 @@ Usage:
 """
 import argparse
 import filecmp
+import glob
 import json
 import os
 import re
@@ -122,10 +123,28 @@ def restart_files(directory):
                            os.path.join(root, "confin" + name[len("confout"):]))
 
 
+def find_h5dump():
+    """h5dump from the PATH or from the HDF5 installation ALF was built with (ALF_HDF5_DIR, or HDF5/ of the
+    source tree, one subdirectory per compiler)."""
+    found = shutil.which("h5dump")
+    if found:
+        return found
+    roots = [os.environ.get("ALF_HDF5_DIR", ""), os.path.join(HERE, "..", "..", "HDF5")]
+    for root in roots:
+        for pattern in ("*/bin/h5dump", "bin/h5dump", "*/*/bin/h5dump"):
+            hits = sorted(glob.glob(os.path.join(root, pattern))) if root else []
+            if hits:
+                return hits[0]
+    return None
+
+
 def h5_text(path):
     """Contents of an HDF5 file as text (h5dump), so that numbers() can read it; None if h5dump is missing."""
+    exe = find_h5dump()
+    if exe is None:
+        return None
     try:
-        res = subprocess.run(["h5dump", path], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True)
+        res = subprocess.run([exe, path], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True)
     except (OSError, subprocess.CalledProcessError):
         return None
     return res.stdout.decode(errors="replace")
