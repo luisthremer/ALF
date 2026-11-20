@@ -3,6 +3,22 @@
 *Written with AI assistance on `master_ai`; not part of the ALF baseline. `CHANGELOG.md` is a
 baseline file and stays as on `master`; entries for the AI features go here, in the same format.*
 
+### 2026-11-20 LOWRANK: timed automatic N_delay (`N_delay = -1`)
+Author: L. Thremer, with AI assistance
+
+1. New value `N_delay = -1` in `&VAR_LOWRANK`: starts from the static value n0 (`N_delay = 0`), times the
+   candidates {n0/2, n0, 2 n0} round-robin over the time slices of sweeps 2 and 3, and keeps the one with the
+   least wall time per proposal if it beats n0 by more than 5 %, else n0. With MPI the sums are reduced over
+   `Group_Comm`, group rank 0 decides and broadcasts. The decision is written to `info`
+   ("Auto N_delay: candidates ... chosen n"). The arrays are sized for the largest candidate.
+2. No new hook: sweeps are counted inside the feature (the WRAPGRDO call with NTAU = 1 ends a sweep), so
+   `Prog/main.F90` stays as on master and `HOOKS.md` is unchanged.
+3. `N_delay` changes only the summation order: `compare_schemes.py --n-delay -1` shows the same chain as the
+   standard update up to roundoff. `36-lowrank-unit` checks the timing logic and the error exits of
+   `Lowrank_set_N_delay` (CTest entries `36-lowrank-unit-pending`, `36-lowrank-unit-capacity`).
+4. Not in this version (it was in the research branch): the "tuning incomplete" line for runs shorter than
+   three sweeps, and the resolved N_delay in `data.h5`.
+
 ### 2026-11-20 LOWRANK: sequential MALA, Global_tau moves, CPU branch master_ai_cpu
 Author: L. Thremer, with AI assistance
 
