@@ -18,7 +18,11 @@ flipped at a near-tie) is reported as a failure, since the chains then differ.
 Usage:
     compare_schemes.py --exe <ALF>/Prog/ALF.out
                        --start <ALF>/Scripts_and_Parameters_files/Start
-                       [--work DIR] [--only NAME ...] [--max-bins N] [--tol T]
+                       [--work DIR] [--only NAME ...] [--max-bins N] [--tol T] [--n-delay 0|-1]
+
+--n-delay -1 runs the low-rank schemes with the timed automatic N_delay (the candidates switch between
+slices and the choice follows the machine timing; the chain must still agree up to roundoff). The
+"Auto N_delay:" decision line of each run is printed when timing took place (>= 3 sweeps, at least two candidates).
 """
 import argparse
 import json
@@ -84,6 +88,8 @@ def main():
     ap.add_argument("--only", nargs="*")
     ap.add_argument("--max-bins", type=int, default=None)
     ap.add_argument("--tol", type=float, default=1e-8)
+    ap.add_argument("--n-delay", type=int, default=0, choices=(0, -1),
+                    help="N_delay of the low-rank runs: 0 static rule, -1 timed automatic")
     args = ap.parse_args()
 
     with open(os.path.join(args.start, "parameters")) as f:
@@ -110,7 +116,7 @@ def main():
         dirs = {}
         rcs = {}
         for scheme in SCHEMES:
-            text = base + '\n&VAR_LOWRANK\nSequential_scheme = "%s"\nN_delay = 0\n/\n' % scheme
+            text = base + '\n&VAR_LOWRANK\nSequential_scheme = "%s"\nN_delay = %d\n/\n' % (scheme, args.n_delay)
             dirs[scheme] = os.path.join(args.work, name, scheme)
             rcs[scheme] = run(os.path.abspath(args.exe), dirs[scheme], text, seeds)
         if rcs["standard"] != 0:
@@ -121,6 +127,11 @@ def main():
                 print("FAIL  %-26s %-9s exit code %d" % (name, scheme, rcs[scheme]))
                 failed += 1
                 continue
+            decision = ""
+            if args.n_delay == -1:
+                with open(os.path.join(dirs[scheme], "info")) as f:
+                    lines = [l.strip() for l in f if l.startswith("Auto N_delay")]
+                decision = lines[0] if lines else "no decision line (fewer than 3 sweeps, or a single candidate)"
             d, bad = max_rel_diff(dirs["standard"], dirs[scheme])
             if d is None:
                 print("FAIL  %-26s %-9s %s has a different number of entries" % (name, scheme, bad))
@@ -129,6 +140,8 @@ def main():
                 ok = d <= args.tol
                 failed += 0 if ok else 1
                 print("%s  %-26s %-9s max rel diff %.2e" % ("PASS" if ok else "FAIL", name, scheme, d))
+                if decision:
+                    print("      %s" % decision)
     return 1 if failed else 0
 
 
