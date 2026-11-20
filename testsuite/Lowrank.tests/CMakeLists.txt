@@ -17,32 +17,48 @@ target_include_directories(36-lowrank-unit PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/.
 enable_testing()
 
 # MPI builds must be started through the MPI launcher (a bare singleton start needs the daemon of the MPI
-# installation, which is missing in some containers). One rank; as root Open MPI needs two extra flags.
-set(LOWRANK_LAUNCHER "")
+# installation, which is missing in some containers). As root Open MPI needs two extra flags.
+set(LOWRANK_MPIRUN "")
+set(LOWRANK_BUILD serial)
 if("${FLAG_LIST}" MATCHES "-D(MPI|TEMPERING|PARALLEL_PARAMS)")
   find_program(LOWRANK_MPIEXEC NAMES mpiexec mpirun REQUIRED)
-  set(LOWRANK_LAUNCHER ${LOWRANK_MPIEXEC})
+  set(LOWRANK_MPIRUN ${LOWRANK_MPIEXEC})
   execute_process(COMMAND ${LOWRANK_MPIEXEC} --version OUTPUT_VARIABLE LOWRANK_MPI_VERSION ERROR_QUIET)
   if("${LOWRANK_MPI_VERSION}" MATCHES "Open MPI|OpenRTE")
-    list(APPEND LOWRANK_LAUNCHER --allow-run-as-root --oversubscribe)
+    list(APPEND LOWRANK_MPIRUN --allow-run-as-root --oversubscribe)
   endif()
-  list(APPEND LOWRANK_LAUNCHER -np 1)
+  set(LOWRANK_BUILD mpi)
+  if("${FLAG_LIST}" MATCHES "-DTEMPERING")
+    set(LOWRANK_BUILD tempering)
+  endif()
+  if("${FLAG_LIST}" MATCHES "-DPARALLEL_PARAMS")
+    set(LOWRANK_BUILD parallel_params)
+  endif()
 endif()
-add_test(NAME 36-lowrank-unit COMMAND ${LOWRANK_LAUNCHER} $<TARGET_FILE:36-lowrank-unit>)
+if(LOWRANK_MPIRUN)
+  add_test(NAME 36-lowrank-unit COMMAND ${LOWRANK_MPIRUN} -np 1 $<TARGET_FILE:36-lowrank-unit>)
+else()
+  add_test(NAME 36-lowrank-unit COMMAND 36-lowrank-unit)
+endif()
 
-# Delayed and submatrix against the standard update on fixed seeds, whole runs (all serial scenarios of
-# test_branch_parameters.json plus Global_tau, MALA, continuous-field and projector runs; 2 bins each).
+# Delayed and submatrix against the standard update on fixed seeds, whole runs (compare_schemes.py): the
+# final field configuration must be byte-identical, the observables agree to 1e-8, 2 bins per scenario.
+# lowrank-compare-schemes: a representative subset (every model and the ALF features, plus the scenarios that
+# need MPI ranks in the MPI builds); lowrank-compare-schemes-full: every scenario (about 30 minutes).
 find_package(Python3 COMPONENTS Interpreter)
 if(Python3_FOUND)
-  set(LOWRANK_COMPARE_LAUNCHER "")
-  if(LOWRANK_LAUNCHER)
-    string(REPLACE ";" " " LOWRANK_COMPARE_LAUNCHER "${LOWRANK_LAUNCHER}")
-    set(LOWRANK_COMPARE_LAUNCHER --launcher "${LOWRANK_COMPARE_LAUNCHER}")
+  set(LOWRANK_COMPARE_MPI "")
+  if(LOWRANK_MPIRUN)
+    string(REPLACE ";" " " LOWRANK_MPIRUN_STRING "${LOWRANK_MPIRUN}")
+    set(LOWRANK_COMPARE_MPI --build ${LOWRANK_BUILD} --mpiexec "${LOWRANK_MPIRUN_STRING}")
   endif()
+  set(LOWRANK_COMPARE_COMMON ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/compare_schemes.py
+      ${LOWRANK_COMPARE_MPI}
+      --exe ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/ALF.out
+      --start ${CMAKE_CURRENT_SOURCE_DIR}/../../Scripts_and_Parameters_files/Start --max-bins 2)
   add_test(NAME lowrank-compare-schemes
-           COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/compare_schemes.py
-                   ${LOWRANK_COMPARE_LAUNCHER}
-                   --exe ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/ALF.out
-                   --start ${CMAKE_CURRENT_SOURCE_DIR}/../../Scripts_and_Parameters_files/Start
-                   --work ${CMAKE_CURRENT_BINARY_DIR}/compare_schemes_runs --max-bins 2)
+           COMMAND ${LOWRANK_COMPARE_COMMON} --quick --work ${CMAKE_CURRENT_BINARY_DIR}/compare_schemes_runs)
+  add_test(NAME lowrank-compare-schemes-full
+           COMMAND ${LOWRANK_COMPARE_COMMON} --work ${CMAKE_CURRENT_BINARY_DIR}/compare_schemes_runs_full)
+  set_tests_properties(lowrank-compare-schemes-full PROPERTIES TIMEOUT 7200)
 endif()
