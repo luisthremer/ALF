@@ -1587,7 +1587,7 @@ program lowrank_unit
    max_drift = 0.d0
 
    write(6,'(A,ES9.2,A,ES9.2,A)') '36-lowrank-unit: TOL_UNIT = ', TOL_UNIT, ', TOL_ILL = ', TOL_ILL, &
-        & ' (mz_illcond, bonds_illcond; the bound on the standard path's drift is not asserted there)'
+        & ' (mz_illcond, bonds_illcond; the bound on the drift of the standard path is not asserted there)'
    write(6,'(A,L1)') '  SUBMATRIX_RANKN = ', SUBMATRIX_RANKN
    write(6,'(A)') '  std_drift/ce = std_drift / (cond(1+A) * epsilon(1d0)); asserted <= 10 for every case'
    write(6,'(A)') '  rflush = flushes inside Lowrank_propose (site already pending); asserted > 0 iff submatrix,'// &
