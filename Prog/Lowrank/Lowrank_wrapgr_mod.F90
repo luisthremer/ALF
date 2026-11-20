@@ -47,16 +47,31 @@
 !>    otherwise the pending updates are flushed first, so that the baseline code sees the full G;
 !>  * after each vertex wrap of an eligible vertex: Lowrank_wrap_hook;
 !>  * the "Final" Metropolis update of an eligible vertex: Upgrade_lowrank instead of Upgrade2;
+!>  * Lowrank_tune_slice_begin / _end around the vertex loop and its flush (timed automatic N_delay = -1);
 !>  * a flush at the end of the vertex loop, i.e. before the Global_tau moves (up) and before the
 !>    hopping propagation (down), so that G is the full Green function on return.
 !> Sequential MALA vertices and the Global_tau moves (N_Global_tau, N_Global_tau_MALA) therefore run
 !> exactly as in the baseline. Keep these routines in step with WRAPGRUP / WRAPGRDO when those change.
 !>
+!> Order of the calls for one vertex n (the numbers refer to the HOW IT WORKS section of
+!> Lowrank_update_mod, which also explains the low-rank form of G):
+!> \verbatim
+!>   LR_n = Lowrank_eligible(n) .and. .not. (MALA vertex)
+!>   if (.not. LR_n) Lowrank_flush(GR)          ! baseline code below sees the full G
+!>   Op_Wrapup(GR, ...);  if (LR_n) Lowrank_wrap_hook(...)       ! first half wrap
+!>   propose HS_new, S0_ratio, T0_proposal         ! baseline code (Propose_S0: one random number here)
+!>   if (LR_n) Upgrade_lowrank(...) else Upgrade2(...)           ! ratio, accept, update of G
+!>   Op_Wrapup(GR, ...);  if (LR_n) Lowrank_wrap_hook(...)       ! second half wrap
+!>   (sequential MALA vertices: the force and the accept/reject step run on the explicit G)
+!> end of the vertex loop: Lowrank_flush(GR); then the Global_tau moves
+!> \endverbatim
+!>
 !> Runtime parameters, namelist &VAR_LOWRANK in the file parameters (optional; without it the
 !> standard update is used):
 !> \verbatim
 !>  Sequential_scheme = "standard" | "delayed" | "submatrix"
-!>  N_delay           = 0 (automatic) or >= 1 (fixed bound on the pending rank)
+!>  N_delay           = 0 (automatic, static rule), -1 (automatic, timed in sweeps 2-3) or >= 1 (fixed bound
+!>                      on the pending rank)
 !> \endverbatim
 !--------------------------------------------------------------------
 module Lowrank_wrapgr_mod
@@ -217,6 +232,8 @@ contains
        CALL HOP_MOD_mmthr   (GR(:,:,nf), nf, ntau1 )
        CALL HOP_MOD_mmthl_m1(GR(:,:,nf), nf, ntau1 )
     Enddo
+    ! Low-rank: timed automatic N_delay brackets the vertex loop and the flush (no-op unless N_delay = -1)
+    call Lowrank_tune_slice_begin()
     Do n = Nt_sequential_start,Nt_sequential_end
        L_MALA = Sequential_MALA .and. Op_V(n,1)%type == 3
        ! Low-rank: eligible vertex (not a MALA vertex) or flush of the pending updates
@@ -315,6 +332,7 @@ contains
     Enddo
     ! G is the full Green function for the Global_tau moves and on return
     call Lowrank_flush(GR)
+    call Lowrank_tune_slice_end(.false.)
 
     if (Nt_sequential_end >= Nt_sequential_start) then 
       m         = Nt_sequential_end
@@ -401,6 +419,8 @@ contains
     if ( N_Global_tau > 0 .or. N_Global_tau_MALA > 0 ) Call Wrapgr_PlaceGR(GR,m, m1, ntau)
 
     
+    ! Low-rank: timed automatic N_delay brackets the vertex loop and the flush (no-op unless N_delay = -1)
+    call Lowrank_tune_slice_begin()
     Do n =  Nt_sequential_end, Nt_sequential_start, -1
        L_MALA = Sequential_MALA .and. Op_V(n,1)%type == 3
        ! Low-rank: eligible vertex (not a MALA vertex) or flush of the pending updates
@@ -512,6 +532,8 @@ contains
     enddo
     ! G must be the full Green function before the hopping propagation and on return
     call Lowrank_flush(GR)
+    ! NTAU = 1 is the last slice of a sweep: the up sweep is NTAU = 0..Ltrot-1, the down sweep Ltrot..1
+    call Lowrank_tune_slice_end(NTAU == 1)
     DO nf_eff = 1,N_FL_eff
        nf=Calc_Fl_map(nf_eff)
        Call Hop_mod_mmthl   (GR(:,:,nf), nf,ntau)

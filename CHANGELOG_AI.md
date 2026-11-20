@@ -3,6 +3,63 @@
 *Written with AI assistance on `master_ai`; not part of the ALF baseline. `CHANGELOG.md` is a
 baseline file and stays as on `master`; entries for the AI features go here, in the same format.*
 
+### 2026-11-20 LOWRANK: static N_delay rule of the delayed scheme (`N_delay = 0`)
+Author: L. Thremer, with AI assistance
+
+1. The delayed scheme now uses n0 = 2^round(log2(Ndim/32)), at least 1 and at most 128 (before: 2^round(log2(Ndim/20)),
+   at least 16), then the unchanged limits by the largest pending rank and a power of two. The submatrix rule is unchanged.
+   Reason: SuperMUC-NG scans of N_delay found the optimum at 1-2 for Ndim <= 100; the old floor of 16 lost up to 33 % there
+   (8.6 % on average over all measured points, 3.6 % with the new rule). The timed N_delay (-1) starts from this n0, so
+   its candidates {n0/2, n0, 2 n0} now reach the small optima.
+2. `36-lowrank-unit`: expected values of the static rule re-derived by hand (comments in the test); the auto section
+   uses the static n0 of each scheme (delayed 2, submatrix 16 on the 64-site test case) instead of 16.
+   N_delay only changes the summation order: `compare_schemes.py` still gives byte-identical `confout`.
+
+### 2026-11-20 LOWRANK: strict same-chain check, all models and ALF features, CI on every build mode
+Author: L. Thremer, with AI assistance
+
+1. `compare_schemes.py` now requires the final configuration `confout*` (fields and random number generator
+   state) of the delayed and submatrix runs to be byte-identical to the standard run with the same seeds, i.e. the
+   same Markov chain, and keeps the 1e-8 relative bound for all other output. Exception: sequential MALA and
+   Global_tau MALA, whose proposal contains the Green-function force (observables to roundoff, <= 4e-11).
+   N_delay is run automatic and fixed to 3.
+2. Scenarios (`scenarios.py`): every Hamiltonian with lattices, N_SUN / N_FL variants, field types 1-4, flavour
+   reconstruction; Global_moves, Global_tau, Propose_S0, Nt_sequential ranges, Checkerboard / Symm, restart, MPI
+   (2 ranks), TEMPERING, PARALLEL_PARAMS. Test-only models (`testsuite/Lowrank.tests/models`, added by
+   `add_test_models.sh`): multi-site Jz vertices, 10-site vertices (standard fallback), continuous and discrete
+   fields in one run. Result: 264 serial scenario/scheme runs, observables <= 3.5e-11, confout identical except MALA.
+3. CI (`master-ai.yml`): MPI tests through the MPI launcher; Intel MPI compiler name for CMake; IntelLLVM unit test:
+   the bound on the drift of the standard path now scales with cond(1+A) (1.7e-10 at cond 5e7 was above the fixed
+   5e-11); GNU additionally with TEMPERING, PARALLEL_PARAMS and HDF5; full scenario set on GNU serial.
+4. `baseline_guard.py` sets the model name in both namelists (LRC and Z2_Matter were skipped before).
+5. Documentation: `Documentation/lowrank.tex` (four verification levels, compatibility table); module headers of
+   `Prog/Lowrank` explain the low-rank forms of G and the call order per vertex.
+
+### 2026-11-20 AI branch CI gates; LOWRANK checked with MPI and tempering
+Author: L. Thremer, with AI assistance
+
+1. New workflow `.github/workflows/master-ai.yml` (branches master_ai, master_ai_cpu, ai/**): hook lint,
+   baseline guard against ALF master, LOWRANK build + tests with GNU, PGI, Intel and IntelLLVM (noMPI, MPI).
+2. `baseline_guard.py` and `compare_schemes.py`: option `--launcher` (e.g. "mpirun -np 2").
+3. Checked locally (GNU, MPICH): MPI with 2 ranks, 17 scenarios, delayed/submatrix vs standard max rel.
+   difference 3.4e-11; parallel tempering with 2 replicas (U = 3, 5) max 2.8e-11.
+
+### 2026-11-20 LOWRANK: timed automatic N_delay (`N_delay = -1`)
+Author: L. Thremer, with AI assistance
+
+1. New value `N_delay = -1` in `&VAR_LOWRANK`: starts from the static value n0 (`N_delay = 0`), times the
+   candidates {n0/2, n0, 2 n0} round-robin over the time slices of sweeps 2 and 3, and keeps the one with the
+   least wall time per proposal if it beats n0 by more than 5 %, else n0. With MPI the sums are reduced over
+   `Group_Comm`, group rank 0 decides and broadcasts. The decision is written to `info`
+   ("Auto N_delay: candidates ... chosen n"). The arrays are sized for the largest candidate.
+2. No new hook: sweeps are counted inside the feature (the WRAPGRDO call with NTAU = 1 ends a sweep), so
+   `Prog/main.F90` stays as on master and `HOOKS.md` is unchanged.
+3. `N_delay` changes only the summation order: `compare_schemes.py --n-delay -1` shows the same chain as the
+   standard update up to roundoff. `36-lowrank-unit` checks the timing logic and the error exits of
+   `Lowrank_set_N_delay` (CTest entries `36-lowrank-unit-pending`, `36-lowrank-unit-capacity`).
+4. Not in this version (it was in the research branch): the "tuning incomplete" line for runs shorter than
+   three sweeps, and the resolved N_delay in `data.h5`.
+
 ### 2026-11-20 LOWRANK: sequential MALA, Global_tau moves, CPU branch master_ai_cpu
 Author: L. Thremer, with AI assistance
 

@@ -55,7 +55,7 @@ module lowrank_unit_harness
    use Lowrank_update_mod, only: Lowrank_init, Lowrank_finalize, Lowrank_propose, Lowrank_accept, &
         &                        Lowrank_wrap_hook, Lowrank_flush, Upgrade_lowrank, Lowrank_eligible, &
         &                        Lowrank_pending, Lowrank_max_pending_cols, Lowrank_current_G, &
-        &                        Lowrank_current_N_delay
+        &                        Lowrank_current_N_delay, Lowrank_set_N_delay
    implicit none
 
    integer, parameter :: dp = kind(0.d0)
@@ -144,6 +144,8 @@ module lowrank_unit_harness
    integer :: cand_scheme = 0, cand_N_delay = 0
    ! Kept for the driver; always 0 in this version
    ! (low-rank schemes); cand_N_delay is then the value in use (Lowrank_current_N_delay)
+   ! Auto section: if > 0, cand_init calls Lowrank_set_N_delay(cand_set_nd) right after Lowrank_init
+   ! (low-rank schemes); cand_N_delay is then the value in use (Lowrank_current_N_delay)
    integer :: cand_set_nd = 0
    logical :: cand_cross = .false.                  ! cross-slice variant (low-rank schemes only)
    complex(dp), allocatable :: std_Gwork(:,:,:)     ! standard: Upgrade2 on a work copy
@@ -173,6 +175,7 @@ contains
          error stop 'cand_init: unknown scheme'
       end select
       if (scheme /= SCHEME_STANDARD) then
+         if (cand_set_nd > 0) call Lowrank_set_N_delay(cand_set_nd)
          ! capacity assertion (CAP) against the value in use (N_delay <= 0: the automatic value)
          cand_N_delay = Lowrank_current_N_delay()
       endif
@@ -1381,16 +1384,24 @@ end module lowrank_kernel_equiv_section
 ! Automatic N_delay section:
 !  * Lowrank_static_N_delay against a table of hand-computed values (both schemes; Ndim x max_pend, plus rows at
 !    the rounding boundaries of the two log2 rules);
-!  * auto init (N_delay = 0): value in use and the exact info lines (incl. the K_ND suffix for submatrix with
-!    non-diagonal vertices).
+!  * auto init (N_delay = 0 / -1): value in use, the exact info lines (incl. the K_ND suffix for submatrix with
+!    non-diagonal vertices), Lowrank_set_N_delay down (n0/2) and up (2 n0) with a driver run at the new value
+!    (errors <= TOL_UNIT, pending rank right after an accept reaches exactly the new value);
+!  * the timed automatic N_delay (N_delay = -1) without main.F90: slice calls and sweep ends are driven by hand
+!    through Lowrank_tune_slice_begin / _end (round-robin candidates, decision line after sweep 3, nothing after the
+!    decision, no proposals, no-ops for N_delay = 0 and a single candidate).
+! The pending-state and capacity checks of Lowrank_set_N_delay terminate the program: they run as separate ctest
+! entries (arguments "pending" and "capacity", PASS_REGULAR_EXPRESSION on the error message), see
+! lowrank_auto_terminate below.
 module lowrank_auto_section
    use lowrank_unit_harness, only: dp, TOL_UNIT, CASE_MZ, CASE_MIXED, M_ops, setup_case, random_initial_G, &
         &                          clear_case, run_case, cand_set_nd, n_cap_bad, max_pend_cols, info_path, &
         &                          H_DELAYED => SCHEME_DELAYED, H_SUBMATRIX => SCHEME_SUBMATRIX
    use lowrank_eligibility_section, only: info_has_line, info_count_line
    use Hamiltonian_main, only: nsigma, Ndim, N_FL
-   use Lowrank_update_mod, only: Lowrank_init, Lowrank_finalize, Lowrank_static_N_delay, &
-        &                        Lowrank_current_N_delay, Upgrade_lowrank, Lowrank_flush, &
+   use Lowrank_update_mod, only: Lowrank_init, Lowrank_finalize, Lowrank_static_N_delay, Lowrank_set_N_delay, &
+        &                        Lowrank_current_N_delay, Lowrank_tune_slice_begin, Lowrank_tune_slice_end, &
+        &                        Upgrade_lowrank, Lowrank_flush, &
         &                        LR_STANDARD => SCHEME_STANDARD, LR_DELAYED => SCHEME_DELAYED, &
         &                        LR_SUBMATRIX => SCHEME_SUBMATRIX
    implicit none
@@ -1399,33 +1410,33 @@ module lowrank_auto_section
    integer, parameter :: AUTO_NDIM(N_AUTO_NDIM) = [16, 64, 144, 400, 1600, 3600, 8000]
    integer, parameter :: AUTO_MAXP(N_AUTO_MAXP) = [0, 4, 12, 1000]
    ! Expected static values (rule A2 / plan "Static rule", computed by hand), (Ndim, max_pend) column-major.
-   ! Delayed: raw = 2**nint(log2(Ndim/20)): Ndim/20 = 0.8, 3.2, 7.2, 20, 80, 180, 400 -> log2 = -0.32, 1.68, 2.85,
-   !   4.32, 6.32, 7.49, 8.64 -> raw = 1, 4, 8, 16, 64, 128, 512; clamp [16, 128] -> 16 16 16 16 64 128 128.
+   ! Delayed: raw = 2**nint(log2(Ndim/32)): Ndim/32 = 0.5, 2, 4.5, 12.5, 50, 112.5, 250 -> log2 = -1, 1, 2.17,
+   !   3.64, 5.64, 6.81, 7.97 -> raw = 1, 2, 4, 16, 64, 128, 256; clamp [1, 128] -> 1 2 4 16 64 128 128.
    ! Submatrix: raw = 2**floor(log2(Ndim/12)): Ndim/12 = 1.33, 5.33, 12, 33.3, 133, 300, 667 -> raw = 1, 4, 8, 32,
    !   128, 256, 512; clamp [16, 256] -> 16 16 16 32 128 256 256 (all <= Ndim).
-   ! Then min(n, max_pend) and round down to a power of two, >= 1: max_pend = 0 -> 1; 4 -> 4; 12 -> 8; 1000 -> as is.
+   ! Then min(n, max_pend) and round down to a power of two, >= 1: max_pend = 0 -> 1; 4 -> min(n, 4); 12 -> min(n, 8); 1000 -> as is.
    integer, parameter :: EXP_DELAYED(N_AUTO_NDIM, N_AUTO_MAXP) = reshape([ &
         &  1,  1,  1,  1,  1,   1,   1, &      ! max_pend = 0
-        &  4,  4,  4,  4,  4,   4,   4, &      ! max_pend = 4
-        &  8,  8,  8,  8,  8,   8,   8, &      ! max_pend = 12
-        & 16, 16, 16, 16, 64, 128, 128], [N_AUTO_NDIM, N_AUTO_MAXP])   ! max_pend = 1000
+        &  1,  2,  4,  4,  4,   4,   4, &      ! max_pend = 4
+        &  1,  2,  4,  8,  8,   8,   8, &      ! max_pend = 12
+        &  1,  2,  4, 16, 64, 128, 128], [N_AUTO_NDIM, N_AUTO_MAXP])   ! max_pend = 1000
    integer, parameter :: EXP_SUBMATRIX(N_AUTO_NDIM, N_AUTO_MAXP) = reshape([ &
         &  1,  1,  1,  1,   1,   1,   1, &
         &  4,  4,  4,  4,   4,   4,   4, &
         &  8,  8,  8,  8,   8,   8,   8, &
         & 16, 16, 16, 32, 128, 256, 256], [N_AUTO_NDIM, N_AUTO_MAXP])
    ! Extra rows (scheme, Ndim, max_pend, expected):
-   !  delayed   905 / 906: Ndim/20 = 45.25 / 45.3, log2 = 5.4998 / 5.5014 (boundary 20*2^5.5 = 905.1) -> 32 / 64
-   !  delayed   320: Ndim/20 = 16 exactly -> 16;  delayed 12 (Ndim < 20): raw 1 -> 16 (no Ndim clamp for delayed)
+   !  delayed   1448 / 1449: Ndim/32 = 45.25 / 45.28, log2 = 5.4998 / 5.5003 (boundary 32*2^5.5 = 1448.15) -> 32 / 64
+   !  delayed   512: Ndim/32 = 16 exactly -> 16;  delayed 12 (Ndim < 23): raw 1 -> 1 (lower clamp 1, no Ndim clamp for delayed)
    !  submatrix 383 / 384: Ndim/12 = 31.9 / 32 exactly -> 16 / 32 (floor at an exact power of two)
    !  submatrix 12: raw 1 -> 16, min(max_pend 1000, Ndim 12) = 12 -> 8;  submatrix 8 (Ndim < 12): 16 -> min 8 -> 8
    !  submatrix 3600 with max_pend 100: 256 -> 100 -> 64;  standard: 0 (not a low-rank scheme)
    integer, parameter :: N_EXTRA = 10
    integer, parameter :: EXTRA_ROWS(4, N_EXTRA) = reshape([ &
-        & LR_DELAYED,    905, 1000,  32, &
-        & LR_DELAYED,    906, 1000,  64, &
-        & LR_DELAYED,    320, 1000,  16, &
-        & LR_DELAYED,     12, 1000,  16, &
+        & LR_DELAYED,   1448, 1000,  32, &
+        & LR_DELAYED,   1449, 1000,  64, &
+        & LR_DELAYED,    512, 1000,  16, &
+        & LR_DELAYED,     12, 1000,   1, &
         & LR_SUBMATRIX,  383, 1000,  16, &
         & LR_SUBMATRIX,  384, 1000,  32, &
         & LR_SUBMATRIX,   12, 1000,   8, &
@@ -1468,6 +1479,38 @@ contains
       close(u)
    end function info_last_with_prefix
 
+   ! Number of lines of the file info that start with prefix (after adjustl).
+   integer function info_count_prefix(prefix)
+      character(len=*), intent(in) :: prefix
+      character(len=256) :: line
+      integer :: u, ios
+      logical :: ex
+      info_count_prefix = 0
+      inquire(file=info_path, exist=ex)
+      if (.not. ex) return
+      open(newunit=u, file=info_path, status='old', action='read')
+      do
+         read(u, '(A)', iostat=ios) line
+         if (ios /= 0) exit
+         line = adjustl(line)
+         if (len_trim(line) >= len(prefix)) then
+            if (line(1:len(prefix)) == prefix) info_count_prefix = info_count_prefix + 1
+         endif
+      enddo
+      close(u)
+   end function info_count_prefix
+
+   ! One "slice" of the timing tests: every vertex of the current case proposed once, then the slice-end flush.
+   subroutine tune_slice(G, phase)
+      complex(dp), intent(inout) :: G(:,:,:), phase
+      integer :: n
+      logical :: toggle
+      do n = 1, M_ops
+         call Upgrade_lowrank(G, n, 1, phase, nsigma%flip(n, 1), 1.d0, 1.d0, toggle)
+      enddo
+      call Lowrank_flush(G)
+   end subroutine tune_slice
+
    character(len=16) function itoa(i)
       integer, intent(in) :: i
       write(itoa,'(I0)') i
@@ -1483,8 +1526,12 @@ contains
       real(dp) :: rerr, gerr
       complex(dp), allocatable :: G(:,:,:), Aex(:,:,:)
       complex(dp) :: phase
-      logical :: ok, toggle
+      logical :: ok
       integer :: nd_seen(3)
+      ! Static n0 on case mz (Ndim = 64, max_pend = 64): delayed raw = 2**nint(log2(64/32)) = 2 (lower clamp 1);
+      ! submatrix raw = 2**floor(log2(64/12)) = 4, clamp [16, 256] -> 16. Timed candidates {n0/2, n0, 2 n0}.
+      integer, parameter :: N0_MZ(2) = [2, 16]
+      integer :: n0, cand(3)
 
       sch_lr = [LR_DELAYED, LR_SUBMATRIX]
       sch_h  = [H_DELAYED, H_SUBMATRIX]
@@ -1520,14 +1567,52 @@ contains
          endif
       enddo
 
-      ! ---- auto init on case mz (Ndim = 64, 64 diagonal rank-1 vertices: max_pend = 64, n0 = 16) ----
+      ! ---- auto init on case mz (Ndim = 64, 64 diagonal rank-1 vertices: max_pend = 64, n0 = N0_MZ(is)) ----
       do is = 1, 2
+         n0 = N0_MZ(is)
          call setup_case(CASE_MZ)
          call Lowrank_init(trim(sname(is)), 0)
-         call auto_check(Lowrank_current_N_delay() == 16, trim(sname(is))//' N_delay = 0 on mz: n0 = 16', n_fail)
+         call auto_check(Lowrank_current_N_delay() == n0, trim(sname(is))//' N_delay = 0 on mz: n0 = '//trim(itoa(n0)), n_fail)
          call auto_check(info_has_line('Sequential scheme: '//trim(sname(is))// &
-              & ', N_delay = auto (static n0 = 16, Ndim = 64)'), 'info: '//trim(sname(is))//' auto line', n_fail)
+              & ', N_delay = auto (static n0 = '//trim(itoa(n0))//', Ndim = 64)'), 'info: '//trim(sname(is))//' auto line', n_fail)
+         ! N_delay = 0: capacity n0 (no timing), so only steps down within it
+         call Lowrank_set_N_delay(n0 / 2)
+         call auto_check(Lowrank_current_N_delay() == n0 / 2, trim(sname(is))//' N_delay = 0: set down to n0/2', n_fail)
+         call Lowrank_set_N_delay(n0)
+         call auto_check(Lowrank_current_N_delay() == n0, trim(sname(is))//' N_delay = 0: set back to n0 (capacity)', &
+              & n_fail)
          call Lowrank_finalize()
+         ! N_delay = -1: capacity 2 n0 (largest candidate)
+         call Lowrank_init(trim(sname(is)), -1)
+         call auto_check(Lowrank_current_N_delay() == n0, trim(sname(is))//' N_delay = -1 on mz: n0 = '//trim(itoa(n0)), n_fail)
+         call auto_check(info_has_line('Sequential scheme: '//trim(sname(is))// &
+              & ', N_delay = auto+tune (static n0 = '//trim(itoa(n0))//', Ndim = 64)'), 'info: '//trim(sname(is))//' auto+tune line', &
+              & n_fail)
+         call Lowrank_set_N_delay(n0 / 2)
+         call auto_check(Lowrank_current_N_delay() == n0 / 2, trim(sname(is))//' N_delay = -1: set down to n0/2', n_fail)
+         call Lowrank_set_N_delay(2 * n0)
+         call auto_check(Lowrank_current_N_delay() == 2 * n0, trim(sname(is))//' N_delay = -1: set up to 2 n0 (capacity)', &
+              & n_fail)
+         call Lowrank_set_N_delay(n0)
+         call auto_check(Lowrank_current_N_delay() == n0, trim(sname(is))//' N_delay = -1: set back to n0', n_fail)
+         call Lowrank_finalize()
+      enddo
+
+      ! ---- driver runs after Lowrank_set_N_delay (init N_delay = 0 for the step down, -1 for the step up) ----
+      write(6,'(A)') '  driver after Lowrank_set_N_delay: scheme init set dir max_ratio_err max_G_err pmax'
+      do is = 1, 2
+         do k = 1, 2
+            nset = merge(N0_MZ(is) / 2, 2 * N0_MZ(is), k == 1)     ! n0/2 (step down), 2 n0 (step up)
+            do idir = 1, 2
+               cand_set_nd = nset
+               call run_case(CASE_MZ, sch_h(is), 1 - k, trim(dirs(idir)), rerr, gerr)
+               cand_set_nd = 0
+               ok = rerr <= TOL_UNIT .and. gerr <= TOL_UNIT .and. n_cap_bad == 0 .and. max_pend_cols == nset
+               write(6,'(A,A9,1X,I3,1X,I3,1X,A4,1X,ES11.4,1X,ES11.4,1X,I4,1X,A)') '  driver ', sname(is), 1 - k, &
+                    & nset, dirs(idir), rerr, gerr, max_pend_cols, merge('ok  ', 'FAIL', ok)
+               if (.not. ok) n_fail = n_fail + 1
+            enddo
+         enddo
       enddo
 
       ! ---- K_ND note: submatrix with non-diagonal eligible vertices (case mixed: Ndim = 48, max_pend = 60) ----
@@ -1538,10 +1623,157 @@ contains
            & ' (K_ND = 1: non-diagonal blocks flush immediately)'), 'info: submatrix auto line with the K_ND note', n_fail)
       call Lowrank_init('delayed', 0)
       call Lowrank_finalize()
-      call auto_check(info_has_line('Sequential scheme: DELAYED, N_delay = auto (static n0 = 16, Ndim = 48)'), &
+      ! delayed on Ndim = 48: 48/32 = 1.5, 48**2 = 2304 >= 2 * 32**2 = 2048 -> raw 2, so n0 = 2 (submatrix: 16)
+      call auto_check(info_has_line('Sequential scheme: DELAYED, N_delay = auto (static n0 = 2, Ndim = 48)'), &
            & 'info: delayed auto line without the K_ND note', n_fail)
 
+      ! ---- timing state machine (case mz, N_delay = -1: candidates n0/2 n0 2 n0); sweep 1: 2 slices, sweeps 2 and 3: 3 slices ----
+      call setup_case(CASE_MZ)
+      allocate(G(Ndim, Ndim, N_FL), Aex(Ndim, Ndim, N_FL))
+      do is = 1, 2
+         n0 = N0_MZ(is)
+         cand = [n0 / 2, n0, 2 * n0]
+         do i = 1, N_FL
+            call random_initial_G(G(:,:,i), Aex(:,:,i))
+         enddo
+         call Lowrank_init(trim(sname(is)), -1)
+         phase = cmplx(1.d0, 0.d0, dp)
+         nd_seen = 0
+         ok = .true.
+         do k = 1, 2                                  ! sweep 1: warm-up, N_delay stays n0
+            call Lowrank_tune_slice_begin()
+            ok = ok .and. Lowrank_current_N_delay() == n0
+            call tune_slice(G, phase)
+            call Lowrank_tune_slice_end(k == 2)
+         enddo
+         call auto_check(ok, trim(sname(is))//' timing: sweep 1 is not timed (N_delay = n0)', n_fail)
+         do j = 2, 3                                  ! sweeps 2 and 3
+            do k = 1, 3
+               call Lowrank_tune_slice_begin()
+               if (j == 2) nd_seen(k) = Lowrank_current_N_delay()
+               ok = ok .and. Lowrank_current_N_delay() == cand(k)
+               call tune_slice(G, phase)
+               call Lowrank_tune_slice_end(k == 3)    ! the last slice of sweep 3 decides
+            enddo
+         enddo
+         call auto_check(all(nd_seen == cand) .and. ok, &
+              & trim(sname(is))//' timing: round-robin candidates n0/2 n0 2 n0 in sweeps 2 and 3', n_fail)
+         nd_cur = Lowrank_current_N_delay()
+         line = info_last_with_prefix('Auto N_delay: candidates '//trim(itoa(cand(1)))//' '//trim(itoa(cand(2)))//' '// &
+              & trim(itoa(cand(3)))//': ')
+         call auto_check(any(nd_cur == cand) .and. len_trim(line) > 0 .and. &
+              & index(line, ' s/proposal, chosen '//trim(itoa(nd_cur))) > 0 .and. &
+              & line(len_trim(line) - len_trim(itoa(nd_cur)) + 1:len_trim(line)) == trim(itoa(nd_cur)), &
+              & trim(sname(is))//' timing: decision line "'//trim(line)//'"', n_fail)
+         c_before = info_count_line(trim(line))
+         do j = 4, 5                                  ! after the decision: no change, no second decision
+            do k = 1, 3
+               call Lowrank_tune_slice_begin()
+               call tune_slice(G, phase)
+               call Lowrank_tune_slice_end(k == 3)
+            enddo
+         enddo
+         call auto_check(Lowrank_current_N_delay() == nd_cur .and. info_count_line(trim(line)) == c_before, &
+              & trim(sname(is))//' timing: inactive after the decision', n_fail)
+         call Lowrank_finalize()
+      enddo
+      deallocate(G, Aex)
+
+      ! no proposals in sweeps 2-3: n0 kept, logged once
+      n0 = N0_MZ(1)
+      c_before = info_count_line('Auto N_delay: tuning skipped (no proposals), N_delay = '//trim(itoa(n0)))
+      call Lowrank_init('delayed', -1)
+      do j = 1, 3
+         call Lowrank_tune_slice_begin()
+         call Lowrank_tune_slice_end(.true.)
+      enddo
+      call auto_check(Lowrank_current_N_delay() == n0 .and. &
+           & info_count_line('Auto N_delay: tuning skipped (no proposals), N_delay = '//trim(itoa(n0))) == c_before + 1, &
+           & 'timing without proposals: n0 kept, "no proposals" logged once', n_fail)
+      call Lowrank_finalize()
+
+      ! N_delay = 0: the timing calls are no-ops
+      c_before = info_count_prefix('Auto N_delay:')
+      call Lowrank_init('delayed', 0)
+      do j = 1, 4
+         call Lowrank_tune_slice_begin()
+         call Lowrank_tune_slice_end(.true.)
+      enddo
+      call auto_check(Lowrank_current_N_delay() == n0 .and. info_count_prefix('Auto N_delay:') == c_before, &
+           & 'N_delay = 0: timing calls change nothing and log nothing', n_fail)
+      call Lowrank_finalize()
+
+      ! single candidate: one sequential vertex (max_pend = 1): n0 = 1, candidates {1}: no timing
+      call Lowrank_init('delayed', -1, Nt_start=1, Nt_end=1)
+      do j = 1, 4
+         call Lowrank_tune_slice_begin()
+         call Lowrank_tune_slice_end(.true.)
+      enddo
+      call auto_check(Lowrank_current_N_delay() == 1 .and. &
+           & info_has_line('Sequential scheme: DELAYED, N_delay = auto+tune (static n0 = 1, Ndim = 64), '// &
+           & 'single candidate: no timing'), 'Nt_start = Nt_end = 1: n0 = 1, "single candidate", no timing', n_fail)
+      call Lowrank_finalize()
+      ! empty sequential range (Nt_end < Nt_start): max_pend = 0, n0 = 1
+      call Lowrank_init('submatrix', 0, Nt_start=5, Nt_end=4)
+      call auto_check(Lowrank_current_N_delay() == 1 .and. &
+           & info_has_line('Sequential scheme: SUBMATRIX, N_delay = auto (static n0 = 1, Ndim = 64)'), &
+           & 'Nt_end < Nt_start: max_pend = 0, n0 = 1', n_fail)
+      call Lowrank_finalize()
+      ! default range = 1 .. size(Op_V,1): the same as passing it explicitly
+      call Lowrank_init('delayed', 0, Nt_start=1, Nt_end=M_ops)
+      call auto_check(Lowrank_current_N_delay() == n0, 'explicit range 1..M: the static n0', n_fail)
+      call Lowrank_finalize()
+
+      ! timing calls without Lowrank_init (Langevin, Sequential = .F.) or with the standard scheme: no-ops
+      call Lowrank_tune_slice_begin()
+      call Lowrank_tune_slice_end(.true.)
+      call Lowrank_init('standard', 0)
+      do j = 1, 4
+         call Lowrank_tune_slice_begin()
+         call Lowrank_tune_slice_end(.true.)
+      enddo
+      call Lowrank_finalize()
+      call auto_check(.true., 'timing calls without Lowrank_init / with "standard": no-op', n_fail)
+      call clear_case()
+
    end subroutine run_auto_section
+
+   ! Must terminate with Lowrank_set_N_delay's error message (ctest PASS_REGULAR_EXPRESSION): "pending" calls it
+   ! with one accepted vertex pending, "capacity" asks for 3 after an N_delay = 0 init of the delayed scheme on case mz (capacity n0 = 2).
+   ! Returns only if the call did not terminate (no error message: the test fails).
+   subroutine lowrank_auto_terminate(mode)
+      use Lowrank_update_mod, only: Lowrank_propose, Lowrank_accept, Lowrank_pending
+      character(len=*), intent(in) :: mode
+      complex(dp), allocatable :: G(:,:,:), Aex(:,:,:)
+      complex(dp) :: ratio, hs_new
+      integer :: nf
+      call setup_case(CASE_MZ)
+      allocate(G(Ndim, Ndim, N_FL), Aex(Ndim, Ndim, N_FL))
+      do nf = 1, N_FL
+         call random_initial_G(G(:,:,nf), Aex(:,:,nf))
+      enddo
+      call Lowrank_init('delayed', 0)
+      select case (mode)
+      case ('pending')
+         hs_new = nsigma%flip(1, 1)
+         call Lowrank_propose(G, 1, 1, hs_new, ratio)
+         call Lowrank_accept(G, 1, 1, hs_new)
+         if (Lowrank_pending() /= 1) then
+            write(6,'(A,I0)') '36-lowrank-unit pending: SETUP FAILED, pending = ', Lowrank_pending()
+            return
+         endif
+         write(6,'(A)') '36-lowrank-unit pending: Lowrank_set_N_delay(8) with 1 accepted vertex pending (must terminate)'
+         call Lowrank_set_N_delay(8)
+      case ('capacity')
+         write(6,'(A)') '36-lowrank-unit capacity: Lowrank_set_N_delay(3) above the N_delay = 0 capacity n0 = 2'// &
+              & ' (must terminate)'
+         call Lowrank_set_N_delay(3)
+      case default
+         write(6,'(A,A)') '36-lowrank-unit: unknown argument ', trim(mode)
+         return
+      end select
+      write(6,'(A)') '36-lowrank-unit '//trim(mode)//': Lowrank_set_N_delay returned (NOT terminated)'
+   end subroutine lowrank_auto_terminate
 
 end module lowrank_auto_section
 
@@ -1550,7 +1782,7 @@ program lowrank_unit
    use lowrank_unit_harness
    use lowrank_eligibility_section, only: run_eligibility_section
    use lowrank_kernel_equiv_section, only: run_kernel_equivalence
-   use lowrank_auto_section, only: run_auto_section
+   use lowrank_auto_section, only: run_auto_section, lowrank_auto_terminate
 #ifdef MPI
    use mpi
    use Hamiltonian_main, only: Group_Comm
@@ -1563,6 +1795,7 @@ program lowrank_unit
    character(len=4) :: flag
    logical :: info_existed
    integer :: u_info
+   character(len=32) :: arg1
 #ifdef MPI
    integer :: ierr
 #endif
@@ -1586,8 +1819,20 @@ program lowrank_unit
    inquire(file=info_path, exist=info_existed)
    max_drift = 0.d0
 
+   ! Argument "pending" / "capacity" (ctest 36-lowrank-unit-pending / -capacity, PASS_REGULAR_EXPRESSION on the
+   ! error message): only the Lowrank_set_N_delay call that must terminate. If it returns, no message: the test fails.
+   arg1 = ''
+   if (command_argument_count() >= 1) call get_command_argument(1, arg1)
+   if (len_trim(arg1) > 0) then
+      call lowrank_auto_terminate(trim(arg1))
+#ifdef MPI
+      call MPI_Finalize(ierr)
+#endif
+      stop
+   endif
+
    write(6,'(A,ES9.2,A,ES9.2,A)') '36-lowrank-unit: TOL_UNIT = ', TOL_UNIT, ', TOL_ILL = ', TOL_ILL, &
-        & ' (mz_illcond, bonds_illcond; the fixed bound drift <= TOL_UNIT/2 is not asserted there)'
+        & ' (mz_illcond, bonds_illcond; the bound on the drift of the standard path is not asserted there)'
    write(6,'(A,L1)') '  SUBMATRIX_RANKN = ', SUBMATRIX_RANKN
    write(6,'(A)') '  std_drift/ce = std_drift / (cond(1+A) * epsilon(1d0)); asserted <= 10 for every case'
    write(6,'(A)') '  rflush = flushes inside Lowrank_propose (site already pending); asserted > 0 iff submatrix,'// &
@@ -1619,11 +1864,16 @@ program lowrank_unit
                   flag = 'FAIL'
                   n_fail = n_fail + 1
                endif
-               ! TOL_UNIT must stay >= 2x the standard path's own drift vs exact. Not asserted
-               ! for the ill-conditioned cases: the double-precision "exact" inverse is unreliable
-               ! at cond ~1e8. Every rank-N case meets it (no exemption; couplings: V_BOND, G_ND, U_REP).
+               ! The low-rank errors above are measured against the standard path, not against the exact
+               ! inverse, so the standard path's own drift enters only as a sanity bound. For the cases with
+               ! cond(1+A) <~ 1e6 it must stay below TOL_UNIT/2; for the harder cases (nd_zero ~5e7,
+               ! rep_mixed ~7e7) the exact inverse itself carries an error ~ cond*eps (1.1e-8 at 5e7), so the
+               ! bound is relaxed to 0.1 * cond * eps. Measured drift/(cond*eps) is <= 0.34 for all cases
+               ! (ifx -fp-model=fast=2 gives 1.7e-10 at nd_zero, ratio 0.015); the hard bound
+               ! drift <= 10 * cond * eps is asserted below (flag COND). Not asserted for the ill-conditioned
+               ! cases (cond ~1e8: the double-precision reference is unreliable there).
                if (.not. illcond_case(ic)) then
-                  if (drift > 0.5d0 * TOL_UNIT .or. drift /= drift) then
+                  if (drift > max(0.5d0 * TOL_UNIT, 0.1d0 * cond_1pA_last * epsilon(1.d0)) .or. drift /= drift) then
                      flag = 'DRFT'
                      n_fail = n_fail + 1
                   endif
