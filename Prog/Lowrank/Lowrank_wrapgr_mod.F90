@@ -53,6 +53,19 @@
 !> Sequential MALA vertices and the Global_tau moves (N_Global_tau, N_Global_tau_MALA) therefore run
 !> exactly as in the baseline. Keep these routines in step with WRAPGRUP / WRAPGRDO when those change.
 !>
+!> Order of the calls for one vertex n (the numbers refer to the HOW IT WORKS section of
+!> Lowrank_update_mod, which also explains the low-rank form of G):
+!> \verbatim
+!>   LR_n = Lowrank_eligible(n) .and. .not. (MALA vertex)
+!>   if (.not. LR_n) Lowrank_flush(GR)          ! baseline code below sees the full G
+!>   Op_Wrapup(GR, ...);  if (LR_n) Lowrank_wrap_hook(...)       ! first half wrap
+!>   propose HS_new, S0_ratio, T0_proposal         ! baseline code (Propose_S0: one random number here)
+!>   if (LR_n) Upgrade_lowrank(...) else Upgrade2(...)           ! ratio, accept, update of G
+!>   Op_Wrapup(GR, ...);  if (LR_n) Lowrank_wrap_hook(...)       ! second half wrap
+!>   (sequential MALA vertices: the force and the accept/reject step run on the explicit G)
+!> end of the vertex loop: Lowrank_flush(GR); then the Global_tau moves
+!> \endverbatim
+!>
 !> Runtime parameters, namelist &VAR_LOWRANK in the file parameters (optional; without it the
 !> standard update is used):
 !> \verbatim
