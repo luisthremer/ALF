@@ -86,6 +86,24 @@
 !> summation order of the exact update, so the Markov chain is that of the standard update up to
 !> roundoff.
 !>
+!> Timed automatic N_delay (N_delay = -1): starts from n0 and times the candidates {n0/2, n0, 2 n0}, each
+!> clamped as steps 3-4 of the static rule (repeats dropped), because the optimum depends on the machine
+!> (BLAS, cache). Lowrank_wrapgrup / Lowrank_wrapgrdo bracket the sequential part of every slice (the vertex
+!> loop and the slice-end flush; no hopping wrap, no Global_tau move) with Lowrank_tune_slice_begin / _end.
+!> A sweep is one up sweep (WRAPGRUP, NTAU = 0 .. Ltrot-1) followed by one down sweep (WRAPGRDO,
+!> NTAU = Ltrot .. 1), so the call of WRAPGRDO with NTAU = 1 ends a sweep (flag sweep_end of
+!> Lowrank_tune_slice_end); main.F90 needs no hook for this. Sweep 1 is not timed (warm-up). In sweeps 2
+!> and 3 the i-th slice call runs with candidate mod(i-1, ncand)+1 and adds its wall time and its number of
+!> Upgrade_lowrank proposals to that candidate. At the end of sweep 3 the candidate with the least wall
+!> seconds per proposal is chosen if it beats n0 by more than 5 % (TUNE_GAIN), else n0 (n0 also if a
+!> candidate had no proposal), and stays fixed for the rest of the run. MPI: the sums are reduced over
+!> Group_Comm, group rank 0 decides and broadcasts (the only collective; every rank of the group reaches
+!> it at the same slice call). The decision is logged as "Auto N_delay: candidates a b c: t_a t_b t_c
+!> s/proposal, chosen n" in info. A run shorter than three sweeps keeps cycling the candidates and logs
+!> nothing. The arrays are sized for the largest candidate, so switching never reallocates; a switch
+!> happens only between slices, where G is flushed. The chain is that of a fixed N_delay up to roundoff
+!> (near-ties of accept decisions aside), whichever candidate runs.
+!>
 !> Numerics compared with the baseline: the determinant ratios and Green functions are the same
 !> quantities, computed in a different summation order (roundoff-level differences only). The random
 !> number stream is consumed in the same order as by Upgrade2.
@@ -101,7 +119,8 @@ module Lowrank_update_mod
 
    public :: Lowrank_init, Lowrank_finalize, Lowrank_initialised, Lowrank_active, Lowrank_eligible, &
         &    Lowrank_pending, Lowrank_assert_flushed, Lowrank_max_pending_cols
-   public :: Lowrank_static_N_delay, Lowrank_current_N_delay
+   public :: Lowrank_static_N_delay, Lowrank_current_N_delay, Lowrank_set_N_delay, &
+        &    Lowrank_tune_slice_begin, Lowrank_tune_slice_end
    public :: Lowrank_propose, Lowrank_accept, Upgrade_lowrank, Lowrank_wrap_hook, &
         &    Lowrank_flush, Lowrank_current_G
 
@@ -122,6 +141,24 @@ module Lowrank_update_mod
    ! ---- automatic N_delay (module header) ---------------------------------
    Integer, parameter   :: ND_U_DELAYED = 128, ND_U_SUBMATRIX = 256, ND_L = 16  ! clamp [ND_L, U] of the static rule
    Integer              :: lr_n0 = 0            ! static value (automatic N_delay)
+   Integer              :: lr_N_delay_cap = 0   ! largest N_delay the arrays are sized for (Lowrank_set_N_delay bound)
+   Logical              :: lr_print_info = .false.   ! this rank writes the info lines (group rank 0)
+   Character (len=64)   :: lr_info_file = "info"     ! info, or Temp_<igroup>/info in tempering builds
+
+   ! ---- timed automatic N_delay, N_delay = -1 (module header) -------------
+   Real (Kind=Kind(0.d0)), parameter :: TUNE_GAIN = 0.95d0  ! a candidate wins only if < 0.95 x n0's time per proposal
+   Logical                  :: tune_requested = .false.  ! N_delay = -1 with at least 2 distinct candidates
+   Logical                  :: tune_active = .false.     ! sweeps 2-3: the slice calls are timed
+   Logical                  :: tune_done = .true.        ! nothing (more) to time: decided, or not requested
+   Integer                  :: tune_sweeps = 0           ! completed sweeps (counted up to 3)
+   Integer                  :: tune_ncand = 0
+   Integer                  :: tune_cand(3) = 0          ! distinct candidates, ascending
+   Integer                  :: tune_cur = 0              ! candidate of the open slice call (0: none open)
+   Real (Kind=Kind(0.d0))   :: tune_time(3) = 0.d0       ! wall seconds per candidate
+   Integer (Kind=Kind(0_8)) :: tune_nprop(3) = 0         ! Upgrade_lowrank proposals per candidate
+   Integer (Kind=Kind(0_8)) :: tune_ncalls = 0           ! timed slice calls so far
+   Integer (Kind=Kind(0_8)) :: tune_t0 = 0, tune_p0 = 0  ! clock count and n_upgrade_lowrank at the start of the open call
+   Integer (Kind=Kind(0_8)) :: n_upgrade_lowrank = 0     ! Upgrade_lowrank calls (proposals)
 
    ! ---- cache of the last Lowrank_propose (consumed by Lowrank_accept) ---
    Logical                                :: prop_valid = .false.
@@ -170,7 +207,7 @@ contains
 !> @details
 !> For "standard" nothing is printed and nothing is allocated. For a low-rank scheme the line
 !> "Sequential scheme: <NAME>, N_delay = <n>" (fixed N_delay) or "..., N_delay = auto (static
-!> n0 = <n0>, Ndim = <Ndim>)" (N_delay = 0) is written to output_unit and appended to the file info
+!> n0 = <n0>, Ndim = <Ndim>)" (N_delay = 0; "auto+tune" for N_delay = -1) is written to output_unit and appended to the file info
 !> (Temp_<g>/info in tempering builds), by group rank 0. For submatrix with automatic N_delay and a
 !> non-diagonal eligible vertex in the sequential range, " (K_ND = 1: non-diagonal blocks flush
 !> immediately)" is appended. If vertices are ineligible, one further line gives their number and the
@@ -184,7 +221,8 @@ contains
 !> Integer
 !> \verbatim
 !>  Bound on the pending rank per flavour (delayed: columns of X; submatrix: pending sites k = |S|,
-!>  padded sites included), see the module header. >= 1: fixed; 0: automatic; < 0 terminates.
+!>  padded sites included), see the module header. >= 1: fixed; 0: automatic (static rule);
+!>  -1: automatic, timed in sweeps 2-3; < -1 terminates.
 !>  Ignored for "standard".
 !> \endverbatim
 !> @param [in] Nt_start, Nt_end
@@ -210,7 +248,7 @@ contains
       Character (len=:), allocatable :: name
       Character (len=256)            :: line, line2, line_inel
       Character (len=64)             :: file_info
-      Integer :: n, nf, M, n_inel, n_first, unit_info, nts, nte, rmax, max_pend, N_delay_cap
+      Integer :: n, nf, M, n_inel, n_first, unit_info, nts, nte, rmax, max_pend, N_delay_cap, k, c
       Logical :: print_info, nd_any
 #ifdef MPI
       Integer :: ierr, irank, irank_g, isize_g, igroup
@@ -234,9 +272,9 @@ contains
               &              '" (allowed: standard, delayed, submatrix)'
          CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
       end select
-      if (N_delay < 0) then
+      if (N_delay < -1) then
          Write(error_unit,'(A,I0,A)') ' Lowrank_init: N_delay = ', N_delay, &
-              & ' must be >= 1 (fixed) or 0 (automatic)'
+              & ' must be >= 1 (fixed), 0 (automatic) or -1 (automatic, timed)'
          CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
       endif
       M = size(Op_V, 1)
@@ -275,6 +313,8 @@ contains
          enddo
          max_pend = max_pend + rmax
       enddo
+      tune_ncand = 0
+      tune_cand  = 0
       if (N_delay >= 1) then
          lr_n0      = 0
          lr_N_delay = N_delay
@@ -283,6 +323,20 @@ contains
          lr_N_delay = lr_n0
       endif
       N_delay_cap = lr_N_delay
+      if (N_delay == -1) then
+         ! candidates {n0/2, n0, 2 n0}, each through steps 3-4 of the static rule; non-decreasing, so drop repeats;
+         ! the arrays are sized for the largest one, so that Lowrank_set_N_delay never reallocates
+         do k = 1, 3
+            c = Static_clamp(lr_scheme, Ndim, max_pend, int(min(int(lr_n0,8) * 2_8**(k-1) / 2_8, int(huge(1),8))))
+            if (tune_ncand > 0) then
+               if (tune_cand(tune_ncand) == c) cycle
+            endif
+            tune_ncand = tune_ncand + 1
+            tune_cand(tune_ncand) = c
+         enddo
+         N_delay_cap = maxval(tune_cand(1:tune_ncand))
+      endif
+      lr_N_delay_cap = N_delay_cap
 
       ! Capacity (module header). Delayed: at most M*N_P_LIM columns can be pending (G is flushed at
       ! every slice end). Submatrix: at most Ndim distinct sites; after an accept k <= max(N_delay, N_P_LIM),
@@ -330,9 +384,16 @@ contains
       if (N_delay >= 1) then
          write(line,'(A,A,A,I0)') 'Sequential scheme: ', name, ', N_delay = ', N_delay
       else
-         write(line,'(A,A,A)') 'Sequential scheme: ', name, ', N_delay = auto'
+         if (N_delay == 0) then
+            write(line,'(A,A,A)') 'Sequential scheme: ', name, ', N_delay = auto'
+         else
+            write(line,'(A,A,A)') 'Sequential scheme: ', name, ', N_delay = auto+tune'
+         endif
          write(line2,'(A,I0,A,I0,A)') ' (static n0 = ', lr_n0, ', Ndim = ', Ndim, ')'
          line = trim(line) // trim(line2)
+         if (N_delay == -1) then
+            if (tune_ncand < 2) line = trim(line) // ', single candidate: no timing'
+         endif
          if (lr_scheme == SCHEME_SUBMATRIX .and. nd_any) &
               & line = trim(line) // ' (K_ND = 1: non-diagonal blocks flush immediately)'
       endif
@@ -353,6 +414,14 @@ contains
       write(file_info,'(A,I0,A)') "Temp_", igroup, "/info"
 #endif
 #endif
+      lr_print_info = print_info
+      lr_info_file  = file_info
+      ! Timing (N_delay = -1) needs two distinct candidates; otherwise N_delay = n0 for the whole run
+      tune_requested = (N_delay == -1 .and. tune_ncand >= 2)
+      tune_active    = .false.
+      tune_done      = .not. tune_requested
+      tune_sweeps    = 0
+      tune_cur       = 0
       if (print_info) then
          write(output_unit,'(A)') trim(line)
          if (n_inel > 0) write(output_unit,'(A)') trim(line_inel)
@@ -425,13 +494,165 @@ contains
 
 !--------------------------------------------------------------------
 !> @brief
-!> The N_delay in use (fixed or the static n0; 0 if no low-rank
+!> The N_delay in use (fixed, the static n0, a timing candidate or the tuned value; 0 if no low-rank
 !> scheme is active).
 !--------------------------------------------------------------------
    integer function Lowrank_current_N_delay()
       Implicit none
       Lowrank_current_N_delay = lr_N_delay
    end function Lowrank_current_N_delay
+
+!--------------------------------------------------------------------
+!> @brief
+!> Sets the N_delay in use. Requires a flushed state (no accepted vertex pending) and
+!> 1 <= n <= the N_delay the arrays were sized for at Lowrank_init (fixed N_delay: itself; N_delay = 0:
+!> n0; N_delay = -1: the largest timing candidate); terminates otherwise. No reallocation.
+!--------------------------------------------------------------------
+   subroutine Lowrank_set_N_delay(n)
+      Implicit none
+      Integer, Intent(In) :: n
+      if (lr_scheme == SCHEME_STANDARD) then
+         Write(error_unit,'(A)') ' Lowrank_set_N_delay: no low-rank scheme active'
+         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      endif
+      if (n_pend > 0) then
+         Write(error_unit,'(A,I0,A)') ' Lowrank_set_N_delay: ', n_pend, &
+              &                        ' accepted vertices pending (G must be flushed first)'
+         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      endif
+      if (n < 1 .or. n > lr_N_delay_cap) then
+         Write(error_unit,'(A,I0,A,I0,A)') ' Lowrank_set_N_delay: N_delay = ', n, &
+              &                             ' outside 1 .. ', lr_N_delay_cap, ' (allocated capacity)'
+         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      endif
+      lr_N_delay = n
+   end subroutine Lowrank_set_N_delay
+
+!--------------------------------------------------------------------
+!> @brief
+!> Timed automatic N_delay (N_delay = -1, module header): start of the sequential part of a
+!> WRAPGRUP / WRAPGRDO call, i.e. after the hopping wrap (up) or the Global_tau moves (down), with G
+!> flushed. In sweeps 2-3 it selects the candidate mod(i-1, ncand)+1 for the i-th call and starts the
+!> clock. No-op otherwise (the whole timing machinery costs one logical test per slice call).
+!--------------------------------------------------------------------
+   subroutine Lowrank_tune_slice_begin()
+      Implicit none
+      if (.not. tune_active) return
+      tune_ncalls = tune_ncalls + 1
+      tune_cur    = int(mod(tune_ncalls - 1_8, int(tune_ncand, 8))) + 1
+      call Lowrank_set_N_delay(tune_cand(tune_cur))
+      tune_p0 = n_upgrade_lowrank
+      call system_clock(count=tune_t0)
+   end subroutine Lowrank_tune_slice_begin
+
+!--------------------------------------------------------------------
+!> @brief
+!> Timed automatic N_delay: end of the sequential part of a WRAPGRUP / WRAPGRDO call, after the
+!> slice-end flush. Adds the wall time and the number of proposals of the call to its candidate, and
+!> counts and acts on the sweeps (module header): sweep 1 completed starts the timing, sweep 3
+!> completed decides (Tune_decide). No-op unless N_delay = -1.
+!> @param [in] sweep_end
+!> Logical
+!> \verbatim
+!>  True for the last slice call of a sweep (WRAPGRDO with NTAU = 1).
+!> \endverbatim
+!--------------------------------------------------------------------
+   subroutine Lowrank_tune_slice_end(sweep_end)
+      Implicit none
+      Logical, Intent(In) :: sweep_end
+      Integer (Kind=Kind(0_8)) :: t1, rate
+      if (tune_done) return
+      if (tune_active .and. tune_cur > 0) then
+         call system_clock(count=t1, count_rate=rate)
+         tune_time(tune_cur)  = tune_time(tune_cur) + real(t1 - tune_t0, kind(0.d0)) / real(rate, kind(0.d0))
+         tune_nprop(tune_cur) = tune_nprop(tune_cur) + (n_upgrade_lowrank - tune_p0)
+         tune_cur = 0
+      endif
+      if (.not. sweep_end) return
+      tune_sweeps = tune_sweeps + 1
+      if (tune_sweeps == 1) tune_active = .true.   ! sweeps 2 and 3 are timed
+      if (tune_sweeps == 3) call Tune_decide()
+   end subroutine Lowrank_tune_slice_end
+
+!--------------------------------------------------------------------
+!> @brief
+!> Decision of the timed automatic N_delay at the end of sweep 3: the candidate with the least wall
+!> seconds per proposal if it beats the static n0 by more than 5 %, else n0 (also n0 if a candidate
+!> had no proposal). MPI: sums over Group_Comm, group rank 0 decides, broadcast. Sets N_delay and
+!> logs the line "Auto N_delay: candidates a b c: t_a t_b t_c s/proposal, chosen n" (ES10.3), or
+!> "Auto N_delay: tuning skipped (no proposals), N_delay = n0".
+!--------------------------------------------------------------------
+   subroutine Tune_decide()
+#ifdef MPI
+      Use Hamiltonian_main, only: Group_Comm
+      Use mpi
+#endif
+      Implicit none
+      Real (Kind=Kind(0.d0))   :: t(3), spp(3)
+      Integer (Kind=Kind(0_8)) :: np(3)
+      Integer :: k, i0, ich, unit_info
+      Logical :: no_prop
+      Character (len=256) :: line
+      Character (len=16)  :: buf
+#ifdef MPI
+      Integer :: ierr
+#endif
+      t  = tune_time
+      np = tune_nprop
+#ifdef MPI
+      call MPI_Allreduce(MPI_IN_PLACE, t,  3, MPI_DOUBLE_PRECISION, MPI_SUM, Group_Comm, ierr)
+      call MPI_Allreduce(MPI_IN_PLACE, np, 3, MPI_INTEGER8,         MPI_SUM, Group_Comm, ierr)
+#endif
+      i0 = 0
+      do k = 1, tune_ncand
+         if (tune_cand(k) == lr_n0) i0 = k
+      enddo
+      if (i0 == 0) then   ! n0 is always a candidate (Static_clamp(n0) = n0)
+         Write(error_unit,'(A,I0)') ' Tune_decide: static N_delay not among the candidates, n0 = ', lr_n0
+         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      endif
+      no_prop = any(np(1:tune_ncand) == 0_8)
+      ich = i0
+      spp = 0.d0
+      if (.not. no_prop) then
+         do k = 1, tune_ncand
+            spp(k) = t(k) / real(np(k), kind(0.d0))
+         enddo
+         k = minloc(spp(1:tune_ncand), dim=1)
+         if (spp(k) < TUNE_GAIN * spp(i0)) ich = k
+      endif
+#ifdef MPI
+      ! group rank 0 decides: the ranks of a group must agree on N_delay
+      call MPI_Bcast(ich, 1, MPI_INTEGER, 0, Group_Comm, ierr)
+#endif
+      tune_active = .false.
+      tune_done   = .true.
+      tune_cur    = 0
+      call Lowrank_set_N_delay(tune_cand(ich))
+
+      if (no_prop) then
+         write(line,'(A,I0)') 'Auto N_delay: tuning skipped (no proposals), N_delay = ', lr_n0
+      else
+         line = 'Auto N_delay: candidates'
+         do k = 1, tune_ncand
+            write(buf,'(I0)') tune_cand(k)
+            line = trim(line) // ' ' // trim(buf)
+         enddo
+         line = trim(line) // ':'
+         do k = 1, tune_ncand
+            write(buf,'(ES10.3)') spp(k)
+            line = trim(line) // ' ' // trim(adjustl(buf))
+         enddo
+         write(buf,'(I0)') tune_cand(ich)
+         line = trim(line) // ' s/proposal, chosen ' // trim(buf)
+      endif
+      if (lr_print_info) then
+         write(output_unit,'(A)') trim(line)
+         Open(newunit=unit_info, file=lr_info_file, status="unknown", position="append")
+         write(unit_info,'(A)') trim(line)
+         close(unit_info)
+      endif
+   end subroutine Tune_decide
 
 
 
@@ -478,6 +699,20 @@ contains
       N_cols_max = 0
       n_pend     = 0
       lr_n0          = 0
+      lr_N_delay_cap = 0
+      lr_print_info  = .false.
+      lr_info_file   = "info"
+      tune_requested = .false.
+      tune_active    = .false.
+      tune_done      = .true.
+      tune_sweeps    = 0
+      tune_ncand     = 0
+      tune_cand      = 0
+      tune_cur       = 0
+      tune_time      = 0.d0
+      tune_nprop     = 0
+      tune_ncalls    = 0
+      n_upgrade_lowrank = 0
       last_accept_cols = 0
       blk_nondiag = .false.
       lr_M = 0; lr_Ndim = 0; lr_N_FL_eff = 0
@@ -1072,6 +1307,7 @@ contains
       Complex (Kind=Kind(0.d0)) :: Ratiotot, Prev_Ratiotot
       Real    (Kind=Kind(0.d0)) :: Weight, ranf_val
 
+      n_upgrade_lowrank = n_upgrade_lowrank + 1   ! proposals, for the timed automatic N_delay
       call Lowrank_propose(GR, n_op, nt, Hs_new, Ratiotot)
 
       ! Upgrade2, mode "Final"
