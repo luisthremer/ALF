@@ -3,7 +3,9 @@
 #  - hook_lint:      baseline files differ from ALF master only by the hooks listed in HOOKS.md
 #  - baseline_guard: a build without AI switches gives output bit-identical to ALF master
 #  - lowrank:        the LOWRANK feature builds with every compiler of the test matrix (Devel flags)
-#                    and passes its unit test and the scheme comparison
+#                    and passes its unit test and the scheme comparison (byte-identical final configuration
+#                    and observables to 1e-8 against the standard update); GNU also with TEMPERING,
+#                    PARALLEL_PARAMS and HDF5
 name: "AI branch gates"
 
 on:
@@ -66,6 +68,13 @@ jobs:
           - [bookworm-intel-2024.2, INTEL]
           - [bookworm-intel, INTELLLVM]
         mode: [noMPI, MPI]
+        include:
+          - image_minor: [trixie, GNU]
+            mode: TEMPERING
+          - image_minor: [trixie, GNU]
+            mode: PARALLEL_PARAMS
+          - image_minor: [trixie, GNU]
+            mode: noMPI HDF5
     container:
       image: ghcr.io/alf-qmc/alf-container/alf-requirements/${{ matrix.image_minor[0] }}
     steps:
@@ -73,6 +82,8 @@ jobs:
       - name: Build with LOWRANK (Devel flags)
         shell: bash
         run: |
+          # test-only Hamiltonians of the suite (multi-site and 10-site vertices, continuous + discrete fields)
+          testsuite/Lowrank.tests/add_test_models.sh .
           . ./configure.sh ${{ matrix.image_minor[1] }} ${{ matrix.mode }} LOWRANK Devel NO-INTERACTIVE
           make -j4 lib program
           # CMake wants a bare compiler name: "mpiifort -fc=ifx" is the wrapper mpiifx
@@ -87,4 +98,12 @@ jobs:
           . ./configure.sh ${{ matrix.image_minor[1] }} ${{ matrix.mode }} LOWRANK Devel NO-INTERACTIVE
           # CMake wants a bare compiler name: "mpiifort -fc=ifx" is the wrapper mpiifx
           if [[ "$ALF_FC" == "mpiifort -fc=ifx" ]]; then export ALF_FC=mpiifx; fi
-          ctest --test-dir testsuite/tests -R lowrank --output-on-failure
+          ctest --test-dir testsuite/tests -R lowrank -E full --output-on-failure
+      - name: Scheme comparison, all scenarios (GNU, serial)
+        if: matrix.image_minor[1] == 'GNU' && matrix.mode == 'noMPI'
+        shell: bash
+        env:
+          OMP_NUM_THREADS: '1'
+        run: |
+          . ./configure.sh GNU noMPI LOWRANK Devel NO-INTERACTIVE
+          ctest --test-dir testsuite/tests -R lowrank-compare-schemes-full --output-on-failure

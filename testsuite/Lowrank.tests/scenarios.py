@@ -131,15 +131,15 @@ FEATURES = {
 _MIX_NML = lambda mz, cont=True: {"VAR_Hubbard_Mixed": {"Mz": mz, "Continuous": cont, "ham_T": 1.0, "ham_U": 4.0}}
 _MIX = dict(_SQ, Model="Hubbard_Mixed", Beta=2.0, Checkerboard=True, N_SUN=2)
 TEST_MODELS = {
-    "LR_Jz_Test": dict(testmodel=True, pars=dict(_SQ, Model="LR_Jz_Test", Beta=2.0, Nwrap=2, nml={
+    "LR_Jz_Test": dict(testmodel=True, quick=True, pars=dict(_SQ, Model="LR_Jz_Test", Beta=2.0, Nwrap=2, nml={
         "VAR_LR_Jz_Test": {"ham_T": 1.0, "ham_U": 4.0, "ham_Jz": 1.0, "Dtau": 0.1, "Beta": 2.0}})),
     # 10-site vertices exceed the limit of 8 sites of the low-rank kernel: they run the standard update
-    "LR_Wide_Test": dict(testmodel=True, pars=dict(_SQ, Model="LR_Wide_Test", L1=12, L2=1, Beta=2.0, Nwrap=2, nml={
+    "LR_Wide_Test": dict(testmodel=True, quick=True, pars=dict(_SQ, Model="LR_Wide_Test", L1=12, L2=1, Beta=2.0, Nwrap=2, nml={
         "VAR_LR_Wide_Test": {"ham_T": 1.0, "ham_U": 4.0, "ham_Jz": 0.1, "Dtau": 0.1, "Beta": 2.0}})),
     "Mixed_fields_sequential": dict(testmodel=True, pars=dict(_MIX, Mz=False, N_FL=1, nml=_MIX_NML(False))),
     "Mixed_fields_Mz_sequential": dict(testmodel=True, pars=dict(_MIX, Mz=True, nml=_MIX_NML(True))),
     # sequential MALA on the continuous vertices, the discrete ones use the low-rank update in between
-    "Mixed_fields_Sequential_MALA": dict(testmodel=True, force_in_proposal=True, pars=dict(
+    "Mixed_fields_Sequential_MALA": dict(testmodel=True, quick=True, force_in_proposal=True, pars=dict(
         _MIX, Mz=False, N_FL=1, Sequential_MALA=True, nml=_MIX_NML(False))),
     "Mixed_fields_Mz_Sequential_MALA": dict(testmodel=True, force_in_proposal=True, pars=dict(
         _MIX, Mz=True, Sequential_MALA=True, nml=_MIX_NML(True))),

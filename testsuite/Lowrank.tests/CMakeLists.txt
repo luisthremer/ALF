@@ -52,6 +52,10 @@ if(Python3_FOUND)
     string(REPLACE ";" " " LOWRANK_MPIRUN_STRING "${LOWRANK_MPIRUN}")
     set(LOWRANK_COMPARE_MPI --build ${LOWRANK_BUILD} --mpiexec "${LOWRANK_MPIRUN_STRING}")
   endif()
+  # builds that contain the test-only Hamiltonians (add_test_models.sh) also run the scenarios that need them
+  if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/Hamiltonians/Hamiltonian_Hubbard_Mixed_smod.F90)
+    list(APPEND LOWRANK_COMPARE_MPI --test-models)
+  endif()
   set(LOWRANK_COMPARE_COMMON ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/compare_schemes.py
       ${LOWRANK_COMPARE_MPI}
       --exe ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/ALF.out
