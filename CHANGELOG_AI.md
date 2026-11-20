@@ -3,6 +3,26 @@
 *Written with AI assistance on `master_ai`; not part of the ALF baseline. `CHANGELOG.md` is a
 baseline file and stays as on `master`; entries for the AI features go here, in the same format.*
 
+### 2026-11-20 LOWRANK: strict same-chain check, all models and ALF features, CI on every build mode
+Author: L. Thremer, with AI assistance
+
+1. `compare_schemes.py` now requires the final configuration `confout*` (fields and random number generator
+   state) of the delayed and submatrix runs to be byte-identical to the standard run with the same seeds, i.e. the
+   same Markov chain, and keeps the 1e-8 relative bound for all other output. Exception: sequential MALA and
+   Global_tau MALA, whose proposal contains the Green-function force (observables to roundoff, <= 4e-11).
+   N_delay is run automatic and fixed to 3.
+2. Scenarios (`scenarios.py`): every Hamiltonian with lattices, N_SUN / N_FL variants, field types 1-4, flavour
+   reconstruction; Global_moves, Global_tau, Propose_S0, Nt_sequential ranges, Checkerboard / Symm, restart, MPI
+   (2 ranks), TEMPERING, PARALLEL_PARAMS. Test-only models (`testsuite/Lowrank.tests/models`, added by
+   `add_test_models.sh`): multi-site Jz vertices, 10-site vertices (standard fallback), continuous and discrete
+   fields in one run. Result: 264 serial scenario/scheme runs, observables <= 3.5e-11, confout identical except MALA.
+3. CI (`master-ai.yml`): MPI tests through the MPI launcher; Intel MPI compiler name for CMake; IntelLLVM unit test:
+   the bound on the drift of the standard path now scales with cond(1+A) (1.7e-10 at cond 5e7 was above the fixed
+   5e-11); GNU additionally with TEMPERING, PARALLEL_PARAMS and HDF5; full scenario set on GNU serial.
+4. `baseline_guard.py` sets the model name in both namelists (LRC and Z2_Matter were skipped before).
+5. Documentation: `Documentation/lowrank.tex` (four verification levels, compatibility table); module headers of
+   `Prog/Lowrank` explain the low-rank forms of G and the call order per vertex.
+
 ### 2026-11-20 AI branch CI gates; LOWRANK checked with MPI and tempering
 Author: L. Thremer, with AI assistance
 

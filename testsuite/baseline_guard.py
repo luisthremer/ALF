@@ -46,8 +46,8 @@ def make_parameters(template, pars, max_bins):
     text = template
     missing = []
     for key, value in pars.items():
-        if key == "Model":
-            key = "ham_name"
+        if key == "Model":  # the model name is read in two namelists (ham_name and Model)
+            text, n = set_parameter(text, "ham_name", value)
         if key == "NBin" and max_bins is not None:
             value = min(value, max_bins)
         text, n = set_parameter(text, key, value)
