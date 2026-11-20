@@ -70,10 +70,16 @@ if(Python3_FOUND)
   set(LOWRANK_COMPARE_COMMON ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/compare_schemes.py
       ${LOWRANK_COMPARE_MPI}
       --exe ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/ALF.out
-      --start ${CMAKE_CURRENT_SOURCE_DIR}/../../Scripts_and_Parameters_files/Start --max-bins 2)
+      --start ${CMAKE_CURRENT_SOURCE_DIR}/../../Scripts_and_Parameters_files/Start)
+  # The quick set takes one bin per run (and, with MPI, only the automatic N_delay): the slow compilers (Intel
+  # with run-time checks) need an hour otherwise. The full set below keeps 2 bins and N_delay = 0 and 3.
+  set(LOWRANK_QUICK_OPTIONS --quick --max-bins 1)
+  if(LOWRANK_MPIRUN)
+    list(APPEND LOWRANK_QUICK_OPTIONS --n-delay 0)
+  endif()
   add_test(NAME lowrank-compare-schemes
-           COMMAND ${LOWRANK_COMPARE_COMMON} --quick --work ${CMAKE_CURRENT_BINARY_DIR}/compare_schemes_runs)
+           COMMAND ${LOWRANK_COMPARE_COMMON} ${LOWRANK_QUICK_OPTIONS} --work ${CMAKE_CURRENT_BINARY_DIR}/compare_schemes_runs)
   add_test(NAME lowrank-compare-schemes-full
-           COMMAND ${LOWRANK_COMPARE_COMMON} --work ${CMAKE_CURRENT_BINARY_DIR}/compare_schemes_runs_full)
+           COMMAND ${LOWRANK_COMPARE_COMMON} --max-bins 2 --work ${CMAKE_CURRENT_BINARY_DIR}/compare_schemes_runs_full)
   set_tests_properties(lowrank-compare-schemes-full PROPERTIES TIMEOUT 7200)
 endif()
