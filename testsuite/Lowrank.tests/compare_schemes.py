@@ -366,7 +366,7 @@ def main():
                   % (name, rcs["standard"], dirs["standard"]))
             failed += 1
             continue
-        frac = lowrank_fraction(dirs["delayed"])
+        frac = lowrank_fraction(dirs[next(v for v in variants if v != "standard")])
         for scheme in variants:
             if scheme == "standard":
                 continue
