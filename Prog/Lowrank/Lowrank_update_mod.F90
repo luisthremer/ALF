@@ -37,7 +37,51 @@
 !> @brief
 !> Low-rank (delayed / submatrix) variants of the sequential local update.
 !> Written with AI assistance on master_ai; not part of the ALF baseline.
+!>
 !> @details
+!> HOW IT WORKS (read this first)
+!>
+!> The standard sequential update (Upgrade2 in upgrade_mod) proposes a change of the auxiliary field of
+!> one vertex n at time slice nt, computes the determinant ratio from the small block G(P,P) of the
+!> Green function (P = the r = Op_V(n,nf)%N sites the vertex acts on) and, if the move is accepted,
+!> updates the whole Green function by a rank-r correction G <- G - a b^T, a cost of Ndim^2 per accepted
+!> move. Here the correction is not applied at once but kept in a low-rank form. G is never formed
+!> explicitly; it is represented as
+!>
+!>    delayed   :  G = G0 - X Y^T                       X, Y of size Ndim x p   (p = pending rank)
+!>    submatrix :  G = G0 - G0(:,S) M (E_S^T - G0(S,:))  M of size k x k       (k = number of pending sites S)
+!>
+!> where G0 is the Green function at the last flush and E_S the unit vectors of the pending sites. The
+!> few rows and columns of G that a move needs are read from this form at a cost proportional to p
+!> (or k) instead of Ndim. After N_delay accepted moves (or earlier, see "Capacity" below) Lowrank_flush
+!> applies all pending corrections in one matrix product (BLAS level 3) and G0 <- G. The determinant
+!> ratios, the accept/reject decisions and the random numbers are those of the standard update; only
+!> the order of the floating point operations differs.
+!>
+!> Between two moves the Green function is wrapped through the vertices (G <- L G R, Op_Wrapup in
+!> Lowrank_wrapgr_mod, with L, R = exp(+-phi g O) of the vertex). Because G is not explicit, the same
+!> transformation is applied to the pending state: Lowrank_wrap_hook does X(P,:) <- L X(P,:),
+!> Y(P,:) <- R^T Y(P,:) (delayed) or M <- L_S M R_S (submatrix).
+!>
+!> Call order for one vertex n at time slice nt (in Lowrank_wrapgrup / Lowrank_wrapgrdo):
+!>   1. Lowrank_eligible(n)      is the vertex handled here at all? If not: Lowrank_flush, then the
+!>                               baseline Upgrade2 runs on the full G.
+!>   2. Op_Wrapup (baseline), Lowrank_wrap_hook   wrap G through the vertex, keep the pending state valid.
+!>   3. Upgrade_lowrank          = Lowrank_propose (ratio from G(P,P) read from the low-rank form)
+!>                               + Metropolis step with the same random number as Upgrade2
+!>                               + Lowrank_accept (append the correction, flush if the capacity is reached).
+!>   4. Op_Wrapup (baseline), Lowrank_wrap_hook   second half of the wrap.
+!>   at the end of the vertex loop of the time slice: Lowrank_flush, so that the rest of ALF
+!>   (Global_tau moves, measurements, stabilisation) sees the explicit Green function.
+!>
+!> Routines: Lowrank_init / Lowrank_finalize (allocate / free the state and choose N_delay),
+!> Lowrank_eligible, Lowrank_propose, Lowrank_accept, Upgrade_lowrank (interface of Upgrade2),
+!> Lowrank_wrap_hook, Lowrank_flush, Lowrank_current_G (read-only G for tests), Lowrank_static_N_delay
+!> (automatic N_delay, N_delay = 0) and Lowrank_set_N_delay with the timing of the candidates (N_delay = -1). Delayed and submatrix share the interface; the module variables below are
+!> grouped into common, delayed and submatrix state.
+!>
+!> DETAILS
+!>
 !> Selected by Sequential_scheme = "standard" | "delayed" | "submatrix" (case-insensitive) and
 !> N_delay in the namelist &VAR_LOWRANK (read by Lowrank_wrapgr_mod). "standard" is the baseline
 !> update and allocates nothing.
