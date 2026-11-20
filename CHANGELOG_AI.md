@@ -3,6 +3,18 @@
 *Written with AI assistance on `master_ai`; not part of the ALF baseline. `CHANGELOG.md` is a
 baseline file and stays as on `master`; entries for the AI features go here, in the same format.*
 
+### 2026-11-20 LOWRANK: static N_delay rule of the delayed scheme (`N_delay = 0`)
+Author: L. Thremer, with AI assistance
+
+1. The delayed scheme now uses n0 = 2^round(log2(Ndim/32)), at least 1 and at most 128 (before: 2^round(log2(Ndim/20)),
+   at least 16), then the unchanged limits by the largest pending rank and a power of two. The submatrix rule is unchanged.
+   Reason: SuperMUC-NG scans of N_delay found the optimum at 1-2 for Ndim <= 100; the old floor of 16 lost up to 33 % there
+   (8.6 % on average over all measured points, 3.6 % with the new rule). The timed N_delay (-1) starts from this n0, so
+   its candidates {n0/2, n0, 2 n0} now reach the small optima.
+2. `36-lowrank-unit`: expected values of the static rule re-derived by hand (comments in the test); the auto section
+   uses the static n0 of each scheme (delayed 2, submatrix 16 on the 64-site test case) instead of 16.
+   N_delay only changes the summation order: `compare_schemes.py` still gives byte-identical `confout`.
+
 ### 2026-11-20 LOWRANK: strict same-chain check, all models and ALF features, CI on every build mode
 Author: L. Thremer, with AI assistance
 

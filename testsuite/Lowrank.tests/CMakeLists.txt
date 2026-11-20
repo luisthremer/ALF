@@ -50,7 +50,7 @@ set_tests_properties(36-lowrank-unit-pending PROPERTIES
   PASS_REGULAR_EXPRESSION "Lowrank_set_N_delay: 1 accepted vertices pending \\(G must be flushed first\\)")
 add_test(NAME 36-lowrank-unit-capacity COMMAND ${LOWRANK_UNIT_COMMAND} capacity WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/36-capacity)
 set_tests_properties(36-lowrank-unit-capacity PROPERTIES
-  PASS_REGULAR_EXPRESSION "Lowrank_set_N_delay: N_delay = 17 outside 1 \\.\\. 16 \\(allocated capacity\\)")
+  PASS_REGULAR_EXPRESSION "Lowrank_set_N_delay: N_delay = 3 outside 1 \\.\\. 2 \\(allocated capacity\\)")
 
 # Delayed and submatrix against the standard update on fixed seeds, whole runs (compare_schemes.py): the
 # final field configuration must be byte-identical, the observables agree to 1e-8, 2 bins per scenario.
