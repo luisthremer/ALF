@@ -75,8 +75,8 @@ jobs:
         run: |
           . ./configure.sh ${{ matrix.image_minor[1] }} ${{ matrix.mode }} LOWRANK Devel NO-INTERACTIVE
           make -j4 lib program
-          # CMake wants a bare compiler name: "mpiifort -fc=ifx" becomes mpiifort with I_MPI_FC=ifx
-          if [[ "$ALF_FC" == *" -fc="* ]]; then export I_MPI_FC="${ALF_FC##*-fc=}"; export ALF_FC="${ALF_FC%% *}"; fi
+          # CMake wants a bare compiler name: "mpiifort -fc=ifx" is the wrapper mpiifx
+          if [[ "$ALF_FC" == "mpiifort -fc=ifx" ]]; then export ALF_FC=mpiifx; fi
           cmake -S testsuite -B testsuite/tests
           cmake --build testsuite/tests -j4 --target 36-lowrank-unit
       - name: Unit test and scheme comparison
@@ -85,6 +85,6 @@ jobs:
           OMP_NUM_THREADS: '1'
         run: |
           . ./configure.sh ${{ matrix.image_minor[1] }} ${{ matrix.mode }} LOWRANK Devel NO-INTERACTIVE
-          # CMake wants a bare compiler name: "mpiifort -fc=ifx" becomes mpiifort with I_MPI_FC=ifx
-          if [[ "$ALF_FC" == *" -fc="* ]]; then export I_MPI_FC="${ALF_FC##*-fc=}"; export ALF_FC="${ALF_FC%% *}"; fi
+          # CMake wants a bare compiler name: "mpiifort -fc=ifx" is the wrapper mpiifx
+          if [[ "$ALF_FC" == "mpiifort -fc=ifx" ]]; then export ALF_FC=mpiifx; fi
           ctest --test-dir testsuite/tests -R lowrank --output-on-failure
