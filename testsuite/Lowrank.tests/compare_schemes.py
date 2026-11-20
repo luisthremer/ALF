@@ -210,10 +210,18 @@ def load_scenarios(path):
     return scen
 
 
+# With one replica these models stop in a TEMPERING build of ALF master itself (checked with upstream/master:
+# Z2_Matter "Error in field setup", Hubbard_Plain_Vanilla a BLAS argument error)
+NO_SINGLE_REPLICA = ("Z2_Matter", "Hubbard_Plain_Vanilla")
+
+
 def runs_here(sc, build, test_models):
     if sc.get("testmodel") and not test_models:
         return False
     mode = sc.get("mode", "serial")
+    if mode == "serial" and build in ("tempering", "parallel_params") \
+            and sc["pars"].get("Model") in NO_SINGLE_REPLICA:
+        return False
     if mode == "tempering":
         return build in ("tempering", "parallel_params")
     if mode == "params":
