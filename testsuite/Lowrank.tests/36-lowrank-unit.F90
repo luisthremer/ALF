@@ -1822,7 +1822,7 @@ program lowrank_unit
    endif
 
    write(6,'(A,ES9.2,A,ES9.2,A)') '36-lowrank-unit: TOL_UNIT = ', TOL_UNIT, ', TOL_ILL = ', TOL_ILL, &
-        & ' (mz_illcond, bonds_illcond; the fixed bound drift <= TOL_UNIT/2 is not asserted there)'
+        & ' (mz_illcond, bonds_illcond; the bound on the drift of the standard path is not asserted there)'
    write(6,'(A,L1)') '  SUBMATRIX_RANKN = ', SUBMATRIX_RANKN
    write(6,'(A)') '  std_drift/ce = std_drift / (cond(1+A) * epsilon(1d0)); asserted <= 10 for every case'
    write(6,'(A)') '  rflush = flushes inside Lowrank_propose (site already pending); asserted > 0 iff submatrix,'// &
@@ -1854,11 +1854,16 @@ program lowrank_unit
                   flag = 'FAIL'
                   n_fail = n_fail + 1
                endif
-               ! TOL_UNIT must stay >= 2x the standard path's own drift vs exact. Not asserted
-               ! for the ill-conditioned cases: the double-precision "exact" inverse is unreliable
-               ! at cond ~1e8. Every rank-N case meets it (no exemption; couplings: V_BOND, G_ND, U_REP).
+               ! The low-rank errors above are measured against the standard path, not against the exact
+               ! inverse, so the standard path's own drift enters only as a sanity bound. For the cases with
+               ! cond(1+A) <~ 1e6 it must stay below TOL_UNIT/2; for the harder cases (nd_zero ~5e7,
+               ! rep_mixed ~7e7) the exact inverse itself carries an error ~ cond*eps (1.1e-8 at 5e7), so the
+               ! bound is relaxed to 0.1 * cond * eps. Measured drift/(cond*eps) is <= 0.34 for all cases
+               ! (ifx -fp-model=fast=2 gives 1.7e-10 at nd_zero, ratio 0.015); the hard bound
+               ! drift <= 10 * cond * eps is asserted below (flag COND). Not asserted for the ill-conditioned
+               ! cases (cond ~1e8: the double-precision reference is unreliable there).
                if (.not. illcond_case(ic)) then
-                  if (drift > 0.5d0 * TOL_UNIT .or. drift /= drift) then
+                  if (drift > max(0.5d0 * TOL_UNIT, 0.1d0 * cond_1pA_last * epsilon(1.d0)) .or. drift /= drift) then
                      flag = 'DRFT'
                      n_fail = n_fail + 1
                   endif
