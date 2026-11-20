@@ -29,11 +29,22 @@ Optional namelist in the file \texttt{parameters}; without it the standard updat
 \begin{verbatim}
 &VAR_LOWRANK
 Sequential_scheme = "delayed"   ! "standard" | "delayed" | "submatrix"
-N_delay           = 0           ! 0: automatic, >= 1: fixed
+N_delay           = 0           ! 0: automatic, -1: automatic and timed, >= 1: fixed
 /
 \end{verbatim}
-The choice is written to the \texttt{info} file. With \texttt{N\_delay = 0} the bound is set from
-$N_{\text{dim}}$ and from the largest pending rank one time slice can produce.
+The choice is written to the \texttt{info} file. With \texttt{N\_delay = 0} the bound $n_0$ is set from
+$N_{\text{dim}}$ and from the largest pending rank one time slice can produce (a fixed rule, the same on
+every machine). The best \texttt{N\_delay} depends on the machine (BLAS library, cache sizes), so
+\texttt{N\_delay = -1} starts from $n_0$ and measures: in the second and third sweep of the run the time
+slices cycle through the candidates $n_0/2$, $n_0$ and $2n_0$ (each limited as the static rule limits
+$n_0$), and the wall time per proposed update is summed for each candidate. After the third sweep the
+fastest candidate is kept for the rest of the run if it is more than 5\,\% faster than $n_0$; otherwise
+$n_0$ is kept. With MPI the times are summed over the ranks of a group, rank 0 of the group decides, and
+the choice is broadcast. The result is written to the \texttt{info} file, for example
+\texttt{Auto N\_delay: candidates 8 16 32: 1.97E-06 2.21E-06 2.36E-06 s/proposal, chosen 8}.
+\texttt{N\_delay} changes only the summation order, so the timing does not change the results beyond
+roundoff. A run with fewer than three sweeps ends before the decision and logs nothing; if only one
+candidate exists (very few sequential vertices) no timing is done.
 
 \paragraph{Supported cases.}
 A vertex is handled by the low-rank scheme if its operator acts on at most 8 sites in every flavour;
@@ -124,3 +135,5 @@ is larger than 1 together with Global\_tau moves in the Hubbard model, and the r
 itself has a mean precision of $1.7\times10^{-6}$, and the schemes differ by $10^{-6}$ in the observables).
 Time-dependent hopping (\texttt{Op\_T} with \texttt{g\_t}) is not used by any shipped model; the wrap of the hopping is the baseline
 code in both paths.
+The unit test also checks the automatic \texttt{N\_delay} (static rule, timing state machine, error exits), and
+\texttt{compare\_schemes.py --n-delay -1} repeats the comparison with the timed automatic \texttt{N\_delay}.

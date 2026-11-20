@@ -22,12 +22,16 @@ Scenarios may run serial, on 2 MPI ranks, as parallel tempering with 2 replicas,
 file per replica (PARALLEL_PARAMS); which of these a given executable supports is given by --build.
 A restart scenario runs two stages: the second starts from confout of the first (renamed to confin).
 
+--n-delay -1 runs the low-rank schemes with the timed automatic N_delay (the candidates switch between
+slices and the choice follows the machine timing; the chain must still agree up to roundoff). The
+"Auto N_delay:" decision line of each run is printed when timing took place (>= 3 sweeps, at least two candidates).
+
 Usage:
     compare_schemes.py --exe <ALF>/Prog/ALF.out
                        --start <ALF>/Scripts_and_Parameters_files/Start
                        [--build serial|mpi|tempering|parallel_params] [--mpiexec "mpirun ..."]
                        [--work DIR] [--only NAME ...] [--max-bins N] [--tol T] [--quick]
-                       [--report FILE]
+                       [--n-delay 0 3 -1 ...] [--test-models] [--report FILE]
 """
 import argparse
 import filecmp
@@ -265,7 +269,7 @@ def main():
     ap.add_argument("--mpiexec", default=None,
                     help='MPI launcher without -np, e.g. "mpirun --oversubscribe"; needed for MPI builds')
     ap.add_argument("--n-delay", type=int, nargs="*", default=list(N_DELAYS),
-                    help="values of N_delay for delayed and submatrix (0 = automatic)")
+                    help="values of N_delay for delayed and submatrix (0 = static automatic, -1 = timed automatic)")
     ap.add_argument("--test-models", action="store_true",
                     help="the executable contains the test models of testsuite/Lowrank.tests/models "
                          "(see add_test_models.sh); enables the scenarios that use them")
@@ -354,6 +358,10 @@ def main():
             print("%s  %-34s %-14s confout %-9s max rel diff %.2e%s"
                   % ("PASS" if ok else "FAIL", name, scheme,
                      "identical" if same else "DIFFERS", d, "  " + problem if problem else ""))
+            if variants[scheme][1] == -1:  # timed automatic N_delay: show what it decided
+                with open(os.path.join(dirs[scheme], "info")) as f:
+                    lines = [l.strip() for l in f if l.startswith("Auto N_delay")]
+                print("      %s" % (lines[0] if lines else "no decision line (fewer than 3 sweeps, or a single candidate)"))
     if args.report:
         with open(args.report, "w") as f:
             f.write("| scenario | mode | scheme | confout identical | max rel diff | low-rank vertices | status |\n")
