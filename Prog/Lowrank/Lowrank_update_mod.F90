@@ -77,7 +77,7 @@
 !> Routines: Lowrank_init / Lowrank_finalize (allocate / free the state and choose N_delay),
 !> Lowrank_eligible, Lowrank_propose, Lowrank_accept, Upgrade_lowrank (interface of Upgrade2),
 !> Lowrank_wrap_hook, Lowrank_flush, Lowrank_current_G (read-only G for tests), Lowrank_static_N_delay
-!> (automatic N_delay). Delayed and submatrix share the interface; the module variables below are
+!> (automatic N_delay, N_delay = 0) and Lowrank_set_N_delay with the timing of the candidates (N_delay = -1). Delayed and submatrix share the interface; the module variables below are
 !> grouped into common, delayed and submatrix state.
 !>
 !> DETAILS
