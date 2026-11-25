@@ -32,7 +32,7 @@ need to read the whole code base.
 | Per-walker state (G, UDV stacks, phase) | `Prog/qmc_walker_mod.F90` (`qmc_walker_t`) | Large arrays are allocated once per run in `Walker_alloc`, not per call. |
 | Sweeps | `Prog/qmc_sweep_mod.F90` | `Sweep_up`, `Sweep_down`. |
 | Langevin / HMC / global MALA steps | `Prog/qmc_driver_mod.F90` | |
-| Propagation of G through a slice, local updates | `Prog/Wrapgr_mod.F90` (`WRAPGRUP`, `WRAPGRDO`) | Local update: `Upgrade2` (`upgrade_mod`). |
+| Propagation of G through a slice, local updates | `Prog/Wrapgr_mod.F90` (`WRAPGRUP`, `WRAPGRDO`) | Local update: `Upgrade2` (`upgrade_mod`), or delayed/submatrix (`lowrank_update_mod`, selected by `Sequential_scheme`). |
 | Stabilisation point | `Recompute_GR_phase` in `qmc_walker_mod` | The one routine a GPU stabilisation replaces. |
 | Run-time parameters (`&VAR_QMC`, `&VAR_TEMP`) | `Prog/QMC_runtime_var_mod.F90` | Declaration, namelist, default, broadcast, `get_`/`set_` pair, `public`; also `Prog/default_parameters_generic.py`. Settings are locked after `check_update_schemes_compatibility`. |
 | Model state (`Ndim`, `N_FL`, `Op_V`, `Op_T`, `WF_*`, …) | `Prog/Hamiltonian_main_mod.F90` | `PUBLIC, PROTECTED`: only Hamiltonian submodules write it. Tests use `Set_model_for_testing` + `Setup_flavor_map`. |
