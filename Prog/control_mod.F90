@@ -562,10 +562,58 @@ module Control
 #endif
 
 
+!--------------------------------------------------------------------
+!> Abort because the determinant phase is not a finite number of unit modulus (added 2026-11-25).
+!> A NaN phase makes the Metropolis weight W = S0 T0 |Re(Phase R)/Re(Phase)| NaN, so every proposal is rejected while the run
+!> ends with return code 0 and the Green function stays finite: see docs/gpu/KNOWN_ISSUE_DET_PHASE_UNDERFLOW.md.
+!--------------------------------------------------------------------
+      Subroutine Control_Fail_Phase(Z)
+#ifdef MPI
+        Use mpi
+#endif
+        use runtime_error_mod
+        Implicit none
+        Complex (Kind=Kind(0.D0)), INTENT(IN) :: Z
+        Character (len=64) :: File1
+#if defined(TEMPERING)
+        write(File1,'(A,I0,A)') "Temp_",igroup,"/info"
+#else
+        File1 = "info"
+#endif
+        Open (Unit=50,file=file1, status="unknown", position="append")
+        write(50,*)
+#ifdef MPI
+        write(50,*) "Task", Irank_g, "of group", igroup, "reports:"
+#endif
+        write(50,*) "Determinant phase is NaN or has |phase| /= 1: ", Z
+        write(50,*) "Every Metropolis proposal would be rejected; calculation is being aborted!"
+        write(50,*)
+        close(50)
+        write(error_unit,*)
+#ifdef MPI
+        write(error_unit,*) "Task", Irank_g, "of group", igroup, "reports:"
+#endif
+        write(error_unit,*) "Determinant phase is NaN or has |phase| /= 1: ", Z
+        write(error_unit,*) "Every Metropolis proposal would be rejected; calculation is being aborted!"
+        write(error_unit,*)
+        CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      End Subroutine Control_Fail_Phase
+
+!> Phase returned by a CGR: finite and of unit modulus (the test is also true for NaN)
+      Subroutine Control_Check_Phase(Z)
+        Implicit none
+        Complex (Kind=Kind(0.D0)), INTENT(IN) :: Z
+        Real    (Kind=Kind(0.D0)) :: X
+        X = ABS(Z)
+        if ( .not. ( X > 0.5d0 .and. X < 2.d0 ) ) call Control_Fail_Phase(Z)
+      End Subroutine Control_Check_Phase
+
       Subroutine Control_PrecisionP(Z,Z1)
         Implicit none
         Complex (Kind=Kind(0.D0)), INTENT(IN) :: Z,Z1
         Real    (Kind=Kind(0.D0)) :: X
+        if ( Z /= Z ) call Control_Fail_Phase(Z)     ! NaN guard (comparisons with NaN are false, so the test below never fires)
+        if ( Z1 /= Z1 ) call Control_Fail_Phase(Z1)
         X = ABS(Z-Z1)
         if ( X > XMAXP ) XMAXP = X
       End Subroutine Control_PrecisionP
