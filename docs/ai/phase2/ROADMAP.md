@@ -89,7 +89,38 @@ After each merge: annotated tags `archive/cm/<x>/dev` and `archive/cm/<x>/feat` 
 what the branch did, which commit it was merged in, and where the tests/results are; a line in
 `docs/ai/BRANCHING.md` (archive table). Branches are deleted only after the owner's yes.
 
-## P2.8 — ENDPHASE: CG-ALF ("Crazy good ALF") (open, after all GPU features)
+## P2.8 — Break ALF: adversarial bug hunt (open, after P2.6, before CG-ALF)
+Goal: find bugs before the speed work of P2.9 builds on them. Attack ALF (CPU and GPU lines) the
+way a hostile user would, and record every finding in `KNOWN_ISSUES.md` (repo root). The model for
+what we look for is the silent NaN phase of `fix/det-phase-underflow` (0b3ffba): return code 0,
+precision checks fine, results wrong.
+Rules: model-agnostic attacks only; every finding gets a minimal reproducer, an entry in
+`KNOWN_ISSUES.md`, then its own dev/canvas fix branch with a regression test; fixes follow BRANCHING.md.
+Attack list (each a task; split into parallel subagents):
+1. **Size limits:** N from 1 to the memory limit (the underflow class: products of N numbers,
+   exp/log ranges, integer overflow in N^2 index arithmetic, 32-bit sizes in BLAS/MPI calls).
+2. **Parameter edges:** Beta -> 0 and large, Dtau large, Ltrot = 1, Nwrap = 1 and > Ltrot, U = 0
+   and huge, N_SUN, N_FL, Nt_sequential ranges, N_delay extremes, Ltau with Projector, Theta = 0.
+3. **Input fuzzing:** malformed or missing namelists, wrong types, unknown keys, absurd values,
+   corrupted `confin`/`seeds`/HDF5 restart files: ALF must stop with `Terminate_on_error` and a
+   clear message, never run on silently.
+4. **Silent-failure guards:** NaN/Inf anywhere in G, phase, weights, observables; build with
+   `-ffpe-trap=invalid,zero,overflow`, `-fcheck=all`, valgrind, AddressSanitizer.
+5. **Differential testing:** standard vs delayed vs submatrix (byte-identical configurations),
+   CPU vs GPU, MPI ranks 1/2/3/odd, Tempering/PP, STAB1/2/3/LOG, compilers, restart vs single run.
+6. **Concurrency:** MPI rank/group layouts, CPU_MAX truncation at every point of a bin, OpenMP
+   thread counts, GPU streams.
+7. **Statistics:** long runs against ED (`test_vs_ed`) for every model; error bars must cover the
+   exact value at the expected rate.
+**Subagent with Claude-BugHunter** (owner instruction): one subagent loads the plugin
+`claude-bughunter@elementalsouls` and applies its hunting method to ALF — `bb-methodology`
+(5-phase workflow), `hunt-exceptional-conditions` (malformed input, fail-open), `hunt-race-condition`
+(MPI/OpenMP), and `triage-validation` (its 7-question gate) to rate every finding before it enters
+`KNOWN_ISSUES.md`. The plugin is written for web applications; its web-specific skills do not apply.
+Done when: every attack task ran, every finding is in `KNOWN_ISSUES.md` with status, and every
+fixed finding has a regression test in CTest.
+
+## P2.9 — ENDPHASE: CG-ALF ("Crazy good ALF") (open, after P2.8)
 R&D branches `rd/<topic>` (free to experiment; anything that survives goes through dev/canvas).
 Loop: brainstorm → measure → implement → validate → iterate. Model-agnostic only; ALF stays modular.
 1. **Theoretical limit.** Per GPU (A30, H100, MI210, Max 1550): peak FP64/FP32/tensor FLOPs and

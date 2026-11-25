@@ -11,6 +11,12 @@ Later decisions by the owner:
   today; delayed only where measurement shows it is faster; never rank-1.
 - 2026-11-25: the fork branch keeps origin's name `Code-modularity`.
 - 2026-11-25: "THIS IS GPU DEVELOPMENT PHASE 2."
+- 2026-11-25: Agents use ponytail at level lite; ponytail when coding, off when planning.
+- 2026-11-25: Install a Fortran language server if it helps the agents (done: `fortran-lsp@local`).
+- 2026-11-25, new phase before CG-ALF (now P2.8): "We need to try to break ALF in order to find
+  bugs!" One subagent of that phase uses the plugin https://github.com/elementalsouls/Claude-BugHunter
+  (installed as `claude-bughunter@elementalsouls`). Known issues go into `KNOWN_ISSUES.md`, starting
+  with the fix on branch `fix/det-phase-underflow` (commit 0b3ffba).
 
 ---
 
