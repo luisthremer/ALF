@@ -50,7 +50,6 @@ module Control
     use iso_fortran_env, only: output_unit, error_unit
     Implicit none
 
-    private :: finite_r8
     real    (Kind=Kind(0.d0)), private, save :: XMEANG, XMAXG, XMAXP,  Xmean_tau, Xmax_tau
     Integer (Kind=Kind(0.d0)), private, save :: count_CPU_start,count_CPU_end,count_rate,count_max
     Integer          , private, save :: NCG, NCG_tau
@@ -447,24 +446,35 @@ module Control
 
 !--------------------------------------------------------------------
 !> @brief
-!> Aborts the run if the phase Z from CGR is not a finite number of unit modulus.
+!> True if the double precision number x is neither NaN nor Inf.
+!> @details
+!> The test reads the bit pattern: comparisons such as x /= x, x > y or ieee_is_nan(x) can be
+!> folded to constants under -ffast-math / -ffinite-math-only, which silently disables a guard
+!> written with them. Same routine as on the GPU line (fix/det-phase-underflow, 00ef78dd).
+!--------------------------------------------------------------------
+      Logical Function Control_Is_Finite(x)
+        use iso_fortran_env, only: int64
+        Implicit none
+        Real (Kind=Kind(0.D0)), INTENT(IN) :: x
+        Integer (Kind=int64), parameter :: expmask = int(z'7FF0000000000000', int64)
+        Integer (Kind=int64) :: b
+        b = transfer(x, b)
+        Control_Is_Finite = ( iand(b, expmask) /= expmask )
+      End Function Control_Is_Finite
+
+!--------------------------------------------------------------------
+!> @brief
+!> Aborts because the determinant phase is not a finite number of unit modulus.
 !> @details
 !> A NaN phase makes every Metropolis weight W = S0 T0 |Re(Phase R)/Re(Phase)| NaN: every
 !> proposal is rejected, the Green function stays finite and the run ends with return code 0
-!> (KNOWN_ISSUES.md, "Determinant phase underflow"). Non-finite values are recognised by their
-!> bit pattern, because -ffast-math may remove tests like Z /= Z.
+!> (KNOWN_ISSUES.md, "Determinant phase underflow").
 !--------------------------------------------------------------------
-      Subroutine Control_Check_Phase(Z)
+      Subroutine Control_Fail_Phase(Z)
         use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
         Implicit none
         Complex (Kind=Kind(0.D0)), INTENT(IN) :: Z
-        Real    (Kind=Kind(0.D0)) :: X
-        Character (len=64) :: file1
-
-        if (finite_r8(real(Z, kind(0.d0))) .and. finite_r8(aimag(Z))) then
-           X = ABS(Z)
-           if (X > 0.5d0 .and. X < 2.d0) return
-        endif
+        Character (len=64) :: File1
 #if defined(TEMPERING)
         write(File1,'(A,I0,A)') "Temp_",igroup,"/info"
 #else
@@ -475,7 +485,7 @@ module Control
 #ifdef MPI
         write(50,*) "Task", Irank_g, "of group", igroup, "reports:"
 #endif
-        write(50,*) "Phase of the determinant is NaN, Inf or not of unit modulus: ", Z
+        write(50,*) "Determinant phase is NaN or has |phase| /= 1: ", Z
         write(50,*) "Every Metropolis proposal would be rejected; calculation is being aborted!"
         write(50,*)
         close(50)
@@ -483,25 +493,29 @@ module Control
 #ifdef MPI
         write(error_unit,*) "Task", Irank_g, "of group", igroup, "reports:"
 #endif
-        write(error_unit,*) "Phase of the determinant is NaN, Inf or not of unit modulus: ", Z
+        write(error_unit,*) "Determinant phase is NaN or has |phase| /= 1: ", Z
         write(error_unit,*) "Every Metropolis proposal would be rejected; calculation is being aborted!"
         write(error_unit,*)
         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
-      End Subroutine Control_Check_Phase
+      End Subroutine Control_Fail_Phase
 
-      !> True if x is neither NaN nor +-Inf (exponent bits not all set)
-      Logical function finite_r8(x)
+!> Phase returned by a CGR: finite and of unit modulus
+      Subroutine Control_Check_Phase(Z)
         Implicit none
-        Real (Kind=Kind(0.D0)), intent(in) :: x
-        Integer (Kind=8) :: bits
-        bits = transfer(x, bits)
-        finite_r8 = (iand(shiftr(bits, 52), 2047_8) /= 2047_8)
-      end function finite_r8
+        Complex (Kind=Kind(0.D0)), INTENT(IN) :: Z
+        Real    (Kind=Kind(0.D0)) :: X
+        if ( .not. Control_Is_Finite(dble(Z)) .or. .not. Control_Is_Finite(aimag(Z)) ) call Control_Fail_Phase(Z)
+        X = ABS(Z)
+        if ( X <= 0.5d0 .or. X >= 2.d0 ) call Control_Fail_Phase(Z)
+      End Subroutine Control_Check_Phase
 
       Subroutine Control_PrecisionP(Z,Z1)
         Implicit none
         Complex (Kind=Kind(0.D0)), INTENT(IN) :: Z,Z1
         Real    (Kind=Kind(0.D0)) :: X
+        ! NaN guard on the bit pattern (comparisons with NaN are false and can be folded away under -ffast-math)
+        if ( .not. Control_Is_Finite(dble(Z))  .or. .not. Control_Is_Finite(aimag(Z))  ) call Control_Fail_Phase(Z)
+        if ( .not. Control_Is_Finite(dble(Z1)) .or. .not. Control_Is_Finite(aimag(Z1)) ) call Control_Fail_Phase(Z1)
         X = ABS(Z-Z1)
         if ( X > XMAXP ) XMAXP = X
       End Subroutine Control_PrecisionP

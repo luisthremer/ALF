@@ -224,7 +224,7 @@ else()
     add_test(NAME 41-check-phase-fail COMMAND 41-check-phase-fail)
   endif()
   set_tests_properties(41-check-phase-fail PROPERTIES
-    PASS_REGULAR_EXPRESSION "not of unit modulus: *\\( *NaN")
+    PASS_REGULAR_EXPRESSION "phase\\| /= 1: *\\( *NaN")
 endif()
 
 # Unit test for QMC_runtime_var (defaults, set/get round trip, lock).
