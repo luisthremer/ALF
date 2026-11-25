@@ -41,3 +41,6 @@ dense matrices helped; the 4060 numbers above are from the fork session and were
 
 ## GPU: NaN determinant phase for N >~ 3000 (L >~ 54)
 Not fixed on this branch. Runs with N >~ 2950 reject almost all proposals (acceptance 0.27 at L = 56, 0.01 at L = 64) and write NaN observables, with return code 0. L <= 48 is not affected. Cause: k_det_phase multiplies the raw LU diagonal (underflow to 0, phase NaN). Fix: branch fix/det-phase-underflow, see docs/gpu/KNOWN_ISSUE_DET_PHASE_UNDERFLOW.md. Do not use this branch for N >~ 2950 before merging the fix.
+
+## CPU: NaN determinant phase for N >~ 3000 (L >~ 54), DET_C in CGR (CPU, not confirmed)
+Not fixed on this branch. Upstream DET_C (Libraries/Modules/mymats_mod.F90, `det_C = det_C*mat(i,i)` over the LU diagonal) is used by the CPU CGR (Prog/cgr1_mod.F90: `PHASE = CONJG(DET_C(RHS, N_size))`) with the same matrix as the GPU k_det_phase, so CPU runs with N >~ 2950 very likely underflow the same way (phase NaN, proposals rejected, NaN observables, return code 0). Not yet confirmed on the CPU (test running on Helma, reported 2026-11-25). The fix on branch fix/det-phase-underflow touches only the GPU line. Do not use this branch for N >~ 2950 on the CPU either until this is settled.
