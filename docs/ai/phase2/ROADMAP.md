@@ -29,7 +29,7 @@ Fork `Code-modularity` = origin `Code-modularity_Phase6` (`af22b976`), a fast-fo
 `AGENTS.md`, `CLAUDE.md`, `docs/ai/CODEMAP.md`, `docs/ai/BRANCHING.md`, this folder.
 Feature name `ai-docs`. Done when merged into `Code-modularity` via `cm/feat/ai-docs`.
 
-## P2.2 — Delayed and submatrix updates, native (open)
+## P2.2 — Delayed and submatrix updates, native (merged 2026-11-25, `2bb0258a`; step 2 "fastest" open)
 Feature name `lowrank`. Source: fork `master_ai_cpu` (`8b18b95c`, LOWRANK in hook form:
 `Prog/Lowrank/*`, `testsuite/Lowrank.tests/*`, `Documentation/lowrank*`).
 1. `cm/dev/lowrank`: port without hooks. Scheme parameters (`Sequential_scheme`, `N_delay`) in

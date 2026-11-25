@@ -40,3 +40,4 @@ integration branch (`cm/dev/<feature>-integrate`) before the single canvas.
 | Feature | Target | Merge | Dev tag | Canvas tag | What it did |
 |---|---|---|---|---|---|
 | ai-docs | Code-modularity | `c771d98a` (2026-11-25) | `archive/cm/ai-docs/dev` | `archive/cm/ai-docs/feat` | AGENTS.md, CLAUDE.md, docs/ai (code map, branching rule, tools, phase-2 brief and roadmap), KNOWN_ISSUES.md |
+| lowrank | Code-modularity | `2bb0258a` (2026-11-25) | `archive/cm/lowrank/dev` | `archive/cm/lowrank/feat` | native delayed/submatrix update (`lowrank_update_mod`, `Sequential_scheme`, `N_delay`), tests, documentation |
