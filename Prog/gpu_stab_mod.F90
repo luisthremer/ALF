@@ -87,7 +87,7 @@ Module gpu_stab_mod
   Use wrapur_mod, only: WRAPUR
   Use wrapul_mod, only: WRAPUL
   Use cgr1_mod, only: CGR
-  Use Control, only: Control_PrecisionG_vals
+  Use Control, only: Control_PrecisionG_vals, Control_Check_Phase
   Use alf_la_mod
 #if defined(ALF_LA_HIP)
   Use alf_hipk_mod
@@ -705,6 +705,7 @@ Contains
     ! D->H: the phase (16 B)
     !$omp target update from(st_c(3:3))
     phase = st_c(3)
+    call Control_Check_Phase(phase)       ! NaN guard: a NaN phase rejects every Metropolis proposal without any other symptom
     if (keep_host) then
        ! D->H of the new G, 16 N^2 B (host copy: self-tests, host-update path, debug controls)
        !$omp target update from(st_Gn)
@@ -1402,7 +1403,9 @@ Contains
     !$omp target
     det = cmplx(1.d0, 0.d0, kind(0.d0))
     do i = 1, n
-       det = det*A(i,i)
+       ! Normalise every factor: the raw product of the N diagonal elements of the LU factor underflows (|det| = 0) for
+       ! N >~ 3000, and det/abs(det) is then NaN (docs/gpu/KNOWN_ISSUE_DET_PHASE_UNDERFLOW.md).
+       det = det*(A(i,i)/abs(A(i,i)))
     enddo
     sg = 1
     do i = 1, n
