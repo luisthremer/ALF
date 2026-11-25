@@ -62,7 +62,7 @@
 !> transformation is applied to the pending state: Lowrank_wrap_hook does X(P,:) <- L X(P,:),
 !> Y(P,:) <- R^T Y(P,:) (delayed) or M <- L_S M R_S (submatrix).
 !>
-!> Call order for one vertex n at time slice nt (in Lowrank_wrapgrup / Lowrank_wrapgrdo):
+!> Call order for one vertex n at time slice nt (in WRAPGRUP / WRAPGRDO of Wrapgr_mod):
 !>   1. Lowrank_eligible(n)      is the vertex handled here at all? If not: Lowrank_flush, then the
 !>                               baseline Upgrade2 runs on the full G.
 !>   2. Op_Wrapup (baseline), Lowrank_wrap_hook   wrap G through the vertex, keep the pending state valid.
@@ -82,7 +82,7 @@
 !> DETAILS
 !>
 !> Selected by Sequential_scheme = "standard" | "delayed" | "submatrix" (case-insensitive) and
-!> N_delay in the namelist &VAR_LOWRANK (read by Wrapgr_mod). "standard" is the baseline
+!> N_delay in the namelist &VAR_QMC (QMC_runtime_var; Lowrank_init is called by Setup_update_schemes). "standard" is the baseline
 !> update and allocates nothing.
 !>
 !> Eligibility (both schemes): vertex n is eligible iff max_nf Op_V(n,nf)%N <= N_P_LIM = 8,
@@ -131,7 +131,7 @@
 !>
 !> Timed automatic N_delay (N_delay = -1): starts from n0 and times the candidates {n0/2, n0, 2 n0}, each
 !> clamped as steps 3-4 of the static rule (repeats dropped), because the optimum depends on the machine
-!> (BLAS, cache). Lowrank_wrapgrup / Lowrank_wrapgrdo bracket the sequential part of every slice (the vertex
+!> (BLAS, cache). WRAPGRUP / WRAPGRDO bracket the sequential part of every slice (the vertex
 !> loop and the slice-end flush; no hopping wrap, no Global_tau move) with Lowrank_tune_slice_begin / _end.
 !> A sweep is one up sweep (WRAPGRUP, NTAU = 0 .. Ltrot-1) followed by one down sweep (WRAPGRDO,
 !> NTAU = Ltrot .. 1), so the call of WRAPGRDO with NTAU = 1 ends a sweep (flag sweep_end of

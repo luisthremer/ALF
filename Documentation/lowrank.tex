@@ -1,0 +1,143 @@
+% Copyright (c) 2026 The ALF project.
+% This is a part of the ALF project documentation.
+% The ALF project documentation by the ALF contributors is licensed
+% under a Creative Commons Attribution-ShareAlike 4.0 International License.
+% For the licensing details of the documentation see license.CCBYSA.
+% !TEX root = doc.tex
+%-------------------------------------------------------------------------------------
+\section{Delayed and submatrix sequential updates} \label{sec:lowrank}
+%-------------------------------------------------------------------------------------
+%
+
+\paragraph{Purpose.}
+The standard sequential update (Sec.~\ref{sec:updating}) applies every accepted local move to the
+Green function at once, a rank-$r$ update of cost $N_{\text{dim}}^2$ per move with BLAS level-2
+efficiency. The delayed and submatrix schemes keep up to \texttt{N\_delay} accepted moves pending
+in low-rank form and apply them together in one matrix product. This changes only the order of the
+arithmetic: the acceptance ratios and the Green function are the same quantities, and the random
+numbers are drawn in the same order, so a run reproduces the Markov chain of the standard update
+up to roundoff.
+
+\paragraph{Parameters.}
+Two optional entries of the namelist \texttt{VAR\_QMC} in the file \texttt{parameters}; without them the
+standard update is used, and the results are bit-identical to a build without this feature:
+\begin{verbatim}
+&VAR_QMC
+...
+Sequential_scheme = "delayed"   ! "standard" (default) | "delayed" | "submatrix"
+N_delay           = 0           ! 0: automatic, -1: automatic and timed, >= 1: fixed
+/
+\end{verbatim}
+The code is in \texttt{Prog/lowrank\_update\_mod.F90}; \texttt{WRAPGRUP} and \texttt{WRAPGRDO}
+(\texttt{Prog/Wrapgr\_mod.F90}) call it for every eligible vertex. The choice is written to the \texttt{info} file. With \texttt{N\_delay = 0} the bound $n_0$ is set from
+$N_{\text{dim}}$ and from the largest pending rank one time slice can produce (a fixed rule, the same on
+every machine): $n_0 = 2^{\mathrm{round}(\log_2(N_{\text{dim}}/32))}$ for the delayed scheme (at least 1, at most 128) and
+$2^{\lfloor\log_2(N_{\text{dim}}/12)\rfloor}$ limited to $[16, 256]$ for the submatrix scheme, then limited by the
+largest pending rank (and, for submatrix, by $N_{\text{dim}}$) and rounded down to a power of two. The delayed rule replaced
+$N_{\text{dim}}/20$ with a lower limit of 16: scans of \texttt{N\_delay} on SuperMUC-NG (several models and sizes) found the optimum at 1--2 for
+$N_{\text{dim}}\le 100$, where the old rule lost up to 33\,\% against the best fixed value (8.6\,\% on average over all
+points); the new rule loses 3.6\,\% on average. The best \texttt{N\_delay} depends on the machine (BLAS library, cache sizes), so
+\texttt{N\_delay = -1} starts from $n_0$ and measures: in the second and third sweep of the run the time
+slices cycle through the candidates $n_0/2$, $n_0$ and $2n_0$ (each limited as the static rule limits
+$n_0$), and the wall time per proposed update is summed for each candidate. After the third sweep the
+fastest candidate is kept for the rest of the run if it is more than 5\,\% faster than $n_0$; otherwise
+$n_0$ is kept. With MPI the times are summed over the ranks of a group, rank 0 of the group decides, and
+the choice is broadcast. The result is written to the \texttt{info} file, for example
+\texttt{Auto N\_delay: candidates 8 16 32: 1.97E-06 2.21E-06 2.36E-06 s/proposal, chosen 8}.
+\texttt{N\_delay} changes only the summation order, so the timing does not change the results beyond
+roundoff. A run with fewer than three sweeps ends before the decision and logs nothing; if only one
+candidate exists (very few sequential vertices) no timing is done.
+
+\paragraph{Supported cases.}
+A vertex is handled by the low-rank scheme if its operator acts on at most 8 sites in every flavour;
+other vertices first apply the pending moves and then use the standard update. Vertices updated by
+sequential MALA (\texttt{Sequential\_MALA}) are treated the same way: the pending moves are applied,
+then the MALA update runs exactly as in the baseline. All pending moves are applied at the end of the
+sequential part of every time slice, so the Global\_tau moves (\texttt{Global\_tau\_moves},
+\texttt{Global\_tau\_MALA\_moves}), the measurements, the stabilisation and all other parts of ALF see
+the full Green function. Global moves, Langevin and HMC do not use the sequential update and are
+unaffected. Detailed derivations: \texttt{Documentation/lowrank/*.md}.
+
+\paragraph{Numerics compared with the baseline.}
+\begin{itemize}
+\item Same quantities, different summation order (roundoff-level differences).
+\item Submatrix scheme: blocks with non-diagonal content (bond operators) are applied immediately,
+because the submatrix form lost accuracy there: during development, a Kondo run without this rule
+reached a Green function precision of $3\times10^{-9}$, against $4\times10^{-11}$ with the standard
+update. The delayed scheme has no such loss and is the better choice for models with bond operators.
+\end{itemize}
+
+\paragraph{Verification.}
+Four levels, from the strictest to the statistical one.
+\begin{enumerate}
+\item \emph{Bit-identical to the baseline}: with \texttt{Sequential\_scheme = "standard"} every output
+file of the regression parameter sets (\texttt{testsuite/test\_branch\_parameters.json}) is bit-identical
+to the code without this feature.
+\item \emph{Same Markov chain} (\texttt{testsuite/Lowrank.tests/compare\_schemes.py}): with the same seeds the
+files \texttt{confout\_*} (final fields and random number generator state) of the delayed and the submatrix
+run are byte-identical to the standard run. The proposals of the fields do not depend on the Green
+function and all schemes draw the same random numbers in the same order, so identical files mean that
+every accept/reject decision was identical. The exception are sequential MALA and Global\_tau MALA, whose proposals contain the force, a
+function of the Green function: there roundoff enters the fields and only level 3 is required.
+\item \emph{Observables to roundoff}: every number in every bin file agrees with the standard run to
+$10^{-8}$ relative (largest value found on all scenarios: $2\times10^{-11}$, usually $10^{-13}$); the
+schemes sum in a different order. Unit test \texttt{36-lowrank-unit}: the low-rank kernels against an
+exactly recomputed Green function on 23 operator types (diagonal and bond operators, field types
+1--4, ill-conditioned cases).
+\item \emph{Statistics with independent seeds}: energy and a correlation function of standard and
+delayed runs agree within their error bars (separate study, not part of CTest).
+\end{enumerate}
+\texttt{compare\_schemes.py} runs every scenario with N\_delay automatic and N\_delay $=3$ (many
+flushes). The scenarios cover every Hamiltonian of \texttt{Prog/Hamiltonians.list} and the ALF
+features of the table below; a representative subset is registered in CTest
+(\texttt{lowrank-compare-schemes}) and runs in the CI for all compilers (GNU, PGI, Intel, IntelLLVM;
+serial and MPI); the full set needs \texttt{-DALF\_LOWRANK\_FULL\_TESTS=ON}.
+
+\paragraph{Compatibility.}
+Checked with levels 2 and 3 (GNU/MPICH on a Mac, 2 bins per scenario, 2026-11-20, before the code moved into
+\texttt{Prog/}); the final configuration was
+identical in all runs except where noted. The largest relative difference of the observables was
+$3.5\times10^{-11}$ over 264 scenario/scheme runs of the serial set. In all shipped models every vertex acts on at most
+4 sites, so $100\%$ of the vertices use the low-rank kernel; the fallback to the standard update for vertices of more than
+8 sites is tested with the test-only model \texttt{LR\_Wide\_Test} (10-site vertices next to one-site vertices, 50\% low rank).
+\begin{center}\small
+\begin{tabular}{p{0.34\textwidth}p{0.6\textwidth}}
+\hline
+Hamiltonian & Variants checked \\
+\hline
+Hubbard & Mz (Ising, type 1), N\_FL $=1$ and 2 (type 2), continuous HS (type 3), N\_SUN 2 and 4, twist and flux
+(complex Green function), pinning field; Square, N\_leg\_ladder, Bilayer, Honeycomb, Bilayer honeycomb,
+Triangular; projector; Checkerboard and Symm on and off \\
+Hubbard\_Plain\_Vanilla & half filling (flavour reconstruction), doped, attractive, adiabatic switching
+(time-dependent vertices), projector \\
+Kondo & N\_SUN 2 and 4, Symm on and off, $U_c \ne 0$ \\
+tV & N\_SUN 1 and 2, attractive and repulsive, bilayer \\
+LRC & long-range term on, projector, bilayer, Propose\_S0 \\
+Z2\_Matter & gauge fields only, gauge and matter fields, with Hubbard term, projector, Propose\_S0 \\
+Spin\_Peierls & square lattice, chain (type 2 and 4 vertices) \\
+test models & \texttt{LR\_Jz\_Test} (two-site Jz vertices), \texttt{LR\_Wide\_Test}, \texttt{Hubbard\_Mixed}
+(continuous and discrete fields in one run, with sequential MALA) \\
+\hline
+ALF feature & Result \\
+\hline
+Global\_tau\_moves (alone and combined with a sequential range), Propose\_S0 & identical chain \\
+Global\_moves (implemented only by Hubbard with continuous fields) & identical chain \\
+Sequential\_MALA, Global\_tau\_MALA, also with discrete fields in the same run & MALA vertices use the standard
+update; the proposal contains the force, so the final configuration agrees only to roundoff
+($\le 4\times10^{-11}$) \\
+Langevin, HMC & no sequential update, unaffected \\
+Restart from \texttt{confin} & identical chain; 2 + 2 bins are byte-identical to 4 bins \\
+MPI (2 ranks), TEMPERING (2 replicas, 1 and 2 ranks each), PARALLEL\_PARAMS (own parameter files, also
+different models) & identical chain \\
+HDF5 & compared in the CI with \texttt{h5dump} \\
+\hline
+\end{tabular}
+\end{center}
+Two limits are not of the feature: ALF master itself stops with ``unstable'' when \texttt{Nt\_sequential\_start}
+is larger than 1 together with Global\_tau moves in the Hubbard model, and the repulsive tV model ($V=+1$, N\_SUN$=1$) needs
+\texttt{Nwrap}$=2$ to reach a Green function precision better than $10^{-6}$ (with \texttt{Nwrap}$=10$ the standard update
+itself has a mean precision of $1.7\times10^{-6}$, and the schemes differ by $10^{-6}$ in the observables).
+Time-dependent hopping (\texttt{Op\_T} with \texttt{g\_t}) is not used by any shipped model; the wrap of the hopping is the baseline
+code in both paths.
+The unit test also checks the automatic \texttt{N\_delay} (static rule, timing state machine, error exits), and
+\texttt{compare\_schemes.py --n-delay -1} repeats the comparison with the timed automatic \texttt{N\_delay}.
