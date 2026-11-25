@@ -6,7 +6,8 @@ New findings of the bug hunt (docs/ai/phase2/ROADMAP.md, P2.8) are added here fi
 
 ## Determinant phase underflow for N >~ 3000 (L >~ 54) in CGR / DET_C
 
-- **Applies to:** this branch and upstream master (`4c690b04`): the CPU code. Not fixed here.
+- **Applies to:** upstream master (`4c690b04`) and `Code-modularity` before the det-phase merge: the CPU
+  code. **Fixed on this line by the det-phase feature** (see Fix below); still open upstream.
 - **Status:** **confirmed on the CPU at L = 64, Nt = 16 (acceptance 0.217; control L = 48:
   0.322)** — Helma job 1451287, 2026-11-25 (Hubbard square, U = 5, 1 sweep, 32 threads). That CPU
   binary was built from the `gpu-port` tree, whose `mymats_mod.F90` (`DET_C`) is byte-identical to
@@ -26,12 +27,36 @@ New findings of the bug hunt (docs/ai/phase2/ROADMAP.md, P2.8) are added here fi
   (N = 2000), -1024 (N = 3000), -1367 (N = 4000); the limit is -708, so the raw product is exactly
   0 for N = 3000 and 4000.
 - **Who is affected:** runs with N >~ 2950 (square lattice L >~ 54). L <= 48 is not affected.
-  Do not use this branch for N >~ 2950 before the fix.
-- **Fix (not done, owner's decision):** a phase-only product that normalises every factor
-  (as in `fix/det-phase-underflow` on the GPU line) plus a NaN/unit-modulus check of the phase.
-  `DET_C` itself must stay as it is where the magnitude of the determinant matters. Whether and
-  how this goes to the upstream developers is the owner's decision.
+- **Fix (det-phase feature, 2026-11-25):** `LU_PHASE_SAFE` (`MyMats`) checks a raw LU product whose
+  phase is all that is used: it is kept bit for bit if it is finite, in [1e-250, 1e250] and agrees in
+  phase with the product of the normalised factors, otherwise that normalised product (modulus 1) is
+  used. `DET_C_PHASE` = `DET_C` + this check; `INV_C` has an optional `DET_PHASE`. Used in `CGR` (all
+  STAB variants), `Op_set` and `Compute_Fermion_Det` (`Global_mod`; there the magnitude enters
+  `log|det|` and would have been log 0). `Control_Check_Phase` at the end of `CGR` stops the run if
+  the phase is NaN, Inf or not of unit modulus. Normal runs are unchanged bit for bit (16 regression
+  scenarios); tests `14-det-phase`, `41-check-phase-fail`. `DET_C` itself is unchanged (its
+  magnitude matters elsewhere). Large-N check on the CPU with the fix: Helma job 1451670 (pending).
+  Whether and how this goes to the upstream developers is the owner's decision.
 - **See:** branch `fix/det-phase-underflow` (GPU line), `docs/gpu/KNOWN_ISSUE_DET_PHASE_UNDERFLOW.md`.
+
+## Build: Prog objects do not depend on the modules of Libraries/Modules
+
+- **Found:** 2026-11-25 (det-phase work). `Prog/.deps.mk` (from `Prog/gen_deps.py`) lists only the
+  dependencies between `Prog/` modules. After a change of an interface in `Libraries/Modules`
+  (e.g. a new optional argument of `DET_C` in `MyMats`), `make` recompiles the library but not the
+  `Prog/` objects that use it; they keep calling the old interface. Seen as a segmentation fault in a
+  projector run (`WaveFunction_mod.o` calling `DET_C`), gone after `make clean`.
+- **Who is affected:** incremental builds after library changes. CI and fresh builds are not.
+- **Workaround:** `make clean` (or `make cleanprog`) after changing anything in `Libraries/Modules`.
+- **Fix (open, P2.8):** let `gen_deps.py` add the library `.mod` files (or `modules_90.a`) as
+  dependencies of the `Prog/` objects.
+
+## Trial wave function normalisation for large N_part (suspected, not checked)
+
+- `WaveFunction_mod` normalises the trial wave function with `Det(Mat, N_part)` (= `DET_C`), whose
+  raw LU product can under- or overflow for large `N_part` as above. Here the magnitude matters, so
+  `DET_C_PHASE` is not a fix; a log-determinant would be. Projector runs with large N_part only.
+  Status: suspected from the code, not reproduced (P2.8).
 
 ## GPU: NaN determinant phase for N >~ 3000 (L >~ 54)
 
