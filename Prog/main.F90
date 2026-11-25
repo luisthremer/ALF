@@ -138,6 +138,7 @@ Program Main
              &                     get_N_Tempering_frequency
 #endif
         Use Wrapgr_mod, only: Wrapgr_dealloc
+        Use lowrank_update_mod, only: Lowrank_finalize
         use entanglement_mod, only: Init_Entanglement_replicas
         Use iso_fortran_env, only: error_unit
         Use Langevin_HMC_mod, only: Langevin_HMC, Metropolis_Langevin
@@ -303,7 +304,7 @@ Program Main
 
         Call Walker_layout(walker, Ltrot, get_Nwrap())
 
-        Call Setup_update_schemes(N_op)
+        Call Setup_update_schemes(N_op, file_info)
 
         Call Write_info_parameters(file_info, walker%NSTM, N_op, chunk_size_gb)
         
@@ -388,6 +389,7 @@ Program Main
         If (get_N_Global_tau() > 0 .or. get_N_Global_tau_MALA() > 0 .or. get_Sequential_MALA()) then
            Call Wrapgr_dealloc
         endif
+        Call Lowrank_finalize()
         ! Release the model state: trial wave functions, operators, flavour map
         Call Clear_Ham_state()
 
