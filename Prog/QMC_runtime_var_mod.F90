@@ -57,6 +57,10 @@ Module QMC_runtime_var
 
         Character (len=64) :: ham_name
 
+        !  Sequential local update: "standard" (rank-1, Upgrade2), "delayed" or "submatrix" (lowrank_update_mod)
+        Character (len=64) :: Sequential_scheme
+        Integer            :: N_delay
+
         Logical :: settings_locked = .false.
 
 
@@ -84,7 +88,8 @@ Module QMC_runtime_var
               &               Max_Force, Leapfrog_steps, N_HMC_sweeps, Amplitude, &
               &               Global_MALA_moves, Sequential_MALA, N_Global_MALA_sweeps, N_Global_tau_MALA, Global_tau_MALA_moves, &
               &               MAX_Force_MALA_global, Max_Force_MALA_global_tau, Max_Force_MALA_sequential, &
-              &               Delta_t_MALA_sequential, Delta_t_MALA_global_tau, Delta_t_MALA_global
+              &               Delta_t_MALA_sequential, Delta_t_MALA_global_tau, Delta_t_MALA_global, &
+              &               Sequential_scheme, N_delay
        
         NAMELIST /VAR_HAM_NAME/ ham_name
 
@@ -138,6 +143,8 @@ Module QMC_runtime_var
     public :: get_Tempering_calc_det, set_Tempering_calc_det
     public :: get_Global_MALA_moves, set_Global_MALA_moves
     public :: get_Sequential_MALA,    set_Sequential_MALA
+    public :: get_Sequential_scheme,  set_Sequential_scheme
+    public :: get_N_delay,            set_N_delay
     public :: get_N_Global_MALA_sweeps,      set_N_Global_MALA_sweeps
     public :: get_N_Global_tau_MALA,  set_N_Global_tau_MALA
     public :: get_Global_tau_MALA_moves, set_Global_tau_MALA_moves
@@ -179,6 +186,7 @@ Module QMC_runtime_var
             Global_tau_MALA_moves = .false.; N_Global_tau_MALA = 1; Delta_t_MALA_global_tau = 0.1d0
             Max_Force_MALA_global_tau = 1.d0; Global_MALA_moves = .false.; N_Global_MALA_sweeps = 1
             Delta_t_MALA_global = 0.1d0; Max_Force_MALA_global = 1.d0
+            Sequential_scheme = "standard"; N_delay = 0
 
         end subroutine set_QMC_runtime_default_var
 
@@ -729,6 +737,26 @@ Module QMC_runtime_var
             val = Sequential_MALA
         end function get_Sequential_MALA
 
+        character(len=64) function get_Sequential_scheme() result(val)
+            val = Sequential_scheme
+        end function get_Sequential_scheme
+
+        subroutine set_Sequential_scheme(val)
+            character(len=*), intent(in) :: val
+            call ensure_settings_unlocked("set_Sequential_scheme")
+            Sequential_scheme = val
+        end subroutine set_Sequential_scheme
+
+        integer function get_N_delay() result(val)
+            val = N_delay
+        end function get_N_delay
+
+        subroutine set_N_delay(val)
+            integer, intent(in) :: val
+            call ensure_settings_unlocked("set_N_delay")
+            N_delay = val
+        end subroutine set_N_delay
+
         subroutine set_Sequential_MALA(val)
             logical, intent(in) :: val
             call ensure_settings_unlocked("set_Sequential_MALA")
@@ -869,6 +897,8 @@ Module QMC_runtime_var
             CALL MPI_BCAST(Amplitude            ,1 ,MPI_REAL8    ,0,MPI_COMM_i,ierr)
             CALL MPI_BCAST(Global_MALA_moves          ,1 ,MPI_LOGICAL  ,0,MPI_COMM_i,ierr)
             CALL MPI_BCAST(Sequential_MALA            ,1 ,MPI_LOGICAL  ,0,MPI_COMM_i,ierr)
+            CALL MPI_BCAST(Sequential_scheme          ,64,MPI_CHARACTER,0,MPI_COMM_i,ierr)
+            CALL MPI_BCAST(N_delay                    ,1 ,MPI_Integer  ,0,MPI_COMM_i,ierr)
             CALL MPI_BCAST(N_Global_MALA_sweeps              ,1 ,MPI_Integer  ,0,MPI_COMM_i,ierr)
             CALL MPI_BCAST(N_Global_tau_MALA          ,1 ,MPI_Integer  ,0,MPI_COMM_i,ierr)
             CALL MPI_BCAST(Global_tau_MALA_moves      ,1 ,MPI_LOGICAL  ,0,MPI_COMM_i,ierr)

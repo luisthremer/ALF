@@ -59,7 +59,7 @@ Module qmc_setup_mod
        &                     get_Max_Force_MALA_sequential, get_N_Global, get_N_Global_MALA_sweeps, &
        &                     get_N_Global_tau, get_N_Global_tau_MALA, get_N_HMC_sweeps, get_NBin, &
        &                     get_NSweep, get_Nt_sequential_end, get_Nt_sequential_start, get_Nwrap, &
-       &                     get_Propose_S0, get_sequential, get_Sequential_MALA, &
+       &                     get_Propose_S0, get_sequential, get_Sequential_MALA, get_Sequential_scheme, get_N_delay, &
        &                     get_Tempering_calc_det, set_default_global_tau_sampling, &
        &                     set_default_values_measuring_interval, set_N_Global_tau, &
        &                     set_N_Global_tau_MALA, set_Nt_sequential_end, set_Nt_sequential_start
@@ -70,6 +70,7 @@ Module qmc_setup_mod
   Use Fields_mod, only: Fields_init
   Use Hop_mod, only: Hop_mod_init
   Use Wrapgr_mod, only: Wrapgr_alloc
+  Use lowrank_update_mod, only: Lowrank_init
   Use set_random, only: Set_Random_number_Generator
   Use Langevin_HMC_mod, only: Langevin_HMC, Metropolis_Langevin
   Use Natural_Constants, only: Eps_small
@@ -193,8 +194,9 @@ Module qmc_setup_mod
     !> Wrapgr work arrays), Langevin/HMC and global MALA; checks their
     !> compatibility.
     !--------------------------------------------------------------------
-    Subroutine Setup_update_schemes(N_op)
+    Subroutine Setup_update_schemes(N_op, file_info)
       Integer, intent(in) :: N_op
+      Character (len=*), intent(in) :: file_info
       Integer :: n
       Integer :: tmp_Nt_sequential_start, tmp_Nt_sequential_end, tmp_N_Global_tau, tmp_N_Global_tau_MALA
 
@@ -245,6 +247,9 @@ Module qmc_setup_mod
       endif 
       Call check_MALA_variables()
       Call check_update_schemes_compatibility()
+      ! Delayed/submatrix state for the sequential update; allocates nothing for "standard"
+      Call Lowrank_init(get_Sequential_scheme(), get_N_delay(), &
+           &            get_Nt_sequential_start(), get_Nt_sequential_end(), file_info=file_info)
 
       if ( get_Sequential_MALA() .or. get_Global_tau_MALA_moves() ) then
        Do n = 1,N_op
