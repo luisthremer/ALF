@@ -70,3 +70,49 @@ and `docs/ai/phase2/CG_ALF_IDEAS.md` (one line per idea: status, measured gain).
 
 GPU hours from the Helma test/porting contingent (3000 GPU-h total, shared with production): CG-ALF experiments at most
 20 GPU-h per night unless the owner says otherwise; every job logged in `docs/ai/phase2/CG_ALF_LEDGER.md`.
+
+## 7. Results
+
+### E1 — library ceilings, H100 (Helma job 1452169, 2026-11-25), TFLOP/s in real flops
+
+| N | batch | ZGEMM | DGEMM | CGEMM | SGEMM |
+|---|---|---|---|---|---|
+| 256 | 1 | 20.8 | 5.2 | 13.1 | 3.8 |
+| 576 | 1 | 44.5 | 30.3 | 38.0 | 22.1 |
+| 1024 | 1 | 57.0 | 52.8 | 52.0 | 38.1 |
+| 2304 | 1 | 61.3 | 62.3 | 54.5 | 40.6 |
+| 4096 | 1 | 60.9 | 63.4 | 54.1 | 51.4 |
+| 576 | 8 | 58.0 | 47.5 | 52.8 | 38.2 |
+| 1024 | 32 | 62.3 | 61.1 | 54.6 | 50.4 |
+
+Rank-k flush ZGEMM (N x N x k): N = 576: k = 32 10.3 TFLOP/s (8.2 us per call), k = 128 26.7; N = 1024: k = 32
+16.7, k = 128 35.4; N = 2304: k = 32 12.4, k = 128 36.5.
+
+Consequences: I2 (real arithmetic) = up to 4x on the GEMM share (DGEMM as fast per flop as ZGEMM from N ~ 1000).
+I4 (FP32) does not pay for GEMMs on the H100 (FP64 runs on tensor cores; CGEMM/SGEMM are slower per flop) — only for
+memory-bound kernels and memory size; priority lowered. I1 (batching) pays at production sizes (N = 576: 44.5 -> 58).
+I7: the flush at k = 32 runs at 10-17 TFLOP/s; k = 128 doubles it.
+
+### E0 — FLOP count (branch `rd/flopcount`, H100, production parameters, 2 sweeps incl. setup, job 1452222)
+
+| L (N) | GFLOP total | GEMM | QR (geqrf + ormqr + qrpp) | LU + TRSM | wall s |
+|---|---|---|---|---|---|
+| 16 (256) | 710 | 605 | 91 | 15 | 11 |
+| 24 (576) | 12 098 | 10 303 | 1 548 | 247 | 30 |
+| 32 (1024) | 35 557 | 22 125 | 11 585 | 1 847 | 284 |
+
+### E2 — GPU timeline, L = 24, 2 sweeps + setup (nsys)
+
+GPU kernel time 2.72 s of about 29 s wall (220 160 launches): QR panel / stabilisation 39 %, GEMM 26 %, LU + phase
+(`getrf_pivot`, `k_cgr_phase` 0.74 ms per call) 17 %, update kernels 7 %, wraps 5 %. Host: 168 490 stream
+synchronisations (2.8 s), 21 506 device-to-host copies.
+
+### Reading
+
+- Theoretical limit L = 24: ~5.5 TFLOP per sweep / 61 TFLOP/s = **0.09 s per sweep**; measured 3.5 s per sweep:
+  a factor of about 40. The GPU is busy ~40 % of a sweep; of that busy time the panel factorisations (QR, LU) take
+  more than half, and they run far below the GEMM ceiling.
+- Start-up dominates short runs (L = 32: ~260 s of 284 s).
+- First targets: (a) host round trips and syncs in the update (decisions on the host), (b) stabilisation without
+  the LU (phase from the Householder scalars, done on Intel, not on CUDA) and a GPU-friendlier QR, (c) start-up cost,
+  (d) batching chains (I1). Next experiment E3: setup vs sweep time and host hot spots.
