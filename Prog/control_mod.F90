@@ -50,6 +50,7 @@ module Control
     use iso_fortran_env, only: output_unit, error_unit
     Implicit none
 
+    private :: finite_r8
     real    (Kind=Kind(0.d0)), private, save :: XMEANG, XMAXG, XMAXP,  Xmean_tau, Xmax_tau
     Integer (Kind=Kind(0.d0)), private, save :: count_CPU_start,count_CPU_end,count_rate,count_max
     Integer          , private, save :: NCG, NCG_tau
@@ -443,6 +444,59 @@ module Control
         XMEAN_tau = XMEAN_tau + XMEAN
       End Subroutine Control_Precision_tau
 
+
+!--------------------------------------------------------------------
+!> @brief
+!> Aborts the run if the phase Z from CGR is not a finite number of unit modulus.
+!> @details
+!> A NaN phase makes every Metropolis weight W = S0 T0 |Re(Phase R)/Re(Phase)| NaN: every
+!> proposal is rejected, the Green function stays finite and the run ends with return code 0
+!> (KNOWN_ISSUES.md, "Determinant phase underflow"). Non-finite values are recognised by their
+!> bit pattern, because -ffast-math may remove tests like Z /= Z.
+!--------------------------------------------------------------------
+      Subroutine Control_Check_Phase(Z)
+        use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
+        Implicit none
+        Complex (Kind=Kind(0.D0)), INTENT(IN) :: Z
+        Real    (Kind=Kind(0.D0)) :: X
+        Character (len=64) :: file1
+
+        if (finite_r8(real(Z, kind(0.d0))) .and. finite_r8(aimag(Z))) then
+           X = ABS(Z)
+           if (X > 0.5d0 .and. X < 2.d0) return
+        endif
+#if defined(TEMPERING)
+        write(File1,'(A,I0,A)') "Temp_",igroup,"/info"
+#else
+        File1 = "info"
+#endif
+        Open (Unit=50,file=file1, status="unknown", position="append")
+        write(50,*)
+#ifdef MPI
+        write(50,*) "Task", Irank_g, "of group", igroup, "reports:"
+#endif
+        write(50,*) "Phase of the determinant is NaN, Inf or not of unit modulus: ", Z
+        write(50,*) "Every Metropolis proposal would be rejected; calculation is being aborted!"
+        write(50,*)
+        close(50)
+        write(error_unit,*)
+#ifdef MPI
+        write(error_unit,*) "Task", Irank_g, "of group", igroup, "reports:"
+#endif
+        write(error_unit,*) "Phase of the determinant is NaN, Inf or not of unit modulus: ", Z
+        write(error_unit,*) "Every Metropolis proposal would be rejected; calculation is being aborted!"
+        write(error_unit,*)
+        CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      End Subroutine Control_Check_Phase
+
+      !> True if x is neither NaN nor +-Inf (exponent bits not all set)
+      Logical function finite_r8(x)
+        Implicit none
+        Real (Kind=Kind(0.D0)), intent(in) :: x
+        Integer (Kind=8) :: bits
+        bits = transfer(x, bits)
+        finite_r8 = (iand(shiftr(bits, 52), 2047_8) /= 2047_8)
+      end function finite_r8
 
       Subroutine Control_PrecisionP(Z,Z1)
         Implicit none

@@ -65,6 +65,7 @@ endforeach(iter)
 
 foreach(iter ${cgr1tests})
 target_link_libraries(${iter} ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/cgr1_mod.o)
+target_link_libraries(${iter} ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/control_mod.o)
 target_link_libraries(${iter} ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/UDV_WRAP_mod.o)
 target_link_libraries(${iter} ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/QDRP_decompose_mod.o)
 target_link_libraries(${iter} ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/udv_state_mod.o)
@@ -209,6 +210,21 @@ else()
   else()
     add_test(NAME 40-walker COMMAND 40-walker)
   endif()
+  # Control_Check_Phase must abort on a NaN phase (KNOWN_ISSUES.md, determinant phase underflow).
+  add_executable(41-check-phase-fail 41-check-phase-fail.F90)
+  target_compile_options(41-check-phase-fail PRIVATE ${FLAG_LIST})
+  target_include_directories(41-check-phase-fail PRIVATE "${PROG_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules")
+  target_link_libraries(41-check-phase-fail ${prog_objects} ${LIB_LIST})
+  if("${FLAG_LIST}" MATCHES "-DMPI")
+    add_test(NAME 41-check-phase-fail
+      COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS}
+        $<TARGET_FILE:41-check-phase-fail> ${MPIEXEC_POSTFLAGS})
+  else()
+    add_test(NAME 41-check-phase-fail COMMAND 41-check-phase-fail)
+  endif()
+  set_tests_properties(41-check-phase-fail PROPERTIES
+    PASS_REGULAR_EXPRESSION "not of unit modulus: *\\( *NaN")
 endif()
 
 # Unit test for QMC_runtime_var (defaults, set/get round trip, lock).
