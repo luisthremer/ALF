@@ -25,9 +25,19 @@ dips to about exp(-0.24 N), which underflows double precision (exp(-708)) at N >
 the Metropolis weight W = S0 T0 |Re(Phase R)/Re(Phase)| is then NaN, so `Weight > ranf` is false for every proposal until the next
 stabilisation. The Green function stays finite and the Precision Green check stays near 1e-15, so nothing else notices.
 
+## Origin: upstream ALF has the same construction
+
+The raw product comes from upstream. `DET_C` (`Libraries/Modules/mymats_mod.F90`, upstream master 4c690b04) computes
+`det_C = det_C*mat(i,i)` from the LU diagonal, and the upstream CPU `CGR` (`Prog/cgr1_mod.F90`) forms its phase as
+`PHASE = CONJG(DET_C(RHS, N_size)); PHASE = PHASE/ABS(PHASE)` with the same matrix RHS = U_R^dagger U_L. The GPU port copied the
+algorithm into `k_det_phase`. The GPU default path avoids the LU (it tracks the determinants of U_L and U_R), so only the first CGR after
+a host upload reaches `k_det_phase`; the upstream CPU path calls `DET_C` in every CGR. The same function causes the documented
+`Op_set` failure at Ndim = 4096 (`TUNING_DEFECT.md`). For the CPU line this is a latent issue for N >~ 3000; it was **not** fixed on
+this branch (GPU line only) and is not confirmed on the CPU unless a test result is added here.
+
 ## Who is affected
 
-Only runs with N >~ 2950. Runs with L <= 48 (N <= 2304) are not affected (running minimum of ln|det| about -551, limit -708). An
+Only runs with N >~ 2950 (GPU: every branch listed above; CPU: see the section on upstream). Runs with L <= 48 (N <= 2304) are not affected (running minimum of ln|det| about -551, limit -708). An
 affected run is easy to recognise: acceptance in `info` far below 0.3, or NaN in `Ener_scal/obser` of `data.h5`.
 
 ## Fix
