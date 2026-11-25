@@ -261,7 +261,8 @@ contains
 !> @param [in] scheme_name
 !> Character
 !> \verbatim
-!>  "standard", "delayed" or "submatrix"; case-insensitive. Any other name terminates.
+!>  "standard", "delayed", "submatrix" or "auto" (submatrix if every eligible vertex is diagonal,
+!>  else delayed); case-insensitive. Any other name terminates.
 !> \endverbatim
 !> @param [in] N_delay
 !> Integer
@@ -292,7 +293,7 @@ contains
       Character (len=:), allocatable :: name
       Character (len=256)            :: line, line2, line_inel
       Integer :: n, nf, M, n_inel, n_first, unit_info, nts, nte, rmax, max_pend, N_delay_cap, k, c
-      Logical :: print_info, nd_any
+      Logical :: print_info, nd_any, auto_scheme
 
       ! A re-init must not silently drop pending state
       if (lr_initialised) call Lowrank_assert_flushed("Lowrank_init")
@@ -300,6 +301,7 @@ contains
       lr_initialised = .true.
 
       name = str_to_upper(trim(adjustl(scheme_name)))
+      auto_scheme = .false.
       select case (name)
       case ("STANDARD")
          return
@@ -307,9 +309,12 @@ contains
          lr_scheme = SCHEME_DELAYED
       case ("SUBMATRIX")
          lr_scheme = SCHEME_SUBMATRIX
+      case ("AUTO")
+         auto_scheme = .true.
+         lr_scheme   = SCHEME_SUBMATRIX   ! decided below, once the vertices are known
       case default
          Write(error_unit,*) 'Lowrank_init: unknown Sequential_scheme "', trim(scheme_name), &
-              &              '" (allowed: standard, delayed, submatrix)'
+              &              '" (allowed: standard, delayed, submatrix, auto)'
          CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
       end select
       if (N_delay < -1) then
@@ -353,6 +358,17 @@ contains
          enddo
          max_pend = max_pend + rmax
       enddo
+      ! auto: submatrix is the faster scheme for diagonal vertices; with non-diagonal (bond) vertices
+      ! it flushes every such block at once (K_ND = 1) and delayed is faster (measured 2026-11-25:
+      ! Hubbard 16x16 submatrix 9.8 s, delayed 10.1 s; tV 16x16 12.3 s / 10.3 s; Kondo 12x12 3.8 s / 2.7 s)
+      if (auto_scheme) then
+         if (nd_any) then
+            lr_scheme = SCHEME_DELAYED
+            name = "AUTO -> DELAYED"
+         else
+            name = "AUTO -> SUBMATRIX"
+         endif
+      endif
       tune_ncand = 0
       tune_cand  = 0
       if (N_delay >= 1) then
