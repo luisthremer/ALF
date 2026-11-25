@@ -564,6 +564,21 @@ module Control
 
 
 !--------------------------------------------------------------------
+!> True if the double precision number x is neither NaN nor Inf.
+!> The test reads the bit pattern: comparisons such as x /= x, x > y or ieee_is_nan(x) can be folded to constants by
+!> compilers under -ffast-math / -ffinite-math-only, which silently disables a guard written with them.
+!--------------------------------------------------------------------
+      Logical Function Control_Is_Finite(x)
+        use iso_fortran_env, only: int64
+        Implicit none
+        Real (Kind=Kind(0.D0)), INTENT(IN) :: x
+        Integer (Kind=int64), parameter :: expmask = int(z'7FF0000000000000', int64)
+        Integer (Kind=int64) :: b
+        b = transfer(x, b)
+        Control_Is_Finite = ( iand(b, expmask) /= expmask )
+      End Function Control_Is_Finite
+
+!--------------------------------------------------------------------
 !> Abort because the determinant phase is not a finite number of unit modulus (added 2026-11-25).
 !> A NaN phase makes the Metropolis weight W = S0 T0 |Re(Phase R)/Re(Phase)| NaN, so every proposal is rejected while the run
 !> ends with return code 0 and the Green function stays finite: see docs/gpu/KNOWN_ISSUE_DET_PHASE_UNDERFLOW.md.
@@ -605,16 +620,18 @@ module Control
         Implicit none
         Complex (Kind=Kind(0.D0)), INTENT(IN) :: Z
         Real    (Kind=Kind(0.D0)) :: X
+        if ( .not. Control_Is_Finite(dble(Z)) .or. .not. Control_Is_Finite(aimag(Z)) ) call Control_Fail_Phase(Z)
         X = ABS(Z)
-        if ( .not. ( X > 0.5d0 .and. X < 2.d0 ) ) call Control_Fail_Phase(Z)
+        if ( X <= 0.5d0 .or. X >= 2.d0 ) call Control_Fail_Phase(Z)
       End Subroutine Control_Check_Phase
 
       Subroutine Control_PrecisionP(Z,Z1)
         Implicit none
         Complex (Kind=Kind(0.D0)), INTENT(IN) :: Z,Z1
         Real    (Kind=Kind(0.D0)) :: X
-        if ( Z /= Z ) call Control_Fail_Phase(Z)     ! NaN guard (comparisons with NaN are false, so the test below never fires)
-        if ( Z1 /= Z1 ) call Control_Fail_Phase(Z1)
+        ! NaN guard on the bit pattern (comparisons with NaN are false and can be folded away under -ffast-math)
+        if ( .not. Control_Is_Finite(dble(Z))  .or. .not. Control_Is_Finite(aimag(Z))  ) call Control_Fail_Phase(Z)
+        if ( .not. Control_Is_Finite(dble(Z1)) .or. .not. Control_Is_Finite(aimag(Z1)) ) call Control_Fail_Phase(Z1)
         X = ABS(Z-Z1)
         if ( X > XMAXP ) XMAXP = X
       End Subroutine Control_PrecisionP
