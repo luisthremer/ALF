@@ -51,6 +51,8 @@ Module Wrapgr_mod
   Use Random_Wrap, only: nranf, ranf_wrap, rang_wrap
   Use Hop_mod, only: Hop_mod_mmthR, Hop_mod_mmthR_m1, Hop_mod_mmthl, Hop_mod_mmthl_m1
   use upgrade_mod, only: Upgrade2
+  use lowrank_update_mod, only: Lowrank_eligible, Lowrank_flush, Lowrank_wrap_hook, Upgrade_lowrank, &
+       &                        Lowrank_tune_slice_begin, Lowrank_tune_slice_end
   use Langevin_HMC_mod, only: Calculate_Force
   Use Natural_Constants, only: Eps_small
 
@@ -115,6 +117,7 @@ Contains
     real    (kind=kind(0.d0)) :: delta_t_running_old, Xmax, Delta_t_running_new
     Character (Len=64)        :: Mode
     Logical                   :: Acc, toggle1, L_MALA
+    Logical                   :: LR_n   ! vertex n handled by the delayed/submatrix scheme
 
     ! Only used for MALA fields, where they are set before use.
     phase_st  = cmplx(1.d0,0.d0,kind(0.d0))
@@ -127,14 +130,19 @@ Contains
        CALL HOP_MOD_mmthr   (GR(:,:,nf), nf, ntau1 )
        CALL HOP_MOD_mmthl_m1(GR(:,:,nf), nf, ntau1 )
     Enddo
+    call Lowrank_tune_slice_begin()
     Do n = Nt_sequential_start,Nt_sequential_end
        L_MALA = Sequential_MALA .and. Op_V(n,1)%type == 3
+       LR_n = Lowrank_eligible(n) .and. .not. L_MALA
+       ! The standard and MALA updates below need the explicit G
+       if (.not. LR_n) call Lowrank_flush(GR)
        Do nf_eff = 1, N_FL_eff
           nf=Calc_Fl_map(nf_eff)
           HS_Field =  nsigma%f(n,ntau1)
           N_type = 1
           Call Op_Wrapup(Gr(:,:,nf),Op_V(n,nf),HS_Field,Ndim,N_Type,ntau1)
        enddo
+       if (LR_n) call Lowrank_wrap_hook(n, ntau1, HS_Field, 1, +1, GR)
        nf = 1
        T0_proposal       = 1.5D0
        T0_Proposal_ratio = 1.D0
@@ -173,7 +181,11 @@ Contains
              mode = "Final"
           endif
           Prev_Ratiotot = cmplx(1.d0,0.d0,kind(0.d0))
-          Call Upgrade2(GR,n,ntau1,PHASE,HS_new, Prev_Ratiotot, S0_ratio,T0_Proposal_ratio, Acc, mode )
+          if (LR_n) then
+             Call Upgrade_lowrank(GR,n,ntau1,PHASE,HS_new, S0_ratio,T0_Proposal_ratio, Acc)
+          else
+             Call Upgrade2(GR,n,ntau1,PHASE,HS_new, Prev_Ratiotot, S0_ratio,T0_Proposal_ratio, Acc, mode )
+          endif
        else
           toggle1 = .false.
           Call Control_upgrade_eff(toggle1)
@@ -183,6 +195,7 @@ Contains
           N_type =  2
           Call Op_Wrapup(Gr(:,:,nf),Op_V(n,nf),HS_Field,Ndim,N_Type,ntau1)
        enddo
+       if (LR_n) call Lowrank_wrap_hook(n, ntau1, HS_Field, 2, +1, GR)
 
        if (L_MALA) then
           phase = Phase * Prev_Ratiotot/sqrt(Prev_Ratiotot*conjg(Prev_Ratiotot))
@@ -214,6 +227,9 @@ Contains
 
        endif
     Enddo
+    ! G is the full Green function for the Global_tau moves and on return
+    call Lowrank_flush(GR)
+    call Lowrank_tune_slice_end(.false.)
 
     if (Nt_sequential_end >= Nt_sequential_start) then 
       m         = Nt_sequential_end
@@ -269,6 +285,7 @@ Contains
     real    (kind=kind(0.d0)) :: delta_t_running_old, Xmax, Delta_t_running_new
     Character (Len=64)        :: Mode
     Logical                   :: Acc, toggle1, L_MALA
+    Logical                   :: LR_n   ! vertex n handled by the delayed/submatrix scheme
 
     ! Only used for MALA fields, where they are set before use.
     phase_st  = cmplx(1.d0,0.d0,kind(0.d0))
@@ -294,8 +311,12 @@ Contains
     if ( N_Global_tau > 0 .or. N_Global_tau_MALA > 0 ) Call Wrapgr_PlaceGR(GR,m, m1, ntau)
 
     
+    call Lowrank_tune_slice_begin()
     Do n =  Nt_sequential_end, Nt_sequential_start, -1
        L_MALA = Sequential_MALA .and. Op_V(n,1)%type == 3
+       LR_n = Lowrank_eligible(n) .and. .not. L_MALA
+       ! The standard and MALA updates below need the explicit G
+       if (.not. LR_n) call Lowrank_flush(GR)
        if (L_MALA) then
           nsigma_st = nsigma%f(n,ntau)
           phase_st = phase
@@ -308,6 +329,7 @@ Contains
           nf=Calc_Fl_map(nf_eff)
           Call Op_Wrapdo( Gr(:,:,nf), Op_V(n,nf), HS_Field, Ndim, N_Type,ntau)
        enddo
+       if (LR_n) call Lowrank_wrap_hook(n, ntau, HS_Field, 2, -1, GR)
        !Write(6,*) 'Upgrade : ', ntau,n 
        nf = 1
        T0_proposal       = 1.5D0
@@ -377,7 +399,11 @@ Contains
 
           else
              mode = "Final"
-             Call Upgrade2(GR,n,ntau,PHASE,HS_new, Prev_Ratiotot, S0_ratio,T0_Proposal_ratio, Acc, mode )
+             if (LR_n) then
+                Call Upgrade_lowrank(GR,n,ntau,PHASE,HS_new, S0_ratio,T0_Proposal_ratio, Acc)
+             else
+                Call Upgrade2(GR,n,ntau,PHASE,HS_new, Prev_Ratiotot, S0_ratio,T0_Proposal_ratio, Acc, mode )
+             endif
           endif
        else
           toggle1 = .false.
@@ -393,7 +419,12 @@ Contains
           nf=Calc_Fl_map(nf_eff)
           Call Op_Wrapdo( Gr(:,:,nf), Op_V(n,nf), HS_Field, Ndim, N_Type, ntau )
        enddo
+       if (LR_n) call Lowrank_wrap_hook(n, ntau, HS_Field, 1, -1, GR)
     enddo
+    ! G is the full Green function before the hopping propagation and on return
+    call Lowrank_flush(GR)
+    ! NTAU = 1 ends a sweep (up sweep NTAU = 0..Ltrot-1, down sweep Ltrot..1)
+    call Lowrank_tune_slice_end(NTAU == 1)
     DO nf_eff = 1,N_FL_eff
        nf=Calc_Fl_map(nf_eff)
        Call Hop_mod_mmthl   (GR(:,:,nf), nf,ntau)
