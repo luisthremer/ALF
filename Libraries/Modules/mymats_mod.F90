@@ -1444,14 +1444,16 @@
 
       !> True if real and imaginary part are neither NaN nor +-Inf (by the exponent bits, which
       !> -ffast-math cannot optimise away)
+      !> (same mask test as Control_Is_Finite; no shiftr, which nvfortran 24.9 does not know)
       Logical function is_finite_c(z)
+        use iso_fortran_env, only: int64
         Implicit none
         Complex (Kind=Kind(0.d0)), intent(in) :: z
-        Integer (Kind=8) :: b_re, b_im
+        Integer (Kind=int64), parameter :: expmask = int(z'7FF0000000000000', int64)
+        Integer (Kind=int64) :: b_re, b_im
         b_re = transfer(real(z, kind(0.d0)), b_re)
         b_im = transfer(aimag(z), b_im)
-        is_finite_c = iand(shiftr(b_re, 52), 2047_8) /= 2047_8 .and. &
-             &        iand(shiftr(b_im, 52), 2047_8) /= 2047_8
+        is_finite_c = iand(b_re, expmask) /= expmask .and. iand(b_im, expmask) /= expmask
       end function is_finite_c
 
 !--------------------------------------------------------------------
