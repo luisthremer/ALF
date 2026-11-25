@@ -51,3 +51,38 @@ add_test(NAME 36-lowrank-unit-capacity COMMAND ${LOWRANK_UNIT_COMMAND} capacity 
 set_tests_properties(36-lowrank-unit-capacity PROPERTIES
   PASS_REGULAR_EXPRESSION "Lowrank_set_N_delay: N_delay = 3 outside 1 \\.\\. 2 \\(allocated capacity\\)")
 
+# Delayed and submatrix against the standard update on fixed seeds, whole runs (compare_schemes.py): the
+# final field configuration must be byte-identical, the observables agree to 1e-8, 2 bins per scenario.
+# lowrank-compare-schemes: a representative subset (every model and the ALF features, plus the scenarios that
+# need MPI ranks in the MPI builds); lowrank-compare-schemes-full: every scenario (about 30 minutes,
+# only with -DALF_LOWRANK_FULL_TESTS=ON).
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_FOUND)
+  set(LOWRANK_COMPARE_MPI "")
+  if(LOWRANK_MPIRUN)
+    string(REPLACE ";" " " LOWRANK_MPIRUN_STRING "${LOWRANK_MPIRUN}")
+    set(LOWRANK_COMPARE_MPI --build ${LOWRANK_BUILD} --mpiexec "${LOWRANK_MPIRUN_STRING}")
+  endif()
+  # builds that contain the test-only Hamiltonians (add_test_models.sh) also run the scenarios that need them
+  if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/Hamiltonians/Hamiltonian_Hubbard_Mixed_smod.F90)
+    list(APPEND LOWRANK_COMPARE_MPI --test-models)
+  endif()
+  set(LOWRANK_COMPARE_COMMON ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/compare_schemes.py
+      ${LOWRANK_COMPARE_MPI}
+      --exe ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/ALF.out
+      --start ${CMAKE_CURRENT_SOURCE_DIR}/../../Scripts_and_Parameters_files/Start)
+  # The quick set takes one bin per run (and, with MPI, only the automatic N_delay): the slow compilers (Intel
+  # with run-time checks) need an hour otherwise. The full set below keeps 2 bins and N_delay = 0 and 3.
+  set(LOWRANK_QUICK_OPTIONS --quick --max-bins 1)
+  if(LOWRANK_MPIRUN)
+    list(APPEND LOWRANK_QUICK_OPTIONS --n-delay 0)
+  endif()
+  add_test(NAME lowrank-compare-schemes
+           COMMAND ${LOWRANK_COMPARE_COMMON} ${LOWRANK_QUICK_OPTIONS} --work ${CMAKE_CURRENT_BINARY_DIR}/compare_schemes_runs)
+  option(ALF_LOWRANK_FULL_TESTS "Run every delayed/submatrix comparison scenario (about 30 minutes)" OFF)
+  if(ALF_LOWRANK_FULL_TESTS)
+    add_test(NAME lowrank-compare-schemes-full
+             COMMAND ${LOWRANK_COMPARE_COMMON} --max-bins 2 --work ${CMAKE_CURRENT_BINARY_DIR}/compare_schemes_runs_full)
+    set_tests_properties(lowrank-compare-schemes-full PROPERTIES TIMEOUT 7200)
+  endif()
+endif()
