@@ -1004,6 +1004,13 @@ module alf_la_mod
   public :: la_debug_poison_last_info                        ! test hook (t_info)
 
   logical, save :: inited = .false.
+  ! CG-ALF E0: FLOP and call counters per routine, on with ALF_LA_FLOPCOUNT=1, printed by la_finalize
+  integer, parameter :: FC_N = 12
+  character(len=14), parameter :: fc_name(FC_N) = [character(len=14) :: 'gemm', 'gemm_cr', 'gemm_batched', &
+       & 'geru', 'trsm', 'geqrf', 'ungqr', 'ormqr', 'getrf', 'getrs', 'qrpp', 'geqp3_host']
+  logical, save :: fc_on = .false., fc_read = .false.
+  real(8), save :: fc_flops(FC_N) = 0.d0
+  integer(8), save :: fc_calls(FC_N) = 0_8
   complex(8), allocatable, save :: hws(:)       ! host LAPACK work (grown on demand)
   real(8), allocatable, save :: hrws(:)         ! host real work (ZGEQP3 rwork, norms)
   complex(8), allocatable, save :: hscr(:)      ! host scratch for the column permutation (HOST la_qrpp)
@@ -1193,6 +1200,13 @@ contains
 #endif
 
   subroutine la_init()
+    character(len=8) :: ev
+    integer :: evlen, evst
+    if (.not. fc_read) then
+       call get_environment_variable('ALF_LA_FLOPCOUNT', ev, evlen, evst)
+       fc_on = (evst == 0 .and. evlen > 0 .and. ev(1:1) == '1')
+       fc_read = .true.
+    end if
 #if defined(ALF_LA_CUDA)
     if (inited) return
     allocate(cab(2))
@@ -1226,8 +1240,25 @@ contains
     inited = .true.
   end subroutine la_init
 
+  subroutine fc_add(id, flops)
+    integer, intent(in) :: id
+    real(8), intent(in) :: flops
+    fc_calls(id) = fc_calls(id) + 1_8
+    fc_flops(id) = fc_flops(id) + flops
+  end subroutine fc_add
+
+  subroutine fc_report()
+    integer :: i
+    write(error_unit,'(A)') 'ALF_LA_FLOPCOUNT routine calls GFLOP'
+    do i = 1, FC_N
+       if (fc_calls(i) > 0) write(error_unit,'(A,1X,A14,1X,I12,1X,F16.3)') 'ALF_LA_FLOPCOUNT', fc_name(i), fc_calls(i), fc_flops(i)*1.d-9
+    end do
+    write(error_unit,'(A,1X,A14,1X,I12,1X,F16.3)') 'ALF_LA_FLOPCOUNT', 'total', sum(fc_calls), sum(fc_flops)*1.d-9
+  end subroutine fc_report
+
   subroutine la_finalize()
     if (.not. inited) return
+    if (fc_on) call fc_report()
 #if defined(ALF_LA_OM)
     call om_finalize()
 #endif
@@ -1507,6 +1538,7 @@ contains
     complex(8), intent(in) :: alpha, beta
     complex(8), target :: A(lda,*), B(ldb,*), C(ldc,*)
     if (m <= 0 .or. n <= 0) return
+    if (fc_on) call fc_add(1, 8.d0*m*n*k)   ! CG-ALF E0 counter (ALF_LA_FLOPCOUNT=1)
 #if defined(ALF_LA_OM)
     call om_gemm(opa, opb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc)
 #else
@@ -1538,6 +1570,7 @@ contains
     real(8), pointer, contiguous :: Ar(:,:), Cr(:,:)
 #endif
     if (m <= 0 .or. n <= 0) return
+    if (fc_on) call fc_add(2, 4.d0*m*n*k)   ! CG-ALF E0 counter (ALF_LA_FLOPCOUNT=1)
 #if defined(ALF_LA_OM)
     call om_gemm_cr(m, n, k, A, lda, B, ldb, C, ldc)
 #else
@@ -1569,6 +1602,7 @@ contains
     integer :: ib
 #endif
     if (m <= 0 .or. n <= 0 .or. nb <= 0) return
+    if (fc_on) call fc_add(3, 8.d0*m*n*k*nb)   ! CG-ALF E0 counter (ALF_LA_FLOPCOUNT=1)
 #if defined(ALF_LA_OM)
     call om_gemm_batched(opa, opb, m, n, k, alpha, A, lda, sA, B, ldb, sB, beta, C, ldc, sC, nb)
 #else
@@ -1598,6 +1632,7 @@ contains
     complex(8), intent(in) :: alpha
     complex(8), target :: x(*), y(*), A(lda,*)
     if (m <= 0 .or. n <= 0) return
+    if (fc_on) call fc_add(4, 8.d0*m*n)   ! CG-ALF E0 counter (ALF_LA_FLOPCOUNT=1)
 #if defined(ALF_LA_OM)
     call om_geru(m, n, alpha, x, incx, y, incy, A, lda)
 #else
@@ -1628,6 +1663,7 @@ contains
     integer(c_int) :: cs, cu, cd
 #endif
     if (m <= 0 .or. n <= 0) return
+    if (fc_on) call fc_add(5, merge(4.d0*m*m*n, 4.d0*n*n*m, side == 'L' .or. side == 'l'))   ! CG-ALF E0 counter (ALF_LA_FLOPCOUNT=1)
 #if defined(ALF_LA_OM)
     call om_trsm(side, uplo, opa, diag, m, n, alpha, A, lda, B, ldb)
 #else
@@ -1692,6 +1728,7 @@ contains
     integer :: info
 #endif
     if (m <= 0 .or. n <= 0) return
+    if (fc_on) call fc_add(6, 4.d0*(2.d0*m*n*n - 2.d0*n*n*n/3.d0))   ! CG-ALF E0 counter (ALF_LA_FLOPCOUNT=1)
     lw = la_geqrf_lwork(m, n, A, lda)
 #if defined(ALF_LA_OM)
     call om_geqrf(m, n, A, lda, tau, lw)
@@ -1755,6 +1792,7 @@ contains
     integer :: info
 #endif
     if (m <= 0 .or. n <= 0) return
+    if (fc_on) call fc_add(7, 4.d0*(4.d0*m*n*k - 2.d0*(m+n)*k*k + 4.d0*k*k*k/3.d0))   ! CG-ALF E0 counter (ALF_LA_FLOPCOUNT=1)
     lw = la_ungqr_lwork(m, n, k, A, lda, tau)
 #if defined(ALF_LA_OM)
     call om_ungqr(m, n, k, A, lda, tau, lw)
@@ -1822,6 +1860,7 @@ contains
     integer :: info
 #endif
     if (m <= 0 .or. n <= 0 .or. k <= 0) return
+    if (fc_on) call fc_add(8, merge(4.d0*(4.d0*m*n*k - 2.d0*n*k*k), 4.d0*(4.d0*m*n*k - 2.d0*m*k*k), side == 'L' .or. side == 'l'))   ! CG-ALF E0 counter (ALF_LA_FLOPCOUNT=1)
     lw = la_ormqr_lwork(side, trans, m, n, k, A, lda, tau, C, ldc)
 #if defined(ALF_LA_OM)
     call om_ormqr(side, trans, m, n, k, A, lda, tau, C, ldc, lw)
@@ -1884,6 +1923,7 @@ contains
     integer :: info
 #endif
     if (m <= 0 .or. n <= 0) return
+    if (fc_on) call fc_add(9, 4.d0*(m*n*n - n*n*n/3.d0))   ! CG-ALF E0 counter (ALF_LA_FLOPCOUNT=1)
 #if defined(ALF_LA_OM)
     call om_getrf(m, n, A, lda, ipiv)
 #else
@@ -1918,6 +1958,7 @@ contains
     integer :: info
 #endif
     if (n <= 0 .or. nrhs <= 0) return
+    if (fc_on) call fc_add(10, 8.d0*n*n*nrhs)   ! CG-ALF E0 counter (ALF_LA_FLOPCOUNT=1)
 #if defined(ALF_LA_OM)
     call om_getrs(trans, n, nrhs, A, lda, ipiv, B, ldb)
 #else
@@ -1992,6 +2033,7 @@ contains
     integer :: i, j
 #endif
     if (m <= 0 .or. n <= 0) return
+    if (fc_on) call fc_add(11, 4.d0*(2.d0*m*n*n - 2.d0*n*n*n/3.d0))   ! CG-ALF E0 counter (ALF_LA_FLOPCOUNT=1)
     if (m < n) LA_FAIL('la_qrpp requires m >= n')
 #if defined(ALF_LA_OM)
     call om_qrpp(m, n, A, lda, ipvt, tau)
@@ -2082,6 +2124,7 @@ contains
     integer :: lw, info, nel
     complex(8) :: w(1)
     if (m <= 0 .or. n <= 0) return
+    if (fc_on) call fc_add(12, 4.d0*(2.d0*m*n*n - 2.d0*n*n*n/3.d0))   ! CG-ALF E0 counter (ALF_LA_FLOPCOUNT=1)
     nel = (n-1)*lda + m
 #if defined(ALF_LA_OM)
     call om_geqp3_host(m, n, A, lda, ipvt, tau)
