@@ -1294,6 +1294,8 @@
         enddo
       enddo
       deallocate(Calc_Fl_map)
+      ! Calc_Fl is set by Ham_set or Setup_flavor_map; a new model may have another N_FL
+      if (allocated(Calc_Fl)) deallocate(Calc_Fl)
 
     end subroutine Clear_Ham_state
 
