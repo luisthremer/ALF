@@ -42,6 +42,13 @@ Feature name `lowrank`. Source: fork `master_ai_cpu` (`8b18b95c`, LOWRANK in hoo
    (a) non-diagonal vertices: replace the `K_ND = 1` guard by a representation without the
    cancellation loss, or switch that block to delayed; (b) rank-N_P > `N_P_LIM`; (c) block size
    rule per machine (static + timed). Delayed is used only where timing shows it is faster.
+   Status 2026-11-25 (feature `lowrank-fastest`): measured on a Mac (GNU, 1 core): Hubbard 16x16
+   b=6 standard 12.6 s, delayed 10.1 s, submatrix 9.8 s; tV 16x16 12.3 / 10.3 / 12.3 s; Kondo 12x12
+   b=6 4.5 / 2.7 / 3.8 s. (a) is done as `Sequential_scheme = "auto"` (submatrix if every eligible
+   vertex is diagonal, else delayed): always the faster of the two. A mixed submatrix/delayed block
+   is postponed (low priority): it could gain at most the few percent by which submatrix beats
+   delayed, and the factor order makes it numerically delicate. The larger time shares are
+   measurements and stabilisation (P2.9).
 3. Gates: all builds + ctest; standard scheme bitwise identical to `Code-modularity` on
    `alf_test_branch`; delayed/submatrix agree with standard to roundoff (`compare_schemes.py`)
    and with ED (`test_vs_ed`); fork CI green.
