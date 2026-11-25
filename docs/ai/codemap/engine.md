@@ -93,6 +93,8 @@ Hamiltonian_main, Random_wrap, Control, Fields_mod, MyMats(Det), linalg_mod.
   Note argument order differs: WRAPUL(high, low), WRAPUR(low, high).
 
 ### cgr1_mod.F90 — equal-time G from UDV pair
+> **Known issue:** the phase comes from `DET_C` (raw LU-diagonal product), which can underflow to a
+> NaN phase for N >~ 3000; see `KNOWN_ISSUES.md` ("Determinant phase underflow").
 State: private work arrays `TPUP, RHS (N,N), DUP, TAU (N), IPVT, VISITED (N)` (41–43), allocated once by
 `CGR_work_alloc(N)` (48, from Walker_alloc), `CGR_work_dealloc` (54). Used only by the default (QR) branch.
 - `CGR(PHASE,NVAR,GRUP,udvr,udvl)` (59): $G=(1+U_R D_R V_R V_L D_L U_L)^{-1}$ (in ALF's storage convention),
