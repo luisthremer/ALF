@@ -38,3 +38,6 @@ dense matrices helped; the 4060 numbers above are from the fork session and were
 - **Memory:** about 0.4 GB + 1650·N² bytes at β = 5; 62×62 fits a 24 GB A30, 63×63 does not.
 - **Unvalidated:** Ponte Vecchio (SuperMUC-NG Phase 2), Helma and SuperMUC builds, and every model other than Hubbard on the device.
 - **Output:** per-bin output (`Pr_obs`) is slow at large N (38 s per bin at 56×56) and dominates short runs.
+
+## 3. GPU: NaN determinant phase for N >~ 3000 (L >~ 54)
+Not fixed on this branch. Runs with N >~ 2950 reject almost all proposals (acceptance 0.27 at L = 56, 0.01 at L = 64) and write NaN observables, with return code 0. L <= 48 is not affected. Cause: k_det_phase multiplies the raw LU diagonal (underflow to 0, phase NaN). Fix: branch fix/det-phase-underflow, see docs/gpu/KNOWN_ISSUE_DET_PHASE_UNDERFLOW.md. Do not use this branch for N >~ 2950 before merging the fix.
