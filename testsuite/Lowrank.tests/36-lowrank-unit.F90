@@ -323,16 +323,25 @@ contains
    end subroutine invert
 
    real(dp) function cond2(A)
+      use, intrinsic :: ieee_exceptions, only: ieee_get_halting_mode, ieee_set_halting_mode, &
+           &                                   ieee_set_flag, ieee_usual
       complex(dp), intent(in) :: A(:,:)
       complex(dp), allocatable :: B(:,:), work(:)
       complex(dp) :: dummy(1,1)
       real(dp), allocatable :: s(:), rwork(:)
       integer :: n, info, lwork
+      logical :: halt(size(ieee_usual))
       n = size(A, 1)
       lwork = 8 * n
       allocate(B(n,n), work(lwork), s(n), rwork(5*n))
       B = A
+      ! Reference LAPACK's ZGESVD raises IEEE flags internally; a build with -ffpe-trap (CI debug
+      ! job) must not stop there. Halting is restored right after the call.
+      call ieee_get_halting_mode(ieee_usual, halt)
+      call ieee_set_halting_mode(ieee_usual, .false.)
       call ZGESVD('N', 'N', n, n, B, n, s, dummy, 1, dummy, 1, work, lwork, rwork, info)
+      call ieee_set_flag(ieee_usual, .false.)
+      call ieee_set_halting_mode(ieee_usual, halt)
       if (info /= 0) error stop 'cond2: ZGESVD failed'
       cond2 = s(1) / s(n)
    end function cond2
