@@ -7,8 +7,11 @@ New findings of the bug hunt (docs/ai/phase2/ROADMAP.md, P2.8) are added here fi
 ## Determinant phase underflow for N >~ 3000 (L >~ 54) in CGR / DET_C
 
 - **Applies to:** this branch and upstream master (`4c690b04`): the CPU code. Not fixed here.
-- **Status:** found on the GPU port (entry below), expected on the CPU path, **not yet confirmed
-  in a CPU run** (runs at L = 56 / 64 are in progress, 2026-11-25).
+- **Status:** **confirmed on the CPU at L = 64, Nt = 16 (acceptance 0.217; control L = 48:
+  0.322)** — Helma job 1451287, 2026-11-25 (Hubbard square, U = 5, 1 sweep, 32 threads). That CPU
+  binary was built from the `gpu-port` tree, whose `mymats_mod.F90` (`DET_C`) is byte-identical to
+  upstream master `4c690b04` and whose `DET_C`/phase lines of `cgr1_mod.F90` are unchanged.
+  First found on the GPU port (entry below).
 - **Cause:** `DET_C` (`Libraries/Modules/mymats_mod.F90`) multiplies the raw LU diagonal,
   `det_C = det_C*mat(i,i)`. For a unitary matrix |det| = 1, but the running product underflows
   double precision for large N. `CGR` (`Prog/cgr1_mod.F90`) forms the phase as
@@ -18,7 +21,7 @@ New findings of the bug hunt (docs/ai/phase2/ROADMAP.md, P2.8) are added here fi
   a finite G and NaN observables. `Control_PrecisionP` does not notice (comparisons with NaN are
   false). The same function is used by `Op_set` (`Prog/Operator_mod.F90`, normalisation det U = 1),
   the likely cause of the documented `Op_set` failure at Ndim = 4096.
-- **Evidence:** on the GPU line, measured (entry below). Numerically, the LU diagonal of a random
+- **Evidence:** the CPU run above; the GPU line (entry below). Numerically, the LU diagonal of a random
   unitary matrix (numpy/scipy, `lu_factor`) has a running product with minimum ln|P_k| = -676
   (N = 2000), -1024 (N = 3000), -1367 (N = 4000); the limit is -708, so the raw product is exactly
   0 for N = 3000 and 4000.
