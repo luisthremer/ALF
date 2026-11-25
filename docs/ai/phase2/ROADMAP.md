@@ -25,7 +25,7 @@ Status values: `open`, `running`, `done (<date>, <commit>)`.
 Fork `Code-modularity` = origin `Code-modularity_Phase6` (`af22b976`), a fast-forward of
 `Code-modularity`. Fork `master` = origin `master`.
 
-## P2.1 — Knowledge files for AI sessions (running)
+## P2.1 — Knowledge files for AI sessions (done 2026-11-25, merge `c771d98a`)
 `AGENTS.md`, `CLAUDE.md`, `docs/ai/CODEMAP.md`, `docs/ai/BRANCHING.md`, this folder.
 Feature name `ai-docs`. Done when merged into `Code-modularity` via `cm/feat/ai-docs`.
 
