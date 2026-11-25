@@ -10,6 +10,7 @@ need to read the whole code base.
 | How to branch, commit and merge | [`docs/ai/BRANCHING.md`](docs/ai/BRANCHING.md) |
 | Build commands, tests, CI jobs | [`docs/ai/codemap/build.md`](docs/ai/codemap/build.md) |
 | Tools that help you navigate the code | [`docs/ai/TOOLS.md`](docs/ai/TOOLS.md) |
+| Known bugs and their status | [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) — read before working on stabilisation, CGR or large N |
 | Why the code looks like this | origin ALF-QMC/ALF PRs #656 (Phases 0–5) and #657 (Phase 6): `gh pr view 656 -R ALF-QMC/ALF` |
 
 ## Working mode

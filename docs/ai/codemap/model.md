@@ -102,7 +102,7 @@ Hubbard as reference (`Hamiltonian_Hubbard_smod.F90`):
 ### 1.4 `Prog/Operator_mod.F90` (module `Operator_mod`) — see section 4 for fields
 No `private` statement: everything public. Uses `mpi_shared_memory` (U and M_exp may live in node-shared memory).
 - `Op_make(Op,N)` :196 — allocate `O(N,N)`, `P(N)`; zero; `type=0`, `diag=.false.`, `flip_protocol=1`.
-- `Op_set(Op)` :262 — validates (`type` in 0..4, `P>=1`, `O` Hermitian), sets `diag`, diagonalises `O` → `U`,`E`, sorts non-zero eigenvalues first (`N_non_zero`), normalises `det U = 1` (column 1 / det); for type 1/2 precomputes `E_exp`, `M_exp`; marks `g_t_alloc` if `g_t` allocated. Must be called after filling an operator (also for Op_T).
+- `Op_set(Op)` :262 — (**known issue:** its det U normalisation uses `DET_C`, which underflows for large N; see `KNOWN_ISSUES.md`) validates (`type` in 0..4, `P>=1`, `O` Hermitian), sets `diag`, diagonalises `O` → `U`,`E`, sorts non-zero eigenvalues first (`N_non_zero`), normalises `det U = 1` (column 1 / det); for type 1/2 precomputes `E_exp`, `M_exp`; marks `g_t_alloc` if `g_t` allocated. Must be called after filling an operator (also for Op_T).
 - `Op_clear(Op,N)` :227 — deallocate.
 - `Op_phase(Phase,Op_V,nsigma,nf)` :163 — multiplies by `exp(i Im(g alpha Phi))` over all `(n,nt)`.
 - `Op_exp(g,Op,Mat)` :494 — `Mat = exp(g O)` (full N×N).
