@@ -65,6 +65,7 @@ endforeach(iter)
 
 foreach(iter ${cgr1tests})
 target_link_libraries(${iter} ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/cgr1_mod.o)
+target_link_libraries(${iter} ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/control_mod.o)
 target_link_libraries(${iter} ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/UDV_WRAP_mod.o)
 target_link_libraries(${iter} ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/QDRP_decompose_mod.o)
 target_link_libraries(${iter} ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/udv_state_mod.o)
