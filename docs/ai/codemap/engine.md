@@ -1,6 +1,6 @@
 # ALF code map: QMC engine (Prog/, written at Code-modularity af22b976)
 
-Scope: `main.F90`, `qmc_*_mod.F90`, `Wrapgr_mod`, `upgrade_mod`, `wrapul/wrapur`, `cgr1/cgr2_2`,
+Scope: `main.F90`, `qmc_*_mod.F90`, `Wrapgr_mod`, `upgrade_mod`, `lowrank_update_mod`, `wrapul/wrapur`, `cgr1/cgr2_2`,
 `UDV_WRAP`, `udv_state`, `QDRP_decompose`, `tau_m/tau_p`, `Global_mod`, `Langevin_HMC_mod`,
 `control_mod`, `Set_random_mod`. All paths relative to `Prog/`. Line numbers are for this HEAD.
 Conventions: `nf` = flavour index 1..N_FL; `nf_eff` = index over computed flavours,
@@ -83,6 +83,21 @@ Langevin_HMC_mod(Calculate_Force).
 - `Upgrade2(GR,N_op,NT,PHASE,Hs_new,Prev_Ratiotot,S0_ratio,T0_proposal_ratio,toggle,mode)` (106). See §4.
 No module state (all locals allocated per call, 155–158, 293–296). USEs (inside routine 109–115):
 Hamiltonian_main, Random_wrap, Control, Fields_mod, MyMats(Det), linalg_mod.
+
+### lowrank_update_mod.F90 — delayed and submatrix sequential update (added after af22b976)
+Selected by `Sequential_scheme` = "standard" (default, nothing allocated) | "delayed" | "submatrix" and
+`N_delay` in `&VAR_QMC` (QMC_runtime_var). Read the module header ("HOW IT WORKS") first.
+- Pending form: delayed `G = G0 - X Y^T`; submatrix `G = G0 - G0(:,S) M (E_S^T - G0(S,:))`; flushed by one
+  ZGEMM (`Lowrank_flush`) after N_delay accepts, before any non-eligible vertex and at the end of every slice.
+- `Lowrank_init(scheme, N_delay, Nt_start, Nt_end, file_info)` from `Setup_update_schemes`;
+  `Lowrank_finalize` from main.
+- Called from WRAPGRUP/WRAPGRDO per vertex: `Lowrank_eligible(n)` (not for sequential-MALA vertices), else
+  `Lowrank_flush`; `Lowrank_wrap_hook` after each Op_Wrapup/Op_Wrapdo; `Upgrade_lowrank` instead of
+  Upgrade2 "Final"; `Lowrank_tune_slice_begin/_end` (timed N_delay = -1).
+- Module state (private): the pending X, Y / S, M per computed flavour, eligibility, N_delay and timing.
+  For a GPU port this state belongs per walker.
+- Tests: `testsuite/Lowrank.tests` (36-lowrank-unit; lowrank-compare-schemes: same configurations as
+  standard). Derivations: `Documentation/lowrank.tex`, `Documentation/lowrank/*.md`.
 
 ### wrapul_mod.F90 / wrapur_mod.F90 — propagation + UDV (no state)
 - `WRAPUL(NTAU1, NTAU, UDVL)` (wrapul:37): left prop. $(B(\beta,\tau_1))^\dagger \to (B(\beta,\tau))^\dagger$, NTAU1>NTAU.
