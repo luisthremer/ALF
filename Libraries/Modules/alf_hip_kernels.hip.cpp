@@ -434,7 +434,8 @@ __global__ void k_phase(int n, int ld, const cd* U, int sgn, int cj, cd* cs) {
 // cs(3) = conj(det A)/|det A| of the LU factors
 __global__ void k_det_phase(int n, int ld, const cd* A, const int* ipiv, cd* cs) {
   cd acc(1.0, 0.0); int cnt = 0;
-  for (int i = threadIdx.x; i < n; i += 64) { acc = acc * A[i + (long)i * ld]; if (ipiv[i] != i + 1) cnt++; }
+  // every factor normalised: the raw product underflows for large N (docs/gpu/KNOWN_ISSUE_DET_PHASE_UNDERFLOW.md)
+  for (int i = threadIdx.x; i < n; i += 64) { cd a = A[i + (long)i * ld]; acc = acc * (a / cabsd(a)); if (ipiv[i] != i + 1) cnt++; }
   acc = wave_prod(acc);
   for (int o = 32; o > 0; o >>= 1) cnt += __shfl_xor(cnt, o, 64);
   if (threadIdx.x == 0) {
