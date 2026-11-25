@@ -17,6 +17,12 @@ Later decisions by the owner:
   bugs!" One subagent of that phase uses the plugin https://github.com/elementalsouls/Claude-BugHunter
   (installed as `claude-bughunter@elementalsouls`). Known issues go into `KNOWN_ISSUES.md`, starting
   with the fix on branch `fix/det-phase-underflow` (commit 0b3ffba).
+- 2026-11-25: "When will we fix these bugs?" -> fix the CPU determinant phase bug on this line
+  right after the ai-docs and lowrank merges (det-phase feature), then continue with the plan.
+- 2026-11-25 evening: keep the session running over night and work on the plan. SuperMUC-NG
+  Phase 2 may be used (ssh alias `supermuc2`, kept alive: ControlPersist 24h, ServerAliveInterval
+  60; login by the owner's expect script). "Try to also break ALF and find issues", for master and
+  for the Code-modularity-CPU and -GPU branches (bug hunt started early, ROADMAP P2.8).
 
 ---
 
