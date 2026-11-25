@@ -116,3 +116,18 @@ synchronisations (2.8 s), 21 506 device-to-host copies.
 - First targets: (a) host round trips and syncs in the update (decisions on the host), (b) stabilisation without
   the LU (phase from the Householder scalars, done on Intel, not on CUDA) and a GPU-friendlier QR, (c) start-up cost,
   (d) batching chains (I1). Next experiment E3: setup vs sweep time and host hot spots.
+
+### E3 — setup vs sweep, host profile (job 1452309; same inputs as E0, i.e. ham_h0 = 1)
+
+| L | NSweep 2 | NSweep 6 (L = 32: 4) | s per sweep | setup |
+|---|---|---|---|---|
+| 24 | 29.7 s | 82.8 s | 13.3 | ~3 s |
+| 32 | 283.8 s | 568.4 s | 142 | ~0 |
+
+Correction to E0/E2: with `ham_h0 /= 0` the device observables of `gpu-port` are off (pinning field only on
+`gpu-port-unified`), so the equal-time measurements ran on the host. Host profile (nsys CPU sampling, L = 24): `zslhemm`,
+`zdslsymm` (host checkerboard products for the symmetrised G), `predefined_obs_eq_{den,spinmz,green}_measure`, complex
+division. The GPU kernels take ~1.4 s of the 13.3 s per sweep. So the "setup" seen in E0 was not setup but host
+measurements, and the docs' 3.5 s per sweep (device observables) is the right single-chain reference.
+Lessons: (1) every measurement must stay on the device — a host fallback costs an order of magnitude, silently
+(the info line says only that the GPU path is active); (2) E4 onwards uses ham_h0 = 0 (device observables).
