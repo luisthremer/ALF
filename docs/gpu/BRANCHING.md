@@ -140,6 +140,7 @@ Counts of the action column: 1 trunk, 1 variant, 3 keep, 6 rename, 4 tag as prod
 | `gpu-port-unified` | variant (trunk plus point defect) | - |
 | `master`, `JAKOB_BACKUP`, `luis_playground` | kept | - |
 | `feat/s-wave-pairing` | feature | - |
+| `fix/det-phase-underflow` (added 2026-11-25) | fix for the NaN determinant phase at N >~ 2950 (L >~ 54), commit 0b3ffba4 on top of `gpu-port` da27fb1d; see `KNOWN_ISSUES.md` | open: owner decides on the merge into the trunk; verified on one H100 only, HIP and Intel not run |
 | `gpu-delayed-submatrix-defect-production-mpi-amd` | AMD HIP line (worktree `ALF_wt_amd`) | rename to `feat/amd-hip` |
 | `gpu-port-apple-metal` | prototype (worktree `ALF_wt_apple_metal`) | rename to `exp/apple-metal` |
 | `intel-batched` | Intel speed work (worktree, running session) | rename to `feat/intel-batched` |
