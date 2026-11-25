@@ -58,6 +58,79 @@ New findings of the bug hunt (docs/ai/phase2/ROADMAP.md, P2.8) are added here fi
   `DET_C_PHASE` is not a fix; a log-determinant would be. Projector runs with large N_part only.
   Status: suspected from the code, not reproduced (P2.8).
 
+## Bug hunt 2026-11-25 (P2.8, run early): summary
+
+Found by the hunter agents A (input handling, Claude-BugHunter method) and B (numerics), on upstream master
+`4c690b04` and `Code-modularity`; the high-severity ones (H1-H5) re-checked by the main session. "Both" = master
+and Code-modularity. Reports: hunter scratch files `bughunt/A/REPORT.md`, `bughunt/B/REPORT.md` (summarised here).
+Small runs: 4x4 Hubbard (Mz) from `Scripts_and_Parameters_files/Start` with the changes listed.
+None is fixed yet; each fix becomes its own dev/canvas feature.
+
+### H1. NaN guards are removed by -ffast-math (both, high) — re-checked
+`configure.sh` builds with `-ffast-math` (GNU, also in Devel) and `-fp-model=fast=2` (Intel). Under these flags
+`any(a /= a)` and `ieee_is_nan(a)` are folded to false (10-line test: a NaN read from input is not detected with
+`-O3 -ffast-math`, it is without). So "Green function contains NaN" (`Control_PrecisionG`, control_mod.F90) can never
+fire, and the silent NaN runs H2, H3, H4 end with return code 0. The phase guard of the det-phase feature tests the
+bit pattern (`Control_Is_Finite`) and is not affected. Fix: use the bit-pattern test in every NaN guard.
+
+### H2. Large beta: scale overflow in CGR gives NaN results with return code 0 (both, default build, high) — re-checked
+4x4 Hubbard U = 8, Beta = 30, Nwrap = 5 (also U = 4, Beta = 60; U = 20, Beta = 15): Precision Green, Phase and tau are
+NaN, every observable file holds NaN, acceptance falls to 0, return code 0. Cause: the default stabilisation multiplies
+the two scale vectors directly, `TPUP(:,J) = udvr%D(:)*TPUP(:,J)*udvl%D(J)` (cgr1_mod.F90, default branch), which
+overflows once the product passes 1.8e308 (~1e154 per side); the pre-check tests only element (1,1) and `testscale`
+warns at 0.1*huge but never checks for Inf. The LOG build is fine on the same input; with the det-phase feature the
+run now stops (phase guard), but with a phase message instead of one about the scales.
+
+### H3. No measurements: NaN in every observable, return code 0 (both, high) — re-checked
+`NSweep = 0` (also the default when the key is missing, QMC_runtime_var_mod.F90), `LOBS_ST > LOBS_EN`, or
+`Sequential = .F.` with no other update. Cause: division by `Obs%N = 0` in observables_mod.F90 (bin averages).
+
+### H4. confin with field value 0: NaN everywhere, return code 0 (both, high) — re-checked
+A `confin_0` whose fields are 0. Fields_test checks only `abs(f) - 1 > 1e-8` (one-sided, Fields_mod.F90), so |f| < 1
+passes; should be `abs(abs(f) - 1) > eps`.
+
+### H5. Global_tau_moves with a partial Nt_sequential range: G not wrapped (both, high) — re-checked
+`Global_tau_moves = .T., Nt_sequential_start = 3, Nt_sequential_end = 16, ham_U = 1`: return code 0, Precision Green Max
+1.12 (start = 1: 2e-14). `N_Global_tau = 0` with the default range: 1.92. At U = 4 the same inputs stop with a misleading
+"Unstable matrix". Cause: WRAPGRUP/WRAPGRDO wrap only the operators start..end; the others are placed by
+`Wrapgr_PlaceGR` only when `N_Global_tau > 0` or `N_Global_tau_MALA > 0`. Same with the delayed/submatrix schemes.
+
+### Medium
+- **M1. Dtau = 0** (both): `Ltrot = nint(beta/dtau) = nint(+Inf) = 2147483647` passes the check `Ltrot <= 0`; the run
+  allocates ~550 GB for the fields of a 4x4 lattice. Probably what ran the Mac out of memory during the hunt.
+- **M2. Projector with Thtrot = 0** (Theta < Dtau/2) and Ltau = 1 (both): `tau_p_mod` loops NT up to Ltrot-Thtrot and
+  uses NT+1, reading `nsigma%f(:, Ltrot+1)`. Code-modularity: segfault; master: return code 0 with garbage in the last
+  slice. Ham_set only warns that no projection is applied.
+- **M3. Nwrap <= 0 or missing** (both): Nwrap = 0 (default when missing) gives no stabilisation (integer division by 0,
+  silent on arm64, SIGFPE on x86); Nwrap < 0 segfaults.
+- **M4. Nt_sequential_start < 1 or Nt_sequential_end > size(Op_V,1)** with Global_tau_moves (both): segfault (index
+  of Op_V out of range in WRAPGRUP); the range is never checked.
+- **M5. Langevin with Delta_t_Langevin_HMC = 0 or Max_Force = 0** (both): return code 0, all bins 0 with sign 0. Related:
+  HMC `Leapfrog_steps = 0` (acceptance 0, NaN "Phase diff"), `Amplitude = 0` (frozen chain, acceptance 1),
+  `N_HMC_sweeps = 0` and `Ltau = 2` silently do nothing.
+- **M6. Precision Green up to 10 passes without a warning** (both): `Control_PrecisionG` aborts only above 10; 0.1 was
+  reached silently (continuous fields, U = 20, Nwrap = 10).
+- **M7. Phase update `Phase*R/sqrt(R*conjg(R))`** (both, from code reading, not reproduced): overflows for |R| > 1.3e154
+  and underflows for |R| < 1.5e-162 (upgrade_mod, Wrapgr_mod); the phase would become 0 or NaN. Use R/abs(R).
+
+### Low
+- **L1.** master only (fixed on Code-modularity): format bug `'("A","I0",...)'` makes error messages crash (unknown
+  ham_name in Hamiltonian_main_mod, bad confin values in Fields_mod).
+- **L2.** A confin from another L or Beta is accepted silently (the first N values are reused); L1 <= 0 gives the
+  one-dimensional message.
+- **L3.** Default-integer products overflow at sizes not run today: COMPARE (`N*M`, mymats_mod) for Ndim >= 46341;
+  tempering MPI count `size(GR)` for Ndim >= 32769 with N_FL = 2; `N_op*Ltrot` above 2.1e9.
+
+### Performance (found during CG-ALF, not a correctness bug)
+- **P1.** `Op_V_is_symmetric` (start-up check for Symm = .T.) multiplies dense Ndim x Ndim matrices for every operator,
+  O(n_op Ndim^3): ~100 s at L = 24 on a CPU, much longer at L >= 40. A fast version exists on the GPU line (`gpu-port`)
+  and as fork branch `ai/feat/op-v-symm-fast` (82157fe2).
+
+### Checked and fine
+Parameter edges with clear errors (Dtau < 0, Beta <= 0, N_SUN = 0, N_FL = 3, unknown lattice, odd L with checkerboard),
+missing/garbled namelists, seeds and confin files (gfortran runtime errors naming the file), all models at small L,
+AddressSanitizer/UBSan on Code-modularity for all models (no report), FPE traps in ALF code (with reference LAPACK).
+
 ## GPU: NaN determinant phase for N >~ 3000 (L >~ 54)
 
 - **Applies to:** every GPU line derived from `gpu-port` (CUDA, Intel/oneMKL, AMD), including
