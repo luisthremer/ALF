@@ -772,6 +772,8 @@ Contains
        case ('nan_v');   V_exp(1) = transfer([9221120237041090560_int64, 0_int64], V_exp(1))   ! (NaN, 0); cmplx() of a constant NaN is refused by gfortran
        end select
        call gpu_selftest()
+       ! the pack/unpack round trip left test data in G_d: neither copy of G is current any more (the host GR is)
+       g_dev_ok = .false.; g_host_ok = .true.
     endif
   end subroutine gpu_state_setup
 
