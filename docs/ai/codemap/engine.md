@@ -192,7 +192,7 @@ State: private SAVE counters (53–85): G precision (XMEANG, XMAXG, NCG), tau pr
 CPU clock.
 - `control_init(Group_Comm)` (91; called twice: main:301 and main:324), `Control_upgrade(toggle)` (288),
   `Control_upgrade_eff(toggle)` (295), `_Temp` (302), `_Glob(toggle,size_clust)` (309), `_HMC` (321), `_MALA` (330),
-  `Control_PrecisionG(A,B,Ndim)` (340; aborts if max|ΔG|>10 or NaN), `Control_Precision_tau` (433),
+  `Control_PrecisionG(A,B,Ndim)` (aborts if max|ΔG| > G_thresh or NaN; G_thresh = 10, or env `ALF_UNSTABLE_THRESHOLD` > 0 read by `control_read_threshold` in `control_init`), `Control_Precision_tau` (433),
   `Control_PrecisionP*(Z,Z1)` (447/456/466/476), `Control_Langevin` (171), `Control_MALA_sequential` (201),
   `Control_MALA_Global` (221), `Control_MALA_Global_tau` (258), `Control_Print(...)` (487; writes info),
   `make_truncation(prog_truncation,cpu_max,count_bin_start,count_bin_end,group_comm)` (680; stop if <1.5 bins left).

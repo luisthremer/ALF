@@ -345,3 +345,28 @@ if("${FLAG_LIST}" MATCHES "-DMPI")
 else()
   add_test(NAME 39-comm-mod COMMAND 39-comm-mod)
 endif()
+
+# ALF_UNSTABLE_THRESHOLD (control_mod): a deviation of 0.5 passes with the default (10) and with 1.0,
+# aborts with 0.25; a non-positive or unparsable value stops the program with a message.
+add_executable(45-unstable-threshold 45-unstable-threshold.F90)
+target_compile_options(45-unstable-threshold PRIVATE ${FLAG_LIST})
+target_include_directories(45-unstable-threshold PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../Prog"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules")
+target_link_libraries(45-unstable-threshold "${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/control_mod.o" ${LIB_LIST})
+add_test(45-unstable-threshold-default 45-unstable-threshold)
+set_tests_properties(45-unstable-threshold-default PROPERTIES ENVIRONMENT "ALF_UNSTABLE_THRESHOLD="
+  PASS_REGULAR_EXPRESSION "PASS: deviation")
+add_test(45-unstable-threshold-1.0 45-unstable-threshold)
+set_tests_properties(45-unstable-threshold-1.0 PROPERTIES ENVIRONMENT "ALF_UNSTABLE_THRESHOLD=1.0"
+  PASS_REGULAR_EXPRESSION "PASS: deviation")
+if(NOT "${FLAG_LIST}" MATCHES "-DTEMPERING")
+  # (with TEMPERING the abort branch first writes Temp_<igroup>/info, a directory a unit test does not have)
+  add_test(45-unstable-threshold-0.25 45-unstable-threshold)
+  set_tests_properties(45-unstable-threshold-0.25 PROPERTIES ENVIRONMENT "ALF_UNSTABLE_THRESHOLD=0.25"
+    PASS_REGULAR_EXPRESSION "exceeding the threshold" FAIL_REGULAR_EXPRESSION "PASS: deviation" TIMEOUT 60)
+endif()
+foreach(bad abc -1 0)
+  add_test(45-unstable-threshold-bad-${bad} 45-unstable-threshold)
+  set_tests_properties(45-unstable-threshold-bad-${bad} PROPERTIES ENVIRONMENT "ALF_UNSTABLE_THRESHOLD=${bad}"
+    PASS_REGULAR_EXPRESSION "not a positive number" TIMEOUT 60)
+endforeach()
