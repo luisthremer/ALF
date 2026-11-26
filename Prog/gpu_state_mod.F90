@@ -115,10 +115,12 @@ Module gpu_state_mod
        &                      reconstruction_needed, Group_Comm
   Use QMC_runtime_var, only: get_Langevin, get_HMC, get_Global_moves, get_Global_tau_moves, get_N_Global_tau, &
        &                     get_Propose_S0, get_Sequential_MALA, get_Global_MALA_moves, get_Global_tau_MALA_moves, &
-       &                     get_N_Global_tau_MALA, get_ham_name, get_Ltau, get_N_delay
+       &                     get_N_Global_tau_MALA, get_ham_name, get_Ltau, get_N_delay, &
+       &                     get_Sequential_scheme
   Use Hop_mod, only: Hop_mod_mmthr, Hop_mod_mmthr_m1, Hop_mod_mmthl, Hop_mod_mmthlc, Hop_mod_mmthl_m1, Hop_mod_Symm, &
        &              Hop_mod_gpu_ncheck, Hop_mod_gpu_element, Hop_mod_gpu_td_element
   Use Mat_subroutines, only: ZDSLSYMM, ZSLHEMM
+  Use Files_mod, only: str_to_upper
   Use qmc_walker_mod, only: qmc_walker_t
   Use UDV_State_mod, only: UDV_State
   Use comm_mod, only: is_root, comm_world_rank, comm_world_size
@@ -567,6 +569,7 @@ Contains
     Complex (Kind=Kind(0.d0)), allocatable :: cm(:,:,:), Utd(:,:), gtd(:), Us(:,:)
     Integer, allocatable :: Ps(:)
     Real    (Kind=Kind(0.d0)) :: zero_td
+    Character (len=64) :: scheme
 
     gpu_supported = .false.
     reason = ''
@@ -598,7 +601,12 @@ Contains
     if (get_Sequential_MALA() .or. get_Global_MALA_moves() .or. get_Global_tau_MALA_moves() .or. get_N_Global_tau_MALA() > 0) then
        reason = 'MALA updates are not supported on the GPU path'; return
     endif
-    if (get_N_delay() < 0) then
+    scheme = str_to_upper(trim(adjustl(get_Sequential_scheme())))
+    if (scheme == 'AUTO') then
+       ! "auto" picks delayed or submatrix inside lowrank_update_mod; gpu_lowrank_mod knows only the explicit schemes.
+       reason = 'Sequential_scheme = "auto" is not supported on the GPU path'; return
+    endif
+    if (get_N_delay() < 0 .and. scheme /= 'STANDARD') then
        ! Timed automatic N_delay: lowrank_update_mod times candidate values at run time; the device path uses the one N_delay
        ! Lowrank_current_N_delay() has at its first use, so the timed search stays on the CPU.
        reason = 'timed automatic N_delay (N_delay = -1) is not supported on the GPU path'; return

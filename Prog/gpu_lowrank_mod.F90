@@ -169,10 +169,10 @@ Contains
     !$omp target enter data map(to: slot_d)
     call fast_check()
     if (mode == LR_DELAYED) then
-       write(line,'(A,I0,A,I0,A)') 'GPU delayed update : N_delay = ', nd, ', Ndim = ', Ndim, &
+       write(line,'(A,I0,A,I0,A)') 'GPU delayed update: N_delay = ', nd, ', Ndim = ', Ndim, &
             & ', G = G0 - X Y^T on the device, one ZGEMM per flush'
     else
-       write(line,'(A,I0,A,I0,A)') 'GPU submatrix update : N_delay = ', nd, ', Ndim = ', Ndim, &
+       write(line,'(A,I0,A,I0,A)') 'GPU submatrix update: N_delay = ', nd, ', Ndim = ', Ndim, &
             & ', M on the host, G0 untouched between flushes'
     endif
     call info_line(trim(line))
