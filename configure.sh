@@ -2,7 +2,7 @@
 # shellcheck disable=SC2059
 # This script sets necessary environment variables for compiling ALF.
 # You need to source it prior to executing make.
-USAGE="usage 'source configure.sh MACHINE MODE STAB [HDF5] [Devel] [GPU=none|host]'
+USAGE="usage 'source configure.sh MACHINE MODE STAB [HDF5] [Devel] [GPU=none|host|nvidia]'
 
 Please choose one of the following MACHINEs:
  * GNU
@@ -14,6 +14,7 @@ Please choose one of the following MACHINEs:
  * FRITZ-ifort
  * FRITZ-ifx
  * HELMA
+ * HELMAGPU (NHR@FAU Helma H100 nodes, nvfortran; use with GPU=nvidia)
 Possible MODEs are:
  * MPI (default)
  * noMPI
@@ -29,9 +30,11 @@ Further optional arguments:
   Devel: Compile with additional flags for development and debugging
   HDF5: Compile with HDF5
   NO-INTERACTIVE: Do not ask for user confirmation during excution of this script
-  GPU=none|host: GPU target (default none = unchanged CPU build). GPU=host builds the GPU code path with
+  GPU=none|host|nvidia: GPU target (default none = unchanged CPU build). GPU=host builds the GPU code path with
                -DALF_GPU and the host backend (no offload target; for tests on machines without a GPU).
-               GPU=nvidia|intel|amd are not yet available on this line.
+               GPU=nvidia: MACHINE PGI or HELMAGPU only (nvfortran, OpenMP offload, cuBLAS/cuSOLVER); compute capability
+               from env ALF_GPU_CC (default cc80; HELMAGPU: cc90,cuda12.9).
+               GPU=intel|amd are not yet available on this line.
   NO-FALLBACK: Do not use a fallback option in case of an unknown/no machine,
                but instead return with value 1
 To hand an additional flag to the compiler, export it in the varible ALF_FLAGS_EXT prior to sourcing this script.
@@ -269,16 +272,16 @@ while [ "$#" -gt "0" ]; do
     NO-FALLBACK)
       NO_FALLBACK="1"
     ;;
-    GPU=NONE|GPU=HOST)
+    GPU=NONE|GPU=HOST|GPU=NVIDIA)
       GPU_TARGET="$(echo "${ARG#GPU=}" | tr '[:upper:]' '[:lower:]')"
     ;;
-    GPU=NVIDIA|GPU=INTEL|GPU=AMD)
+    GPU=INTEL|GPU=AMD)
       printf "${RED}GPU=%s is not yet available on this line (P2.4 step 2)${NC}\n" "$(echo "${ARG#GPU=}" | tr '[:upper:]' '[:lower:]')" 1>&2
       rm -r "$tmpdir"
       return 1
     ;;
     GPU=*)
-      printf "${RED}Error: unknown GPU target '%s'. Allowed: GPU=none, GPU=host.${NC}\n" "${ARG#GPU=}" 1>&2
+      printf "${RED}Error: unknown GPU target '%s'. Allowed: GPU=none, GPU=host, GPU=nvidia.${NC}\n" "${ARG#GPU=}" 1>&2
       rm -r "$tmpdir"
       return 1
     ;;
@@ -518,6 +521,25 @@ case $MACHINE in
       set_hdf5_flags "$INTELCC" ifx "$INTELCXX" || return 1
     fi
   ;;
+
+  #NHR@FAU Helma GPU nodes (H100, nvfortran + OpenMPI-CUDA); build on a login node
+  HELMAGPU)
+    module load gpu-env/2025
+    # nvhpc version: ALF_HELMA_NVHPC=25.7 (default) or 24.11 (gpu-port: 24.11 builds, but its L = 8 GPU run aborted)
+    case "${ALF_HELMA_NVHPC:-25.7}" in
+      24.11) module load nvhpc/24.11; module load openmpi/5.0.5-nvhpc24.11-cuda ;;
+      *)     module load nvhpc/25.7; module load openmpi/5.0.8-nvhpc25.7-cuda; ALF_GPU_CC="${ALF_GPU_CC:-cc90,cuda12.9}" ;;
+    esac
+    # CUDA >= 12.2 libraries: cusolverDnSetDeterministicMode (the default CUDA 11.8 libraries lack it)
+    export ALF_GPU_CC="${ALF_GPU_CC:-cc90,cuda12.6}"
+    F90OPTFLAGS="$PGIOPTFLAGS"
+    F90USEFULFLAGS="$PGIUSEFULFLAGS"
+    ALF_FC="${ALF_FC:-mpifort}"
+    LIB_BLAS_LAPACK="-llapack -lblas"
+    if [ "${HDF5_ENABLED}" = "1" ]; then
+      set_hdf5_flags nvc nvfortran nvc++ || return 1
+    fi
+  ;;
   #Default (unknown machine)
   *)
     if [ "$NO_FALLBACK" = "1" ]; then
@@ -545,6 +567,13 @@ case $MACHINE in
     fi
   ;;
 esac
+
+# GPU target: allowed MACHINE (no fallback)
+if [ "$GPU_TARGET" = "nvidia" ] && [ "$MACHINE" != "PGI" ] && [ "$MACHINE" != "HELMAGPU" ]; then
+  printf "${RED}Error: GPU=nvidia requires MACHINE PGI or HELMAGPU (nvfortran); got '%s'.${NC}\n" "$MACHINE" 1>&2
+  rm -r "$tmpdir"
+  return 1
+fi
 
 check_libs "$ALF_FC" "${LIB_BLAS_LAPACK}" || return 1
 
@@ -590,6 +619,17 @@ case "$GPU_TARGET" in
     ALF_FLAGS_PROG="${ALF_FLAGS_PROG} -DALF_GPU"
     export ALF_GPU="host"
     printf "\nGPU target: ${GREEN}host${NC} (-DALF_GPU, host backend, no offload)\n"
+  ;;
+  nvidia)
+    # OpenMP offload (-mp=gpu replaces -mp), CUDA backend of linalg_mod (linalg_cuda_mod), cuBLAS/cuSOLVER at link time
+    _alf_gpu="-mp=gpu -gpu=${ALF_GPU_CC:-cc80} -DALF_GPU -DALF_LA_CUDA"
+    ALF_FLAGS_MODULES="$(echo "${ALF_FLAGS_MODULES} " | sed -e 's/ -mp / /g' -e 's/ $//') ${_alf_gpu}"
+    ALF_FLAGS_ANA="$(echo "${ALF_FLAGS_ANA} " | sed -e 's/ -mp / /g' -e 's/ $//') ${_alf_gpu}"
+    ALF_FLAGS_PROG="$(echo "${ALF_FLAGS_PROG} " | sed -e 's/ -mp / /g' -e 's/ $//') ${_alf_gpu}"
+    ALF_LIB="${ALF_LIB} -mp=gpu -gpu=${ALF_GPU_CC:-cc80} -cudalib=cublas,cusolver"
+    export ALF_LIB
+    export ALF_GPU="nvidia"
+    printf "\nGPU target: ${GREEN}nvidia${NC} (nvfortran, OpenMP offload %s, cuBLAS/cuSOLVER)\n" "${ALF_GPU_CC:-cc80}"
   ;;
   *)
     unset ALF_GPU
