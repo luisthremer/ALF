@@ -48,7 +48,7 @@ MODULE UDV_State_mod
 
     IMPLICIT NONE
     PRIVATE
-    PUBLIC :: UDV_State
+    PUBLIC :: UDV_State, Householder_det_phase
 
 !--------------------------------------------------------------------
 !> @author
@@ -81,6 +81,12 @@ MODULE UDV_State_mod
 !> \verbatim
 !>  Space for the logscale option D=e^{L}
 !> \endverbatim
+!> @param det_U Complex, det_ok Logical
+!> \verbatim
+!>  det_U = det(U)/|det(U)|, tracked by every writer of U (reset: 1; decompose: from the Householder reflectors of
+!>  the QR, see Householder_det_phase; assignment and MPI_Sendrecv copy it).  det_ok: det_U is valid (square U of
+!>  the finite temperature code).  Used by CGR for the determinant phase without an LU (ALF_CGR_LU, cgr1_mod).
+!> \endverbatim
 !--------------------------------------------------------------------
 
     TYPE UDV_State
@@ -90,6 +96,8 @@ MODULE UDV_State_mod
 #else
         REAL    (Kind=Kind(0.d0)), allocatable :: L(:)
 #endif
+        COMPLEX (Kind=Kind(0.d0)) :: det_U = (1.d0, 0.d0)   ! det(U)/|det(U)| (tracked, see above)
+        LOGICAL   :: det_ok = .false.                        ! det_U valid
         INTEGER   :: ndim, n_part  ! ndim: number of orbitals per flavor. n_part: number of particles per flavor
         CHARACTER :: side          ! side = R  for right propagation :   B       * P_R = U d v
                                    ! side = L  for lesft propagation :   (P_L B)^{dag} = U d v^{dag}
@@ -136,6 +144,7 @@ CONTAINS
        INTEGER, INTENT(IN), OPTIONAL :: t_part
 
        this%ndim = t
+       this%det_ok = .false.
        if( present(t_part) ) then
           this%N_part=t_part
           ALLOCATE(this%U(this%ndim, this%N_part))
@@ -335,9 +344,12 @@ CONTAINS
              CALL this%alloc(size(P,1),size(P,2))
           endif
           CALL la_zlacpy('A', this%ndim, this%N_part, P, this%ndim, this%U, this%ndim)
+          this%det_ok = .false.
        else
           CALL la_zlaset('A', this%ndim, this%ndim, alpha, beta, this%U, this%ndim)
           CALL la_zlaset('A', this%ndim, this%ndim, alpha, beta, this%V, this%ndim)
+          this%det_U = beta
+          this%det_ok = .true.
        endif
 #if !defined(STABLOG)
        this%D = beta
@@ -406,6 +418,8 @@ CONTAINS
        this%ndim = src%ndim
        this%n_part = src%n_part
        this%side = src%side
+       this%det_U = src%det_U
+       this%det_ok = src%det_ok
 
        IF(.not. ALLOCATED(this%U)) ALLOCATE(this%U(this%ndim, this%n_part))
        IF(.not. ALLOCATED(this%V) .and. ALLOCATED(src%V)) ALLOCATE(this%V(this%n_part, this%n_part))
@@ -613,6 +627,10 @@ CONTAINS
        CALL la_zungqr(Ndim, N_part, N_part, UDVR%U, Ndim, TAU, WORK, LWORK, INFO)
        ! scale first column of U to correct the scaling in V such that UDV is not changed
        call la_zscal(Ndim,phase,UDVR%U,1)
+       ! det(U) = det(H_1 ... H_n) * phase (column 1 scaled by phase): no LU needed for the CGR phase
+       UDVR%det_U = Householder_det_phase(TAU, N_part) * phase
+       UDVR%det_U = UDVR%det_U/abs(UDVR%det_U)
+       UDVR%det_ok = (Ndim == N_part)
 
        DEALLOCATE(TAU, WORK, IPVT)
 
@@ -657,7 +675,34 @@ CONTAINS
        CALL MPI_Sendrecv_replace(this%L, this%ndim, MPI_REAL8, dest, sendtag, &
             &                source, recvtag, MPI_COMM_WORLD, STATUS, IERR)
 #endif
+       CALL MPI_Sendrecv_replace(this%det_U, 1, MPI_COMPLEX16, dest, sendtag, &
+            &                source, recvtag, MPI_COMM_WORLD, STATUS, IERR)
+       CALL MPI_Sendrecv_replace(this%det_ok, 1, MPI_LOGICAL, dest, sendtag, &
+            &                source, recvtag, MPI_COMM_WORLD, STATUS, IERR)
      END SUBROUTINE MPI_Sendrecv_UDV_state
 #endif
+
+!--------------------------------------------------------------------
+!> @brief
+!> det(H_1 ... H_n)/|det|, H_i = I - tau_i v_i v_i^H the Householder reflectors of a LAPACK QR (ZGEQRF, ZGEQP3).
+!> @details
+!> LAPACK scales v_i(i) = 1 and |v_i|^2 = 2 Re(tau_i)/|tau_i|^2, so det H_i = 1 - tau_i |v_i|^2 = -tau_i/conj(tau_i)
+!> (1 for tau_i = 0): modulus 1, so the product never under- or overflows (unlike a raw LU product for N > ~2950).
+!--------------------------------------------------------------------
+     Complex (Kind=Kind(0.d0)) Function Householder_det_phase(TAU, N)
+       Implicit None
+       Integer, intent(in) :: N
+       Complex (Kind=Kind(0.d0)), intent(in) :: TAU(:)
+       Complex (Kind=Kind(0.d0)) :: z
+       Integer :: i
+
+       Householder_det_phase = cmplx(1.d0, 0.d0, kind(0.d0))
+       do i = 1, N
+          if (TAU(i) /= cmplx(0.d0, 0.d0, kind(0.d0))) then
+             z = TAU(i)/abs(TAU(i))
+             Householder_det_phase = -Householder_det_phase*z*z
+          endif
+       enddo
+     end Function Householder_det_phase
 
    END MODULE UDV_State_mod

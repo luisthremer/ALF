@@ -27,6 +27,8 @@ end interface
         do NVAR = 1,2
         CALL udvl%alloc(N_size)
         CALL udvr%alloc(N_size)
+        CALL udvl%reset("l")   ! U = 1 with its tracked det(U) (CGR phase without LU, ALF_CGR_LU)
+        CALL udvr%reset("r")
         allocate(GRUPnew(N_size, N_size), GRUPold(N_size, N_size), DL(n_size), DR(n_size))
         ! set up test data
         Phasenew = 1.D0

@@ -76,6 +76,9 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
   magnitude matters elsewhere). Large-N check (Helma job 1457891, ifx + MKL, Hubbard N_FL = 2, Mz = .F., U = 5,
   Nt = 16, 1 sweep): L = 64 acceptance 0.2182 before, 0.3197 after; L = 48 identical (0.3193). Merged as aef50743.
   Whether and how this goes to the upstream developers is the owner's decision.
+- **Since cpu-s1 (CG-ALF S1 on the CPU line):** the default `CGR` (default, STAB3, LOG builds) takes the phase from
+  the det(U) tracked by the UDV states (Householder reflectors of the QR, modulus 1) and calls no LU, so `DET_C`
+  is not on this path any more; `ALF_CGR_LU=1` restores the LU above, `ALF_CGR_LU=2` compares both.
 - **See:** branch `fix/det-phase-underflow` (GPU line), `docs/gpu/KNOWN_ISSUE_DET_PHASE_UNDERFLOW.md`.
 
 ## Build: Prog objects do not depend on the modules of Libraries/Modules

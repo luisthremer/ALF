@@ -42,18 +42,78 @@ module cgr1_mod
   COMPLEX (Kind=Kind(0.d0)), Dimension(:)  , Allocatable :: DUP, TAU
   INTEGER,                   Dimension(:)  , Allocatable :: IPVT, VISITED
 
+  ! Source of the determinant phase det(UR^dagger UL) in CGR (default, STAB3 and STABLOG builds; STAB1/STAB2 keep
+  ! their own LU, which they also need for G).  Environment ALF_CGR_LU (read by CGR_work_alloc; the GPU path reads its
+  ! own ALF_GPU_CGR_LU): 0 tracked det(U) of the UDV states (udv_state_mod, det_U: no LU), 1 LU (ZGETRF of
+  ! UR^dagger UL), 2 both: the tracked phase is used and compared with the LU phase at every CGR, a difference above
+  ! PH_ABORT stops the run, count and maximum are printed by CGR_work_dealloc.  Unset: CGR_PHASE_DEFAULT.
+  ! ALF_CGR_FAULT=det flips the sign of the tracked phase (negative control for mode 2).
+  ! Default 0 (CG-ALF S1 on the CPU line, one commit: "git revert" of it makes the LU the default again).  Why no LU: the
+  ! reflectors of the two QRs fix det(UR) and det(UL) exactly, so the ZGETRF of UR^dagger UL at every CGR computes a
+  ! known number; the tracked phase never forms a raw product (no underflow for N > ~2950).
+  INTEGER, PARAMETER :: CGR_PHASE_DEFAULT = 0
+  REAL (Kind=Kind(0.d0)), PARAMETER :: PH_ABORT = 1.d-8
+  INTEGER :: cgr_phase_mode = CGR_PHASE_DEFAULT, ph_ncmp = 0
+  LOGICAL :: cgr_fault_det = .false.
+  REAL (Kind=Kind(0.d0)) :: ph_maxdiff = 0.d0
+
   contains
 
-      !> Allocates the work arrays of CGR for matrices of size N x N.
+      !> Allocates the work arrays of CGR for matrices of size N x N and reads ALF_CGR_LU, ALF_CGR_FAULT.
       SUBROUTINE CGR_work_alloc(N)
+        Use iso_fortran_env, only: error_unit
+        Use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
         Integer, intent(in) :: N
+        Character(len=64) :: v
+        Integer :: st
         Allocate(TPUP(N,N), RHS(N,N), IPVT(N), TAU(N), DUP(N), VISITED(N))
+        call get_environment_variable('ALF_CGR_LU', v, status=st)
+        if (st == 0) then
+           select case (trim(v))
+           case ('0'); cgr_phase_mode = 0
+           case ('1'); cgr_phase_mode = 1
+           case ('2'); cgr_phase_mode = 2
+           case default
+              write(error_unit,*) 'ALF_CGR_LU='//trim(v)//' invalid (0 tracked det(U), 1 LU, 2 both)'
+              CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+           end select
+        endif
+        call get_environment_variable('ALF_CGR_FAULT', v, status=st)
+        if (st == 0) then
+           if (trim(v) /= 'det') then
+              write(error_unit,*) 'ALF_CGR_FAULT='//trim(v)//' invalid (only det)'
+              CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+           endif
+           cgr_fault_det = .true.
+        endif
       END SUBROUTINE CGR_work_alloc
 
-      !> Releases the work arrays of CGR.
+      !> Releases the work arrays of CGR; in check mode (ALF_CGR_LU=2) prints the comparison summary.
       SUBROUTINE CGR_work_dealloc
+        Use iso_fortran_env, only: output_unit
         Deallocate(TPUP, RHS, IPVT, TAU, DUP, VISITED)
+        ! shortcut: stdout, not the info file (control_mod is edited elsewhere now); move it once b-batch-2 is merged
+        if (cgr_phase_mode == 2) write(output_unit,'(A,I0,A,ES10.3)') &
+             & ' CGR phase check (ALF_CGR_LU=2): CGR calls compared ', ph_ncmp, &
+             & ', max |phase(tracked) - phase(LU)| ', ph_maxdiff
       END SUBROUTINE CGR_work_dealloc
+
+      !> Check mode: compares the tracked phase zt with the LU phase zl; stops the run above PH_ABORT or if not finite.
+      SUBROUTINE CGR_phase_compare(zt, zl)
+        Use iso_fortran_env, only: error_unit
+        Use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
+        Use Control, only: Control_Is_Finite
+        Complex (Kind=Kind(0.d0)), intent(in) :: zt, zl
+        Real (Kind=Kind(0.d0)) :: dif
+        dif = abs(zt - zl)
+        ph_ncmp = ph_ncmp + 1
+        if (.not. Control_Is_Finite(dif) .or. dif > PH_ABORT) then   ! bit test: -ffast-math drops NaN comparisons
+           write(error_unit,'(A,ES10.3,A,I0)') 'CGR phase check (ALF_CGR_LU=2): tracked det phase differs from the LU '// &
+                & 'phase by ', dif, ' (limit 1e-8) at comparison ', ph_ncmp
+           CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+        endif
+        ph_maxdiff = max(ph_maxdiff, dif)
+      END SUBROUTINE CGR_phase_compare
 
 
       SUBROUTINE CGR(PHASE,NVAR, GRUP, udvr, udvl)
@@ -341,8 +401,22 @@ module cgr1_mod
         ! calculate determinant of UR*UL
         ! as the D's are real and positive, they do not contribute the the phase of det so they can be ignored
         ! Underflow-safe for large N_size, equal to DET_C otherwise (KNOWN_ISSUES.md)
-        PHASE = CONJG(DET_C_PHASE(RHS, N_size))
-        PHASE = PHASE/ABS(PHASE)
+        ! Tracked: conj(det(UR^dagger UL)) = det(UR) conj(det(UL)) from the UDV states (cgr_phase_mode, ALF_CGR_LU)
+        if (cgr_phase_mode /= 1) then
+           if (.not. (udvr%det_ok .and. udvl%det_ok)) then
+              write(error_unit,*) "CGR: untracked U in CGR (det_U not set by reset/decompose), ALF_CGR_LU=1 uses the LU"
+              CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+           endif
+           Z = udvr%det_U*CONJG(udvl%det_U)
+           Z = Z/ABS(Z)
+           if (cgr_fault_det) Z = -Z
+        endif
+        if (cgr_phase_mode /= 0) then
+           PHASE = CONJG(DET_C_PHASE(RHS, N_size))
+           PHASE = PHASE/ABS(PHASE)
+        endif
+        if (cgr_phase_mode == 2) call CGR_phase_compare(Z, PHASE)
+        if (cgr_phase_mode /= 1) PHASE = Z
         IPVT = 0
         IF (NVAR .NE. 1) THEN
             Allocate(TPUP_temp(N_size,N_size))
