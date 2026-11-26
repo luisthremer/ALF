@@ -6,7 +6,7 @@
   none      optional (--ref-exe): ALF.out of a GPU=none build
 
 and require that every output file except the info files and stdout is byte-identical, that the info file of the
-active run says "ACTIVE (mirror built, not yet used by the sweep)" and that stdout says "GPU self-test PASSED".
+active run says "ACTIVE (mirror, wraps and updates on the device path)" and that stdout says "GPU self-test PASSED".
 The sweep does not use the mirror in step 1b, so the agreement must be exact.  .h5 files are compared with h5diff
 if it is on the PATH (HDF5 files carry no usable byte identity), otherwise skipped with a note."""
 import argparse, filecmp, os, re, shutil, subprocess, sys
@@ -79,7 +79,7 @@ def main():
     fail = 0
     info = open(os.path.join(dirs["active"], "info"), errors="replace").read()
     out = open(os.path.join(dirs["active"], "stdout"), errors="replace").read()
-    if "ACTIVE (mirror built, not yet used by the sweep)" not in info:
+    if "ACTIVE (mirror, wraps and updates on the device path)" not in info:
         print("FAIL: info of the active run has no ACTIVE line"); fail += 1
     if "GPU self-test PASSED" not in out:
         print("FAIL: stdout of the active run has no 'GPU self-test PASSED'"); fail += 1

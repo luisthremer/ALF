@@ -55,6 +55,9 @@ Module Wrapgr_mod
        &                        Lowrank_tune_slice_begin, Lowrank_tune_slice_end
   use Langevin_HMC_mod, only: Calculate_Force
   Use Natural_Constants, only: Eps_small
+#ifdef ALF_GPU
+  Use gpu_update_mod, only: gpu_upd_enabled, gpu_wrapgrup, gpu_wrapgrdo, gpu_g_host, gpu_g_host_wrote
+#endif
 
   Implicit none
 
@@ -118,6 +121,17 @@ Contains
     Character (Len=64)        :: Mode
     Logical                   :: Acc, toggle1, L_MALA
     Logical                   :: LR_n   ! vertex n handled by the delayed/submatrix scheme
+
+#ifdef ALF_GPU
+    ! Device path (gpu_update_mod; MALA and global moves are refused by gpu_supported). The host GR is copied to the device
+    ! when the device copy is stale and back before returning, because stabilisation and measurements still read GR on the
+    ! host (steps 1d/1e remove this bracket). The delayed/submatrix state of the CPU Lowrank module stays idle.
+    if (gpu_upd_enabled()) then
+       call gpu_wrapgrup(GR,NTAU,PHASE,Propose_S0,Nt_sequential_start,Nt_sequential_end,N_Global_tau)
+       call gpu_g_host(GR); call gpu_g_host_wrote()
+       return
+    endif
+#endif
 
     ! Only used for MALA fields, where they are set before use.
     phase_st  = cmplx(1.d0,0.d0,kind(0.d0))
@@ -286,6 +300,17 @@ Contains
     Character (Len=64)        :: Mode
     Logical                   :: Acc, toggle1, L_MALA
     Logical                   :: LR_n   ! vertex n handled by the delayed/submatrix scheme
+
+#ifdef ALF_GPU
+    ! Device path (gpu_update_mod; MALA and global moves are refused by gpu_supported). The host GR is copied to the device
+    ! when the device copy is stale and back before returning, because stabilisation and measurements still read GR on the
+    ! host (steps 1d/1e remove this bracket). The delayed/submatrix state of the CPU Lowrank module stays idle.
+    if (gpu_upd_enabled()) then
+       call gpu_wrapgrdo(GR,NTAU,PHASE,Propose_S0,Nt_sequential_start,Nt_sequential_end,N_Global_tau)
+       call gpu_g_host(GR); call gpu_g_host_wrote()
+       return
+    endif
+#endif
 
     ! Only used for MALA fields, where they are set before use.
     phase_st  = cmplx(1.d0,0.d0,kind(0.d0))

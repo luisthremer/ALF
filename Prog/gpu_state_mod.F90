@@ -115,7 +115,7 @@ Module gpu_state_mod
        &                      reconstruction_needed, Group_Comm
   Use QMC_runtime_var, only: get_Langevin, get_HMC, get_Global_moves, get_Global_tau_moves, get_N_Global_tau, &
        &                     get_Propose_S0, get_Sequential_MALA, get_Global_MALA_moves, get_Global_tau_MALA_moves, &
-       &                     get_N_Global_tau_MALA, get_ham_name, get_Ltau
+       &                     get_N_Global_tau_MALA, get_ham_name, get_Ltau, get_N_delay
   Use Hop_mod, only: Hop_mod_mmthr, Hop_mod_mmthr_m1, Hop_mod_mmthl, Hop_mod_mmthlc, Hop_mod_mmthl_m1, Hop_mod_Symm, &
        &              Hop_mod_gpu_ncheck, Hop_mod_gpu_element, Hop_mod_gpu_td_element
   Use Mat_subroutines, only: ZDSLSYMM, ZSLHEMM
@@ -598,6 +598,11 @@ Contains
     if (get_Sequential_MALA() .or. get_Global_MALA_moves() .or. get_Global_tau_MALA_moves() .or. get_N_Global_tau_MALA() > 0) then
        reason = 'MALA updates are not supported on the GPU path'; return
     endif
+    if (get_N_delay() < 0) then
+       ! Timed automatic N_delay: lowrank_update_mod times candidate values at run time; the device path uses the one N_delay
+       ! Lowrank_current_N_delay() has at its first use, so the timed search stays on the CPU.
+       reason = 'timed automatic N_delay (N_delay = -1) is not supported on the GPU path'; return
+    endif
     if (reconstruction_needed) then
        reason = 'Calc_Fl with weight reconstruction (ham%weight_reconstruction) is not supported on the GPU path'; return
     endif
@@ -684,7 +689,7 @@ Contains
 !> @details
 !> Called once per run between Walker_alloc and Walker_init_stack.  Runs the environment check, gpu_supported, builds
 !> the flat tables, allocates and maps the buffers and writes the state to the info file:
-!> "ACTIVE (mirror built, not yet used by the sweep)" or "INACTIVE, reason: ...".  Optional self-test
+!> "ACTIVE (mirror, wraps and updates on the device path)" or "INACTIVE, reason: ...".  Optional self-test
 !> (ALF_GPU_SELFTEST).  The walker is only read (NSTM).
 !> @param[in] walker   walker whose layout (NSTM) sizes the UDV buffers
 !> @param[in] file_info name of the info file (appended to by the group root)
@@ -733,10 +738,10 @@ Contains
     call system_clock(c1)
     tsetup = real(c1-c0,kind(0.d0))/real(crate,kind(0.d0))
     if (omp_get_num_devices() > 0) then
-       write(line,'(A,I0)') 'GPU path (gpu_state): ACTIVE (mirror built, not yet used by the sweep), OpenMP device ', &
+       write(line,'(A,I0)') 'GPU path (gpu_state): ACTIVE (mirror, wraps and updates on the device path), OpenMP device ', &
             & omp_get_default_device()
     else
-       line = 'GPU path (gpu_state): ACTIVE (mirror built, not yet used by the sweep), OpenMP host fallback (no offload device)'
+       line = 'GPU path (gpu_state): ACTIVE (mirror, wraps and updates on the device path), OpenMP host fallback (no offload device)'
     endif
     call info_line(line)
     write(line,'(A,I0,A,I0,A,I0)') 'GPU mirror: hopping elements ', g_nel, ', Op_V operators ', g_Nop*g_NFL, &
