@@ -58,6 +58,9 @@ Module qmc_sweep_mod
        &                     get_Max_Force_MALA_sequential, get_N_Global_tau_MALA, &
        &                     get_delta_t_MALA_global_tau, get_Max_Force_MALA_global_tau, &
        &                     get_LOBS_ST, get_LOBS_EN, get_Ltau, get_Nwrap
+#ifdef ALF_TIMERS
+  Use Timers_mod, only: timer_push, timer_pop, T_STAB, T_MEAS
+#endif
 
   Implicit none
   private
@@ -90,6 +93,9 @@ Module qmc_sweep_mod
               &        get_N_Global_tau_MALA(), get_delta_t_MALA_global_tau(), get_Max_Force_MALA_global_tau())
 
          If (NTAU1 == walker%Stab_nt(NST) ) then
+#ifdef ALF_TIMERS
+            call timer_push(T_STAB)
+#endif
             NT1 = walker%Stab_nt(NST-1)
             CALL WRAPUR(NT1, NTAU1, walker%udvr)
             Do nf_eff = 1, N_FL_eff
@@ -101,10 +107,16 @@ Module qmc_sweep_mod
             NVAR = 1
             IF (NTAU1 .GT. LTROT/2) NVAR = 2
             Call Recompute_GR_phase(walker, NVAR)
+#ifdef ALF_TIMERS
+            call timer_pop(T_STAB)
+#endif
             NST = NST + 1
          ENDIF
 
          IF (NTAU1.GE. get_LOBS_ST() .AND. NTAU1.LE. get_LOBS_EN() ) THEN
+#ifdef ALF_TIMERS
+            call timer_push(T_MEAS)
+#endif
             !Call  Global_tau_mod_Test(Gr,ntau1)
             !Stop
             !write(*,*) "GR before obser sum: ",sum(GR(:,:,1))
@@ -120,6 +132,9 @@ Module qmc_sweep_mod
                If (reconstruction_needed) Call ham%GR_reconstruction( walker%GR )
                CALL ham%Obser( walker%GR, walker%PHASE, Ntau1, Mc_step_weight  )
             endif
+#ifdef ALF_TIMERS
+            call timer_pop(T_MEAS)
+#endif
          ENDIF
       ENDDO
     end Subroutine Sweep_up
@@ -147,6 +162,9 @@ Module qmc_sweep_mod
               &        get_Sequential_MALA(), get_Delta_t_MALA_sequential(), get_Max_Force_MALA_sequential(), &
               &        get_N_Global_tau_MALA(), get_delta_t_MALA_global_tau(), get_Max_Force_MALA_global_tau())
          IF (NTAU1.GE. get_LOBS_ST() .AND. NTAU1.LE. get_LOBS_EN() ) THEN
+#ifdef ALF_TIMERS
+            call timer_push(T_MEAS)
+#endif
             !write(*,*) "GR before obser sum: ",sum(GR(:,:,1))
             !write(*,*) "Phase before obser : ",phase
             Mc_step_weight = 1.d0
@@ -160,8 +178,14 @@ Module qmc_sweep_mod
                If (reconstruction_needed) Call ham%GR_reconstruction( walker%GR )
                CALL ham%Obser( walker%GR, walker%PHASE, Ntau1,Mc_step_weight )
             endif
+#ifdef ALF_TIMERS
+            call timer_pop(T_MEAS)
+#endif
          ENDIF
          IF ( walker%Stab_nt(NST) == NTAU1 .AND. NTAU1.NE.0 ) THEN
+#ifdef ALF_TIMERS
+            call timer_push(T_STAB)
+#endif
             NT1 = walker%Stab_nt(NST+1)
             !Write(6,*) 'Wrapul : ', NT1, NTAU1
             CALL WRAPUL(NT1, NTAU1, walker%udvl)
@@ -175,14 +199,26 @@ Module qmc_sweep_mod
             NVAR = 1
             IF (NTAU1 .GT. LTROT/2) NVAR = 2
             Call Recompute_GR_phase(walker, NVAR)
+#ifdef ALF_TIMERS
+            call timer_pop(T_STAB)
+#endif
             IF( get_Ltau() == 1 .and. Projector .and. walker%Stab_nt(NST)<=THTROT+1 .and. THTROT+1<walker%Stab_nt(NST+1) ) then
+#ifdef ALF_TIMERS
+               call timer_push(T_MEAS)
+#endif
                Call tau_p ( walker%udvl, walker%udvr, walker%udvst, walker%GR, walker%PHASE, walker%NSTM, walker%STAB_NT, NST,  get_LOBS_ST(), get_LOBS_EN() )
+#ifdef ALF_TIMERS
+               call timer_pop(T_MEAS)
+#endif
             endif
             NST = NST -1
          ENDIF
       ENDDO
 
       !Calculate and compare green functions on time slice 0.
+#ifdef ALF_TIMERS
+      call timer_push(T_STAB)
+#endif
       NT1 = walker%Stab_nt(0)
       NT  = walker%Stab_nt(1)
       CALL WRAPUL(NT, NT1, walker%udvl)
@@ -192,6 +228,10 @@ Module qmc_sweep_mod
       Call Recompute_GR_phase(walker, NVAR)
       NST =  walker%NSTM
       Call Reset_udv(walker%udvst(NST,:), 'l')
+#ifdef ALF_TIMERS
+      call timer_pop(T_STAB)
+      call timer_push(T_MEAS)
+#endif
 
       IF ( get_Ltau() == 1 .and. .not. Projector ) then
          Call TAU_M( walker%udvst, walker%GR, walker%PHASE, walker%NSTM, get_Nwrap(), walker%STAB_NT, get_LOBS_ST(), get_LOBS_EN() )
@@ -206,6 +246,9 @@ Module qmc_sweep_mod
       IF ( get_LTAU() == 1 .and. Projector .and. walker%Stab_nt(1) > THTROT+1 ) then
          Call tau_p ( walker%udvl, walker%udvr, walker%udvst, walker%GR, walker%PHASE, walker%NSTM, walker%STAB_NT, 0, get_LOBS_ST(), get_LOBS_EN() )
       endif
+#ifdef ALF_TIMERS
+      call timer_pop(T_MEAS)
+#endif
     end Subroutine Sweep_down
 
 end Module qmc_sweep_mod
