@@ -157,3 +157,4 @@ Loop: brainstorm → measure → implement → validate → iterate. Model-agnos
    batches on one GPU), MPS/MIG sharing, multi-GPU.
 7. **Largest system sizes:** memory footprint per walker, out-of-core/recompute trade-offs.
 Each idea gets a one-line entry in `docs/ai/phase2/CG_ALF_IDEAS.md` with status and measured gain.
+Plan, experiments E0-E4 and their results so far: [`CG_ALF_PLAN.md`](CG_ALF_PLAN.md); GPU hours used: [`CG_ALF_LEDGER.md`](CG_ALF_LEDGER.md).
