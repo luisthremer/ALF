@@ -1,5 +1,5 @@
 ## Now
-P2.3 done: `Code-modularity-CPU` and `Code-modularity-GPU` created at [40b05e46](https://github.com/luisthremer/ALF/commit/40b05e46). Session stopped here (stop point of the handoff); next is P2.4.
+P2.4 step 1: planning the common GPU scaffold (`cm/dev/gpu-common`). Three read-only agents map `gpu-port` and the seams in `Code-modularity-GPU`; the plan comes as a doc on a dev branch before any code.
 
 ## Waiting for you
 1. Upstream issues for H7 (Bilayer_honeycomb energy) and H6 (Tempering hang, odd replicas): texts drafted in the manager chat, post them? yes/no
@@ -15,9 +15,9 @@ P2.3 done: `Code-modularity-CPU` and `Code-modularity-GPU` created at [40b05e46]
 - Inbox: two ideas now CG-ALF tasks T3 (fast `Op_V_is_symmetric`) and T4 (production guards from the Intel code); inbox is checked at least every two hours of work ([fc8561cf](https://github.com/luisthremer/ALF/commit/fc8561cf)).
 
 ## Next 3 steps
-1. P2.4 step 1: plan the common GPU scaffold (`cm/dev/gpu-common` from `Code-modularity-GPU`).
-2. Batch fix of the B bugs in KNOWN_ISSUES.md (after the phase merge).
-3. CG-ALF tasks T3 (fast `Op_V_is_symmetric`) and T4 (production guards) after the P2.4 scaffold.
+1. P2.4 plan for the GPU scaffold (docs), then your look at it.
+2. Scaffold dev branch `cm/dev/gpu-common` (GPU=none bitwise identical), then per-vendor branches.
+3. CG-ALF tasks T3 (fast `Op_V_is_symmetric`) and T4 (production guards).
 
 ## Open branches and running jobs
 - No unmerged feature branches. Baseline CI on `Code-modularity-CPU` fc8561cf ([run 45797219302](https://github.com/luisthremer/ALF/actions/runs/45797219302)).
