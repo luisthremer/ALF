@@ -1,5 +1,5 @@
 ## Now
-P2.4 step 1c (`gpu-wrap-update`: wraps, local updates, delayed/submatrix on the device mirror; Hubbard only) on `cm/feat/gpu-wrap-update`, 9 commits; CI running. Local: every commit builds with GPU=none and GPU=host; tests 67/67 (none), 86/86 (host, default and STABLOG); GPU=none 16/16 byte-identical. Hubbard 4x4, device path vs CPU path in the same binary: configurations byte-identical; energies agree to 2e-11 absolute (1.5e-12 relative) with Mz, 1e-14 for SU(2).
+P2.4 step 1d (`gpu-stab`: UDV stabilisation on the device with the determinant-phase fix for large N; Hubbard only): design done, one coding agent implements it on `cm/dev/gpu-stab`.
 
 ## Waiting for you
 All questions in detail: [QUESTIONS.md](QUESTIONS.md).
@@ -8,6 +8,7 @@ All questions in detail: [QUESTIONS.md](QUESTIONS.md).
 3. Q4a-d older GPU-port questions; Q5-Q10 things only you can do.
 
 ## Done since the last owner message
+- Merged step 1c (device wraps, local updates, delayed/submatrix) into `Code-modularity-GPU`: [0c222961](https://github.com/luisthremer/ALF/commit/0c222961), CI run 45854274445 green. Local: tests 67/67 (GPU=none), 86/86 (GPU=host, default and STABLOG, also bounds-checked), 16/16 byte-identical; device vs CPU path on Hubbard 4x4: configurations byte-identical, energies within 2e-11 (Mz) and 1e-14 (SU(2)). Found and fixed on the way: G1 (1b self-test left stale device G, class B), `Sequential_scheme = "auto"` would have stopped GPU runs (now refused on the GPU path). Branches archived and deleted.
 - Merged step 1b (GPU state, device mirror of model and walker) into `Code-modularity-GPU`: [eb5b1022](https://github.com/luisthremer/ALF/commit/eb5b1022), CI run 45838961102 green (30 jobs, incl. the new `gpu_host` jobs); 81/81 tests GPU=host, 67/67 GPU=none, 16/16 byte-identical. Branches archived and deleted.
 - Merged: Phase-6 sync (CPU+GPU), B batch 1 (8 bugs, CPU, then into GPU), step 1a `GPU=none|host` (GPU); combination green in CI.
 - Ideas I11-I13 (Cholesky again, time-first sweep, random space-time path) in the CG-ALF plan.
@@ -24,11 +25,11 @@ All questions in detail: [QUESTIONS.md](QUESTIONS.md).
 - Inbox: two ideas now CG-ALF tasks T3 (fast `Op_V_is_symmetric`) and T4 (production guards from the Intel code); inbox is checked at least every two hours of work ([fc8561cf](https://github.com/luisthremer/ALF/commit/fc8561cf)).
 
 ## Next 3 steps
-1. 1c (wraps, updates, lowrank on the mirror), tested with GPU=host.
-2. 1d stabilisation (with the GPU det-phase fix; S1 if you say yes), 1e observables/tau.
+1. 1d stabilisation (with the GPU det-phase fix; S1 only if you say yes).
+2. 1e observables and tau.
 3. Step 2: vendor backends inside linalg_mod (needs the clusters).
 
 ## Open branches and running jobs
-- `cm/feat/gpu-wrap-update` + `cm/dev/gpu-wrap-update` (step 1c, CI run 45851444872).
+- `cm/dev/gpu-stab` (step 1d, coding agent working).
 - Side session "Interview owner on QUESTIONS.md decisions" (waits for you).
 - Cluster jobs: none. Plan: [P2_4_GPU_PLAN.md](https://github.com/luisthremer/ALF/blob/Code-modularity-GPU/docs/ai/phase2/P2_4_GPU_PLAN.md)
