@@ -54,6 +54,7 @@ Program Test_Hubbard_pot_weights
   Call Validate_Ham_Variables()
   Call Setup_flavor_map()
   Call ham%Alloc_obs(0)
+  Call ham%Init_obs(0)          ! zero the accumulators, as main does before every bin
 
   allocate(GR(Ndim,Ndim,N_FL))
   GR = (0.d0, 0.d0)
