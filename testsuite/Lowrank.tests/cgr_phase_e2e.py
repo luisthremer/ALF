@@ -18,11 +18,10 @@ import argparse, filecmp, os, re, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from compare_schemes import make_text, prepare, with_scheme  # noqa: E402
+from compare_schemes import make_text, prepare, with_scheme, numbers, h5_text  # noqa: E402
 
 TOL = 1.0e-10
 CHECK = re.compile(r"CGR phase check \(ALF_CGR_LU=2\): CGR calls compared (\d+), max \|phase\(tracked\) - phase\(LU\)\| +(\S+)")
-NUM = re.compile(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[EeDd][-+]?\d+)?")
 SKIP = {"info", "info_git", "parameters", "seeds", "stdout"}
 BASE = {"L1": 4, "L2": 4, "Beta": 2.0, "Nsweep": 4, "NBin": 1, "Ltau": 1,
         "N_Tempering_frequency": 2, "N_exchange_steps": 1, "Tempering_calc_det": False}
@@ -48,10 +47,6 @@ def outputs(d):
     for root, _, names in os.walk(d):
         res += [os.path.relpath(os.path.join(root, n), d) for n in names if n not in SKIP]
     return sorted(res)
-
-
-def numbers(p):
-    return [float(x.replace("D", "E").replace("d", "e")) for x in NUM.findall(open(p, errors="replace").read())]
 
 
 def main():
@@ -105,11 +100,14 @@ def main():
         worst = 0.0
         for f in f0:
             p0, p1, p2 = (os.path.join(dirs[m], f) for m in ("0", "1", "2"))
-            if not filecmp.cmp(p0, p2, shallow=False):
+            # HDF5 files carry metadata (times): compare their contents (h5dump, as compare_schemes.py does)
+            same = (lambda x, y: h5_text(x) == h5_text(y)) if f.endswith(".h5") else \
+                   (lambda x, y: filecmp.cmp(x, y, shallow=False))
+            if not same(p0, p2):
                 bad.append("%s: %s mode 2 differs from mode 0" % (name, f))
-            if filecmp.cmp(p0, p1, shallow=False):
+            if same(p0, p1):
                 continue
-            if os.path.basename(f).startswith("confout") or f.endswith(".h5"):
+            if os.path.basename(f).startswith("confout"):
                 bad.append("%s: %s differs between tracked and LU" % (name, f))
                 continue
             v0, v1 = numbers(p0), numbers(p1)
