@@ -52,7 +52,11 @@
 !>     them with the rule of LU_PHASE_SAFE (gpu_lu_phase_select, tested bitwise against it); the raw product alone underflows for
 !>     N > ~2950 (fix of fix/det-phase-underflow, KNOWN_ISSUES "Determinant phase underflow").  Tracked: det(U)/|det U| of every
 !>     device slot U is kept with the slot (no LU, no transfer).  CGR_PHASE_DEFAULT names the source of a run without
-!>     ALF_GPU_CGR_LU: 'lu';
+!>     ALF_GPU_CGR_LU: 'tracked' (step 1f, speedup S1; one commit, "git revert" of it makes 'lu' the default again).
+!>     Why no LU: the LU (ZGETRF of the N x N matrix, a serial determinant kernel and a 32 B D->H at every CGR) computes a number
+!>     the decompositions already know, since the reflectors of the two QRs fix det U_L and det U_R exactly; measured on an H100
+!>     (Hubbard, ham_h0 = 0): L = 32 8.57 -> 7.49 s per sweep (-12.6 %).  The tracked phase never forms a raw product and needs
+!>     only tau of the QR, which every vendor backend has;
 !>   * the precision check of Control_PrecisionG as a device reduction (max |A-B|, sum |A-B|, non-finite counts): one D->H of
 !>     four numbers, handed to Control_PrecisionG_vals (control_mod).
 !>
@@ -148,7 +152,7 @@ Module gpu_stab_mod
   Integer, Save :: fault = 0                                                  ! 1 perm, 2 phase, 3 nan, 4 det (negative controls)
   ! source of the CGR determinant phase: 0 tracked det(U) (no LU), 1 LU of the RHS, 2 both (check: tracked used, compared with the LU).
   ! CGR_PHASE_DEFAULT is the mode without ALF_GPU_CGR_LU (which needs ALF_GPU_DEBUG=1)
-  Character (len=*), Parameter :: CGR_PHASE_DEFAULT = 'lu'                    ! 'lu' or 'tracked'
+  Character (len=*), Parameter :: CGR_PHASE_DEFAULT = 'tracked'               ! 'lu' or 'tracked'
   Integer, Save :: cgr_mode = 1
   Integer, Save :: ph_ncmp = 0                                                 ! mode 2: CGR calls compared
   Real (Kind=Kind(0.d0)), Save :: ph_maxdiff = 0.d0                            ! mode 2: max |phase(tracked) - phase(LU)|
