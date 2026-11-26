@@ -284,6 +284,7 @@ function setData(first) {
   document.title = D.repo + " · network";
   $("title").textContent = D.repo + " — network graph";
   $("stamp").textContent = `${D.c.length} commits · ${D.rows.filter(r => r.kind !== "anon").length} branch lines · updated ${new Date(D.generated * 1000).toLocaleTimeString()}`;
+  if (first && D.showUnnamed === false) { opt.anon = false; $("showAnon").checked = false; }
   prepare(first ? "end" : true);
   if (first) { if (D.head >= 0) jumpTo(D.head); else toNewest(); hiCommit = -1; draw(); }
   else if (D.head >= 0 && D.c[D.head][0] !== prevHead) { jumpTo(D.head); toast("New HEAD " + D.c[D.head][0]); }
