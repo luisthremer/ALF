@@ -4,9 +4,7 @@ Short form in `STATUS.md` ("Waiting for you"). Answer in the chat with the numbe
 
 ## Open
 
-**Q11. S1 "consistent" — confirm the reading.** You said about S1: "Use no LU, but we need to document it. Also make
-it consistent." Claude's reading: the same tracked-phase approach on every vendor where possible (AMD kernels track
-det U too, STABLOG checked), not a different method per vendor. Right? yes/no (or say what you meant)
+None.
 
 ## Decided (interview 2026-11-26; record with your exact words in the session notes)
 
@@ -17,6 +15,9 @@ det U too, STABLOG checked), not a different method per vendor. Right? yes/no (o
 - **S1 (Q3): yes, option (a).** "Okay, just do it." Own feature after step 1d of P2.4. No LU: document the tracked phase
   (why no LU; invariant: U stays the exact product of the tracked reflectors; check mode). CG-ALF task: check that
   tracking is the right choice in general. Also wanted for CG-ALF: the LU-free phase on the CPU line.
+- **Q11:** "Yes, that is what I meant": the same tracked-phase method on every vendor where possible, not a per-vendor
+  patchwork. And: "the commit for no Lu has to be a single commit! so that it can be undone later!" (one commit that a
+  single `git revert` removes).
 - **Q4a:** `prepare_sim.py` is a general PARALLEL_PARAMS helper, not GPU- or model-specific: own feature (CPU line,
   newest version from gpu-port `Scripts_and_Parameters_files/Start_PP/`, with the Helma documentation).
 - **Q4b:** "Yes, default, but report in info file!" Intel switches `ALFSH_OBSCORR=1`, `ALFSH_BLKFUSE=5`, `ALFSH_BLKPF=1`
