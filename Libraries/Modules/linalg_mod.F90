@@ -55,6 +55,9 @@ module linalg_mod
 #if defined(ALF_LA_ONEMKL)
   use linalg_onemkl_mod, only: om_zgemm, om_zgemm_cr, om_ztrsm, om_zgeqrf, om_zunmqr, om_zgetrf, om_zgetri, om_zqrpp
 #endif
+#if defined(ALF_LA_CUDA)
+  use linalg_cuda_mod, only: cu_zgemm, cu_zgemm_cr, cu_ztrsm
+#endif
   implicit none
   private
   public :: la_dznrm2, la_zqrpp, la_zgemm, la_zgemm_cr, la_zhemm, la_ztrsm, la_ztrmm, la_zgemv, la_zgeru, la_zscal, la_zcopy, &
@@ -160,9 +163,16 @@ contains
     complex(kind=kind(0.d0)), intent(in) :: alpha, beta
     complex(kind=kind(0.d0)), intent(in) :: a(lda,*), b(ldb,*)
     complex(kind=kind(0.d0)), intent(inout) :: c(ldc,*)
+#if defined(ALF_LA_CUDA)
+    logical :: done
+#endif
     external :: zgemm
 #if defined(ALF_LA_ONEMKL)
     if (om_zgemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc)) return
+#endif
+#if defined(ALF_LA_CUDA)
+    call cu_zgemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc, done)
+    if (done) return
 #endif
     call zgemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc)
   end subroutine la_zgemm
@@ -176,10 +186,17 @@ contains
     complex(kind=kind(0.d0)), target, intent(inout) :: c(ldc,*)
     real(kind=kind(0.d0)), pointer, contiguous :: ar(:,:), cr(:,:)
     real(kind=kind(0.d0)), parameter :: one = 1.d0, zero = 0.d0
+#if defined(ALF_LA_CUDA)
+    logical :: done
+#endif
     external :: dgemm
     if (m <= 0 .or. n <= 0) return
 #if defined(ALF_LA_ONEMKL)
     if (om_zgemm_cr(m, n, k, a, lda, b, ldb, c, ldc)) return
+#endif
+#if defined(ALF_LA_CUDA)
+    call cu_zgemm_cr(m, n, k, a, lda, b, ldb, c, ldc, done)
+    if (done) return
 #endif
     ! real views of the complex arrays (contiguous pointers: no copy-in/out when passed on)
     call c_f_pointer(c_loc(a(1,1)), ar, [2*lda, k])
@@ -205,9 +222,16 @@ contains
     complex(kind=kind(0.d0)), intent(in) :: alpha
     complex(kind=kind(0.d0)), intent(in) :: a(lda,*)
     complex(kind=kind(0.d0)), intent(inout) :: b(ldb,*)
+#if defined(ALF_LA_CUDA)
+    logical :: done
+#endif
     external :: ztrsm
 #if defined(ALF_LA_ONEMKL)
     if (om_ztrsm(side, uplo, transa, diag, m, n, alpha, a, lda, b, ldb)) return
+#endif
+#if defined(ALF_LA_CUDA)
+    call cu_ztrsm(side, uplo, transa, diag, m, n, alpha, a, lda, b, ldb, done)
+    if (done) return
 #endif
     call ztrsm(side, uplo, transa, diag, m, n, alpha, a, lda, b, ldb)
   end subroutine la_ztrsm

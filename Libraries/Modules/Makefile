@@ -33,6 +33,11 @@ SRCS += linalg_onemkl_mod.F90
 SHIMOBJ = linalg_sycl_shim.o
 endif
 
+# CUDA backend of linalg_mod (GPU=nvidia only)
+ifeq ($(strip $(ALF_GPU)),nvidia)
+SRCS += linalg_cuda_mod.F90
+endif
+
 # Dependency helper variables
 DEPSFILE := .deps.mk
 DEPSGEN := ../../Prog/gen_deps.py
