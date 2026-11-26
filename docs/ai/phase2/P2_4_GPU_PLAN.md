@@ -46,7 +46,7 @@ updates and measurements are bespoke kernels in the `gpu_*` modules, and `alf_la
 zscal, zcopy, zlacpy. See decision D1.
 
 CI rules the gpu-port code breaks today and that the port must fix: bare `USE` in all seven `gpu_*` files (CM needs
-`ONLY:`), direct LAPACK calls in `Prog/` (`gpu_tau_mod` 20 lines: route through `alf_la`), implicit `SAVE` not checked.
+`ONLY:`), direct LAPACK calls in `Prog/` (`gpu_tau_mod` 20 lines: route through `linalg_mod`), implicit `SAVE` not checked.
 Every CI job builds with GPU=none, so each `#ifdef ALF_GPU` block must compile out cleanly in all STAB/MPI variants.
 
 ## 3. Steps (each a dev/canvas feature into `Code-modularity-GPU`, merged one after another)
@@ -56,12 +56,12 @@ code comes only in step 2.
 
 | Step | Feature | Content | Done when |
 |---|---|---|---|
-| 1a | `gpu-build` | `configure.sh GPU=none\|host\|nvidia\|intel\|amd` (only none and host active; the others stop with "not yet on this line"); Makefile switch with stamp file; `alf_la_mod` with the HOST backend only, its unit tests (`alf_la.tests`) | GPU=none bitwise identical (16 scenarios + preprocessor identity of every changed file); CI green |
-| 1b | `gpu-state` | `gpu_state_mod` on `qmc_walker_t` (device mirror, `gpu_supported`, `ALF_GPU_DISABLE`, env guard), hooks in setup/walker, read accessors in Hop_mod/Operator_mod | as 1a; GPU=host run: the mirror round-trips G bitwise |
-| 1c | `gpu-wrap-update` | `gpu_wrap_mod`, `gpu_update_mod`, `gpu_lowrank_mod` adapted to CM's `lowrank_update_mod`; Wrapgr hooks | as 1a; GPU=host vs CPU trajectories agree (configurations byte-identical where the algorithm is the same) |
+| 1a | `gpu-build` | `configure.sh GPU=none\|host\|nvidia\|intel\|amd` (only none and host active; the others stop with "not yet on this line"); Makefile switch with stamp file. No new linear-algebra module (D1) | GPU=none bitwise identical (16 scenarios + preprocessor identity of every changed file); CI green |
+| 1b | `gpu-state` | Hubbard only (D3): `gpu_state_mod` on `qmc_walker_t` (device mirror, `gpu_supported`, `ALF_GPU_DISABLE`, env guard), hooks in setup/walker, read accessors in Hop_mod/Operator_mod | as 1a; GPU=host run: the mirror round-trips G bitwise |
+| 1c | `gpu-wrap-update` | `gpu_wrap_mod`, `gpu_update_mod`, `gpu_lowrank_mod` adapted to CM's `lowrank_update_mod`; Wrapgr hooks; their `alf_la` calls become `linalg_mod` calls (missing wrappers added there with a case in test 13-linalg) | as 1a; GPU=host vs CPU trajectories agree (configurations byte-identical where the algorithm is the same) |
 | 1d | `gpu-stab` | `gpu_stab_mod` with the GPU determinant-phase fix of `fix/det-phase-underflow` (class A, must come with it) | as 1c, plus the N >~ 2950 phase test |
-| 1e | `gpu-obs-tau` | `gpu_obs_mod`, `gpu_tau_mod` (LAPACK through `alf_la`), hooks in `tau_m` and Hubbard `Obser` | as 1c for observables and Ltau = 1 |
-| 2 | `gpu-nvidia`, `gpu-intel`, `gpu-amd` (parallel dev branches from the scaffold) | CUDA backend in `alf_la`; ONEMKL backend + SYCL shims; HIP backend + kernels. Per-vendor extras later (S1/S2, intel-batched) | builds and the trajectory checks of `docs/gpu/VERIFICATION.md` on A30/H100, B580/Max 1550, MI210 |
+| 1e | `gpu-obs-tau` | `gpu_obs_mod`, `gpu_tau_mod` (LAPACK through `linalg_mod`), hooks in `tau_m` and Hubbard `Obser` (Hubbard only, D3) | as 1c for observables and Ltau = 1 |
+| 2 | `gpu-nvidia`, `gpu-intel`, `gpu-amd` (parallel dev branches from the scaffold) | device backend inside `linalg_mod` (D1): CUDA (cuBLAS/cuSOLVER), ONEMKL + SYCL shims, HIP + kernels; GPU=none keeps the plain calls. Per-vendor extras later (S1/S2, intel-batched) | builds and the trajectory checks of `docs/gpu/VERIFICATION.md` on A30/H100, B580/Max 1550, MI210 |
 | 3-4 | integrate, consolidate | as in ROADMAP P2.4 | as in ROADMAP |
 
 Not in P2.4 (each its own feature later, with its own check): the CPU-path changes gpu-port made without a guard
@@ -69,20 +69,21 @@ Not in P2.4 (each its own feature later, with its own check): the CPU-path chang
 variants, `Timers_mod`, `Trace_updates_mod`, `Lowrank_cross_slice`), the test Hamiltonian `LR_Jz_Test`, the defect
 model, tempering on the GPU.
 
-## 4. Decisions for the owner
+## 4. Decisions (owner, 2026-11-26)
 
-- **D1 — where the backend dispatch lives.** ROADMAP says "inside linalg_mod". Recommended instead: keep
-  `linalg_mod` as the host reference (callers unchanged, test 13-linalg stays bitwise) and bring `alf_la` as its own
-  module beside it, used only by the `gpu_*` code; its HOST backend may call the `la_z*` wrappers. Reason: a dispatch
-  inside `linalg_mod` would need device pointers, module-owned workspaces and asynchronous error checks in every host
-  caller, and still would not cover the non-BLAS kernels.
-- **D2 — a GPU=host build.** `-DALF_GPU` with the HOST backend and no offload target, so the whole GPU code path runs
-  on the CPU (OpenMP target regions fall back to the host). Then steps 1b-1e can be tested on the Mac and in CI
-  before any vendor code. Result of the first probe: see section 5.
-- **D3 — scope of step 1:** Hubbard only (the device observables exist only for Hubbard); other models stay on the
-  CPU path through `gpu_supported`, as on gpu-port.
-- **D4 — gpu-port's unguarded CPU changes** go to the CPU line as separate features later (list in section 3), not
-  into the GPU scaffold, so GPU=none stays bitwise identical to `Code-modularity-CPU`.
+- **D1 — decided: the backend dispatch lives in Fakher's `linalg_mod`** (as ROADMAP P2.4 says). No separate
+  `alf_la_mod`. Consequences: the `gpu_*` code calls the `la_z*` wrappers; wrappers gpu-port needs and CM lacks
+  (column-norm pre-pivoted QR `la_qrpp`, batched GEMM, real x complex GEMM, LWORK queries) are added to `linalg_mod`
+  with a test case in `testsuite/matmod.tests/13-linalg` when the module that needs them is ported; the device
+  backend (device addresses, workspaces, asynchronous error checks) goes into `linalg_mod` in step 2, behind the
+  vendor macros, while GPU=none keeps the plain calls bitwise. Fakher's 6G.E1-E7 (merged into the CPU line
+  2026-11-26) already route cgr1, cgr2_2, udv_state, upgrade, wrapul/wrapur and mymats through `linalg_mod`.
+- **D2 — decided: yes**, a `GPU=host` test build (step 1a) runs the GPU code path on the CPU for tests on the Mac
+  and in CI.
+- **D3 — decided: yes**, step 1 (1b-1e) covers the Hubbard model only (marked in the table above); other models
+  keep the CPU path through `gpu_supported`, as on gpu-port. Other models: P2.6.
+- **D4 — open** (owner asked for more detail): gpu-port's unguarded CPU-path changes as separate CPU-line features
+  later, so GPU=none stays byte-identical to `Code-modularity-CPU`.
 
 ## 5. Probes
 
