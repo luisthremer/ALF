@@ -3,7 +3,6 @@
 LIB=modules_90.a
 
 SRCS = Mat_subroutines_mod.F90 \
-	alf_la_mod.F90 \
 	alf_hdf5_mod.F90 \
 	check_omp_num_threads_mod.F90 \
 	comm_mod.F90 \
