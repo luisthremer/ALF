@@ -82,6 +82,7 @@ Module qmc_setup_mod
 #ifdef ALF_GPU
   Use gpu_state_mod, only: gpu_state_setup, gpu_state_finalize, gpu_active
   Use gpu_wrap_mod, only: gpu_wrap_hook
+  Use gpu_lowrank_mod, only: gpu_lr_finalize
   Use qmc_walker_mod, only: qmc_walker_t
 #endif
 #ifdef HDF5
@@ -295,9 +296,10 @@ Module qmc_setup_mod
 
     !--------------------------------------------------------------------
     !> @brief
-    !> GPU build only: releases the device mirror. Called before Walker_dealloc.
+    !> GPU build only: releases the device state (delayed/submatrix arrays, then the mirror). Called before Walker_dealloc.
     !--------------------------------------------------------------------
     Subroutine Finalize_gpu()
+      Call gpu_lr_finalize()          ! writes the update counts, frees the device arrays of the delayed/submatrix state
       Call gpu_state_finalize()
     end Subroutine Finalize_gpu
 #endif
