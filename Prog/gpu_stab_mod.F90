@@ -69,12 +69,16 @@
 #ifdef ALF_GPU
 Module gpu_stab_mod
 
-  Use iso_fortran_env, only: error_unit, int64
+  Use iso_fortran_env, only: output_unit, error_unit, int64
   Use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
   Use Hamiltonian_main, only: Ndim, N_FL, N_FL_eff, N_SUN, Calc_Fl_map, Nsigma, Op_V
   Use Operator_mod, only: Op_phase
   Use QDRP_mod, only: Pivot_phase
   Use Control, only: Control_PrecisionG_vals, Control_PrecisionP, Control_Check_Phase, Control_Is_Finite
+  Use MyMats, only: COMPARE
+  Use wrapur_mod, only: WRAPUR
+  Use wrapul_mod, only: WRAPUL
+  Use cgr1_mod, only: CGR
   Use linalg_mod, only: la_zgemm, la_ztrsm, la_zunmqr, la_zgeqrf, la_zgetrf, la_zqrpp
 #if defined(STABLOG)
   Use linalg_mod, only: la_zgeqp3
@@ -83,7 +87,7 @@ Module gpu_stab_mod
   Use qmc_walker_mod, only: qmc_walker_t
   Use UDV_State_mod, only: UDV_State
   Use gpu_state_mod, only: gpu_active, G_d, g_dev_ok, g_host_ok, udv_U, udv_V, udv_D, udv_L, udw_U, udw_V, udw_D, udw_L, &
-       &                   info_line
+       &                   info_line, gpu_env_get, gpu_env_is, selftest_fail, rnd, rel_diff, finite_c, is_finite
   Use gpu_update_mod, only: gpu_upd_enabled
   Use gpu_wrap_mod, only: gpu_wrapur_slices, gpu_wrapul_slices
 
@@ -93,7 +97,7 @@ Module gpu_stab_mod
   Public :: gpu_stab_on, gpu_stab_setup, gpu_stab_finalize
   Public :: gpu_stab_wrapur, gpu_stab_wrapul, gpu_stab_exchange, gpu_stab_store_l, gpu_stab_cgr, gpu_stab_recompute
   Public :: gpu_stab_reset_l, gpu_stab_reset_r, gpu_stab_reset_st
-  Public :: gpu_lu_phase_select, k_det_phase
+  Public :: gpu_lu_phase_select, k_det_phase, gpu_stab_hook, gpu_stab_selftest
 
   Logical, Save :: gpu_stab_on = .false.      ! the device stabilisation replaces WRAPUR/WRAPUL/CGR in the sweeps
 
@@ -116,6 +120,7 @@ Module gpu_stab_mod
 #endif
   Logical, Save :: warn_once = .true.
   Integer, Save :: fault = 0                                                  ! 1 perm, 2 phase, 3 nan (negative controls)
+  Logical, Save :: in_selftest = .false.                                      ! inside gpu_stab_selftest
 
 Contains
 
@@ -562,6 +567,7 @@ Contains
     ! D->H: NaN/Inf count and the extreme scales (testscale of UDV_State, 24 B)
     !$omp target update from(st_r(1:3))
     if (st_r(1) > 0.5d0) then
+       if (in_selftest) call selftest_fail('stab: NaN or Inf scale in decompose')
        write(error_unit,*)
        write(error_unit,*) "Error: At least one scale is NaN or Inf."
        write(error_unit,*) "       Switch to LOG is required."
@@ -1359,6 +1365,289 @@ Contains
     enddo
   end subroutine k_stablog_scale
 #endif
+
+!====================================================================
+!  Hook and self-test
+!====================================================================
+!--------------------------------------------------------------------
+!> @brief
+!> Debug hook of Setup_gpu: arms the fault of ALF_GPU_FAULT_STAB (perm|phase|nan) and runs the self-test when
+!> ALF_GPU_SELFTEST=3.  The self-test leaves the device slots dirty: afterwards they are reset to the identity states.
+!--------------------------------------------------------------------
+  Subroutine gpu_stab_hook()
+    Implicit none
+    Character (len=64) :: f
+    Integer :: st, ib
+    if (.not. gpu_stab_on) return
+    if (gpu_env_get('ALF_GPU_FAULT_STAB', f)) then
+       select case (trim(f))
+       case ('perm');  fault = 1
+       case ('phase'); fault = 2
+       case ('nan');   fault = 3
+       end select
+    endif
+    if (gpu_env_is('ALF_GPU_SELFTEST', '3')) then
+       call gpu_stab_selftest()
+       do st = 1, s_nfe
+          call gpu_stab_reset_l(st); call gpu_stab_reset_r(st)
+          do ib = 1, s_nstm
+             call gpu_stab_reset_st(ib, st)
+          enddo
+       enddo
+    endif
+  end subroutine gpu_stab_hook
+
+  Subroutine say(line)
+    Implicit none
+    Character (len=*), intent(in) :: line
+    call info_line(line)
+    write(output_unit,'(1X,A)') trim(line)
+  end subroutine say
+
+  ! download / upload the state of a device slot to / from a host UDV_State object (self-test only)
+  Subroutine dl_state(slot, nfe, ust)
+    Implicit none
+    Integer, intent(in) :: slot, nfe
+    Class (UDV_State), intent(inout) :: ust
+    ! self-test: D->H of the device state, the host oracle starts from it
+    !$omp target update from(udw_U(:,:,slot,nfe), udw_V(:,:,slot,nfe))
+    ust%U = udw_U(:,:,slot,nfe); ust%V = udw_V(:,:,slot,nfe)
+#if defined(STABLOG)
+    !$omp target update from(udw_L(:,slot,nfe))
+    ust%L = udw_L(:,slot,nfe)
+#else
+    !$omp target update from(udw_D(:,slot,nfe))
+    ust%D = udw_D(:,slot,nfe)
+#endif
+  end subroutine dl_state
+
+  ! relative difference of two states: U, V (max |a-b| / max |b|), scales (componentwise relative, D; L absolute), and the
+  ! matrix the state represents (U D V for side R, U D V^dagger for side L; default stabilisation only): invariant under the
+  ! choice of the pivots
+  Subroutine state_diff(a, b, dU, dV, dS, dP)
+    Implicit none
+    Class (UDV_State), intent(in) :: a, b
+    Real (Kind=Kind(0.d0)), intent(out) :: dU, dV, dS, dP
+    Integer :: i
+    Real (Kind=Kind(0.d0)) :: d
+    Complex (Kind=Kind(0.d0)), Allocatable :: Ma(:,:), Mb(:,:)
+    dU = rel_diff(a%U, b%U)
+    dV = rel_diff(a%V, b%V)
+    dS = 0.d0
+    dP = 0.d0
+#if defined(STABLOG)
+    do i = 1, size(a%L)
+       if (.not. (is_finite(a%L(i)) .and. is_finite(b%L(i)))) then
+          dS = huge(1.d0)
+       else
+          d = abs(a%L(i) - b%L(i)); if (d > dS) dS = d
+       endif
+    enddo
+#else
+    do i = 1, size(a%D)
+       if (.not. (finite_c(a%D(i)) .and. finite_c(b%D(i)))) then
+          dS = huge(1.d0)
+       else
+          d = abs(a%D(i) - b%D(i)) / max(abs(b%D(i)), tiny(1.d0)); if (d > dS) dS = d
+       endif
+    enddo
+    allocate(Ma(size(a%U,1),size(a%V,1)), Mb(size(a%U,1),size(a%V,1)))
+    Ma = represented(a); Mb = represented(b)
+    dP = rel_diff(Ma, Mb)
+    deallocate(Ma, Mb)
+#endif
+  end subroutine state_diff
+
+#if !defined(STABLOG)
+  function represented(a) result(M)
+    Implicit none
+    Class (UDV_State), intent(in) :: a
+    Complex (Kind=Kind(0.d0)) :: M(size(a%U,1),size(a%V,1))
+    Complex (Kind=Kind(0.d0)) :: UD(size(a%U,1),size(a%U,2))
+    Integer :: j
+    do j = 1, size(a%U,2)
+       UD(:,j) = a%U(:,j)*a%D(j)
+    enddo
+    if (a%side == 'R' .or. a%side == 'r') then
+       M = matmul(UD, a%V)
+    else
+       M = matmul(UD, conjg(transpose(a%V)))
+    endif
+  end function represented
+#endif
+
+  Subroutine mx(m, d)
+    Implicit none
+    Real (Kind=Kind(0.d0)), intent(inout) :: m
+    Real (Kind=Kind(0.d0)), intent(in) :: d
+    if (.not. is_finite(d)) then
+       m = huge(1.d0)
+    else if (d > m) then
+       m = d
+    endif
+  end subroutine mx
+
+  ! hp = a with the random matrix B = A + 1e-3 * noise
+  Subroutine rand_perturb(A, B, seed)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in) :: A(:,:)
+    Complex (Kind=Kind(0.d0)), intent(out) :: B(:,:)
+    Integer(int64), intent(inout) :: seed
+    Integer :: i, j
+    Real (Kind=Kind(0.d0)) :: re, im
+    do j = 1, size(A,2)
+       do i = 1, size(A,1)
+          re = rnd(seed); im = rnd(seed)
+          B(i,j) = A(i,j) + 1.d-3*cmplx(re, im, kind(0.d0))
+       enddo
+    enddo
+  end subroutine rand_perturb
+
+  ! device reduction of (A, B) next to the host COMPARE of the same matrices
+  Subroutine dev_check_prec(A, B, xmax_h, xmean_h, xmax_d, xsum_d, nna, nnb)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in) :: A(s_N,s_N), B(s_N,s_N)
+    Real (Kind=Kind(0.d0)), intent(out) :: xmax_h, xmean_h, xmax_d, xsum_d
+    Integer, intent(out) :: nna, nnb
+    call COMPARE(A, B, xmax_h, xmean_h)
+    st_Gn = A; st_Gt = B
+    ! self-test: H->D of the two matrices of the reduction test
+    !$omp target update to(st_Gn, st_Gt)
+    call dev_prec(s_N, st_Gn, st_Gt, xmax_d, xsum_d, nna, nnb)
+  end subroutine dev_check_prec
+
+!--------------------------------------------------------------------
+!> @brief
+!> Self-test (ALF_GPU_SELFTEST=3): the fixed initial fields; one pass of the sweep.
+!> @details
+!> Left chain WRAPUL + decompose for NST = NSTM-1 .. 1, right chain WRAPUR + decompose for NST = 1 .. NSTM, and at every
+!> stabilisation point CGR (NVAR = 1 and 2) from the states exchanged as in the sweep, each against the upstream host routines
+!> (WRAPUL/WRAPUR/decompose/CGR on host UDV_State objects that hold the same input) and the precision reduction against
+!> COMPARE.  Every block starts from the same input on both sides.  Compared: G and the CGR phase (tolerance 1e-10), the
+!> matrix represented by the decomposed state U D V (default stabilisation; invariant under the choice of the pivots), and,
+!> in a build whose host decomposition makes the same pivots (STABLOG, or -DQR_PREPIVOT), U, V and the scales one by one.
+!> A failure ends the run with "GPU self-test FAILED".
+!--------------------------------------------------------------------
+  Subroutine gpu_stab_selftest()
+    Implicit none
+    Real (Kind=Kind(0.d0)), parameter :: tol = 1.d-10, tolr = 1.d-12
+    Class (UDV_State), Allocatable :: hl(:), hr(:), dl_(:), dr_(:)
+    Integer :: nfe, nf, nst, nvar, N
+    Integer :: NT1, NT
+    Real (Kind=Kind(0.d0)) :: dU, dV, dS, dP, mu(2), mv(2), ms(2), mp(2), mg(2), mph(2), d, xmax_h, xmean_h, xmax_d, xsum_d
+    Real (Kind=Kind(0.d0)) :: dpr(4)
+    Complex (Kind=Kind(0.d0)), Allocatable :: Gh(:,:), Gd(:,:,:), Gp(:,:)
+    Complex (Kind=Kind(0.d0)) :: ph_h, ph_d
+    Integer(int64) :: seed
+    Integer :: nna, nnb, nblk(2)
+    Logical :: same_pivots
+    Character (len=512) :: line
+
+    N = s_N
+    seed = 20251101_int64
+    in_selftest = .true.
+#if defined(STABLOG) || defined(QR_PREPIVOT)
+    same_pivots = .true.
+#else
+    same_pivots = .false.
+#endif
+    call say('GPU stabilization self-test (step 1d) start')
+    allocate(hl(s_nfe), hr(s_nfe), dl_(s_nfe), dr_(s_nfe))
+    allocate(Gh(N,N), Gp(N,N), Gd(N,N,N_FL))
+    mu = 0.d0; mv = 0.d0; ms = 0.d0; mp = 0.d0; mg = 0.d0; mph = 0.d0; dpr = 0.d0; nblk = 0
+    do nfe = 1, s_nfe
+       call hl(nfe)%init(N, 'l'); call hr(nfe)%init(N, 'r')
+       call dl_(nfe)%init(N, 'l'); call dr_(nfe)%init(N, 'r')
+       call gpu_stab_reset_l(nfe); call gpu_stab_reset_r(nfe)
+       call gpu_stab_reset_st(s_nstm, nfe)
+    enddo
+    ! ---- left chain
+    do nst = s_nstm-1, 1, -1
+       NT1 = s_nt(nst+1); NT = s_nt(nst)
+       do nfe = 1, s_nfe
+          call dl_state(1, nfe, hl(nfe))               ! the host oracle starts from the device input
+       enddo
+       call WRAPUL(NT1, NT, hl)
+       call gpu_stab_wrapul(NT1, NT)
+       do nfe = 1, s_nfe
+          call dl_state(1, nfe, dl_(nfe))              ! device result for the comparison
+          call state_diff(dl_(nfe), hl(nfe), dU, dV, dS, dP)
+          call mx(mu(1), dU); call mx(mv(1), dV); call mx(ms(1), dS); call mx(mp(1), dP)
+          call gpu_stab_store_l(nst, nfe)
+       enddo
+       nblk(1) = nblk(1) + 1
+    enddo
+    write(line,'(A,I0,A,ES10.3,A,ES10.3,A,ES10.3,A,ES10.3,A,ES8.1)') 'GPU stab self-test WRAPUL+decompose over ', nblk(1), &
+         & ' blocks: max rel diff U ', mu(1), ', V ', mv(1), ', scales ', ms(1), ', represented matrix ', mp(1), ' (tol ', tol
+    call say(line)
+    ! fail before the right chain uses the stored left states (a NaN in them would stop CGR with another message)
+    if (.not. (mp(1) <= tol)) call selftest_fail('stab: WRAPUL + decompose (represented matrix)')
+    if (same_pivots) then
+       if (.not. (mu(1) <= tol .and. mv(1) <= tol .and. ms(1) <= tol)) call selftest_fail('stab: WRAPUL + decompose')
+    endif
+    ! ---- right chain with CGR at every stabilisation point
+    do nst = 1, s_nstm
+       NT1 = s_nt(nst-1); NT = s_nt(nst)
+       do nfe = 1, s_nfe
+          call dl_state(2, nfe, hr(nfe))
+       enddo
+       call WRAPUR(NT1, NT, hr)
+       call gpu_stab_wrapur(NT1, NT)
+       do nfe = 1, s_nfe
+          call dl_state(2, nfe, dr_(nfe))
+          call state_diff(dr_(nfe), hr(nfe), dU, dV, dS, dP)
+          call mx(mu(2), dU); call mx(mv(2), dV); call mx(ms(2), dS); call mx(mp(2), dP)
+       enddo
+       nblk(2) = nblk(2) + 1
+       ! CGR as in the sweep: udvl = udvst(NST), udvst(NST) = udvr (device), then compare with the host CGR on the same states
+       do nfe = 1, s_nfe
+          nf = Calc_Fl_map(nfe)
+          call gpu_stab_exchange(nst, nfe, .true., hr(nfe))   ! (the host object is only written in the backward direction)
+          call dl_state(1, nfe, hl(nfe))
+          call dl_state(2, nfe, hr(nfe))
+          do nvar = 1, 2
+             call CGR(ph_h, nvar, Gh, hr(nfe), hl(nfe))
+             call gpu_stab_cgr(nfe, nf, nvar, Gd, ph_d, .false.)
+             d = rel_diff(Gd(:,:,nf), Gh)
+             call mx(mg(nvar), d)
+             call mx(mph(nvar), abs(ph_d - ph_h))
+             ! precision reduction vs COMPARE: (new G, reference G) and (new G, G + noise of order 1e-3)
+             call rand_perturb(Gh, Gp, seed)
+             call dev_check_prec(Gd(:,:,nf), Gh, xmax_h, xmean_h, xmax_d, xsum_d, nna, nnb)
+             call mx(dpr(1), abs(xmax_d - xmax_h) / max(xmax_h, tiny(1.d0)))
+             call mx(dpr(2), abs(xsum_d/dble(N*N) - xmean_h) / max(xmean_h, tiny(1.d0)))
+             call dev_check_prec(Gd(:,:,nf), Gp, xmax_h, xmean_h, xmax_d, xsum_d, nna, nnb)
+             call mx(dpr(3), abs(xmax_d - xmax_h) / max(xmax_h, tiny(1.d0)))
+             call mx(dpr(4), abs(xsum_d/dble(N*N) - xmean_h) / max(xmean_h, tiny(1.d0)))
+             if (nna /= 0 .or. nnb /= 0) call selftest_fail('stab: non-finite count of the precision reduction')
+          enddo
+       enddo
+    enddo
+    write(line,'(A,I0,A,ES10.3,A,ES10.3,A,ES10.3,A,ES10.3,A,ES8.1)') 'GPU stab self-test WRAPUR+decompose over ', nblk(2), &
+         & ' blocks: max rel diff U ', mu(2), ', V ', mv(2), ', scales ', ms(2), ', represented matrix ', mp(2), ' (tol ', tol
+    call say(line)
+    write(line,'(A,I0,A,ES10.3,A,ES10.3,A,ES10.3,A,ES10.3,A,ES8.1)') 'GPU stab self-test CGR at ', nblk(2), &
+         & ' stabilization points x flavours: max rel diff G NVAR=1 ', mg(1), ', NVAR=2 ', mg(2), '; phase NVAR=1 ', mph(1), &
+         & ', NVAR=2 ', mph(2), ' (tol ', tol
+    call say(line)
+    write(line,'(A,ES10.3,A,ES10.3,A,ES10.3,A,ES8.1)') 'GPU stab self-test precision reduction vs COMPARE: rel diff max/mean ', &
+         & dpr(1), ' / ', dpr(2), ' (G vs G_ref), ', max(dpr(3),dpr(4)), ' (G vs perturbed) (tol ', tolr
+    call say(line)
+    if (.not. (mp(1) <= tol .and. mp(2) <= tol)) call selftest_fail('stab: WRAPUL/WRAPUR + decompose (represented matrix)')
+    if (same_pivots) then
+       if (.not. (mu(1) <= tol .and. mv(1) <= tol .and. ms(1) <= tol .and. mu(2) <= tol .and. mv(2) <= tol .and. ms(2) <= tol)) &
+            & call selftest_fail('stab: WRAPUL/WRAPUR + decompose')
+    endif
+    if (.not. (mg(1) <= tol .and. mg(2) <= tol .and. mph(1) <= tol .and. mph(2) <= tol)) call selftest_fail('stab: CGR')
+    if (.not. (dpr(1) <= tolr .and. dpr(2) <= tolr .and. dpr(3) <= tolr .and. dpr(4) <= tolr)) &
+         & call selftest_fail('stab: precision reduction')
+    do nfe = 1, s_nfe
+       call hl(nfe)%dealloc; call hr(nfe)%dealloc; call dl_(nfe)%dealloc; call dr_(nfe)%dealloc
+    enddo
+    deallocate(hl, hr, dl_, dr_, Gh, Gp, Gd)
+    in_selftest = .false.
+    call say('GPU stab self-test PASSED')
+  end subroutine gpu_stab_selftest
 
 End Module gpu_stab_mod
 #endif
