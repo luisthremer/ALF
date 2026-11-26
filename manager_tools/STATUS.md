@@ -2,12 +2,15 @@
 P2.4 step 1a `gpu-build` ready (canvas, 3 commits: GPU=none|host switch, `alf_la_mod` host backend, its tests): every commit builds, 69/69 tests, 16/16 scenarios byte-identical, CI green ([run 45804627437](https://github.com/luisthremer/ALF/actions/runs/45804627437)). Merge waits for your yes on question 4 (D1-D4).
 
 ## Waiting for you
-1. Upstream issues for H7 (Bilayer_honeycomb energy) and H6 (Tempering hang, odd replicas): texts drafted in the manager chat, post them? yes/no
-2. Take speedup S1 (determinant phase without LU on CUDA, -12.6 % per sweep at L = 32, configurations byte-identical) into the GPU line? yes/no — [CG_ALF_PLAN.md, E4](https://github.com/luisthremer/ALF/blob/Code-modularity/docs/ai/phase2/CG_ALF_PLAN.md)
-3. Switch off research-superpowers and research-desk in claude.ai (account plugins; Claude cannot), and set the GitHub MCP token (line in the manager chat).
-4. P2.4 plan, section 4 (D1-D4): `alf_la` beside `linalg_mod` (not inside); a `GPU=host` test build (probe: works, configurations byte-identical); step 1 Hubbard only; gpu-port's unguarded CPU changes later on the CPU line. Accept all four? yes/no
+All questions with background and recommendation: [QUESTIONS.md](QUESTIONS.md).
+1. Q1 P2.4 decisions D1-D4 (merge of step 1a waits for this). yes/no
+2. Q2 post the upstream issues H7 and H6? post/corrections
+3. Q3 speedup S1 into the GPU line? (a) after step 1d / (b) CG-ALF / (c) no
+4. Q4a-d older GPU-port questions: accept the proposed places? yes/no each
+5. Q5-Q7 only you: delete alf-ops online, GitHub token, research plugins off in claude.ai
 
 ## Done since the last owner message
+- `manager_tools/` now on `Code-modularity`, `-CPU` and `-GPU`, kept equal by `manager_tools/sync.sh`.
 - P2.4 plan: gpu-port mapped (12 436 lines of common OpenMP offload code, vendor shims, hooks) and re-homed onto the refactored code; steps 1a-1e before vendor code.
 - Status and ideas moved from alf-ops into `manager_tools/` on `Code-modularity` (public, your OK); understand-anything removed (traces in the Trash); claude-bughunter off until P2.8.
 - The CPU determinant-phase fix is already offered upstream: PR ALF-QMC/ALF#660 (open).
