@@ -1,0 +1,2258 @@
+!  Copyright (C) 2016 - 2025 The ALF project
+!
+!     The ALF project is free software: you can redistribute it and/or modify
+!     it under the terms of the GNU General Public License as published by
+!     the Free Software Foundation, either version 3 of the License, or
+!     (at your option) any later version.
+!
+!     The ALF project is distributed in the hope that it will be useful,
+!     but WITHOUT ANY WARRANTY; without even the implied warranty of
+!     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+!     GNU General Public License for more details.
+!
+!     You should have received a copy of the GNU General Public License
+!     along with ALF.  If not, see http://www.gnu.org/licenses/.
+!
+!     Under Section 7 of GPL version 3 we require you to fulfill the following additional terms:
+!
+!     - It is our hope that this program makes a contribution to the scientific community. Being
+!       part of that community we feel that it is reasonable to require you to give an attribution
+!       back to the original authors if you have benefitted from this program.
+!       Guidelines for a proper citation can be found on the project's homepage
+!       http://alf.physik.uni-wuerzburg.de .
+!
+!     - We require the preservation of the above copyright notice and this license in all original files.
+!
+!     - We prohibit the misrepresentation of the origin of the original source files. To obtain
+!       the original source files please visit the homepage http://alf.physik.uni-wuerzburg.de .
+!
+!     - If you make substantial changes to the program we require you to either consider contributing
+!       to the ALF project or to mark your material in a reasonable way as different from the original version.
+
+!--------------------------------------------------------------------
+!> @brief
+!> GPU port, P2.4 step 1b: flat, device-resident mirror of everything the sweep needs that does not change during a
+!> run, plus the device buffers later steps fill, and the pack/unpack of the walker (Green function, UDV stacks)
+!> to and from the mirror.  Compiled only with -DALF_GPU (Prog/Makefile adds this file to SRCS only then).
+!>
+!> @details
+!> Plain contiguous arrays only (no derived types on the device).  Host objects (Op_T, Op_V, nsigma, qmc_walker_t)
+!> stay the source of truth; this module copies from them once at setup.  In step 1b nothing in the sweep uses the
+!> mirror (the info file says so); the wrap, update, stabilisation and measurement kernels come in steps 1c-1e.
+!>
+!> Hubbard model only (decision D3): gpu_supported refuses everything it cannot mirror and the run then keeps the CPU path.
+!> GPU=host build (no vendor backend macro): zero OpenMP offload devices are accepted, the target regions run on the
+!> host ("OpenMP host fallback"), and the environment reader works without /proc.
+!>
+!> Flat layout (all offsets are 0-based "number of entries before", Fortran arrays are 1-based):
+!>  hopping (per flavour nf, elements in the order stored in Hop_mod, active elements only, i.e. those the Hop_mod
+!>  routines do not skip):
+!>    hop_start(nf)       first element of flavour nf, elements hop_start(nf) : hop_start(nf+1)-1
+!>    hop_meta(1:4,e)     kind (1 real, 2 complex), nd = Ndim_hop, poff, moff
+!>    hop_P(poff+1:poff+nd)                  projector (site list) of element e
+!>    kind 1: hop_Rval(moff + (k-1)*nd*nd + i + (j-1)*nd)  = matrix k (i,j), real
+!>    kind 2: hop_Cval(moff + (k-1)*nd*nd + i + (j-1)*nd)  = matrix k (i,j), complex
+!>    k = 1 mat (e^{-dtau T}), 2 invmat, 3 mat_1D2 (half step), 4 invmat_1D2.  Full nd x nd arrays.  OpTTypes_mod
+!>    symmetrises only i <= j.  Which triangle ALF reads (Mat_subroutines_mod.F90):
+!>      - complex, any nd: ZSLHEMM, nd <= 8 hand-written loops on the upper triangle completed by conjg, nd > 8 BLAS
+!>        ZHEMM 'U' (upper triangle only);
+!>      - real, nd <= 8: ZDSLSYMM hand-written loops, upper triangle completed by copy;
+!>      - real, nd > 8 (dense hopping): ZDSLSYMM calls ZLARCM with the FULL stored matrix (the commented-out ZHEMM
+!>        calls there are not active), so the raw lower triangle (not symmetrised, differs ~1e-16) is what ALF applies.
+!>    build_hopping therefore fills the lower triangle from the upper one except for real elements with nd > 8, and
+!>    the flat arrays encode exactly the operator ALF applies in every case.
+!>    NOTE for the wrap step (1c): for nd <= 8 ALF uses hand-written loops (sum order l = 1..nd); for nd > 8 it uses BLAS
+!>    (ZHEMM / DGEMM via ZLARCM), so a device kernel is not bit-identical there (~1e-15; kernel bound 1e-10).
+!>    Order of application = order of the Hop_mod routines (see gpu_selftest): mmthr nc=N..1 (mat, from the left),
+!>    mmthr_m1 nc=1..N (invmat, left), mmthl nc=1..N (mat, right), mmthlc nc=1..N (mat, left),
+!>    mmthl_m1 nc=N..1 (invmat, right), Symm nc=N..1 (mat_1D2 left then invmat_1D2 right).
+!>  Op_V (diagonal operators of type 1 or 2 with constant coupling):
+!>    V_meta(1:4,n,nf)    N (number of sites), poff (into V_P), eoff (into V_exp), skip flag
+!>    V_P(poff+1:poff+N)  sites; V_type(n) field type (same for all flavours, checked in gpu_supported)
+!>    V_exp(eoff + i + (sp+t)*N), i=1..N, sp=-t..t = E_exp(i,sp) of Operator_mod, always the real table (the factor
+!>    Op_mmultL/R/Op_Wrapup/Op_Wrapdo apply for field value sp); sp=0 is unused by ALF and set to 1.
+!>    skip flag = 1 iff |g| < Eps_machine: Op_mmultL/R then return early (kernels for L/R must honour the flag),
+!>    Op_Wrapup/Op_Wrapdo do NOT check g and always apply the table (wrap kernels must ignore the flag).
+!>  Fields: nsigma_d(N_op,Ltrot) = nsigma%f, nsigma_t(N_op) = nsigma%t.
+!>
+!>  Notes for the update step (1c): the determinant ratio contains exp(Z1*Op_V%alpha) (upgrade_mod.F90:193) and
+!>  alpha is not in the mirror; nsigma_d is a copy made at setup and goes stale as soon as updates run (205 must keep
+!>  it in sync); N and P of an operator may differ between flavours (V_meta is per (n,nf)).  gpu_supported refuses
+!>  runs with Propose_S0 or reconstruction_needed (ham%weight_reconstruction).
+!>  (From the gpu-port notes, for step 1c:) alpha stays on the host (Op_V%alpha); per-flavour N/P are read from the host Op_V;
+!>  gpu_supported also refuses N_non_zero > 1 (the device update is rank 1).
+!>
+!>  Group tables for the wrap step (1c; the kernels will live in gpu_wrap_mod):
+!>    hop_gstart(nf), hop_gptr(g)   checkerboard groups: maximal runs of consecutive active elements of one flavour
+!>                        whose site lists P are pairwise disjoint and nd <= 8 (an element with nd > 8 forms a group of
+!>                        its own).  Group g = elements hop_gptr(g) : hop_gptr(g+1)-1; flavour nf = groups
+!>                        hop_gstart(nf) : hop_gstart(nf+1)-1.  Elements of one group touch disjoint rows (left) /
+!>                        columns (right), so they can run in one kernel and give the sequential result; the same
+!>                        partition serves both application directions (a group is order independent inside).
+!>                        hop_big(nf) = flavour has an element with nd > 8.
+!>    hop_aux(1:2,e)      (xoff, pident): pident = 1 iff P = (1,2,...,nd); xoff = offset (0-based) into hop_At/hop_Ac for
+!>                        real elements with nd > 8, else -1.
+!>    hop_At(xoff + (k-1)*nd*nd + j + (i-1)*nd) = A_k(i,j) (transposed copy, real), hop_Ac(xoff + (k-1)*nd*nd + i +
+!>                        (j-1)*nd) = A_k(i,j) as complex; k = 1 (mat), 2 (invmat), 3 (mat_1D2), 4 (invmat_1D2).  Used by the dense left
+!>                        multiplication variants of gpu_wrap_mod.
+!>    complex elements with nd > 8: the imaginary part of the diagonal is zeroed (ZHEMM, which ALF calls there, ignores
+!>                        it; the nd <= 8 loops use it, but a Hermitian matrix has none).
+!>    vr_ptr(r,nf), vr_ent(1:2,p)  per matrix index r (site) and flavour: the entries p = vr_ptr(r,nf) : vr_ptr(r+1,nf)-1
+!>                        list (n, i) = (operator, position in P) with V_P(poff(n,nf)+i) = r, in ALF's operator order
+!>                        (n ascending).  vr_ptr has Ndim+1 rows.
+!>  Offsets are default (int32) integers: arrays must stay below 2**31-1 entries (dense hopping needs 4*N*N*N_FL
+!>  reals, i.e. fine up to N ~ 20000).
+!--------------------------------------------------------------------
+#ifdef ALF_GPU
+Module gpu_state_mod
+
+  Use omp_lib, only: omp_get_num_devices, omp_set_default_device, omp_get_default_device
+  Use iso_fortran_env, only: output_unit, error_unit, int64
+  Use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
+  Use Natural_Constants, only: Eps_machine
+  Use Operator_mod, only: Operator, Op_mmultL, Op_mmultR, Op_Wrapup, Op_Wrapdo, Op_get_E_exp
+  Use Hamiltonian_main, only: N_FL, N_FL_eff, Ndim, Ltrot, Op_V, nsigma, Calc_Fl_map, Projector, &
+       &                      reconstruction_needed, Group_Comm
+  Use QMC_runtime_var, only: get_Langevin, get_HMC, get_Global_moves, get_Global_tau_moves, get_N_Global_tau, &
+       &                     get_Propose_S0, get_Sequential_MALA, get_Global_MALA_moves, get_Global_tau_MALA_moves, &
+       &                     get_N_Global_tau_MALA, get_ham_name, get_Ltau
+  Use Hop_mod, only: Hop_mod_mmthr, Hop_mod_mmthr_m1, Hop_mod_mmthl, Hop_mod_mmthlc, Hop_mod_mmthl_m1, Hop_mod_Symm, &
+       &              Hop_mod_gpu_ncheck, Hop_mod_gpu_element, Hop_mod_gpu_td_element
+  Use Mat_subroutines, only: ZDSLSYMM, ZSLHEMM
+  Use qmc_walker_mod, only: qmc_walker_t
+  Use UDV_State_mod, only: UDV_State
+  Use comm_mod, only: is_root, comm_world_rank, comm_world_size
+
+  Implicit none
+
+  Private
+  Public :: gpu_put_G, gpu_get_G, gpu_put_udv, gpu_get_udv, gpu_env_reader_name
+  Public :: gpu_state_setup, gpu_state_finalize, gpu_supported, gpu_active, gpu_reason, gpu_scratch_lwork
+  Public :: hop_start, hop_meta, hop_P, hop_Rval, hop_Cval
+  Public :: hop_gstart, hop_gptr, hop_big, hop_aux, hop_At, hop_Ac, vr_ptr, vr_ent, g_ngroups
+  Public :: td_grp, td_n, td_any, td_symm_active
+  Public :: rnd, rand_mat, rel_diff, is_finite, finite_c, selftest_fail, info_line, same_bits_c, same_bits
+  Public :: V_meta, V_type, V_P, V_exp, nsigma_d, nsigma_t
+  Public :: G_d, g_dev_ok, g_host_ok, udv_U, udv_V, udv_D, udv_L, udw_U, udw_V, udw_D, udw_L
+  Public :: GT0_d, G0T_d, GTT_d, scr_c, scr_vec, scr_r, scr_work, scr_ipiv
+  Public :: upd_cnt
+  ! ticket 212: the single reader of every ALF_GPU_* variable (all other GPU files only call these)
+  Public :: gpu_env_get, gpu_env_is, gpu_env_int, gpu_env_fault_stab_eps, gpu_env_fault_tau_eps, gpu_env_check
+
+  Logical :: gpu_active = .false.
+  Character (len=256) :: gpu_reason = 'gpu_state_setup not called'
+
+  Integer :: g_NFL = 0, g_Ndim = 0, g_Nop = 0, g_Ltrot = 0, g_NSTM = 0, g_NFLeff = 0
+  Integer :: g_nel = 0, g_ngroups = 0
+  Integer :: g_nstat = 0           ! number of static (non time-dependent) hopping elements; time-dependent ones follow them
+  ! ---- time-dependent hopping elements (OpT_time_dependent), see docs/gpu/TIMEDEP_HOPPING.md ----
+  !   td_n(nf)                  number of time-dependent elements of flavour nf (they follow all static ones in operator order)
+  !   td_grp(t,kind,j,nf)       group index (one element) of the j-th td element of flavour nf at slice t, 0 = inactive (skipped,
+  !                             exactly as the host skips it when |g|^2 <= Zero).  kind 1: propagation coupling (mat k=1 = A(g),
+  !                             invmat k=2 = A(-g), g = g_t(t) or the Symm average); kind 2: Symm half steps (k=3 = A(g_t(t)/2),
+  !                             k=4 = A(-g_t(t)/2)).  Host-side table, the matrices live in hop_Cval like any complex element.
+  Integer, Allocatable :: td_grp(:,:,:,:), td_n(:)
+  Logical :: td_any = .false.
+  Logical :: td_symm_active = .false.   ! some td element has a Symm half step that is active at some slice
+
+  ! ---- constant data, built once from the host objects ----
+  Integer,                 Allocatable :: hop_start(:), hop_meta(:,:), hop_P(:)
+  Real    (Kind=Kind(0.d0)), Allocatable :: hop_Rval(:)
+  Complex (Kind=Kind(0.d0)), Allocatable :: hop_Cval(:)
+  Integer,                 Allocatable :: V_meta(:,:,:), V_type(:), V_P(:)
+  Complex (Kind=Kind(0.d0)), Allocatable :: V_exp(:)
+  Complex (Kind=Kind(0.d0)), Allocatable :: nsigma_d(:,:)
+  Integer,                 Allocatable :: nsigma_t(:)
+  ! ticket 204: groups, dense auxiliaries, per-site operator lists (see header)
+  Integer,                 Allocatable :: hop_gstart(:), hop_gptr(:), hop_aux(:,:), vr_ptr(:,:), vr_ent(:,:)
+  Logical,                 Allocatable :: hop_big(:)
+  Real    (Kind=Kind(0.d0)), Allocatable :: hop_At(:)
+  Complex (Kind=Kind(0.d0)), Allocatable :: hop_Ac(:)
+
+  ! ---- buffers allocated on the device only (not filled in ticket 203) ----
+  Complex (Kind=Kind(0.d0)), Allocatable :: G_d(:,:,:)                    ! (Ndim,Ndim,N_FL)
+  !> ticket 208-1: which copy of G(nf) is current: g_dev_ok(nf) = G_d(:,:,nf) holds the Green function, g_host_ok(nf) = the host GR does
+  !> (at least one is true).  Only the lazy sweep path (gpu_update_mod, gpu_stab_cgr with lazy=.true.) lets them differ.
+  Logical, Allocatable :: g_dev_ok(:), g_host_ok(:)
+  Complex (Kind=Kind(0.d0)), Allocatable :: udv_U(:,:,:,:), udv_V(:,:,:,:)   ! (Ndim,Ndim,NSTM,N_FL_eff)
+  Complex (Kind=Kind(0.d0)), Allocatable :: udv_D(:,:,:)                  ! (Ndim,NSTM,N_FL_eff)  default
+  Real    (Kind=Kind(0.d0)), Allocatable :: udv_L(:,:,:)                  ! (Ndim,NSTM,N_FL_eff)  STABLOG
+  Complex (Kind=Kind(0.d0)), Allocatable :: udw_U(:,:,:,:), udw_V(:,:,:,:)   ! (Ndim,Ndim,2,N_FL_eff) udvl, udvr
+  Complex (Kind=Kind(0.d0)), Allocatable :: udw_D(:,:,:)                  ! (Ndim,2,N_FL_eff)
+  Real    (Kind=Kind(0.d0)), Allocatable :: udw_L(:,:,:)                  ! (Ndim,2,N_FL_eff)
+  Complex (Kind=Kind(0.d0)), Allocatable :: GT0_d(:,:,:), G0T_d(:,:,:), GTT_d(:,:,:)   ! only if Ltau = 1 (G00_d: gpu_tau_mod, ticket 207)
+  Complex (Kind=Kind(0.d0)), Allocatable :: scr_c(:,:,:), scr_vec(:,:), scr_work(:)
+  Real    (Kind=Kind(0.d0)), Allocatable :: scr_r(:,:)
+  Integer,                 Allocatable :: scr_ipiv(:)
+  Logical :: have_tau = .false.
+  ! ticket 205 counters (gpu_update_mod), reported by gpu_state_finalize: 1 site proposals reaching the ratio, 2 accepted,
+  ! 3 site-wrap launches, 4 update launches, 5 ratio-block D->H elements, 6 field H->D scalars, 7 interim G H->D copies,
+  ! 8 interim G D->H copies, 9 interim bytes (both directions), 10 WRAPGRUP/DO calls
+  Integer(int64) :: upd_cnt(10) = 0
+
+  Character (len=256) :: info_file = 'info'
+  Logical :: info_root = .true.
+
+  ! ---- ticket 212: environment, read once ----
+  Integer, parameter :: ENV_MAX = 256
+  Character (len=48)  :: env_name(ENV_MAX) = ''     ! set ALF_GPU_* variables (non-empty value; '0' counts as set), sorted by name
+  Character (len=256) :: env_val(ENV_MAX)  = ''
+  Integer :: env_n = 0
+  Character (len=96) :: env_reader = 'not read yet'
+  ! Variables the allow-list reader looks up: every ALF_GPU_* / ALF_LA_TEST_* name used by the GPU port
+  Character (len=24), parameter :: env_allow(39) = [ Character(len=24) :: &
+       & 'ALF_GPU_DISABLE', 'ALF_GPU_DEBUG', 'ALF_GPU_SELFTEST', 'ALF_GPU_UPDTEST', 'ALF_GPU_FAULT', &
+       & 'ALF_GPU_FAULT_STAB', 'ALF_GPU_FAULT_TAU', 'ALF_GPU_FAULT_TAU_AT', 'ALF_GPU_EXIT', 'ALF_GPU_NS', &
+       & 'ALF_GPU_NOUPDATE', 'ALF_GPU_NOOBS', 'ALF_GPU_OBS_SKIP', 'ALF_GPU_CGR_LU', 'ALF_GPU_STABCHECK', &
+       & 'ALF_GPU_STABTIME', 'ALF_GPU_STABMIX', 'ALF_GPU_TAU_NS', 'ALF_GPU_TAUSWAP', 'ALF_GPU_TAUTIME', &
+       & 'ALF_GPU_TAUTEST_V', 'ALF_GPU_TAUDIAG', 'ALF_GPU_TAUDIAG_NUL', 'ALF_GPU_TAUDIAG_VAR', &
+       & 'ALF_GPU_TAUDIAG_QREF', 'ALF_GPU_TAUDIAG_SEED', 'ALF_GPU_TAUDIAG_QVAR', 'ALF_GPU_TAUDIAG_FROM', &
+       & 'ALF_GPU_TAUDIAG_AMP', 'ALF_GPU_TAUDIAG_QHOST', 'ALF_GPU_TIMING', 'ALF_GPU_TRACE', 'ALF_GPU_VB', &
+       & 'ALF_GPU_TR', 'ALF_GPU_TL', 'ALF_LA_TEST_BREAK_ORDER', 'ALF_LA_TEST_BADSTREAM', 'ALF_LA_TEST_WRONG_LD', &
+       & 'ALF_LA_TEST_POISON_INFO' ]
+  Logical :: env_read_done = .false.
+  Integer :: env_rank = 0, env_size = 1              ! MPI_COMM_WORLD rank and size (1 and 0 without MPI)
+  Real (Kind=Kind(0.d0)) :: env_eps = 0.d0          ! x of ALF_GPU_FAULT_STAB=eps:<x>
+  Real (Kind=Kind(0.d0)) :: env_eps_tau = 0.d0      ! x of ALF_GPU_FAULT_TAU=eps:<x> (ticket 207)
+
+Contains
+
+!--------------------------------------------------------------------
+!> @brief
+!> The one and only reader of the ALF_GPU_* environment.
+!> @details
+!> Listed / refused: defined and not empty (the value '0' included: ALF_GPU_NS=0 is the active setting of that
+!> switch).  Debug run: ALF_GPU_SELFTEST / _UPDTEST / _DEBUG set to a non-empty value other than '0'.
+!> Reader 1 (Linux, /proc present): /proc/self/environ lists the whole environment (Fortran cannot enumerate it), so
+!> unknown names (typos, other switches) are seen as well.  Reader 2 (no /proc, e.g. macOS): get_environment_variable
+!> over the fixed allow-list env_allow; unknown or misspelt names are NOT seen.  gpu_env_reader_name says which ran.
+!--------------------------------------------------------------------
+  Subroutine gpu_env_read()
+    Implicit none
+    Character (len=512) :: envent
+    Character (len=1) :: c
+    Integer :: u, ios, l, ie
+    Logical :: have_proc
+    Call env_mpi_ids()
+    env_n = 0
+    env_read_done = .true.
+    Inquire(file='/proc/self/environ', exist=have_proc)
+    If (.not. have_proc) then
+       env_reader = 'allow-list (get_environment_variable; no /proc, unknown ALF_GPU_* names are not detected)'
+       Call env_read_allow_list()
+       Call env_sort()
+       Return
+    Endif
+    env_reader = '/proc/self/environ'
+    ! /proc/self/environ: NUL-separated NAME=value entries (Linux; read byte by byte, the file reports size 0)
+    Open(newunit=u, file='/proc/self/environ', access='stream', form='unformatted', action='read', status='old', iostat=ios)
+    If (ios /= 0) then
+       Write(error_unit,'(A)') ' GPU debug env: cannot read /proc/self/environ (needed for the ALF_GPU_* allow-list)'
+       Call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+    Endif
+    l = 0
+    ie = 0      ! position of the first '=' of the entry (0: none yet); l counts all bytes, only the first 512 are kept
+    envent = ''
+    Do
+       Read(u, iostat=ios) c
+       If (ios /= 0) then
+          If (.not. is_iostat_end(ios)) then
+             Write(error_unit,'(A,I0,A)') ' GPU debug env: error reading /proc/self/environ (iostat ', ios, &
+                  & '), cannot check the ALF_GPU_* allow-list'
+             Call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+          Endif
+          c = achar(0)       ! end of file: closes the last entry
+       Endif
+       If (c /= achar(0)) then
+          l = l + 1
+          If (l <= 512) envent(l:l) = c
+          If (c == '=' .and. ie == 0) ie = l
+       Else
+          ! entry(1:l) is ALF_GPU_<name>=<non-empty value> or ALF_LA_TEST_<name>=<non-empty value> (the alf_la
+          ! test hooks are debug variables too): never dropped; if it does not fit, the run is refused
+          If (l >= 9 .and. ie > 0 .and. ie < l .and. (envent(1:min(l,8)) == 'ALF_GPU_' .or. &
+               & (l >= 13 .and. envent(1:min(l,12)) == 'ALF_LA_TEST_'))) then
+             If (ie >= 2 .and. ie <= 49 .and. env_n < ENV_MAX) then
+                env_n = env_n + 1
+                env_name(env_n) = envent(1:ie-1)
+                env_val(env_n)  = envent(ie+1:min(l,512))
+             Else
+                Call env_fail('GPU debug env refused: '//envent(1:min(ie-1,48))// &
+                     & ' (name too long or too many ALF_GPU_/ALF_LA_TEST_ variables)')
+             Endif
+          Endif
+          l = 0; ie = 0
+          If (ios /= 0) exit
+       Endif
+    Enddo
+    Close(u)
+    Call env_sort()
+  End Subroutine gpu_env_read
+
+  !> Reader 2: the names of env_allow looked up one by one (no /proc needed).
+  Subroutine env_read_allow_list()
+    Implicit none
+    Character (len=256) :: v
+    Integer :: i, vlen, st
+    Do i = 1, size(env_allow)
+       v = ''
+       Call get_environment_variable(trim(env_allow(i)), v, vlen, st)
+       If (st == 0 .and. vlen > 0 .and. env_n < ENV_MAX) then
+          env_n = env_n + 1
+          env_name(env_n) = env_allow(i)
+          env_val(env_n)  = v
+       Endif
+    Enddo
+  End Subroutine env_read_allow_list
+
+  !> Sorts the found variables by name (insertion sort).
+  Subroutine env_sort()
+    Implicit none
+    Character (len=48)  :: tn
+    Character (len=256) :: tv
+    Integer :: i, j
+    Do i = 2, env_n
+       tn = env_name(i); tv = env_val(i)
+       j = i - 1
+       Do while (j >= 1)
+          If (env_name(j) <= tn) exit
+          env_name(j+1) = env_name(j); env_val(j+1) = env_val(j)
+          j = j - 1
+       Enddo
+       env_name(j+1) = tn; env_val(j+1) = tv
+    Enddo
+  End Subroutine env_sort
+
+  !> Which reader ran: '/proc/self/environ' or the allow-list text (reads the environment first if needed).
+  Function gpu_env_reader_name() result(name)
+    Implicit none
+    Character (len=96) :: name
+    If (.not. env_read_done) Call gpu_env_read()
+    name = env_reader
+  End Function gpu_env_reader_name
+
+  !> .true. and the value if ALF_GPU_<name> (full name given) is set.
+  Logical Function gpu_env_get(name, val)
+    Implicit none
+    Character (len=*), intent(in)  :: name
+    Character (len=*), intent(out) :: val
+    Integer :: i
+    If (.not. env_read_done) Call gpu_env_read()
+    gpu_env_get = .false.
+    val = ''
+    Do i = 1, env_n
+       If (trim(env_name(i)) == trim(name)) then
+          val = env_val(i); gpu_env_get = .true.; return
+       Endif
+    Enddo
+  End Function gpu_env_get
+
+  !> variable is set and equals val
+  Logical Function gpu_env_is(name, val)
+    Implicit none
+    Character (len=*), intent(in) :: name, val
+    Character (len=256) :: e
+    gpu_env_is = gpu_env_get(name, e)
+    If (gpu_env_is) gpu_env_is = (trim(e) == val)
+  End Function gpu_env_is
+
+  !> integer >= 1 from the variable (unchanged if unset or unparsable)
+  Subroutine gpu_env_int(name, v)
+    Implicit none
+    Character (len=*), intent(in) :: name
+    Integer, intent(inout) :: v
+    Character (len=256) :: e
+    Integer :: iv, ios
+    If (gpu_env_get(name, e)) then
+       Read(e,*,iostat=ios) iv
+       If (ios == 0 .and. iv >= 1) v = iv
+    Endif
+  End Subroutine gpu_env_int
+
+  !> x of ALF_GPU_FAULT_STAB=eps:<x>; 0 if that fault is not armed
+  Real (Kind=Kind(0.d0)) Function gpu_env_fault_stab_eps()
+    Implicit none
+    gpu_env_fault_stab_eps = env_eps
+  End Function gpu_env_fault_stab_eps
+
+  !> x of ALF_GPU_FAULT_TAU=eps:<x>; 0 if that fault is not armed (ticket 207)
+  Real (Kind=Kind(0.d0)) Function gpu_env_fault_tau_eps()
+    Implicit none
+    gpu_env_fault_tau_eps = env_eps_tau
+  End Function gpu_env_fault_tau_eps
+
+  !> rank in and size of MPI_COMM_WORLD (0 and 1 in a build without MPI)
+  Subroutine env_mpi_ids()
+    Implicit none
+    env_rank = comm_world_rank()
+    env_size = comm_world_size()
+  End Subroutine env_mpi_ids
+
+  !> setup line: info file and stdout, root rank only (every rank still runs the check)
+  Subroutine env_say(text)
+    Implicit none
+    Character (len=*), intent(in) :: text
+    Call info_line(text)
+    If (info_root) then
+       Write(output_unit,'(1X,A)') trim(text)
+       Flush(output_unit)
+    Endif
+  End Subroutine env_say
+
+  !> refusal line, printed by the refusing rank (' (rank N)' appended only if the run has more than one rank); stops the run
+  Subroutine env_fail(text)
+    Implicit none
+    Character (len=*), intent(in) :: text
+    Character (len=24) :: sfx
+    sfx = ''
+    If (env_size > 1) Write(sfx,'(A,I0,A)') ' (rank ', env_rank, ')'
+    Call info_line(text)
+    Write(output_unit,'(1X,A)') trim(text)//trim(sfx)
+    Flush(output_unit)
+    Call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+  End Subroutine env_fail
+
+!--------------------------------------------------------------------
+!> At setup of every GPU run: backend line, env reader, debug-env line, allow-list (production runs refuse every set
+!> ALF_GPU_* variable except DISABLE and DEBUG), value check of the fault variables, armed-fault lines.
+!--------------------------------------------------------------------
+  Subroutine gpu_env_check()
+    Implicit none
+    ! fixed-length line buffer (a deferred-length allocatable with // crashes gfortran 14)
+    Character (len=8192) :: line
+    Character (len=400) :: tmpv
+    Integer :: ln
+    Character (len=256) :: v
+    Logical :: debug_run, ok
+    Integer :: i, ios
+    Real (Kind=Kind(0.d0)) :: x
+    Character (len=6) :: bk
+    If (.not. env_read_done) Call gpu_env_read()
+    env_eps = 0.d0; env_eps_tau = 0.d0
+#if defined(ALF_LA_CUDA)
+    bk = 'CUDA'
+#elif defined(ALF_LA_ONEMKL)
+    bk = 'ONEMKL'
+#elif defined(ALF_LA_HIP)
+    bk = 'HIP'
+#else
+    bk = 'HOST'
+#endif
+    ! the commit is written to the info file by qmc_setup_mod
+    Call env_say('GPU build: backend '//trim(bk))
+    Call env_say('GPU debug env reader: '//trim(env_reader))
+    If (env_n == 0) then
+       Call env_say('GPU debug env: none')
+    Else
+       line = 'GPU debug env: '
+       ln = 15
+       Do i = 1, env_n
+          If (i > 1) then
+             line(ln+1:ln+2) = ', '
+             ln = ln + 2
+          Endif
+          tmpv = trim(env_name(i)) // '=' // trim(env_val(i))
+          line(ln+1:ln+len_trim(tmpv)) = tmpv(1:len_trim(tmpv))
+          ln = ln + len_trim(tmpv)
+       Enddo
+       Call env_say(line(1:ln))
+    Endif
+    debug_run = .false.
+    Do i = 1, env_n
+       Select case (trim(env_name(i)))
+       Case ('ALF_GPU_SELFTEST', 'ALF_GPU_UPDTEST', 'ALF_GPU_DEBUG'); if (trim(env_val(i)) /= '0') debug_run = .true.
+       End Select
+    Enddo
+    If (.not. debug_run) then
+       Do i = 1, env_n
+          Select case (trim(env_name(i)))
+          Case ('ALF_GPU_DISABLE', 'ALF_GPU_DEBUG')
+          Case default
+             Call env_fail('GPU debug env refused: '//trim(env_name(i))// &
+                  & ' (production run; set ALF_GPU_DEBUG=1 for a debug run)')
+          End Select
+       Enddo
+    Endif
+    ! fault values: an unknown or unparsable value is an error in every run
+    If (gpu_env_get('ALF_GPU_FAULT', v)) then
+       Select case (trim(v))
+       Case ('hop', 'hopc', 'vexp', 'nan', 'order', 'upd', 'nsig', 'hostonly')
+       Case default
+          Call env_fail('GPU fault value invalid: ALF_GPU_FAULT='//trim(v))
+       End Select
+       Call env_say('GPU fault armed: ALF_GPU_FAULT='//trim(v))
+    Endif
+    If (gpu_env_get('ALF_GPU_FAULT_STAB', v)) then
+       ok = .false.
+       Select case (trim(v))
+       Case ('perm', 'phase', 'nan'); ok = .true.
+       Case default
+          If (len_trim(v) > 4) then
+             If (v(1:4) == 'eps:') then
+                Read(v(5:),*,iostat=ios) x
+                If (ios == 0) then
+                   If (x > 0.d0 .and. x < 1.d300) then
+                      ok = .true.; env_eps = x
+                   Endif
+                Endif
+             Endif
+          Endif
+       End Select
+       If (.not. ok) then
+          Call env_fail('GPU fault value invalid: ALF_GPU_FAULT_STAB='//trim(v))
+       Endif
+       Call env_say('GPU fault armed: ALF_GPU_FAULT_STAB='//trim(v))
+    Endif
+    ! ticket 207 (gpu_tau_mod): perm|prop|prec|blocks, or the graded fault eps:<x> of the ALF_GPU_SELFTEST=4 comparison
+    If (gpu_env_get('ALF_GPU_FAULT_TAU', v)) then
+       ok = .false.
+       Select case (trim(v))
+       Case ('perm', 'prop', 'prec', 'blocks'); ok = .true.
+       Case default
+          If (len_trim(v) > 4) then
+             If (v(1:4) == 'eps:') then
+                Read(v(5:),*,iostat=ios) x
+                If (ios == 0) then
+                   If (x > 0.d0 .and. x < 1.d300) then
+                      ok = .true.; env_eps_tau = x
+                   Endif
+                Endif
+             Endif
+          Endif
+       End Select
+       If (.not. ok) then
+          Call env_fail('GPU fault value invalid: ALF_GPU_FAULT_TAU='//trim(v))
+       Endif
+       Call env_say('GPU fault armed: ALF_GPU_FAULT_TAU='//trim(v))
+    Endif
+  End Subroutine gpu_env_check
+
+!--------------------------------------------------------------------
+!> @brief
+!> QR/LU work space (complex entries) per scratch buffer: 64 blocks of Ndim, provisional size for steps 1c-1d.
+!--------------------------------------------------------------------
+  Integer function gpu_scratch_lwork(Ndim)
+    Implicit none
+    Integer, intent(in) :: Ndim
+    gpu_scratch_lwork = 64*Ndim + 64
+  end function gpu_scratch_lwork
+
+!--------------------------------------------------------------------
+!> @brief
+!> Appends one line to the info file (group root only).
+  Subroutine info_line(text)
+    Implicit none
+    Character (len=*), intent(in) :: text
+    if (info_root) then
+       Open (Unit=50, file=trim(info_file), status="unknown", position="append")
+       Write(50,'(1X,A)') trim(text)
+       Close(50)
+    endif
+  end subroutine info_line
+
+!--------------------------------------------------------------------
+!> @brief
+!> Decides whether the run can use the GPU path: ALF_GPU_DISABLE, build options, run-time options, model.
+!> @details Returns .true. if yes; else reason says why not (the run then keeps the CPU path).
+!> GPU=host build: zero OpenMP offload devices are accepted.
+!--------------------------------------------------------------------
+  Logical function gpu_supported(reason)
+    Implicit none
+    Character (len=*), intent(out) :: reason
+
+    Integer :: n, nf, nc, nh, ek, nd
+    Logical :: act, is_td, symm_el, seen_td
+    Integer, allocatable :: P(:)
+    Real    (Kind=Kind(0.d0)), allocatable :: rm(:,:,:), Etd(:), Es(:)
+    Complex (Kind=Kind(0.d0)), allocatable :: cm(:,:,:), Utd(:,:), gtd(:), Us(:,:)
+    Integer, allocatable :: Ps(:)
+    Real    (Kind=Kind(0.d0)) :: zero_td
+
+    gpu_supported = .false.
+    reason = ''
+    if (gpu_env_is('ALF_GPU_DISABLE', '1')) then
+       reason = 'disabled by ALF_GPU_DISABLE=1'; return
+    endif
+! Plain MPI (independent chains, one Markov chain per rank, bins averaged over the group on the host) is supported: each rank
+! owns its own device mirror and uses the host random numbers; the only MPI traffic stays the host-side observable reduction.
+! Parallel parameters (PARALLEL_PARAMS, "PP"): the groups are independent runs with their own parameter set and no exchange step
+! (main.F90 skips Exchange_Step), so the device mirror needs no change.  Real tempering (state exchange) stays refused.
+#if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
+    reason = 'tempering is not supported on the GPU path'; return
+#endif
+#if defined(STAB1) || defined(STAB2) || defined(STAB3)
+    reason = 'STAB1/STAB2/STAB3 stabilization is not supported on the GPU path (default and LOG only, ticket 206)'; return
+#endif
+    if (Projector) then
+       reason = 'projector code is not supported on the GPU path'; return
+    endif
+    if (get_Langevin() .or. get_HMC()) then
+       reason = 'Langevin/HMC is not supported on the GPU path'; return
+    endif
+    if (get_Global_moves() .or. get_Global_tau_moves() .or. get_N_Global_tau() > 0) then
+       reason = 'global moves are not supported on the GPU path'; return
+    endif
+    if (get_Propose_S0()) then
+       reason = 'Propose_S0 is not supported on the GPU path'; return
+    endif
+    if (get_Sequential_MALA() .or. get_Global_MALA_moves() .or. get_Global_tau_MALA_moves() .or. get_N_Global_tau_MALA() > 0) then
+       reason = 'MALA updates are not supported on the GPU path'; return
+    endif
+    if (reconstruction_needed) then
+       reason = 'Calc_Fl with weight reconstruction (ham%weight_reconstruction) is not supported on the GPU path'; return
+    endif
+    nd = omp_get_num_devices()
+    if (nd < 1) then
+#if defined(ALF_LA_CUDA) || defined(ALF_LA_ONEMKL) || defined(ALF_LA_HIP)
+       reason = 'no OpenMP offload device found'; return
+#endif
+       ! GPU=host build (no vendor backend): the target regions run on the host (OpenMP host fallback)
+    else
+       ! several MPI ranks on one node: spread the ranks over the devices (rank mod number of devices); with one device every
+       ! rank uses device 0 (the ranks share it, best with the CUDA MPS daemon).  Without MPI env_rank = 0.
+       Call omp_set_default_device(Mod(env_rank, nd))
+    endif
+    do nf = 1, N_FL
+       do n = 1, size(Op_V,1)
+          if (.not. Op_V(n,nf)%diag) then
+             write(reason,'(A,A,A,I0,A,I0,A)') 'Hamiltonian ', trim(get_ham_name()), &
+                  & ': Op_V(', n, ',', nf, ') is not diagonal'
+             return
+          endif
+          if (Op_V(n,nf)%type /= 1 .and. Op_V(n,nf)%type /= 2) then
+             write(reason,'(A,A,A,I0,A,I0,A,I0,A)') 'Hamiltonian ', trim(get_ham_name()), &
+                  & ': Op_V(', n, ',', nf, ') has field type ', Op_V(n,nf)%type, ' (only 1 and 2 supported)'
+             return
+          endif
+          if (Op_V(n,nf)%type /= Op_V(n,1)%type) then
+             write(reason,'(A,A,A,I0,A,I0,A)') 'Hamiltonian ', trim(get_ham_name()), &
+                  & ': field type of Op_V(', n, ',', nf, ') differs from flavour 1'
+             return
+          endif
+          if (Op_V(n,nf)%N_non_zero > 1) then
+             ! ticket 205: the device update implements the rank-1 case (N_non_zero <= 1) only
+             write(reason,'(A,A,A,I0,A,I0,A,I0,A)') 'Hamiltonian ', trim(get_ham_name()), &
+                  & ': Op_V(', n, ',', nf, ') has N_non_zero = ', Op_V(n,nf)%N_non_zero, ' (device update supports <= 1)'
+             return
+          endif
+          if (Op_V(n,nf)%get_g_t_alloc()) then
+             write(reason,'(A,A,A,I0,A,I0,A)') 'Hamiltonian ', trim(get_ham_name()), &
+                  & ': Op_V(', n, ',', nf, ') has a time-dependent coupling g_t'
+             return
+          endif
+       enddo
+    enddo
+    nc = Hop_mod_gpu_ncheck()
+    do nf = 1, N_FL
+       seen_td = .false.
+       do n = 1, nc
+          call Hop_mod_gpu_element(nf, n, ek, nh, act, P, rm, cm)
+          if (ek == 3) then
+             call Hop_mod_gpu_td_element(nf, n, is_td, nh, symm_el, zero_td, P, Utd, Etd, gtd)
+             if (.not. is_td) then
+                write(reason,'(A,A,A,I0,A,I0,A)') 'Hamiltonian ', trim(get_ham_name()), &
+                     & ': hopping element (', n, ',', nf, ') is of unknown type'
+                return
+             endif
+             seen_td = .true.
+             if (size(gtd,1) /= Ltrot) then
+                reason = 'time-dependent hopping: size(g_t) /= Ltrot'; return
+             endif
+             call td_reduce(P, Utd, Etd, nh, Ps, Us, Es)
+             ! memory of the per-slice matrices (reduced support): 2 kinds x 4 matrices x nh^2 per slice
+             if (16.d0*8.d0*real(nh,kind(0.d0))**2*real(Ltrot,kind(0.d0)) > 2.d9) then
+                reason = 'time-dependent hopping element too large (matrices per slice exceed 2 GB)'; return
+             endif
+          else if (ek /= 1 .and. ek /= 2) then
+             write(reason,'(A,A,A,I0,A,I0,A)') 'Hamiltonian ', trim(get_ham_name()), &
+                  & ': hopping element (', n, ',', nf, ') is of unknown type'
+             return
+          else if (seen_td) then
+             write(reason,'(A,A,A,I0,A,I0,A)') 'Hamiltonian ', trim(get_ham_name()), &
+                  & ': static hopping element (', n, ',', nf, ') follows a time-dependent one (GPU path requires time-dependent elements last)'
+             return
+          endif
+       enddo
+    enddo
+    gpu_supported = .true.
+    reason = 'all checks passed'
+  end function gpu_supported
+
+!--------------------------------------------------------------------
+!> @brief
+!> Builds the device mirror for the model in Hamiltonian_main and the walker layout, or records why not.
+!> @details
+!> Called once per run between Walker_alloc and Walker_init_stack.  Runs the environment check, gpu_supported, builds
+!> the flat tables, allocates and maps the buffers and writes the state to the info file:
+!> "ACTIVE (mirror built, not yet used by the sweep)" or "INACTIVE, reason: ...".  Optional self-test
+!> (ALF_GPU_SELFTEST).  The walker is only read (NSTM).
+!> @param[in] walker   walker whose layout (NSTM) sizes the UDV buffers
+!> @param[in] file_info name of the info file (appended to by the group root)
+!--------------------------------------------------------------------
+  Subroutine gpu_state_setup(walker, file_info)
+    Implicit none
+    Type (qmc_walker_t), intent(in) :: walker
+    Character (len=*),   intent(in) :: file_info
+
+    Integer(int64) :: c0, c1, crate
+    Real (Kind=Kind(0.d0)) :: tsetup
+    Character (len=256) :: reason, line
+    Character (len=16)  :: env
+    Logical :: ok
+
+    info_file = file_info
+    info_root = is_root(Group_Comm)
+    call gpu_env_check()      ! backend line, env reader, debug-env line, allow-list, fault values (may stop the run)
+    call system_clock(c0, crate)
+    ok = gpu_supported(reason)
+    gpu_reason = reason
+    if (.not. ok) then
+       gpu_active = .false.
+       call info_line('GPU path (gpu_state): INACTIVE, reason: '//trim(reason))
+       if (gpu_env_get('ALF_GPU_SELFTEST', env) .and. trim(env) /= '0') then
+          write(error_unit,'(A)') ' ALF_GPU_SELFTEST is set but the GPU path is inactive: '//trim(reason)
+          call info_line('GPU self-test requested but GPU path inactive: '//trim(reason))
+          call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+       endif
+       return
+    endif
+
+    g_NFL = N_FL; g_Ndim = Ndim; g_Nop = size(Op_V,1); g_Ltrot = Ltrot; g_NSTM = walker%NSTM; g_NFLeff = N_FL_eff
+    have_tau = ( get_Ltau() == 1 )
+
+    call build_hopping()
+    call build_groups()
+    call build_V()
+    call build_vrows()
+    allocate( nsigma_d(g_Nop, g_Ltrot), nsigma_t(g_Nop) )
+    nsigma_d = nsigma%f
+    nsigma_t = nsigma%t
+    call alloc_buffers()
+    call map_to_device()
+    gpu_active = .true.
+    call system_clock(c1)
+    tsetup = real(c1-c0,kind(0.d0))/real(crate,kind(0.d0))
+    if (omp_get_num_devices() > 0) then
+       write(line,'(A,I0)') 'GPU path (gpu_state): ACTIVE (mirror built, not yet used by the sweep), OpenMP device ', &
+            & omp_get_default_device()
+    else
+       line = 'GPU path (gpu_state): ACTIVE (mirror built, not yet used by the sweep), OpenMP host fallback (no offload device)'
+    endif
+    call info_line(line)
+    write(line,'(A,I0,A,I0,A,I0)') 'GPU mirror: hopping elements ', g_nel, ', Op_V operators ', g_Nop*g_NFL, &
+         & ', omp devices ', omp_get_num_devices()
+    call info_line(line)
+    write(line,'(A,I0,A,I0,A,L1)') 'GPU mirror: checkerboard groups ', g_ngroups, ' (flavour 1: ', hop_gstart(2)-hop_gstart(1), &
+         & ' groups), dense element(s) in flavour 1: ', hop_big(1)
+    call info_line(line)
+    call report_layout()
+    ! timing of setup includes the host->device copies, not the self-test
+    if (td_any) then
+       write(line,'(A,I0,A,I0,A)') 'GPU mirror: time-dependent hopping: ', g_nel - g_nstat, ' per-slice element(s) in ', &
+            & count(td_n > 0), ' flavour(s)'
+       call info_line(line)
+    endif
+    write(line,'(A,F10.4,A)') 'GPU mirror setup time (incl. host->device copies): ', tsetup, ' s'
+    call info_line(line)
+    if (info_root) write(output_unit,'(A,F10.4,A)') ' GPU mirror setup time (incl. host->device copies): ', tsetup, ' s'
+
+    ok = gpu_env_get('ALF_GPU_SELFTEST', env)
+    if (ok) ok = (trim(env) /= '0')
+    ! ALF_GPU_SELFTEST=1 (any value except empty/0): self-test, then the run continues.  Negative controls, which must
+    ! fail with a nonzero exit: =fault (hop_Rval(1) *= 1+1e-9), =fault_c (hop_Cval(1) += 1e-9), =fault_v (V_exp(1) *=
+    ! 1+1e-9), =nan (hop_Rval(1) = NaN), =nan_v (V_exp(1) = NaN); all applied to the host copy after the upload.
+    ! ALF_GPU_SELFTEST=3 (stabilization self-test, step 1d) and =4 (tau pass, step 1e) do not run this mirror
+    ! self-test: O(N^3) host loops
+    if (ok .and. trim(env) /= '3' .and. trim(env) /= '4') then
+       select case (trim(env))
+       case ('fault');   hop_Rval(1) = hop_Rval(1)*(1.d0 + 1.d-9)
+       case ('fault_c'); hop_Cval(1) = hop_Cval(1) + cmplx(1.d-9, 0.d0, kind(0.d0))
+       case ('fault_v'); V_exp(1) = V_exp(1)*(1.d0 + 1.d-9)
+       case ('nan');     hop_Rval(1) = transfer(9221120237041090560_int64, 0.d0)
+       case ('nan_v');   V_exp(1) = transfer([9221120237041090560_int64, 0_int64], V_exp(1))   ! (NaN, 0); cmplx() of a constant NaN is refused by gfortran
+       end select
+       call gpu_selftest()
+    endif
+  end subroutine gpu_state_setup
+
+!--------------------------------------------------------------------
+  Subroutine build_hopping()
+    Implicit none
+    Integer :: nf, nc, e, nel, npv, nrv, ncv, ek, nh, k, i, j
+    Logical :: act
+    Integer, allocatable :: P(:)
+    Real    (Kind=Kind(0.d0)), allocatable :: rm(:,:,:)
+    Complex (Kind=Kind(0.d0)), allocatable :: cm(:,:,:)
+    Integer :: ncheck
+    ! time-dependent elements
+    Integer :: nel_td, npv_td, ncv_td, ntdmax, ntdf, t, kd
+    Logical :: is_td, symm_el
+    Real    (Kind=Kind(0.d0)) :: zero_td
+    Real    (Kind=Kind(0.d0)), allocatable :: Etd(:), Es(:)
+    Complex (Kind=Kind(0.d0)), allocatable :: Utd(:,:), gtd(:), Atd(:,:), Us(:,:)
+    Integer, allocatable :: Ps(:)
+
+    ncheck = Hop_mod_gpu_ncheck()
+    allocate(hop_start(N_FL+1))
+    nel = 0; npv = 0; nrv = 0; ncv = 0
+    nel_td = 0; npv_td = 0; ncv_td = 0; ntdmax = 0
+    allocate(td_n(N_FL)); td_n = 0
+    do nf = 1, N_FL
+       ntdf = 0
+       do nc = 1, ncheck
+          call Hop_mod_gpu_element(nf, nc, ek, nh, act, P, rm, cm)
+          if (ek == 3) then
+             call Hop_mod_gpu_td_element(nf, nc, is_td, nh, symm_el, zero_td, P, Utd, Etd, gtd)
+             ntdf = ntdf + 1
+             call td_reduce(P, Utd, Etd, nh, Ps, Us, Es)
+             do t = 1, g_Ltrot
+                if (nh == 0) exit
+                do kd = 1, 2
+                   if (td_active(gtd, t, kd, symm_el, zero_td)) then
+                      nel_td = nel_td + 1; npv_td = npv_td + nh; ncv_td = ncv_td + 4*nh*nh
+                   endif
+                enddo
+             enddo
+          endif
+          if (act) then
+             nel = nel + 1; npv = npv + nh
+             if (ek == 1) nrv = nrv + 4*nh*nh
+             if (ek == 2) ncv = ncv + 4*nh*nh
+          endif
+       enddo
+       td_n(nf) = ntdf
+       ntdmax = max(ntdmax, ntdf)
+    enddo
+    g_nstat = nel
+    g_nel = nel + nel_td
+    td_any = (nel_td > 0)
+    allocate(td_grp(g_Ltrot,2,max(ntdmax,1),N_FL)); td_grp = 0
+    allocate(hop_meta(4,max(g_nel,1)), hop_P(max(npv+npv_td,1)), hop_Rval(max(nrv,1)), hop_Cval(max(ncv+ncv_td,1)))
+    hop_meta = 0; hop_P = 0; hop_Rval = 0.d0; hop_Cval = cmplx(0.d0,0.d0,kind(0.d0))
+    e = 0; npv = 0; nrv = 0; ncv = 0
+    do nf = 1, N_FL
+       hop_start(nf) = e + 1
+       do nc = 1, ncheck
+          call Hop_mod_gpu_element(nf, nc, ek, nh, act, P, rm, cm)
+          if (.not. act) cycle
+          ! Lower triangle from the upper one = what ZSLHEMM/ZDSLSYMM ('U') see.  Exception (measured, see header):
+          ! real elements with nh > 8 are applied by ZDSLSYMM through ZLARCM with the FULL stored matrix, so keep it as is.
+          do k = 1, 4
+             if (ek == 1 .and. nh > 8) exit
+             do j = 1, nh
+                do i = j+1, nh
+                   if (ek == 1) then
+                      rm(i,j,k) = rm(j,i,k)
+                   else
+                      cm(i,j,k) = conjg(cm(j,i,k))
+                   endif
+                enddo
+             enddo
+          enddo
+          if (ek == 2 .and. nh > 8) then
+             ! ZHEMM (ALF, nd > 8) ignores Im(diagonal); ticket 204 applies these elements with ZGEMM on the full matrix
+             do k = 1, 4
+                do i = 1, nh
+                   cm(i,i,k) = cmplx(real(cm(i,i,k)), 0.d0, kind(0.d0))
+                enddo
+             enddo
+          endif
+          e = e + 1
+          hop_meta(1,e) = ek
+          hop_meta(2,e) = nh
+          hop_meta(3,e) = npv
+          hop_P(npv+1:npv+nh) = P
+          npv = npv + nh
+          if (ek == 1) then
+             hop_meta(4,e) = nrv
+             do k = 1, 4
+                hop_Rval(nrv+1:nrv+nh*nh) = reshape(rm(:,:,k), (/nh*nh/))
+                nrv = nrv + nh*nh
+             enddo
+          else
+             hop_meta(4,e) = ncv
+             do k = 1, 4
+                hop_Cval(ncv+1:ncv+nh*nh) = reshape(cm(:,:,k), (/nh*nh/))
+                ncv = ncv + nh*nh
+             enddo
+          endif
+       enddo
+    enddo
+    hop_start(N_FL+1) = e + 1
+
+    ! ---- time-dependent elements: after all static ones; one element per (flavour, td element, slice, kind) that is active ----
+    do nf = 1, N_FL
+       j = 0
+       do nc = 1, ncheck
+          call Hop_mod_gpu_element(nf, nc, ek, nh, act, P, rm, cm)
+          if (ek /= 3) cycle
+          j = j + 1
+          call Hop_mod_gpu_td_element(nf, nc, is_td, nh, symm_el, zero_td, P, Utd, Etd, gtd)
+          call td_reduce(P, Utd, Etd, nh, Ps, Us, Es)
+          if (nh == 0) cycle
+          allocate(Atd(nh,nh))
+          do t = 1, g_Ltrot
+             do kd = 1, 2
+                if (.not. td_active(gtd, t, kd, symm_el, zero_td)) cycle
+                e = e + 1
+                hop_meta(1,e) = 2; hop_meta(2,e) = nh; hop_meta(3,e) = npv; hop_meta(4,e) = ncv
+                hop_P(npv+1:npv+nh) = Ps
+                npv = npv + nh
+                if (kd == 1) then
+                   call td_matrix(Us, Es, td_g(gtd, t, 1, symm_el), 1.d0, Atd);   hop_Cval(ncv+1:ncv+nh*nh) = reshape(Atd,(/nh*nh/))
+                   call td_matrix(Us, Es, td_g(gtd, t, 1, symm_el), -1.d0, Atd);  hop_Cval(ncv+nh*nh+1:ncv+2*nh*nh) = reshape(Atd,(/nh*nh/))
+                   call td_matrix(Us, Es, td_g(gtd, t, 1, symm_el), 0.5d0, Atd);  hop_Cval(ncv+2*nh*nh+1:ncv+3*nh*nh) = reshape(Atd,(/nh*nh/))
+                   call td_matrix(Us, Es, td_g(gtd, t, 1, symm_el), -0.5d0, Atd); hop_Cval(ncv+3*nh*nh+1:ncv+4*nh*nh) = reshape(Atd,(/nh*nh/))
+                else
+                   call td_matrix(Us, Es, gtd(t), 1.d0, Atd);   hop_Cval(ncv+1:ncv+nh*nh) = reshape(Atd,(/nh*nh/))
+                   call td_matrix(Us, Es, gtd(t), -1.d0, Atd);  hop_Cval(ncv+nh*nh+1:ncv+2*nh*nh) = reshape(Atd,(/nh*nh/))
+                   call td_matrix(Us, Es, gtd(t), 0.5d0, Atd);  hop_Cval(ncv+2*nh*nh+1:ncv+3*nh*nh) = reshape(Atd,(/nh*nh/))
+                   call td_matrix(Us, Es, gtd(t), -0.5d0, Atd); hop_Cval(ncv+3*nh*nh+1:ncv+4*nh*nh) = reshape(Atd,(/nh*nh/))
+                   td_symm_active = .true.
+                endif
+                ncv = ncv + 4*nh*nh
+                td_grp(t,kd,j,nf) = e          ! element index; build_groups turns it into the group index
+             enddo
+          enddo
+          deallocate(Atd)
+       enddo
+    enddo
+  end subroutine build_hopping
+
+  !> Coupling the host routines use at slice t: kind 1 (lmult/rmult family) g_t(t), Symm: 0.5*(g_t(t)+g_t(t-1)), t-1 = Ltrot for t = 1;
+  !> kind 2 (adjointaction) the raw g_t(t).
+  Complex (Kind=Kind(0.d0)) Function td_g(gt, t, kd, symm_el)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in) :: gt(:)
+    Integer, intent(in) :: t, kd
+    Logical, intent(in) :: symm_el
+    Integer :: t1
+    td_g = gt(t)
+    if (kd == 1 .and. symm_el) then
+       t1 = t - 1
+       if (t == 1) t1 = size(gt,1)
+       td_g = 0.5d0 * (gt(t) + gt(t1))
+    endif
+  end function td_g
+
+  Logical Function td_active(gt, t, kd, symm_el, zero)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in) :: gt(:)
+    Integer, intent(in) :: t, kd
+    Logical, intent(in) :: symm_el
+    Real (Kind=Kind(0.d0)), intent(in) :: zero
+    Complex (Kind=Kind(0.d0)) :: g
+    g = td_g(gt, t, kd, symm_el)
+    td_active = ( dble( g * conjg(g) ) > zero )
+  end function td_active
+
+  !> Reduction of a time-dependent element to its support.  The host applies A(g) = U exp(g E) U^dagger on the Ndim sites P, with a
+  !> full Ndim x Ndim U even for the point defect (one nonzero eigenvalue, all others 0).  A(g) - 1 = sum_k (exp(g E_k) - 1) u_k u_k^dagger
+  !> only involves the eigenvectors with E_k /= 0, and only the rows where those are nonzero.  Return the nK eigenpairs with
+  !> |E_k| > 1e-13 max|E| and the nS rows (sites PS, vectors US(nS,nK)) on which they are supported (|u| > 1e-13).  The reduced
+  !> matrix 1 + sum_k (exp(fac g E_k) - 1) u_k u_k^dagger acts as A on these rows and as the identity elsewhere (exact up to ~1e-13).
+  Subroutine td_reduce(P, U, E, nS, PS, US, ES)
+    Implicit none
+    Integer, intent(in) :: P(:)
+    Complex (Kind=Kind(0.d0)), intent(in) :: U(:,:)
+    Real    (Kind=Kind(0.d0)), intent(in) :: E(:)
+    Integer, intent(out) :: nS
+    Integer, allocatable, intent(out) :: PS(:)
+    Complex (Kind=Kind(0.d0)), allocatable, intent(out) :: US(:,:)
+    Real    (Kind=Kind(0.d0)), allocatable, intent(out) :: ES(:)
+    Integer :: i, k, nK, ki
+    Integer, allocatable :: kidx(:)
+    Logical, allocatable :: row(:)
+    Real (Kind=Kind(0.d0)) :: emax
+    Real (Kind=Kind(0.d0)), parameter :: tol = 1.d-13
+    emax = maxval(abs(E))
+    allocate(kidx(size(E)), row(size(P)))
+    nK = 0; row = .false.
+    do k = 1, size(E)
+       if (abs(E(k)) > tol*emax) then
+          nK = nK + 1; kidx(nK) = k
+          do i = 1, size(P)
+             if (abs(U(i,k)) > tol) row(i) = .true.
+          enddo
+       endif
+    enddo
+    nS = count(row)
+    allocate(PS(nS), US(nS,max(nK,1)), ES(max(nK,1)))
+    PS = 0; US = (0.d0,0.d0); ES = 0.d0
+    if (nS == 0 .or. nK == 0) then
+       nS = 0; return
+    endif
+    ki = 0
+    do i = 1, size(P)
+       if (row(i)) then
+          ki = ki + 1; PS(ki) = P(i)
+          do k = 1, nK
+             US(ki,k) = U(i,kidx(k))
+          enddo
+       endif
+    enddo
+    do k = 1, nK
+       ES(k) = E(kidx(k))
+    enddo
+  end subroutine td_reduce
+
+  !> Reduced matrix A = 1 + sum_k (exp(fac*g*E_k) - 1) u_k u_k^dagger  (nS x nS)
+  Subroutine td_matrix(U, E, g, fac, A)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in)  :: U(:,:), g
+    Real    (Kind=Kind(0.d0)), intent(in)  :: E(:), fac
+    Complex (Kind=Kind(0.d0)), intent(out) :: A(:,:)
+    Integer :: i, j, k, nS
+    Complex (Kind=Kind(0.d0)) :: ex
+    nS = size(U,1)
+    A = (0.d0, 0.d0)
+    do i = 1, nS
+       A(i,i) = (1.d0, 0.d0)
+    enddo
+    do k = 1, size(E,1)
+       ex = exp(fac*g*E(k)) - (1.d0, 0.d0)
+       do j = 1, nS
+          do i = 1, nS
+             A(i,j) = A(i,j) + U(i,k) * ex * conjg(U(j,k))
+          enddo
+       enddo
+    enddo
+  end subroutine td_matrix
+
+!--------------------------------------------------------------------
+!> Checkerboard groups and dense auxiliaries (ticket 204), from the flat element list.
+!--------------------------------------------------------------------
+  Subroutine build_groups()
+    Implicit none
+    Integer :: nf, e, e1, e2, ng, pass, nd, po, l, nx, xo, k, i, j, mo, ntdg
+    Integer, allocatable :: mark(:), gp(:)
+    Logical :: ok
+
+    allocate(hop_gstart(g_NFL+1), hop_big(g_NFL), hop_aux(2,max(g_nel,1)), mark(max(g_Ndim,1)))
+    hop_big = .false.
+    ! pass 1 counts the groups, pass 2 stores them
+    ng = 0
+    do pass = 1, 2
+       if (pass == 2) then
+          allocate(gp(ng+1)); gp = 0
+          g_ngroups = ng
+          ng = 0
+       endif
+       mark = 0
+       do nf = 1, g_NFL
+          e1 = hop_start(nf); e2 = hop_start(nf+1) - 1
+          if (pass == 2) hop_gstart(nf) = ng + 1
+          e = e1
+          do while (e <= e2)
+             ng = ng + 1
+             if (pass == 2) gp(ng) = e
+             nd = hop_meta(2,e)
+             if (nd > 8) then
+                hop_big(nf) = .true.
+                e = e + 1
+                cycle
+             endif
+             ! small group: extend while the next element is small and disjoint from all sites of this group
+             do
+                po = hop_meta(3,e)
+                do l = 1, nd
+                   mark(hop_P(po+l)) = ng
+                enddo
+                e = e + 1
+                if (e > e2) exit
+                if (hop_meta(2,e) > 8) exit
+                ok = .true.
+                po = hop_meta(3,e)
+                do l = 1, hop_meta(2,e)
+                   if (mark(hop_P(po+l)) == ng) ok = .false.
+                enddo
+                if (.not. ok) exit
+                nd = hop_meta(2,e)
+             enddo
+          enddo
+       enddo
+       if (pass == 2) then
+          hop_gstart(g_NFL+1) = ng + 1
+          gp(ng+1) = g_nstat + 1
+       endif
+    enddo
+    ! time-dependent elements: one single-element group each, appended after the static groups (not part of any hop_gstart range)
+    ntdg = g_nel - g_nstat
+    allocate(hop_gptr(ng+1+ntdg)); hop_gptr(1:ng+1) = gp
+    do i = 1, ntdg
+       hop_gptr(ng+1+i) = g_nstat + 1 + i
+    enddo
+    deallocate(gp)
+    where (td_grp > 0) td_grp = td_grp - g_nstat + ng
+
+    ! dense auxiliaries
+    nx = 0
+    do e = 1, g_nel
+       if (hop_meta(1,e) == 1 .and. hop_meta(2,e) > 8) nx = nx + 4*hop_meta(2,e)**2     ! all four matrices (mat, invmat, mat_1D2, invmat_1D2): the device Symm uses the half steps
+    enddo
+    allocate(hop_At(max(nx,1)), hop_Ac(max(nx,1)))
+    hop_At = 0.d0; hop_Ac = cmplx(0.d0,0.d0,kind(0.d0))
+    xo = 0
+    do e = 1, g_nel
+       nd = hop_meta(2,e); po = hop_meta(3,e)
+       hop_aux(1,e) = -1
+       hop_aux(2,e) = 1
+       do l = 1, nd
+          if (hop_P(po+l) /= l) hop_aux(2,e) = 0
+       enddo
+       if (hop_meta(1,e) == 1 .and. nd > 8) then
+          hop_aux(1,e) = xo
+          do k = 1, 4
+             mo = hop_meta(4,e) + (k-1)*nd*nd
+             do j = 1, nd
+                do i = 1, nd
+                   hop_At(xo + (k-1)*nd*nd + j + (i-1)*nd) = hop_Rval(mo + i + (j-1)*nd)
+                   hop_Ac(xo + (k-1)*nd*nd + i + (j-1)*nd) = cmplx(hop_Rval(mo + i + (j-1)*nd), 0.d0, kind(0.d0))
+                enddo
+             enddo
+          enddo
+          xo = xo + 4*nd*nd
+       endif
+    enddo
+    deallocate(mark)
+  end subroutine build_groups
+
+!--------------------------------------------------------------------
+!> Per matrix index and flavour: the (operator, position) entries in operator order (ticket 204).
+!--------------------------------------------------------------------
+  Subroutine build_vrows()
+    Implicit none
+    Integer :: n, nf, i, r, np, p, N1, po
+    Integer, allocatable :: cnt(:)
+
+    allocate(vr_ptr(g_Ndim+1, g_NFL))
+    allocate(cnt(g_Ndim))
+    np = 0
+    do nf = 1, g_NFL
+       do n = 1, g_Nop
+          np = np + V_meta(1,n,nf)
+       enddo
+    enddo
+    allocate(vr_ent(2, max(np,1))); vr_ent = 0
+    p = 1
+    do nf = 1, g_NFL
+       cnt = 0
+       do n = 1, g_Nop
+          N1 = V_meta(1,n,nf); po = V_meta(2,n,nf)
+          do i = 1, N1
+             r = V_P(po+i)
+             cnt(r) = cnt(r) + 1
+          enddo
+       enddo
+       do r = 1, g_Ndim
+          vr_ptr(r,nf) = p
+          p = p + cnt(r)
+       enddo
+       vr_ptr(g_Ndim+1,nf) = p
+       ! fill in operator order (n ascending), running position per index
+       do r = 1, g_Ndim
+          cnt(r) = vr_ptr(r,nf)
+       enddo
+       do n = 1, g_Nop
+          N1 = V_meta(1,n,nf); po = V_meta(2,n,nf)
+          do i = 1, N1
+             r = V_P(po+i)
+             vr_ent(1,cnt(r)) = n
+             vr_ent(2,cnt(r)) = i
+             cnt(r) = cnt(r) + 1
+          enddo
+       enddo
+    enddo
+    deallocate(cnt)
+  end subroutine build_vrows
+
+!--------------------------------------------------------------------
+  Subroutine build_V()
+    Implicit none
+    Integer :: n, nf, nt, nsum, ne, np, ne0
+    Complex (Kind=Kind(0.d0)), allocatable :: E(:,:)
+
+    allocate(V_meta(4,g_Nop,N_FL), V_type(g_Nop))
+    np = 0; ne = 0
+    do nf = 1, N_FL
+       do n = 1, g_Nop
+          nt = Op_V(n,nf)%type
+          V_meta(1,n,nf) = Op_V(n,nf)%N
+          V_meta(2,n,nf) = np
+          V_meta(3,n,nf) = ne
+          V_meta(4,n,nf) = v_skip(Op_V(n,nf))
+          np = np + Op_V(n,nf)%N
+          ne = ne + Op_V(n,nf)%N*(2*nt+1)
+       enddo
+    enddo
+    allocate(V_P(max(np,1)), V_exp(max(ne,1)))
+    V_P = 0; V_exp = cmplx(1.d0,0.d0,kind(0.d0))
+    do n = 1, g_Nop
+       V_type(n) = Op_V(n,1)%type
+    enddo
+    do nf = 1, N_FL
+       do n = 1, g_Nop
+          nt = Op_V(n,nf)%type
+          nsum = Op_V(n,nf)%N
+          V_P(V_meta(2,n,nf)+1:V_meta(2,n,nf)+nsum) = Op_V(n,nf)%P(1:nsum)
+          call Op_get_E_exp(Op_V(n,nf), E)          ! private table of Operator_mod, same numbers ALF applies
+          ne0 = V_meta(3,n,nf)
+          V_exp(ne0+1:ne0+nsum*(2*nt+1)) = reshape(E, (/nsum*(2*nt+1)/))
+          V_exp(ne0+nt*nsum+1:ne0+(nt+1)*nsum) = cmplx(1.d0,0.d0,kind(0.d0))   ! sp = 0: unused
+          deallocate(E)
+       enddo
+    enddo
+  end subroutine build_V
+
+!--------------------------------------------------------------------
+  ! 1 iff Op_mmultL/R return early for this operator (constant coupling).
+  Integer function v_skip(Op)
+    Implicit none
+    Type (Operator), intent(in) :: Op
+    v_skip = 0
+    if ( abs(Op%g) < Eps_machine ) v_skip = 1
+  end function v_skip
+
+!--------------------------------------------------------------------
+  Subroutine alloc_buffers()
+    Implicit none
+    Integer :: lw
+    allocate( G_d(g_Ndim,g_Ndim,g_NFL) )
+    allocate( g_dev_ok(g_NFL), g_host_ok(g_NFL) )
+    g_dev_ok = .false.; g_host_ok = .true.
+    allocate( udv_U(g_Ndim,g_Ndim,g_NSTM,g_NFLeff), udv_V(g_Ndim,g_Ndim,g_NSTM,g_NFLeff) )
+    allocate( udw_U(g_Ndim,g_Ndim,2,g_NFLeff), udw_V(g_Ndim,g_Ndim,2,g_NFLeff) )
+#if defined(STABLOG)
+    allocate( udv_L(g_Ndim,g_NSTM,g_NFLeff), udw_L(g_Ndim,2,g_NFLeff) )
+    allocate( udv_D(1,1,1), udw_D(1,1,1) )
+#else
+    allocate( udv_D(g_Ndim,g_NSTM,g_NFLeff), udw_D(g_Ndim,2,g_NFLeff) )
+    allocate( udv_L(1,1,1), udw_L(1,1,1) )
+#endif
+    if (have_tau) allocate( GT0_d(g_Ndim,g_Ndim,g_NFL), G0T_d(g_Ndim,g_Ndim,g_NFL), GTT_d(g_Ndim,g_Ndim,g_NFL) )
+    lw = gpu_scratch_lwork(g_Ndim)
+    allocate( scr_c(g_Ndim,g_Ndim,2), scr_vec(g_Ndim,4), scr_r(g_Ndim,2), scr_ipiv(g_Ndim), scr_work(lw) )
+  end subroutine alloc_buffers
+
+!--------------------------------------------------------------------
+  Subroutine map_to_device()
+    Implicit none
+    ! One-time host->device copies of the constant data (unavoidable: the device cannot read the host objects).
+    !$omp target enter data map(to: hop_start, hop_meta, hop_P, hop_Rval, hop_Cval)
+    !$omp target enter data map(to: V_meta, V_type, V_P, V_exp)
+    !$omp target enter data map(to: nsigma_d, nsigma_t)
+    ! ticket 204: group table, dense auxiliaries and per-site operator lists (constant data, uploaded once)
+    !$omp target enter data map(to: hop_gptr, hop_aux, hop_At, hop_Ac, vr_ptr, vr_ent)
+    ! Buffers that later tickets fill: device allocation only, no transfer.
+    !$omp target enter data map(alloc: G_d, udv_U, udv_V, udw_U, udw_V)
+    !$omp target enter data map(alloc: udv_D, udv_L, udw_D, udw_L)
+    !$omp target enter data map(alloc: scr_c, scr_vec, scr_r, scr_ipiv, scr_work)
+    if (have_tau) then
+       !$omp target enter data map(alloc: GT0_d, G0T_d, GTT_d)
+    endif
+  end subroutine map_to_device
+
+!--------------------------------------------------------------------
+!> Frees the device mirror (no-op if the GPU path is inactive).  Called once, before Walker_dealloc.
+!--------------------------------------------------------------------
+  Subroutine gpu_state_finalize()
+    Implicit none
+    if (.not. gpu_active) return
+    if (upd_cnt(10) > 0) call report_update_counts()
+    if (have_tau) then
+       !$omp target exit data map(delete: GT0_d, G0T_d, GTT_d)
+       deallocate(GT0_d, G0T_d, GTT_d)
+    endif
+    !$omp target exit data map(delete: scr_c, scr_vec, scr_r, scr_ipiv, scr_work)
+    !$omp target exit data map(delete: udv_D, udv_L, udw_D, udw_L)
+    !$omp target exit data map(delete: G_d, udv_U, udv_V, udw_U, udw_V)
+    !$omp target exit data map(delete: hop_gptr, hop_aux, hop_At, hop_Ac, vr_ptr, vr_ent)
+    !$omp target exit data map(delete: nsigma_d, nsigma_t)
+    !$omp target exit data map(delete: V_meta, V_type, V_P, V_exp)
+    !$omp target exit data map(delete: hop_start, hop_meta, hop_P, hop_Rval, hop_Cval)
+    deallocate(scr_c, scr_vec, scr_r, scr_ipiv, scr_work, udv_D, udv_L, udw_D, udw_L)
+    deallocate(G_d, g_dev_ok, g_host_ok, udv_U, udv_V, udw_U, udw_V, nsigma_d, nsigma_t)
+    deallocate(V_meta, V_type, V_P, V_exp, hop_start, hop_meta, hop_P, hop_Rval, hop_Cval)
+    deallocate(hop_gstart, hop_gptr, hop_big, hop_aux, hop_At, hop_Ac, vr_ptr, vr_ent)
+    deallocate(td_grp, td_n)
+    td_any = .false.; td_symm_active = .false.; have_tau = .false.
+    g_nel = 0; g_nstat = 0; g_ngroups = 0
+    gpu_active = .false.
+  end subroutine gpu_state_finalize
+
+!--------------------------------------------------------------------
+!> @brief
+!> Copies the Green function of every computed flavour from the walker into the mirror G_d (host -> device).
+!> @details
+!> Needs an active mirror.  Afterwards both copies are current (g_dev_ok and g_host_ok true for those flavours).
+!> @param[in] walker walker holding GR(Ndim,Ndim,N_FL)
+!--------------------------------------------------------------------
+  Subroutine gpu_put_G(walker)
+    Implicit none
+    Type (qmc_walker_t), intent(in) :: walker
+    Integer :: nfe, nf
+    Call need_active('gpu_put_G')
+    do nfe = 1, g_NFLeff
+       nf = Calc_Fl_map(nfe)
+       G_d(:,:,nf) = walker%GR(:,:,nf)
+       g_dev_ok(nf) = .true.
+    enddo
+    ! Host -> device: the device kernels of later steps cannot read the walker, so G must be uploaded after a host change.
+    !$omp target update to(G_d)
+  End Subroutine gpu_put_G
+
+!--------------------------------------------------------------------
+!> @brief
+!> Copies the Green function of every computed flavour from the mirror G_d back into the walker (device -> host).
+!> @param[inout] walker walker whose GR(:,:,nf) receives the data
+!--------------------------------------------------------------------
+  Subroutine gpu_get_G(walker)
+    Implicit none
+    Type (qmc_walker_t), intent(inout) :: walker
+    Integer :: nfe, nf
+    Call need_active('gpu_get_G')
+    ! Device -> host: the host observables and the CPU path read walker%GR, so G must be downloaded after a device change.
+    !$omp target update from(G_d)
+    do nfe = 1, g_NFLeff
+       nf = Calc_Fl_map(nfe)
+       walker%GR(:,:,nf) = G_d(:,:,nf)
+       g_host_ok(nf) = .true.
+    enddo
+  End Subroutine gpu_get_G
+
+!--------------------------------------------------------------------
+!> @brief
+!> Copies the UDV stacks of the walker into the mirror (host -> device): udvst(n,nf_eff) -> udv_*(:,:,n,nf_eff),
+!> udvl -> udw_*(:,:,1,nf_eff), udvr -> udw_*(:,:,2,nf_eff); D, or L in an STABLOG build.
+!> @param[in] walker walker holding udvst, udvl, udvr (finite temperature: U and V allocated)
+!--------------------------------------------------------------------
+  Subroutine gpu_put_udv(walker)
+    Implicit none
+    Type (qmc_walker_t), intent(in) :: walker
+    Integer :: nfe, n
+    Call need_active('gpu_put_udv')
+    Call check_udv_layout(walker)
+    do nfe = 1, g_NFLeff
+       do n = 1, g_NSTM
+          udv_U(:,:,n,nfe) = walker%udvst(n,nfe)%U
+          udv_V(:,:,n,nfe) = walker%udvst(n,nfe)%V
+#if defined(STABLOG)
+          udv_L(:,n,nfe) = walker%udvst(n,nfe)%L
+#else
+          udv_D(:,n,nfe) = walker%udvst(n,nfe)%D
+#endif
+       enddo
+       udw_U(:,:,1,nfe) = walker%udvl(nfe)%U
+       udw_V(:,:,1,nfe) = walker%udvl(nfe)%V
+       udw_U(:,:,2,nfe) = walker%udvr(nfe)%U
+       udw_V(:,:,2,nfe) = walker%udvr(nfe)%V
+#if defined(STABLOG)
+       udw_L(:,1,nfe) = walker%udvl(nfe)%L
+       udw_L(:,2,nfe) = walker%udvr(nfe)%L
+#else
+       udw_D(:,1,nfe) = walker%udvl(nfe)%D
+       udw_D(:,2,nfe) = walker%udvr(nfe)%D
+#endif
+    enddo
+    ! Host -> device: the stabilisation kernels of later steps work on the device copy of the stacks.
+    !$omp target update to(udv_U, udv_V, udw_U, udw_V)
+#if defined(STABLOG)
+    !$omp target update to(udv_L, udw_L)
+#else
+    !$omp target update to(udv_D, udw_D)
+#endif
+  End Subroutine gpu_put_udv
+
+!--------------------------------------------------------------------
+!> @brief
+!> Copies the UDV stacks from the mirror back into the walker (device -> host), the inverse of gpu_put_udv.
+!> @param[inout] walker walker whose udvst, udvl, udvr receive the data
+!--------------------------------------------------------------------
+  Subroutine gpu_get_udv(walker)
+    Implicit none
+    Type (qmc_walker_t), intent(inout) :: walker
+    Integer :: nfe, n
+    Call need_active('gpu_get_udv')
+    Call check_udv_layout(walker)
+    ! Device -> host: the CPU path (storage exchange, Tau_m, ...) reads the stacks of the walker.
+    !$omp target update from(udv_U, udv_V, udw_U, udw_V)
+#if defined(STABLOG)
+    !$omp target update from(udv_L, udw_L)
+#else
+    !$omp target update from(udv_D, udw_D)
+#endif
+    do nfe = 1, g_NFLeff
+       do n = 1, g_NSTM
+          walker%udvst(n,nfe)%U = udv_U(:,:,n,nfe)
+          walker%udvst(n,nfe)%V = udv_V(:,:,n,nfe)
+#if defined(STABLOG)
+          walker%udvst(n,nfe)%L = udv_L(:,n,nfe)
+#else
+          walker%udvst(n,nfe)%D = udv_D(:,n,nfe)
+#endif
+       enddo
+       walker%udvl(nfe)%U = udw_U(:,:,1,nfe)
+       walker%udvl(nfe)%V = udw_V(:,:,1,nfe)
+       walker%udvr(nfe)%U = udw_U(:,:,2,nfe)
+       walker%udvr(nfe)%V = udw_V(:,:,2,nfe)
+#if defined(STABLOG)
+       walker%udvl(nfe)%L = udw_L(:,1,nfe)
+       walker%udvr(nfe)%L = udw_L(:,2,nfe)
+#else
+       walker%udvl(nfe)%D = udw_D(:,1,nfe)
+       walker%udvr(nfe)%D = udw_D(:,2,nfe)
+#endif
+    enddo
+  End Subroutine gpu_get_udv
+
+  !> Stops the run if the mirror is not active (the pack/unpack routines need the buffers).
+  Subroutine need_active(who)
+    Implicit none
+    Character (len=*), intent(in) :: who
+    if (.not. gpu_active) then
+       write(error_unit,'(A,A,A)') ' ', who, ': the GPU mirror is not active'
+       call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+    endif
+  End Subroutine need_active
+
+  !> Stops the run if the walker layout differs from the one the mirror was built for.
+  Subroutine check_udv_layout(walker)
+    Implicit none
+    Type (qmc_walker_t), intent(in) :: walker
+    if (walker%NSTM /= g_NSTM .or. size(walker%udvst,1) /= g_NSTM .or. size(walker%udvst,2) /= g_NFLeff &
+         & .or. size(walker%udvl) /= g_NFLeff .or. size(walker%udvr) /= g_NFLeff) then
+       write(error_unit,'(A)') ' GPU pack/unpack: the walker layout (NSTM, N_FL_eff) differs from the mirror'
+       call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+    endif
+  End Subroutine check_udv_layout
+
+!--------------------------------------------------------------------
+!> Ticket 205: transfer and launch counts of the device updates (see upd_cnt), per run.
+  Subroutine report_update_counts()
+    Implicit none
+    Character (len=256) :: line
+    write(line,'(A,I0,A,I0,A,I0,A,I0,A,I0)') 'GPU update counts: WRAPGRUP/DO calls ', upd_cnt(10), ', site proposals tested ', &
+         & upd_cnt(1), ', accepted ', upd_cnt(2), ', site-wrap launches ', upd_cnt(3), ', update launches ', upd_cnt(4)
+    call info_line(line)
+    write(line,'(A,I0,A,I0,A,I0,A,I0,A,I0,A)') 'GPU update transfers: ratio-block D->H elements ', upd_cnt(5), &
+         & ', field H->D scalars ', upd_cnt(6), ', on-demand G copies H->D ', upd_cnt(7), ' and D->H ', upd_cnt(8), &
+         & ' (', upd_cnt(9), ' bytes)'
+    call info_line(line)
+  end subroutine report_update_counts
+
+!--------------------------------------------------------------------
+  Subroutine report_layout()
+    Implicit none
+    Integer(int64) :: tot
+    tot = 0
+    call lay('hop_start', 'int', shape(hop_start), 4_int64*size(hop_start), tot)
+    call lay('hop_meta', 'int', shape(hop_meta), 4_int64*size(hop_meta), tot)
+    call lay('hop_P', 'int', shape(hop_P), 4_int64*size(hop_P), tot)
+    call lay('hop_Rval', 'real', shape(hop_Rval), 8_int64*size(hop_Rval), tot)
+    call lay('hop_Cval', 'complex', shape(hop_Cval), 16_int64*size(hop_Cval), tot)
+    call lay('V_meta', 'int', shape(V_meta), 4_int64*size(V_meta), tot)
+    call lay('V_type', 'int', shape(V_type), 4_int64*size(V_type), tot)
+    call lay('V_P', 'int', shape(V_P), 4_int64*size(V_P), tot)
+    call lay('V_exp', 'complex', shape(V_exp), 16_int64*size(V_exp), tot)
+    call lay('nsigma_d', 'complex', shape(nsigma_d), 16_int64*size(nsigma_d), tot)
+    call lay('nsigma_t', 'int', shape(nsigma_t), 4_int64*size(nsigma_t), tot)
+    call lay('hop_gptr', 'int', shape(hop_gptr), 4_int64*size(hop_gptr), tot)
+    call lay('hop_aux', 'int', shape(hop_aux), 4_int64*size(hop_aux), tot)
+    call lay('hop_At', 'real', shape(hop_At), 8_int64*size(hop_At), tot)
+    call lay('hop_Ac', 'complex', shape(hop_Ac), 16_int64*size(hop_Ac), tot)
+    call lay('vr_ptr', 'int', shape(vr_ptr), 4_int64*size(vr_ptr), tot)
+    call lay('vr_ent', 'int', shape(vr_ent), 4_int64*size(vr_ent), tot)
+    call lay('G_d', 'complex', shape(G_d), 16_int64*size(G_d), tot)
+    call lay('udv_U', 'complex', shape(udv_U), 16_int64*size(udv_U), tot)
+    call lay('udv_V', 'complex', shape(udv_V), 16_int64*size(udv_V), tot)
+#if defined(STABLOG)
+    call lay('udv_L', 'real', shape(udv_L), 8_int64*size(udv_L), tot)
+    call lay('udw_L', 'real', shape(udw_L), 8_int64*size(udw_L), tot)
+#else
+    call lay('udv_D', 'complex', shape(udv_D), 16_int64*size(udv_D), tot)
+    call lay('udw_D', 'complex', shape(udw_D), 16_int64*size(udw_D), tot)
+#endif
+    call lay('udw_U', 'complex', shape(udw_U), 16_int64*size(udw_U), tot)
+    call lay('udw_V', 'complex', shape(udw_V), 16_int64*size(udw_V), tot)
+    if (have_tau) then
+       call lay('GT0_d', 'complex', shape(GT0_d), 16_int64*size(GT0_d), tot)
+       call lay('G0T_d', 'complex', shape(G0T_d), 16_int64*size(G0T_d), tot)
+       call lay('GTT_d', 'complex', shape(GTT_d), 16_int64*size(GTT_d), tot)
+    endif
+    call lay('scr_c', 'complex', shape(scr_c), 16_int64*size(scr_c), tot)
+    call lay('scr_vec', 'complex', shape(scr_vec), 16_int64*size(scr_vec), tot)
+    call lay('scr_r', 'real', shape(scr_r), 8_int64*size(scr_r), tot)
+    call lay('scr_ipiv', 'int', shape(scr_ipiv), 4_int64*size(scr_ipiv), tot)
+    call lay('scr_work', 'complex', shape(scr_work), 16_int64*size(scr_work), tot)
+    block
+      Character (len=256) :: line
+      write(line,'(A,I0,A)') 'GPU mirror total device bytes: ', tot, ' (arrays listed above)'
+      call info_line(line)
+    end block
+  end subroutine report_layout
+
+  Subroutine lay(name, typ, shp, nbytes, tot)
+    Implicit none
+    Character (len=*), intent(in) :: name, typ
+    Integer, intent(in) :: shp(:)
+    Integer(int64), intent(in) :: nbytes
+    Integer(int64), intent(inout) :: tot
+    Character (len=256) :: line, s
+    Integer :: i
+    s = ''
+    do i = 1, size(shp)
+       if (i > 1) s = trim(s)//','
+       write(s(len_trim(s)+1:),'(I0)') shp(i)
+    enddo
+    write(line,'(A,A,A,A,A,A,A,I0)') 'GPU mirror array ', trim(name), ' (', trim(s), ') ', trim(typ), ' bytes ', nbytes
+    call info_line(line)
+    tot = tot + nbytes
+  end subroutine lay
+
+!====================================================================
+!  Self-test (ALF_GPU_SELFTEST=1)
+!====================================================================
+!> @brief
+!> Linear congruential generator for the self-test (reproducible, independent of the QMC random numbers): uniform in (-0.5, 0.5).
+  Real (Kind=Kind(0.d0)) function rnd(s)
+    Implicit none
+    Integer(int64), intent(inout) :: s
+    s = mod(1103515245_int64*s + 12345_int64, 2147483648_int64)
+    rnd = real(s,kind(0.d0))/2147483648.d0 - 0.5d0
+  end function rnd
+
+!> @brief
+!> Fills M with complex numbers from rnd.
+  Subroutine rand_mat(M, s)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(out) :: M(:,:)
+    Integer(int64), intent(inout) :: s
+    Integer :: i, j
+    Real (Kind=Kind(0.d0)) :: re, im
+    do j = 1, size(M,2)
+       do i = 1, size(M,1)
+          re = rnd(s)
+          im = rnd(s)
+          M(i,j) = cmplx(re, im, kind(0.d0))
+       enddo
+    enddo
+  end subroutine rand_mat
+
+  !> @brief
+  !> NaN/Inf test on the bit pattern (exponent all ones); immune to fast-math options of the compilers
+  Logical function is_finite(x)
+    Implicit none
+    Real (Kind=Kind(0.d0)), intent(in) :: x
+    is_finite = ( iand(ishft(transfer(x, 0_int64), -52), 2047_int64) /= 2047_int64 )
+  end function is_finite
+
+!> @brief
+!> .true. if real and imaginary part of z are finite (bit test).
+  Logical function finite_c(z)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in) :: z
+    finite_c = is_finite(real(z)) .and. is_finite(aimag(z))
+  end function finite_c
+
+  !> @brief
+  !> max |A-B| / max |B|; any non-finite entry in A or B gives huge(1.d0), so that no tolerance test can pass
+  Real (Kind=Kind(0.d0)) function rel_diff(A, B)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in) :: A(:,:), B(:,:)
+    Integer :: i, j
+    Real (Kind=Kind(0.d0)) :: d, md, mb
+    md = 0.d0; mb = 0.d0
+    do j = 1, size(A,2)
+       do i = 1, size(A,1)
+          if (.not. (finite_c(A(i,j)) .and. finite_c(B(i,j)))) then
+             rel_diff = huge(1.d0); return
+          endif
+          d = abs(A(i,j)-B(i,j)); if (d > md) md = d
+          d = abs(B(i,j));        if (d > mb) mb = d
+       enddo
+    enddo
+    rel_diff = md / max(mb, tiny(1.d0))
+  end function rel_diff
+
+  ! number of non-finite entries of a real(8)/complex(8) vector
+  Integer function n_nonfinite_r(n, x)
+    Implicit none
+    Integer, intent(in) :: n
+    Real (Kind=Kind(0.d0)), intent(in) :: x(n)
+    Integer :: i
+    n_nonfinite_r = 0
+    do i = 1, n
+       if (.not. is_finite(x(i))) n_nonfinite_r = n_nonfinite_r + 1
+    enddo
+  end function n_nonfinite_r
+
+  Integer function n_nonfinite_c(n, x)
+    Implicit none
+    Integer, intent(in) :: n
+    Complex (Kind=Kind(0.d0)), intent(in) :: x(n)
+    Integer :: i
+    n_nonfinite_c = 0
+    do i = 1, n
+       if (.not. finite_c(x(i))) n_nonfinite_c = n_nonfinite_c + 1
+    enddo
+  end function n_nonfinite_c
+
+  Complex (Kind=Kind(0.d0)) function a_el(e, k, i, j)
+    Implicit none
+    Integer, intent(in) :: e, k, i, j
+    Integer :: nd, mo
+    nd = hop_meta(2,e); mo = hop_meta(4,e) + (k-1)*nd*nd + i + (j-1)*nd
+    if (hop_meta(1,e) == 1) then
+       a_el = cmplx(hop_Rval(mo), 0.d0, kind(0.d0))
+    else
+       a_el = hop_Cval(mo)
+    endif
+  end function a_el
+
+  ! M(P,:) = A_k * M(P,:)  (own loops on the flat arrays, host)
+  Subroutine el_left(e, k, M)
+    Implicit none
+    Integer, intent(in) :: e, k
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(:,:)
+    Complex (Kind=Kind(0.d0)), allocatable :: W(:,:)
+    Complex (Kind=Kind(0.d0)) :: z
+    Integer :: nd, po, i, j, l
+    nd = hop_meta(2,e); po = hop_meta(3,e)
+    allocate(W(nd,size(M,2)))
+    do j = 1, size(M,2)
+       do i = 1, nd
+          W(i,j) = M(hop_P(po+i),j)
+       enddo
+    enddo
+    do j = 1, size(M,2)
+       do i = 1, nd
+          z = cmplx(0.d0,0.d0,kind(0.d0))
+          do l = 1, nd
+             z = z + a_el(e,k,i,l)*W(l,j)
+          enddo
+          M(hop_P(po+i),j) = z
+       enddo
+    enddo
+    deallocate(W)
+  end subroutine el_left
+
+  ! M(:,P) = M(:,P) * A_k
+  Subroutine el_right(e, k, M)
+    Implicit none
+    Integer, intent(in) :: e, k
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(:,:)
+    Complex (Kind=Kind(0.d0)), allocatable :: W(:,:)
+    Complex (Kind=Kind(0.d0)) :: z
+    Integer :: nd, po, i, j, l
+    nd = hop_meta(2,e); po = hop_meta(3,e)
+    allocate(W(size(M,1),nd))
+    do j = 1, nd
+       do i = 1, size(M,1)
+          W(i,j) = M(i,hop_P(po+j))
+       enddo
+    enddo
+    do j = 1, nd
+       do i = 1, size(M,1)
+          z = cmplx(0.d0,0.d0,kind(0.d0))
+          do l = 1, nd
+             z = z + W(i,l)*a_el(e,k,l,j)
+          enddo
+          M(i,hop_P(po+j)) = z
+       enddo
+    enddo
+    deallocate(W)
+  end subroutine el_right
+
+  ! Same Mat_subroutines routine Hop_mod calls, fed with slices of the flat arrays (tests offsets, order, data).
+  Subroutine el_lib(e, k, side, M)
+    Implicit none
+    Integer, intent(in) :: e, k
+    Character (len=1), intent(in) :: side
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(:,:)
+    Integer :: nd, po, mo
+    nd = hop_meta(2,e); po = hop_meta(3,e); mo = hop_meta(4,e) + (k-1)*nd*nd
+    if (hop_meta(1,e) == 1) then
+       call ZDSLSYMM(side, 'U', nd, size(M,1), size(M,2), hop_Rval(mo+1:mo+nd*nd), hop_P(po+1:po+nd), M)
+    else
+       call ZSLHEMM (side, 'U', nd, size(M,1), size(M,2), hop_Cval(mo+1:mo+nd*nd), hop_P(po+1:po+nd), M)
+    endif
+  end subroutine el_lib
+
+  ! Apply the elements of flavour nf in the given order and variant.  mode: 1 own loops, 2 library on slices
+  Subroutine flat_apply(nf, op, M, mode)
+    Implicit none
+    Integer, intent(in) :: nf, op, mode
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(:,:)
+    Integer :: e, e1, e2
+    e1 = hop_start(nf); e2 = hop_start(nf+1) - 1
+    select case (op)
+    case (1)   ! Hop_mod_mmthr:    left, mat, descending
+       do e = e2, e1, -1
+          call app(e, 1, 'L', M, mode)
+       enddo
+    case (2)   ! Hop_mod_mmthr_m1: left, invmat, ascending
+       do e = e1, e2
+          call app(e, 2, 'L', M, mode)
+       enddo
+    case (3)   ! Hop_mod_mmthl:    right, mat, ascending
+       do e = e1, e2
+          call app(e, 1, 'R', M, mode)
+       enddo
+    case (4)   ! Hop_mod_mmthlc:   left, mat, ascending
+       do e = e1, e2
+          call app(e, 1, 'L', M, mode)
+       enddo
+    case (5)   ! Hop_mod_mmthl_m1: right, invmat, descending
+       do e = e2, e1, -1
+          call app(e, 2, 'R', M, mode)
+       enddo
+    case (6)   ! Hop_mod_Symm:     per element left mat_1D2 then right invmat_1D2, descending
+       do e = e2, e1, -1
+          call app(e, 3, 'L', M, mode)
+          call app(e, 4, 'R', M, mode)
+       enddo
+    end select
+  contains
+    Subroutine app(e, k, side, M, mode)
+      Integer, intent(in) :: e, k, mode
+      Character (len=1), intent(in) :: side
+      Complex (Kind=Kind(0.d0)), intent(inout) :: M(:,:)
+      if (mode == 1) then
+         if (side == 'L') then
+            call el_left(e, k, M)
+         else
+            call el_right(e, k, M)
+         endif
+      else
+         call el_lib(e, k, side, M)
+      endif
+    end subroutine app
+  end subroutine flat_apply
+
+!> @brief
+!> Reports a failed self-test check (stderr, info file) and stops the run.
+  Subroutine selftest_fail(msg)
+    Implicit none
+    Character (len=*), intent(in) :: msg
+    write(error_unit,'(A,A)') ' GPU self-test FAILED: ', msg
+    call info_line('GPU self-test FAILED: '//trim(msg))
+    call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+  end subroutine selftest_fail
+
+  Subroutine gpu_selftest()
+    Implicit none
+    Real (Kind=Kind(0.d0)), parameter :: tol = 1.d-14
+    Integer(int64) :: s
+    Integer :: nf, nfe, op, n, sp, nt, i, nbad, nsp
+    Type (Operator) :: Otmp
+    Real (Kind=Kind(0.d0)) :: dw(2), dskip
+    Complex (Kind=Kind(0.d0)), allocatable :: M0(:,:), M1(:,:), M2(:,:), In3(:,:,:), Out3(:,:,:)
+    Real (Kind=Kind(0.d0)) :: dloop(6), dlib(6), dv(4), d, dnl, dnr
+    Character (len=256) :: line
+    Character (len=1) :: cop
+    Character (len=10), parameter :: opname(6) = (/ 'mmthr     ', 'mmthr_m1  ', 'mmthl     ', 'mmthlc    ', &
+         & 'mmthl_m1  ', 'Symm      ' /)
+
+    s = 20251028_int64
+    allocate(M0(Ndim,Ndim), M1(Ndim,Ndim), M2(Ndim,Ndim))
+    dloop = 0.d0; dlib = 0.d0
+
+    ! ---- inputs must be finite (max/maxval would drop NaN) ----
+    nbad = n_nonfinite_r(size(hop_Rval), hop_Rval) + n_nonfinite_c(size(hop_Cval), hop_Cval) &
+         & + n_nonfinite_c(size(V_exp), V_exp) + n_nonfinite_c(size(nsigma_d), nsigma_d)
+    write(line,'(A,I0,A)') 'GPU self-test non-finite entries in mirror arrays: ', nbad, ' (expected 0)'
+    call info_line(line); write(output_unit,'(1X,A)') trim(line)
+    if (nbad /= 0) call selftest_fail('non-finite value in the mirror')
+
+    ! ---- hopping: flat arrays vs Hop_mod routines ----
+    do nf = 1, N_FL
+       do op = 1, 5
+          call rand_mat(M0, s)
+          M1 = M0
+          select case (op)
+          case (1); call Hop_mod_mmthr   (M1, nf, 1)
+          case (2); call Hop_mod_mmthr_m1(M1, nf, 1)
+          case (3); call Hop_mod_mmthl   (M1, nf, 1)
+          case (4); call Hop_mod_mmthlc  (M1, nf, 1)
+          case (5); call Hop_mod_mmthl_m1(M1, nf, 1)
+          end select
+          M2 = M0; call flat_apply(nf, op, M2, 1); dloop(op) = max(dloop(op), rel_diff(M2, M1))
+          M2 = M0; call flat_apply(nf, op, M2, 2); dlib(op)  = max(dlib(op),  rel_diff(M2, M1))
+       enddo
+    enddo
+    ! Symm: Out = e^{-dtau T/2} In e^{dtau T/2} for the calculated flavours
+    allocate(In3(Ndim,Ndim,N_FL), Out3(Ndim,Ndim,N_FL))
+    do nf = 1, N_FL
+       call rand_mat(M0, s); In3(:,:,nf) = M0
+    enddo
+    call Hop_mod_Symm(Out3, In3, 1)
+    do nfe = 1, N_FL_eff
+       nf = Calc_Fl_map(nfe)
+       M2 = In3(:,:,nf); call flat_apply(nf, 6, M2, 1); dloop(6) = max(dloop(6), rel_diff(M2, Out3(:,:,nf)))
+       M2 = In3(:,:,nf); call flat_apply(nf, 6, M2, 2); dlib(6)  = max(dlib(6),  rel_diff(M2, Out3(:,:,nf)))
+    enddo
+    deallocate(In3, Out3)
+    do op = 1, 6
+       write(line,'(A,A,A,ES10.3,A,ES10.3,A,ES8.1)') 'GPU self-test hopping ', opname(op), ' max rel diff: own loops ', &
+            & dloop(op), ', same library routine ', dlib(op), ' (tol ', tol
+       call info_line(line); write(output_unit,'(1X,A)') trim(line)
+       if (.not. (dloop(op) <= tol .and. dlib(op) <= tol)) call selftest_fail('hopping '//trim(opname(op)))
+    enddo
+
+    ! ---- Op_V: flat table vs Op_mmultL/R ----
+    dv = 0.d0; nsp = 0
+    do nf = 1, N_FL
+       do n = 1, g_Nop
+          nt = V_type(n)
+          do sp = -nt, nt
+             if (sp == 0) cycle
+             nsp = nsp + 1
+             do i = 1, 2
+                if (i == 1) cop = 'n'
+                if (i == 2) cop = 'c'
+                call rand_mat(M0, s)
+                ! right side: rows scaled, Op_mmultR (Mat = Op * Mat)
+                M1 = M0; call Op_mmultR(M1, Op_V(n,nf), cmplx(real(sp,kind(0.d0)),0.d0,kind(0.d0)), cop, 1)
+                M2 = M0; call flat_V_R(n, nf, sp, cop, M2, V_meta(4,n,nf))
+                dv(2*(i-1)+1) = max(dv(2*(i-1)+1), rel_diff(M2, M1))
+                ! left side: columns scaled, Op_mmultL with sign +1 and -1
+                M1 = M0; call Op_mmultL(M1, Op_V(n,nf), cmplx(real(sp,kind(0.d0)),0.d0,kind(0.d0)), cop, 1, 1)
+                M2 = M0; call flat_V_L(n, nf, sp, cop, M2, V_meta(4,n,nf))
+                d = rel_diff(M2, M1)
+                M1 = M0; call Op_mmultL(M1, Op_V(n,nf), cmplx(real(sp,kind(0.d0)),0.d0,kind(0.d0)), cop, 1, -1)
+                M2 = M0; call flat_V_L(n, nf, -sp, cop, M2, V_meta(4,n,nf))
+                d = max(d, rel_diff(M2, M1))
+                dv(2*(i-1)+2) = max(dv(2*(i-1)+2), d)
+             enddo
+          enddo
+       enddo
+    enddo
+    ! wrap meaning (Op_Wrapup/Op_Wrapdo, N_type 1, no skip) and skip meaning (Op_mmultL/R early return for tiny g):
+    ! a shallow copy of an operator with g set to 1e-20 (pointer components shared, only the scalar g changes)
+    dw = 0.d0; dskip = 0.d0
+    do nf = 1, N_FL
+       do n = 1, g_Nop
+          nt = V_type(n)
+          do sp = -nt, nt
+             if (sp == 0) cycle
+             call rand_mat(M0, s)
+             M1 = M0; call Op_Wrapup(M1, Op_V(n,nf), cmplx(real(sp,kind(0.d0)),0.d0,kind(0.d0)), Ndim, 1, 1)
+             M2 = M0; call flat_V_wrap(n, nf, sp, 1, M2); dw(1) = max(dw(1), rel_diff(M2, M1))
+             M1 = M0; call Op_Wrapdo(M1, Op_V(n,nf), cmplx(real(sp,kind(0.d0)),0.d0,kind(0.d0)), Ndim, 1, 1)
+             M2 = M0; call flat_V_wrap(n, nf, sp, -1, M2); dw(2) = max(dw(2), rel_diff(M2, M1))
+          enddo
+       enddo
+    enddo
+    Otmp = Op_V(1,1)
+    Otmp%g = cmplx(1.d-20, 0.d0, kind(0.d0))
+    nt = V_type(1)
+    if (v_skip(Otmp) /= 1 .or. v_skip(Op_V(1,1)) /= V_meta(4,1,1)) call selftest_fail('skip flag')
+    do sp = -nt, nt
+       if (sp == 0) cycle
+       call rand_mat(M0, s)
+       M1 = M0; call Op_mmultR(M1, Otmp, cmplx(real(sp,kind(0.d0)),0.d0,kind(0.d0)), 'n', 1)
+       M2 = M0; call flat_V_R(1, 1, sp, 'n', M2, v_skip(Otmp)); dskip = max(dskip, rel_diff(M2, M1))
+       if (rel_diff(M1, M0) /= 0.d0) call selftest_fail('Op_mmultR did not return early for tiny g')
+       M1 = M0; call Op_mmultL(M1, Otmp, cmplx(real(sp,kind(0.d0)),0.d0,kind(0.d0)), 'n', 1, 1)
+       M2 = M0; call flat_V_L(1, 1, sp, 'n', M2, v_skip(Otmp)); dskip = max(dskip, rel_diff(M2, M1))
+       ! wrap ignores g: Op_Wrapup on the tiny-g copy applies the (unchanged) table
+       M1 = M0; call Op_Wrapup(M1, Otmp, cmplx(real(sp,kind(0.d0)),0.d0,kind(0.d0)), Ndim, 1, 1)
+       M2 = M0; call flat_V_wrap(1, 1, sp, 1, M2); dskip = max(dskip, rel_diff(M2, M1))
+       if (abs(Op_V(1,1)%g) > 0.d0 .and. rel_diff(M1, M0) == 0.d0) call selftest_fail('Op_Wrapup skipped for tiny g')
+    enddo
+    write(line,'(A,ES10.3,A,ES10.3,A,ES10.3,A,ES8.1)') 'GPU self-test Op_V wrap: Op_Wrapup ', dw(1), ', Op_Wrapdo ', dw(2), &
+         & '; tiny-g copy (L/R skip honoured, wrap ignores it) ', dskip, ' (tol ', tol
+    call info_line(line); write(output_unit,'(1X,A)') trim(line)
+    if (.not. (dw(1) <= tol .and. dw(2) <= tol .and. dskip <= tol)) call selftest_fail('Op_V wrap/skip')
+
+    dnr = max(dv(1), dv(3)); dnl = max(dv(2), dv(4))
+    write(line,'(A,I0,A,ES10.3,A,ES10.3,A,ES8.1)') 'GPU self-test Op_V (', nsp, &
+         & ' operator/field cases, N and C) max rel diff: right (Op_mmultR) ', dnr, &
+         & ', left (Op_mmultL, both signs) ', dnl, ' (tol ', tol
+    call info_line(line); write(output_unit,'(1X,A)') trim(line)
+    if (.not. (dnr <= tol .and. dnl <= tol)) call selftest_fail('Op_V table')
+
+    ! ---- device round trip: target update from == host-built array, bit for bit ----
+    if (omp_get_num_devices() > 0) then
+      nbad = 0
+      call rt_i('hop_start', size(hop_start), hop_start, .false., nbad)
+      call rt_i('hop_meta', size(hop_meta), hop_meta, .false., nbad)
+      call rt_i('hop_P', size(hop_P), hop_P, .false., nbad)
+      call rt_r('hop_Rval', size(hop_Rval), hop_Rval, .false., nbad)
+      call rt_c('hop_Cval', size(hop_Cval), hop_Cval, .false., nbad)
+      call rt_i('V_meta', size(V_meta), V_meta, .false., nbad)
+      call rt_i('V_type', size(V_type), V_type, .false., nbad)
+      call rt_i('V_P', size(V_P), V_P, .false., nbad)
+      call rt_c('V_exp', size(V_exp), V_exp, .false., nbad)
+      call rt_c('nsigma_d', size(nsigma_d), nsigma_d, .false., nbad)
+      call rt_i('nsigma_t', size(nsigma_t), nsigma_t, .false., nbad)
+      ! buffers: fill a pattern, copy to the device, poison the host, copy back, compare, then zero both
+      call rt_c('G_d', size(G_d), G_d, .true., nbad)
+      call rt_c('udv_U', size(udv_U), udv_U, .true., nbad)
+      call rt_c('udv_V', size(udv_V), udv_V, .true., nbad)
+      call rt_c('udw_U', size(udw_U), udw_U, .true., nbad)
+      call rt_c('udw_V', size(udw_V), udw_V, .true., nbad)
+#if defined(STABLOG)
+      call rt_r('udv_L', size(udv_L), udv_L, .true., nbad)
+      call rt_r('udw_L', size(udw_L), udw_L, .true., nbad)
+#else
+      call rt_c('udv_D', size(udv_D), udv_D, .true., nbad)
+      call rt_c('udw_D', size(udw_D), udw_D, .true., nbad)
+#endif
+      if (have_tau) then
+         call rt_c('GT0_d', size(GT0_d), GT0_d, .true., nbad)
+         call rt_c('G0T_d', size(G0T_d), G0T_d, .true., nbad)
+         call rt_c('GTT_d', size(GTT_d), GTT_d, .true., nbad)
+      endif
+      call rt_c('scr_c', size(scr_c), scr_c, .true., nbad)
+      call rt_c('scr_vec', size(scr_vec), scr_vec, .true., nbad)
+      call rt_r('scr_r', size(scr_r), scr_r, .true., nbad)
+      call rt_i('scr_ipiv', size(scr_ipiv), scr_ipiv, .true., nbad)
+      call rt_c('scr_work', size(scr_work), scr_work, .true., nbad)
+      write(line,'(A,I0,A)') 'GPU self-test device round trip: arrays with bit mismatch: ', nbad, ' (expected 0)'
+      call info_line(line); write(output_unit,'(1X,A)') trim(line)
+      if (nbad /= 0) call selftest_fail('device round trip')
+    else
+       call info_line('GPU self-test device round trip: skipped (no offload device: host and device copy are the same memory)')
+       write(output_unit,'(A)') ' GPU self-test device round trip: skipped (no offload device, OpenMP host fallback)'
+    endif
+    ! ---- walker <-> mirror: pack, poison the walker, unpack, compare bit for bit ----
+    nbad = 0
+    call selftest_pack_unpack(nbad)
+    write(line,'(A,I0,A)') 'GPU self-test walker pack/unpack round trip (GR, udvst, udvl, udvr): mismatches: ', nbad, ' (expected 0)'
+    call info_line(line); write(output_unit,'(1X,A)') trim(line)
+    if (nbad /= 0) call selftest_fail('walker pack/unpack round trip')
+
+    call device_kernel_check()
+    deallocate(M0, M1, M2)
+    call info_line('GPU self-test PASSED')
+    write(output_unit,'(A)') ' GPU self-test PASSED'
+  end subroutine gpu_selftest
+
+  ! Rows of M scaled: Mat(P(i),:) *= E_exp(i,sp)   (Op_mmultR)
+  Subroutine flat_V_R(n, nf, sp, cop, M, skip)
+    Implicit none
+    Integer, intent(in) :: n, nf, sp, skip
+    Character (len=1), intent(in) :: cop
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(:,:)
+    Integer :: i, N1, po, eo, nt
+    Complex (Kind=Kind(0.d0)) :: z
+    if (skip == 1) return          ! Op_mmultR returns early for |g| < Eps_machine
+    N1 = V_meta(1,n,nf); po = V_meta(2,n,nf); eo = V_meta(3,n,nf); nt = V_type(n)
+    do i = 1, N1
+       z = V_exp(eo + i + (sp+nt)*N1)
+       if (cop == 'c' .or. cop == 'C') z = conjg(z)
+       M(V_P(po+i),:) = z*M(V_P(po+i),:)
+    enddo
+  end subroutine flat_V_R
+
+  ! Columns of M scaled: Mat(:,P(i)) *= E_exp(i,sp)   (Op_mmultL)
+  Subroutine flat_V_L(n, nf, sp, cop, M, skip)
+    Implicit none
+    Integer, intent(in) :: n, nf, sp, skip
+    Character (len=1), intent(in) :: cop
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(:,:)
+    Integer :: i, N1, po, eo, nt
+    Complex (Kind=Kind(0.d0)) :: z
+    if (skip == 1) return          ! Op_mmultL returns early for |g| < Eps_machine
+    N1 = V_meta(1,n,nf); po = V_meta(2,n,nf); eo = V_meta(3,n,nf); nt = V_type(n)
+    do i = 1, N1
+       z = V_exp(eo + i + (sp+nt)*N1)
+       if (cop == 'c' .or. cop == 'C') z = conjg(z)
+       M(:,V_P(po+i)) = z*M(:,V_P(po+i))
+    enddo
+  end subroutine flat_V_L
+
+  ! Op_Wrapup (dir = +1): rows by table(sp), then columns by table(-sp); Op_Wrapdo (dir = -1): the reverse.  No g check.
+  Subroutine flat_V_wrap(n, nf, sp, dir, M)
+    Implicit none
+    Integer, intent(in) :: n, nf, sp, dir
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(:,:)
+    Integer :: i, N1, po, eo, nt
+    N1 = V_meta(1,n,nf); po = V_meta(2,n,nf); eo = V_meta(3,n,nf); nt = V_type(n)
+    do i = 1, N1
+       M(V_P(po+i),:) = V_exp(eo + i + (dir*sp+nt)*N1) * M(V_P(po+i),:)
+    enddo
+    do i = 1, N1
+       M(:,V_P(po+i)) = V_exp(eo + i + (-dir*sp+nt)*N1) * M(:,V_P(po+i))
+    enddo
+  end subroutine flat_V_wrap
+
+  ! A trivial device kernel that reads the mirror without any map clause (arrays must be present).
+  Subroutine device_kernel_check()
+    Implicit none
+    Integer :: i, isum_h, isum_d
+    Real (Kind=Kind(0.d0)) :: rs_h, rs_d, errr
+    Character (len=256) :: line
+    isum_h = sum(hop_P) + sum(V_P) + sum(nsigma_t)
+    rs_h = sum(hop_Rval) + sum(real(V_exp))
+    if (.not. is_finite(rs_h)) call selftest_fail('non-finite host checksum')
+    isum_d = 0; rs_d = 0.d0
+    !$omp target teams distribute parallel do reduction(+:isum_d) map(tofrom: isum_d)
+    do i = 1, size(hop_P)
+       isum_d = isum_d + hop_P(i)
+    enddo
+    !$omp target teams distribute parallel do reduction(+:isum_d) map(tofrom: isum_d)
+    do i = 1, size(V_P)
+       isum_d = isum_d + V_P(i)
+    enddo
+    !$omp target teams distribute parallel do reduction(+:isum_d) map(tofrom: isum_d)
+    do i = 1, size(nsigma_t)
+       isum_d = isum_d + nsigma_t(i)
+    enddo
+    !$omp target teams distribute parallel do reduction(+:rs_d) map(tofrom: rs_d)
+    do i = 1, size(hop_Rval)
+       rs_d = rs_d + hop_Rval(i)
+    enddo
+    !$omp target teams distribute parallel do reduction(+:rs_d) map(tofrom: rs_d)
+    do i = 1, size(V_exp)
+       rs_d = rs_d + real(V_exp(i))
+    enddo
+    if (.not. is_finite(rs_d)) call selftest_fail('non-finite device checksum')
+    errr = abs(rs_d - rs_h) / max(abs(rs_h), tiny(1.d0))
+    write(line,'(A,I0,A,I0,A,ES10.3)') 'GPU self-test device kernel: integer checksum host ', isum_h, ' device ', isum_d, &
+         & ', real checksum rel diff ', errr
+    call info_line(line); write(output_unit,'(1X,A)') trim(line)
+    if (isum_h /= isum_d .or. .not. (errr <= 1.d-12)) call selftest_fail('device kernel checksum')
+  end subroutine device_kernel_check
+
+!--------------------------------------------------------------------
+!> Fills a scratch walker (shapes of the mirror) with a reproducible pattern: the same seed gives the same bits.
+!--------------------------------------------------------------------
+  Subroutine fill_scratch_walker(w, seed)
+    Implicit none
+    Type (qmc_walker_t), intent(inout) :: w
+    Integer(int64), intent(in) :: seed
+    Integer(int64) :: s
+    Integer :: nf, nfe, n, i
+    s = seed
+    do nf = 1, g_NFL
+       call rand_mat(w%GR(:,:,nf), s)
+    enddo
+    do nfe = 1, g_NFLeff
+       do n = 1, g_NSTM
+          call fill_udv(w%udvst(n,nfe), s)
+       enddo
+       call fill_udv(w%udvl(nfe), s)
+       call fill_udv(w%udvr(nfe), s)
+    enddo
+  contains
+    Subroutine fill_udv(u, s)
+      Type (UDV_State), intent(inout) :: u
+      Integer(int64), intent(inout) :: s
+      call rand_mat(u%U, s)
+      call rand_mat(u%V, s)
+#if defined(STABLOG)
+      do i = 1, size(u%L)
+         u%L(i) = rnd(s)
+      enddo
+#else
+      do i = 1, size(u%D)
+         u%D(i) = cmplx(rnd(s), rnd(s), kind(0.d0))
+      enddo
+#endif
+    end Subroutine fill_udv
+  end Subroutine fill_scratch_walker
+
+!--------------------------------------------------------------------
+!> Self-test of gpu_put_G/get_G/put_udv/get_udv on scratch walkers: pack a pattern, overwrite the walker with another
+!> one, unpack, compare bit for bit with the pattern.  nbad counts the mismatching arrays.
+!--------------------------------------------------------------------
+  Subroutine selftest_pack_unpack(nbad)
+    Implicit none
+    Integer, intent(inout) :: nbad
+    Type (qmc_walker_t) :: w, wref
+    Integer :: nf, nfe, n
+    call alloc_scratch_walker(w)
+    call alloc_scratch_walker(wref)
+    call fill_scratch_walker(wref, 4711_int64)
+    call fill_scratch_walker(w, 4711_int64)
+    call gpu_put_G(w)
+    call gpu_put_udv(w)
+    call fill_scratch_walker(w, 99_int64)          ! poison: different bits
+    call gpu_get_G(w)
+    call gpu_get_udv(w)
+    do nfe = 1, g_NFLeff
+       nf = Calc_Fl_map(nfe)
+       if (.not. same_bits_c(size(w%GR(:,:,nf)), w%GR(:,:,nf), wref%GR(:,:,nf))) nbad = nbad + 1
+       do n = 1, g_NSTM
+          nbad = nbad + n_diff_udv(w%udvst(n,nfe), wref%udvst(n,nfe))
+       enddo
+       nbad = nbad + n_diff_udv(w%udvl(nfe), wref%udvl(nfe)) + n_diff_udv(w%udvr(nfe), wref%udvr(nfe))
+    enddo
+    call free_scratch_walker(w)
+    call free_scratch_walker(wref)
+  end Subroutine selftest_pack_unpack
+
+  !> number of the arrays U, V, D (L) of two UDV states whose bits differ
+  Integer Function n_diff_udv(a, b)
+    Implicit none
+    Type (UDV_State), intent(in) :: a, b
+    n_diff_udv = 0
+    if (.not. same_bits_c(size(a%U), a%U, b%U)) n_diff_udv = n_diff_udv + 1
+    if (.not. same_bits_c(size(a%V), a%V, b%V)) n_diff_udv = n_diff_udv + 1
+#if defined(STABLOG)
+    if (.not. same_bits(size(a%L), a%L, b%L)) n_diff_udv = n_diff_udv + 1
+#else
+    if (.not. same_bits_c(size(a%D), a%D, b%D)) n_diff_udv = n_diff_udv + 1
+#endif
+  end Function n_diff_udv
+
+  Subroutine alloc_scratch_walker(w)
+    Implicit none
+    Type (qmc_walker_t), intent(inout) :: w
+    Integer :: nfe, n
+    w%NSTM = g_NSTM
+    allocate(w%GR(g_Ndim,g_Ndim,g_NFL))
+    allocate(w%udvl(g_NFLeff), w%udvr(g_NFLeff), w%udvst(g_NSTM,g_NFLeff))
+    do nfe = 1, g_NFLeff
+       call w%udvl(nfe)%alloc(g_Ndim)
+       call w%udvr(nfe)%alloc(g_Ndim)
+       do n = 1, g_NSTM
+          call w%udvst(n,nfe)%alloc(g_Ndim)
+       enddo
+    enddo
+  end Subroutine alloc_scratch_walker
+
+  Subroutine free_scratch_walker(w)
+    Implicit none
+    Type (qmc_walker_t), intent(inout) :: w
+    Integer :: nfe, n
+    do nfe = 1, g_NFLeff
+       call w%udvl(nfe)%dealloc
+       call w%udvr(nfe)%dealloc
+       do n = 1, g_NSTM
+          call w%udvst(n,nfe)%dealloc
+       enddo
+    enddo
+    deallocate(w%GR, w%udvl, w%udvr, w%udvst)
+  end Subroutine free_scratch_walker
+
+!--------------------------------------------------------------------
+! Round-trip helpers.  fill=.false.: x holds the host-built data; save it, poison x, "target update from", compare.
+! fill=.true. (device-only buffers): fill pattern, "target update to", poison, "from", compare, then zero both.
+!--------------------------------------------------------------------
+  Subroutine rt_c(name, n, x, fill, nbad)
+    Implicit none
+    Character (len=*), intent(in) :: name
+    Integer, intent(in) :: n
+    Complex (Kind=Kind(0.d0)), intent(inout) :: x(n)
+    Logical, intent(in) :: fill
+    Integer, intent(inout) :: nbad
+    Complex (Kind=Kind(0.d0)), allocatable :: c(:)
+    Integer :: i
+    Logical :: same
+    allocate(c(n))
+    if (fill) then
+       do i = 1, n
+          x(i) = cmplx(1.d0 + mod(i,977), -1.d0 - mod(i,31)*0.5d0, kind(0.d0))
+       enddo
+       !$omp target update to(x)
+    endif
+    c = x
+    x = cmplx(1.2345d-300, -7.6543d-300, kind(0.d0))
+    !$omp target update from(x)
+    same = same_bits_c(n, x, c)
+    if (.not. same) then
+       nbad = nbad + 1
+       write(error_unit,*) 'round trip mismatch: ', name
+    endif
+    if (fill) then
+       x = cmplx(0.d0, 0.d0, kind(0.d0))
+       !$omp target update to(x)
+    endif
+    deallocate(c)
+  end subroutine rt_c
+
+  Subroutine rt_r(name, n, x, fill, nbad)
+    Implicit none
+    Character (len=*), intent(in) :: name
+    Integer, intent(in) :: n
+    Real (Kind=Kind(0.d0)), intent(inout) :: x(n)
+    Logical, intent(in) :: fill
+    Integer, intent(inout) :: nbad
+    Real (Kind=Kind(0.d0)), allocatable :: c(:)
+    Integer :: i
+    allocate(c(n))
+    if (fill) then
+       do i = 1, n
+          x(i) = 1.d0 + mod(i,977)*0.25d0
+       enddo
+       !$omp target update to(x)
+    endif
+    c = x
+    x = 1.2345d-300
+    !$omp target update from(x)
+    if (.not. same_bits(n, x, c)) then
+       nbad = nbad + 1
+       write(error_unit,*) 'round trip mismatch: ', name
+    endif
+    if (fill) then
+       x = 0.d0
+       !$omp target update to(x)
+    endif
+    deallocate(c)
+  end subroutine rt_r
+
+  Subroutine rt_i(name, n, x, fill, nbad)
+    Implicit none
+    Character (len=*), intent(in) :: name
+    Integer, intent(in) :: n
+    Integer, intent(inout) :: x(n)
+    Logical, intent(in) :: fill
+    Integer, intent(inout) :: nbad
+    Integer, allocatable :: c(:)
+    Integer :: i
+    allocate(c(n))
+    if (fill) then
+       do i = 1, n
+          x(i) = 1 + mod(i,977)
+       enddo
+       !$omp target update to(x)
+    endif
+    c = x
+    x = -123456789
+    !$omp target update from(x)
+    if (any(x /= c)) then
+       nbad = nbad + 1
+       write(error_unit,*) 'round trip mismatch: ', name
+    endif
+    if (fill) then
+       x = 0
+       !$omp target update to(x)
+    endif
+    deallocate(c)
+  end subroutine rt_i
+
+!> @brief
+!> Bit-for-bit comparison of n complex(8) values.
+  Logical function same_bits_c(n, a, b)
+    Implicit none
+    Integer, intent(in) :: n
+    Complex (Kind=Kind(0.d0)), intent(in) :: a(n), b(n)
+    Integer :: i
+    same_bits_c = .true.
+    do i = 1, n
+       if (transfer(real(a(i)), 0_int64) /= transfer(real(b(i)), 0_int64) .or. &
+           transfer(aimag(a(i)), 0_int64) /= transfer(aimag(b(i)), 0_int64)) then
+          same_bits_c = .false.; return
+       endif
+    enddo
+  end function same_bits_c
+
+  ! bit-for-bit comparison of n real(8) values
+  Logical function same_bits(n, a, b)
+    Implicit none
+    Integer, intent(in) :: n
+    Real (Kind=Kind(0.d0)), intent(in) :: a(n), b(n)
+    Integer :: i
+    same_bits = .true.
+    do i = 1, n
+       if (transfer(a(i), 0_int64) /= transfer(b(i), 0_int64)) then
+          same_bits = .false.; return
+       endif
+    enddo
+  end function same_bits
+
+End Module gpu_state_mod
+#endif

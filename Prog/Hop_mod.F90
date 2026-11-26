@@ -296,4 +296,96 @@
           enddo
 
         End Subroutine Hop_mod_Symm
+#ifdef ALF_GPU
+!--------------------------------------------------------------------
+!> GPU mirror (P2.4 step 1b): read-only accessors used by gpu_state_mod. Not compiled without ALF_GPU.
+!> Hop_mod_gpu_ncheck: number of hopping elements per flavour (size(Op_T,1)).
+!--------------------------------------------------------------------
+        Integer function Hop_mod_gpu_ncheck()
+          Implicit none
+          Hop_mod_gpu_ncheck = Ncheck
+        end function Hop_mod_gpu_ncheck
+
+!--------------------------------------------------------------------
+!> Returns the element nc of flavour nf exactly as stored in ExpOpT_vec.
+!> ekind = 1 real, 2 complex, 3 not supported (time dependent or unknown type).
+!> active = the routines of this module apply the element (g*g > Zero), otherwise they skip it.
+!> P(1:nh) projector; rmat or cmat (nh,nh,4) = mat, invmat, mat_1D2, invmat_1D2 (the one matching ekind is allocated).
+!--------------------------------------------------------------------
+        subroutine Hop_mod_gpu_element(nf, nc, ekind, nh, active, P, rmat, cmat)
+          Implicit none
+          Integer, intent(in)  :: nf, nc
+          Integer, intent(out) :: ekind, nh
+          Logical, intent(out) :: active
+          Integer, allocatable, intent(out) :: P(:)
+          Real    (Kind=Kind(0.d0)), allocatable, intent(out) :: rmat(:,:,:)
+          Complex (Kind=Kind(0.d0)), allocatable, intent(out) :: cmat(:,:,:)
+
+          class(ContainerElementBase), pointer :: dummy
+
+          ekind = 3; nh = 0; active = .false.
+          dummy => ExpOpT_vec(nf)%at(nc)
+          select type (dummy)
+          type is (RealExpOpT)
+             ekind = 1
+             nh = dummy%Ndim_hop
+             active = ( dummy%g*dummy%g > dummy%Zero )
+             allocate(P(nh), rmat(nh,nh,4))
+             P = dummy%P
+             rmat(:,:,1) = dummy%mat
+             rmat(:,:,2) = dummy%invmat
+             rmat(:,:,3) = dummy%mat_1D2
+             rmat(:,:,4) = dummy%invmat_1D2
+          type is (CmplxExpOpT)
+             ekind = 2
+             nh = dummy%Ndim_hop
+             active = ( dble(dummy%g*conjg(dummy%g)) > dummy%Zero )
+             allocate(P(nh), cmat(nh,nh,4))
+             P = dummy%P
+             cmat(:,:,1) = dummy%mat
+             cmat(:,:,2) = dummy%invmat
+             cmat(:,:,3) = dummy%mat_1D2
+             cmat(:,:,4) = dummy%invmat_1D2
+          class default
+             ekind = 3
+          end select
+        end subroutine Hop_mod_gpu_element
+
+!--------------------------------------------------------------------
+!> Time-dependent hopping element (OpT_time_dependent) nc of flavour nf, as stored in ExpOpT_vec.
+!> is_td = .false. for every other element type (all other outputs are then unallocated / 0).
+!> T = U diag(E) U^dagger on the sites P(1:nh); gt(1:Ltrot) = g_t; symm_el = the element's Symm flag (set at init from Symm).
+!> The host routines apply  exp(g E) in the U basis, i.e. the matrix A(g) = U exp(g E) U^dagger, with
+!>   lmult / rmult      g = g_t(t)  (symm: 0.5*(g_t(t) + g_t(t-1)), t-1 = Ltrot for t = 1)
+!>   lmultinv / rmultinv: A(-g);   adjointaction: A(g_t(t)/2) from the left, A(-g_t(t')/2) from the right.
+!--------------------------------------------------------------------
+        subroutine Hop_mod_gpu_td_element(nf, nc, is_td, nh, symm_el, zero, P, U, E, gt)
+          Implicit none
+          Integer, intent(in)  :: nf, nc
+          Logical, intent(out) :: is_td, symm_el
+          Integer, intent(out) :: nh
+          Real    (Kind=Kind(0.d0)), intent(out) :: zero
+          Integer, allocatable, intent(out) :: P(:)
+          Complex (Kind=Kind(0.d0)), allocatable, intent(out) :: U(:,:), gt(:)
+          Real    (Kind=Kind(0.d0)), allocatable, intent(out) :: E(:)
+
+          class(ContainerElementBase), pointer :: dummy
+
+          is_td = .false.; nh = 0; symm_el = .false.; zero = 0.d0
+          dummy => ExpOpT_vec(nf)%at(nc)
+          select type (dummy)
+          type is (OpT_time_dependent)
+             is_td = .true.
+             nh = dummy%Ndim_hop
+             symm_el = dummy%symm
+             zero = dummy%Zero
+             P = dummy%P
+             U = dummy%U
+             E = dummy%E
+             gt = dummy%g_t
+          class default
+             continue
+          end select
+        end subroutine Hop_mod_gpu_td_element
+#endif
       end Module Hop_mod
