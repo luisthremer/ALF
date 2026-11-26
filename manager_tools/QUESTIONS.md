@@ -4,7 +4,15 @@ Short form in `STATUS.md` ("Waiting for you"). Answer in the chat with the numbe
 
 ## Open
 
-None.
+**Q13. `Lowrank_cross_slice`: keep or drop?** CG-ALF T6 result (CG_ALF_PLAN.md section 7): mathematically sound (the
+wrap is a similarity transform, so the cross-slice update gives the same Markov chain up to roundoff), but not faster
+on the CPU (on/off = 1.015 at L = 16, i.e. slightly slower; within noise at L = 8/12). Delayed/submatrix themselves give
+1.5x over standard at L = 16. Options: (a) do not port it to the GPU and do not bring it to the CM lines (it stays on
+gpu-port/tags only); (b) bring it to the CPU line as an opt-in feature anyway. Recommendation: (a).
+
+**Q14. T1: measure the stabilisation candidates on the H100?** The survey (10 methods) names as best GPU candidates the
+pre-pivoted unpivoted QR (what the GPU path already does), CholeskyQR2 after scale separation (idea I11) and adaptive
+Nwrap. Next step is a measurement on Helma H100 (preempt partition, a few GPU-hours). yes/no
 
 ## Decided (interview 2026-11-26; record with your exact words in the session notes)
 
