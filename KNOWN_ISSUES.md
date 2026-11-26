@@ -20,7 +20,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | H4 | confin with field value 0 -> NaN | B | fixed by feature `b-batch-1` (two-sided field check, types 1, 2, 4) |
 | H5 | Global_tau_moves with partial Nt_sequential range | B | open |
 | H6 | Tempering with an odd number of replicas hangs | B | fixed by feature `b-batch-1` (start-up stop; upstream issue pending) |
-| H7 | Bilayer_honeycomb potential/total energy wrong (also upstream) | B | fixed by feature `b-batch-1` on the CPU line (U/U2 per orbital half); GPU device weights: P2.4 step 1e; upstream issue pending |
+| H7 | Bilayer_honeycomb potential/total energy wrong (also upstream) | B | fixed by feature `b-batch-1` on the CPU line (U/U2 per orbital half); GPU device weights fixed with feature `gpu-obs-tau` (step 1e: `gpu_obs_mod` uses U on the orbitals no <= Norb/2 and U2 above for the bilayer lattices; test `53-gpu-obs` case bil1/bil2 and control 2, e2e `mz-bilayer-honeycomb`); upstream issue pending |
 | M1 | Dtau = 0 -> unbounded memory | B | fixed by feature `b-batch-1` (stop if Ltrot overflows) |
 | M2 | Projector with Thtrot = 0 and Ltau = 1: out of bounds | B | fixed by feature `b-batch-1` (start-up stop for this combination; tau_p bounds unchanged) |
 | M3 | Nwrap <= 0 accepted | B | fixed by feature `b-batch-1` (stop if Nwrap < 1) |
