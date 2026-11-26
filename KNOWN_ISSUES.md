@@ -14,7 +14,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 |---|---|---|---|
 | DP | Determinant phase underflow, CPU (CGR / DET_C) | A | fixed in aef50743 |
 | DP-GPU | Determinant phase underflow, GPU line | A | fixed on `fix/det-phase-underflow` (GPU line); not yet in every GPU branch |
-| H1 | NaN guards removed by -ffast-math | A | open — fix on `cm/dev/nan-guards` |
+| H1 | NaN guards removed by -ffast-math | A | fixed by feature `nan-guards` (G and scale checks by bit pattern) |
 | H2 | Large beta: scale overflow in CGR -> NaN | B | open; since aef50743 the run stops (phase guard) instead of silent NaN |
 | H3 | No measurements -> NaN observables | B | open |
 | H4 | confin with field value 0 -> NaN | B | open |
@@ -108,7 +108,8 @@ None is fixed yet; each fix becomes its own dev/canvas feature.
 `any(a /= a)` and `ieee_is_nan(a)` are folded to false (10-line test: a NaN read from input is not detected with
 `-O3 -ffast-math`, it is without). So "Green function contains NaN" (`Control_PrecisionG`, control_mod.F90) can never
 fire, and the silent NaN runs H2, H3, H4 end with return code 0. The phase guard of the det-phase feature tests the
-bit pattern (`Control_Is_Finite`) and is not affected. Fix: use the bit-pattern test in every NaN guard.
+bit pattern (`Control_Is_Finite`) and is not affected. **Fixed** (feature `nan-guards`): `Control_PrecisionG`
+and `testscale` (udv_state_mod) use `Control_All_Finite`, a bit-pattern test that also catches Inf.
 
 ### H2. Large beta: scale overflow in CGR gives NaN results with return code 0 (both, default build, high) — re-checked
 4x4 Hubbard U = 8, Beta = 30, Nwrap = 5 (also U = 4, Beta = 60; U = 20, Beta = 15): Precision Green, Phase and tau are
