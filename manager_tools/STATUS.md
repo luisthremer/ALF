@@ -1,8 +1,9 @@
 ## Now
-- P2.4 step 1f (speedup S1: CGR phase from the tracked det(U) of the QR reflectors, no LU) on `cm/feat/gpu-s1`, CI running. Four commits; the fourth switches the default alone, and a `git revert` of it gives the LU version exactly (checked). Tracked vs LU phase: 1.7e-15; configurations byte-identical; N = 3200 works. All four step commits pass on melmac (76/76 GPU=none, 119-127 GPU=host).
+- P2.4 step 1f (speedup S1: CGR phase from the tracked det(U) of the QR reflectors, no LU) on `cm/feat/gpu-s1`, CI run 45886167489 at 29/30 green. Four commits; the fourth switches the default alone, and a `git revert` of it gives the LU version exactly (checked). Tracked vs LU phase: 1.7e-15; configurations byte-identical; N = 3200 works. All four step commits pass on melmac (76/76 GPU=none, 119-127 GPU=host).
 - Live progress page for you: [ALF GPU Phase 2](https://claude.ai/artifact/PmMk2VMb8iUzXtnEYUcHc3) (private; updated after every merge or push).
 
 ## Waiting for you
+Answer with the buttons under "Needs you" on the [progress page](https://claude.ai/artifact/PmMk2VMb8iUzXtnEYUcHc3).
 1. Q13: `Lowrank_cross_slice` is sound but not faster on the CPU: drop it (recommended) or keep as opt-in?
 2. Q14: measure the stabilisation candidates (CholeskyQR2, adaptive Nwrap) on the H100 (a few GPU-hours)? yes/no
 
@@ -20,7 +21,8 @@
 - Earlier today: Phase-6 sync, B batch 1, step 1a, CG-ALF ideas, upstream issues, branch clean-up (history: `git log manager_tools/STATUS.md`).
 
 ## Next 3 steps
-1. Merge 1f (S1) when CI is green.
+1. Manager handover (`.handoff/HANDOFF_PROMPT_2026-11-26d.md`); then merge 1f (S1) when CI is green.
+1b. Start the three vendor sessions of step 2 (NVIDIA on Helma, AMD on amd, Intel on SuperMUC).
 2. CPU-line queue: next item `alf_exit` / `Trace_updates_mod` (cpu-queue session).
 3. Merge what the parallel sessions deliver (CPU-line queue, CG-ALF research results); then step 2 vendor backends (clusters).
 
