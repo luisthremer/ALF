@@ -40,7 +40,7 @@ Fork `Code-modularity` = origin `Code-modularity_Phase6` (`af22b976`), a fast-fo
 `AGENTS.md`, `CLAUDE.md`, `docs/ai/CODEMAP.md`, `docs/ai/BRANCHING.md`, this folder.
 Feature name `ai-docs`. Done when merged into `Code-modularity` via `cm/feat/ai-docs`.
 
-## P2.2 — Delayed and submatrix updates, native (merged 2026-11-25, `2bb0258a`; step 2 "fastest" open)
+## P2.2 — Delayed and submatrix updates, native (done: merged 2026-11-25, `2bb0258a`; step 2 "fastest" merged 2026-11-26, `eaf94e27`)
 Feature name `lowrank`. Source: fork `master_ai_cpu` (`8b18b95c`, LOWRANK in hook form:
 `Prog/Lowrank/*`, `testsuite/Lowrank.tests/*`, `Documentation/lowrank*`).
 1. `cm/dev/lowrank`: port without hooks. Scheme parameters (`Sequential_scheme`, `N_delay`) in
@@ -65,8 +65,10 @@ Feature name `lowrank`. Source: fork `master_ai_cpu` (`8b18b95c`, LOWRANK in hoo
    and with ED (`test_vs_ed`); fork CI green.
 4. `cm/feat/lowrank`: one task per commit, tree equal to the dev tip, CI green, merge, archive.
 
-## P2.3 — Split CPU / GPU (open, after P2.2)
-`Code-modularity-CPU` and `Code-modularity-GPU` both from the `Code-modularity` tip after P2.2.
+## P2.3 — Split CPU / GPU (done 2026-11-26, from the merge of `cm/feat/p23-split`)
+`Code-modularity-CPU` and `Code-modularity-GPU` both from the `Code-modularity` tip after P2.2
+(that tip carries P2.2, the fixes det-phase and nan-guards, and the CG-ALF plan).
+`Code-modularity` stays at the split point; new canvases target `-CPU` or `-GPU`.
 The CPU line takes later CPU-only work; the GPU line merges the CPU line regularly
 (`Code-modularity-CPU` → `-GPU`, never the other way round).
 
