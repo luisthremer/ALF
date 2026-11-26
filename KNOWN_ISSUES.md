@@ -35,6 +35,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | L4 | Restart not byte-identical for Langevin Ltau = 1 / HMC | C | open |
 | L5 | Tempering messages | C | open |
 | L6 | GPU line: confin 0 gives finite wrong numbers | B | open (GPU line) |
+| G1 | GPU line: `ALF_GPU_SELFTEST` leaves test data in the device copy of G marked valid | B | fixed by feature `gpu-wrap-update` (step 1c; harmless in 1b, where the sweep did not use the mirror) |
 | MK | Makefile: Prog objects not rebuilt after Libraries/Modules changes | B | open |
 | WF | Trial wave function normalisation, large N_part (suspected) | B | open, not reproduced |
 | P1 | Op_V_is_symmetric slow (start-up, Symm = .T.) | B | open; fast version on gpu-port |

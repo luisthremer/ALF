@@ -80,7 +80,9 @@ Module qmc_setup_mod
   Use iso8601_datetime_mod, only: iso8601_datetime
   Use iso_fortran_env, only: output_unit, error_unit
 #ifdef ALF_GPU
-  Use gpu_state_mod, only: gpu_state_setup, gpu_state_finalize
+  Use gpu_state_mod, only: gpu_state_setup, gpu_state_finalize, gpu_active
+  Use gpu_wrap_mod, only: gpu_wrap_hook
+  Use gpu_lowrank_mod, only: gpu_lr_finalize
   Use qmc_walker_mod, only: qmc_walker_t
 #endif
 #ifdef HDF5
@@ -280,20 +282,24 @@ Module qmc_setup_mod
     !> @brief
     !> GPU build only: builds the device mirror for the model and the walker layout, or records in the
     !> info file why the GPU path stays inactive (gpu_state_mod). Called between Walker_alloc and
-    !> Walker_init_stack. The sweep does not use the mirror yet.
+    !> Walker_init_stack. The sweep does not use the mirror yet. If the path is active it also runs the
+    !> gpu_wrap_mod hook (kernel tuning variables, self-test).
     !--------------------------------------------------------------------
     Subroutine Setup_gpu(walker, file_info)
       Type (qmc_walker_t), intent(in) :: walker
       Character (len=*),   intent(in) :: file_info
 
       Call gpu_state_setup(walker, file_info)
+      ! kernel tuning variables and, with ALF_GPU_SELFTEST=2, the device wrap self-test
+      If (gpu_active) Call gpu_wrap_hook()
     end Subroutine Setup_gpu
 
     !--------------------------------------------------------------------
     !> @brief
-    !> GPU build only: releases the device mirror. Called before Walker_dealloc.
+    !> GPU build only: releases the device state (delayed/submatrix arrays, then the mirror). Called before Walker_dealloc.
     !--------------------------------------------------------------------
     Subroutine Finalize_gpu()
+      Call gpu_lr_finalize()          ! writes the update counts, frees the device arrays of the delayed/submatrix state
       Call gpu_state_finalize()
     end Subroutine Finalize_gpu
 #endif
