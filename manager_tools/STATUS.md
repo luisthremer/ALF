@@ -1,33 +1,22 @@
 ## Now
-P2.4 step 1d (`gpu-stab`: UDV stabilisation on the device, determinant-phase fix for large N; Hubbard only) on `cm/feat/gpu-stab`, 8 commits; CI running. Local: tests 70/70 (GPU=none), 95/95 (GPU=host default, STABLOG and bounds-checked); GPU=none 16/16 byte-identical; phase test at N = 3200 (the old code gives NaN there) passes; device vs CPU path on Hubbard 4x4: configurations byte-identical in all 12 cases, energies within 1.2e-10 (Mz) and 5e-14 (SU(2)). New bug G2 (class B, open): the device path's Precision Green is 1.4-6x the CPU's (already in 1c; observables unaffected); to check before step 2.
+- P2.4 step 1d (`gpu-stab`: UDV stabilisation on the device, determinant-phase fix for large N; Hubbard only) on `cm/feat/gpu-stab`, 9 commits. The first CI run failed in one debug test (the NaN self-test fed a NaN to the host reference, which traps); fixed, CI rerun 45868504866 running (27/30 jobs done, none failed). Local: tests 70/70 (GPU=none), 95/95 (GPU=host default, STABLOG and bounds-checked); GPU=none 16/16 byte-identical; phase test at N = 3200 (old code: NaN) passes; device vs CPU path on Hubbard 4x4: configurations byte-identical in all 12 cases, energies within 1.2e-10 (Mz) and 5e-14 (SU(2)).
+- P2.4 step 1e (`gpu-obs-tau`: observables and tau pass on the device, local h0 observable on the device instead of the silent host fallback) on `cm/dev/gpu-obs-tau`: one coding agent working.
 
 ## Waiting for you
-Nothing. All questions answered ([QUESTIONS.md](QUESTIONS.md)).
+1. G2 (class B, open): the device path's Precision Green is 1.4-6x the CPU's (already in 1c; observables unaffected). Likely causes: B and B^-1 not exact inverses on the device; complex hopping on the device where the CPU uses real exponentials (`RealExpOpT`, `ZDSLSYMM`). Investigate now (about 1 h, local) or before step 2?
 
 ## Done since the last owner message
-- Your interview decisions are in the plans (CPU and GPU lines, [255251ff](https://github.com/luisthremer/ALF/commit/255251ff)): D4 (b) with a CPU-line queue in ROADMAP (ALF_UNSTABLE_THRESHOLD first, prepare_sim.py as general PP helper), S1 as P2.4 step 1f, Intel switches default with info report, P2.6 starts with delayed/submatrix for every model, CG-ALF tasks T5-T11 (tracking check, cross-slice research branch, Intel ideas on CUDA, timing flag, benchmark list, auto-tuning, new hardware). Q5-Q10 closed; Q12: I ask you to switch claude-bughunter on when needed.
-- Merged step 1c (device wraps, local updates, delayed/submatrix) into `Code-modularity-GPU`: [0c222961](https://github.com/luisthremer/ALF/commit/0c222961), CI run 45854274445 green. Local: tests 67/67 (GPU=none), 86/86 (GPU=host, default and STABLOG, also bounds-checked), 16/16 byte-identical; device vs CPU path on Hubbard 4x4: configurations byte-identical, energies within 2e-11 (Mz) and 1e-14 (SU(2)). Found and fixed on the way: G1 (1b self-test left stale device G, class B), `Sequential_scheme = "auto"` would have stopped GPU runs (now refused on the GPU path). Branches archived and deleted.
-- Merged step 1b (GPU state, device mirror of model and walker) into `Code-modularity-GPU`: [eb5b1022](https://github.com/luisthremer/ALF/commit/eb5b1022), CI run 45838961102 green (30 jobs, incl. the new `gpu_host` jobs); 81/81 tests GPU=host, 67/67 GPU=none, 16/16 byte-identical. Branches archived and deleted.
-- Merged: Phase-6 sync (CPU+GPU), B batch 1 (8 bugs, CPU, then into GPU), step 1a `GPU=none|host` (GPU); combination green in CI.
-- Ideas I11-I13 (Cholesky again, time-first sweep, random space-time path) in the CG-ALF plan.
-- Phase-6 sync merged (6G.E1-E7 linalg wrappers, STAB1 projector fix): 57/57 tests, 16/16 byte-identical, CI green.
-- Upstream issues posted: ALF-QMC/ALF#662 (H7), #663 (H6). P2.4 plan: D1 linalg_mod, D2 GPU=host, D3 Hubbard only.
-- B-bug batch 1 built and checked (8 bugs, regression tests); step 1b (GPU state) designed.
-- `manager_tools/` now on `Code-modularity`, `-CPU` and `-GPU`, kept equal by `manager_tools/sync.sh`.
-- P2.4 plan: gpu-port mapped (12 436 lines of common OpenMP offload code, vendor shims, hooks) and re-homed onto the refactored code; steps 1a-1e before vendor code.
-- Status and ideas moved from alf-ops into `manager_tools/` on `Code-modularity` (public, your OK); understand-anything removed (traces in the Trash); claude-bughunter off until P2.8.
-- The CPU determinant-phase fix is already offered upstream: PR ALF-QMC/ALF#660 (open).
-- Merged into `Code-modularity`: nan-guards [f8dbc251](https://github.com/luisthremer/ALF/commit/f8dbc251) (CI green), lowrank-fastest [eaf94e27](https://github.com/luisthremer/ALF/commit/eaf94e27) (CI green; local: 57/57 tests, 16/16 byte-identical), cg-alf-plan [c2efcce5](https://github.com/luisthremer/ALF/commit/c2efcce5) (docs), p23-split [40b05e46](https://github.com/luisthremer/ALF/commit/40b05e46) (docs). Archive tags pushed.
-- P2.3: `Code-modularity-CPU` / `-GPU` created; `Code-modularity` stays at the split point.
-- Branch clean-up: 20 merged/obsolete branches deleted, `luis_playground` renamed to `PP-Upgrades_and_Max-Sac-Bootstrapping` (tag `stp/max-sac-bootstrapping`). New rule merged ([b64e88b2](https://github.com/luisthremer/ALF/commit/b64e88b2)): merged and tagged `cm/*` branches are deleted right after the merge. `JAKOB_BACKUP` and the three `production-mpi-intel-*` branches tagged `stp/…` and deleted.
-- Inbox: two ideas now CG-ALF tasks T3 (fast `Op_V_is_symmetric`) and T4 (production guards from the Intel code); inbox is checked at least every two hours of work ([fc8561cf](https://github.com/luisthremer/ALF/commit/fc8561cf)).
+- All questions answered ([QUESTIONS.md](QUESTIONS.md)); decisions in the plans on both lines ([255251ff](https://github.com/luisthremer/ALF/commit/255251ff)): D4 (b) with a CPU-line queue in ROADMAP (ALF_UNSTABLE_THRESHOLD first, prepare_sim.py as general PP helper); S1 as P2.4 step 1f (same method on every vendor, LU removal as ONE revertible commit); Intel switches default with info report; P2.6 starts with delayed/submatrix for every model; CG-ALF tasks T5-T11.
+- Merged step 1c (device wraps, local updates, delayed/submatrix) into `Code-modularity-GPU`: [0c222961](https://github.com/luisthremer/ALF/commit/0c222961), CI run 45854274445 green; device vs CPU on Hubbard 4x4: configurations byte-identical, energies within 2e-11 (Mz) and 1e-14 (SU(2)). Fixed on the way: G1 (stale device G after the self-test), `Sequential_scheme = "auto"` would have stopped GPU runs, bounds errors in ported kernels (CI debug job).
+- Merged step 1b (GPU state, device mirror of model and walker): [eb5b1022](https://github.com/luisthremer/ALF/commit/eb5b1022), CI run 45838961102 green.
+- Earlier today: Phase-6 sync, B batch 1 (8 bugs), step 1a `GPU=none|host`, CG-ALF ideas I11-I13, upstream issues ALF-QMC/ALF#662 and #663, branch clean-up, `manager_tools/` on all three lines (history: `git log manager_tools/STATUS.md`).
 
 ## Next 3 steps
-1. Merge 1d (stabilisation) when CI is green; 1e (observables, tau) is being implemented.
-2. 1f: speedup S1 (your yes; same method on every vendor; the LU removal as ONE commit, revertible).
-3. Step 2: vendor backends inside linalg_mod (needs the clusters).
+1. Merge 1d when CI is green; review and merge 1e.
+2. 1f: speedup S1 (LU removal as one revertible commit).
+3. Step 2: vendor backends inside linalg_mod (needs the clusters; Helma/SuperMUC logins then).
 
 ## Open branches and running jobs
-- `cm/feat/gpu-stab` + `cm/dev/gpu-stab` (step 1d, CI run 45866501847).
-- Side session "Interview owner on QUESTIONS.md decisions" (waits for you).
+- `cm/feat/gpu-stab` + `cm/dev/gpu-stab` (step 1d, CI run 45868504866); `cm/dev/gpu-obs-tau` (step 1e, local, not pushed yet).
+- Side session "Interview owner on QUESTIONS.md decisions": finished; can be archived on your yes.
 - Cluster jobs: none. Plan: [P2_4_GPU_PLAN.md](https://github.com/luisthremer/ALF/blob/Code-modularity-GPU/docs/ai/phase2/P2_4_GPU_PLAN.md)
