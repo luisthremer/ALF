@@ -228,7 +228,7 @@ Contains
   Subroutine k_dly_wrap(G, X, Y, ld, nd_, jcnt, n, t, dir, r, eo, nt)
     Implicit none
     Integer, intent(in) :: ld, nd_, jcnt, n, t, dir, r, eo, nt
-    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,1), X(ld,1), Y(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,nd_), X(ld,jcnt), Y(ld,jcnt)
     Integer :: j, sp, nloop
     Complex (Kind=Kind(0.d0)) :: za, zb
     nloop = max(nd_, jcnt)
@@ -256,7 +256,7 @@ Contains
   Subroutine k_dly_gpp(G, X, Y, ld, jcnt, p, res)
     Implicit none
     Integer, intent(in) :: ld, jcnt, p
-    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,1), X(ld,1), Y(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,ld), X(ld,jcnt), Y(ld,jcnt)
     Real (Kind=Kind(0.d0)), intent(inout) :: res(2)
     Integer :: k
     Complex (Kind=Kind(0.d0)) :: s
@@ -276,8 +276,8 @@ Contains
     Implicit none
     Integer, intent(in) :: ld, nrow, jcnt, p
     Real (Kind=Kind(0.d0)), intent(in) :: zr, zi
-    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,1)
-    Complex (Kind=Kind(0.d0)), intent(inout) :: X(ld,1), Y(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,nrow)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: X(ld,jcnt+1), Y(ld,jcnt+1)
     Integer :: i, k
     Complex (Kind=Kind(0.d0)) :: c, rr, z
     !$omp target teams distribute parallel do private(k, c, rr, z)
@@ -421,7 +421,7 @@ Contains
   Subroutine k_wrap_g0(G, ld, n, t, dir, r, eo, nt)
     Implicit none
     Integer, intent(in) :: ld, n, t, dir, r, eo, nt
-    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,1)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,ld)
     Integer :: j, sp
     Complex (Kind=Kind(0.d0)) :: za, zb
     !$omp target teams distribute parallel do private(sp, za, zb)
