@@ -49,6 +49,7 @@ Module qmc_setup_mod
   Use QMC_runtime_var, only: apply_Langevin_overrides, &
        &                     check_compatibility_reconstruct_greens_function, &
        &                     check_langevin_schemes_and_variables, check_MALA_variables, &
+       &                     check_projector_Ltau, check_Nt_sequential_range, &
        &                     check_update_schemes_compatibility, get_Amplitude, get_CPU_MAX, &
        &                     get_Delta_t_Langevin_HMC, get_Delta_t_MALA_global, &
        &                     get_Delta_t_MALA_global_tau, get_Delta_t_MALA_sequential, &
@@ -150,6 +151,7 @@ Module qmc_setup_mod
          enddo
       endif
 
+      Call check_projector_Ltau(Projector, Thtrot)
       Call set_default_values_measuring_interval(Thtrot, Ltrot, Projector)
 
       ! Kinetic propagators exp(-Dtau T)
@@ -216,6 +218,7 @@ Module qmc_setup_mod
          call set_Nt_sequential_end(tmp_Nt_sequential_end)
          call set_N_Global_tau(tmp_N_Global_tau)
          call set_N_Global_tau_MALA(tmp_N_Global_tau_MALA)
+         Call check_Nt_sequential_range(N_op)
       endif
       If (get_N_Global_tau() > 0 .or. get_N_Global_tau_MALA() > 0 .or. get_Sequential_MALA() ) then
          Call Wrapgr_alloc
