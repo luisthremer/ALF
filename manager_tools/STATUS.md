@@ -7,6 +7,7 @@
 2. Q14: measure the stabilisation candidates (CholeskyQR2, adaptive Nwrap) on the H100 (a few GPU-hours)? yes/no
 
 ## Done since the last owner message
+- G2 cause found (session g2-precision): the device multiplies with one dense precomputed product of all checkerboard factors (`Hd` in `gpu_wrap_mod`, on for Ndim <= 800) instead of factor by factor; with it off, Precision Green equals the CPU's (ratio 1.00-1.01 over 12 seeds; was 1.4-2.5). Fix planned as a small step after 1e: `Hd` opt-in, default the per-factor path.
 - CG-ALF T6 and T1 results merged into the plan (both lines, docs): cross-slice update sound but not faster on the CPU (1.015x at L = 16); stabilisation survey of 10 methods (CG_ALF_PLAN.md section 7).
 - Merged step 1d (device stabilisation, determinant-phase fix for large N) into `Code-modularity-GPU`: [36d17988](https://github.com/luisthremer/ALF/commit/36d17988), CI run 45868504866 green. Local: tests 70/70 (GPU=none), 95/95 (GPU=host default, STABLOG, bounds-checked); 16/16 byte-identical; phase test at N = 3200 passes; device vs CPU on Hubbard 4x4: configurations byte-identical, energies within 1.2e-10 (Mz), 5e-14 (SU(2)). Fixed on the way: the NaN self-test fed a NaN to the host reference (trap in the CI debug job).
 - P2.5 feature table, first draft merged into the GPU line (docs): [GPU_FEATURES.md](https://github.com/luisthremer/ALF/blob/Code-modularity-GPU/docs/ai/phase2/GPU_FEATURES.md) (vendor columns copied from gpu-port docs, not re-checked; GPU=host column from the code).
@@ -16,11 +17,11 @@
 
 ## Next 3 steps
 1. Review, canvas, CI and merge 1e.
-2. 1f: S1 in four commits (tracking, check mode, tests, LU removal).
+2. G2 fix (`Hd` opt-in), then 1f: S1 in four commits (tracking, check mode, tests, LU removal).
 3. Merge what the parallel sessions deliver (CPU-line queue, CG-ALF research results); then step 2 vendor backends (clusters).
 
 ## Open branches and running jobs
 - `cm/dev/gpu-obs-tau` (step 1e, local, coding agent).
-- Parallel sessions reporting to the manager: cpu-queue (`ALF_UNSTABLE_THRESHOLD`, `prepare_sim.py`, CPU line), cgalf-research (T6, T1 done; waits for Q13/Q14), g2-precision (G2, `rd/g2-precision`). Builds with `make -j2`, `ctest -j2` while many sessions run.
+- Parallel sessions reporting to the manager: cpu-queue (`ALF_UNSTABLE_THRESHOLD`, `prepare_sim.py`, CPU line), cgalf-research (T6, T1 done; waits for Q13/Q14), g2-precision (G2 cause found, `rd/g2-precision`). Builds with `make -j2`, `ctest -j2` while many sessions run.
 - Side session "Interview owner on QUESTIONS.md decisions": finished; can be archived on your yes.
 - Cluster jobs: none. Plan: [P2_4_GPU_PLAN.md](https://github.com/luisthremer/ALF/blob/Code-modularity-GPU/docs/ai/phase2/P2_4_GPU_PLAN.md)
