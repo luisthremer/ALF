@@ -107,6 +107,9 @@
 Module gpu_state_mod
 
   Use omp_lib, only: omp_get_num_devices, omp_set_default_device, omp_get_default_device
+#if defined(ALF_LA_CUDA)
+  Use linalg_cuda_mod, only: la_cuda_finalize
+#endif
   Use iso_fortran_env, only: output_unit, error_unit, int64
   Use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
   Use Natural_Constants, only: Eps_machine
@@ -1263,6 +1266,9 @@ Contains
 #if defined(ALF_LA_ONEMKL)
     ! oneMKL backend of linalg_mod: device scratch and the OpenMP interop queue (the other gpu_* modules are finalized)
     call om_finalize()
+#endif
+#if defined(ALF_LA_CUDA)
+    call la_cuda_finalize()                        ! last check of the cuSOLVER info slots, handles freed
 #endif
     gpu_active = .false.
   end subroutine gpu_state_finalize
