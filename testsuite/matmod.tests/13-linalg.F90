@@ -38,6 +38,9 @@ program test_linalg
   call check('dznrm2', la_dznrm2(n, A(1,3), 1) == dznrm2(n, A(1,3), 1) .and. la_dznrm2(m, A(2,1), n) == dznrm2(m, A(2,1), n))
 
   call test_zqrpp()
+#if defined(ALF_LA_ONEMKL)
+  call test_device()
+#endif
 
   C1 = B; C2 = B
   call zhemm('L', 'U', n, n, alpha, H, n, A, n, beta, C1, n)
@@ -217,6 +220,89 @@ contains
     call la_zqrpp(n, n, A0, n, ip, t2, work2, -1, info2)
     call check('zqrpp query', work2(1) == wq(1) .and. info2 == 0 .and. info3 == 0)
   end subroutine test_zqrpp
+
+#if defined(ALF_LA_ONEMKL)
+  !> GPU=intel: the device path (presence dispatch) of the wrappers used by the gpu_* modules, on mapped copies, against
+  !> the host path of the same binary (rounding of oneMKL on the device may differ: 1e-12 relative); pivots and
+  !> permutations must be equal. Skipped without an offload device.
+  subroutine test_device()
+    use omp_lib, only: omp_get_num_devices
+    complex(dp) :: Ad(n,n), Bd(n,n), Cdv(n,n), td(n), Ah(n,n), Ch(n,n), th(n), Tr(n,n), Ccv(n,m), Cch(n,m)
+    real(dp) :: Brd(n,m)
+    integer :: ipd(n), iph(n), infod, infoh, i
+    if (omp_get_num_devices() < 1) then
+       write(*,*) 'linalg_mod test: device cases skipped (no offload device)'
+       return
+    endif
+    Ad = A; Bd = H; Cdv = B; Ch = B; Brd = Br; Ccv = (0.d0, 0.d0)
+    Tr = A
+    do i = 1, n
+       Tr(i,i) = Tr(i,i) + 4.d0
+    enddo
+    !$omp target enter data map(to: Ad, Bd, Cdv, Brd, Ccv, Tr) map(alloc: td, ipd)
+    ! zgemm
+    call la_zgemm('N', 'C', n, n, n, alpha, Ad, n, Bd, n, beta, Cdv, n)
+    !$omp target update from(Cdv)
+    call la_zgemm('N', 'C', n, n, n, alpha, A, n, H, n, beta, Ch, n)
+    call check('device zgemm', rel(Cdv, Ch) < 1.d-12)
+    ! zgemm_cr
+    call la_zgemm_cr(n, m, n, Ad, n, Brd, n, Ccv, n)
+    !$omp target update from(Ccv)
+    call la_zgemm_cr(n, m, n, A, n, Br, n, Cch, n)
+    call check('device zgemm_cr', rel(Ccv, Cch) < 1.d-12)
+    ! ztrsm
+    Ch = B; Cdv = B
+    !$omp target update to(Cdv)
+    call la_ztrsm('L', 'U', 'N', 'N', n, n, alpha, Tr, n, Cdv, n)
+    !$omp target update from(Cdv)
+    Ah = A
+    do i = 1, n
+       Ah(i,i) = Ah(i,i) + 4.d0
+    enddo
+    call la_ztrsm('L', 'U', 'N', 'N', n, n, alpha, Ah, n, Ch, n)
+    call check('device ztrsm', rel(Cdv, Ch) < 1.d-12)
+    ! zgeqrf, then zunmqr with its reflectors
+    call la_zgeqrf(n, n, Ad, n, td, work1, size(work1), infod)
+    !$omp target update from(Ad, td)
+    Ah = A
+    call la_zgeqrf(n, n, Ah, n, th, work2, size(work2), infoh)
+    call check('device zgeqrf', rel(Ad, Ah) < 1.d-12 .and. rel1(td, th) < 1.d-12 .and. infod == 0 .and. infoh == 0)
+    Cdv = B; Ch = B
+    !$omp target update to(Cdv)
+    call la_zunmqr('L', 'N', n, n, n, Ad, n, td, Cdv, n, work1, size(work1), infod)
+    !$omp target update from(Cdv)
+    call la_zunmqr('L', 'N', n, n, n, Ah, n, th, Ch, n, work2, size(work2), infoh)
+    call check('device zunmqr', rel(Cdv, Ch) < 1.d-12 .and. infod == 0 .and. infoh == 0)
+    ! zgetrf, zgetri
+    Ad = A; Ah = A
+    !$omp target update to(Ad)
+    call la_zgetrf(n, n, Ad, n, ipd, infod)
+    call la_zgetri(n, Ad, n, ipd, work1, size(work1), infod)
+    !$omp target update from(Ad, ipd)
+    call la_zgetrf(n, n, Ah, n, iph, infoh)
+    call la_zgetri(n, Ah, n, iph, work2, size(work2), infoh)
+    call check('device zgetrf/zgetri', all(ipd == iph) .and. rel(Ad, Ah) < 1.d-12 .and. infod == 0 .and. infoh == 0)
+    ! zqrpp (ipvt valid on the host on return)
+    Ad = A; Ah = A
+    !$omp target update to(Ad)
+    call la_zqrpp(n, n, Ad, n, ipd, td, work1, size(work1), infod)
+    !$omp target update from(Ad, td)
+    call la_zqrpp(n, n, Ah, n, iph, th, work2, size(work2), infoh)
+    call check('device zqrpp', all(ipd == iph) .and. rel(Ad, Ah) < 1.d-12 .and. rel1(td, th) < 1.d-12 &
+         & .and. infod == 0 .and. infoh == 0)
+    !$omp target exit data map(delete: Ad, Bd, Cdv, Brd, Ccv, Tr, td, ipd)
+  end subroutine test_device
+
+  real(dp) function rel(X, Y)
+    complex(dp), intent(in) :: X(:,:), Y(:,:)
+    rel = maxval(abs(X - Y)) / maxval(abs(Y))
+  end function rel
+
+  real(dp) function rel1(x, y)
+    complex(dp), intent(in) :: x(:), y(:)
+    rel1 = maxval(abs(x - y)) / maxval(abs(y))
+  end function rel1
+#endif
 
   subroutine check(name, ok)
     character(len=*), intent(in) :: name
