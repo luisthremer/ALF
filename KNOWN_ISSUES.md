@@ -4,6 +4,41 @@ Open and recently fixed problems of this branch line (`Code-modularity` and the 
 it). Every entry: where it applies, symptom, cause, status, and the branch or commit of the fix.
 New findings of the bug hunt (docs/ai/phase2/ROADMAP.md, P2.8) are added here first.
 
+Classes (owner rule 2026-11-26, AGENTS.md "Working mode"): **A** silently wrong results in the current code path or a
+production configuration (or a guard hiding them) — fixed at once as its own feature; **B** real bug elsewhere —
+fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed when the code is touched.
+
+## Index
+
+| ID | Issue | Class | Status |
+|---|---|---|---|
+| DP | Determinant phase underflow, CPU (CGR / DET_C) | A | fixed in aef50743 |
+| DP-GPU | Determinant phase underflow, GPU line | A | fixed on `fix/det-phase-underflow` (GPU line); not yet in every GPU branch |
+| H1 | NaN guards removed by -ffast-math | A | open — fix on `cm/dev/nan-guards` |
+| H2 | Large beta: scale overflow in CGR -> NaN | B | open; since aef50743 the run stops (phase guard) instead of silent NaN |
+| H3 | No measurements -> NaN observables | B | open |
+| H4 | confin with field value 0 -> NaN | B | open |
+| H5 | Global_tau_moves with partial Nt_sequential range | B | open |
+| H6 | Tempering with an odd number of replicas hangs | B | open |
+| H7 | Bilayer_honeycomb potential/total energy wrong (also upstream) | B | open |
+| M1 | Dtau = 0 -> unbounded memory | B | open |
+| M2 | Projector with Thtrot = 0 and Ltau = 1: out of bounds | B | open |
+| M3 | Nwrap <= 0 accepted | B | open |
+| M4 | Nt_sequential range not checked -> segfault | B | open |
+| M5 | Langevin dt = 0 / Max_Force = 0 -> zeros; HMC/Amplitude edge cases | B | open |
+| M6 | Precision Green up to 10 passes silently | B | open |
+| M7 | Phase update overflow for extreme R | C | open (from code reading) |
+| M8 | Code-modularity not bitwise identical to master (1e-14); global-tau threshold changed | B | open (to investigate with Fakher's history) |
+| L1 | master-only error-format bug | C | fixed on Code-modularity (Fakher) |
+| L2 | confin from another L accepted silently | C | open |
+| L3 | Default-integer overflow at very large Ndim | C | open |
+| L4 | Restart not byte-identical for Langevin Ltau = 1 / HMC | C | open |
+| L5 | Tempering messages | C | open |
+| L6 | GPU line: confin 0 gives finite wrong numbers | B | open (GPU line) |
+| MK | Makefile: Prog objects not rebuilt after Libraries/Modules changes | B | open |
+| WF | Trial wave function normalisation, large N_part (suspected) | B | open, not reproduced |
+| P1 | Op_V_is_symmetric slow (start-up, Symm = .T.) | B | open; fast version on gpu-port |
+
 ## Determinant phase underflow for N >~ 3000 (L >~ 54) in CGR / DET_C
 
 - **Applies to:** upstream master (`4c690b04`) and `Code-modularity` before the det-phase merge: the CPU
