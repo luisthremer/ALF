@@ -30,6 +30,11 @@ Verified 2026-11-25 by reading files; "unverified" marks anything not run.
 - `HDF5`: adds `-DHDF5 -DHDF5_ZLIB`; self-builds HDF5 1.14.6 into `HDF5/<compiler_version>/`
   via `HDF5/install_hdf5.sh` (asks unless `NO-INTERACTIVE`); override location with `ALF_HDF5_DIR`.
   Never uses a system HDF5.
+- Debug macro `ALF_TRACE_UPDATES` (not set by configure.sh): after `source configure.sh ...` run
+  `export ALF_FLAGS_PROG="$ALF_FLAGS_PROG -DALF_TRACE_UPDATES"`, `make clean`, `make`. Every Metropolis decision of
+  `Upgrade2` (mode Final) and `Upgrade_lowrank` appends `nt n_op Re(R) Im(R) Weight ranf toggle` to
+  `trace_updates.txt` (`Prog/Trace_updates_mod.F90`); diff the files of two runs that differ only in
+  `Sequential_scheme`. Without the macro the build is unchanged.
 - `Devel`: GNU adds `-Wconversion -fcheck=all -g -fbacktrace -fmax-errors=10 -pedantic -Werror -Wno-error=cpp`.
 - `ALF_FLAGS_EXT`: extra flags appended everywhere (export before sourcing).
 - GNU opt flags: `-cpp -O3 -ffree-line-length-none -ffast-math -fopenmp`; `-std=f2008` for Prog/Analysis.

@@ -370,3 +370,11 @@ foreach(bad abc -1 0)
   set_tests_properties(45-unstable-threshold-bad-${bad} PROPERTIES ENVIRONMENT "ALF_UNSTABLE_THRESHOLD=${bad}"
     PASS_REGULAR_EXPRESSION "not a positive number" TIMEOUT 60)
 endforeach()
+
+# Trace_updates_mod: the trace line format of the ALF_TRACE_UPDATES debug build.
+add_executable(47-trace-updates 47-trace-updates.F90)
+target_compile_options(47-trace-updates PRIVATE ${FLAG_LIST})
+target_include_directories(47-trace-updates PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../Prog")
+target_link_libraries(47-trace-updates "${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/Trace_updates_mod.o" ${LIB_LIST})
+add_test(NAME 47-trace-updates COMMAND 47-trace-updates WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+set_tests_properties(47-trace-updates PROPERTIES PASS_REGULAR_EXPRESSION "PASS: trace" TIMEOUT 60)
