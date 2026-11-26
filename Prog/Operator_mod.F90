@@ -48,6 +48,7 @@ Module Operator_mod
   Use runtime_error_mod, only: Terminate_on_error, ERROR_HAMILTONIAN
   Use iso_fortran_env, only: error_unit
   Use Natural_Constants, only: Eps_machine, Eps_small
+  Use linalg_mod, only: la_zgemm
 #ifdef MPI
   Use mpi
 #endif
@@ -1021,6 +1022,13 @@ Contains
 !> This is satisfied when operators are arranged palindromically,
 !> or when all operators commute (e.g., on-site operators in the Hubbard model).
 !>
+!> @details
+!> If every O_n is diagonal, all factors commute and the result is .true. without any product.
+!> Otherwise each factor is multiplied in only on its own sites: M(:,Q) <- M(:,Q) (I + g O_Q),
+!> Q = distinct entries of P_n. This is the dense product with the zeros skipped,
+!> O(n_op Ndim N^2) instead of O(n_op Ndim^3) (KNOWN_ISSUES P1: hours at large Ndim before).
+!> Tolerance and scale are those of the former dense version.
+!>
 !> @param[in] Op_V_arr  Operator array of shape (N_op, N_FL)
 !> @param[in] N_FL_in   Number of flavors
 !> @param[in] Ndim_in   Dimension of the full single-particle Hilbert space
@@ -1032,7 +1040,8 @@ Contains
     Integer, intent(in) :: N_FL_in, Ndim_in
 
     Integer :: n_op, n, nf, i, j, NN
-    Complex(Kind=Kind(0.d0)), allocatable :: M_fwd(:,:), M_rev(:,:), M_tmp(:,:), M_op(:,:)
+    Logical :: all_diag
+    Complex(Kind=Kind(0.d0)), allocatable :: M_fwd(:,:), M_rev(:,:)
     Real(Kind=Kind(0.d0)) :: diff, scale
     Real(Kind=Kind(0.d0)), parameter :: sym_tol = 1.D-10
 
@@ -1042,66 +1051,101 @@ Contains
 
     if (n_op <= 1) return
 
-    allocate(M_fwd(NN, NN), M_rev(NN, NN), M_tmp(NN, NN), M_op(NN, NN))
-
+    ! Diagonal operators commute: nothing to compare
+    all_diag = .true.
     do nf = 1, N_FL_in
-       ! Initialize M_fwd = Identity
-       M_fwd = cmplx(0.d0, 0.d0, kind(0.d0))
-       do i = 1, NN
-          M_fwd(i,i) = cmplx(1.d0, 0.d0, kind(0.d0))
-       enddo
-
-       ! Forward product: (I + g_1*V_1) * ... * (I + g_N*V_N)
        do n = 1, n_op
-          M_op = cmplx(0.d0, 0.d0, kind(0.d0))
-          do i = 1, NN
-             M_op(i,i) = cmplx(1.d0, 0.d0, kind(0.d0))
-          enddo
           do j = 1, Op_V_arr(n, nf)%N
              do i = 1, Op_V_arr(n, nf)%N
-                M_op(Op_V_arr(n, nf)%P(i), Op_V_arr(n, nf)%P(j)) = &
-                   M_op(Op_V_arr(n, nf)%P(i), Op_V_arr(n, nf)%P(j)) + &
-                   Op_V_arr(n, nf)%g * Op_V_arr(n, nf)%O(i, j)
+                if (i /= j .and. Op_V_arr(n, nf)%O(i, j) /= cmplx(0.d0, 0.d0, kind(0.d0))) all_diag = .false.
              enddo
           enddo
-          M_tmp = matmul(M_fwd, M_op)
-          M_fwd = M_tmp
+          if (.not. all_diag) exit
        enddo
+       if (.not. all_diag) exit
+    enddo
+    if (all_diag) return
 
-       ! Initialize M_rev = Identity
-       M_rev = cmplx(0.d0, 0.d0, kind(0.d0))
-       do i = 1, NN
-          M_rev(i,i) = cmplx(1.d0, 0.d0, kind(0.d0))
+    allocate(M_fwd(NN, NN), M_rev(NN, NN))
+
+    do nf = 1, N_FL_in
+       ! Forward product: (I + g_1*V_1) * ... * (I + g_N*V_N)
+       call set_identity(M_fwd)
+       do n = 1, n_op
+          call mult_right_local(M_fwd, Op_V_arr(n, nf))
        enddo
 
        ! Reverse product: (I + g_N*V_N) * ... * (I + g_1*V_1)
+       call set_identity(M_rev)
        do n = n_op, 1, -1
-          M_op = cmplx(0.d0, 0.d0, kind(0.d0))
-          do i = 1, NN
-             M_op(i,i) = cmplx(1.d0, 0.d0, kind(0.d0))
-          enddo
-          do j = 1, Op_V_arr(n, nf)%N
-             do i = 1, Op_V_arr(n, nf)%N
-                M_op(Op_V_arr(n, nf)%P(i), Op_V_arr(n, nf)%P(j)) = &
-                   M_op(Op_V_arr(n, nf)%P(i), Op_V_arr(n, nf)%P(j)) + &
-                   Op_V_arr(n, nf)%g * Op_V_arr(n, nf)%O(i, j)
-             enddo
-          enddo
-          M_tmp = matmul(M_rev, M_op)
-          M_rev = M_tmp
+          call mult_right_local(M_rev, Op_V_arr(n, nf))
        enddo
 
-       ! Compare forward and reverse products
-       diff = maxval(abs(M_fwd - M_rev))
-       scale = max(1.d0, maxval(abs(M_fwd)), maxval(abs(M_rev)))
+       ! Compare forward and reverse products (loop: no Ndim x Ndim temporary)
+       diff  = 0.d0
+       scale = 1.d0
+       do j = 1, NN
+          do i = 1, NN
+             diff  = max(diff,  abs(M_fwd(i,j) - M_rev(i,j)))
+             scale = max(scale, abs(M_fwd(i,j)), abs(M_rev(i,j)))
+          enddo
+       enddo
        if (diff > sym_tol * scale) then
           Op_V_is_symmetric = .false.
-          deallocate(M_fwd, M_rev, M_tmp, M_op)
-          return
+          exit
        endif
     enddo
 
-    deallocate(M_fwd, M_rev, M_tmp, M_op)
+    deallocate(M_fwd, M_rev)
+
+  contains
+
+    subroutine set_identity(M)
+      Complex(Kind=Kind(0.d0)), intent(out) :: M(:,:)
+      Integer :: k
+      M = cmplx(0.d0, 0.d0, kind(0.d0))
+      do k = 1, size(M, 1)
+         M(k,k) = cmplx(1.d0, 0.d0, kind(0.d0))
+      enddo
+    end subroutine set_identity
+
+    ! M <- M (I + g E), E = O embedded through P. Entries with repeated P(a) add up, as in the
+    ! dense embedding. Only the columns Q (distinct entries of P) change.
+    subroutine mult_right_local(M, Op)
+      Complex(Kind=Kind(0.d0)), intent(inout) :: M(:,:)
+      Type(Operator), intent(in) :: Op
+      Integer :: Q(Op%N), iq(Op%N), nq, a, b, k
+      Complex(Kind=Kind(0.d0)), allocatable :: F(:,:), Mq(:,:), Rq(:,:)
+      nq = 0
+      do a = 1, Op%N
+         iq(a) = 0
+         do k = 1, nq
+            if (Q(k) == Op%P(a)) iq(a) = k
+         enddo
+         if (iq(a) == 0) then
+            nq = nq + 1
+            Q(nq) = Op%P(a)
+            iq(a) = nq
+         endif
+      enddo
+      ! F = I + g O_Q  (nq x nq)
+      allocate(F(nq, nq), Mq(size(M,1), nq), Rq(size(M,1), nq))
+      F = cmplx(0.d0, 0.d0, kind(0.d0))
+      do k = 1, nq
+         F(k,k) = cmplx(1.d0, 0.d0, kind(0.d0))
+      enddo
+      do b = 1, Op%N
+         do a = 1, Op%N
+            F(iq(a), iq(b)) = F(iq(a), iq(b)) + Op%g * Op%O(a, b)
+         enddo
+      enddo
+      Mq = M(:, Q(1:nq))
+      call la_zgemm('N', 'N', size(M,1), nq, nq, cmplx(1.d0, 0.d0, kind(0.d0)), Mq, size(M,1), F, nq, &
+           &        cmplx(0.d0, 0.d0, kind(0.d0)), Rq, size(M,1))
+      M(:, Q(1:nq)) = Rq
+      deallocate(F, Mq, Rq)
+    end subroutine mult_right_local
+
   end function Op_V_is_symmetric
 
   function Op_is_real(Op) result(retval)
