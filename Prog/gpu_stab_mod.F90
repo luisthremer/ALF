@@ -47,10 +47,12 @@
 !>   * gpu_stab_cgr: CGR for NVAR = 1 and 2 (cgr1_mod, branches default and STABLOG).  Default: la_zqrpp.  STABLOG: ZGEQP3 on
 !>     the host (la_zgeqp3, upstream numerics).  D separation, phase (permutation sign, R diagonal, reflector determinants),
 !>     ZUNMQR, ZTRSM, ZLAPMR/T and the final GEMM on the device;
-!>   * the determinant phase of U_R^dagger U_L comes from the LU (ZGETRF) at every CGR: the kernel k_det_phase returns the
-!>     normalised phase and the raw determinant (32 B D->H), the host picks between them with the rule of LU_PHASE_SAFE
-!>     (gpu_lu_phase_select, tested bitwise against it).  The raw product alone underflows for N > ~2950 (fix of
-!>     fix/det-phase-underflow, KNOWN_ISSUES "Determinant phase underflow");
+!>   * the determinant phase of U_R^dagger U_L, from one of two sources (ALF_GPU_CGR_LU, "det tracking" below).  LU: ZGETRF at
+!>     every CGR, the kernel k_det_phase returns the normalised phase and the raw determinant (32 B D->H), the host picks between
+!>     them with the rule of LU_PHASE_SAFE (gpu_lu_phase_select, tested bitwise against it); the raw product alone underflows for
+!>     N > ~2950 (fix of fix/det-phase-underflow, KNOWN_ISSUES "Determinant phase underflow").  Tracked: det(U)/|det U| of every
+!>     device slot U is kept with the slot (no LU, no transfer).  CGR_PHASE_DEFAULT names the source of a run without
+!>     ALF_GPU_CGR_LU: 'lu';
 !>   * the precision check of Control_PrecisionG as a device reduction (max |A-B|, sum |A-B|, non-finite counts): one D->H of
 !>     four numbers, handed to Control_PrecisionG_vals (control_mod).
 !>
@@ -61,10 +63,27 @@
 !>
 !> The la_* calls (linalg_mod) are the places a vendor backend replaces (P2.4 step 2); with GPU=host they run on the host.
 !> Transfers (N = Ndim): decompose default 24 B D->H (scale test) + 8 N + 4 N B inside la_zqrpp; STABLOG 8 N B D->H (log norms)
-!> and 4 N B H->D (permutation); CGR 32 B D->H (LU phase) + 16 B D->H (phase) + 32 B D->H (precision numbers); STABLOG CGR
+!> and 4 N B H->D (permutation); CGR 32 B D->H (LU phase; none with the tracked phase) + 16 B D->H (phase) + 32 B D->H (precision
+!> numbers); STABLOG CGR
 !> additionally 16 N^2 B each way for the host ZGEQP3; backward sweep with Ltau = 1: udvst(NST) D->H, 32 N^2 + 16 N B.
 !>
-!> Environment (debug runs): ALF_GPU_FAULT_STAB=perm|phase|nan injects a fault (negative controls of the self-test).
+!> Det tracking (speedup S1).  ZGEQRF writes U = H_1 ... H_n R, H_i = I - tau_i v_i v_i^H with v_i(i) = 1 and |v_i|^2 = 2 Re(tau_i) /
+!> |tau_i|^2, so det H_i = -tau_i / conj(tau_i) (1 for tau_i = 0): modulus 1.  The new U of a decomposition is Q diag(Phase,1,..,1) with
+!> Q = H_1 ... H_n and Phase = cs(1) of k_phase (permutation sign and phases of the R_ii included), so det U_new = prod det(H_i) * Phase:
+!> known exactly at the cost of n complex products (k_phase, cs(6)).  det(U_R^dagger U_L) = conj(det U_R) det U_L, and the CGR phase is
+!> conj(det)/|det| of it, the number the LU gives (k_det_phase_u, cs(7)).  Only phases are formed, never a raw product (N > ~2950).
+!> Invariant: every writer of a device U sets its det.  decompose_slot rebuilds U and det from the same reflectors (every wrap U <- B U
+!> is followed by decompose_slot in the same routine: keep it so); resets set the identity and det 1; copies and the exchange copy the
+!> det with U; gpu_stab_put_udv is the only upload and takes the det from a QR of each uploaded U (k_det_qr).  The flags w_det_ok /
+!> st_det_ok record it; a CGR in a mode that uses the tracked phase stops with "untracked U in CGR" instead of a silent LU fallback.
+!> The device tau pass (gpu_tau_mod) only reads U.  A wrong det is silent in a model with a sign problem (the phase sign flips): hence
+!> the check mode and the fault control below.
+!> Check mode (debug runs, needs ALF_GPU_DEBUG=1): ALF_GPU_CGR_LU = 0 tracked, 1 LU, 2 both (the tracked phase is used and compared
+!> with the LU phase at every CGR; the number of comparisons and the largest difference are written to the info file at the end, a
+!> difference above 1e-8 stops the run).  The self-test runs in mode 2 whatever the default is.
+!>
+!> Environment (debug runs): ALF_GPU_FAULT_STAB=perm|phase|nan|det injects a fault (negative controls of the self-test; det: sign of
+!> the tracked phase flipped, seen by mode 2).
 !--------------------------------------------------------------------
 #ifdef ALF_GPU
 Module gpu_stab_mod
@@ -96,7 +115,7 @@ Module gpu_stab_mod
   Private
   Public :: gpu_stab_on, gpu_stab_setup, gpu_stab_finalize
   Public :: gpu_stab_wrapur, gpu_stab_wrapul, gpu_stab_exchange, gpu_stab_store_l, gpu_stab_cgr, gpu_stab_recompute
-  Public :: gpu_stab_reset_l, gpu_stab_reset_r, gpu_stab_reset_st, gpu_stab_put_udv
+  Public :: gpu_stab_reset_l, gpu_stab_reset_r, gpu_stab_reset_st, gpu_stab_put_udv, gpu_stab_untrack
   Public :: gpu_lu_phase_select, k_det_phase, gpu_stab_hook, gpu_stab_selftest
   Public :: k_det_qr, k_det_phase_u, k_set_one      ! det tracking (tests)
   Public :: gpu_stab_tau_dev, dev_prec, k_ident, k_copy_c, k_ct, k_diagabs, k_divrows, say     ! used by gpu_tau_mod
@@ -126,7 +145,14 @@ Module gpu_stab_mod
   Real    (Kind=Kind(0.d0)), Allocatable, Save :: st_rw(:)                     ! RWORK of ZGEQP3
 #endif
   Logical, Save :: warn_once = .true.
-  Integer, Save :: fault = 0                                                  ! 1 perm, 2 phase, 3 nan (negative controls)
+  Integer, Save :: fault = 0                                                  ! 1 perm, 2 phase, 3 nan, 4 det (negative controls)
+  ! source of the CGR determinant phase: 0 tracked det(U) (no LU), 1 LU of the RHS, 2 both (check: tracked used, compared with the LU).
+  ! CGR_PHASE_DEFAULT is the mode without ALF_GPU_CGR_LU (which needs ALF_GPU_DEBUG=1)
+  Character (len=*), Parameter :: CGR_PHASE_DEFAULT = 'lu'                    ! 'lu' or 'tracked'
+  Integer, Save :: cgr_mode = 1
+  Integer, Save :: ph_ncmp = 0                                                 ! mode 2: CGR calls compared
+  Real (Kind=Kind(0.d0)), Save :: ph_maxdiff = 0.d0                            ! mode 2: max |phase(tracked) - phase(LU)|
+  Real (Kind=Kind(0.d0)), Parameter :: PH_ABORT = 1.d-8                        ! mode 2: abort above this difference
   Logical, Save :: in_selftest = .false.                                      ! inside gpu_stab_selftest
 
 Contains
@@ -147,10 +173,20 @@ Contains
     Integer :: n, nfe, info, lw
     Complex (Kind=Kind(0.d0)) :: wq(1)
     Character (len=256) :: line
+    Character (len=64) :: v
 
     gpu_stab_on = .false.
     if (.not. gpu_active) return
     if (.not. gpu_upd_enabled()) return
+    cgr_mode = merge(0, 1, CGR_PHASE_DEFAULT == 'tracked')
+    if (gpu_env_get('ALF_GPU_CGR_LU', v)) then                  ! values 0|1|2 are checked by gpu_env_check
+       select case (trim(v))
+       case ('0'); cgr_mode = 0
+       case ('1'); cgr_mode = 1
+       case ('2'); cgr_mode = 2
+       end select
+    endif
+    ph_ncmp = 0; ph_maxdiff = 0.d0
     s_N = Ndim; s_nfe = N_FL_eff; s_nstm = walker%NSTM
     allocate(s_nt(0:s_nstm)); s_nt = walker%Stab_nt
     n = s_N
@@ -190,6 +226,11 @@ Contains
 #else
     line = trim(line)//', default: column-norm pre-pivoted QR in decompose and CGR'
 #endif
+    select case (cgr_mode)
+    case (0); line = trim(line)//'; CGR phase: tracked reflector determinants (no LU)'
+    case (1); line = trim(line)//'; CGR phase: LU (ZGETRF)'
+    case (2); line = trim(line)//'; CGR phase: tracked and LU, compared at every CGR (ALF_GPU_CGR_LU=2)'
+    end select
     call info_line(line)
   end subroutine gpu_stab_setup
 
@@ -198,7 +239,13 @@ Contains
 !--------------------------------------------------------------------
   Subroutine gpu_stab_finalize()
     Implicit none
+    Character (len=256) :: line
     if (.not. gpu_stab_on) return
+    if (cgr_mode == 2) then
+       write(line,'(A,I0,A,ES10.3)') 'GPU CGR phase check (ALF_GPU_CGR_LU=2): CGR calls compared ', ph_ncmp, &
+            & ', max |phase(tracked) - phase(LU)| ', ph_maxdiff
+       call info_line(line)
+    endif
     !$omp target exit data map(delete: sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_ipvt, st_perm, st_ipiv, udw_det, udv_det)
     deallocate(sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_ipvt, st_perm, st_ipiv, st_work, s_nt)
     deallocate(udw_det, udv_det, w_det_ok, st_det_ok)
@@ -733,6 +780,7 @@ Contains
     Integer, intent(in) :: nfe, nvar
     Integer :: n, info
     Complex (Kind=Kind(0.d0)) :: ph0
+    Logical :: use_lu, use_tr
 
     n = s_N
     ! RHS = U_R^dagger U_L  (sA),  T = V_R V_L  (sB)
@@ -744,29 +792,85 @@ Contains
     call k_tpup(n, sB, sA, udw_D(1,2,nfe), udw_D(1,1,nfe))
 #endif
     ! NOTE: upstream's one-time "Large number encountered" warning of CGR is omitted here (the scale test of decompose warns instead).
-    ! det(U_R^dagger U_L): LU of the RHS (sA is not read after k_tpup, cgr_solve overwrites it).  The kernel returns the
-    ! normalised phase and the raw determinant, the host selects (LU_PHASE_SAFE rule) and forms Phase = conj(det)/|det|.
-    call la_zgetrf(n, n, sA, n, st_ipiv, info)
-    if (info < 0) call lapack_fail('CGR: zgetrf', info)
-    call k_det_phase(n, sA, n, st_ipiv, st_c)
-    ! D->H: normalised LU phase and raw determinant (32 B)
-    !$omp target update from(st_c(4:5))
-    ph0 = conjg(gpu_lu_phase_select(st_c(5), st_c(4)))
-    ph0 = ph0/abs(ph0)
+    ! det(U_R^dagger U_L): from the tracked dets of U_L and U_R (cs(7), on the device, no transfer) and / or from the LU of the RHS.
+    use_tr = (cgr_mode /= 1)
+    use_lu = (cgr_mode /= 0)
+    ph0 = z1
+    if (use_tr) then
+       if (.not. (w_det_ok(1,nfe) .and. w_det_ok(2,nfe))) call untracked_fail(nfe)
+       call k_det_phase_u(udw_det(1,nfe), st_c, merge(1, 0, fault == 4))
+    endif
+    if (use_lu) then
+       ! LU of the RHS (sA is not read after k_tpup, cgr_solve overwrites it).  The kernel returns the normalised phase and the raw
+       ! determinant, the host selects (LU_PHASE_SAFE rule) and forms Phase = conj(det)/|det|.
+       call la_zgetrf(n, n, sA, n, st_ipiv, info)
+       if (info < 0) call lapack_fail('CGR: zgetrf', info)
+       call k_det_phase(n, sA, n, st_ipiv, st_c)
+       ! D->H: normalised LU phase and raw determinant (32 B)
+       !$omp target update from(st_c(4:5))
+       ph0 = conjg(gpu_lu_phase_select(st_c(5), st_c(4)))
+       ph0 = ph0/abs(ph0)
+    endif
+    if (cgr_mode == 2) then
+       ! check mode (debug): D->H of the tracked phase (16 B), compared with the LU phase on the host
+       !$omp target update from(st_c(7:7))
+       call check_phase(ph0, st_c(7))
+    endif
     if (nvar == 1) then
-       call cgr_solve(nfe, nvar, sB, ph0)
+       call cgr_solve(nfe, nvar, sB, ph0, use_tr)
     else
        call k_ct(n, sB, n, sC, n)                          ! T = T^dagger
-       call cgr_solve(nfe, nvar, sC, ph0)
+       call cgr_solve(nfe, nvar, sC, ph0, use_tr)
     endif
   end subroutine dev_cgr
 
+  !> Check mode (ALF_GPU_CGR_LU=2): |tracked phase - LU phase| counted and maximised; above PH_ABORT (or not finite) the run stops.
+  Subroutine check_phase(p_lu, p_tr)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in) :: p_lu, p_tr
+    Real (Kind=Kind(0.d0)) :: dif
+    Character (len=200) :: msg
+    dif = abs(p_lu - p_tr)
+    ph_ncmp = ph_ncmp + 1
+    if (Control_Is_Finite(dif)) then
+       if (dif > ph_maxdiff) ph_maxdiff = dif
+       if (dif <= PH_ABORT) return
+    endif
+    write(msg,'(A,ES10.3,A,I0)') 'CGR phase check (ALF_GPU_CGR_LU=2): tracked det phase differs from the LU phase by ', dif, &
+         & ' (limit 1e-8) at comparison ', ph_ncmp
+    if (in_selftest) call selftest_fail('stab: '//trim(msg))
+    write(error_unit,*)
+    write(error_unit,*) 'Error in the GPU stabilisation: ', trim(msg)
+    call info_line('GPU error: '//trim(msg))
+    call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+  end subroutine check_phase
+
+  !> Fail-fast: CGR needs det(U) of a slot whose det is not tracked (never a silent LU fallback)
+  Subroutine untracked_fail(nfe)
+    Implicit none
+    Integer, intent(in) :: nfe
+    write(error_unit,*)
+    write(error_unit,*) 'Error in the GPU stabilisation: untracked U in CGR (flavour ', nfe, '): det(U) of udvl or udvr is not known.'
+    write(error_unit,*) '       Every writer of a device U must set its det (decompose, reset, copy, gpu_stab_put_udv).'
+    call info_line('GPU error: untracked U in CGR')
+    call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+  end subroutine untracked_fail
+
+!> @brief Test hook: marks slot (1 udvl, 2 udvr) of flavour nfe as untracked (the next tracked CGR must stop the run).
+  Subroutine gpu_stab_untrack(slot, nfe)
+    Implicit none
+    Integer, intent(in) :: slot, nfe
+    w_det_ok(slot,nfe) = .false.
+  end subroutine gpu_stab_untrack
+
   !> The part of CGR after the matrix T = TPUP is built: QR, phase, solve.  T is destroyed.  Result in st_Gn, phase st_c(3).
-  Subroutine cgr_solve(nfe, nvar, T, ph0)
+  !> ph0: the LU phase (host), used if devph is .false.; devph: the tracked phase st_c(7) on the device is used instead.
+  Subroutine cgr_solve(nfe, nvar, T, ph0, devph)
     Implicit none
     Integer, intent(in) :: nfe, nvar
     Complex (Kind=Kind(0.d0)), intent(inout) :: T(s_N,s_N)
     Complex (Kind=Kind(0.d0)), intent(in) :: ph0
+    Logical, intent(in) :: devph
     Integer :: n, sgn, info
     Complex (Kind=Kind(0.d0)) :: ph1
 
@@ -789,7 +893,7 @@ Contains
     ph1 = z1
     call Pivot_phase(ph1, st_ipvt, n)
     sgn = nint(real(ph1))
-    call k_cgr_phase(n, T, n, st_tau, st_c, nvar, sgn, merge(1, 0, fault == 2), ph0)
+    call k_cgr_phase(n, T, n, st_tau, st_c, nvar, sgn, merge(1, 0, fault == 2), ph0, merge(1, 0, devph))
     if (nvar == 1) then
        call k_ct(n, udw_U(1,1,2,nfe), n, sA, n)             ! RHS = U_R^dagger
 #if defined(STABLOG)
@@ -1347,10 +1451,11 @@ Contains
 #endif
 
   ! cs(3) = ph0 * permutation sign * prod_i (R_ii phase) * reflector determinants   (cgr1_mod, after the QR); serial loop.
-  ! ph0 = conj(det(U_R^dagger U_L))/|.| (host, from the LU), passed by value.  bad = 1: fault injection (phase sign flipped)
-  Subroutine k_cgr_phase(n, T, ld, tau, cs, nvar, sgn, bad, ph0)
+  ! ph0 = conj(det(U_R^dagger U_L))/|.| (host, from the LU), passed by value, or (dev = 1) the tracked phase cs(7) on the device.
+  ! bad = 1: fault injection (phase sign flipped)
+  Subroutine k_cgr_phase(n, T, ld, tau, cs, nvar, sgn, bad, ph0, dev)
     Implicit none
-    Integer, intent(in) :: n, ld, nvar, sgn, bad
+    Integer, intent(in) :: n, ld, nvar, sgn, bad, dev
     Complex (Kind=Kind(0.d0)), intent(in) :: T(ld,n), tau(n)
     Complex (Kind=Kind(0.d0)), intent(inout) :: cs(8)
     Complex (Kind=Kind(0.d0)), intent(in) :: ph0
@@ -1358,7 +1463,11 @@ Contains
     Real (Kind=Kind(0.d0)) :: x
     Integer :: i
     !$omp target
-    ph = ph0
+    if (dev == 1) then
+       ph = cs(7)
+    else
+       ph = ph0
+    endif
     if (sgn < 0) ph = -ph
     do i = 1, n
        z = tau(i)
@@ -1529,7 +1638,7 @@ Contains
 !====================================================================
 !--------------------------------------------------------------------
 !> @brief
-!> Debug hook of Setup_gpu: arms the fault of ALF_GPU_FAULT_STAB (perm|phase|nan) and runs the self-test when
+!> Debug hook of Setup_gpu: arms the fault of ALF_GPU_FAULT_STAB (perm|phase|nan|det) and runs the self-test when
 !> ALF_GPU_SELFTEST=3.  The self-test leaves the device slots dirty: afterwards they are reset to the identity states.
 !--------------------------------------------------------------------
   Subroutine gpu_stab_hook()
@@ -1542,6 +1651,7 @@ Contains
        case ('perm');  fault = 1
        case ('phase'); fault = 2
        case ('nan');   fault = 3
+       case ('det');   fault = 4
        end select
     endif
     if (gpu_env_is('ALF_GPU_SELFTEST', '3')) then
@@ -1700,10 +1810,15 @@ Contains
     Integer :: nna, nnb, nblk(2)
     Logical :: same_pivots
     Character (len=512) :: line
+    Integer :: mode_save, ncmp_save
+    Real (Kind=Kind(0.d0)) :: maxdiff_save
 
     N = s_N
     seed = 20251101_int64
     in_selftest = .true.
+    ! the self-test runs in check mode whatever the module default is: the tracked phase is used and compared with the LU phase
+    mode_save = cgr_mode; ncmp_save = ph_ncmp; maxdiff_save = ph_maxdiff
+    cgr_mode = 2; ph_ncmp = 0; ph_maxdiff = 0.d0
 #if defined(STABLOG) || defined(QR_PREPIVOT)
     same_pivots = .true.
 #else
@@ -1790,6 +1905,9 @@ Contains
          & ' stabilization points x flavours: max rel diff G NVAR=1 ', mg(1), ', NVAR=2 ', mg(2), '; phase NVAR=1 ', mph(1), &
          & ', NVAR=2 ', mph(2), ' (tol ', tol
     call say(line)
+    write(line,'(A,I0,A,ES10.3,A,ES8.1)') 'GPU stab self-test CGR phase, tracked det(U) against the LU phase over ', ph_ncmp, &
+         & ' calls: max difference ', ph_maxdiff, ' (limit ', PH_ABORT
+    call say(trim(line)//')')
     write(line,'(A,ES10.3,A,ES10.3,A,ES10.3,A,ES8.1)') 'GPU stab self-test precision reduction vs COMPARE: rel diff max/mean ', &
          & dpr(1), ' / ', dpr(2), ' (G vs G_ref), ', max(dpr(3),dpr(4)), ' (G vs perturbed) (tol ', tolr
     call say(line)
@@ -1806,6 +1924,7 @@ Contains
     enddo
     deallocate(hl, hr, dl_, dr_, Gh, Gp, Gd)
     in_selftest = .false.
+    cgr_mode = mode_save; ph_ncmp = ncmp_save; ph_maxdiff = maxdiff_save
     call say('GPU stab self-test PASSED')
   end subroutine gpu_stab_selftest
 

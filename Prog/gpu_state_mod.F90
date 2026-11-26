@@ -202,9 +202,10 @@ Module gpu_state_mod
   Integer :: env_n = 0
   Character (len=96) :: env_reader = 'not read yet'
   ! Variables the allow-list reader looks up: every ALF_GPU_* name that acts in the GPU port (step 1e)
-  Character (len=24), parameter :: env_allow(12) = [ Character(len=24) :: &
+  Character (len=24), parameter :: env_allow(13) = [ Character(len=24) :: &
        & 'ALF_GPU_DISABLE', 'ALF_GPU_DEBUG', 'ALF_GPU_SELFTEST', 'ALF_GPU_FAULT', 'ALF_GPU_FAULT_STAB', 'ALF_GPU_FAULT_TAU', &
-       & 'ALF_GPU_NOUPDATE', 'ALF_GPU_NOOBS', 'ALF_GPU_TL', 'ALF_GPU_TR', 'ALF_GPU_VB', 'ALF_GPU_HOPD' ]
+       & 'ALF_GPU_NOUPDATE', 'ALF_GPU_NOOBS', 'ALF_GPU_TL', 'ALF_GPU_TR', 'ALF_GPU_VB', 'ALF_GPU_HOPD', &
+       & 'ALF_GPU_CGR_LU' ]
   Logical :: env_read_done = .false.
   Integer :: env_rank = 0, env_size = 1              ! MPI_COMM_WORLD rank and size (1 and 0 without MPI)
 
@@ -464,12 +465,21 @@ Contains
     If (gpu_env_get('ALF_GPU_FAULT_STAB', v)) then
        ok = .false.
        Select case (trim(v))
-       Case ('perm', 'phase', 'nan'); ok = .true.
+       Case ('perm', 'phase', 'nan', 'det'); ok = .true.
        End Select
        If (.not. ok) then
           Call env_fail('GPU fault value invalid: ALF_GPU_FAULT_STAB='//trim(v))
        Endif
        Call env_say('GPU fault armed: ALF_GPU_FAULT_STAB='//trim(v))
+    Endif
+    ! gpu_stab_mod: source of the CGR determinant phase: 0 tracked det(U), 1 LU, 2 both (compared); debug runs only (checked above)
+    If (gpu_env_get('ALF_GPU_CGR_LU', v)) then
+       Select case (trim(v))
+       Case ('0', '1', '2')
+       Case default
+          Call env_fail('GPU env value invalid: ALF_GPU_CGR_LU='//trim(v)//' (0 tracked det(U), 1 LU, 2 both)')
+       End Select
+       Call env_say('GPU CGR phase mode: ALF_GPU_CGR_LU='//trim(v))
     Endif
     ! gpu_tau_mod: perm|prop|prec|blocks
     If (gpu_env_get('ALF_GPU_FAULT_TAU', v)) then
