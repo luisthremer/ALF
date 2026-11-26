@@ -39,7 +39,7 @@ is t_min(L) = sum over kernel classes of max(F_k / P_k, bytes_k / BW).
 
 | # | Idea | Expected gain (to be measured) | Decided by | Numerics |
 |---|---|---|---|---|
-| I1 | **Walker batching**: many Markov chains in one process, every kernel batched over walkers (one launch for all chains) instead of MPS processes | removes launch latency and small-GEMM inefficiency; target: single-process throughput >= best MPS layout, then above | E1 (batched vs single GEMM), E2 | bitwise per chain (same operations) |
+| I1 | **Walker batching** (base: task T12, finish the walker): many Markov chains in one process, every kernel batched over walkers (one launch for all chains) instead of MPS processes | removes launch latency and small-GEMM inefficiency; target: single-process throughput >= best MPS layout, then above | E1 (batched vs single GEMM), E2 | bitwise per chain (same operations) |
 | I2 | **Real arithmetic** where the model allows it (real hopping, real HS coupling: Hubbard Mz without flux, many others): compile/run-time choice of real vs complex G | ~2-4x fewer FLOPs and 2x less memory for every N^3 kernel | E1 (DGEMM vs ZGEMM ceiling) | identical physics; roundoff differs |
 | I3 | **Numbers module** (generalises I2; start from `precdef` / Florian Goth's work): kind parameters chosen at compile time per model class (real/complex, integer hopping where it pays) | enables I2, I4 cleanly | design review | — |
 | I4 | **Mixed precision**: FP32 (or TF32/FP32-split on tensor cores) for wraps and updates between stabilisations, FP64 for stabilisation and measurements; precision checks decide Nwrap | up to 2x (FP32 vector) or more (tensor cores) on the GEMM share | E1 (SGEMM/CGEMM ceilings), then precision study: Precision Green, observables vs FP64 within error bars, ED tests | must be validated per model class |
@@ -70,6 +70,7 @@ Model-agnostic rule: every idea is a property of ALF's matrices (real/complex, d
 | T9 | **Fixed benchmark list + tuning script** (owner): models x L x hardware, tuning script with a correctness gate, results table | the table, reproducible from the script | T8 |
 | T10 | **Start-up auto-selection of tuning settings** (owner: "if it is worth it") | gain of auto-selected vs fixed defaults on the T9 list larger than the selection cost | T9 |
 | T11 | **New hardware** (owner: "we have to think about a way"): mechanism so tuned values (e.g. `ALFSH_*`, tuned on Max 1550 only) are re-checked on new GPUs: warn/fail when the device is not in the tuned table, or parameters-file entries — to be designed, not decided | a design note for the owner | T9, T10 |
+| T12 | (owner, 2026-11-26) **Finish the walker**: Fakher's `qmc_walker_t` (Phase 6) holds G and the UDV stacks, but `main` runs one walker and per-chain state still lives in module variables (e.g. pending low-rank state, control counters, GPU device state). Move all per-chain state into the walker so one process runs N walkers; then batch the GPU kernels over walkers (idea I1) to raise throughput | N walkers in one process give the same chains as N separate runs (bitwise per chain); then sweeps/s per GPU against the MPS layout (H100: 1.18 sweeps/s at L = 24 with 8 processes) | `Prog/qmc_walker_mod.F90`, `docs/ai/codemap/engine.md`; I1, E1 (batched GEMM N = 576: 44.5 -> 58 TFLOP/s) |
 
 ## 4. Validation protocol (every idea)
 
