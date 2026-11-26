@@ -1340,6 +1340,9 @@ contains
       Use Hamiltonian_main, only: Ndim, N_FL
       Use Random_wrap, only: ranf_wrap
       Use Control, only: Control_upgrade, Control_upgrade_eff
+#ifdef ALF_TRACE_UPDATES
+      Use Trace_updates_mod, only: Trace_update_write
+#endif
       Implicit none
 
       Complex (Kind=Kind(0.d0)), Intent(InOut) :: GR(Ndim,Ndim,N_FL)
@@ -1369,6 +1372,9 @@ contains
       endif
       prop_valid = .false.
 
+#ifdef ALF_TRACE_UPDATES
+      Call Trace_update_write(nt, n_op, Ratiotot, Weight, ranf_val, toggle)
+#endif
       Call Control_upgrade(toggle)
       Call Control_upgrade_eff(toggle)
 
