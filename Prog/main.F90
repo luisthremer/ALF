@@ -156,6 +156,10 @@ Program Main
         Use qmc_walker_mod, only: qmc_walker_t, Walker_layout, Walker_alloc, Walker_dealloc, &
              &                    Walker_init_stack, Walker_init_GR
          
+#ifdef ALF_TIMERS
+        Use Timers_mod, only: timer_bin_begin, timer_bin_end, timer_sweep_begin, timer_sweep_end, &
+             &                timer_push, timer_pop, T_GLOBAL, T_LANGEVIN_HMC
+#endif
         Implicit none
 
 #include "git.h"
@@ -348,6 +352,9 @@ Program Main
            ! Set bin observables to zero.
 
            call system_clock(count_bin_start)
+#ifdef ALF_TIMERS
+           call timer_bin_begin()
+#endif
 
            Call ham%Init_obs(get_Ltau())
 #if defined(TEMPERING)
@@ -355,6 +362,10 @@ Program Main
 #endif
 
            DO NSW = 1, get_NSweep()
+#ifdef ALF_TIMERS
+              call timer_sweep_begin()
+              call timer_push(T_GLOBAL)
+#endif
 
 #if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
               IF (MOD(NSW,get_N_Tempering_frequency()) == 0) then
@@ -364,6 +375,10 @@ Program Main
 #endif
               ! Global updates
               If ( get_Global_moves() ) Call Global_Updates(walker%Phase, walker%GR, walker%udvr, walker%udvl, walker%Stab_nt, walker%udvst, get_N_Global() )
+#ifdef ALF_TIMERS
+              call timer_pop(T_GLOBAL)
+              call timer_push(T_LANGEVIN_HMC)
+#endif
 
 
               If ( str_to_upper(Langevin_HMC%get_Update_scheme()) == "LANGEVIN" )  then
@@ -377,12 +392,18 @@ Program Main
               If (  str_to_upper(Metropolis_Langevin%get_Update_scheme()) == "MALA" )  then
                  Call MALA_update(walker, NSW)
               endif
+#ifdef ALF_TIMERS
+              call timer_pop(T_LANGEVIN_HMC)
+#endif
 
               If (get_sequential())  then 
                  Call Sweep_up(walker)
                  
                  Call Sweep_down(walker)
               endif
+#ifdef ALF_TIMERS
+              call timer_sweep_end()
+#endif
 
            ENDDO
 #ifdef ALF_GPU
@@ -395,6 +416,9 @@ Program Main
 #endif
 
            Call nsigma%out(Group_Comm)
+#ifdef ALF_TIMERS
+           call timer_bin_end(NBC, Group_Comm, file_info)
+#endif
 
            call system_clock(count_bin_end)
            prog_truncation = .false.

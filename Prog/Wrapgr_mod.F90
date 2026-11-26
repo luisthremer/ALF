@@ -59,6 +59,10 @@ Module Wrapgr_mod
   Use gpu_update_mod, only: gpu_upd_enabled, gpu_wrapgrup, gpu_wrapgrdo
 #endif
 
+#ifdef ALF_TIMERS
+  use Timers_mod, only: timer_push, timer_pop, timer_switch, timer_count_proposal, timer_flush_reason, &
+       &                T_HOP, T_VWRAP, T_UPDATE, T_GLOBAL, FR_SLICE_END, FR_INELIGIBLE
+#endif
   Implicit none
 
   INTERFACE wrapgr_sort
@@ -138,16 +142,26 @@ Contains
 
     ! Wrap up, upgrade ntau1.  with B^{1}(tau1)
     NTAU1 = NTAU + 1
+#ifdef ALF_TIMERS
+    call timer_push(T_HOP)
+#endif
     Do nf_eff = 1,N_FL_eff
        nf=Calc_Fl_map(nf_eff)
        CALL HOP_MOD_mmthr   (GR(:,:,nf), nf, ntau1 )
        CALL HOP_MOD_mmthl_m1(GR(:,:,nf), nf, ntau1 )
     Enddo
+#ifdef ALF_TIMERS
+    call timer_pop(T_HOP)
+    call timer_push(T_VWRAP)
+#endif
     call Lowrank_tune_slice_begin()
     Do n = Nt_sequential_start,Nt_sequential_end
        L_MALA = Sequential_MALA .and. Op_V(n,1)%type == 3
        LR_n = Lowrank_eligible(n) .and. .not. L_MALA
        ! The standard and MALA updates below need the explicit G
+#ifdef ALF_TIMERS
+       if (.not. LR_n) timer_flush_reason = FR_INELIGIBLE
+#endif
        if (.not. LR_n) call Lowrank_flush(GR)
        Do nf_eff = 1, N_FL_eff
           nf=Calc_Fl_map(nf_eff)
@@ -156,6 +170,9 @@ Contains
           Call Op_Wrapup(Gr(:,:,nf),Op_V(n,nf),HS_Field,Ndim,N_Type,ntau1)
        enddo
        if (LR_n) call Lowrank_wrap_hook(n, ntau1, HS_Field, 1, +1, GR)
+#ifdef ALF_TIMERS
+       call timer_switch(T_VWRAP, T_UPDATE)
+#endif
        nf = 1
        T0_proposal       = 1.5D0
        T0_Proposal_ratio = 1.D0
@@ -199,10 +216,16 @@ Contains
           else
              Call Upgrade2(GR,n,ntau1,PHASE,HS_new, Prev_Ratiotot, S0_ratio,T0_Proposal_ratio, Acc, mode )
           endif
+#ifdef ALF_TIMERS
+          if (.not. L_MALA) call timer_count_proposal(Acc)
+#endif
        else
           toggle1 = .false.
           Call Control_upgrade_eff(toggle1)
        Endif
+#ifdef ALF_TIMERS
+       call timer_switch(T_UPDATE, T_VWRAP)
+#endif
        do nf_eff = 1,N_FL_eff
           nf=Calc_Fl_map(nf_eff)
           N_type =  2
@@ -211,6 +234,9 @@ Contains
        if (LR_n) call Lowrank_wrap_hook(n, ntau1, HS_Field, 2, +1, GR)
 
        if (L_MALA) then
+#ifdef ALF_TIMERS
+          call timer_switch(T_VWRAP, T_UPDATE)
+#endif
           phase = Phase * Prev_Ratiotot/sqrt(Prev_Ratiotot*conjg(Prev_Ratiotot))
           Call ham%Ham_Langevin_HMC_S0_single( force_0_new,n,ntau1)
           force_new = calculate_force(n,ntau1,GR)
@@ -237,9 +263,17 @@ Contains
 
           Call Control_upgrade(acc)
           Call Control_upgrade_eff(acc)
+#ifdef ALF_TIMERS
+          call timer_count_proposal(acc)
+          call timer_switch(T_UPDATE, T_VWRAP)
+#endif
 
        endif
     Enddo
+#ifdef ALF_TIMERS
+    call timer_pop(T_VWRAP)
+    timer_flush_reason = FR_SLICE_END
+#endif
     ! G is the full Green function for the Global_tau moves and on return
     call Lowrank_flush(GR)
     call Lowrank_tune_slice_end(.false.)
@@ -249,6 +283,9 @@ Contains
     else
       m = 0 
     endif
+#ifdef ALF_TIMERS
+    call timer_push(T_GLOBAL)
+#endif
     If ( N_Global_tau > 0 ) then
        !if ( Nt_sequential_start >  Nt_sequential_end ) m = Nt_sequential_start
        Call Wrapgr_Random_update(GR,m,ntau1, PHASE, N_Global_tau )
@@ -258,6 +295,9 @@ Contains
        Call Wrapgr_Langevin_update(GR,m,ntau1, PHASE, N_Global_tau_MALA, Delta_t_MALA_global_tau, Max_Force_MALA_global_tau )
     Endif
     if ( N_Global_tau > 0 .or. N_Global_tau_MALA > 0 ) Call Wrapgr_PlaceGR(GR,m, Size(OP_V,1), ntau1)
+#ifdef ALF_TIMERS
+    call timer_pop(T_GLOBAL)
+#endif
 
   END SUBROUTINE WRAPGRUP
 
@@ -315,6 +355,9 @@ Contains
     nsigma_st = cmplx(0.d0,0.d0,kind(0.d0))
 
     m         = Size(OP_V,1)
+#ifdef ALF_TIMERS
+    call timer_push(T_GLOBAL)
+#endif
     If ( N_Global_tau > 0 ) then 
        !Write(6,*) 'Call Ran_up ', m,ntau
        Call Wrapgr_Random_update(GR,m,ntau, PHASE, N_Global_tau )
@@ -332,13 +375,19 @@ Contains
        m1 = 0
     endif
     if ( N_Global_tau > 0 .or. N_Global_tau_MALA > 0 ) Call Wrapgr_PlaceGR(GR,m, m1, ntau)
+#ifdef ALF_TIMERS
+    call timer_pop(T_GLOBAL)
+    call timer_push(T_VWRAP)
+#endif
 
-    
     call Lowrank_tune_slice_begin()
     Do n =  Nt_sequential_end, Nt_sequential_start, -1
        L_MALA = Sequential_MALA .and. Op_V(n,1)%type == 3
        LR_n = Lowrank_eligible(n) .and. .not. L_MALA
        ! The standard and MALA updates below need the explicit G
+#ifdef ALF_TIMERS
+       if (.not. LR_n) timer_flush_reason = FR_INELIGIBLE
+#endif
        if (.not. LR_n) call Lowrank_flush(GR)
        if (L_MALA) then
           nsigma_st = nsigma%f(n,ntau)
@@ -353,6 +402,9 @@ Contains
           Call Op_Wrapdo( Gr(:,:,nf), Op_V(n,nf), HS_Field, Ndim, N_Type,ntau)
        enddo
        if (LR_n) call Lowrank_wrap_hook(n, ntau, HS_Field, 2, -1, GR)
+#ifdef ALF_TIMERS
+       call timer_switch(T_VWRAP, T_UPDATE)
+#endif
        !Write(6,*) 'Upgrade : ', ntau,n 
        nf = 1
        T0_proposal       = 1.5D0
@@ -428,10 +480,16 @@ Contains
                 Call Upgrade2(GR,n,ntau,PHASE,HS_new, Prev_Ratiotot, S0_ratio,T0_Proposal_ratio, Acc, mode )
              endif
           endif
+#ifdef ALF_TIMERS
+          call timer_count_proposal(Acc)
+#endif
        else
           toggle1 = .false.
           Call Control_upgrade_eff(toggle1)
        Endif
+#ifdef ALF_TIMERS
+       call timer_switch(T_UPDATE, T_VWRAP)
+#endif
      
        !Call Upgrade(GR,n,ntau,PHASE,Op_V(n,1)%N_non_zero) 
        ! The spin has changed after the upgrade!
@@ -444,15 +502,25 @@ Contains
        enddo
        if (LR_n) call Lowrank_wrap_hook(n, ntau, HS_Field, 1, -1, GR)
     enddo
+#ifdef ALF_TIMERS
+    call timer_pop(T_VWRAP)
+    timer_flush_reason = FR_SLICE_END
+#endif
     ! G is the full Green function before the hopping propagation and on return
     call Lowrank_flush(GR)
     ! NTAU = 1 ends a sweep (up sweep NTAU = 0..Ltrot-1, down sweep Ltrot..1)
     call Lowrank_tune_slice_end(NTAU == 1)
+#ifdef ALF_TIMERS
+    call timer_push(T_HOP)
+#endif
     DO nf_eff = 1,N_FL_eff
        nf=Calc_Fl_map(nf_eff)
        Call Hop_mod_mmthl   (GR(:,:,nf), nf,ntau)
        Call Hop_mod_mmthr_m1(GR(:,:,nf), nf,ntau)
     enddo
+#ifdef ALF_TIMERS
+    call timer_pop(T_HOP)
+#endif
     
   end SUBROUTINE WRAPGRDO
   
