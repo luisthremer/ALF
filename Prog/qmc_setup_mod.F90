@@ -49,6 +49,7 @@ Module qmc_setup_mod
   Use QMC_runtime_var, only: apply_Langevin_overrides, &
        &                     check_compatibility_reconstruct_greens_function, &
        &                     check_langevin_schemes_and_variables, check_MALA_variables, &
+       &                     check_Langevin_HMC_variables, &
        &                     check_projector_Ltau, check_Nt_sequential_range, &
        &                     check_update_schemes_compatibility, get_Amplitude, get_CPU_MAX, &
        &                     get_Delta_t_Langevin_HMC, get_Delta_t_MALA_global, &
@@ -226,6 +227,7 @@ Module qmc_setup_mod
 
     !   Sequential = .true.
       !TODO: check if sequential is done if some fields are discrete (Warning or error termination?)
+      Call check_Langevin_HMC_variables()
       if ( get_Langevin() .or.  get_HMC() ) then
          if ( get_Langevin() ) then
               if (is_root(Group_Comm)) then
