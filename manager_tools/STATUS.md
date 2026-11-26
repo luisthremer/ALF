@@ -5,9 +5,9 @@
 ## Waiting for you
 Answer with the buttons under "Needs you" on the [progress page](https://claude.ai/artifact/PmMk2VMb8iUzXtnEYUcHc3).
 1. Q13: `Lowrank_cross_slice` is sound but not faster on the CPU: drop it (recommended) or keep as opt-in?
-2. Q14: measure the stabilisation candidates (CholeskyQR2, adaptive Nwrap) on the H100 (a few GPU-hours)? yes/no
 
 ## Done since the last owner message
+- Q14 answered "Yes" on the progress page: session cgalf-research measures the stabilisation candidates on the Helma H100.
 - Merged the G2/G3 fixes into the GPU line: [a576c1b6](https://github.com/luisthremer/ALF/commit/a576c1b6), CI run 45881567484 green.
 - Merged step 1e (device observables incl. local h0 on the device, device tau pass): [b75f9d91](https://github.com/luisthremer/ALF/commit/b75f9d91), CI run 45876811655 green; all 9 step commits built and tested on melmac (Linux); device observables need no G download (counter 0); device vs CPU observables within roundoff.
 - Merged on the CPU line (cpu-queue session): `ALF_UNSTABLE_THRESHOLD` (configurable G precision abort threshold) and `Start_PP/prepare_sim.py` (general PARALLEL_PARAMS helper, [954ba129](https://github.com/luisthremer/ALF/commit/954ba129)); both also in the GPU line.
@@ -21,13 +21,13 @@ Answer with the buttons under "Needs you" on the [progress page](https://claude.
 - Earlier today: Phase-6 sync, B batch 1, step 1a, CG-ALF ideas, upstream issues, branch clean-up (history: `git log manager_tools/STATUS.md`).
 
 ## Next 3 steps
-1. Manager handover (`.handoff/HANDOFF_PROMPT_2026-11-26d.md`); then merge 1f (S1) when CI is green.
+1. Handover done; merge 1f (S1) when CI is green.
 1b. Start the three vendor sessions of step 2 (NVIDIA on Helma, AMD on amd, Intel on SuperMUC).
 2. CPU-line queue: next item `alf_exit` / `Trace_updates_mod` (cpu-queue session).
 3. Merge what the parallel sessions deliver (CPU-line queue, CG-ALF research results); then step 2 vendor backends (clusters).
 
 ## Open branches and running jobs
 - `cm/feat/gpu-s1` + `cm/dev/gpu-s1` (step 1f, CI run 45886167489).
-- Parallel sessions reporting to the manager: cpu-queue (`ALF_UNSTABLE_THRESHOLD`, `prepare_sim.py`, CPU line), cgalf-research (T6, T1 done; waits for Q13/Q14), g2-precision (done). Builds with `make -j2`, `ctest -j2` while many sessions run.
+- Parallel sessions reporting to the manager: cpu-queue (`ALF_UNSTABLE_THRESHOLD`, `prepare_sim.py`, CPU line), cgalf-research (T6, T1 done; Q14 yes: H100 measurement next; waits for Q13), g2-precision (done). Builds with `make -j2`, `ctest -j2` while many sessions run.
 - Side session "Interview owner on QUESTIONS.md decisions": finished; can be archived on your yes.
 - Cluster jobs: none. Plan: [P2_4_GPU_PLAN.md](https://github.com/luisthremer/ALF/blob/Code-modularity-GPU/docs/ai/phase2/P2_4_GPU_PLAN.md)
