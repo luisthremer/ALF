@@ -1,5 +1,5 @@
 ## Now
-P2.4 step 1c (`gpu-wrap-update`: GPU wraps, updates and lowrank on the device mirror, Hubbard only): design note in progress.
+P2.4 step 1c (`gpu-wrap-update`: GPU wraps, updates and lowrank on the device mirror, Hubbard only): design note done; one coding agent implements it on `cm/dev/gpu-wrap-update` (6 commits planned: `la_zgemm_cr`, wraps, self-tests, lowrank, updates + Wrapgr hooks, GPU=host vs CPU tests).
 
 ## Waiting for you
 All questions in detail: [QUESTIONS.md](QUESTIONS.md).
@@ -29,5 +29,5 @@ All questions in detail: [QUESTIONS.md](QUESTIONS.md).
 3. Step 2: vendor backends inside linalg_mod (needs the clusters).
 
 ## Open branches and running jobs
-- None (1c branch not created yet).
+- `cm/dev/gpu-wrap-update` (step 1c, coding agent working).
 - Cluster jobs: none. Plan: [P2_4_GPU_PLAN.md](https://github.com/luisthremer/ALF/blob/Code-modularity-GPU/docs/ai/phase2/P2_4_GPU_PLAN.md)
