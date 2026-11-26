@@ -103,6 +103,9 @@ Module gpu_stab_mod
   Use wrapul_mod, only: WRAPUL
   Use cgr1_mod, only: CGR
   Use linalg_mod, only: la_zgemm, la_ztrsm, la_zunmqr, la_zgeqrf, la_zgetrf, la_zqrpp
+#if defined(ALF_LA_CUDA)
+  Use linalg_cuda_mod, only: la_cuda_sync
+#endif
 #if defined(STABLOG)
   Use linalg_mod, only: la_zgeqp3
 #endif
@@ -709,6 +712,9 @@ Contains
        endif
     endif
     call dev_cgr(nfe, nvar)
+#if defined(ALF_LA_CUDA)
+    call la_cuda_sync()                            ! cuSOLVER info of this stabilisation, before its results are used
+#endif
     ! D->H: the phase (16 B)
     !$omp target update from(st_c(3:3))
     phase = st_c(3)

@@ -72,6 +72,9 @@ Module gpu_tau_mod
   Use cgr2_2_mod, only: CGR2_2
   Use tau_m_mod, only: PropR, PropRm1
   Use linalg_mod, only: la_zgemm, la_ztrsm, la_zunmqr, la_zgetrf, la_zgetri, la_zqrpp
+#if defined(ALF_LA_CUDA)
+  Use linalg_cuda_mod, only: la_cuda_sync
+#endif
 #if defined(STABLOG)
   Use linalg_mod, only: la_zgeqp3
 #endif
@@ -249,6 +252,9 @@ Contains
        endif
     enddo
     call tau_end()
+#if defined(ALF_LA_CUDA)
+    call la_cuda_sync()                            ! cuSOLVER info of the tau pass
+#endif
     n_pass = n_pass + 1
   end subroutine gpu_tau_pass
 
