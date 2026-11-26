@@ -35,6 +35,11 @@ Verified 2026-11-25 by reading files; "unverified" marks anything not run.
   `Upgrade2` (mode Final) and `Upgrade_lowrank` appends `nt n_op Re(R) Im(R) Weight ranf toggle` to
   `trace_updates.txt` (`Prog/Trace_updates_mod.F90`); diff the files of two runs that differ only in
   `Sequential_scheme`. Without the macro the build is unchanged.
+- Debug macro `ALF_TIMERS` (CG-ALF T8 base; not set by configure.sh): `export ALF_FLAGS_PROG="$ALF_FLAGS_PROG -DALF_TIMERS"`,
+  `make clean`, `make`. Exclusive stack timers (`Prog/Timers_mod.F90`) split every sweep into update, flush, vwrap,
+  hop, stab, meas, global, langevin_hmc and other, with counters (proposals, accepts, flushes by reason); one block
+  per bin in `timers.txt` next to the info file (max/mean over the group's ranks). The sum of the parts equals the
+  sweep time exactly (checked every bin). Without the macro the build is unchanged.
 - `Devel`: GNU adds `-Wconversion -fcheck=all -g -fbacktrace -fmax-errors=10 -pedantic -Werror -Wno-error=cpp`.
 - `ALF_FLAGS_EXT`: extra flags appended everywhere (export before sourcing).
 - GNU opt flags: `-cpp -O3 -ffree-line-length-none -ffast-math -fopenmp`; `-std=f2008` for Prog/Analysis.
