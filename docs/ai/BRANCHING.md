@@ -39,3 +39,8 @@ integration branch (`cm/dev/<feature>-integrate`) before the single canvas.
 
 | Feature | Target | Merge | Dev tag | Canvas tag | What it did |
 |---|---|---|---|---|---|
+| ai-docs | Code-modularity | `c771d98a` (2026-11-25) | `archive/cm/ai-docs/dev` | `archive/cm/ai-docs/feat` | AGENTS.md, CLAUDE.md, docs/ai (code map, branching rule, tools, phase-2 brief and roadmap), KNOWN_ISSUES.md |
+| lowrank | Code-modularity | `2bb0258a` (2026-11-25) | `archive/cm/lowrank/dev` | `archive/cm/lowrank/feat` | native delayed/submatrix update (`lowrank_update_mod`, `Sequential_scheme`, `N_delay`), tests, documentation |
+| det-phase | Code-modularity | `aef50743` (2026-11-26) | `archive/cm/det-phase/dev` | `archive/cm/det-phase/feat` | CPU determinant phase without underflow for large N (DET_C), phase guard; CI green on `eed184aa` |
+| known-issues | Code-modularity | `ad861fc9` (2026-11-26) | `archive/cm/known-issues/dev` | `archive/cm/known-issues/feat` | bug-hunt findings in KNOWN_ISSUES.md with classes A/B/C; owner rules for bugs, status and ideas (docs only) |
+| nan-guards | Code-modularity | `f8dbc251` (2026-11-26) | `archive/cm/nan-guards/dev` | `archive/cm/nan-guards/feat` | class-A fix H1: NaN/Inf checks of Green functions and UDV scales by bit pattern; CI green on `5defa12a` (run 45785448080) |

@@ -19,7 +19,7 @@ main.F90
  └─ loop bins → loop sweeps
      ├─ Sweep_up   (qmc_sweep_mod): for ntau = 0..Ltrot-1
      │    WRAPGRUP (Wrapgr_mod): hopping wrap, then per vertex n: Op_Wrapup, propose,
-     │             Upgrade2, Op_Wrapup; then global-τ moves
+     │             Upgrade2 (or Upgrade_lowrank: delayed/submatrix), Op_Wrapup; then global-τ moves
      │    at stabilisation slices: WRAPUR + Recompute_GR_phase (CGR, precision checks)
      │    equal-time measurements (ham%Obser)
      ├─ Sweep_down (qmc_sweep_mod): ntau = Ltrot..1, WRAPGRDO, WRAPUL, time-displaced (TAU_M/Tau_p)

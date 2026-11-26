@@ -43,6 +43,12 @@ _PARAMS_GENERIC = OrderedDict([
                   'value': 1},
          'Max_Force': {'comment': 'Max Force for Langevin', 'value': 5.0},
          'Sequential_MALA': {'comment': 'For MALA updates', 'value': False},
+         'Sequential_scheme': {'comment': 'Sequential update: standard, '
+                                          'delayed, submatrix or auto',
+                               'value': 'standard'},
+         'N_delay': {'comment': 'Delayed/submatrix block size: 0 '
+                                'automatic, -1 timed, >= 1 fixed',
+                     'value': 0},
          'Max_Force_MALA_sequential': {'comment': 'Max Force for '
                                                   'sequential MALA '
                                                   'updates',

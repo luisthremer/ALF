@@ -21,15 +21,26 @@ Status values: `open`, `running`, `done (<date>, <commit>)`.
 | `cm/dev/<x>`, `cm/feat/<x>` | dev and canvas branch of a feature `<x>` (see BRANCHING.md) |
 | `archive/cm/<x>/{dev,feat}` | tags left behind after a merge |
 
+## Rule: bugs found along the way (owner, 2026-11-26)
+
+Every bug is classified at once and entered in `KNOWN_ISSUES.md` with class and status:
+**A** (silently wrong results in the current code path or a production configuration, or a guard hiding them) ->
+interrupt, entry first, warn production users, own small dev/canvas fix, merge, back to the step;
+**B** (real bug outside the current path) -> entry + whiteboard line, fixed in one batch feature after each phase
+merge; **C** (cosmetic/theoretical) -> entry only, fixed when the code is touched anyway.
+At most one interruption at a time and at most two unmerged feature branches (current step + one A fix);
+unsure between A and B -> ask the owner, treat as B meanwhile. Full text: `AGENTS.md`, Working mode.
+Status page and idea inbox: private repo `luisthremer/alf-ops` (`STATUS.md`, `IDEAS.md`), see `AGENTS.md`.
+
 ## P2.0 — Sync (done 2026-11-25)
 Fork `Code-modularity` = origin `Code-modularity_Phase6` (`af22b976`), a fast-forward of
 `Code-modularity`. Fork `master` = origin `master`.
 
-## P2.1 — Knowledge files for AI sessions (running)
+## P2.1 — Knowledge files for AI sessions (done 2026-11-25, merge `c771d98a`)
 `AGENTS.md`, `CLAUDE.md`, `docs/ai/CODEMAP.md`, `docs/ai/BRANCHING.md`, this folder.
 Feature name `ai-docs`. Done when merged into `Code-modularity` via `cm/feat/ai-docs`.
 
-## P2.2 — Delayed and submatrix updates, native (open)
+## P2.2 — Delayed and submatrix updates, native (merged 2026-11-25, `2bb0258a`; step 2 "fastest" open)
 Feature name `lowrank`. Source: fork `master_ai_cpu` (`8b18b95c`, LOWRANK in hook form:
 `Prog/Lowrank/*`, `testsuite/Lowrank.tests/*`, `Documentation/lowrank*`).
 1. `cm/dev/lowrank`: port without hooks. Scheme parameters (`Sequential_scheme`, `N_delay`) in
@@ -42,6 +53,13 @@ Feature name `lowrank`. Source: fork `master_ai_cpu` (`8b18b95c`, LOWRANK in hoo
    (a) non-diagonal vertices: replace the `K_ND = 1` guard by a representation without the
    cancellation loss, or switch that block to delayed; (b) rank-N_P > `N_P_LIM`; (c) block size
    rule per machine (static + timed). Delayed is used only where timing shows it is faster.
+   Status 2026-11-25 (feature `lowrank-fastest`): measured on a Mac (GNU, 1 core): Hubbard 16x16
+   b=6 standard 12.6 s, delayed 10.1 s, submatrix 9.8 s; tV 16x16 12.3 / 10.3 / 12.3 s; Kondo 12x12
+   b=6 4.5 / 2.7 / 3.8 s. (a) is done as `Sequential_scheme = "auto"` (submatrix if every eligible
+   vertex is diagonal, else delayed): always the faster of the two. A mixed submatrix/delayed block
+   is postponed (low priority): it could gain at most the few percent by which submatrix beats
+   delayed, and the factor order makes it numerically delicate. The larger time shares are
+   measurements and stabilisation (P2.9).
 3. Gates: all builds + ctest; standard scheme bitwise identical to `Code-modularity` on
    `alf_test_branch`; delayed/submatrix agree with standard to roundoff (`compare_schemes.py`)
    and with ED (`test_vs_ed`); fork CI green.

@@ -80,7 +80,8 @@ module cgr1_mod
 
 #if (defined(STAB2) || defined(STAB1)) && !defined(STABLOG)
         Use UDV_Wrap_mod, only: UDV_WRAP_Pivot
-        Use MyMats, only: CT, DET_C, INV, MMULT
+        Use MyMats, only: CT, DET_C_PHASE, LU_PHASE_SAFE, INV, MMULT
+        Use Control, only: Control_Check_Phase
         Use iso_fortran_env, only: error_unit
 
         Implicit None
@@ -144,7 +145,8 @@ module cgr1_mod
            !Do I = 1,N_size
            !   Write(6,*) DLUP(I)
            !enddo
-           CALL INV  (TPUP,TPUPM1,ZDUP1)
+           ! Only the phase of Z1 is used: underflow-safe products (KNOWN_ISSUES.md); ZDDO1 = raw det, unused
+           CALL INV  (TPUP,TPUPM1,ZDDO1,DET_PHASE=ZDUP1)
            CALL MMULT(TPUP1, udvr%U, udvlocal%U)
            CALL la_zgetrf(N_size, N_size, TPUP1, N_size, IPVT, info)
            !>  TPUP1 = P * L * U   LU-decomposition
@@ -156,6 +158,7 @@ module cgr1_mod
               Z1 = Z1 * TPUP1(I, I) 
               
            enddo
+           Z1 = LU_PHASE_SAFE(Z1, TPUP1, IPVT, N_size, start=ZDUP1)
         ELSE
            !WRITE(6,*) 'UDV of (U + DR * V * DL)^{*}'
            TPUP1 = CT(TPUP)
@@ -172,8 +175,11 @@ module cgr1_mod
                  ZDUP2 = -ZDUP2
               endif
            enddo
+           ! Only the phases of ZDUP2 and ZDUP1 are used: replaced if the raw products under- or
+           ! overflowed (KNOWN_ISSUES.md)
+           ZDUP2 = LU_PHASE_SAFE(ZDUP2, TPUP1, IPVT, N_size)
            TPUP = TPUPM1
-           ZDUP1 = DET_C(TPUP, N_size)! Det destroys its argument
+           ZDUP1 = DET_C_PHASE(TPUP, N_size)! Det destroys its argument
            Z1 = ZDUP2/ZDUP1
         ENDIF
         DO J = 1, N_size
@@ -198,7 +204,8 @@ module cgr1_mod
 
 #else
 
-        USE MyMats, only: DET_C, MMULT
+        USE MyMats, only: DET_C_PHASE, MMULT
+        Use Control, only: Control_Check_Phase
         USE QDRP_mod, only: QDRP_decompose
         Use iso_fortran_env, only: error_unit
         Use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
@@ -333,7 +340,8 @@ module cgr1_mod
 #endif
         ! calculate determinant of UR*UL
         ! as the D's are real and positive, they do not contribute the the phase of det so they can be ignored
-        PHASE = CONJG(DET_C(RHS, N_size))
+        ! Underflow-safe for large N_size, equal to DET_C otherwise (KNOWN_ISSUES.md)
+        PHASE = CONJG(DET_C_PHASE(RHS, N_size))
         PHASE = PHASE/ABS(PHASE)
         IPVT = 0
         IF (NVAR .NE. 1) THEN
@@ -476,7 +484,9 @@ module cgr1_mod
             CALL la_zgemm('N', 'C', N_size, N_size, N_size, alpha, RHS, N_size, udvr%U, N_size, beta, GRUP, N_size)
         ENDIF
 #endif
-        
+        ! A NaN phase would make every Metropolis weight NaN without any other symptom
+        call Control_Check_Phase(PHASE)
+
       END SUBROUTINE CGR
       
 !--------------------------------------------------------------------

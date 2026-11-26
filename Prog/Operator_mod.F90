@@ -43,7 +43,7 @@ Module Operator_mod
 
   Use mpi_shared_memory, only: allocate_shared_memory, use_mpi_shm
   Use mat_subroutines, only: ZSLGEMM
-  Use MyMats, only: DET_C, Diag
+  Use MyMats, only: DET_C_PHASE, Diag
   Use Fields_mod, only: Fields
   Use runtime_error_mod, only: Terminate_on_error, ERROR_HAMILTONIAN
   Use iso_fortran_env, only: error_unit
@@ -380,7 +380,8 @@ Contains
           ! Write(6,*) "Op_set", np,N
           if (noderank == 0) then
              TMP = Op%U ! that way we have the changes to the determinant due to the permutation
-             Z = Det_C(TMP, N)
+             ! U is unitary: only the phase of det U is used (underflow-safe, KNOWN_ISSUES.md)
+             Z = DET_C_PHASE(TMP, N)
              if (abs(Z) < 1.D-30) then
                 Write(error_unit, '(A,ES15.7)') ' Op_set: Eigenvector matrix has near-zero determinant: |det| = ', abs(Z)
                 Write(error_unit, '(A)')        '   Cannot normalize to SU(N). Check operator matrix.'
