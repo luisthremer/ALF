@@ -310,7 +310,7 @@ else()
 endif()
 set_tests_properties(38-QMC-runtime-lock-fail PROPERTIES WILL_FAIL TRUE TIMEOUT 60)
 
-# Start-up checks in QMC_runtime_var (KNOWN_ISSUES.md H3, M2, M4): each case must stop with its message.
+# Start-up checks in QMC_runtime_var (KNOWN_ISSUES.md H3, M2, M4, M5): each case must stop with its message.
 add_executable(42-QMC-runtime-checks-fail 42-QMC-runtime-checks-fail.F90)
 target_compile_options(42-QMC-runtime-checks-fail PRIVATE ${FLAG_LIST})
 target_include_directories(42-QMC-runtime-checks-fail PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../Prog"
@@ -318,7 +318,10 @@ target_include_directories(42-QMC-runtime-checks-fail PRIVATE "${CMAKE_CURRENT_S
 target_link_libraries(42-QMC-runtime-checks-fail
   "${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/QMC_runtime_var_mod.o" ${LIB_LIST})
 foreach(case_msg "nsweep|NSweep must be >= 1" "lobs|LOBS_ST > LOBS_EN" "projector|does not support Ltau = 1"
-    "ntseq_start|Nt_sequential_start" "ntseq_end|Nt_sequential_end")
+    "ntseq_start|Nt_sequential_start" "ntseq_end|Nt_sequential_end" "ltau|Ltau = 2 \\(must be 0 or 1\\)"
+    "amplitude|Amplitude = 0 freezes" "langevin_dt|Langevin=.True. requires Delta_t_Langevin_HMC"
+    "langevin_force|Langevin=.True. requires Max_Force" "hmc_dt|HMC=.True. requires Delta_t_Langevin_HMC"
+    "hmc_leapfrog|HMC=.True. requires Leapfrog_steps" "hmc_sweeps|HMC=.True. requires N_HMC_sweeps")
   string(REPLACE "|" ";" case_msg_list "${case_msg}")
   list(GET case_msg_list 0 case_name)
   list(GET case_msg_list 1 case_regex)
