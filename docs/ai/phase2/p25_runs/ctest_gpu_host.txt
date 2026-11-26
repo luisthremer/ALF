@@ -1,0 +1,52 @@
+ 1/51gpu-state-fault-nan_v ............   Passed    0.02 sec
+ 2/51gpu-wrap-selftest-dense ..........   Passed    0.03 sec
+ 3/51gpu-wrap-selftest ................   Passed    0.04 sec
+ 4/51gpu-wrap-selftest-hopd ...........   Passed    0.03 sec
+ 5/51gpu-wrap-fault-vexp ..............   Passed    0.03 sec
+ 6/51gpu-state-cgr-lu-value ...........   Passed    0.02 sec
+ 7/51gpu-tau-fault-perm ...............   Passed    0.02 sec
+ 8/51gpu-stab-phase ...................   Passed    0.05 sec
+ 9/51gpu-stab-fault-perm ..............   Passed    0.02 sec
+10/51gpu-state-fault-fault ............   Passed    0.01 sec
+11/51gpu-wrap-fault-nan ...............   Passed    0.02 sec
+12/51gpu-tau-selftest-mz ..............   Passed    0.02 sec
+13/51gpu-stab-fault-det ...............   Passed    0.02 sec
+14/51gpu-stab-fault-phase .............   Passed    0.02 sec
+15/51gpu-state-disable ................   Passed    0.02 sec
+16/51gpu-state-env-refused ............   Passed    0.02 sec
+17/51gpu-state-fault-nan ..............   Passed    0.02 sec
+18/51gpu-state-fault-fault_v ..........   Passed    0.02 sec
+19/51gpu-tau-selftest-nwrap7 ..........   Passed    0.02 sec
+20/51gpu-wrap-fault-hop ...............   Passed    0.02 sec
+21/51gpu-tau-fault-prec ...............   Passed    0.02 sec
+22/51gpu-state-tables .................   Passed    0.02 sec
+23/51gpu-stab-selftest-nwrap7 .........   Passed    0.02 sec
+24/51gpu-stab-fault-nan ...............   Passed    0.02 sec
+25/51gpu-obs-fault-obs ................   Passed    0.01 sec
+26/51gpu-state-fault-value ............   Passed    0.01 sec
+27/51gpu-state-tables-dense ...........   Passed    0.01 sec
+28/51gpu-tau-fault-blocks .............   Passed    0.02 sec
+29/51gpu-state-selftest-inactive ......   Passed    0.02 sec
+30/51gpu-tau-fault-prop ...............   Passed    0.02 sec
+31/51gpu-obs-control-g ................   Passed    0.02 sec
+32/51gpu-tau-selftest-su2 .............   Passed    0.01 sec
+33/51gpu-stab-selftest ................   Passed    0.01 sec
+34/51gpu-obs-bil2 .....................   Passed    0.02 sec
+35/51gpu-obs-control-weights ..........   Passed    0.02 sec
+36/51gpu-stab-untracked-tracked .......   Passed    0.02 sec
+37/51gpu-stab-untracked-check .........   Passed    0.01 sec
+38/51gpu-obs-sq1 ......................   Passed    0.01 sec
+39/51gpu-state-cgr-lu-refused .........   Passed    0.01 sec
+40/51gpu-obs-sq2h .....................   Passed    0.01 sec
+41/51gpu-state-roundtrip ..............   Passed    0.01 sec
+42/51gpu-obs-sq2s .....................   Passed    0.01 sec
+43/51gpu-stab-untracked-lu ............   Passed    0.01 sec
+44/51gpu-state-envreader ..............   Passed    0.00 sec
+45/51gpu-obs-sq1s .....................   Passed    0.01 sec
+46/51gpu-obs-bil1 .....................   Passed    0.01 sec
+47/51gpu-obs-sq2 ......................   Passed    0.01 sec
+48/51gpu-state-refusals ...............   Passed    0.01 sec
+49/51gpu-stab-refdet ..................   Passed    1.18 sec
+50/51gpu-state-e2e ....................   Passed   14.86 sec
+51/51gpu-stab-refdet-3200 .............   Passed   31.65 sec
+100% tests passed, 0 tests failed out of 51
