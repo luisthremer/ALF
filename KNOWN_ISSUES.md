@@ -35,7 +35,8 @@ New findings of the bug hunt (docs/ai/phase2/ROADMAP.md, P2.8) are added here fi
   `log|det|` and would have been log 0). `Control_Check_Phase` at the end of `CGR` stops the run if
   the phase is NaN, Inf or not of unit modulus. Normal runs are unchanged bit for bit (16 regression
   scenarios); tests `14-det-phase`, `41-check-phase-fail`. `DET_C` itself is unchanged (its
-  magnitude matters elsewhere). Large-N check on the CPU with the fix: Helma job 1451670 (pending).
+  magnitude matters elsewhere). Large-N check (Helma job 1457891, ifx + MKL, Hubbard N_FL = 2, Mz = .F., U = 5,
+  Nt = 16, 1 sweep): L = 64 acceptance 0.2182 before, 0.3197 after; L = 48 identical (0.3193). Merged as aef50743.
   Whether and how this goes to the upstream developers is the owner's decision.
 - **See:** branch `fix/det-phase-underflow` (GPU line), `docs/gpu/KNOWN_ISSUE_DET_PHASE_UNDERFLOW.md`.
 
@@ -60,7 +61,8 @@ New findings of the bug hunt (docs/ai/phase2/ROADMAP.md, P2.8) are added here fi
 
 ## Bug hunt 2026-11-25 (P2.8, run early): summary
 
-Found by the hunter agents A (input handling, Claude-BugHunter method) and B (numerics), on upstream master
+Found by the hunter agents A (input handling, Claude-BugHunter method), B (numerics), C (MPI, restart, differential)
+and D (GPU line gpu-port on Helma H100), on upstream master
 `4c690b04` and `Code-modularity`; the high-severity ones (H1-H5) re-checked by the main session. "Both" = master
 and Code-modularity. Reports: hunter scratch files `bughunt/A/REPORT.md`, `bughunt/B/REPORT.md` (summarised here).
 Small runs: 4x4 Hubbard (Mz) from `Scripts_and_Parameters_files/Start` with the changes listed.
@@ -95,6 +97,21 @@ passes; should be `abs(abs(f) - 1) > eps`.
 "Unstable matrix". Cause: WRAPGRUP/WRAPGRDO wrap only the operators start..end; the others are placed by
 `Wrapgr_PlaceGR` only when `N_Global_tau > 0` or `N_Global_tau_MALA > 0`. Same with the delayed/submatrix schemes.
 
+### H6. Tempering with an odd number of replicas hangs forever (both, high; hunter C)
+`mpiexec -n 3` with `mpi_per_parameter_set = 1` (3 replicas): deadlock, no output. One replica: the run finishes, then
+MPI_Finalize aborts ("Communicator being freed has 48 unmatched message(s)"). Cause: main.F90 only checks that the rank
+count is a multiple of `mpi_per_parameter_set`; in Global_mod `Exchange_Step` the partner loop wraps around for an odd
+group count (rank 1 waits for rank 0, which talks to rank 2), `List_masters` (Isize/2 entries) is written out of bounds,
+and with one group every rank is paired with itself. Expected: a clear stop "Tempering needs an even number (>= 2) of
+parameter sets" (PARALLEL_PARAMS does no exchange and is not affected).
+
+### H7. Bilayer_honeycomb: potential and total energy wrong (upstream master and both lines; hunter D, code checked)
+The interaction is set up correctly (`Ham_U_vec`: U on orbitals 1..Norb/2, U2 on the rest), but the measurement of
+`Pot_scal` (and so `Ener_scal`) in Hamiltonian_Hubbard_smod uses `no_I == 1 -> U`, `no_I == 2 -> U2` and nothing else.
+Bilayer_square (Norb = 2) is right; Bilayer_honeycomb (Norb = 4) weights (U, U2, 0, 0) instead of (U, U, U2, U2).
+The GPU device observables (gpu-port, gpu_obs_mod) use yet another weighting (U, U2, U, U). Markov chain unaffected.
+Fix: weight with `Ham_U_vec(no_I)` (host and device).
+
 ### Medium
 - **M1. Dtau = 0** (both): `Ltrot = nint(beta/dtau) = nint(+Inf) = 2147483647` passes the check `Ltrot <= 0`; the run
   allocates ~550 GB for the fields of a 4x4 lattice. Probably what ran the Mac out of memory during the hunt.
@@ -113,6 +130,12 @@ passes; should be `abs(abs(f) - 1) > eps`.
 - **M7. Phase update `Phase*R/sqrt(R*conjg(R))`** (both, from code reading, not reproduced): overflows for |R| > 1.3e154
   and underflows for |R| < 1.5e-162 (upgrade_mod, Wrapgr_mod); the phase would become 0 or NaN. Use R/abs(R).
 
+- **M8. Code-modularity is not bitwise identical to master** for 7 of 17 inputs (hunter C): Hubbard with Mz = .F.,
+  Kondo, LRC, tV, Spin_Peierls. Configurations are byte-identical (same Markov chain); observables and "Precision Phase"
+  differ at <= 1e-14 relative. The phase of the first CGR already differs at 1e-16; root cause not found (persists with
+  -fno-fast-math). Also a real change in Phase 6: the global-tau threshold in Wrapgr_mod went from `Zero = 10D-8` (1e-7)
+  to `Eps_small` (1e-10), so proposals with T0_Proposal_ratio in (1e-10, 1e-7] are now attempted.
+
 ### Low
 - **L1.** master only (fixed on Code-modularity): format bug `'("A","I0",...)'` makes error messages crash (unknown
   ham_name in Hamiltonian_main_mod, bad confin values in Fields_mod).
@@ -120,6 +143,13 @@ passes; should be `abs(abs(f) - 1) > eps`.
   one-dimensional message.
 - **L3.** Default-integer products overflow at sizes not run today: COMPARE (`N*M`, mymats_mod) for Ndim >= 46341;
   tempering MPI count `size(GR)` for Ndim >= 32769 with N_FL = 2; `N_op*Ltrot` above 2.1e9.
+
+- **L4.** Restart is not byte-identical for Langevin with Ltau = 1 (confout <= 4e-16) and HMC (1e-14): the force reused
+  from Tau_m is recomputed after a restart (qmc_driver_mod). Langevin with Ltau = 0 and all discrete cases are exact.
+- **L5.** Tempering messages: np = 3 with mpi_per_parameter_set = 2 says the reverse of the problem; a missing Temp_n
+  directory gives a raw "Cannot open file" error; extra Temp_ directories are ignored silently.
+- **L6.** GPU line (gpu-port): a confin with field value 0 gives finite, wrong numbers on the GPU (the device factor of
+  field 0 is 1, gpu_state_mod) where the CPU gives NaN (H4); neither build validates confin values.
 
 ### Performance (found during CG-ALF, not a correctness bug)
 - **P1.** `Op_V_is_symmetric` (start-up check for Symm = .T.) multiplies dense Ndim x Ndim matrices for every operator,
