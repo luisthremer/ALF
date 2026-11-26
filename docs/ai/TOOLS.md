@@ -18,9 +18,6 @@ Checked 2026-11-25. In order of use:
      2026-11-25:** plugin `fortran-lsp@local` (`~/.claude/local-marketplace`), fortls 3.2.2 via
      pipx; go-to-definition checked on `Upgrade_lowrank` (Wrapgr_mod → lowrank_update_mod). Takes
      effect in new sessions.
-5. **Understand-Anything** (Claude Code plugin): `/understand` builds an interactive knowledge
-   graph and dashboard of the code. Good for a human overview; heavy to build, so rebuild only after
-   a phase. OWNERS COMMENT: FOR NOW DON'T USE THIS PLUGIN.
 
 Not useful here: `ctags` on macOS (BSD ctags has no Fortran parser); GitHub code search (does not
 index the fork's branches).
