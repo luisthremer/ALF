@@ -233,6 +233,13 @@ Program Main
            Write (error_unit,*) "mpi_per_parameter_set is not a multiple of total mpi processes"
            CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
         endif
+        ! Exchange_Step pairs the parameter sets: it needs an even number of them (not for PARALLEL_PARAMS)
+#if !defined(PARALLEL_PARAMS)
+        if ( mod(ISIZE/get_mpi_per_parameter_set(),2) .ne. 0 ) then
+           Write (error_unit,*) "Tempering needs an even number (>= 2) of parameter sets"
+           CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+        endif
+#endif
         Call Global_Tempering_setup
 #elif !defined(TEMPERING)  && defined(MPI)
         call set_mpi_per_parameter_set(Isize)

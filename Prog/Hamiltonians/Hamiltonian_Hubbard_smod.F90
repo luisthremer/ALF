@@ -760,8 +760,12 @@
              Do I = 1,Latt%N
                 do no_I = 1,Latt_unit%Norb
                    I1 = Invlist(I,no_I)
-                   if (no_I == 1)  ZPot = ZPot + Grc(i1,i1,1) * Grc(i1,i1, dec)* ham_U
-                   if (no_I == 2)  ZPot = ZPot + Grc(i1,i1,1) * Grc(i1,i1, dec)* ham_U2
+                   ! Same weights as Ham_U_vec in Ham_V (without the 1/N_SUN): U on the first Norb/2 orbitals, U2 on the rest
+                   if (no_I <= Latt_unit%Norb/2) then
+                      ZPot = ZPot + Grc(i1,i1,1) * Grc(i1,i1, dec)* ham_U
+                   else
+                      ZPot = ZPot + Grc(i1,i1,1) * Grc(i1,i1, dec)* ham_U2
+                   endif
                 enddo
              Enddo
           else

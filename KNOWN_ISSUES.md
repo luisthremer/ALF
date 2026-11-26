@@ -16,15 +16,15 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | DP-GPU | Determinant phase underflow, GPU line | A | fixed on `fix/det-phase-underflow` (GPU line); not yet in every GPU branch |
 | H1 | NaN guards removed by -ffast-math | A | fixed by feature `nan-guards` (G and scale checks by bit pattern) |
 | H2 | Large beta: scale overflow in CGR -> NaN | B | open; since aef50743 the run stops (phase guard) instead of silent NaN |
-| H3 | No measurements -> NaN observables | B | open |
-| H4 | confin with field value 0 -> NaN | B | open |
+| H3 | No measurements -> NaN observables | B | fixed by feature `b-batch-1` (start-up stop: NSweep < 1 or LOBS_ST > LOBS_EN) |
+| H4 | confin with field value 0 -> NaN | B | fixed by feature `b-batch-1` (two-sided field check, types 1, 2, 4) |
 | H5 | Global_tau_moves with partial Nt_sequential range | B | open |
-| H6 | Tempering with an odd number of replicas hangs | B | open |
-| H7 | Bilayer_honeycomb potential/total energy wrong (also upstream) | B | open |
-| M1 | Dtau = 0 -> unbounded memory | B | open |
-| M2 | Projector with Thtrot = 0 and Ltau = 1: out of bounds | B | open |
-| M3 | Nwrap <= 0 accepted | B | open |
-| M4 | Nt_sequential range not checked -> segfault | B | open |
+| H6 | Tempering with an odd number of replicas hangs | B | fixed by feature `b-batch-1` (start-up stop; upstream issue pending) |
+| H7 | Bilayer_honeycomb potential/total energy wrong (also upstream) | B | fixed by feature `b-batch-1` on the CPU line (U/U2 per orbital half); GPU device weights: P2.4 step 1e; upstream issue pending |
+| M1 | Dtau = 0 -> unbounded memory | B | fixed by feature `b-batch-1` (stop if Ltrot overflows) |
+| M2 | Projector with Thtrot = 0 and Ltau = 1: out of bounds | B | fixed by feature `b-batch-1` (start-up stop for this combination; tau_p bounds unchanged) |
+| M3 | Nwrap <= 0 accepted | B | fixed by feature `b-batch-1` (stop if Nwrap < 1) |
+| M4 | Nt_sequential range not checked -> segfault | B | fixed by feature `b-batch-1` (range check when the range is not empty) |
 | M5 | Langevin dt = 0 / Max_Force = 0 -> zeros; HMC/Amplitude edge cases | B | open |
 | M6 | Precision Green up to 10 passes silently | B | open |
 | M7 | Phase update overflow for extreme R | C | open (from code reading) |
