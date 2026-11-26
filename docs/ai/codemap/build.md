@@ -55,6 +55,8 @@ Verified 2026-11-25 by reading files; "unverified" marks anything not run.
 - `Prog/Makefile`: `SRCS` is the single list of core sources (add new modules there, in any order).
   `Prog/gen_deps.py` scans `module`/`use` statements and writes `.deps.mk` (OBJS, MODS, `x.o: y.o`
   rules) → `make -j` safe. `Libraries/Modules/Makefile` uses the same script (`../../Prog/gen_deps.py`).
+  Every Prog object also depends on the `.mod` files of `Libraries/Modules` and `ALF.out` on the two archives,
+  so a library change rebuilds or relinks the program (no `make clean` needed; test `50-make-lib-deps`).
 - Hamiltonians: registered in `Prog/Hamiltonians.list` (+ `Prog/Hamiltonians.list.d/*`):
   Kondo, Hubbard, Hubbard_Plain_Vanilla, tV, LRC, Z2_Matter, Spin_Peierls. `parse_ham.py` generates
   `Hamiltonians_interface.h`, `Hamiltonians_case.h`, `Hamiltonian_*_read_write_parameters.F90`.

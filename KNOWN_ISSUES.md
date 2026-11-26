@@ -18,15 +18,15 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | H2 | Large beta: scale overflow in CGR -> NaN | B | open; since aef50743 the run stops (phase guard) instead of silent NaN |
 | H3 | No measurements -> NaN observables | B | fixed by feature `b-batch-1` (start-up stop: NSweep < 1 or LOBS_ST > LOBS_EN) |
 | H4 | confin with field value 0 -> NaN | B | fixed by feature `b-batch-1` (two-sided field check, types 1, 2, 4) |
-| H5 | Global_tau_moves with partial Nt_sequential range | B | open |
+| H5 | Global_tau_moves with partial Nt_sequential range | B | fixed in `cm/feat/b-batch-2` (commit "Wrapgr: …"; test 52) |
 | H6 | Tempering with an odd number of replicas hangs | B | fixed by feature `b-batch-1` (start-up stop; upstream issue pending) |
 | H7 | Bilayer_honeycomb potential/total energy wrong (also upstream) | B | fixed by feature `b-batch-1` on the CPU line (U/U2 per orbital half); GPU device weights: P2.4 step 1e; upstream issue pending |
 | M1 | Dtau = 0 -> unbounded memory | B | fixed by feature `b-batch-1` (stop if Ltrot overflows) |
 | M2 | Projector with Thtrot = 0 and Ltau = 1: out of bounds | B | fixed by feature `b-batch-1` (start-up stop for this combination; tau_p bounds unchanged) |
 | M3 | Nwrap <= 0 accepted | B | fixed by feature `b-batch-1` (stop if Nwrap < 1) |
 | M4 | Nt_sequential range not checked -> segfault | B | fixed by feature `b-batch-1` (range check when the range is not empty) |
-| M5 | Langevin dt = 0 / Max_Force = 0 -> zeros; HMC/Amplitude edge cases | B | open |
-| M6 | Precision Green up to 10 passes silently | B | open |
+| M5 | Langevin dt = 0 / Max_Force = 0 -> zeros; HMC/Amplitude edge cases | B | fixed in `cm/feat/b-batch-2` (commit "QMC_runtime_var: …"; start-up stop, test 42) |
+| M6 | Precision Green up to 10 passes silently | B | fixed in `cm/feat/b-batch-2` (commit "control: …"; warning above 1e-3, test 51) |
 | M7 | Phase update overflow for extreme R | C | open (from code reading) |
 | M8 | Code-modularity not bitwise identical to master (1e-14); global-tau threshold changed | B | open (to investigate with Fakher's history) |
 | L1 | master-only error-format bug | C | fixed on Code-modularity (Fakher) |
@@ -35,7 +35,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | L4 | Restart not byte-identical for Langevin Ltau = 1 / HMC | C | open |
 | L5 | Tempering messages | C | open |
 | L6 | GPU line: confin 0 gives finite wrong numbers | B | open (GPU line) |
-| MK | Makefile: Prog objects not rebuilt after Libraries/Modules changes | B | open |
+| MK | Makefile: Prog objects not rebuilt after Libraries/Modules changes | B | fixed in `cm/feat/b-batch-2` (commit "build: …"; test 50) |
 | WF | Trial wave function normalisation, large N_part (suspected) | B | open, not reproduced |
 | P1 | Op_V_is_symmetric slow (start-up, Symm = .T.) | B | open; fast version on gpu-port |
 
@@ -84,8 +84,9 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
   projector run (`WaveFunction_mod.o` calling `DET_C`), gone after `make clean`.
 - **Who is affected:** incremental builds after library changes. CI and fresh builds are not.
 - **Workaround:** `make clean` (or `make cleanprog`) after changing anything in `Libraries/Modules`.
-- **Fix (open, P2.8):** let `gen_deps.py` add the library `.mod` files (or `modules_90.a`) as
-  dependencies of the `Prog/` objects.
+- **Fixed** in `cm/feat/b-batch-2` (commit "build: Prog objects rebuilt after Libraries/Modules changes"):
+  `Prog/Makefile` makes every object depend on the `.mod` files of `Libraries/Modules` (gfortran rewrites a
+  `.mod` only when the interface changes) and `ALF.out` on the two archives. Test `50-make-lib-deps`.
 
 ## Trial wave function normalisation for large N_part (suspected, not checked)
 
@@ -132,6 +133,11 @@ passes; should be `abs(abs(f) - 1) > eps`.
 1.12 (start = 1: 2e-14). `N_Global_tau = 0` with the default range: 1.92. At U = 4 the same inputs stop with a misleading
 "Unstable matrix". Cause: WRAPGRUP/WRAPGRDO wrap only the operators start..end; the others are placed by
 `Wrapgr_PlaceGR` only when `N_Global_tau > 0` or `N_Global_tau_MALA > 0`. Same with the delayed/submatrix schemes.
+Also with `N_Global_tau > 0`, a range starting above 1 was entered with G at vertex 0.
+**Fixed** in `cm/feat/b-batch-2`: WRAPGRUP places G at `Nt_sequential_start - 1` before the range and always at
+`Size(Op_V,1)` at the end; WRAPGRDO always places G at the end of the range and back to 0 after it. Test
+`52-global-tau-range` (start = 3 / empty range, N_Global_tau = 0, all three schemes): Precision Green Max 5.99 (rc 0)
+and abort (rc 3) before, ~1e-13 after. The default range (1..N_op) does not call the new placements.
 
 ### H6. Tempering with an odd number of replicas hangs forever (both, high; hunter C)
 `mpiexec -n 3` with `mpi_per_parameter_set = 1` (3 replicas): deadlock, no output. One replica: the run finishes, then
@@ -160,9 +166,12 @@ Fix: weight with `Ham_U_vec(no_I)` (host and device).
   of Op_V out of range in WRAPGRUP); the range is never checked.
 - **M5. Langevin with Delta_t_Langevin_HMC = 0 or Max_Force = 0** (both): return code 0, all bins 0 with sign 0. Related:
   HMC `Leapfrog_steps = 0` (acceptance 0, NaN "Phase diff"), `Amplitude = 0` (frozen chain, acceptance 1),
-  `N_HMC_sweeps = 0` and `Ltau = 2` silently do nothing.
+  `N_HMC_sweeps = 0` and `Ltau = 2` silently do nothing. **Fixed** in `cm/feat/b-batch-2`:
+  `check_Langevin_HMC_variables` stops at start-up on each of these (Ltau not 0/1, Amplitude = 0; Langevin:
+  dt or Max_Force <= 0; HMC: dt <= 0, Leapfrog_steps < 1, N_HMC_sweeps < 1).
 - **M6. Precision Green up to 10 passes without a warning** (both): `Control_PrecisionG` aborts only above 10; 0.1 was
-  reached silently (continuous fields, U = 20, Nwrap = 10).
+  reached silently (continuous fields, U = 20, Nwrap = 10). **Fixed** in `cm/feat/b-batch-2`: `Control_Print`
+  writes a warning to info and stderr when Precision Green Max > 1e-3 (results unchanged; abort stays at 10).
 - **M7. Phase update `Phase*R/sqrt(R*conjg(R))`** (both, from code reading, not reproduced): overflows for |R| > 1.3e154
   and underflows for |R| < 1.5e-162 (upgrade_mod, Wrapgr_mod); the phase would become 0 or NaN. Use R/abs(R).
 

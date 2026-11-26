@@ -310,7 +310,7 @@ else()
 endif()
 set_tests_properties(38-QMC-runtime-lock-fail PROPERTIES WILL_FAIL TRUE TIMEOUT 60)
 
-# Start-up checks in QMC_runtime_var (KNOWN_ISSUES.md H3, M2, M4): each case must stop with its message.
+# Start-up checks in QMC_runtime_var (KNOWN_ISSUES.md H3, M2, M4, M5): each case must stop with its message.
 add_executable(42-QMC-runtime-checks-fail 42-QMC-runtime-checks-fail.F90)
 target_compile_options(42-QMC-runtime-checks-fail PRIVATE ${FLAG_LIST})
 target_include_directories(42-QMC-runtime-checks-fail PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../Prog"
@@ -318,7 +318,10 @@ target_include_directories(42-QMC-runtime-checks-fail PRIVATE "${CMAKE_CURRENT_S
 target_link_libraries(42-QMC-runtime-checks-fail
   "${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/QMC_runtime_var_mod.o" ${LIB_LIST})
 foreach(case_msg "nsweep|NSweep must be >= 1" "lobs|LOBS_ST > LOBS_EN" "projector|does not support Ltau = 1"
-    "ntseq_start|Nt_sequential_start" "ntseq_end|Nt_sequential_end")
+    "ntseq_start|Nt_sequential_start" "ntseq_end|Nt_sequential_end" "ltau|Ltau = 2 \\(must be 0 or 1\\)"
+    "amplitude|Amplitude = 0 freezes" "langevin_dt|Langevin=.True. requires Delta_t_Langevin_HMC"
+    "langevin_force|Langevin=.True. requires Max_Force" "hmc_dt|HMC=.True. requires Delta_t_Langevin_HMC"
+    "hmc_leapfrog|HMC=.True. requires Leapfrog_steps" "hmc_sweeps|HMC=.True. requires N_HMC_sweeps")
   string(REPLACE "|" ";" case_msg_list "${case_msg}")
   list(GET case_msg_list 0 case_name)
   list(GET case_msg_list 1 case_regex)
@@ -411,3 +414,39 @@ else()
   add_test(NAME 48-timers COMMAND 48-timers WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 endif()
 set_tests_properties(48-timers PROPERTIES PASS_REGULAR_EXPRESSION "PASS: timers" TIMEOUT 60)
+
+# Prog/Makefile (KNOWN_ISSUES.md, MK): a changed .mod file of Libraries/Modules must rebuild the Prog objects.
+# make -n -W pretends that runtime_error_mod.mod was just rewritten and prints the commands it would run.
+find_program(ALF_MAKE NAMES make gmake)
+if(ALF_MAKE)
+  add_test(NAME 50-make-lib-deps
+    COMMAND ${ALF_MAKE} -n -W ../Libraries/Modules/runtime_error_mod.mod ALF.out
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog)
+  set_tests_properties(50-make-lib-deps PROPERTIES PASS_REGULAR_EXPRESSION "-o [A-Za-z0-9_/]+\\.o " TIMEOUT 60)
+endif()
+
+# Precision Green warning (control_mod, KNOWN_ISSUES.md M6): a deviation of 0.5 is reported, one of 1e-6 is not.
+if(NOT "${FLAG_LIST}" MATCHES "-DTEMPERING")
+  # (with TEMPERING Control_Print writes Temp_<igroup>/info, a directory a unit test does not have)
+  add_executable(51-precision-green-warning 51-precision-green-warning.F90)
+  target_compile_options(51-precision-green-warning PRIVATE ${FLAG_LIST})
+  target_include_directories(51-precision-green-warning PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../Prog"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules")
+  target_link_libraries(51-precision-green-warning "${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/control_mod.o" ${LIB_LIST})
+  foreach(case large small)
+    file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/51-${case})
+    if("${FLAG_LIST}" MATCHES "-DMPI")
+      add_test(NAME 51-precision-green-warning-${case}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS}
+          $<TARGET_FILE:51-precision-green-warning> ${MPIEXEC_POSTFLAGS} ${case}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/51-${case})
+    else()
+      add_test(NAME 51-precision-green-warning-${case} COMMAND 51-precision-green-warning ${case}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/51-${case})
+    endif()
+  endforeach()
+  set_tests_properties(51-precision-green-warning-large PROPERTIES
+    PASS_REGULAR_EXPRESSION "Warning: Precision Green Max" TIMEOUT 60)
+  set_tests_properties(51-precision-green-warning-small PROPERTIES
+    PASS_REGULAR_EXPRESSION "PASS: summary written" FAIL_REGULAR_EXPRESSION "Warning: Precision Green" TIMEOUT 60)
+endif()
