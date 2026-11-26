@@ -275,7 +275,15 @@ contains
        if (st == 0 .and. l >= 1) then
           if (v(1:1) == '0') hk_state = 0
        endif
-       if (hk_state == 0) write(*,'(A)') ' alf_hipk: HIP kernels OFF (ALF_HIP_KERNELS=0), OpenMP kernels run'
+       if (hk_state == 0) then
+          ! the OpenMP kernels are not reliable on gfortran-14 amdgcn (KNOWN_ISSUES R2): debug runs only
+          call get_environment_variable('ALF_GPU_DEBUG', v, l, st)
+          if (.not. (st == 0 .and. l >= 1 .and. v(1:1) == '1')) then
+             write(*,'(A)') ' alf_hipk: ALF_HIP_KERNELS=0 is a debug setting (KNOWN_ISSUES R2): set ALF_GPU_DEBUG=1 as well'
+             call Terminate_on_error(ERROR_GENERIC, __FILE__, __LINE__)
+          endif
+          write(*,'(A)') ' alf_hipk: HIP kernels OFF (ALF_HIP_KERNELS=0), OpenMP kernels run'
+       endif
     endif
     hk_enabled = (hk_state == 1)
   end function hk_enabled

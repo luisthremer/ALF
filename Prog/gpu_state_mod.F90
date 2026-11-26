@@ -112,6 +112,9 @@ Module gpu_state_mod
 #endif
   Use iso_fortran_env, only: output_unit, error_unit, int64
   Use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
+#if defined(ALF_LA_HIP)
+  Use alf_hipk_mod, only: hk_enabled
+#endif
   Use Natural_Constants, only: Eps_machine
   Use Operator_mod, only: Operator, Op_mmultL, Op_mmultR, Op_Wrapup, Op_Wrapdo, Op_get_E_exp
   Use Hamiltonian_main, only: N_FL, N_FL_eff, Ndim, Ltrot, Op_V, nsigma, Calc_Fl_map, Projector, &
@@ -426,6 +429,10 @@ Contains
 #endif
     ! the commit is written to the info file by qmc_setup_mod
     Call env_say('GPU build: backend '//trim(bk))
+#if defined(ALF_LA_HIP)
+    if (.not. hk_enabled()) Call env_say('GPU WARNING: ALF_HIP_KERNELS=0: OpenMP kernels instead of the HIP replacements; '// &
+         & 'not reliable on gfortran-14 amdgcn (KNOWN_ISSUES R2), debug only')
+#endif
     Call env_say('GPU debug env reader: '//trim(env_reader))
     If (env_n == 0) then
        Call env_say('GPU debug env: none')
