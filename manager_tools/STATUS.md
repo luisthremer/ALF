@@ -23,5 +23,5 @@ P2.4 step 1a `gpu-build` ready (canvas, 3 commits: GPU=none|host switch, `alf_la
 
 ## Open branches and running jobs
 - `cm/feat/gpu-build` + `cm/dev/gpu-build` (step 1a, CI running, not merged).
-- Baseline CI on `Code-modularity-CPU` fc8561cf ([run 45797219302](https://github.com/luisthremer/ALF/actions/runs/45797219302)).
+- Baseline CI of the new lines: green on `Code-modularity-CPU` fc8561cf ([run 45797219302](https://github.com/luisthremer/ALF/actions/runs/45797219302)).
 - Cluster jobs: none. Plan: [P2_4_GPU_PLAN.md](https://github.com/luisthremer/ALF/blob/Code-modularity-GPU/docs/ai/phase2/P2_4_GPU_PLAN.md)
