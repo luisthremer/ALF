@@ -36,7 +36,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | L5 | Tempering messages | C | open |
 | L6 | GPU line: confin 0 gives finite wrong numbers | B | open (GPU line) |
 | G1 | GPU line: `ALF_GPU_SELFTEST` leaves test data in the device copy of G marked valid | B | fixed by feature `gpu-wrap-update` (step 1c; harmless in 1b, where the sweep did not use the mirror) |
-| G2 | GPU line: wrapped G (device wraps and updates, step 1c) less accurate than on the CPU: Precision Green mean 1.4 - 6x the CPU value, same chain | B (proposed) | open; observation, cause not isolated (see below) |
+| G2 | GPU line: wrapped G (device wraps and updates, step 1c) less accurate than on the CPU: Precision Green mean 1.4 - 6x the CPU value, same chain | B (proposed) | open; cause found: dense hopping product `Hd` of gpu_wrap_mod with checkerboard; fix proposed (see below) |
 | MK | Makefile: Prog objects not rebuilt after Libraries/Modules changes | B | open |
 | WF | Trial wave function normalisation, large N_part (suspected) | B | open, not reproduced |
 | P1 | Op_V_is_symmetric slow (start-up, Symm = .T.) | B | open; fast version on gpu-port |
@@ -230,4 +230,31 @@ AddressSanitizer/UBSan on Code-modularity for all models (no report), FPE traps 
   `Precision Green` line of the info file, GPU path / CPU path: Nwrap = 10: 2.0e-14 / 1.3e-14, Nwrap = 25: 7.6e-11 / 1.7e-11
   (step 1c canvas with host stabilisation: 9.5e-11 / 1.7e-11), Nwrap = 50: 8.9e-5 / 2.2e-5 (1c canvas 9.5e-5 / 2.2e-5). The
   observables agree to 1e-11 .. 1e-5, i.e. within that noise. Not caused by the device stabilisation (the 1c canvas shows it).
-- **Cause:** not isolated (candidates: operation order of the device wraps, rank-1 update). To check before the device backends (step 2).
+- **Cause (found 2026-11-26, branch `rd/g2-precision`):** the dense hopping product `Hd` of `gpu_wrap_mod` (`hopd_build`,
+  `gpu_hopd_on`, on for every Ndim <= 800). For full-size matrices (G in the wraps, U in the stabilisation) the device
+  multiplies by a precomputed, once-rounded product of all checkerboard factors (one ZGEMM) instead of applying the 2x2
+  factors one by one as `Hop_mod` does. It matters only with `Checkerboard = .T.`: with dense hopping there is one element and the device
+  path is bitwise the CPU one. Probable mechanism (not proven): the rounding error of `Hd` is the same at every slice, so
+  it adds up over the Nwrap slices instead of averaging out.
+- **Numbers** (4x4 Hubbard, U = 4, Beta = 5, Ltrot = 50, Symm, 20 sweeps, 12 seeds, same chain in every pair; geometric
+  mean of the ratio GPU/CPU of the `Precision Green` mean; "Hd off" = debug switch that makes `gpu_hopd_on` false):
+
+  | case | GPU / CPU | Hd off / CPU | GPU worse in |
+  |---|---|---|---|
+  | SU(2), checkerboard, Nwrap = 10 | 1.41 | 1.00 | 12/12 |
+  | SU(2), checkerboard, Nwrap = 25 | 2.41 | 1.01 | 12/12 |
+  | SU(2), checkerboard, Nwrap = 50 | 2.52 | 1.01 | 11/12 |
+  | Mz, checkerboard, Nwrap = 10 | 1.15 | 1.00 | 11/12 |
+  | SU(2), dense hopping, Nwrap = 25 | 1.01 | 1.01 | 4/12 |
+  | Mz, dense hopping, Nwrap = 10 | 1.02 | 1.02 | 7/12 |
+
+  (Mz with Nwrap >= 25 at these parameters stops with "Unstable matrix" on the CPU too.)
+- **Ruled out, with numbers:** (1) B B^-1 not inverse: max|B B^-1 - 1| = 2.4e-15 on the device and 2.0e-15 on the CPU (right
+  multiplication; 2.4e-15 for both on the left); with Hd off the device and CPU hopping are bitwise equal. (2) Real vs complex: the device has a real
+  path for real elements (`el_left_d`/`el_right_d`, ek = 1); the dense run is bitwise the CPU one (B on a random matrix:
+  difference 0). (3) Rank-1 loop vs ZGERU: replacing `k_upd_geru` by `la_zgeru` gives 4.085e-11 instead of 4.087e-11 (seed 0,
+  6 sweeps, Nwrap = 25). Replacing the device V wraps by `Op_Wrapup/Op_Wrapdo` gives the same result to the last digit.
+  Device stabilisation alone (ALF_GPU_NOUPDATE=1, which also moves the stabilisation to the host) = CPU to the last digit.
+- **Proposed fix:** make `Hd` opt-in (default: the per-factor checkerboard path, which gives the CPU numbers). Measure the
+  cost on a real GPU in step 2 (one ZGEMM against one kernel launch per checkerboard group) before deciding whether an opt-in `Hd` is still worth having.
+  Debug patch and scripts: side-session notes of the G2 session (`g2-diag.patch`, `run.sh`, `sweep.sh`).
