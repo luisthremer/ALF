@@ -80,11 +80,11 @@ Module qmc_setup_mod
   Use iso8601_datetime_mod, only: iso8601_datetime
   Use iso_fortran_env, only: output_unit, error_unit
 #ifdef ALF_GPU
-  Use gpu_state_mod, only: gpu_state_setup, gpu_state_finalize, gpu_active, gpu_put_udv
+  Use gpu_state_mod, only: gpu_state_setup, gpu_state_finalize, gpu_active
   Use gpu_wrap_mod, only: gpu_wrap_hook
   Use gpu_lowrank_mod, only: gpu_lr_finalize
   Use gpu_update_mod, only: gpu_g_host_wrote
-  Use gpu_stab_mod, only: gpu_stab_on, gpu_stab_setup, gpu_stab_hook, gpu_stab_finalize
+  Use gpu_stab_mod, only: gpu_stab_on, gpu_stab_setup, gpu_stab_hook, gpu_stab_finalize, gpu_stab_put_udv
   Use gpu_obs_mod, only: gpu_obs_report, gpu_obs_finalize
   Use gpu_tau_mod, only: gpu_tau_setup, gpu_tau_finalize
   Use qmc_walker_mod, only: qmc_walker_t
@@ -314,8 +314,9 @@ Module qmc_setup_mod
       Type (qmc_walker_t), intent(in) :: walker
 
       If (gpu_stab_on) then
-         ! H->D of udvst, udvl, udvr: built on the host once per run (Walker_init_stack, Walker_init_GR), the sweeps then keep them on the device
-         Call gpu_put_udv(walker)
+         ! H->D of udvst, udvl, udvr: built on the host once per run (Walker_init_stack, Walker_init_GR), the sweeps then keep them on the device;
+         ! the wrapper also makes the tracked det(U) of every uploaded U (gpu_stab_mod)
+         Call gpu_stab_put_udv(walker)
          ! Walker_init_GR wrote the host GR: the device copy is stale
          Call gpu_g_host_wrote()
       Endif

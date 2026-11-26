@@ -86,7 +86,7 @@ Module gpu_stab_mod
   Use QMC_runtime_var, only: get_Ltau
   Use qmc_walker_mod, only: qmc_walker_t
   Use UDV_State_mod, only: UDV_State
-  Use gpu_state_mod, only: gpu_active, G_d, g_dev_ok, g_host_ok, udv_U, udv_V, udv_D, udv_L, udw_U, udw_V, udw_D, udw_L, &
+  Use gpu_state_mod, only: gpu_put_udv, gpu_active, G_d, g_dev_ok, g_host_ok, udv_U, udv_V, udv_D, udv_L, udw_U, udw_V, udw_D, udw_L, &
        &                   info_line, gpu_env_get, gpu_env_is, selftest_fail, rnd, rel_diff, finite_c, is_finite
   Use gpu_update_mod, only: gpu_upd_enabled
   Use gpu_wrap_mod, only: gpu_wrapur_slices, gpu_wrapul_slices
@@ -96,8 +96,9 @@ Module gpu_stab_mod
   Private
   Public :: gpu_stab_on, gpu_stab_setup, gpu_stab_finalize
   Public :: gpu_stab_wrapur, gpu_stab_wrapul, gpu_stab_exchange, gpu_stab_store_l, gpu_stab_cgr, gpu_stab_recompute
-  Public :: gpu_stab_reset_l, gpu_stab_reset_r, gpu_stab_reset_st
+  Public :: gpu_stab_reset_l, gpu_stab_reset_r, gpu_stab_reset_st, gpu_stab_put_udv
   Public :: gpu_lu_phase_select, k_det_phase, gpu_stab_hook, gpu_stab_selftest
+  Public :: k_det_qr, k_det_phase_u, k_set_one      ! det tracking (tests)
   Public :: gpu_stab_tau_dev, dev_prec, k_ident, k_copy_c, k_ct, k_diagabs, k_divrows, say     ! used by gpu_tau_mod
 
   Logical, Save :: gpu_stab_on = .false.      ! the device stabilisation replaces WRAPUR/WRAPUL/CGR in the sweeps
@@ -111,7 +112,11 @@ Module gpu_stab_mod
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: sA(:,:), sB(:,:), sC(:,:)   ! N x N work matrices
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: st_Gn(:,:), st_Gt(:,:)       ! new G, wrapped G
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: st_tau(:), st_Dl(:)          ! QR reflector scalars, local D of the QR
-  Complex (Kind=Kind(0.d0)), Allocatable, Save :: st_c(:)                      ! scalars: 1 phase, 2 1/phase, 3 CGR phase, 4 LU phase, 5 raw det
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: st_c(:)                      ! scalars: 1 phase, 2 1/phase, 3 CGR phase, 4 LU phase, 5 raw det,
+                                                                                ! 6 det(U) of the new U (k_phase), 7 tracked CGR determinant phase
+  ! det tracking: det(U)/|det U| of every device slot U (udw: 1 udvl, 2 udvr; udv: udvst(nst)); the flag says that the value is valid
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: udw_det(:,:), udv_det(:,:)    ! (2,nfe), (nstm,nfe), device
+  Logical, Allocatable, Save :: w_det_ok(:,:), st_det_ok(:,:)                    ! host flags
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: st_work(:)                   ! LAPACK work space (queried once)
   Real    (Kind=Kind(0.d0)), Allocatable, Save :: st_r(:)                      ! scalars: 1-3 scale test, 4-7 precision numbers
   Real    (Kind=Kind(0.d0)), Allocatable, Save :: st_nrm(:), st_Lt(:)          ! log norms (STABLOG); L work vector
@@ -151,9 +156,11 @@ Contains
     n = s_N
     allocate(sA(n,n), sB(n,n), sC(n,n), st_Gn(n,n), st_Gt(n,n), st_tau(n), st_Dl(n), st_c(8), st_r(16), st_nrm(n), st_Lt(n), st_pw(n))
     allocate(st_ipvt(n), st_perm(n), st_ipiv(n))
+    allocate(udw_det(2,s_nfe), udv_det(s_nstm,s_nfe), w_det_ok(2,s_nfe), st_det_ok(s_nstm,s_nfe))
+    w_det_ok = .false.; st_det_ok = .false.
     st_ipvt = 1; st_perm = 1; st_ipiv = 1
     ! device allocation once, no transfer; the first use of each buffer is a device write
-    !$omp target enter data map(alloc: sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_ipvt, st_perm, st_ipiv)
+    !$omp target enter data map(alloc: sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_ipvt, st_perm, st_ipiv, udw_det, udv_det)
     ! LAPACK work space: the largest of the queries of the calls below
     call la_zqrpp(n, n, sA, n, st_ipvt, st_tau, wq, -1, info)
     lw = int(real(wq(1)))
@@ -192,8 +199,9 @@ Contains
   Subroutine gpu_stab_finalize()
     Implicit none
     if (.not. gpu_stab_on) return
-    !$omp target exit data map(delete: sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_ipvt, st_perm, st_ipiv)
+    !$omp target exit data map(delete: sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_ipvt, st_perm, st_ipiv, udw_det, udv_det)
     deallocate(sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_ipvt, st_perm, st_ipiv, st_work, s_nt)
+    deallocate(udw_det, udv_det, w_det_ok, st_det_ok)
 #if defined(STABLOG)
     deallocate(st_rw)
 #endif
@@ -272,6 +280,7 @@ Contains
     Integer, intent(in) :: slot, nfe
     call k_ident(s_N, udw_U(1,1,slot,nfe), s_N)
     call k_ident(s_N, udw_V(1,1,slot,nfe), s_N)
+    call k_set_one(1, udw_det(slot,nfe)); w_det_ok(slot,nfe) = .true.     ! det(1) = 1
 #if defined(STABLOG)
     call k_setL(s_N, udw_L(1,slot,nfe))
 #else
@@ -299,6 +308,7 @@ Contains
     Integer, intent(in) :: nst, nfe
     call k_ident(s_N, udv_U(1,1,nst,nfe), s_N)
     call k_ident(s_N, udv_V(1,1,nst,nfe), s_N)
+    call k_set_one(1, udv_det(nst,nfe)); st_det_ok(nst,nfe) = .true.      ! det(1) = 1
 #if defined(STABLOG)
     call k_setL(s_N, udv_L(1,nst,nfe))
 #else
@@ -312,6 +322,7 @@ Contains
     Integer, intent(in) :: wslot, nfe, nst
     call k_copy_c(s_N*s_N, udw_U(1,1,wslot,nfe), udv_U(1,1,nst,nfe))
     call k_copy_c(s_N*s_N, udw_V(1,1,wslot,nfe), udv_V(1,1,nst,nfe))
+    call k_copy_c(1, udw_det(wslot,nfe), udv_det(nst,nfe)); st_det_ok(nst,nfe) = w_det_ok(wslot,nfe)
 #if defined(STABLOG)
     call k_copy_r(s_N, udw_L(1,wslot,nfe), udv_L(1,nst,nfe))
 #else
@@ -325,6 +336,7 @@ Contains
     Integer, intent(in) :: wslot, nfe, nst
     call k_copy_c(s_N*s_N, udv_U(1,1,nst,nfe), udw_U(1,1,wslot,nfe))
     call k_copy_c(s_N*s_N, udv_V(1,1,nst,nfe), udw_V(1,1,wslot,nfe))
+    call k_copy_c(1, udv_det(nst,nfe), udw_det(wslot,nfe)); w_det_ok(wslot,nfe) = st_det_ok(nst,nfe)
 #if defined(STABLOG)
     call k_copy_r(s_N, udv_L(1,nst,nfe), udw_L(1,wslot,nfe))
 #else
@@ -415,6 +427,8 @@ Contains
     call dev_decompose(side, udw_U(1,1,slot,nfe), udw_V(1,1,slot,nfe), udw_D(1,slot,nfe))
     call dev_testscale(udw_D(1,slot,nfe))
 #endif
+    ! det(U) of the new U (k_phase), kept with the slot: U is rebuilt from the reflectors here, so its det is known exactly
+    call k_copy_c(1, st_c(6), udw_det(slot,nfe)); w_det_ok(slot,nfe) = .true.
   end subroutine decompose_slot
 
 !--------------------------------------------------------------------
@@ -480,7 +494,7 @@ Contains
     call k_diagabs(n, U, n, st_Dl)
     call k_divrows(n, U, n, st_Dl)
 #endif
-    call k_phase(n, U, n, sgn, .not. rside, st_c)         ! Phase = prod U(i,i), permutation sign, conj for side L; beta = 1/Phase
+    call k_phase(n, U, n, sgn, .not. rside, st_c, st_tau)        ! Phase = prod U(i,i), permutation sign, conj for side L; beta = 1/Phase
     call k_scale_row1(n, U, n, st_c)                      ! scale the first row of R with 1/Phase
 #if defined(STABLOG)
     call k_stablog_scale(n, U, n, S, st_Dl)               ! U(i,j) *= exp(L(j) - L(i)), j > i;  L(i) = log(D(i)) + L(i)
@@ -878,6 +892,127 @@ Contains
   end function gpu_lu_phase_select
 
 !====================================================================
+!  Determinant tracking (speedup S1)
+!====================================================================
+  !> det of the elementary reflector H = I - tau v v^H of ZGEQRF (v(1) = 1, |v|^2 = 2 Re(tau)/|tau|^2): -tau/conj(tau), modulus 1;
+  !> 1 for tau = 0.  |tau| is 0 or in [1,2], so the division by |tau| cannot underflow.
+  Complex (Kind=Kind(0.d0)) function refl_det(z)
+    Implicit none
+    !$omp declare target
+    Complex (Kind=Kind(0.d0)), intent(in) :: z
+    Complex (Kind=Kind(0.d0)) :: u
+    if (z == cmplx(0.d0, 0.d0, kind(0.d0))) then
+       refl_det = cmplx(1.d0, 0.d0, kind(0.d0))
+    else
+       u = z/abs(z)
+       refl_det = -(u*u)
+    endif
+  end function refl_det
+
+  !> d(1:nel) = 1 (det of a unit matrix)
+  Subroutine k_set_one(nel, d)
+    Implicit none
+    Integer, intent(in) :: nel
+    Complex (Kind=Kind(0.d0)), intent(inout) :: d(nel)
+    Integer :: i
+    !$omp target teams distribute parallel do
+    do i = 1, nel
+       d(i) = cmplx(1.d0, 0.d0, kind(0.d0))
+    enddo
+  end subroutine k_set_one
+
+  !> d(1) = det(A)/|det A| for A = Q R from ZGEQRF (A holds R and the reflectors, tau their scalars): prod det(H_i) * prod R_ii/|R_ii|.
+  !> The raw product of the R_ii is never formed (it under/overflows for large N).  A zero R_ii gives d = 0.  Serial loop on the device.
+  Subroutine k_det_qr(n, A, lda, tau, d)
+    Implicit none
+    Integer, intent(in) :: n, lda
+    Complex (Kind=Kind(0.d0)), intent(in) :: A(lda,n), tau(n)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: d(1:1)
+    Complex (Kind=Kind(0.d0)) :: p
+    Real (Kind=Kind(0.d0)) :: amod
+    Integer :: i
+    !$omp target
+    p = cmplx(1.d0, 0.d0, kind(0.d0))
+    do i = 1, n
+       amod = abs(A(i,i))
+       if (amod == 0.d0) then
+          p = cmplx(0.d0, 0.d0, kind(0.d0))
+       else
+          p = p*(A(i,i)/amod)*refl_det(tau(i))
+       endif
+    enddo
+    d(1) = p
+    !$omp end target
+  end subroutine k_det_qr
+
+  !> cs(7) = conj(det)/|det| with det = det(U_R^dagger U_L) = conj(dR) dL, the tracked dets dw(1) = U_L, dw(2) = U_R (one tracked CGR
+  !> phase, no LU).  bad = 1: fault injection (ALF_GPU_FAULT_STAB=det, the sign of the phase is flipped).
+  Subroutine k_det_phase_u(dw, cs, bad)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in) :: dw(2)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: cs(8)
+    Integer, intent(in) :: bad
+    Complex (Kind=Kind(0.d0)) :: det
+    !$omp target
+    det = conjg(conjg(dw(2))*dw(1))
+    det = det/abs(det)
+    if (bad == 1) det = -det
+    cs(7) = det
+    !$omp end target
+  end subroutine k_det_phase_u
+
+!--------------------------------------------------------------------
+!> @brief
+!> H->D upload of the UDV stacks of the walker together with det(U) of every uploaded U (the only way the stacks may be re-uploaded).
+!> @details gpu_put_udv, then a QR of each uploaded U on the device (udvst, udvl, udvr) gives its tracked det (k_det_qr).  A zero
+!> or non-finite det leaves the slot untracked: the first CGR that needs it stops the run ("untracked U in CGR").
+!> One D->H of the (2 + NSTM) N_FL_eff dets, to set the flags.
+!> @param[in] walker walker holding udvst, udvl, udvr
+!--------------------------------------------------------------------
+  Subroutine gpu_stab_put_udv(walker)
+    Implicit none
+    Type (qmc_walker_t), intent(in) :: walker
+    Integer :: nfe, slot, nst
+    call gpu_put_udv(walker)
+    do nfe = 1, s_nfe
+       do slot = 1, 2
+          call upload_det(udw_U(1,1,slot,nfe), udw_det(slot,nfe))
+       enddo
+       do nst = 1, s_nstm
+          call upload_det(udv_U(1,1,nst,nfe), udv_det(nst,nfe))
+       enddo
+    enddo
+    ! D->H of the dets of the uploaded slots, to set the flags (once per run)
+    !$omp target update from(udw_det, udv_det)
+    do nfe = 1, s_nfe
+       do slot = 1, 2
+          w_det_ok(slot,nfe) = det_valid(udw_det(slot,nfe))
+       enddo
+       do nst = 1, s_nstm
+          st_det_ok(nst,nfe) = det_valid(udv_det(nst,nfe))
+       enddo
+    enddo
+  end subroutine gpu_stab_put_udv
+
+  !> det of the uploaded U (n x n, device) into d(1): QR of a copy in sA
+  Subroutine upload_det(U, d)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in) :: U(s_N,s_N)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: d(1:1)
+    integer :: info
+    call k_copy_c(s_N*s_N, U, sA)
+    call la_zgeqrf(s_N, s_N, sA, s_N, st_tau, st_work, s_lw, info)
+    if (info /= 0) call lapack_fail('upload det: zgeqrf', info)
+    call k_det_qr(s_N, sA, s_N, st_tau, d)
+  end subroutine upload_det
+
+  Logical function det_valid(d)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in) :: d
+    det_valid = Control_Is_Finite(dble(d)) .and. Control_Is_Finite(aimag(d)) .and. abs(d) > 0.d0
+  end function det_valid
+
+!====================================================================
 !  Device kernels (plain arrays; synchronous target regions)
 !====================================================================
   ! U(:,j) = U(:,j) * D(j)
@@ -929,23 +1064,27 @@ Contains
 
   ! Phase = prod_i U(i,i), times the permutation sign, conjugated for side L; cs(1) = Phase, cs(2) = 1/Phase.
   ! One serial loop on the device (N complex products, no transfer).
-  Subroutine k_phase(n, U, ld, sgn, cj, cs)
+  ! cs(6) = det(U_new) = prod_i det(H_i) * cs(1): U_new = Q diag(Phase,1,..,1) with Q = H_1 ... H_n (tau = the QR reflector scalars)
+  Subroutine k_phase(n, U, ld, sgn, cj, cs, tau)
     Implicit none
     Integer, intent(in) :: n, ld, sgn
     Logical, intent(in) :: cj
-    Complex (Kind=Kind(0.d0)), intent(in) :: U(ld,n)
+    Complex (Kind=Kind(0.d0)), intent(in) :: U(ld,n), tau(n)
     Complex (Kind=Kind(0.d0)), intent(inout) :: cs(8)
-    Complex (Kind=Kind(0.d0)) :: ph
+    Complex (Kind=Kind(0.d0)) :: ph, dq
     Integer :: i
     !$omp target
     ph = cmplx(1.d0, 0.d0, kind(0.d0))
+    dq = cmplx(1.d0, 0.d0, kind(0.d0))
     do i = 1, n
        ph = ph*U(i,i)
+       dq = dq*refl_det(tau(i))
     enddo
     if (sgn < 0) ph = -ph
     if (cj) ph = conjg(ph)
     cs(1) = ph
     cs(2) = cmplx(1.d0, 0.d0, kind(0.d0)) / ph
+    cs(6) = dq*ph
     !$omp end target
   end subroutine k_phase
 
