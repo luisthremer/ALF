@@ -12,6 +12,7 @@ program test_linalg
   integer     :: ipiv1(n), ipiv2(n), jpvt1(n), jpvt2(n), info1, info2, n_fail
   real(dp)    :: Br(n,m), Cr2(2*n,m)
   complex(dp) :: Cc(n,m), Cd(n,m)
+  real(dp), external :: dznrm2
   external :: dgemm, zgemm, zhemm, ztrsm, ztrmm, zgemv, zgeru, zscal, zcopy, zlacpy, &
        &      zgetrf, zgetrs, zgetri, zgeqrf, zgeqp3, zungqr, zunmqr, &
        &      zlaset, zlapmr, zlapmt, zgesvd, zheev, zgeev
@@ -32,6 +33,11 @@ program test_linalg
   call check('zgemm_cr bitwise', all(Cc == cmplx(Cr2(1::2,:), Cr2(2::2,:), kind=dp)))
   call la_zgemm('N', 'N', n, m, n, (1.d0, 0.d0), A, n, cmplx(Br, 0.d0, kind=dp), n, (0.d0, 0.d0), Cd, n)
   call check('zgemm_cr vs zgemm', maxval(abs(Cc - Cd)) < 1.d-14)
+
+  ! la_dznrm2: bitwise the direct dznrm2 (a column and a strided row)
+  call check('dznrm2', la_dznrm2(n, A(1,3), 1) == dznrm2(n, A(1,3), 1) .and. la_dznrm2(m, A(2,1), n) == dznrm2(m, A(2,1), n))
+
+  call test_zqrpp()
 
   C1 = B; C2 = B
   call zhemm('L', 'U', n, n, alpha, H, n, A, n, beta, C1, n)
@@ -147,6 +153,70 @@ program test_linalg
   write(*,*) 'linalg_mod test: all wrappers bitwise equal to the direct calls'
 
 contains
+
+  !> la_zqrpp: bitwise against a hand-written reference (norms, stable selection by descending norm with the lowest index
+  !> first among equal norms, ZGEQRF); permutation sorted by norm; A(:,ipvt) = Q R; NaN/Inf -> info = -101 and A unchanged;
+  !> equal columns keep their order; workspace query.
+  subroutine test_zqrpp()
+    complex(dp) :: A0(n,n), A1(n,n), A2(n,n), Q(n,n), R(n,n), t1(n), t2(n), wq(1)
+    real(dp) :: nr(n), best
+    integer :: ip(n), ir(n), j, k, kb, info3
+    logical :: used(n), sorted, ties_ok
+    call fill(A0)
+    A1 = A0; A2 = A0
+    call la_zqrpp(n, n, A1, n, ip, t1, work1, size(work1), info1)
+    ! reference
+    do j = 1, n
+       nr(j) = dznrm2(n, A0(1,j), 1)
+    enddo
+    used = .false.
+    do j = 1, n
+       kb = 0; best = -1.d0
+       do k = 1, n
+          if (.not. used(k) .and. nr(k) > best) then
+             best = nr(k); kb = k
+          endif
+       enddo
+       ir(j) = kb; used(kb) = .true.
+       A2(:,j) = A0(:,kb)
+    enddo
+    call zgeqrf(n, n, A2, n, t2, work2, size(work2), info2)
+    call check('zqrpp bitwise', all(A1 == A2) .and. all(t1 == t2) .and. all(ip == ir) .and. info1 == 0 .and. info2 == 0)
+    sorted = .true.
+    do j = 2, n
+       if (nr(ip(j)) > nr(ip(j-1))) sorted = .false.
+    enddo
+    call check('zqrpp sorted by norm', sorted)
+    ! A0(:,ip) = Q R
+    R = (0.d0, 0.d0)
+    do j = 1, n
+       R(1:j,j) = A1(1:j,j)
+    enddo
+    Q = A1
+    call zungqr(n, n, n, Q, n, t1, work1, size(work1), info1)
+    call check('zqrpp A(:,ipvt) = QR', maxval(abs(matmul(Q, R) - A0(:,ip))) < 1.d-13)
+    ! ties: columns 2 and 4 equal, column 1 and 3 smaller: equal norms keep the input order
+    A1 = A0; A1(:,4) = A1(:,2); A1(:,1) = 0.1d0*A1(:,1); A1(:,3) = 0.1d0*A1(:,3)
+    call la_zqrpp(n, n, A1, n, ip, t1, work1, size(work1), info1)
+    ties_ok = .false.
+    do j = 1, n-1
+       if (ip(j) == 2 .and. ip(j+1) == 4) ties_ok = .true.
+    enddo
+    call check('zqrpp ties keep order', ties_ok)
+    ! NaN and Inf: info = -101, matrix not changed
+    A1 = A0; A1(3,2) = transfer([9218868437227405312_8, 0_8], A1(3,2))      ! +Inf
+    A2 = A1
+    call la_zqrpp(n, n, A1, n, ip, t1, work1, size(work1), info1)
+    call check('zqrpp Inf', info1 == -101 .and. all(A1 == A2))
+    A1 = A0; A1(2,5) = transfer([9221120237041090560_8, 0_8], A1(2,5))      ! NaN
+    A2 = A1
+    call la_zqrpp(n, n, A1, n, ip, t1, work1, size(work1), info1)
+    call check('zqrpp NaN', info1 == -101 .and. all(transfer(A1, 0_8, 2*n*n) == transfer(A2, 0_8, 2*n*n)))
+    ! workspace query
+    call zgeqrf(n, n, A0, n, t1, wq, -1, info3)
+    call la_zqrpp(n, n, A0, n, ip, t2, work2, -1, info2)
+    call check('zqrpp query', work2(1) == wq(1) .and. info2 == 0 .and. info3 == 0)
+  end subroutine test_zqrpp
 
   subroutine check(name, ok)
     character(len=*), intent(in) :: name

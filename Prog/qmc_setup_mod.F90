@@ -80,9 +80,11 @@ Module qmc_setup_mod
   Use iso8601_datetime_mod, only: iso8601_datetime
   Use iso_fortran_env, only: output_unit, error_unit
 #ifdef ALF_GPU
-  Use gpu_state_mod, only: gpu_state_setup, gpu_state_finalize, gpu_active
+  Use gpu_state_mod, only: gpu_state_setup, gpu_state_finalize, gpu_active, gpu_put_udv
   Use gpu_wrap_mod, only: gpu_wrap_hook
   Use gpu_lowrank_mod, only: gpu_lr_finalize
+  Use gpu_update_mod, only: gpu_g_host_wrote
+  Use gpu_stab_mod, only: gpu_stab_on, gpu_stab_setup, gpu_stab_hook, gpu_stab_finalize
   Use qmc_walker_mod, only: qmc_walker_t
 #endif
 #ifdef HDF5
@@ -98,7 +100,7 @@ Module qmc_setup_mod
 #endif
   public :: Write_info_end, Write_info_start, Write_info_parameters, Setup_update_schemes, Setup_fields, Setup_model
 #if defined(ALF_GPU)
-  public :: Setup_gpu, Finalize_gpu
+  public :: Setup_gpu, Setup_gpu_stack, Finalize_gpu
 #endif
 
   contains
@@ -282,8 +284,8 @@ Module qmc_setup_mod
     !> @brief
     !> GPU build only: builds the device mirror for the model and the walker layout, or records in the
     !> info file why the GPU path stays inactive (gpu_state_mod). Called between Walker_alloc and
-    !> Walker_init_stack. The sweep does not use the mirror yet. If the path is active it also runs the
-    !> gpu_wrap_mod hook (kernel tuning variables, self-test).
+    !> Walker_init_stack. If the path is active it also runs the gpu_wrap_mod hook (kernel tuning variables, self-test)
+    !> and sets up the device stabilisation (gpu_stab_mod; its hook runs the self-test and arms the fault controls).
     !--------------------------------------------------------------------
     Subroutine Setup_gpu(walker, file_info)
       Type (qmc_walker_t), intent(in) :: walker
@@ -292,14 +294,35 @@ Module qmc_setup_mod
       Call gpu_state_setup(walker, file_info)
       ! kernel tuning variables and, with ALF_GPU_SELFTEST=2, the device wrap self-test
       If (gpu_active) Call gpu_wrap_hook()
+      ! device stabilisation (on iff the device update path is active), then its self-test / fault controls
+      Call gpu_stab_setup(walker)
+      Call gpu_stab_hook()
     end Subroutine Setup_gpu
 
     !--------------------------------------------------------------------
     !> @brief
-    !> GPU build only: releases the device state (delayed/submatrix arrays, then the mirror). Called before Walker_dealloc.
+    !> GPU build only: hands the host stacks built by Walker_init_stack and the Green function of Walker_init_GR over to the
+    !> device stabilisation. Called once, after Walker_init_GR. Does nothing if the device stabilisation is off.
+    !--------------------------------------------------------------------
+    Subroutine Setup_gpu_stack(walker)
+      Type (qmc_walker_t), intent(in) :: walker
+
+      If (gpu_stab_on) then
+         ! H->D of udvst, udvl, udvr: built on the host once per run (Walker_init_stack, Walker_init_GR), the sweeps then keep them on the device
+         Call gpu_put_udv(walker)
+         ! Walker_init_GR wrote the host GR: the device copy is stale
+         Call gpu_g_host_wrote()
+      Endif
+    end Subroutine Setup_gpu_stack
+
+    !--------------------------------------------------------------------
+    !> @brief
+    !> GPU build only: releases the device state (delayed/submatrix arrays, the stabilisation buffers, then the mirror).
+    !> Called before Walker_dealloc.
     !--------------------------------------------------------------------
     Subroutine Finalize_gpu()
       Call gpu_lr_finalize()          ! writes the update counts, frees the device arrays of the delayed/submatrix state
+      Call gpu_stab_finalize()
       Call gpu_state_finalize()
     end Subroutine Finalize_gpu
 #endif

@@ -42,7 +42,11 @@ Module qmc_sweep_mod
   !>
   !> @details
   !> The measurement calls (ham%Obser, Tau_m, Tau_p) are the points where a
-  !> GPU build needs the Green function on the host.
+  !> GPU build needs the Green function on the host. With the device
+  !> stabilisation (gpu_stab_on) the UDV states and G stay on the device: the
+  !> sweeps call gpu_stab_* in place of WRAPUR/WRAPUL, the exchange with the
+  !> storage and Recompute_GR_phase, and fetch G (gpu_g_host) before each host
+  !> reader of walker%GR.
   !--------------------------------------------------------------------
 
   Use qmc_walker_mod, only: qmc_walker_t, Recompute_GR_phase, Reset_udv
@@ -53,6 +57,11 @@ Module qmc_sweep_mod
   Use Tau_m_mod, only: Tau_m
   Use Tau_p_mod, only: Tau_p
   Use Hop_mod, only: Hop_mod_Symm
+#ifdef ALF_GPU
+  Use gpu_stab_mod, only: gpu_stab_on, gpu_stab_wrapur, gpu_stab_wrapul, gpu_stab_exchange, gpu_stab_recompute, &
+       &                  gpu_stab_reset_l, gpu_stab_reset_r, gpu_stab_reset_st
+  Use gpu_update_mod, only: gpu_g_host
+#endif
   Use QMC_runtime_var, only: get_Propose_S0, get_Nt_sequential_start, get_Nt_sequential_end, &
        &                     get_N_Global_tau, get_Sequential_MALA, get_Delta_t_MALA_sequential, &
        &                     get_Max_Force_MALA_sequential, get_N_Global_tau_MALA, &
@@ -80,6 +89,13 @@ Module qmc_sweep_mod
       ! Propagation from 1 to Ltrot
       ! Set the right storage to 1
       Call Reset_udv(walker%udvr, 'r')
+#ifdef ALF_GPU
+      If (gpu_stab_on) then
+         Do nf_eff = 1, N_FL_eff
+            Call gpu_stab_reset_r(nf_eff)
+         ENDDO
+      Endif
+#endif
 
       NST = 1
       DO NTAU = 0, LTROT-1
@@ -91,6 +107,17 @@ Module qmc_sweep_mod
 
          If (NTAU1 == walker%Stab_nt(NST) ) then
             NT1 = walker%Stab_nt(NST-1)
+#ifdef ALF_GPU
+            If (gpu_stab_on) then
+               CALL gpu_stab_wrapur(NT1, NTAU1)
+               Do nf_eff = 1, N_FL_eff
+                  Call gpu_stab_exchange(NST, nf_eff, .true., walker%udvst(NST, nf_eff))
+               ENDDO
+               NVAR = 1
+               IF (NTAU1 .GT. LTROT/2) NVAR = 2
+               Call gpu_stab_recompute(walker, NVAR)
+            else
+#endif
             CALL WRAPUR(NT1, NTAU1, walker%udvr)
             Do nf_eff = 1, N_FL_eff
                ! Read from storage left propagation from LTROT to  NTAU1
@@ -101,6 +128,9 @@ Module qmc_sweep_mod
             NVAR = 1
             IF (NTAU1 .GT. LTROT/2) NVAR = 2
             Call Recompute_GR_phase(walker, NVAR)
+#ifdef ALF_GPU
+            Endif
+#endif
             NST = NST + 1
          ENDIF
 
@@ -110,6 +140,10 @@ Module qmc_sweep_mod
             !write(*,*) "GR before obser sum: ",sum(GR(:,:,1))
             !write(*,*) "Phase before obser : ",phase
             Mc_step_weight = 1.d0
+#ifdef ALF_GPU
+            ! G is device-authoritative: D->H of the stale flavours before the host readers below
+            If (gpu_stab_on) Call gpu_g_host(walker%GR)
+#endif
             If (Symm) then
                Call Hop_mod_Symm(walker%GR_Tilde,walker%GR,ntau1)
                !reconstruction of NOT calculated block!!!
@@ -138,6 +172,13 @@ Module qmc_sweep_mod
       Real (Kind=Kind(0.d0)) :: Mc_step_weight
 
       Call Reset_udv(walker%udvl, 'l')
+#ifdef ALF_GPU
+      If (gpu_stab_on) then
+         Do nf_eff = 1, N_FL_eff
+            Call gpu_stab_reset_l(nf_eff)
+         ENDDO
+      Endif
+#endif
 
       NST = walker%NSTM-1
       DO NTAU = LTROT,1,-1
@@ -150,6 +191,10 @@ Module qmc_sweep_mod
             !write(*,*) "GR before obser sum: ",sum(GR(:,:,1))
             !write(*,*) "Phase before obser : ",phase
             Mc_step_weight = 1.d0
+#ifdef ALF_GPU
+            ! G is device-authoritative: D->H of the stale flavours before the host readers below
+            If (gpu_stab_on) Call gpu_g_host(walker%GR)
+#endif
             If (Symm) then
                Call Hop_mod_Symm(walker%GR_Tilde,walker%GR,ntau1)
                !reconstruction of NOT calculated block!!!
@@ -163,6 +208,18 @@ Module qmc_sweep_mod
          ENDIF
          IF ( walker%Stab_nt(NST) == NTAU1 .AND. NTAU1.NE.0 ) THEN
             NT1 = walker%Stab_nt(NST+1)
+#ifdef ALF_GPU
+            If (gpu_stab_on) then
+               CALL gpu_stab_wrapul(NT1, NTAU1)
+               do nf_eff = 1,N_FL_eff
+                  ! with Ltau = 1 the new udvst(NST) is also copied to the host object (read by TAU_M)
+                  Call gpu_stab_exchange(NST, nf_eff, .false., walker%udvst(NST, nf_eff))
+               ENDDO
+               NVAR = 1
+               IF (NTAU1 .GT. LTROT/2) NVAR = 2
+               Call gpu_stab_recompute(walker, NVAR)
+            else
+#endif
             !Write(6,*) 'Wrapul : ', NT1, NTAU1
             CALL WRAPUL(NT1, NTAU1, walker%udvl)
             !Write(6,*)  'Write UL, read UR ', NTAU1, NST
@@ -175,6 +232,9 @@ Module qmc_sweep_mod
             NVAR = 1
             IF (NTAU1 .GT. LTROT/2) NVAR = 2
             Call Recompute_GR_phase(walker, NVAR)
+#ifdef ALF_GPU
+            Endif
+#endif
             IF( get_Ltau() == 1 .and. Projector .and. walker%Stab_nt(NST)<=THTROT+1 .and. THTROT+1<walker%Stab_nt(NST+1) ) then
                Call tau_p ( walker%udvl, walker%udvr, walker%udvst, walker%GR, walker%PHASE, walker%NSTM, walker%STAB_NT, NST,  get_LOBS_ST(), get_LOBS_EN() )
             endif
@@ -185,6 +245,22 @@ Module qmc_sweep_mod
       !Calculate and compare green functions on time slice 0.
       NT1 = walker%Stab_nt(0)
       NT  = walker%Stab_nt(1)
+#ifdef ALF_GPU
+      If (gpu_stab_on) then
+         CALL gpu_stab_wrapul(NT, NT1)
+         Do nf_eff = 1, N_FL_eff
+            Call gpu_stab_reset_r(nf_eff)
+         ENDDO
+         Call Reset_udv(walker%udvr, 'r')
+         NVAR = 1
+         Call gpu_stab_recompute(walker, NVAR)
+         NST =  walker%NSTM
+         Do nf_eff = 1, N_FL_eff
+            Call gpu_stab_reset_st(NST, nf_eff)
+         ENDDO
+         Call Reset_udv(walker%udvst(NST,:), 'l')
+      else
+#endif
       CALL WRAPUL(NT, NT1, walker%udvl)
 
       Call Reset_udv(walker%udvr, 'r')
@@ -192,8 +268,15 @@ Module qmc_sweep_mod
       Call Recompute_GR_phase(walker, NVAR)
       NST =  walker%NSTM
       Call Reset_udv(walker%udvst(NST,:), 'l')
+#ifdef ALF_GPU
+      Endif
+#endif
 
       IF ( get_Ltau() == 1 .and. .not. Projector ) then
+#ifdef ALF_GPU
+         ! TAU_M reads GR (and udvst, exported at the exchange) on the host
+         If (gpu_stab_on) Call gpu_g_host(walker%GR)
+#endif
          Call TAU_M( walker%udvst, walker%GR, walker%PHASE, walker%NSTM, get_Nwrap(), walker%STAB_NT, get_LOBS_ST(), get_LOBS_EN() )
       endif
       ! When Nwrap > Thtrot+1, the smallest Stab_nt(1)=Nwrap already exceeds

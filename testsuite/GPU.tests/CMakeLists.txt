@@ -1,5 +1,5 @@
-# Tests of the GPU code path (P2.4 step 1b, 1c): gpu_state_mod (device mirror, gpu_supported, env guard, walker pack/unpack),
-# gpu_wrap_mod (device hopping and Op_V kernels, self-test).
+# Tests of the GPU code path (P2.4 step 1b, 1c, 1d): gpu_state_mod (device mirror, gpu_supported, env guard, walker pack/unpack),
+# gpu_wrap_mod (device hopping and Op_V kernels, self-test), gpu_stab_mod (device stabilisation, self-test, phase test).
 # Registered only when the build has -DALF_GPU (configure.sh GPU=host); `make all` must have run before cmake.
 # One executable, one ctest per mode (see the header of 50-gpu-state.F90); each test has its own working directory
 # because Ham_set and the mirror write ./info. Skipped for TEMPERING builds (Ham_set reads Temp_<n>/ there), like
@@ -31,6 +31,11 @@ else()
   target_compile_options(51-gpu-wrap PRIVATE ${FLAG_LIST})
   target_include_directories(51-gpu-wrap PRIVATE "${PROG_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules")
   target_link_libraries(51-gpu-wrap ${prog_objects} ${LIB_LIST})
+
+  add_executable(52-gpu-stab 52-gpu-stab.F90)
+  target_compile_options(52-gpu-stab PRIVATE ${FLAG_LIST})
+  target_include_directories(52-gpu-stab PRIVATE "${PROG_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules")
+  target_link_libraries(52-gpu-stab ${prog_objects} ${LIB_LIST})
 
   # gpu_state_test(<name> <env list as NAME=value;...> <regex or "" > <mode and arguments...>)
   function(gpu_state_test name env regex)
@@ -95,6 +100,30 @@ else()
   foreach(fault hop vexp nan)
     gpu_wrap_test(gpu-wrap-fault-${fault} "ALF_GPU_SELFTEST=2;ALF_GPU_FAULT=${fault}" "GPU self-test FAILED" selftest)
   endforeach()
+
+  # G: device stabilisation (gpu_stab_mod self-test run by the test executable with ALF_GPU_SELFTEST=3), 52-gpu-stab
+  function(gpu_stab_test name env regex)
+    set(run_dir "${CMAKE_CURRENT_BINARY_DIR}/${name}")
+    file(MAKE_DIRECTORY "${run_dir}")
+    if("${FLAG_LIST}" MATCHES "-DMPI")
+      add_test(NAME ${name}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS}
+          $<TARGET_FILE:52-gpu-stab> ${MPIEXEC_POSTFLAGS} ${ARGN}
+        WORKING_DIRECTORY "${run_dir}")
+    else()
+      add_test(NAME ${name} COMMAND 52-gpu-stab ${ARGN} WORKING_DIRECTORY "${run_dir}")
+    endif()
+    set_tests_properties(${name} PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=1;${env}" TIMEOUT 900
+      PASS_REGULAR_EXPRESSION "${regex}")
+  endfunction()
+  gpu_stab_test(gpu-stab-selftest "ALF_GPU_SELFTEST=3" "GPU stab self-test PASSED" selftest)
+  gpu_stab_test(gpu-stab-selftest-nwrap7 "ALF_GPU_SELFTEST=3" "GPU stab self-test PASSED" selftest 7)
+  # fault controls: a wrong pivot permutation, a flipped CGR phase or a NaN scale must make the self-test fail
+  foreach(fault perm phase nan)
+    gpu_stab_test(gpu-stab-fault-${fault} "ALF_GPU_SELFTEST=3;ALF_GPU_FAULT_STAB=${fault}" "GPU self-test FAILED" selftest)
+  endforeach()
+  # determinant phase of the LU factors at large N (raw product underflows), selection bitwise vs LU_PHASE_SAFE
+  gpu_stab_test(gpu-stab-phase "" "gpu-stab test passed: phase" phase)
 
   # E: whole ALF.out runs, Hubbard 4x4 (see gpu_e2e.py for the cases): GPU path active against the same binary with
   # ALF_GPU_DISABLE=1 (and, if ALF_GPU_REF_EXE names the ALF.out of a GPU=none build, against that): confout byte-identical,
