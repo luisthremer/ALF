@@ -371,6 +371,20 @@ foreach(bad abc -1 0)
     PASS_REGULAR_EXPRESSION "not a positive number" TIMEOUT 60)
 endforeach()
 
+set(EXPECT_EXIT ${CMAKE_CURRENT_SOURCE_DIR}/expect_exit.cmake)
+# alf_exit (runtime_error_mod): exit status 0 / 1 / 2, and 1 for any other code.
+add_executable(46-alf-exit 46-alf-exit.F90)
+target_compile_options(46-alf-exit PRIVATE ${FLAG_LIST})
+target_include_directories(46-alf-exit PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules")
+target_link_libraries(46-alf-exit ${LIB_LIST})
+foreach(pair "0;0" "1;1" "2;2" "7;1")
+  list(GET pair 0 code)
+  list(GET pair 1 expected)
+  add_test(NAME 46-alf-exit-${code}
+    COMMAND ${CMAKE_COMMAND} -DCMD=$<TARGET_FILE:46-alf-exit>\;${code} -DEXPECTED=${expected} -P ${EXPECT_EXIT})
+  set_tests_properties(46-alf-exit-${code} PROPERTIES TIMEOUT 60)
+endforeach()
+
 # Trace_updates_mod: the trace line format of the ALF_TRACE_UPDATES debug build.
 add_executable(47-trace-updates 47-trace-updates.F90)
 target_compile_options(47-trace-updates PRIVATE ${FLAG_LIST})
