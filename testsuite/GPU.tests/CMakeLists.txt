@@ -37,6 +37,11 @@ else()
   target_include_directories(52-gpu-stab PRIVATE "${PROG_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules")
   target_link_libraries(52-gpu-stab ${prog_objects} ${LIB_LIST})
 
+  add_executable(53-gpu-obs 53-gpu-obs.F90)
+  target_compile_options(53-gpu-obs PRIVATE ${FLAG_LIST})
+  target_include_directories(53-gpu-obs PRIVATE "${PROG_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules")
+  target_link_libraries(53-gpu-obs ${prog_objects} ${LIB_LIST})
+
   # gpu_state_test(<name> <env list as NAME=value;...> <regex or "" > <mode and arguments...>)
   function(gpu_state_test name env regex)
     set(run_dir "${CMAKE_CURRENT_BINARY_DIR}/${name}")
@@ -124,6 +129,30 @@ else()
   endforeach()
   # determinant phase of the LU factors at large N (raw product underflows), selection bitwise vs LU_PHASE_SAFE
   gpu_stab_test(gpu-stab-phase "" "gpu-stab test passed: phase" phase)
+
+  # H: device observables (gpu_obs_mod), 53-gpu-obs: random G through host Obser/OBSERT and the device, every observable to 1e-12
+  function(gpu_obs_test name env regex)
+    set(run_dir "${CMAKE_CURRENT_BINARY_DIR}/${name}")
+    file(MAKE_DIRECTORY "${run_dir}")
+    if("${FLAG_LIST}" MATCHES "-DMPI")
+      add_test(NAME ${name}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS}
+          $<TARGET_FILE:53-gpu-obs> ${MPIEXEC_POSTFLAGS} ${ARGN}
+        WORKING_DIRECTORY "${run_dir}")
+    else()
+      add_test(NAME ${name} COMMAND 53-gpu-obs ${ARGN} WORKING_DIRECTORY "${run_dir}")
+    endif()
+    set_tests_properties(${name} PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=1;${env}" TIMEOUT 900
+      PASS_REGULAR_EXPRESSION "${regex}")
+  endfunction()
+  foreach(obs_case sq1 sq1s sq2 sq2s sq2h bil1 bil2)
+    gpu_obs_test(gpu-obs-${obs_case} "" "gpu-obs test passed: eq ${obs_case}" eq ${obs_case})
+  endforeach()
+  # negative controls: device G + 1e-6, weights U on every orbital (both must exceed the tolerance by 1e3), and the fault
+  # ALF_GPU_FAULT=obs (device weight of U x (1 + 1e-3)) must make the comparison fail
+  gpu_obs_test(gpu-obs-control-g "" "gpu-obs test passed: control 1" control 1)
+  gpu_obs_test(gpu-obs-control-weights "" "gpu-obs test passed: control 2" control 2)
+  gpu_obs_test(gpu-obs-fault-obs "ALF_GPU_DEBUG=1;ALF_GPU_FAULT=obs" "gpu-obs test FAILED" eq sq2s)
 
   # E: whole ALF.out runs, Hubbard 4x4 (see gpu_e2e.py for the cases): GPU path active against the same binary with
   # ALF_GPU_DISABLE=1 (and, if ALF_GPU_REF_EXE names the ALF.out of a GPU=none build, against that): confout byte-identical,
