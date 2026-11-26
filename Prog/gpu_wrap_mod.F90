@@ -100,6 +100,7 @@ Module gpu_wrap_mod
 
   Integer, parameter :: HOPD_NMAX = 800
   Logical, Save :: hopd_built = .false.
+  Logical, Save :: hopd_opt = .false.          ! ALF_GPU_HOPD=1: dense hopping product Hd (opt-in; KNOWN_ISSUES G2)
   Integer, Save :: st_t = 1                    ! slice used by the self-test hop calls (cpu_hop / dev_hop)
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: Hd(:,:,:,:)
 
@@ -247,12 +248,15 @@ Contains
 !--------------------------------------------------------------------
 !  Dense hopping products (small and medium N): every hop sequence is a fixed linear map, M -> Bl M or M -> M Br.  The four matrices
 !  are the sequences applied to the identity (the same kernels), built once; applying one is a GEMM plus a copy instead of one launch
-!  per checkerboard group.  Used for Ndim <= HOPD_NMAX; above that the group kernels are cheaper.
+!  per checkerboard group.  Used for Ndim <= HOPD_NMAX; above that the group kernels are cheaper.  Opt-in (ALF_GPU_HOPD=1): the
+!  once-rounded product can make the wrapped G less accurate than the factor-by-factor path of Hop_mod (Precision Green 1.4-2.5x
+!  the CPU's with Apple Accelerate, not with the reference BLAS; KNOWN_ISSUES G2); the default is the per-group path, which gives
+!  the CPU's precision.
 !    1 mmthr (left, mat, desc)   2 mmthl_m1 (right, invmat, desc)   3 mmthl (right, mat, asc)   4 mmthr_m1 (left, invmat, asc)
 !--------------------------------------------------------------------
   Logical Function gpu_hopd_on()
     Implicit none
-    gpu_hopd_on = (Ndim <= HOPD_NMAX)
+    gpu_hopd_on = hopd_opt .and. (Ndim <= HOPD_NMAX)
   end function gpu_hopd_on
 
   Subroutine hopd_build()
@@ -1244,13 +1248,15 @@ Contains
 !  Hook and self-test
 !====================================================================
 !> Called from Setup_gpu (qmc_setup_mod) after gpu_state_setup when the GPU path is active: reads the kernel tuning
-!> variables and runs the self-test if ALF_GPU_SELFTEST=2 (the run then continues).
+!> variables (ALF_GPU_TL, _TR, _VB, _HOPD) and runs the self-test if ALF_GPU_SELFTEST=2 (the run then continues).
   Subroutine gpu_wrap_hook()
     Implicit none
     Character (len=64) :: f
     call gpu_env_int('ALF_GPU_TL', gpu_tl)
     call gpu_env_int('ALF_GPU_TR', gpu_tr)
     call gpu_env_int('ALF_GPU_VB', gpu_vb)
+    hopd_opt = gpu_env_is('ALF_GPU_HOPD', '1')
+    if (hopd_opt) call info_line('GPU wrap: dense hopping product Hd ON (ALF_GPU_HOPD=1; Precision Green worse, KNOWN_ISSUES G2)')
     if (gpu_env_get('ALF_GPU_FAULT', f) .and. gpu_env_is('ALF_GPU_SELFTEST', '2')) call inject_fault(trim(f))
     if (gpu_env_is('ALF_GPU_SELFTEST', '2')) then
        call gpu_wrap_selftest()

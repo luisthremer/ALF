@@ -105,6 +105,8 @@ else()
   endfunction()
   gpu_wrap_test(gpu-wrap-selftest "ALF_GPU_SELFTEST=2" "GPU wrap self-test PASSED" selftest)
   gpu_wrap_test(gpu-wrap-selftest-dense "ALF_GPU_SELFTEST=2" "GPU wrap self-test PASSED" selftest dense)
+  # the opt-in dense hopping product Hd (ALF_GPU_HOPD=1, KNOWN_ISSUES G2) stays tested
+  gpu_wrap_test(gpu-wrap-selftest-hopd "ALF_GPU_SELFTEST=2;ALF_GPU_HOPD=1" "GPU wrap self-test PASSED" selftest)
   # fault controls: a perturbed or NaN device copy must make the wrap self-test fail. (ALF_GPU_FAULT=hopc needs complex
   # hopping elements and =order a non-palindromic element order; the Hubbard checkerboard has neither.)
   foreach(fault hop vexp nan)

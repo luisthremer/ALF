@@ -202,9 +202,9 @@ Module gpu_state_mod
   Integer :: env_n = 0
   Character (len=96) :: env_reader = 'not read yet'
   ! Variables the allow-list reader looks up: every ALF_GPU_* name that acts in the GPU port (step 1e)
-  Character (len=24), parameter :: env_allow(11) = [ Character(len=24) :: &
+  Character (len=24), parameter :: env_allow(12) = [ Character(len=24) :: &
        & 'ALF_GPU_DISABLE', 'ALF_GPU_DEBUG', 'ALF_GPU_SELFTEST', 'ALF_GPU_FAULT', 'ALF_GPU_FAULT_STAB', 'ALF_GPU_FAULT_TAU', &
-       & 'ALF_GPU_NOUPDATE', 'ALF_GPU_NOOBS', 'ALF_GPU_TL', 'ALF_GPU_TR', 'ALF_GPU_VB' ]
+       & 'ALF_GPU_NOUPDATE', 'ALF_GPU_NOOBS', 'ALF_GPU_TL', 'ALF_GPU_TR', 'ALF_GPU_VB', 'ALF_GPU_HOPD' ]
   Logical :: env_read_done = .false.
   Integer :: env_rank = 0, env_size = 1              ! MPI_COMM_WORLD rank and size (1 and 0 without MPI)
 
