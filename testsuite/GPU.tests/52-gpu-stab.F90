@@ -11,6 +11,13 @@
 !                     of k_det_phase against the analytic one, the selection of gpu_lu_phase_select bitwise against
 !                     LU_PHASE_SAFE, a case where the raw product is usable (kept bit for bit), a zero pivot, and a negative
 !                     control (the raw-product loop cannot give a unit phase).
+!   refdet            determinant phase from the QR reflectors (no model; the formula of the tracked det(U), k_det_qr): random
+!                     complex A of order 4, 50, 200, 1000 against the phase of the LU (LU_PHASE_SAFE), a random unitary matrix,
+!                     columns with tau = 0, a complex last reflector, and a negative control (one reflector factor dropped).
+!   refdet3200        the same formula at n = 3200 (diagonal A with moduli exp(-0.6) / exp(+0.6): the raw product of the R_ii
+!                     is not representable), modulus 1 and the analytic phase.
+!   untracked         Setup_gpu, then slot udvl of flavour 1 is marked untracked and one CGR is called.  With ALF_GPU_DEBUG=1 and
+!                     ALF_GPU_CGR_LU=0 or 2 it must stop with "untracked U in CGR"; with ALF_GPU_CGR_LU=1 (LU) it must pass.
 ! This program should exit successfully (return code 0) in the modes that are expected to pass.
 Program Test_gpu_stab
 #ifdef MPI
@@ -25,7 +32,9 @@ Program Test_gpu_stab
   Use qmc_setup_mod, only: Setup_model, Setup_fields, Setup_update_schemes, Setup_gpu, Finalize_gpu
   Use qmc_walker_mod, only: qmc_walker_t, Walker_layout, Walker_alloc, Walker_dealloc
   Use gpu_state_mod, only: gpu_active
-  Use gpu_stab_mod, only: gpu_stab_on, gpu_lu_phase_select, k_det_phase
+  Use gpu_stab_mod, only: gpu_stab_on, gpu_lu_phase_select, k_det_phase, k_det_qr, gpu_stab_cgr, gpu_stab_untrack
+  Use Hamiltonian_main, only: Ndim, N_FL, Calc_Fl_map
+  Use linalg_mod, only: la_zgeqrf, la_zgetrf
   Use MyMats, only: LU_PHASE_SAFE
   Use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
   Use iso_fortran_env, only: error_unit, int64
@@ -64,8 +73,26 @@ Program Test_gpu_stab
      Call Clear_Ham_state()
   Case ('phase')
      Call phase_tests()
+  Case ('refdet')
+     Call refdet_tests()
+  Case ('refdet3200')
+     Call refdet_3200()
+  Case ('untracked')
+     Call setup_model_for_run(5, N_op)
+     Call Walker_layout(walker, Ltrot, 5)
+     Call Walker_alloc(walker)
+     Call Setup_gpu(walker, 'info')
+     If (.not. gpu_stab_on) then
+        Write(error_unit,*) 'GPU stabilisation inactive'
+        n_fail = n_fail + 1
+     Else
+        Call untracked_cgr()
+     Endif
+     Call Finalize_gpu()
+     Call Walker_dealloc(walker)
+     Call Clear_Ham_state()
   Case default
-     Write(error_unit,*) 'usage: 52-gpu-stab selftest [Nwrap] | phase'
+     Write(error_unit,*) 'usage: 52-gpu-stab selftest [Nwrap] | phase | refdet | refdet3200 | untracked'
      Call Terminate_on_error(ERROR_GENERIC, __FILE__, __LINE__)
   End Select
 
@@ -253,6 +280,230 @@ contains
     write(*,'(A,L1)') ' phase test zero pivot: marked, raw product returned as LU_PHASE_SAFE: ', ok
     if (.not. ok) n_fail = n_fail + 1
   end Subroutine phase_zero_pivot
+
+  !> CGR on the identity states with udvl marked untracked: stops with "untracked U in CGR" if the phase is tracked (modes 0, 2)
+  Subroutine untracked_cgr()
+    Complex (Kind=Kind(0.d0)), Allocatable :: G(:,:,:)
+    Complex (Kind=Kind(0.d0)) :: ph
+    Allocate(G(Ndim,Ndim,N_FL))
+    G = (0.d0, 0.d0)
+    Call gpu_stab_untrack(1, 1)
+    Call gpu_stab_cgr(1, Calc_Fl_map(1), 1, G, ph, .false.)
+    ! reached only in mode 1 (LU phase): the phase is that of the identity states
+    If (abs(ph - (1.d0, 0.d0)) > 1.d-12) n_fail = n_fail + 1
+    Deallocate(G)
+  end Subroutine untracked_cgr
+
+  !> phase of det(A) from the QR of a copy: the tracked-det formula (k_det_qr); a = copy of A on entry, overwritten
+  Complex (Kind=Kind(0.d0)) function qr_phase(n, a, tau_out)
+    Integer, intent(in) :: n
+    Complex (Kind=Kind(0.d0)), intent(inout) :: a(n,n)
+    Complex (Kind=Kind(0.d0)), intent(out) :: tau_out(n)
+    Complex (Kind=Kind(0.d0)) :: wq(1), d(1)
+    Complex (Kind=Kind(0.d0)), Allocatable :: work(:)
+    Integer :: info
+    Call la_zgeqrf(n, n, a, n, tau_out, wq, -1, info)
+    Allocate(work(max(1, int(real(wq(1))))))
+    Call la_zgeqrf(n, n, a, n, tau_out, work, size(work), info)
+    d(1) = (0.d0, 0.d0)
+    Call k_det_qr(n, a, n, tau_out, d)
+    qr_phase = d(1)
+    Deallocate(work)
+  end function qr_phase
+
+  !> phase of det(A) from the LU (LU_PHASE_SAFE normalised product, A is overwritten)
+  Complex (Kind=Kind(0.d0)) function lu_phase(n, a)
+    Integer, intent(in) :: n
+    Complex (Kind=Kind(0.d0)), intent(inout) :: a(n,n)
+    Integer :: ipiv(n), info
+    Call la_zgetrf(n, n, a, n, ipiv, info)
+    lu_phase = LU_PHASE_SAFE((0.d0, 0.d0), a, ipiv, n)
+  end function lu_phase
+
+  !> det of the reflector with scalar tau, as the formula says: -tau/conj(tau) (1 for tau = 0)
+  Complex (Kind=Kind(0.d0)) function hdet(tau)
+    Complex (Kind=Kind(0.d0)), intent(in) :: tau
+    If (abs(tau) == 0.d0) then
+       hdet = (1.d0, 0.d0)
+    else
+       hdet = -tau/conjg(tau)
+    endif
+  end function hdet
+
+  !> Random matrix, entries re + i im uniform in [-1,1)
+  Subroutine rnd_matrix(n, a, seed)
+    Integer, intent(in) :: n
+    Complex (Kind=Kind(0.d0)), intent(out) :: a(n,n)
+    Integer(int64), intent(inout) :: seed
+    Integer :: i, j
+    Real (Kind=Kind(0.d0)) :: re, im
+    Do j = 1, n
+       Do i = 1, n
+          re = 2.d0*rnd01(seed) - 1.d0; im = 2.d0*rnd01(seed) - 1.d0
+          a(i,j) = cmplx(re, im, kind(0.d0))
+       Enddo
+    Enddo
+  end Subroutine rnd_matrix
+
+  !> One line and one verdict per case: |d_qr - p_lu| (or the analytic phase) against tol, |d_qr| - 1 within 1e-12
+  Subroutine report_det(label, n, d, pref, tol)
+    Character (len=*), intent(in) :: label
+    Integer, intent(in) :: n
+    Complex (Kind=Kind(0.d0)), intent(in) :: d, pref
+    Real (Kind=Kind(0.d0)), intent(in) :: tol
+    Real (Kind=Kind(0.d0)) :: dif, md
+    Logical :: ok
+    dif = abs(d - pref); md = abs(abs(d) - 1.d0)
+    ok = (dif <= tol) .and. (md <= 1.d-12)
+    write(*,'(A,A,A,I0,A,ES10.3,A,ES10.3,A,ES8.1,A,L1)') ' refdet ', label, ' n = ', n, ': |phase(QR reflectors) - phase(ref)| = ', dif, &
+         & ', ||d| - 1| = ', md, ' (tol ', tol, ') ok = ', ok
+    If (.not. ok) n_fail = n_fail + 1
+  end Subroutine report_det
+
+  !> The reflector formula of the tracked det(U) against the LU phase and analytic cases (no model)
+  Subroutine refdet_tests()
+    Integer, parameter :: ns(4) = [4, 50, 200, 1000]
+    Complex (Kind=Kind(0.d0)), Allocatable :: a(:,:), b(:,:), tau(:)
+    Complex (Kind=Kind(0.d0)) :: d, pl, dnl
+    Real (Kind=Kind(0.d0)) :: dif, dneg
+    Integer(int64) :: seed
+    Integer :: k, n, i
+    Logical :: ok
+    seed = 20261127_int64
+    ! random complex A against the LU phase.  The phase of det A from either factorisation is accurate to about
+    ! N eps cond(A); the tolerance is 1e-13 N (cond of a random square matrix is O(N)).
+    Do k = 1, size(ns)
+       n = ns(k)
+       Allocate(a(n,n), b(n,n), tau(n))
+       Call rnd_matrix(n, a, seed)
+       b = a
+       pl = lu_phase(n, b)
+       b = a
+       d = qr_phase(n, b, tau)
+       Call report_det('random complex A', n, d, pl, 1.d-13*n)
+       ! negative control: dropping the determinant of the last reflector (tau(n) /= 0 for a complex last column) must be seen
+       dnl = d/hdet(tau(n))
+       dneg = abs(dnl - pl)
+       ok = (abs(tau(n)) > 0.d0) .and. (dneg > 1.d-3)
+       write(*,'(A,I0,A,ES10.3,A,L1)') ' refdet negative control (last reflector factor dropped) n = ', n, ': difference ', dneg, ' seen = ', ok
+       If (.not. ok) n_fail = n_fail + 1
+       Deallocate(a, b, tau)
+    Enddo
+    ! random unitary matrix (Q of a random matrix), against the LU phase (cond = 1: tolerance 1e-12)
+    Do k = 2, 3
+       n = ns(k)
+       Allocate(a(n,n), b(n,n), tau(n))
+       Call rnd_matrix(n, a, seed)
+       Call unitary_from_qr(n, a)
+       b = a
+       pl = lu_phase(n, b)
+       b = a
+       d = qr_phase(n, b, tau)
+       Call report_det('random unitary', n, d, pl, 1.d-12)
+       Deallocate(a, b, tau)
+    Enddo
+    ! columns with tau = 0: real diagonal, a few negative entries (every reflector is the identity, R_ii = A_ii)
+    n = 50
+    Allocate(a(n,n), tau(n))
+    a = (0.d0, 0.d0)
+    Do i = 1, n
+       a(i,i) = cmplx(1.d0 + 0.01d0*i, 0.d0, kind(0.d0))
+       If (mod(i,7) == 0) a(i,i) = -a(i,i)
+    Enddo
+    d = qr_phase(n, a, tau)
+    ok = all(abs(tau) == 0.d0)
+    write(*,'(A,L1)') ' refdet tau = 0 columns: all reflector scalars are 0: ', ok
+    If (.not. ok) n_fail = n_fail + 1
+    Call report_det('real diagonal, tau = 0, 7 negative entries', n, d, cmplx(real((-1)**(n/7), kind(0.d0)), 0.d0, kind(0.d0)), 1.d-14)
+    Deallocate(a, tau)
+    ! complex last reflector: leading block real positive diagonal, last entry exp(i 0.7): the only nontrivial reflector is the last
+    n = 3
+    Allocate(a(n,n), tau(n))
+    a = (0.d0, 0.d0)
+    a(1,1) = (2.d0, 0.d0); a(2,2) = (3.d0, 0.d0); a(3,3) = cmplx(cos(0.7d0), sin(0.7d0), kind(0.d0))
+    d = qr_phase(n, a, tau)
+    ok = (abs(tau(1)) == 0.d0 .and. abs(tau(2)) == 0.d0 .and. abs(tau(3)) > 0.d0)
+    write(*,'(A,L1)') ' refdet complex last reflector: tau(1:2) = 0, tau(3) /= 0: ', ok
+    If (.not. ok) n_fail = n_fail + 1
+    Call report_det('complex last reflector', n, d, cmplx(cos(0.7d0), sin(0.7d0), kind(0.d0)), 1.d-14)
+    ! negative control on the same matrix: without det H_3 the phase is not exp(i 0.7)
+    dneg = abs(d/hdet(tau(3)) - cmplx(cos(0.7d0), sin(0.7d0), kind(0.d0)))
+    ok = dneg > 1.d-3
+    write(*,'(A,ES10.3,A,L1)') ' refdet negative control (complex last reflector factor dropped): difference ', dneg, ' seen = ', ok
+    If (.not. ok) n_fail = n_fail + 1
+    Deallocate(a, tau)
+  end Subroutine refdet_tests
+
+  !> a (random) -> its unitary factor Q by ZGEQRF + back-substitution of the reflectors on the unit matrix (host, test only)
+  Subroutine unitary_from_qr(n, a)
+    Integer, intent(in) :: n
+    Complex (Kind=Kind(0.d0)), intent(inout) :: a(n,n)
+    Complex (Kind=Kind(0.d0)), Allocatable :: tau(:), work(:), q(:,:), v(:)
+    Complex (Kind=Kind(0.d0)) :: wq(1)
+    Integer :: info, i, j
+    Complex (Kind=Kind(0.d0)) :: s
+    Allocate(tau(n), q(n,n), v(n))
+    Call la_zgeqrf(n, n, a, n, tau, wq, -1, info)
+    Allocate(work(max(1, int(real(wq(1))))))
+    Call la_zgeqrf(n, n, a, n, tau, work, size(work), info)
+    ! Q = H_1 ... H_n applied to the unit matrix, H_i = I - tau_i v v^H, applied from i = n down to 1
+    q = (0.d0, 0.d0)
+    Do i = 1, n
+       q(i,i) = (1.d0, 0.d0)
+    Enddo
+    Do i = n, 1, -1
+       v = (0.d0, 0.d0)
+       v(i) = (1.d0, 0.d0)
+       v(i+1:n) = a(i+1:n,i)
+       Do j = 1, n
+          s = dot_product(v(i:n), q(i:n,j))
+          q(i:n,j) = q(i:n,j) - tau(i)*s*v(i:n)
+       Enddo
+    Enddo
+    a = q
+    Deallocate(tau, work, q, v)
+  end Subroutine unitary_from_qr
+
+  !> n = 3200, diagonal A: |A(i,i)| = exp(-0.6) for i <= n/2, exp(+0.6) otherwise, random phases.  The raw product of the R_ii
+  !> underflows (1e-417 after n/2 factors); the tracked phase has modulus 1 within 1e-12 and equals the analytic phase.
+  Subroutine refdet_3200()
+    Integer, parameter :: n = 3200
+    Complex (Kind=Kind(0.d0)), Allocatable :: a(:,:), tau(:)
+    Complex (Kind=Kind(0.d0)) :: d, analytic
+    Real (Kind=Kind(0.d0)) :: turns, t, md, lg
+    Integer(int64) :: seed
+    Integer :: i
+    Logical :: ok
+    Allocate(a(n,n), tau(n))
+    a = (0.d0, 0.d0)
+    seed = 20261127_int64
+    turns = 0.d0
+    Do i = 1, n
+       t = rnd01(seed)
+       If (i <= n/2) then
+          md = exp(-0.6d0)
+       else
+          md = exp(0.6d0)
+       Endif
+       a(i,i) = md * cmplx(cos(2.d0*pi*t), sin(2.d0*pi*t), kind(0.d0))
+       turns = turns + t
+       turns = turns - floor(turns)
+    Enddo
+    analytic = cmplx(cos(2.d0*pi*turns), sin(2.d0*pi*turns), kind(0.d0))
+    d = qr_phase(n, a, tau)
+    ! the raw product of the first n/2 diagonal entries of R is exp(-960) = 1e-417, below the smallest double (4.9e-324): a raw
+    ! product of the R_ii cannot be represented (decided in the log domain: the order of a compiled product loop is not fixed)
+    lg = 0.d0
+    Do i = 1, n/2
+       lg = lg + log(abs(a(i,i)))
+    Enddo
+    ok = lg < log(tiny(1.d0))
+    write(*,'(A,L1,A,F9.2,A,F9.2,A)') ' refdet n = 3200: the raw product of the first n/2 R_ii is not representable: ', ok, &
+         & ' (log = ', lg, ', log(tiny) = ', log(tiny(1.d0)), ')'
+    If (.not. ok) n_fail = n_fail + 1
+    Call report_det('diagonal 3200, moduli exp(-0.6)/exp(0.6)', n, d, analytic, 1.d-11)
+    Deallocate(a, tau)
+  end Subroutine refdet_3200
 
   !> uniform number in [0,1)
   Real (Kind=Kind(0.d0)) function rnd01(s)
