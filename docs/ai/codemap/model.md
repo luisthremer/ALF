@@ -152,7 +152,7 @@ Public: `get_X/set_X` pairs (:114-153), `set_QMC_runtime_default_var` :167, `rea
 | `lattices_v3_mod.F90` | `Lattices_v3` | `Unit_cell` (`Norb, N_coord, Orb_pos_p`), `Lattice` (`N, Ns, list, invlist, nnlist, listk, invlistk, imj, a1_p, a2_p, b1_p, b2_p, L1_p, L2_p, ...`, :53-68); `Make_lattice(L1_p,L2_p,a1_p,a2_p,Latt[,nnlist_range])` :106, `Clear_Lattice`, `Inv_R(x,Latt)` :541, `Inv_K` :495, `npbc`, `Iscalar`, `Xnorm`, `Fourier_K_to_R`, `Fourier_R_to_K`, `Print_latt` |
 | `lattices_interface_mod.F90` | `lattices_interface` | C interface to lattices for pyALF |
 | `mpi_shared_mem_mod_v2.F90` | `mpi_shared_memory` | node-shared allocations: `mpi_shared_memory_init(comm,chunk_size)` :98, generic `allocate_shared_memory` 1-4D real/cmplx :81, `deallocate_all_shared_memory` :592, flag `use_mpi_shm` :67 |
-| `runtime_error_mod.F90` | `runtime_error_mod` | error enum `ERROR_NONE..ERROR_RUNNING_FILE_FOUND` (:56-68); `Terminate_on_error(code,__FILE__,__LINE__)` :81 → `error stop` or `MPI_ABORT(MPI_COMM_WORLD)` |
+| `runtime_error_mod.F90` | `runtime_error_mod` | error enum `ERROR_NONE..ERROR_RUNNING_FILE_FOUND` (:56-68); `Terminate_on_error(code,__FILE__,__LINE__)` :81 → `error stop` or `MPI_ABORT(MPI_COMM_WORLD)`; `alf_exit(code)`: plain exit with status 0 / 2 / else 1, no message (for statuses job scripts read) |
 | `natural_constants_mod.F90` | `Natural_Constants` | `pi, twopi`, tolerances `Eps_machine=1d-12, Eps_small=1d-10, Eps_convergence=1d-6` (:8-10), SI constants |
 | `precdef_mod.F90` | `precdef` | kind params `byte,long,single,double`; `rone, rzero, cone, czero` |
 | `files_mod.F90` | `Files_mod` | `File_i(file,i)`, `File_add(file,file1)`, `str_to_upper(s)` |
@@ -256,4 +256,4 @@ Rule for MPI use (inferred from the comm_mod header and Phase-5 commits 5.1-5.12
 - New communication goes through `comm_mod` with an explicit communicator (`Group_Comm` for the parameter group, `comm_world()` for all ranks), not raw `MPI_*` behind `#ifdef MPI`.
 - If a type/operation is missing, add a specific routine/overload to `comm_mod` (same MPI type and op as the old call, no-op serial branch) and extend test 39.
 - Raw MPI still remains in: generated `read_parameters` (`parse_ham_mod.py:154-213`), model `Ham_Set` info blocks, `QMC_runtime_var_mod.F90` broadcasts, `Fields_mod.F90` (`in/out`), `Operator_mod.F90` (shared-memory fences), `Langevin_HMC_mod.F90`, `Predefined_Hop_mod.F90`, `Set_random_mod.F90`, `main.F90`, `runtime_error_mod.F90` (MPI_ABORT), `mpi_shared_mem_mod_v2.F90`.
-- Termination always via `Terminate_on_error(code,__FILE__,__LINE__)` (MPI-safe abort).
+- Termination always via `Terminate_on_error(code,__FILE__,__LINE__)` (MPI-safe abort); `alf_exit(code)` only where the exit status itself is the message (e.g. 2 for an invalid `ALF_UNSTABLE_THRESHOLD`).
