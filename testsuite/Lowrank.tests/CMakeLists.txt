@@ -79,6 +79,20 @@ if(Python3_FOUND)
   endif()
   add_test(NAME lowrank-compare-schemes
            COMMAND ${LOWRANK_COMPARE_COMMON} ${LOWRANK_QUICK_OPTIONS} --work ${CMAKE_CURRENT_BINARY_DIR}/compare_schemes_runs)
+  # Global_tau_moves with a sequential range that leaves vertices out (KNOWN_ISSUES.md, H5), all three schemes.
+  # One parameter set: not in the tempering / PARALLEL_PARAMS builds (they need an even number of replicas).
+  if(LOWRANK_BUILD STREQUAL "serial" OR LOWRANK_BUILD STREQUAL "mpi")
+    set(GLOBAL_TAU_RANGE_MPI "")
+    if(LOWRANK_MPIRUN)
+      set(GLOBAL_TAU_RANGE_MPI --mpiexec "${LOWRANK_MPIRUN_STRING}")
+    endif()
+    add_test(NAME 52-global-tau-range
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/global_tau_range.py ${GLOBAL_TAU_RANGE_MPI}
+                     --exe ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/ALF.out
+                     --start ${CMAKE_CURRENT_SOURCE_DIR}/../../Scripts_and_Parameters_files/Start
+                     --work ${CMAKE_CURRENT_BINARY_DIR}/global_tau_range_runs)
+    set_tests_properties(52-global-tau-range PROPERTIES PASS_REGULAR_EXPRESSION "PASS: global tau range" TIMEOUT 600)
+  endif()
   option(ALF_LOWRANK_FULL_TESTS "Run every delayed/submatrix comparison scenario (about 30 minutes)" OFF)
   if(ALF_LOWRANK_FULL_TESTS)
     add_test(NAME lowrank-compare-schemes-full

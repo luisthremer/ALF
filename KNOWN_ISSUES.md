@@ -18,7 +18,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | H2 | Large beta: scale overflow in CGR -> NaN | B | open; since aef50743 the run stops (phase guard) instead of silent NaN |
 | H3 | No measurements -> NaN observables | B | fixed by feature `b-batch-1` (start-up stop: NSweep < 1 or LOBS_ST > LOBS_EN) |
 | H4 | confin with field value 0 -> NaN | B | fixed by feature `b-batch-1` (two-sided field check, types 1, 2, 4) |
-| H5 | Global_tau_moves with partial Nt_sequential range | B | open |
+| H5 | Global_tau_moves with partial Nt_sequential range | B | fixed in `cm/feat/b-batch-2` (commit "Wrapgr: …"; test 52) |
 | H6 | Tempering with an odd number of replicas hangs | B | fixed by feature `b-batch-1` (start-up stop; upstream issue pending) |
 | H7 | Bilayer_honeycomb potential/total energy wrong (also upstream) | B | fixed by feature `b-batch-1` on the CPU line (U/U2 per orbital half); GPU device weights: P2.4 step 1e; upstream issue pending |
 | M1 | Dtau = 0 -> unbounded memory | B | fixed by feature `b-batch-1` (stop if Ltrot overflows) |
@@ -133,6 +133,11 @@ passes; should be `abs(abs(f) - 1) > eps`.
 1.12 (start = 1: 2e-14). `N_Global_tau = 0` with the default range: 1.92. At U = 4 the same inputs stop with a misleading
 "Unstable matrix". Cause: WRAPGRUP/WRAPGRDO wrap only the operators start..end; the others are placed by
 `Wrapgr_PlaceGR` only when `N_Global_tau > 0` or `N_Global_tau_MALA > 0`. Same with the delayed/submatrix schemes.
+Also with `N_Global_tau > 0`, a range starting above 1 was entered with G at vertex 0.
+**Fixed** in `cm/feat/b-batch-2`: WRAPGRUP places G at `Nt_sequential_start - 1` before the range and always at
+`Size(Op_V,1)` at the end; WRAPGRDO always places G at the end of the range and back to 0 after it. Test
+`52-global-tau-range` (start = 3 / empty range, N_Global_tau = 0, all three schemes): Precision Green Max 5.99 (rc 0)
+and abort (rc 3) before, ~1e-13 after. The default range (1..N_op) does not call the new placements.
 
 ### H6. Tempering with an odd number of replicas hangs forever (both, high; hunter C)
 `mpiexec -n 3` with `mpi_per_parameter_set = 1` (3 replicas): deadlock, no output. One replica: the run finishes, then
