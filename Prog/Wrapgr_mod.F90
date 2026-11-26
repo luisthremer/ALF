@@ -141,6 +141,8 @@ Contains
     call timer_pop(T_HOP)
     call timer_push(T_VWRAP)
 #endif
+    ! G is at m = 0; the sequential range starts at m = Nt_sequential_start - 1 (KNOWN_ISSUES.md, H5)
+    if (Nt_sequential_end >= Nt_sequential_start) Call Wrapgr_PlaceGR(GR, 0, Nt_sequential_start-1, ntau1)
     call Lowrank_tune_slice_begin()
     Do n = Nt_sequential_start,Nt_sequential_end
        L_MALA = Sequential_MALA .and. Op_V(n,1)%type == 3
@@ -281,7 +283,8 @@ Contains
        !if ( Nt_sequential_start >  Nt_sequential_end ) m = Nt_sequential_start
        Call Wrapgr_Langevin_update(GR,m,ntau1, PHASE, N_Global_tau_MALA, Delta_t_MALA_global_tau, Max_Force_MALA_global_tau )
     Endif
-    if ( N_Global_tau > 0 .or. N_Global_tau_MALA > 0 ) Call Wrapgr_PlaceGR(GR,m, Size(OP_V,1), ntau1)
+    ! G leaves at m = Size(OP_V,1), also when no global tau move is done (KNOWN_ISSUES.md, H5)
+    Call Wrapgr_PlaceGR(GR,m, Size(OP_V,1), ntau1)
 #ifdef ALF_TIMERS
     call timer_pop(T_GLOBAL)
 #endif
@@ -351,7 +354,7 @@ Contains
     else
        m1 = 0
     endif
-    if ( N_Global_tau > 0 .or. N_Global_tau_MALA > 0 ) Call Wrapgr_PlaceGR(GR,m, m1, ntau)
+    Call Wrapgr_PlaceGR(GR,m, m1, ntau)
 #ifdef ALF_TIMERS
     call timer_pop(T_GLOBAL)
     call timer_push(T_VWRAP)
@@ -487,6 +490,8 @@ Contains
     call Lowrank_flush(GR)
     ! NTAU = 1 ends a sweep (up sweep NTAU = 0..Ltrot-1, down sweep Ltrot..1)
     call Lowrank_tune_slice_end(NTAU == 1)
+    ! G is at m = Nt_sequential_start - 1; the hopping propagation needs m = 0 (KNOWN_ISSUES.md, H5)
+    if (Nt_sequential_end >= Nt_sequential_start) Call Wrapgr_PlaceGR(GR, Nt_sequential_start-1, 0, ntau)
 #ifdef ALF_TIMERS
     call timer_push(T_HOP)
 #endif
