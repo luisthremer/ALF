@@ -101,6 +101,8 @@ Module QMC_runtime_var
     public :: check_langevin_schemes_and_variables
     public :: check_update_schemes_compatibility
     public :: check_MALA_variables
+    public :: check_projector_Ltau
+    public :: check_Nt_sequential_range
     public :: check_compatibility_reconstruct_greens_function
 #ifdef MPI
     public :: broadcast_QMC_runtime_var
@@ -255,7 +257,49 @@ Module QMC_runtime_var
                 endif
             endif
 
+            ! No measurements would give NaN in every observable (division by zero bins)
+            if ( NSweep < 1 ) then
+                write(error_unit,*) 'Error: NSweep must be >= 1 (NSweep = 0 or missing means no measurements).'
+                CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+            endif
+            if ( LOBS_ST > LOBS_EN ) then
+                write(error_unit,*) 'Error: LOBS_ST > LOBS_EN: the measuring interval is empty, no measurements.'
+                CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+            endif
+
         end subroutine set_default_values_measuring_interval
+
+        !--------------------------------------------------------------------
+        !> @brief
+        !> Stops the run for a projector with Thtrot = 0 and time-displaced
+        !> measurements (Ltau = 1): tau_p_mod would read time slice Ltrot+1.
+        !--------------------------------------------------------------------
+        subroutine check_projector_Ltau(Projector, Thtrot)
+            implicit none
+            Logical, intent(in) :: Projector
+            Integer, intent(in) :: Thtrot
+            if ( Projector .and. Thtrot == 0 .and. Ltau == 1 ) then
+                write(error_unit,*) 'Error: Projector with Thtrot = 0 (Theta < Dtau/2) does not support Ltau = 1.'
+                write(error_unit,*) 'Increase Theta or set Ltau = 0.'
+                CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+            endif
+        end subroutine check_projector_Ltau
+
+        !--------------------------------------------------------------------
+        !> @brief
+        !> Stops the run if the range Nt_sequential_start..Nt_sequential_end
+        !> (when not empty) is not inside 1..N_op, the operators of a time slice.
+        !--------------------------------------------------------------------
+        subroutine check_Nt_sequential_range(N_op)
+            implicit none
+            Integer, intent(in) :: N_op
+            if ( Nt_sequential_end >= Nt_sequential_start .and. &
+                 &   ( Nt_sequential_start < 1 .or. Nt_sequential_end > N_op ) ) then
+                write(error_unit,'(A,I0,A,I0,A,I0)') 'Error: Nt_sequential_start = ', Nt_sequential_start, &
+                     & ', Nt_sequential_end = ', Nt_sequential_end, ' must lie in 1..', N_op
+                CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+            endif
+        end subroutine check_Nt_sequential_range
 
         
         subroutine check_langevin_schemes_and_variables()
