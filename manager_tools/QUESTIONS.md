@@ -10,10 +10,6 @@ on the CPU (on/off = 1.015 at L = 16, i.e. slightly slower; within noise at L = 
 1.5x over standard at L = 16. Options: (a) do not port it to the GPU and do not bring it to the CM lines (it stays on
 gpu-port/tags only); (b) bring it to the CPU line as an opt-in feature anyway. Recommendation: (a).
 
-**Q14. T1: measure the stabilisation candidates on the H100?** The survey (10 methods) names as best GPU candidates the
-pre-pivoted unpivoted QR (what the GPU path already does), CholeskyQR2 after scale separation (idea I11) and adaptive
-Nwrap. Next step is a measurement on Helma H100 (preempt partition, a few GPU-hours). yes/no
-
 ## Decided (interview 2026-11-26; record with your exact words in the session notes)
 
 - **D4 (Q1): option (b).** The 8 unguarded CPU-path changes of gpu-port come later as separate CPU-line features (one
@@ -39,6 +35,9 @@ Nwrap. Next step is a measurement on Helma H100 (preempt partition, a few GPU-ho
   (mathematically sound? fastest on CPU and GPU?), within the WIP limit.
 - **Q12:** claude-bughunter for Q4c: Claude asks you to switch it on when the `Mz = T` investigation starts (P2.4 step
   `gpu-intel`).
+- **Q14 (T1):** "Yes" (button on the progress page, 2026-11-26 20:14 UTC). Measure the stabilisation candidates
+  (pre-pivoted unpivoted QR, CholeskyQR2 after scale separation, adaptive Nwrap) on the Helma H100, preempt partition,
+  a few GPU-hours: cost per stabilisation and Precision Green against Nwrap at L = 24 and 32. Session cgalf-research.
 - **Q6:** GitHub plugin switched off by you (2026-11-26).
 - **Q2, Q5, Q7, Q8, Q9, Q10: closed.** Upstream issues posted (#662, #663); `luisthremer/alf-ops` already deleted; research
   plugins off; Fakher asked about ALF-QMC/ALF#660 and #655 (branches `fix/det-c-underflow`, `docs/ai-development-rules`
