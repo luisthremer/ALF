@@ -39,6 +39,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | G2 | GPU line: wrapped G (device wraps and updates, step 1c) less accurate than on the CPU: Precision Green mean 1.4 - 2.5x the CPU value, same chain | B | fixed by feature `gpu-hopd-optin` (cause: dense hopping product `Hd`; now opt-in, `ALF_GPU_HOPD=1`) |
 | G3 | GPU line: the device precision check (`Control_PrecisionG_vals`, step 1d) kept the fixed abort threshold 10 and ignored `ALF_UNSTABLE_THRESHOLD` (CPU-line feature `unstable-threshold`, merged in parallel with 1e) | B | fixed by feature `gpu-hopd-optin` (uses `G_thresh` like `Control_PrecisionG`) |
 | G4 | `stp/production-mpi-intel-*` tags (Intel production on gpu-port): raw-product LU determinant phase at every CGR | C | open, tags only (production L <= 44); not on the CM line |
+| G6 | GPU line: negative control `ALF_GPU_FAULT=upd` acts only on the standard (rank-1) update, not on delayed/submatrix | C | open (test gap; found by the P2.4 step 2 `gpu-intel` gate) |
 | MK | Makefile: Prog objects not rebuilt after Libraries/Modules changes | B | fixed in `cm/feat/b-batch-2` (commit "build: …"; test 50) |
 | WF | Trial wave function normalisation, large N_part (suspected) | B | open, not reproduced |
 | P1 | Op_V_is_symmetric slow (start-up, Symm = .T.) | B | open; fast version on gpu-port |
@@ -248,6 +249,18 @@ AddressSanitizer/UBSan on Code-modularity for all models (no report), FPE traps 
 - **Why class C:** production on these tags ran at L <= 44 (N <= 1936), below the threshold (not checked beyond the L = 44 reproducer).
   The CM line is not affected (step 1d `LU_PHASE_SAFE` rule, step 1f tracked det(U); the Intel backend of step 2 uses both).
 - **Status:** open on the tags only; do not use them for L >~ 54. No fix planned (archive tags).
+
+## G6. GPU line: `ALF_GPU_FAULT=upd` does not reach the delayed/submatrix update (2026-11-27)
+
+- **Applies to:** the fault injection of `gpu_update_mod` (common GPU code, all backends).
+- **Symptom:** with `Sequential_scheme = "delayed"` or `"submatrix"` the negative control `ALF_GPU_DEBUG=1 ALF_GPU_FAULT=upd` is armed
+  (info: "GPU fault armed") but changes nothing: the GPU run equals the CPU path to 2e-12 (Max 1550, Hubbard Mz 8x8, gate job 566631).
+  With the standard scheme the same fault stops the run (rc 3) as intended.
+- **Cause:** the fault scales `Zg` only in the rank-1 branch of the accepted update (`gpu_update_mod.F90` :332); the low-rank branch
+  (`gpu_lr_accept`) gets the unscaled `xv`.
+- **Why class C:** results are not affected; only a negative control has a gap. A test that relies on `upd` with a low-rank scheme
+  would pass vacuously. Workaround: `ALF_GPU_FAULT=obs` or the standard scheme as the control.
+- **Status:** open; to be fixed in the common code when `gpu_update_mod` / `gpu_lowrank_mod` are touched next.
 
 ## G2. GPU line: Precision Green of the device path (2026-11-26; fixed by feature `gpu-hopd-optin`)
 
