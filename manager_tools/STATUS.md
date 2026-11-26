@@ -2,8 +2,7 @@
 P2.4 step 1d (`gpu-stab`: UDV stabilisation on the device, determinant-phase fix for large N; Hubbard only) on `cm/feat/gpu-stab`, 8 commits; CI running. Local: tests 70/70 (GPU=none), 95/95 (GPU=host default, STABLOG and bounds-checked); GPU=none 16/16 byte-identical; phase test at N = 3200 (the old code gives NaN there) passes; device vs CPU path on Hubbard 4x4: configurations byte-identical in all 12 cases, energies within 1.2e-10 (Mz) and 5e-14 (SU(2)). New bug G2 (class B, open): the device path's Precision Green is 1.4-6x the CPU's (already in 1c; observables unaffected); to check before step 2.
 
 ## Waiting for you
-All questions in detail: [QUESTIONS.md](QUESTIONS.md).
-1. Q11: S1 "make it consistent" = the same tracked-phase method on every vendor (not a per-vendor patchwork)? yes/no
+Nothing. All questions answered ([QUESTIONS.md](QUESTIONS.md)).
 
 ## Done since the last owner message
 - Your interview decisions are in the plans (CPU and GPU lines, [255251ff](https://github.com/luisthremer/ALF/commit/255251ff)): D4 (b) with a CPU-line queue in ROADMAP (ALF_UNSTABLE_THRESHOLD first, prepare_sim.py as general PP helper), S1 as P2.4 step 1f, Intel switches default with info report, P2.6 starts with delayed/submatrix for every model, CG-ALF tasks T5-T11 (tracking check, cross-slice research branch, Intel ideas on CUDA, timing flag, benchmark list, auto-tuning, new hardware). Q5-Q10 closed; Q12: I ask you to switch claude-bughunter on when needed.
@@ -25,7 +24,7 @@ All questions in detail: [QUESTIONS.md](QUESTIONS.md).
 
 ## Next 3 steps
 1. Merge 1d (stabilisation) when CI is green; 1e (observables, tau) is being implemented.
-2. 1f: speedup S1 (your yes).
+2. 1f: speedup S1 (your yes; same method on every vendor; the LU removal as ONE commit, revertible).
 3. Step 2: vendor backends inside linalg_mod (needs the clusters).
 
 ## Open branches and running jobs
