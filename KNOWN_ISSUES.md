@@ -37,6 +37,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | L6 | GPU line: confin 0 gives finite wrong numbers | B | open (GPU line) |
 | G1 | GPU line: `ALF_GPU_SELFTEST` leaves test data in the device copy of G marked valid | B | fixed by feature `gpu-wrap-update` (step 1c; harmless in 1b, where the sweep did not use the mirror) |
 | G2 | GPU line: wrapped G (device wraps and updates, step 1c) less accurate than on the CPU: Precision Green mean 1.4 - 2.5x the CPU value, same chain | B | fixed by feature `gpu-hopd-optin` (cause: dense hopping product `Hd`; now opt-in, `ALF_GPU_HOPD=1`) |
+| G3 | GPU line: the device precision check (`Control_PrecisionG_vals`, step 1d) kept the fixed abort threshold 10 and ignored `ALF_UNSTABLE_THRESHOLD` (CPU-line feature `unstable-threshold`, merged in parallel with 1e) | B | fixed by feature `gpu-hopd-optin` (uses `G_thresh` like `Control_PrecisionG`) |
 | MK | Makefile: Prog objects not rebuilt after Libraries/Modules changes | B | open |
 | WF | Trial wave function normalisation, large N_part (suspected) | B | open, not reproduced |
 | P1 | Op_V_is_symmetric slow (start-up, Symm = .T.) | B | open; fast version on gpu-port |

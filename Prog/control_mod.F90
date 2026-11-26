@@ -467,7 +467,7 @@ module Control
 !> @details
 !> XMAX = max |A-B| and XSUM = sum |A-B| over the Ndim x Ndim entries (entries that are NaN or Inf in A or B
 !> excluded), NNanA / NNanB = number of entries of A (new G) / B (wrapped G) that are NaN or Inf. Same messages,
-!> threshold (10) and NCG / XMAXG / XMEANG bookkeeping as Control_PrecisionG, so the Precision Green lines of the
+!> threshold (G_thresh: 10 or ALF_UNSTABLE_THRESHOLD) and NCG / XMAXG / XMEANG bookkeeping as Control_PrecisionG, so the Precision Green lines of the
 !> info file agree between the host and the device path.
 !--------------------------------------------------------------------
       Subroutine Control_PrecisionG_vals(XMAX, XSUM, NNanA, NNanB, Ndim)
@@ -509,13 +509,13 @@ module Control
 
         NCG = NCG + 1
         XMEAN = XSUM/DBLE(Ndim*Ndim)
-        IF (XMAX  >  10.d0) then
+        IF (XMAX  >  G_thresh) then
           Open (Unit=50,file=file1, status="unknown", position="append")
           write(50,*)
 #ifdef MPI
           write(50,*) "Task", Irank_g, "of group", igroup, "reports:"
 #endif
-          write(50,*) XMAX, " is exceeding the threshold of 10 for G difference!"
+          write(50,*) XMAX, " is exceeding the threshold of ", G_thresh, " for G difference!"
           write(50,*) (XmeanG+Xmean)/ncg, " is the average deviation!"
           write(50,*) "This calculation is unstable and therefore aborted!!!"
           write(50,*)
@@ -524,7 +524,7 @@ module Control
 #ifdef MPI
           write(error_unit,*) "Task", Irank_g, "of group", igroup, "reports:"
 #endif
-          write(error_unit,*) XMAX, " is exceeding the threshold of 10 for G difference!"
+          write(error_unit,*) XMAX, " is exceeding the threshold of ", G_thresh, " for G difference!"
           write(error_unit,*) (XmeanG+Xmean)/ncg, " is the average deviation!"
           write(error_unit,*) "This calculation is unstable and therefore aborted!!!"
           write(error_unit,*) 'Try with smaller Nwrap or dtau.'
