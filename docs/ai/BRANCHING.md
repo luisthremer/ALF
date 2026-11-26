@@ -64,3 +64,10 @@ integration branch (`cm/dev/<feature>-integrate`) before the single canvas.
 | manager-tools | Code-modularity | `ef77fc51` (2026-11-26) | `archive/cm/manager-tools/dev` | `archive/cm/manager-tools/feat` | owner's folder `manager_tools/` (network graph tool, STATUS.md and IDEAS.md moved from alf-ops); docs point there |
 | status-in-manager-tools | Code-modularity-CPU | `2cb655e2` (2026-11-26) | `archive/cm/status-in-manager-tools/dev` | `archive/cm/status-in-manager-tools/feat` | docs point to `manager_tools/` for status and ideas; plugin decisions (docs only) |
 | gpu-plan | Code-modularity-CPU | `7782f8fe` (2026-11-26) | `archive/cm/gpu-plan/dev` | `archive/cm/gpu-plan/feat` | P2.4 plan `P2_4_GPU_PLAN.md`, probe of the GPU path on the host (docs only) |
+| plan-decisions | Code-modularity-CPU | `038e442a` (2026-11-26) | `archive/cm/plan-decisions/dev` | `archive/cm/plan-decisions/feat` | P2.4 plan with the owner's decisions D1-D3 (docs only) |
+| mt-all-lines | Code-modularity-CPU | `7868f455` (2026-11-26) | `archive/cm/mt-all-lines/dev` | `archive/cm/mt-all-lines/feat` | `manager_tools/` on all three lines, `sync.sh`; archive rows (docs only) |
+| phase6-sync | Code-modularity-CPU | `095b21a6` (2026-11-26) | `archive/cm/phase6-sync/dev` | `archive/cm/phase6-sync/feat` | Fakher's `Code-modularity_Phase6` up to `fa21b3c0` (6G.E1-E7 linalg wrappers, STAB1 projector fix) |
+| b-batch-1 | Code-modularity-CPU | `bfe5aeaf` (2026-11-26) | `archive/cm/b-batch-1/dev` | `archive/cm/b-batch-1/feat` | B bugs H3 H4 H6 H7 M1 M2 M3 M4 with regression tests |
+| gpu-build | Code-modularity-GPU | `fe2aec86` (2026-11-26) | `archive/cm/gpu-build/dev` | `archive/cm/gpu-build/feat` | P2.4 step 1a: `GPU=none|host` build switch |
+| cgalf-ideas | Code-modularity-CPU | `03457396` (2026-11-26) | `archive/cm/cgalf-ideas/dev` | `archive/cm/cgalf-ideas/feat` | CG-ALF ideas I11-I13 (docs only) |
+| gpu-state | Code-modularity-GPU | `eb5b1022` (2026-11-26) | `archive/cm/gpu-state/dev` | `archive/cm/gpu-state/feat` | P2.4 step 1b: `gpu_state_mod`, device mirror of model and walker (Hubbard), CI job `gpu_host`; CI green on `984e3833` (run 45838961102) |
