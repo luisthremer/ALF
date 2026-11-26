@@ -84,6 +84,7 @@
        INTERFACE SECONDS
           MODULE PROCEDURE SECONDS
        END INTERFACE
+       private :: is_finite_c
      CONTAINS
 
 !--------------------------------------------------------------------
@@ -544,11 +545,13 @@
 !> @param[out] DET the determinant of the input matrix.
 !--------------------------------------------------------------------
 
-       SUBROUTINE INV_C(A,AINV,DET)
+       SUBROUTINE INV_C(A,AINV,DET,DET_PHASE)
          IMPLICIT NONE
          COMPLEX (KIND=KIND(0.D0)), DIMENSION(:,:), INTENT(IN) :: A
          COMPLEX (KIND=KIND(0.D0)), DIMENSION(:,:), INTENT(INOUT) :: AINV
          COMPLEX (KIND=KIND(0.D0)), INTENT(OUT) :: DET
+         !> Optional: DET itself if it is usable, else a number of modulus 1 with its phase (LU_PHASE_SAFE)
+         COMPLEX (KIND=KIND(0.D0)), INTENT(OUT), OPTIONAL :: DET_PHASE
          INTEGER I
 
 ! Working space.
@@ -573,6 +576,7 @@
          ENDIF
          enddo
          DET = SGN * DET
+         IF (PRESENT(DET_PHASE)) DET_PHASE = LU_PHASE_SAFE(DET, AINV, IPVT, LDA)
          CALL ZGETRI(LDA, AINV, LDA, IPVT, WORK, LDA, INFO)
 
          DEALLOCATE (IPVT)
@@ -1332,13 +1336,15 @@
       END SUBROUTINE SECONDS
 
 !====================================================
-      Complex (Kind=Kind(0.d0)) Function DET_C(Mat,N)
+      Complex (Kind=Kind(0.d0)) Function DET_C(Mat,N,ipiv_out)
 
         Implicit none
 
         ! Arguments
         Integer, intent(in) :: N
         Complex(Kind=Kind(0.d0)), intent(inout) :: mat(:,:)
+        !> Optional: the pivot indices of the LU factorisation left in mat (for DET_C_PHASE)
+        Integer, intent(out), optional :: ipiv_out(:)
 
         integer :: i, info, LDmat
         integer, allocatable :: ipiv(:)
@@ -1363,8 +1369,92 @@
         enddo
         if (sgn == -1 ) det_C = - det_C
 
+        if (present(ipiv_out)) ipiv_out(1:N) = ipiv(1:N)
         deallocate(ipiv)
       end function DET_C
+
+!--------------------------------------------------------------------
+!> @brief
+!> A complex number with the phase of det(Mat), for matrices with |det| = 1 (unitary, or of unit
+!> determinant), where only the phase is wanted. Mat is destroyed (LU factors).
+!> @details
+!> DET_C forms the raw product of the N diagonal elements of the LU factor. For |det| = 1 the
+!> product ends near 1, but its running value dips to about exp(-0.24 N) and underflows double
+!> precision for N >~ 2000-3000: det = 0 and det/abs(det) = NaN (KNOWN_ISSUES.md, "Determinant
+!> phase underflow"). DET_C_PHASE returns DET_C(Mat,N) itself, bit for bit, whenever that value is
+!> usable, and otherwise a number of modulus 1 with the correct phase (LU_PHASE_SAFE). Do not use
+!> it where the magnitude of the determinant matters.
+!--------------------------------------------------------------------
+      Complex (Kind=Kind(0.d0)) Function DET_C_PHASE(Mat,N)
+        Implicit none
+        Integer, intent(in) :: N
+        Complex(Kind=Kind(0.d0)), intent(inout) :: mat(:,:)
+        integer, allocatable :: ipiv(:)
+
+        allocate(ipiv(N))
+        DET_C_PHASE = DET_C(Mat, N, ipiv_out=ipiv)
+        DET_C_PHASE = LU_PHASE_SAFE(DET_C_PHASE, Mat, ipiv, N)
+        deallocate(ipiv)
+      end function DET_C_PHASE
+
+!--------------------------------------------------------------------
+!> @brief
+!> Checks a determinant z_raw that a caller formed as the raw product start*prod_i A(i,i) (with the
+!> pivot signs) of an LU factorisation (ZGETRF output A, ipiv), when only its phase is used.
+!> @details
+!> Returns z_raw unchanged if it is finite, of modulus in [1e-250, 1e250] and its phase agrees to
+!> 1e-8 with the product of the normalised factors; otherwise returns that normalised product
+!> (start/|start|) prod_i A(i,i)/|A(i,i)| with the pivot signs (modulus 1). Normal runs therefore
+!> keep their results bit for bit; a raw product that under- or overflowed, or lost its phase in
+!> denormal numbers, is replaced. A zero pivot (singular matrix) returns z_raw. Cost O(N).
+!--------------------------------------------------------------------
+      Complex (Kind=Kind(0.d0)) Function LU_PHASE_SAFE(z_raw, A, ipiv, N, start)
+        Implicit none
+        Complex(Kind=Kind(0.d0)), intent(in) :: z_raw
+        Integer, intent(in) :: N, ipiv(:)
+        Complex(Kind=Kind(0.d0)), intent(in) :: A(:,:)
+        Complex(Kind=Kind(0.d0)), intent(in), optional :: start
+        Complex(Kind=Kind(0.d0)) :: p
+        Real (Kind=Kind(0.d0)) :: x, amod
+        integer :: i
+        ! Finite bounds: with -ffast-math a test against Inf or NaN may be optimised away.
+        Real (Kind=Kind(0.d0)), parameter :: X_LOW = 1.d-250, X_HIGH = 1.d250, PHASE_TOL = 1.d-8
+
+        LU_PHASE_SAFE = z_raw
+        p = cmplx(1.d0, 0.d0, kind(0.d0))
+        if (present(start)) then
+           amod = abs(start)
+           if (amod == 0.d0) return
+           p = start/amod
+        endif
+        do i = 1, N
+           amod = abs(A(i,i))
+           if (amod == 0.d0) return
+           p = p*(A(i,i)/amod)
+           if (ipiv(i) /= i) p = -p
+        enddo
+        if (is_finite_c(z_raw)) then
+           x = abs(z_raw)
+           if (x > X_LOW .and. x < X_HIGH) then
+              if (abs(z_raw/x - p) < PHASE_TOL) return
+           endif
+        endif
+        LU_PHASE_SAFE = p
+      end function LU_PHASE_SAFE
+
+      !> True if real and imaginary part are neither NaN nor +-Inf (by the exponent bits, which
+      !> -ffast-math cannot optimise away)
+      !> (same mask test as Control_Is_Finite; no shiftr, which nvfortran 24.9 does not know)
+      Logical function is_finite_c(z)
+        use iso_fortran_env, only: int64
+        Implicit none
+        Complex (Kind=Kind(0.d0)), intent(in) :: z
+        Integer (Kind=int64), parameter :: expmask = int(z'7FF0000000000000', int64)
+        Integer (Kind=int64) :: b_re, b_im
+        b_re = transfer(real(z, kind(0.d0)), b_re)
+        b_im = transfer(aimag(z), b_im)
+        is_finite_c = iand(b_re, expmask) /= expmask .and. iand(b_im, expmask) /= expmask
+      end function is_finite_c
 
 !--------------------------------------------------------------------
 !> @author
