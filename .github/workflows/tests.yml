@@ -258,6 +258,31 @@ jobs:
           test -x Prog/ALF.out
 
   # ======================
+  # GPU=nvidia: compile and link only (no GPU on the runners; device tests run on Helma H100, P2.4 step 2)
+  # ======================
+  gpu_nvidia_build:
+    name: GPU=nvidia build (PGI 24.9, noMPI) · ${{ matrix.stab }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        stab: [default, LOG]
+    container:
+      image: ghcr.io/alf-qmc/alf-container/alf-requirements/bookworm-pgi-24-09
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build
+        shell: bash
+        env:
+          STAB: ${{ matrix.stab }}
+          ALF_GPU_CC: cc80,cuda12.6
+        run: |
+          if [ "$STAB" = LOG ]; then stab=LOG; else stab=""; fi
+          . ./configure.sh PGI noMPI $stab GPU=nvidia NO-INTERACTIVE
+          make -j2 all
+          cmake -S testsuite -B testsuite/tests
+          cmake --build testsuite/tests -j2
+
+  # ======================
   # Valgrind
   # ======================
   valgrind_gnu_trixie:
