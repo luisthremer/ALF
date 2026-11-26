@@ -25,7 +25,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | M2 | Projector with Thtrot = 0 and Ltau = 1: out of bounds | B | fixed by feature `b-batch-1` (start-up stop for this combination; tau_p bounds unchanged) |
 | M3 | Nwrap <= 0 accepted | B | fixed by feature `b-batch-1` (stop if Nwrap < 1) |
 | M4 | Nt_sequential range not checked -> segfault | B | fixed by feature `b-batch-1` (range check when the range is not empty) |
-| M5 | Langevin dt = 0 / Max_Force = 0 -> zeros; HMC/Amplitude edge cases | B | open |
+| M5 | Langevin dt = 0 / Max_Force = 0 -> zeros; HMC/Amplitude edge cases | B | fixed in `cm/feat/b-batch-2` (commit "QMC_runtime_var: …"; start-up stop, test 42) |
 | M6 | Precision Green up to 10 passes silently | B | fixed in `cm/feat/b-batch-2` (commit "control: …"; warning above 1e-3, test 51) |
 | M7 | Phase update overflow for extreme R | C | open (from code reading) |
 | M8 | Code-modularity not bitwise identical to master (1e-14); global-tau threshold changed | B | open (to investigate with Fakher's history) |
@@ -161,7 +161,9 @@ Fix: weight with `Ham_U_vec(no_I)` (host and device).
   of Op_V out of range in WRAPGRUP); the range is never checked.
 - **M5. Langevin with Delta_t_Langevin_HMC = 0 or Max_Force = 0** (both): return code 0, all bins 0 with sign 0. Related:
   HMC `Leapfrog_steps = 0` (acceptance 0, NaN "Phase diff"), `Amplitude = 0` (frozen chain, acceptance 1),
-  `N_HMC_sweeps = 0` and `Ltau = 2` silently do nothing.
+  `N_HMC_sweeps = 0` and `Ltau = 2` silently do nothing. **Fixed** in `cm/feat/b-batch-2`:
+  `check_Langevin_HMC_variables` stops at start-up on each of these (Ltau not 0/1, Amplitude = 0; Langevin:
+  dt or Max_Force <= 0; HMC: dt <= 0, Leapfrog_steps < 1, N_HMC_sweeps < 1).
 - **M6. Precision Green up to 10 passes without a warning** (both): `Control_PrecisionG` aborts only above 10; 0.1 was
   reached silently (continuous fields, U = 20, Nwrap = 10). **Fixed** in `cm/feat/b-batch-2`: `Control_Print`
   writes a warning to info and stderr when Precision Green Max > 1e-3 (results unchanged; abort stays at 10).
