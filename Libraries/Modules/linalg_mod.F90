@@ -53,7 +53,8 @@ module linalg_mod
   use iso_c_binding, only: c_loc, c_f_pointer
   use iso_fortran_env, only: int64
 #if defined(ALF_LA_CUDA)
-  use linalg_cuda_mod, only: cu_zgemm, cu_zgemm_cr, cu_ztrsm
+  use linalg_cuda_mod, only: cu_zgemm, cu_zgemm_cr, cu_ztrsm, cu_zgeqrf, cu_zunmqr, cu_zgetrf, cu_zgetri, &
+       &                     cu_qrpp_on_device, cu_colnorms, cu_permute_cols
 #endif
   implicit none
   private
@@ -94,6 +95,9 @@ contains
     complex(kind=kind(0.d0)) :: col(max(m,1))
     integer :: i, j, k, kk
     logical :: done(max(n,1))
+#if defined(ALF_LA_CUDA)
+    logical :: dev
+#endif
     external :: zgeqrf
     info = 0
     if (lwork == -1) then
@@ -105,6 +109,19 @@ contains
        info = -1
        return
     endif
+#if defined(ALF_LA_CUDA)
+    ! device matrix: norms on the device (NaN for a NaN or Inf column), sort and test on the host, permutation on the device
+    dev = cu_qrpp_on_device(a, tau, ipvt)
+    if (dev) then
+       call cu_colnorms(m, n, a, lda, nrm)
+       do j = 1, n
+          if (la_not_finite(nrm(j))) then
+             info = -101
+             return
+          endif
+       enddo
+    else
+#endif
     do j = 1, n
        do i = 1, m
           if (la_not_finite(dble(a(i,j))) .or. la_not_finite(aimag(a(i,j)))) then
@@ -118,6 +135,9 @@ contains
           return
        endif
     enddo
+#if defined(ALF_LA_CUDA)
+    endif
+#endif
     ! stable descending insertion sort of the column norms
     do j = 1, n
        ipvt(j) = j
@@ -132,6 +152,13 @@ contains
        enddo
        ipvt(j+1) = kk
     enddo
+#if defined(ALF_LA_CUDA)
+    if (dev) then
+       call cu_permute_cols(m, n, a, lda, ipvt)
+       call la_zgeqrf(m, n, a, lda, tau, work, lwork, info)
+       return
+    endif
+#endif
     ! A(:,j) <- A(:,ipvt(j)) in place, following the cycles of the permutation
     done = .false.
     do i = 1, n
@@ -286,7 +313,17 @@ contains
     integer, intent(in) :: m, n, lda
     complex(kind=kind(0.d0)), intent(inout) :: a(lda,*)
     integer, intent(out) :: ipiv(*), info
+#if defined(ALF_LA_CUDA)
+    logical :: done
+#endif
     external :: zgetrf
+#if defined(ALF_LA_CUDA)
+    call cu_zgetrf(m, n, a, lda, ipiv, done)
+    if (done) then
+       info = 0                    ! cuSOLVER info is checked asynchronously (linalg_cuda_mod)
+       return
+    endif
+#endif
     call zgetrf(m, n, a, lda, ipiv, info)
   end subroutine la_zgetrf
 
@@ -309,7 +346,19 @@ contains
     integer, intent(in) :: ipiv(*)
     complex(kind=kind(0.d0)), intent(inout) :: work(*)
     integer, intent(out) :: info
+#if defined(ALF_LA_CUDA)
+    logical :: done
+#endif
     external :: zgetri
+#if defined(ALF_LA_CUDA)
+    if (lwork /= -1) then
+       call cu_zgetri(n, a, lda, ipiv, done)
+       if (done) then
+          info = 0
+          return
+       endif
+    endif
+#endif
     call zgetri(n, a, lda, ipiv, work, lwork, info)
   end subroutine la_zgetri
 
@@ -319,7 +368,19 @@ contains
     complex(kind=kind(0.d0)), intent(inout) :: a(lda,*)
     complex(kind=kind(0.d0)), intent(inout) :: tau(*), work(*)
     integer, intent(out) :: info
+#if defined(ALF_LA_CUDA)
+    logical :: done
+#endif
     external :: zgeqrf
+#if defined(ALF_LA_CUDA)
+    if (lwork /= -1) then
+       call cu_zgeqrf(m, n, a, lda, tau, done)
+       if (done) then
+          info = 0
+          return
+       endif
+    endif
+#endif
     call zgeqrf(m, n, a, lda, tau, work, lwork, info)
   end subroutine la_zgeqrf
 
@@ -353,7 +414,19 @@ contains
     complex(kind=kind(0.d0)), intent(in) :: a(lda,*), tau(*)
     complex(kind=kind(0.d0)), intent(inout) :: c(ldc,*), work(*)
     integer, intent(out) :: info
+#if defined(ALF_LA_CUDA)
+    logical :: done
+#endif
     external :: zunmqr
+#if defined(ALF_LA_CUDA)
+    if (lwork /= -1) then
+       call cu_zunmqr(side, trans, m, n, k, a, lda, tau, c, ldc, done)
+       if (done) then
+          info = 0
+          return
+       endif
+    endif
+#endif
     call zunmqr(side, trans, m, n, k, a, lda, tau, c, ldc, work, lwork, info)
   end subroutine la_zunmqr
 
