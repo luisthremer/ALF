@@ -1,5 +1,5 @@
 ## Now
-Fakher's Phase-6 commits merged into the CPU and GPU lines ([095b21a6](https://github.com/luisthremer/ALF/commit/095b21a6)). In CI: B batch 1 (rebased on it) and the redone step 1a (`GPU=none|host` only, D1: no alf_la). Both merged when green; then step 1b.
+P2.4 step 1b (`gpu_state_mod`, device mirror of model and walker; Hubbard only) on `cm/feat/gpu-state`: 5 commits, each builds with GPU=none and GPU=host; 81/81 tests with GPU=host (default and STABLOG), 67/67 with GPU=none, 16/16 byte-identical; new CI job `gpu_host`. CI running.
 
 ## Waiting for you
 All questions in detail: [QUESTIONS.md](QUESTIONS.md).
@@ -8,6 +8,8 @@ All questions in detail: [QUESTIONS.md](QUESTIONS.md).
 3. Q4a-d older GPU-port questions; Q5-Q10 things only you can do.
 
 ## Done since the last owner message
+- Merged: Phase-6 sync (CPU+GPU), B batch 1 (8 bugs, CPU, then into GPU), step 1a `GPU=none|host` (GPU); combination green in CI.
+- Ideas I11-I13 (Cholesky again, time-first sweep, random space-time path) in the CG-ALF plan.
 - Phase-6 sync merged (6G.E1-E7 linalg wrappers, STAB1 projector fix): 57/57 tests, 16/16 byte-identical, CI green.
 - Upstream issues posted: ALF-QMC/ALF#662 (H7), #663 (H6). P2.4 plan: D1 linalg_mod, D2 GPU=host, D3 Hubbard only.
 - B-bug batch 1 built and checked (8 bugs, regression tests); step 1b (GPU state) designed.
@@ -21,10 +23,10 @@ All questions in detail: [QUESTIONS.md](QUESTIONS.md).
 - Inbox: two ideas now CG-ALF tasks T3 (fast `Op_V_is_symmetric`) and T4 (production guards from the Intel code); inbox is checked at least every two hours of work ([fc8561cf](https://github.com/luisthremer/ALF/commit/fc8561cf)).
 
 ## Next 3 steps
-1. P2.4 plan for the GPU scaffold (docs), then your look at it.
-2. Scaffold dev branch `cm/dev/gpu-common` (GPU=none bitwise identical), then per-vendor branches.
-3. CG-ALF tasks T3 (fast `Op_V_is_symmetric`) and T4 (production guards).
+1. Merge 1b when CI is green; then 1c (wraps, updates, lowrank on the mirror), tested with GPU=host.
+2. 1d stabilisation (with the GPU det-phase fix; S1 if you say yes), 1e observables/tau.
+3. Step 2: vendor backends inside linalg_mod (needs the clusters).
 
 ## Open branches and running jobs
-- `cm/feat/b-batch-1` (CI on the new base), `cm/feat/gpu-build` (step 1a redone for D1, CI running).
+- `cm/feat/gpu-state` (step 1b, CI running).
 - Cluster jobs: none. Plan: [P2_4_GPU_PLAN.md](https://github.com/luisthremer/ALF/blob/Code-modularity-GPU/docs/ai/phase2/P2_4_GPU_PLAN.md)
