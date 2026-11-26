@@ -59,6 +59,22 @@ branch. Since P2.4 now ports into `Code-modularity-GPU`, Claude proposes where e
 
 - Q5. Delete the online repo `luisthremer/alf-ops` (its content is in `manager_tools/`; the local clone keeps the
   history): `gh auth refresh -h github.com -s delete_repo`, then `gh repo delete luisthremer/alf-ops --yes`.
-- Q6. GitHub MCP: set `GITHUB_PERSONAL_ACCESS_TOKEN` (e.g. in `~/.zshenv`) and restart the app; today the plugin
-  sends an empty token ("Authorization header is badly formatted").
+- Q6. GitHub MCP token. The plugin sends `Authorization: Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}`; the variable is
+  unset, so the header is empty. The desktop app does not read `~/.zshrc` (checked), so set it in Claude Code's own
+  settings: (1) github.com -> Settings -> Developer settings -> Personal access tokens -> Fine-grained tokens ->
+  Generate new token; name `claude-github-mcp`, expiry 90 days, owner `luisthremer`, repositories: only
+  `luisthremer/ALF`; permissions: Contents read-only, Issues read/write, Pull requests read/write, Actions read-only
+  (Metadata is added automatically). (2) In `~/.claude/settings.json` add at top level
+  `"env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "github_pat_..." }` (the file stays on the Mac; never commit it).
+  (3) Quit and restart the Claude app. (4) Tell Claude "check GitHub MCP"; it reconnects and tests a read.
+  Alternative: switch the GitHub plugin off in claude.ai; `gh` already does everything Claude needs.
 - Q7. Switch off `research-superpowers` and `research-desk` in claude.ai (account plugins; Claude cannot).
+- Q8. Upstream pull requests waiting for human review: ALF-QMC/ALF#660 (CPU determinant-phase fix) and #655 (AI
+  development rules). Only you can ask Fakher / the maintainers; Claude does not contact upstream. Until they are
+  merged or closed, `fix/det-c-underflow` and `docs/ai-development-rules` must stay.
+- Q9. Clean-up only you decide: empty the macOS Trash when you no longer need `understand-anything-traces-2026-11-26`
+  (plugin cache + graph clone); keep or remove the local clone `~/Documents/_WORK/Coding/CLAUDE/alf-ops` (history of
+  the old status repo); whiteboard card 2 still mentions the understand-anything graph (not edited by Claude).
+- Q10. Cluster logins: SuperMUC-NG Phase 2 needs your login (Claude never types credentials); Helma works through a
+  shared ssh master connection that expires after 8 h without use. Not needed for the next steps (all tests run on
+  the Mac with GPU=host); needed again for P2.4 step 2 (vendor backends).
