@@ -1303,6 +1303,23 @@ Contains
   end subroutine k_prec
 
   ! true for NaN and +-Inf (bit test on the exponent; comparisons are folded away under -ffast-math)
+  !> .true. if the scales of a UDV state (D, or L with STABLOG) are all finite (bit test, no FP exception)
+  Logical function state_finite(st)
+    Implicit none
+    Class (UDV_State), intent(in) :: st
+    Integer :: i
+    state_finite = .true.
+#if defined(STABLOG)
+    do i = 1, size(st%L)
+       if (is_nonfinite(st%L(i))) state_finite = .false.
+    enddo
+#else
+    do i = 1, size(st%D)
+       if (is_nonfinite(real(st%D(i))) .or. is_nonfinite(aimag(st%D(i)))) state_finite = .false.
+    enddo
+#endif
+  end function state_finite
+
   Logical function is_nonfinite(x)
     Implicit none
     !$omp declare target
@@ -1566,6 +1583,8 @@ Contains
        NT1 = s_nt(nst+1); NT = s_nt(nst)
        do nfe = 1, s_nfe
           call dl_state(1, nfe, hl(nfe))               ! the host oracle starts from the device input
+          ! a non-finite device state fails here: the host decomposition would trap on it (-ffpe-trap, CI debug job)
+          if (.not. state_finite(hl(nfe))) call selftest_fail('stab: non-finite scales in the device state (WRAPUL + decompose)')
        enddo
        call WRAPUL(NT1, NT, hl)
        call gpu_stab_wrapul(NT1, NT)
