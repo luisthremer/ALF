@@ -53,6 +53,10 @@ module Control
     real    (Kind=Kind(0.d0)), private, save :: XMEANG, XMAXG, XMAXP,  Xmean_tau, Xmax_tau
     Integer (Kind=Kind(0.d0)), private, save :: count_CPU_start,count_CPU_end,count_rate,count_max
     Integer          , private, save :: NCG, NCG_tau
+    !> Abort threshold of the G precision check (max |G_wrapped - G_new|). Default 10 (upstream).
+    !> The environment variable ALF_UNSTABLE_THRESHOLD (read in control_init) can lower it, so that a
+    !> corrupted G (e.g. faulty hardware) stops the run at once instead of entering the data.
+    real    (Kind=Kind(0.d0)), private, save :: G_thresh = 10.d0
     Integer (Kind=Kind(0.d0)) , private, save :: NC_up, ACC_up
     Integer (Kind=Kind(0.d0)) , private, save :: NC_eff_up, ACC_eff_up
     Integer (Kind=kind(0.d0)),  private, save :: NC_Glob_up, ACC_Glob_up
@@ -88,6 +92,30 @@ module Control
     
     Contains
 
+!--------------------------------------------------------------------
+!> @brief
+!> Reads ALF_UNSTABLE_THRESHOLD (optional, > 0) into the abort threshold of Control_PrecisionG.
+!> @details
+!> Unset or empty: the threshold stays 10. A non-positive or unparsable value stops the program.
+!--------------------------------------------------------------------
+      subroutine control_read_threshold()
+        use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
+        Implicit none
+        Character (len=64) :: v
+        Integer :: l, st
+        Real (Kind=Kind(0.d0)) :: x
+        call get_environment_variable('ALF_UNSTABLE_THRESHOLD', v, l, st)
+        if (st == 0 .and. l > 0) then
+          read(v, *, iostat=st) x
+          if (st == 0 .and. x > 0.d0) then
+            G_thresh = x
+          else
+            write(error_unit,*) 'ALF_UNSTABLE_THRESHOLD not a positive number: ', trim(v)
+            CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+          endif
+        endif
+      end subroutine control_read_threshold
+
       subroutine control_init(Group_Comm)
 #ifdef MPI
         Use mpi
@@ -95,6 +123,7 @@ module Control
         Implicit none
         Integer       , INTENT(IN)               :: Group_Comm
 
+        call control_read_threshold()
         XMEANG     = 0.d0
         XMEAN_tau  = 0.d0
         XMAXG      = 0.d0
@@ -398,7 +427,7 @@ module Control
 
         NCG = NCG + 1
         CALL COMPARE(A, B, XMAX, XMEAN)
-        IF (XMAX  >  10.d0) then
+        IF (XMAX  >  G_thresh) then
 #if defined(TEMPERING) 
           write(File1,'(A,I0,A)') "Temp_",igroup,"/info"
 #else
@@ -409,7 +438,7 @@ module Control
 #ifdef MPI
           write(50,*) "Task", Irank_g, "of group", igroup, "reports:"
 #endif
-          write(50,*) XMAX, " is exceeding the threshold of 10 for G difference!"
+          write(50,*) XMAX, " is exceeding the threshold of ", G_thresh, " for G difference!"
           write(50,*) (XmeanG+Xmean)/ncg, " is the average deviation!"
           write(50,*) "This calculation is unstable and therefore aborted!!!"
           write(50,*)
@@ -418,7 +447,7 @@ module Control
 #ifdef MPI
           write(error_unit,*) "Task", Irank_g, "of group", igroup, "reports:"
 #endif
-          write(error_unit,*) XMAX, " is exceeding the threshold of 10 for G difference!"
+          write(error_unit,*) XMAX, " is exceeding the threshold of ", G_thresh, " for G difference!"
           write(error_unit,*) (XmeanG+Xmean)/ncg, " is the average deviation!"
           write(error_unit,*) "This calculation is unstable and therefore aborted!!!"
           write(error_unit,*) 'Try with smaller Nwrap or dtau.'
