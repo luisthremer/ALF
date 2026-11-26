@@ -39,6 +39,9 @@ Short form in `STATUS.md` ("Waiting for you"). Answer in the chat with the numbe
 - **Q13 (T6):** "Don't merge into master, but leave it in its own branch for now." (chat, 2026-11-26 ~22:15). `Lowrank_cross_slice`
   is not brought to the CM lines; it is kept on branch `rd/lowrank-cross-slice` (= gpu-port 078d806b, where the code lives:
   `Lowrank_update_mod`, `Wrapgr_mod`, `QMC_runtime_var_mod`).
+- **Q16:** "Yes" (button, 2026-11-26 21:19 UTC): the manager reviews compile-only CI-workflow commits (melmac's deploy key has no
+  `workflow` scope) and pushes them from the Mac. **Q17:** "Yes replace it, it can never use my real address!" (chat): commit
+  6a6d8f55 rewritten to you@example.com (be59af4f); rule: no commit ever carries the real address.
 - **Q6:** GitHub plugin switched off by you (2026-11-26).
 - **Q2, Q5, Q7, Q8, Q9, Q10: closed.** Upstream issues posted (#662, #663); `luisthremer/alf-ops` already deleted; research
   plugins off; Fakher asked about ALF-QMC/ALF#660 and #655 (branches `fix/det-c-underflow`, `docs/ai-development-rules`
