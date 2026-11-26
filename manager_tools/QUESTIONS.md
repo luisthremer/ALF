@@ -4,11 +4,7 @@ Short form in `STATUS.md` ("Waiting for you"). Answer in the chat with the numbe
 
 ## Open
 
-**Q13. `Lowrank_cross_slice`: keep or drop?** CG-ALF T6 result (CG_ALF_PLAN.md section 7): mathematically sound (the
-wrap is a similarity transform, so the cross-slice update gives the same Markov chain up to roundoff), but not faster
-on the CPU (on/off = 1.015 at L = 16, i.e. slightly slower; within noise at L = 8/12). Delayed/submatrix themselves give
-1.5x over standard at L = 16. Options: (a) do not port it to the GPU and do not bring it to the CM lines (it stays on
-gpu-port/tags only); (b) bring it to the CPU line as an opt-in feature anyway. Recommendation: (a).
+(none)
 
 ## Decided (interview 2026-11-26; record with your exact words in the session notes)
 
@@ -40,6 +36,9 @@ gpu-port/tags only); (b) bring it to the CPU line as an opt-in feature anyway. R
   a few GPU-hours: cost per stabilisation and Precision Green against Nwrap at L = 24 and 32. Session cgalf-research.
 - **Q15 (Q12):** "Yes" (button on the progress page, 2026-11-26 20:53 UTC): claude-bughunter for the Intel `Mz = T`
   investigation (gpu-intel, its section 6).
+- **Q13 (T6):** "Don't merge into master, but leave it in its own branch for now." (chat, 2026-11-26 ~22:15). `Lowrank_cross_slice`
+  is not brought to the CM lines; it is kept on branch `rd/lowrank-cross-slice` (= gpu-port 078d806b, where the code lives:
+  `Lowrank_update_mod`, `Wrapgr_mod`, `QMC_runtime_var_mod`).
 - **Q6:** GitHub plugin switched off by you (2026-11-26).
 - **Q2, Q5, Q7, Q8, Q9, Q10: closed.** Upstream issues posted (#662, #663); `luisthremer/alf-ops` already deleted; research
   plugins off; Fakher asked about ALF-QMC/ALF#660 and #655 (branches `fix/det-c-underflow`, `docs/ai-development-rules`
