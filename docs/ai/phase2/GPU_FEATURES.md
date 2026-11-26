@@ -19,6 +19,8 @@ Provenance (kept apart on purpose):
   do not exist yet** (`GPU=nvidia|intel|amd` is P2.4 step 2; step-2 sessions add them).
 - **New line, GPU=host (run)**: result of the runs in [`p25_runs/`](p25_runs/) (one TSV row per run, `p25_runs/results.tsv`) or of the named ctest
   (`p25_runs/ctest_gpu_host.txt`: 51/51 GPU ctests pass on this build). Evidence key: `[build/case]` = row of `results.tsv`.
+- **GPU=amd** (P2.4 step 2, feature `gpu-amd`): **experimental, KNOWN_ISSUES R2 open** (OpenMP target kernels unreliable on
+  gfortran-14 amdgcn; HIP replacements mandatory); its column is added at step 3 with the measured results of the feature.
 
 ## How the evidence was made
 
