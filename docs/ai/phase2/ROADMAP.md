@@ -30,7 +30,8 @@ interrupt, entry first, warn production users, own small dev/canvas fix, merge, 
 merge; **C** (cosmetic/theoretical) -> entry only, fixed when the code is touched anyway.
 At most one interruption at a time and at most two unmerged feature branches (current step + one A fix);
 unsure between A and B -> ask the owner, treat as B meanwhile. Full text: `AGENTS.md`, Working mode.
-Status page and idea inbox: private repo `luisthremer/alf-ops` (`STATUS.md`, `IDEAS.md`), see `AGENTS.md`.
+Status page and idea inbox: `manager_tools/STATUS.md` and `manager_tools/IDEAS.md` on branch `Code-modularity` (until
+2026-11-26 the private repo `luisthremer/alf-ops`), see `AGENTS.md`.
 
 ## P2.0 — Sync (done 2026-11-25)
 Fork `Code-modularity` = origin `Code-modularity_Phase6` (`af22b976`), a fast-forward of
@@ -132,6 +133,7 @@ Attack list (each a task; split into parallel subagents):
    thread counts, GPU streams.
 7. **Statistics:** long runs against ED (`test_vs_ed`) for every model; error bars must cover the
    exact value at the expected rate.
+First switch the plugin back on (disabled 2026-11-26 until P2.8): `claude plugin enable claude-bughunter@elementalsouls`.
 **Subagent with Claude-BugHunter** (owner instruction): one subagent loads the plugin
 `claude-bughunter@elementalsouls` and applies its hunting method to ALF — `bb-methodology`
 (5-phase workflow), `hunt-exceptional-conditions` (malformed input, fail-open), `hunt-race-condition`
