@@ -848,7 +848,13 @@ Contains
     if (use_lu) then
        ! LU of the RHS (sA is not read after k_tpup, cgr_solve overwrites it).  The kernel returns the normalised phase and the raw
        ! determinant, the host selects (LU_PHASE_SAFE rule) and forms Phase = conj(det)/|det|.
+#if defined(ALF_LA_HIP)
+       ! GPU=amd: this LU (debug modes 1, 2 only) runs on host LAPACK: the device la_zgetrf here was followed by layout-dependent
+       ! wrong results (KNOWN_ISSUES R2).  D->H of the RHS, host LU on an unmapped copy, H->D of the factors and pivots.
+       call host_lu(n, info)
+#else
        call la_zgetrf(n, n, sA, n, st_ipiv, info)
+#endif
        if (info < 0) call lapack_fail('CGR: zgetrf', info)
        call k_det_phase(n, sA, n, st_ipiv, st_c)
        ! D->H: normalised LU phase and raw determinant (32 B)
@@ -907,6 +913,26 @@ Contains
     Integer, intent(in) :: slot, nfe
     w_det_ok(slot,nfe) = .false.
   end subroutine gpu_stab_untrack
+
+#if defined(ALF_LA_HIP)
+  !> GPU=amd, debug modes ALF_GPU_CGR_LU = 1, 2: LU of the RHS sA on host LAPACK (KNOWN_ISSUES R2); sA and st_ipiv end as after
+  !> la_zgetrf on the device.  The copies are not mapped, so linalg_mod's presence dispatch takes the host path.
+  Subroutine host_lu(n, info)
+    Implicit none
+    Integer, intent(in) :: n
+    Integer, intent(out) :: info
+    Complex (Kind=Kind(0.d0)), Allocatable :: hA(:,:)
+    Integer, Allocatable :: hp(:)
+    allocate(hA(n,n), hp(n))
+    !$omp target update from(sA)
+    hA = sA
+    call la_zgetrf(n, n, hA, n, hp, info)
+    sA = hA
+    st_ipiv(1:n) = hp
+    !$omp target update to(sA, st_ipiv)
+    deallocate(hA, hp)
+  end subroutine host_lu
+#endif
 
   !> The part of CGR after the matrix T = TPUP is built: QR, phase, solve.  T is destroyed.  Result in st_Gn, phase st_c(3).
   !> ph0: the LU phase (host), used if devph is .false.; devph: the tracked phase st_c(7) on the device is used instead.

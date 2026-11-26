@@ -45,6 +45,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | WF | Trial wave function normalisation, large N_part (suspected) | B | open, not reproduced |
 | P1 | Op_V_is_symmetric slow (start-up, Symm = .T.) | B | open; fast version on gpu-port |
 | R1 | GPU=amd: rocSOLVER's blocked `zgeqrf` (ROCm core-7.14) returns NaN with info = 0 when a 64-column block has tau = 0 (identity-like input, n >= ~200); the own HIP QR covers only m <= 2304 | B | fixed by feature `gpu-amd` (step 2: NaN test after every hipSOLVER `zgeqrf`, recomputed with the unblocked `rocsolver_zgeqr2`; test `55-linalg-hip` identity n = 200, 2400); rocSOLVER report pending |
+| R2 | GPU=amd (gfortran 14 amdgcn offload): CM's OpenMP target kernels give wrong results in full runs, depending on layout and timing (OpenMP permutation kernels of gpu_stab_mod at 6x6; device `la_zgetrf` in the CGR of the LU check mode: wrong tau observables (Precision tau 2e-3, silent), NaN G, libgomp mapping fatal, GCN queue error); correct in isolation | A (GPU=amd only; CUDA and GPU=host not affected) | open, investigating, root cause unknown. Mitigation in feature `gpu-amd`: HIP replacements mandatory on GPU=amd (`ALF_HIP_KERNELS=0` debug only), CGR-phase LU of the debug modes on host LAPACK, broad default-path verification |
 
 ## Determinant phase underflow for N >~ 3000 (L >~ 54) in CGR / DET_C
 
@@ -349,4 +350,26 @@ AddressSanitizer/UBSan on Code-modularity for all models (no report), FPE traps 
   the first occurrence). Cost on the hipSOLVER path: one N^2 device copy and one norm kernel per QR.
 - **Test:** `testsuite/GPU.tests/55-linalg-hip.F90`: identity n = 200 and n = 2400 against the host `zgeqrf` (exact),
   run with the own QR and with `ALF_HIP_QR=0`.
+
+## R2. GPU=amd: OpenMP target kernels wrong in full runs (2026-11-26; open, class A for GPU=amd)
+
+- **Applies to:** GPU=amd builds of the GPU line (gfortran 14.2 with amdgcn offload, ROCm core-7.14, MI210). Not CUDA, not
+  GPU=host (same OpenMP code passes there).
+- **Symptoms (all in runs that end or abort; one silent):** (1) with the HIP replacements switched off (`ALF_HIP_KERNELS=0`),
+  6x6 Start input, NSweep 5 x 2 bins: "Green function contains NaN or Inf"; bisected to the OpenMP permutation kernels of
+  `gpu_stab_mod` (`k_perm_rows/cols`, `k_iperm_rows/cols`); every other kernel group passes on OpenMP. (2) with
+  `ALF_GPU_CGR_LU=1` or `2` (debug: the CGR phase from a device `la_zgetrf`), even with all HIP kernels: wrong time-displaced
+  observables with the run ending normally (Precision tau 2e-3 instead of 3e-15, SU(2) 4x4; silent), or unstable/NaN G, or the
+  libgomp fatal "Trying to map into device [stack, 16 B) ... already mapped" at the complex `reduction(+:Zkin)` of
+  `gpu_obs_mod`, or "GCN fatal error: Asynchronous queue error". The symptom changes with the build (-O3, -O0 -fcheck=all, -g),
+  with extra prints, and disappears when an extra target region or a D->H update is inserted before the kernel.
+- **Ruled out:** the deferred HIP synchronisation (fails with `ALF_HIP_ASYNC=0`), gpu-port's patched libgomp plugin (fails with
+  the stock plugin), SDMA copies (`HSA_ENABLE_SDMA=0`), hipSOLVER out-of-bounds writes (guard-zone test), a stale device copy
+  of the pivots (checked after every `la_zqrpp`), the kernels themselves (OpenMP and HIP versions agree on the same data,
+  `56-hipk-stab`; device `la_zgetrf` agrees with host LAPACK, `55-linalg-hip`), simple reduction-variable leaks.
+- **Mitigation (feature `gpu-amd`):** the HIP replacements are mandatory on GPU=amd (`ALF_HIP_KERNELS=0` only with
+  `ALF_GPU_DEBUG=1`, warned in the info file); the CGR-phase LU of the debug modes runs on host LAPACK on GPU=amd; default-path
+  verification GPU=amd vs `ALF_GPU_DISABLE=1` over sizes, schemes and builds (see the feature's report). GPU=amd is
+  "experimental: R2 open" until the cause is known.
+- **Next:** reproducer below the full code; GCC 15 offload; upstream report.
 
