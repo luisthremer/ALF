@@ -30,7 +30,19 @@ git tag -a archive/cm/<feature>/dev  cm/dev/<feature>  -m "<what was tried here;
 git tag -a archive/cm/<feature>/feat cm/feat/<feature> -m "Canvas of <feature>, merged into <target> as <merge sha>"
 git push fork archive/cm/<feature>/dev archive/cm/<feature>/feat
 ```
-Add a row to the table below. Delete the branches only after the owner says yes.
+Add a row to the table below. Then delete both branches, on the fork and locally
+(standing yes of the owner, 2026-11-26), but only when all of these hold:
+- the canvas is merged (its tip is an ancestor of the target branch);
+- `archive/cm/<feature>/dev` and `archive/cm/<feature>/feat` are on the fork and point exactly at the
+  branch tips (`git ls-remote fork 'refs/tags/archive/cm/<feature>/*'`);
+- no worktree has the branch checked out and no open pull request uses it as head.
+
+```bash
+git push fork --delete cm/dev/<feature> cm/feat/<feature>
+git branch -D cm/dev/<feature> cm/feat/<feature>
+```
+Every other branch (R&D, production, backups, anything without an archive tag) is deleted only after
+the owner says yes for that branch.
 
 Several dev branches per feature are fine (`cm/dev/<feature>-<part>`); larger efforts may use an
 integration branch (`cm/dev/<feature>-integrate`) before the single canvas.
@@ -46,3 +58,4 @@ integration branch (`cm/dev/<feature>-integrate`) before the single canvas.
 | nan-guards | Code-modularity | `f8dbc251` (2026-11-26) | `archive/cm/nan-guards/dev` | `archive/cm/nan-guards/feat` | class-A fix H1: NaN/Inf checks of Green functions and UDV scales by bit pattern; CI green on `5defa12a` (run 45785448080) |
 | lowrank-fastest | Code-modularity | `eaf94e27` (2026-11-26) | `archive/cm/lowrank-fastest/dev` | `archive/cm/lowrank-fastest/feat` | P2.2 step 2: `Sequential_scheme = "auto"` (submatrix if every eligible vertex is diagonal, else delayed), timings; CI green on `0865524b` (run 45791629146) |
 | cg-alf-plan | Code-modularity | `c2efcce5` (2026-11-26) | `archive/cm/cg-alf-plan/dev` | `archive/cm/cg-alf-plan/feat` | CG-ALF plan (P2.9) with the results of E0-E4 on Helma H100, GPU-hour ledger (docs only; non-.md tree equals green `0865524b`) |
+| p23-split | Code-modularity | `40b05e46` (2026-11-26) | `archive/cm/p23-split/dev` | `archive/cm/p23-split/feat` | ROADMAP: P2.2 and P2.3 done; split point of `Code-modularity-CPU` / `-GPU` (docs only) |

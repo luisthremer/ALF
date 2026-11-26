@@ -107,7 +107,7 @@ green and the GPU checks passed. The table of P2.5 is updated at every merge.
 ## P2.7 — Archive discipline (every phase)
 After each merge: annotated tags `archive/cm/<x>/dev` and `archive/cm/<x>/feat` whose message says
 what the branch did, which commit it was merged in, and where the tests/results are; a line in
-`docs/ai/BRANCHING.md` (archive table). Branches are deleted only after the owner's yes.
+`docs/ai/BRANCHING.md` (archive table). Merged `cm/dev`/`cm/feat` branches are deleted once their archive tags are on the fork (rule in BRANCHING.md); other branches only after the owner's yes.
 
 ## P2.8 — Break ALF: adversarial bug hunt (open, after P2.6, before CG-ALF)
 Goal: find bugs before the speed work of P2.9 builds on them. Attack ALF (CPU and GPU lines) the
