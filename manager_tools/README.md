@@ -3,6 +3,7 @@
 | File | What |
 |---|---|
 | `STATUS.md` | The only status page of GPU Development Phase 2 (format and rules: `AGENTS.md`, "Status and ideas"). |
+| `QUESTIONS.md` | All open questions for the owner with background, options and recommendation. |
 | `IDEAS.md` | The owner's idea inbox. Claude never edits or deletes the owner's lines; it only appends "-> taken: <where> (<date>)". |
 | `netgraph.sh`, `netgraph.py`, `page.html` | GitHub-style network graph of this repo: `./manager_tools/netgraph.sh` opens `out/index.html` and rebuilds it on every ref change. |
 | `sync.sh` | Copies this folder from the current branch to `Code-modularity`, `Code-modularity-CPU` and `Code-modularity-GPU` (one `[skip ci]` commit each, only `manager_tools/` changes) and pushes them to the fork. Run it after every change here. |
