@@ -189,7 +189,7 @@ Facts to know:
 2. No implicit SAVE: never initialise a local in its declaration; use `parameter` for constants or an
    executable assignment. Applies to Hamiltonians and Libraries/Modules too. — 2.1–2.12, CI fails since
    2.13 `bc88e1a3`.
-3. No `STOP`/`ERROR STOP`; terminate via `Terminate_on_error(ERROR_*, __FILE__, __LINE__)` from
+3. No `STOP`/`ERROR STOP`; terminate via `Terminate_on_error(ERROR_*, __FILE__, __LINE__)` (or `alf_exit(code)` for a bare exit status) from
    `Libraries/Modules/runtime_error_mod.F90`. — tests.yml `lint_stopcommands`; 5.13 `46c84bab`.
 4. Runtime (QMC control) parameters live in `Prog/QMC_runtime_var_mod.F90` with get_/set_ accessors and
    `lock_QMC_runtime_settings` (setter after lock aborts). Policy logic belongs there, not in main:
