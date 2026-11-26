@@ -127,6 +127,12 @@ Module gpu_stab_mod
   Integer (c_int), Allocatable, Save :: st_ipvt(:), st_perm(:), st_ipiv(:)      ! pivot (ZGEQP3 semantics), sort permutation, LU pivots
   Logical, Save :: warn_once = .true.
   Logical, Save :: ns_on = .true.    ! Newton-Schulz step on Q in decompose (ALF_GPU_NS=0 switches it off; see DISCREPANCIES.md, cuSOLVER Q orthogonality)
+  ! rd/cgalf-stab (T1 prototype): ALF_GPU_CHOLQR=1 replaces the pre-pivoted Householder QR of dev_decompose (default, not STABLOG)
+  ! by CholeskyQR2 on the unscaled block M = U(:,p) (column pivot p from the norms of U D), R = R2 R1 diag(D(p)); falls back to
+  ! la_qrpp if a Cholesky fails. CUDA/host only (det tracking of S1 is not valid on this path: CUDA takes the phase from the LU).
+  Logical, Save :: cqr_on = .false.
+  Integer, Save :: cqr_n = 0, cqr_fail = 0
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: sQ(:,:), sDp(:)
   Logical, Save :: in_selftest = .false.                                        ! inside gpu_stab_selftest (ticket 212)
   Integer, Save :: fault = 0                                                    ! 1 perm, 2 phase, 3 nan (negative controls)
   Logical, Save :: eps_prod = .false.   ! decision 26: ALF_GPU_FAULT_STAB=eps:<x> acts on the device G of every production stabilization
@@ -184,6 +190,12 @@ Contains
        !$omp end target
     endif
     if (gpu_env_is('ALF_GPU_NS', '0')) ns_on = .false.      ! (ticket 212: the value 0 is listed in the debug-env line)
+#if !defined(STABLOG) && !defined(ALF_LA_OM) && !defined(ALF_LA_HIP)
+    if (gpu_env_is('ALF_GPU_CHOLQR', '1')) then
+       cqr_on = .true.
+       call say('rd/cgalf-stab: ALF_GPU_CHOLQR=1, decompose uses CholeskyQR2 (fallback: pre-pivoted QR)')
+    endif
+#endif
     ! pre-grow the cuSOLVER work space (no device allocation inside the sweep)
     lw = la_geqrf_lwork(n, n, sA, n)
     lw = max(lw, la_ormqr_lwork('L', LA_C, n, n, n, sA, n, st_tau, sB, n))
@@ -211,6 +223,10 @@ Contains
     Character (len=256) :: line
     if (.not. gpu_stab_on) return
     call check_report()
+    if (cqr_on) then
+       write(line,'(A,I0,A,I0)') 'rd/cgalf-stab: CholeskyQR2 decompositions ', cqr_n, ', Cholesky failures (fallback to QR) ', cqr_fail
+       call say(line)
+    endif
     if (cgr_lu == 2) then
        call la_sync()
        !$omp target update from(st_r(12:12))
@@ -498,16 +514,21 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: U(*), V(*)
     Integer :: n, i, nswap, sgn
     Integer(c_int) :: kk
-    Logical :: rside
+    Logical :: rside, used_cqr
     Complex (Kind=Kind(0.d0)) :: ph1
 
     n = s_N
+    used_cqr = .false.
     rside = (side == 'R' .or. side == 'r')
 #if !defined(STABLOG)
     ! U(:,i) = U(:,i) * D(i)   (V is allocated for finite T)
+    used_cqr = .false.
+    if (cqr_on) call cqr2_decompose(n, U, S, used_cqr)   ! success: U = R (upper), sQ = Q, st_ipvt, st_tau = 0
+    if (.not. used_cqr) then
     call k_scale_cols(n, U, n, S)
     ! column-norm pre-pivot + unpivoted QR: U holds the reflectors and R, st_ipvt the permutation (ZGEQP3 semantics)
     call la_qrpp(n, n, U, n, st_ipvt, st_tau)
+    endif
     call fault_perm()
     ! separate D (|R_ii|) from R: U(i,j) = U(i,j)/|R_ii|, j >= i
     call k_diagabs(n, U, n, S)
@@ -563,9 +584,17 @@ Contains
     ! U = Q = H_1 ... H_n applied to the unit matrix by ZUNMQR (sC is free here).  Not la_ungqr: with it the sweep's Precision Green
     ! was 4x (mean) / 11x (max) worse than on the CPU at N = 36 (isolation study: replacing only this step by host ZUNGQR or by
     ! ZUNMQR on 1 restores the CPU level at N = 36; at N = 144 the Newton-Schulz step below is needed in addition).
+#if !defined(STABLOG)
+    if (used_cqr) then
+       call k_copy_c(n*n, sQ, U)
+    else
+#endif
     call k_ident(n, sC, n)
     call la_ormqr('L', LA_N, n, n, n, U, n, st_tau, sC, n)
     call k_copy_c(n*n, sC, U)
+#if !defined(STABLOG)
+    endif
+#endif
     ! One Newton-Schulz step Q <- Q (3 - Q^H Q)/2 restores the orthogonality to O(defect^2).  Measured (ticket 206, 12x12, beta 4,
     ! same seeds): without it Precision Green mean 9.7e-11 / max 1.2e-6 (CPU oracle 4.1e-11 / 7.2e-7), with it 5.4e-11 / 3.8e-7;
     ! cuSOLVER's Q has an orthogonality defect about 5x that of LAPACK (1.6e-14 vs 3.3e-15 at N = 400) and the CGR solves amplify it
@@ -585,6 +614,79 @@ Contains
     endif
 #endif
   end subroutine dev_decompose
+
+  !> rd/cgalf-stab: CholeskyQR2 decomposition of U D (see cqr_on). On success U holds R = R2 R1 diag(D(p)) (upper, zeros below),
+  !> sQ = Q (explicit), st_ipvt = p (host and device), st_tau = 0 (reflector determinants 1). U is untouched on failure.
+  Subroutine cqr2_decompose(n, U, S, ok)
+    Implicit none
+    Integer, intent(in) :: n
+    Complex (Kind=Kind(0.d0)), intent(inout) :: U(n,1)
+    Complex (Kind=Kind(0.d0)), intent(in) :: S(1)
+    Logical, intent(out) :: ok
+    Integer :: i, j, info, k, t
+    Real (Kind=Kind(0.d0)) :: acc
+    Real (Kind=Kind(0.d0)), allocatable :: nr(:)
+    ok = .false.
+    if (.not. allocated(sQ)) then
+       allocate(sQ(n,n), sDp(n))
+       !$omp target enter data map(alloc: sQ, sDp)
+    endif
+    cqr_n = cqr_n + 1
+    ! column norms of U D (pivot order, as la_qrpp)
+    !$omp target teams distribute parallel do private(acc)
+    do j = 1, n
+       acc = 0.d0
+       do i = 1, n
+          acc = acc + abs(U(i,j))**2
+       enddo
+       st_nrm(j) = sqrt(acc)*abs(S(j))
+    enddo
+    call la_sync()
+    ! D->H: n norms for the host sort (rd/cgalf-stab)
+    !$omp target update from(st_nrm(1:n))
+    allocate(nr(n)); nr = st_nrm(1:n)
+    do j = 1, n
+       st_ipvt(j) = j
+    enddo
+    do j = 1, n-1                               ! selection sort, descending (stable)
+       k = j
+       do i = j+1, n
+          if (nr(i) > nr(k)) k = i
+       enddo
+       if (k /= j) then
+          acc = nr(k); nr(k) = nr(j); nr(j) = acc
+          t = st_ipvt(k); st_ipvt(k) = st_ipvt(j); st_ipvt(j) = t
+       endif
+    enddo
+    deallocate(nr)
+    ! H->D: permutation (rd/cgalf-stab)
+    !$omp target update to(st_ipvt(1:n))
+    call k_perm_cols(n, U, n, st_ipvt, sQ, n)            ! M = U(:,p)
+    !$omp target teams distribute parallel do
+    do j = 1, n
+       sDp(j) = S(st_ipvt(j))
+    enddo
+    ! pass 1: W = M^H M = R1^H R1, Q1 = M R1^-1
+    call la_gemm(LA_C, LA_N, n, n, n, z1, sQ, n, sQ, n, z0, sB, n)
+    call la_potrf(n, sB, n, info)
+    if (info /= 0) then; cqr_fail = cqr_fail + 1; return; endif
+    call k_triu(n, sB, n, sC, n)                         ! R1 in sC
+    call la_trsm('R', 'U', LA_N, 'N', n, n, z1, sC, n, sQ, n)
+    ! pass 2: W = Q1^H Q1 = R2^H R2, Q = Q1 R2^-1
+    call la_gemm(LA_C, LA_N, n, n, n, z1, sQ, n, sQ, n, z0, sB, n)
+    call la_potrf(n, sB, n, info)
+    if (info /= 0) then; cqr_fail = cqr_fail + 1; return; endif
+    call k_triu(n, sB, n, sA, n)                         ! R2 in sA
+    call la_trsm('R', 'U', LA_N, 'N', n, n, z1, sA, n, sQ, n)
+    ! R = R2 R1 diag(D(p)) -> U
+    call la_gemm(LA_N, LA_N, n, n, n, z1, sA, n, sC, n, z0, U, n)
+    call k_scale_cols(n, U, n, sDp)
+    !$omp target teams distribute parallel do
+    do j = 1, n
+       st_tau(j) = z0
+    enddo
+    ok = .true.
+  end subroutine cqr2_decompose
 
   !> Fault injection (negative control): a wrong pivot permutation, host and device copy (ALF_GPU_FAULT_STAB=perm)
   Subroutine fault_perm()

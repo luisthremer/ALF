@@ -1001,6 +1001,7 @@ module alf_la_mod
   public :: la_geqrf_lwork, la_geqrf, la_ungqr_lwork, la_ungqr, la_ormqr_lwork, la_ormqr
   public :: la_getrf_lwork, la_getrf, la_getrs
   public :: la_qrpp, la_geqp3_host
+  public :: la_potrf                                         ! rd/cgalf-stab (CholeskyQR2 prototype)
   public :: la_debug_poison_last_info                        ! test hook (t_info)
 
   logical, save :: inited = .false.
@@ -1135,6 +1136,19 @@ module alf_la_mod
       type(c_ptr), value :: h, A
       integer(c_int), value :: m, n, lda
       integer(c_int) :: lwork
+    end function
+    integer(c_int) function cusolverDnZpotrf_bufferSize(h, uplo, n, A, lda, lwork) &
+         bind(C, name='cusolverDnZpotrf_bufferSize')
+      import :: c_ptr, c_int
+      type(c_ptr), value :: h, A
+      integer(c_int), value :: uplo, n, lda
+      integer(c_int) :: lwork
+    end function
+    integer(c_int) function cusolverDnZpotrf(h, uplo, n, A, lda, work, lwork, info) &
+         bind(C, name='cusolverDnZpotrf')
+      import :: c_ptr, c_int
+      type(c_ptr), value :: h, A, work, info
+      integer(c_int), value :: uplo, n, lda, lwork
     end function
     integer(c_int) function cusolverDnZgetrf(h, m, n, A, lda, work, ipiv, info) &
          bind(C, name='cusolverDnZgetrf')
@@ -1984,6 +1998,42 @@ contains
   !> NaN/Inf in A stop the run (Terminate_on_error) after the norm transfer.
   !> CUDA: transfers: n norms D->H and the n-entry permutation H->D (sort on the host, the only unavoidable host step);
   !> ipvt, tau and A are device-resident, ipvt also valid on the host.
+  !> rd/cgalf-stab (CholeskyQR2 prototype): Cholesky A = R^H R of the Hermitian positive definite n x n A (upper
+  !> triangle used and overwritten). info > 0: not positive definite (the caller falls back). Synchronises (info D->H).
+  subroutine la_potrf(n, A, lda, info)
+    integer, intent(in) :: n, lda
+    complex(8), target :: A(lda,*)
+    integer, intent(out) :: info
+#if defined(ALF_LA_CUDA)
+    integer(c_int) :: l
+    integer :: s
+#endif
+    info = 0
+    if (n <= 0) return
+#if defined(ALF_LA_CUDA)
+    call pre_lib()
+    !$omp target data use_device_addr(A)
+    call chk(cusolverDnZpotrf_bufferSize(hsolv, 1_c_int, n, c_loc(A(1,1)), lda, l), 'potrf_bufferSize')
+    !$omp end target data
+    call ensure_dws(max(int(l),1))
+    s = next_slot('potrf', .true.)
+    !$omp target data use_device_addr(A, dws, dinfo)
+    call chk(cusolverDnZpotrf(hsolv, 1_c_int, n, c_loc(A(1,1)), lda, c_loc(dws(1)), l, &
+         c_loc(dinfo(s))), 'potrf')
+    !$omp end target data
+    call post_lib()
+    call la_sync()
+    ! D->H: one info word (rd/cgalf-stab prototype)
+    !$omp target update from(dinfo(s:s))
+    info = dinfo(s)
+#elif defined(ALF_LA_OM)
+    LA_FAIL('la_potrf: not available in this backend (rd/cgalf-stab prototype is CUDA/host only)')
+#else
+    call zpotrf('U', n, A, lda, info)
+    if (info < 0) LA_FAIL('zpotrf: illegal argument')
+#endif
+  end subroutine la_potrf
+
   subroutine la_qrpp(m, n, A, lda, ipvt, tau)
     integer, intent(in) :: m, n, lda
     complex(8), target :: A(lda,*), tau(*)
