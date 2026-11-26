@@ -24,10 +24,15 @@ standard update is used, and the results are bit-identical to a build without th
 \begin{verbatim}
 &VAR_QMC
 ...
-Sequential_scheme = "delayed"   ! "standard" (default) | "delayed" | "submatrix"
+Sequential_scheme = "auto"      ! "standard" (default) | "delayed" | "submatrix" | "auto"
 N_delay           = 0           ! 0: automatic, -1: automatic and timed, >= 1: fixed
 /
 \end{verbatim}
+\texttt{"auto"} picks the faster scheme from the vertices of the sequential range: submatrix if all of
+them are diagonal (Hubbard-type models), delayed if any is non-diagonal (bond operators, Kondo, tV), because
+the submatrix scheme applies blocks with non-diagonal content immediately (see Numerics below). Measured on a
+Mac (GNU, one core, 2 sweeps): Hubbard $16\times16$, $\beta=6$: standard 12.6\,s, delayed 10.1\,s, submatrix
+9.8\,s; tV $16\times16$: 12.3\,s, 10.3\,s, 12.3\,s; Kondo $12\times12$ bilayer, $\beta=6$: 4.5\,s, 2.7\,s, 3.8\,s.
 The code is in \texttt{Prog/lowrank\_update\_mod.F90}; \texttt{WRAPGRUP} and \texttt{WRAPGRDO}
 (\texttt{Prog/Wrapgr\_mod.F90}) call it for every eligible vertex. The choice is written to the \texttt{info} file. With \texttt{N\_delay = 0} the bound $n_0$ is set from
 $N_{\text{dim}}$ and from the largest pending rank one time slice can produce (a fixed rule, the same on

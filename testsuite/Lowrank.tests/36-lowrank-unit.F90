@@ -1205,6 +1205,16 @@ contains
       call Lowrank_finalize()
       call elig_check(.not. Lowrank_active(), 'Lowrank_finalize: inactive', n_fail)
 
+      ! auto: delayed when a non-diagonal vertex is in the sequential range, submatrix otherwise
+      call Lowrank_init('auto', 7)
+      call elig_check(Lowrank_active() .and. info_has_line('Sequential scheme: AUTO -> DELAYED, N_delay = 7'), &
+           & "auto with bond vertices 3-5: info contains 'AUTO -> DELAYED'", n_fail)
+      call Lowrank_finalize()
+      call Lowrank_init('auto', 7, Nt_start=1, Nt_end=2)
+      call elig_check(Lowrank_active() .and. info_has_line('Sequential scheme: AUTO -> SUBMATRIX, N_delay = 7'), &
+           & "auto with only the Mz vertices 1-2 in range: info contains 'AUTO -> SUBMATRIX'", n_fail)
+      call Lowrank_finalize()
+
       ! Re-init after finalize (re-init path), submatrix with a mixed-case name
       call Lowrank_init('Submatrix', 3)
       call elig_check(Lowrank_active() .and. Lowrank_pending() == 0, &
