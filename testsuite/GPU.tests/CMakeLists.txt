@@ -1,4 +1,5 @@
-# Tests of the GPU code path (P2.4 step 1b): gpu_state_mod (device mirror, gpu_supported, env guard, walker pack/unpack).
+# Tests of the GPU code path (P2.4 step 1b, 1c): gpu_state_mod (device mirror, gpu_supported, env guard, walker pack/unpack),
+# gpu_wrap_mod (device hopping and Op_V kernels, self-test).
 # Registered only when the build has -DALF_GPU (configure.sh GPU=host); `make all` must have run before cmake.
 # One executable, one ctest per mode (see the header of 50-gpu-state.F90); each test has its own working directory
 # because Ham_set and the mirror write ./info. Skipped for TEMPERING builds (Ham_set reads Temp_<n>/ there), like
@@ -25,6 +26,11 @@ else()
   target_compile_options(50-gpu-state PRIVATE ${FLAG_LIST})
   target_include_directories(50-gpu-state PRIVATE "${PROG_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules")
   target_link_libraries(50-gpu-state ${prog_objects} ${LIB_LIST})
+
+  add_executable(51-gpu-wrap 51-gpu-wrap.F90)
+  target_compile_options(51-gpu-wrap PRIVATE ${FLAG_LIST})
+  target_include_directories(51-gpu-wrap PRIVATE "${PROG_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules")
+  target_link_libraries(51-gpu-wrap ${prog_objects} ${LIB_LIST})
 
   # gpu_state_test(<name> <env list as NAME=value;...> <regex or "" > <mode and arguments...>)
   function(gpu_state_test name env regex)
@@ -66,6 +72,29 @@ else()
   gpu_state_test(gpu-state-env-refused "ALF_GPU_NOUPDATE=1" "GPU debug env refused: ALF_GPU_NOUPDATE" plain)
   gpu_state_test(gpu-state-fault-value "ALF_GPU_DEBUG=1;ALF_GPU_FAULT=bogus" "GPU fault value invalid: ALF_GPU_FAULT=bogus" plain)
   gpu_state_test(gpu-state-envreader "ALF_GPU_DISABLE=1;ALF_GPU_FOO=1" "" envreader)
+
+  # F: device wrap kernels (gpu_wrap_mod self-test run by Setup_gpu with ALF_GPU_SELFTEST=2), 51-gpu-wrap
+  function(gpu_wrap_test name env regex)
+    set(run_dir "${CMAKE_CURRENT_BINARY_DIR}/${name}")
+    file(MAKE_DIRECTORY "${run_dir}")
+    if("${FLAG_LIST}" MATCHES "-DMPI")
+      add_test(NAME ${name}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS}
+          $<TARGET_FILE:51-gpu-wrap> ${MPIEXEC_POSTFLAGS} ${ARGN}
+        WORKING_DIRECTORY "${run_dir}")
+    else()
+      add_test(NAME ${name} COMMAND 51-gpu-wrap ${ARGN} WORKING_DIRECTORY "${run_dir}")
+    endif()
+    set_tests_properties(${name} PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=1;${env}" TIMEOUT 600
+      PASS_REGULAR_EXPRESSION "${regex}")
+  endfunction()
+  gpu_wrap_test(gpu-wrap-selftest "ALF_GPU_SELFTEST=2" "GPU wrap self-test PASSED" selftest)
+  gpu_wrap_test(gpu-wrap-selftest-dense "ALF_GPU_SELFTEST=2" "GPU wrap self-test PASSED" selftest dense)
+  # fault controls: a perturbed or NaN device copy must make the wrap self-test fail. (ALF_GPU_FAULT=hopc needs complex
+  # hopping elements and =order a non-palindromic element order; the Hubbard checkerboard has neither.)
+  foreach(fault hop vexp nan)
+    gpu_wrap_test(gpu-wrap-fault-${fault} "ALF_GPU_SELFTEST=2;ALF_GPU_FAULT=${fault}" "GPU self-test FAILED" selftest)
+  endforeach()
 
   # E: whole ALF.out runs, Hubbard 4x4: mirror active + self-test against the same binary with ALF_GPU_DISABLE=1
   # (and, if ALF_GPU_REF_EXE names the ALF.out of a GPU=none build, against that): outputs byte-identical.

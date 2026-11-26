@@ -71,10 +71,15 @@ Module gpu_wrap_mod
   Use iso_fortran_env, only: output_unit, error_unit, int64
   Use runtime_error_mod, only: error_generic, terminate_on_error
   Use Natural_Constants, only: Eps_machine
-  Use Hamiltonian_main, only: ltrot, ndim
+  Use Operator_mod, only: op_mmultl, op_mmultr, op_wrapdo, op_wrapup, operator
+  Use Hamiltonian_main, only: ltrot, n_fl, ndim, nsigma, op_v
+  Use QMC_runtime_var, only: get_nwrap
+  Use Hop_mod, only: hop_mod_mmthl, hop_mod_mmthl_m1, hop_mod_mmthlc, hop_mod_mmthr, hop_mod_mmthr_m1, &
+       & hop_mod_symm
   Use linalg_mod, only: la_zgemm, la_zgemm_cr
-  Use gpu_state_mod, only: g_d, hop_ac, hop_at, hop_aux, hop_big, hop_cval, hop_gptr, hop_gstart, hop_meta, &
-       & hop_p, hop_rval, nsigma_d, scr_c, td_any, td_grp, td_n, v_exp, v_meta, v_p, v_type, vr_ent, vr_ptr
+  Use gpu_state_mod, only: finite_c, g_d, gpu_env_get, gpu_env_int, gpu_env_is, hop_ac, hop_at, hop_aux, hop_big, &
+       & hop_cval, hop_gptr, hop_gstart, hop_meta, hop_p, hop_rval, hop_start, info_line, is_finite, nsigma_d, &
+       & rand_mat, rnd, scr_c, selftest_fail, td_any, td_grp, td_n, v_exp, v_meta, v_p, v_type, vr_ent, vr_ptr
 
   Implicit none
 
@@ -83,6 +88,7 @@ Module gpu_wrap_mod
   Public :: gpu_mmthr_d, gpu_mmthl_m1_d, gpu_mmthl_d, gpu_mmthr_m1_d, gpu_hopd_on
   Public :: gpu_Vop_R, gpu_Vop_L, gpu_Vop_wrap, gpu_Vslice_R, gpu_Vslice_L, gpu_Vwrap_all
   Public :: gpu_wrapur_slices, gpu_wrapul_slices, gpu_wrapgr_up, gpu_wrapgr_do
+  Public :: gpu_wrap_hook, gpu_wrap_selftest
   Public :: gpu_dense_left_mode, gpu_tl, gpu_tr, gpu_vb, gpu_n_launch, gpu_n_lib
 
   Integer, Save :: gpu_dense_left_mode = 0     ! 0 auto (v1 for nd <= 400, else v2), 1 complex copy + ZGEMM, 2 transposes + DGEMM (measured, ticket 204)
@@ -1233,5 +1239,1094 @@ Contains
     call gpu_mmthl(G, ld, Ndim, nf, ntau)
     call gpu_mmthr_m1(G, ld, Ndim, nf, ntau)
   end subroutine gpu_wrapgr_do
+
+!====================================================================
+!  Hook and self-test
+!====================================================================
+!> Called from Setup_gpu (qmc_setup_mod) after gpu_state_setup when the GPU path is active: reads the kernel tuning
+!> variables and runs the self-test if ALF_GPU_SELFTEST=2 (the run then continues).
+  Subroutine gpu_wrap_hook()
+    Implicit none
+    Character (len=64) :: f
+    call gpu_env_int('ALF_GPU_TL', gpu_tl)
+    call gpu_env_int('ALF_GPU_TR', gpu_tr)
+    call gpu_env_int('ALF_GPU_VB', gpu_vb)
+    if (gpu_env_get('ALF_GPU_FAULT', f) .and. gpu_env_is('ALF_GPU_SELFTEST', '2')) call inject_fault(trim(f))
+    if (gpu_env_is('ALF_GPU_SELFTEST', '2')) then
+       call gpu_wrap_selftest()
+    endif
+  end subroutine gpu_wrap_hook
+
+  ! negative controls: change the DEVICE copy only (the CPU reference stays correct)
+  Subroutine inject_fault(f)
+    Implicit none
+    Character (len=*), intent(in) :: f
+    Real (Kind=Kind(0.d0)) :: nan
+    nan = transfer(9221120237041090560_int64, 0.d0)
+    select case (f)
+    case ('hop')
+       hop_Rval(1) = hop_Rval(1)*(1.d0 + 1.d-6)
+       !$omp target update to(hop_Rval)
+    case ('hopc')
+       hop_Cval(1) = hop_Cval(1) + cmplx(1.d-6, 0.d0, kind(0.d0))
+       !$omp target update to(hop_Cval)
+    case ('vexp')      ! 1e-6: a 1e-9 change of one table entry is below the 1e-10 Frobenius tolerance (one row of N)
+       V_exp(1) = V_exp(1)*(1.d0 + 1.d-6)
+       !$omp target update to(V_exp)
+    case ('nan')
+       hop_Rval(1) = nan
+       !$omp target update to(hop_Rval)
+    case ('order')
+       fault_order = .true.
+    case default
+       write(error_unit,'(A,A)') ' ALF_GPU_FAULT: unknown value ', f
+    end select
+    call info_line('GPU wrap self-test: fault injected into the device copy: '//f)
+  end subroutine inject_fault
+
+!--------------------------------------------------------------------
+  ! relative Frobenius difference |A-B|_F / |B|_F; any non-finite entry gives huge(1.d0) (no tolerance can pass)
+  Real (Kind=Kind(0.d0)) function frob_rel(A, B)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in) :: A(:,:), B(:,:)
+    Integer :: i, j
+    Real (Kind=Kind(0.d0)) :: sd, sb, dr, di
+    sd = 0.d0; sb = 0.d0
+    do j = 1, size(A,2)
+       do i = 1, size(A,1)
+          if (.not. (finite_c(A(i,j)) .and. finite_c(B(i,j)))) then
+             frob_rel = huge(1.d0); return
+          endif
+          dr = real(A(i,j)) - real(B(i,j)); di = aimag(A(i,j)) - aimag(B(i,j))
+          sd = sd + dr*dr + di*di
+          sb = sb + real(B(i,j))**2 + aimag(B(i,j))**2
+       enddo
+    enddo
+    frob_rel = sqrt(sd) / max(sqrt(sb), tiny(1.d0))
+  end function frob_rel
+
+  ! NaN-safe maximum: a NaN or Inf measure propagates as huge
+  Subroutine acc_max(m, d)
+    Implicit none
+    Real (Kind=Kind(0.d0)), intent(inout) :: m
+    Real (Kind=Kind(0.d0)), intent(in) :: d
+    if (.not. is_finite(d)) then
+       m = huge(1.d0)
+    else if (d > m) then
+       m = d
+    endif
+  end subroutine acc_max
+
+  Subroutine say(line)
+    Implicit none
+    Character (len=*), intent(in) :: line
+    call info_line(line)
+    write(output_unit,'(1X,A)') trim(line)
+  end subroutine say
+
+  Integer function test_ncolp()
+    Implicit none
+    test_ncolp = max(1, Ndim/2 + 1)      ! stand-in for N_part (finite-T runs have N_part = Ndim, projector runs less)
+  end function test_ncolp
+
+!--------------------------------------------------------------------
+!> Apply hopping routine op (1 mmthr, 2 mmthr_m1, 3 mmthl, 4 mmthlc, 5 mmthl_m1) on the host (CPU routine of Hop_mod).
+  Subroutine cpu_hop(op, nf, M)
+    Implicit none
+    Integer, intent(in) :: op, nf
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(:,:)
+    select case (op)
+    case (1); call Hop_mod_mmthr   (M, nf, st_t)
+    case (2); call Hop_mod_mmthr_m1(M, nf, st_t)
+    case (3); call Hop_mod_mmthl   (M, nf, st_t)
+    case (4); call Hop_mod_mmthlc  (M, nf, st_t)
+    case (5); call Hop_mod_mmthl_m1(M, nf, st_t)
+    end select
+  end subroutine cpu_hop
+
+  Subroutine dev_hop(op, nf, D, ld, nn)
+    Implicit none
+    Integer, intent(in) :: op, nf, ld, nn
+    Complex (Kind=Kind(0.d0)), intent(inout) :: D(ld,*)
+    select case (op)
+    case (1); call gpu_mmthr   (D, ld, nn, nf, st_t)
+    case (2); call gpu_mmthr_m1(D, ld, nn, nf, st_t)
+    case (3); call gpu_mmthl   (D, ld, nn, nf, st_t)
+    case (4); call gpu_mmthlc  (D, ld, nn, nf, st_t)
+    case (5); call gpu_mmthl_m1(D, ld, nn, nf, st_t)
+    end select
+  end subroutine dev_hop
+
+  !> Time-dependent hopping elements against the host routines (Hop_mod_mm*, Hop_mod_Symm) at every slice where one is active,
+  !> plus slice 1 and Ltrot (t-1 wrap of the Symm average), all five hop routines and Symm (t1 = t2 and t1 /= t2).
+  Subroutine td_selftest(s, tol)
+    Implicit none
+    Integer(int64), intent(inout) :: s
+    Real (Kind=Kind(0.d0)), intent(in) :: tol
+    Integer :: nf, t, tt(3), it, op, j, ntest, nbad, t2
+    Real (Kind=Kind(0.d0)) :: dmax(5), dsy, d, dctl
+    Complex (Kind=Kind(0.d0)), allocatable :: A0(:,:), A1(:,:), Dt(:,:), S0(:,:,:), S1(:,:,:)
+    Character (len=10), parameter :: opname(5) = (/ 'mmthr     ', 'mmthr_m1  ', 'mmthl     ', 'mmthlc    ', 'mmthl_m1  ' /)
+    Character (len=256) :: line
+    dmax = 0.d0; dsy = 0.d0; ntest = 0
+    allocate(A0(Ndim,Ndim), A1(Ndim,Ndim), Dt(Ndim,Ndim), S0(Ndim,Ndim,N_FL), S1(Ndim,Ndim,N_FL))
+    !$omp target enter data map(alloc: Dt)
+    do t = 1, Ltrot
+       ! slices where some element is active (propagation or Symm kind) plus the boundaries
+       if (t /= 1 .and. t /= Ltrot) then
+          if (.not. any(td_grp(t,:,:,:) > 0)) cycle
+       endif
+       do nf = 1, N_FL
+          do op = 1, 5
+             st_t = t
+             call rand_mat(A0, s)
+             A1 = A0
+             call cpu_hop(op, nf, A1)
+             Dt = A0
+             !$omp target update to(Dt)
+             call dev_hop(op, nf, Dt, Ndim, Ndim)
+             !$omp target update from(Dt)
+             d = frob_rel(Dt, A1)
+             if (d > dmax(op)) dmax(op) = d
+             ntest = ntest + 1
+          enddo
+          ! Symm: t1 = t2 = t, and (t, Ltrot) / (t, 0 -> Ltrot) combinations of the tau-displaced calls
+          do it = 1, 3
+             t2 = t
+             if (it == 2) t2 = Ltrot
+             if (it == 3) t2 = 1
+             call rand_mat(A0, s)
+             S0(:,:,1) = A0
+             do j = 2, N_FL
+                S0(:,:,j) = A0
+             enddo
+             call Hop_mod_Symm(S1, S0, t, t2)
+             Dt = A0
+             !$omp target update to(Dt)
+             call gpu_symm(Dt, Ndim, Ndim, nf, t, t2)
+             !$omp target update from(Dt)
+             d = frob_rel(Dt, S1(:,:,nf))
+             if (d > dsy) dsy = d
+             ntest = ntest + 1
+          enddo
+       enddo
+    enddo
+    ! negative control: the device at a slice where nothing is active against the host at an active slice must differ clearly
+    dctl = 0.d0
+    do t = 2, Ltrot - 1
+       if (all(td_grp(t,:,:,1) == 0)) then
+          tt(1) = t; exit
+       endif
+    enddo
+    do t = 1, Ltrot
+       if (any(td_grp(t,1,:,1) > 0)) then
+          tt(2) = t; exit
+       endif
+    enddo
+    call rand_mat(A0, s)
+    A1 = A0
+    st_t = tt(2); call cpu_hop(1, 1, A1)
+    Dt = A0
+    !$omp target update to(Dt)
+    st_t = tt(1); call dev_hop(1, 1, Dt, Ndim, Ndim)
+    !$omp target update from(Dt)
+    dctl = frob_rel(Dt, A1)
+    st_t = 1
+    !$omp target exit data map(delete: Dt)
+    deallocate(A0, A1, Dt, S0, S1)
+    nbad = 0
+    write(line,'(A,ES10.3,A)') 'GPU wrap self-test time-dependent hopping negative control (device at an inactive slice vs host at an active one): diff ', dctl, ' (must exceed tol)'
+    call say(line)
+    if (.not. dctl > 10.d0*tol) call selftest_fail('time-dependent hopping: the self-test is blind to the slice')
+    do op = 1, 5
+       write(line,'(A,A,A,ES10.3,A,ES8.1)') 'GPU wrap self-test time-dependent hopping ', opname(op), ': max rel Frobenius diff ', dmax(op), ' (tol ', tol
+       call say(line)
+       if (.not. dmax(op) <= tol) nbad = nbad + 1
+    enddo
+    write(line,'(A,ES10.3,A,I0,A)') 'GPU wrap self-test time-dependent hopping Symm: max rel Frobenius diff ', dsy, ' (', ntest, ' cases)'
+    call say(line)
+    if (.not. dsy <= tol) nbad = nbad + 1
+    if (nbad > 0) call selftest_fail('time-dependent hopping')
+  end subroutine td_selftest
+
+  Subroutine gpu_wrap_selftest()
+    Implicit none
+    Real (Kind=Kind(0.d0)), parameter :: tol = 1.d-10
+    Integer(int64) :: s
+    Integer :: nf, op, ic, ish, nrow, ncl, nbad, ncase, nsp, nops, nsyn
+    Real (Kind=Kind(0.d0)) :: dh(5,2), dv(8), dsl(4), dwa(2), dwo(2), dskip, dsyn
+    Complex (Kind=Kind(0.d0)), allocatable :: A0(:,:), A1(:,:), A2(:,:), Dt(:,:)
+    Character (len=512) :: line
+    Character (len=10), parameter :: opname(5) = (/ 'mmthr     ', 'mmthr_m1  ', 'mmthl     ', 'mmthlc    ', 'mmthl_m1  ' /)
+    Integer :: nw, ncolp
+
+    s = 20251029_int64
+    ncolp = test_ncolp()
+    nw = get_Nwrap()
+    call say('GPU wrap self-test (ticket 204) start')
+    gpu_n_launch = 0; gpu_n_lib = 0
+
+    ! ---- inputs finite ----
+    nbad = 0
+    nbad = n_nonfinite_r(size(hop_Rval), hop_Rval) + n_nonfinite_c(size(hop_Cval), hop_Cval) &
+         & + n_nonfinite_c(size(V_exp), V_exp)
+    if (nbad /= 0) call selftest_fail('non-finite value in the mirror (wrap self-test)')
+
+    ! ---- structure report ----
+    call report_structure()
+
+    ! ---- hopping: 5 routines, two code-path combinations, two shapes ----
+    ! combination 1: cb fused (1 launch per B_T) + dense left variant 1 (complex copy, ZGEMM);
+    ! combination 2: cb one launch per group + dense left variant 2 (transposes, DGEMM)
+    dh = 0.d0; ncase = 0
+    do nf = 1, N_FL
+       do op = 1, 5
+          do ish = 1, 2
+             if (ish == 1) then
+                nrow = Ndim; ncl = Ndim
+             else
+                nrow = ncolp; ncl = ncolp
+             endif
+             ! left routines (1,2,4): matrix Ndim x ncl, right (3,5): nrow x Ndim
+             if (op == 3 .or. op == 5) then
+                allocate(A0(nrow,Ndim), A1(nrow,Ndim), A2(nrow,Ndim), Dt(nrow,Ndim))
+             else
+                allocate(A0(Ndim,ncl), A1(Ndim,ncl), A2(Ndim,ncl), Dt(Ndim,ncl))
+             endif
+             call rand_mat(A0, s)
+             A1 = A0
+             call cpu_hop(op, nf, A1)
+             !$omp target enter data map(alloc: Dt)
+             do ic = 1, 2
+                if (ic == 1) then
+                   gpu_dense_left_mode = 1
+                else
+                   gpu_dense_left_mode = 0
+                endif
+                Dt = A0
+                !$omp target update to(Dt)       ! self-test: upload the random input
+                if (op == 3 .or. op == 5) then
+                   call dev_hop(op, nf, Dt, size(Dt,1), size(Dt,1))      ! right: nrow rows
+                else
+                   call dev_hop(op, nf, Dt, size(Dt,1), size(Dt,2))      ! left: ncol columns
+                endif
+                !$omp target update from(Dt)     ! self-test: download the result for the comparison
+                A2 = Dt
+                call acc_max(dh(op,ic), frob_rel(A2, A1))
+                ncase = ncase + 1
+             enddo
+             !$omp target exit data map(delete: Dt)
+             deallocate(A0, A1, A2, Dt)
+          enddo
+       enddo
+    enddo
+    gpu_dense_left_mode = 0
+    do op = 1, 5
+       write(line,'(A,A,A,ES10.3,A,ES10.3,A,ES8.1)') 'GPU wrap self-test hopping ', opname(op), &
+            & ': max rel Frobenius diff (dense-left mode 1) ', dh(op,1), ', (dense-left mode auto) ', dh(op,2), &
+            & ' (tol ', tol
+       call say(line)
+       if (.not. (dh(op,1) <= tol .and. dh(op,2) <= tol)) call selftest_fail('hopping '//trim(opname(op)))
+    enddo
+    if (td_any) call td_selftest(s, tol)
+
+    ! ---- Op_V: per operator ----
+    call test_vop(s, dv, dwa, dwo, dskip, nsp, nops)
+    write(line,'(A,I0,A,I0,A,I0,A,ES10.3,A,ES10.3,A,ES10.3,A,ES10.3,A,ES8.1)') 'GPU wrap self-test Op_V per operator (', nops, &
+         & ' operators of ', N_FL*size(Op_V,1), ' tested, ', nsp, ' operator/field cases): Op_mmultR n ', dv(1), ', c ', dv(2), &
+         & '; Op_mmultL n ', dv(3), ', c ', dv(4), ' (tol ', tol
+    call say(line)
+    write(line,'(A,ES10.3,A,ES10.3,A,ES10.3,A,ES10.3,A,ES8.1)') 'GPU wrap self-test Op_V per operator: Op_Wrapup ', dwa(1), &
+         & ', Op_Wrapdo ', dwo(1), ', N_Type 2 (no-op) ', max(dwa(2),dwo(2)), '; tiny-g copy (L/R skip honoured, wrap ignores) ', &
+         & dskip, ' (tol ', tol
+    call say(line)
+    if (.not. (dv(1) <= tol .and. dv(2) <= tol .and. dv(3) <= tol .and. dv(4) <= tol .and. dwa(1) <= tol .and. dwo(1) <= tol &
+         & .and. dwa(2) <= tol .and. dwo(2) <= tol .and. dskip <= tol)) call selftest_fail('Op_V per operator')
+
+    ! ---- fused slice kernels ----
+    call test_slice(s, dsl, dwa(1), dwo(1))
+    write(line,'(A,ES10.3,A,ES10.3,A,ES10.3,A,ES10.3,A,ES8.1)') 'GPU wrap self-test fused slice: Op_mmultR rows (4 variants) ', &
+         & dsl(1), ', Op_mmultL columns (8 variants) ', dsl(2), ', tiny-g skip ', dsl(3), '; slice wraps up/down ', &
+         & max(dwa(1),dwo(1)), ' (tol ', tol
+    call say(line)
+    if (.not. (dsl(1) <= tol .and. dsl(2) <= tol .and. dsl(3) <= tol .and. dwa(1) <= tol .and. dwo(1) <= tol)) &
+         & call selftest_fail('fused Op_V slice kernels')
+
+    ! ---- synthetic operators with overlapping P (the Hubbard operators are single-site and disjoint) ----
+    call test_synthetic_V(s, dsyn, nsyn)
+    if (nsyn > 0) then
+       write(line,'(A,I0,A,ES10.3,A,ES8.1)') 'GPU wrap self-test synthetic overlapping operators (', nsyn, &
+            & ' operators, shared sites, mixed field types, one skipped; fused R/L/wrap kernels vs sequential per-operator products) max rel diff ', dsyn, ' (tol ', tol
+       call say(line)
+       if (.not. (dsyn <= tol)) call selftest_fail('fused kernels with overlapping operators')
+    else
+       call say('GPU wrap self-test synthetic overlapping operators: SKIPPED (too few operators/table entries in this model)')
+    endif
+
+    ! ---- sequences over Nwrap slices ----
+    call test_sequences(s, tol, nw, ncolp)
+
+    write(line,'(A,I0,A,I0)') 'GPU wrap self-test device launches issued ', gpu_n_launch, ', linalg_mod calls ', gpu_n_lib
+    call say(line)
+    call say('GPU wrap self-test PASSED')
+  end subroutine gpu_wrap_selftest
+
+!--------------------------------------------------------------------
+  Integer function n_nonfinite_r(n, x)
+    Implicit none
+    Integer, intent(in) :: n
+    Real (Kind=Kind(0.d0)), intent(in) :: x(n)
+    Integer :: i
+    n_nonfinite_r = 0
+    do i = 1, n
+       if (.not. is_finite(x(i))) n_nonfinite_r = n_nonfinite_r + 1
+    enddo
+  end function n_nonfinite_r
+
+  Integer function n_nonfinite_c(n, x)
+    Implicit none
+    Integer, intent(in) :: n
+    Complex (Kind=Kind(0.d0)), intent(in) :: x(n)
+    Integer :: i
+    n_nonfinite_c = 0
+    do i = 1, n
+       if (.not. finite_c(x(i))) n_nonfinite_c = n_nonfinite_c + 1
+    enddo
+  end function n_nonfinite_c
+
+!--------------------------------------------------------------------
+!> Groups, launches per B_T and nd histogram per flavour (and the measured launch count of one mmthr call).
+  Subroutine report_structure()
+    Implicit none
+    Integer :: nf, e, nel, ng, nsmall, nbig, ndmax
+    Integer(int64) :: l0
+    Complex (Kind=Kind(0.d0)), allocatable :: Dt(:,:)
+    Character (len=512) :: line
+
+    do nf = 1, N_FL
+       nel = hop_start(nf+1) - hop_start(nf)
+       ng = hop_gstart(nf+1) - hop_gstart(nf)
+       nsmall = 0; nbig = 0; ndmax = 0
+       do e = hop_start(nf), hop_start(nf+1)-1
+          if (hop_meta(2,e) > 8) then
+             nbig = nbig + 1
+          else
+             nsmall = nsmall + 1
+          endif
+          if (hop_meta(2,e) > ndmax) ndmax = hop_meta(2,e)
+       enddo
+       write(line,'(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A)') 'GPU wrap structure flavour ', nf, ': elements ', nel, ' (small nd<=8: ', &
+            & nsmall, ', dense nd>8: ', nbig, '), max nd ', ndmax, ', groups ', ng, ' (checkerboard groups = launches per B_T if per-group)'
+       call say(line)
+    enddo
+    if (.not. hop_big(1)) then
+       allocate(Dt(Ndim,Ndim)); Dt = z1
+       !$omp target enter data map(to: Dt)
+       l0 = gpu_n_launch; call gpu_mmthr(Dt, Ndim, Ndim, 1, 1)
+       write(line,'(A,I0,A)') 'GPU wrap structure: launches per B_T (mmthr): ', gpu_n_launch - l0, ' (= number of groups)'
+       call say(line)
+       !$omp target exit data map(delete: Dt)
+       deallocate(Dt)
+    endif
+  end subroutine report_structure
+
+!--------------------------------------------------------------------
+!> Per-operator Op_V routines vs Op_mmultR/L, Op_Wrapup/do.  The field of operator n at slice t0 is set on the device
+!> to each allowed value (nsigma_d(n,t0), restored afterwards).
+  Subroutine test_vop(s, dv, dwa, dwo, dskip, ncases, nops)
+    Implicit none
+    Integer(int64), intent(inout) :: s
+    Real (Kind=Kind(0.d0)), intent(out) :: dv(8), dwa(2), dwo(2), dskip
+    Integer, intent(out) :: ncases, nops
+    Integer :: nf, n, sp, nt, i, nstride, t0
+    Complex (Kind=Kind(0.d0)) :: zsp, old
+    Complex (Kind=Kind(0.d0)), allocatable :: A0(:,:), A1(:,:), A2(:,:), Dt(:,:)
+    Character (len=1) :: cop
+    Type (Operator) :: Otmp
+    Real (Kind=Kind(0.d0)) :: d
+
+    t0 = 1
+    dv = 0.d0; dwa = 0.d0; dwo = 0.d0; dskip = 0.d0; ncases = 0; nops = 0
+    nstride = max(1, size(Op_V,1)/48)
+    allocate(A0(Ndim,Ndim), A1(Ndim,Ndim), A2(Ndim,Ndim), Dt(Ndim,Ndim))
+    !$omp target enter data map(alloc: Dt)
+    do nf = 1, N_FL
+       do n = 1, size(Op_V,1)
+          if (mod(n-1, nstride) /= 0 .and. n /= size(Op_V,1)) cycle
+          if (nf == 1) nops = nops + 1
+          nt = V_type(n)
+          old = nsigma_d(n,t0)
+          do sp = -nt, nt
+             if (sp == 0) cycle
+             zsp = cmplx(real(sp,kind(0.d0)), 0.d0, kind(0.d0))
+             nsigma_d(n,t0) = zsp
+             !$omp target update to(nsigma_d(n:n,t0:t0))   ! self-test: set the field value of this case on the device
+             ncases = ncases + 1
+             do i = 1, 2
+                if (i == 1) cop = 'n'
+                if (i == 2) cop = 'c'
+                ! rows
+                call rand_mat(A0, s); A1 = A0
+                call Op_mmultR(A1, Op_V(n,nf), zsp, cop, t0)
+                call dev_run_R(A0, Dt, n, nf, t0, cop, A2)
+                call acc_max(dv(i), frob_rel(A2, A1))
+                ! columns, both signs
+                call rand_mat(A0, s); A1 = A0
+                call Op_mmultL(A1, Op_V(n,nf), zsp, cop, t0, 1)
+                call dev_run_L(A0, Dt, n, nf, t0, cop, 1, A2)
+                d = frob_rel(A2, A1)
+                A1 = A0
+                call Op_mmultL(A1, Op_V(n,nf), zsp, cop, t0, -1)
+                call dev_run_L(A0, Dt, n, nf, t0, cop, -1, A2)
+                call acc_max(d, frob_rel(A2, A1))
+                call acc_max(dv(2+i), d)
+             enddo
+             ! wraps, N_Type 1 and 2
+             call rand_mat(A0, s); A1 = A0
+             call Op_Wrapup(A1, Op_V(n,nf), zsp, Ndim, 1, t0)
+             call dev_run_W(A0, Dt, n, nf, t0, 1, 1, A2); call acc_max(dwa(1), frob_rel(A2, A1))
+             A1 = A0
+             call Op_Wrapup(A1, Op_V(n,nf), zsp, Ndim, 2, t0)
+             call dev_run_W(A0, Dt, n, nf, t0, 1, 2, A2); call acc_max(dwa(2), frob_rel(A2, A1))
+             A1 = A0
+             call Op_Wrapdo(A1, Op_V(n,nf), zsp, Ndim, 1, t0)
+             call dev_run_W(A0, Dt, n, nf, t0, -1, 1, A2); call acc_max(dwo(1), frob_rel(A2, A1))
+             A1 = A0
+             call Op_Wrapdo(A1, Op_V(n,nf), zsp, Ndim, 2, t0)
+             call dev_run_W(A0, Dt, n, nf, t0, -1, 2, A2); call acc_max(dwo(2), frob_rel(A2, A1))
+          enddo
+          nsigma_d(n,t0) = old
+          !$omp target update to(nsigma_d(n:n,t0:t0))
+       enddo
+    enddo
+
+    ! tiny-g copy of operator (1,1): L/R skip honoured (device flag set), wraps ignore it
+    Otmp = Op_V(1,1)
+    Otmp%g = cmplx(1.d-20, 0.d0, kind(0.d0))
+    nt = V_type(1)
+    old = nsigma_d(1,t0)
+    V_meta(4,1,1) = 1
+    do sp = -nt, nt
+       if (sp == 0) cycle
+       zsp = cmplx(real(sp,kind(0.d0)), 0.d0, kind(0.d0))
+       nsigma_d(1,t0) = zsp
+       !$omp target update to(nsigma_d(1:1,t0:t0))
+       call rand_mat(A0, s)
+       A1 = A0; call Op_mmultR(A1, Otmp, zsp, 'n', t0)
+       call dev_run_R(A0, Dt, 1, 1, t0, 'n', A2); call acc_max(dskip, frob_rel(A2, A1))
+       if (frob_rel(A1, A0) /= 0.d0) call selftest_fail('Op_mmultR did not return early for tiny g')
+       A1 = A0; call Op_mmultL(A1, Otmp, zsp, 'n', t0, 1)
+       call dev_run_L(A0, Dt, 1, 1, t0, 'n', 1, A2); call acc_max(dskip, frob_rel(A2, A1))
+       A1 = A0; call Op_Wrapup(A1, Otmp, zsp, Ndim, 1, t0)
+       call dev_run_W(A0, Dt, 1, 1, t0, 1, 1, A2); call acc_max(dskip, frob_rel(A2, A1))
+       if (frob_rel(A1, A0) == 0.d0) call selftest_fail('Op_Wrapup skipped for tiny g')
+    enddo
+    V_meta(4,1,1) = v_skip_of(Op_V(1,1))
+    nsigma_d(1,t0) = old
+    !$omp target update to(nsigma_d(1:1,t0:t0))
+    !$omp target exit data map(delete: Dt)
+    deallocate(A0, A1, A2, Dt)
+  end subroutine test_vop
+
+  Integer function v_skip_of(Op)
+    Implicit none
+    Type (Operator), intent(in) :: Op
+    v_skip_of = 0
+    if ( abs(Op%g) < Eps_machine ) v_skip_of = 1               ! same test as Op_mmultL/R
+  end function v_skip_of
+
+  ! The three helpers work on Ndim x Ndim matrices (explicit shape: the device array is addressed, never copied)
+  Subroutine dev_run_R(A0, Dt, n, nf, t, cop, Aout)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in) :: A0(Ndim,Ndim)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: Dt(Ndim,Ndim), Aout(Ndim,Ndim)
+    Integer, intent(in) :: n, nf, t
+    Character (len=1), intent(in) :: cop
+    Dt = A0
+    !$omp target update to(Dt)
+    call gpu_Vop_R(Dt, Ndim, Ndim, n, nf, t, cop)
+    !$omp target update from(Dt)
+    Aout = Dt
+  end subroutine dev_run_R
+
+  Subroutine dev_run_L(A0, Dt, n, nf, t, cop, sign, Aout)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in) :: A0(Ndim,Ndim)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: Dt(Ndim,Ndim), Aout(Ndim,Ndim)
+    Integer, intent(in) :: n, nf, t, sign
+    Character (len=1), intent(in) :: cop
+    Dt = A0
+    !$omp target update to(Dt)
+    call gpu_Vop_L(Dt, Ndim, Ndim, n, nf, t, cop, sign)
+    !$omp target update from(Dt)
+    Aout = Dt
+  end subroutine dev_run_L
+
+  Subroutine dev_run_W(A0, Dt, n, nf, t, dir, ntype, Aout)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(in) :: A0(Ndim,Ndim)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: Dt(Ndim,Ndim), Aout(Ndim,Ndim)
+    Integer, intent(in) :: n, nf, t, dir, ntype
+    Dt = A0
+    !$omp target update to(Dt)
+    call gpu_Vop_wrap(Dt, Ndim, n, nf, t, dir, ntype)
+    !$omp target update from(Dt)
+    Aout = Dt
+  end subroutine dev_run_W
+
+!--------------------------------------------------------------------
+!> Fused slice kernels vs the CPU loops over all operators, for three slices, all flavours, square and non-square shapes.
+  Subroutine test_slice(s, dsl, dwu, dwd)
+    Implicit none
+    Integer(int64), intent(inout) :: s
+    Real (Kind=Kind(0.d0)), intent(out) :: dsl(4), dwu, dwd
+    Integer :: nf, it, t, n, ish, iv, sg, nrow, ncl, ncolp
+    Complex (Kind=Kind(0.d0)), allocatable :: A0(:,:), A1(:,:), A2(:,:), Dt(:,:)
+    Character (len=1) :: cop
+    Logical :: desc
+    Integer :: ts(3)
+    Type (Operator) :: Otmp
+
+    ncolp = test_ncolp()
+    dsl = 0.d0; dwu = 0.d0; dwd = 0.d0
+    ts = (/ 1, (Ltrot+1)/2, Ltrot /)
+    do nf = 1, N_FL
+       do it = 1, 3
+          t = ts(it)
+          do ish = 1, 2
+             if (ish == 1) then
+                nrow = Ndim; ncl = Ndim
+             else
+                nrow = ncolp; ncl = ncolp
+             endif
+             if (nf == 1 .and. it == 1 .and. ish == 1) call say('GPU wrap self-test progress: fused slice rows')
+             ! rows (matrix Ndim x ncl)
+             allocate(A0(Ndim,ncl), A1(Ndim,ncl), A2(Ndim,ncl), Dt(Ndim,ncl))
+             !$omp target enter data map(alloc: Dt)
+             do iv = 1, 4
+                if (iv == 1 .or. iv == 3) then; cop = 'n'; else; cop = 'c'; endif
+                desc = (iv >= 3)
+                call rand_mat(A0, s); A1 = A0
+                if (.not. desc) then
+                   do n = 1, size(Op_V,1);  call Op_mmultR(A1, Op_V(n,nf), nsigma%f(n,t), cop, t); enddo
+                else
+                   do n = size(Op_V,1), 1, -1; call Op_mmultR(A1, Op_V(n,nf), nsigma%f(n,t), cop, t); enddo
+                endif
+                Dt = A0
+                !$omp target update to(Dt)
+                call gpu_Vslice_R(Dt, Ndim, ncl, nf, t, cop, desc)
+                !$omp target update from(Dt)
+                A2 = Dt
+                call acc_max(dsl(1), frob_rel(A2, A1))
+             enddo
+             !$omp target exit data map(delete: Dt)
+             deallocate(A0, A1, A2, Dt)
+             if (nf == 1 .and. it == 1 .and. ish == 1) call say('GPU wrap self-test progress: fused slice columns')
+             ! columns (matrix nrow x Ndim)
+             allocate(A0(nrow,Ndim), A1(nrow,Ndim), A2(nrow,Ndim), Dt(nrow,Ndim))
+             !$omp target enter data map(alloc: Dt)
+             do iv = 1, 8
+                if (mod(iv,2) == 1) then; cop = 'n'; else; cop = 'c'; endif
+                if (iv <= 4) then; sg = 1; else; sg = -1; endif
+                desc = (mod((iv-1)/2, 2) == 1)
+                call rand_mat(A0, s); A1 = A0
+                if (.not. desc) then
+                   do n = 1, size(Op_V,1);  call Op_mmultL(A1, Op_V(n,nf), nsigma%f(n,t), cop, t, sg); enddo
+                else
+                   do n = size(Op_V,1), 1, -1; call Op_mmultL(A1, Op_V(n,nf), nsigma%f(n,t), cop, t, sg); enddo
+                endif
+                Dt = A0
+                !$omp target update to(Dt)
+                call gpu_Vslice_L(Dt, nrow, nrow, nf, t, cop, sg, desc)
+                !$omp target update from(Dt)
+                A2 = Dt
+                call acc_max(dsl(2), frob_rel(A2, A1))
+             enddo
+             !$omp target exit data map(delete: Dt)
+             deallocate(A0, A1, A2, Dt)
+          enddo
+          if (nf == 1 .and. it == 1) call say('GPU wrap self-test progress: fused slice wraps')
+          ! slice wraps (G is Ndim x Ndim)
+          allocate(A0(Ndim,Ndim), A1(Ndim,Ndim), A2(Ndim,Ndim), Dt(Ndim,Ndim))
+          !$omp target enter data map(alloc: Dt)
+          call rand_mat(A0, s); A1 = A0
+          do n = 1, size(Op_V,1);  call Op_Wrapup(A1, Op_V(n,nf), nsigma%f(n,t), Ndim, 1, t); enddo
+          Dt = A0
+          !$omp target update to(Dt)
+          call gpu_Vwrap_all(Dt, Ndim, nf, t, 1)
+          !$omp target update from(Dt)
+          A2 = Dt
+          call acc_max(dwu, frob_rel(A2, A1))
+          A1 = A0
+          do n = size(Op_V,1), 1, -1;  call Op_Wrapdo(A1, Op_V(n,nf), nsigma%f(n,t), Ndim, 1, t); enddo
+          Dt = A0
+          !$omp target update to(Dt)
+          call gpu_Vwrap_all(Dt, Ndim, nf, t, -1)
+          !$omp target update from(Dt)
+          A2 = Dt
+          call acc_max(dwd, frob_rel(A2, A1))
+          !$omp target exit data map(delete: Dt)
+          deallocate(A0, A1, A2, Dt)
+       enddo
+    enddo
+
+    ! tiny-g in the fused kernels: operator 1 of flavour 1 skipped by R/L (device flag), still applied by the wrap
+    Otmp = Op_V(1,1)
+    Otmp%g = cmplx(1.d-20, 0.d0, kind(0.d0))
+    allocate(A0(Ndim,Ndim), A1(Ndim,Ndim), A2(Ndim,Ndim), Dt(Ndim,Ndim))
+    !$omp target enter data map(alloc: Dt)
+    V_meta(4,1,1) = 1
+    !$omp target update to(V_meta)
+    t = ts(1)
+    call rand_mat(A0, s); A1 = A0
+    call Op_mmultR(A1, Otmp, nsigma%f(1,t), 'n', t)
+    do n = 2, size(Op_V,1);  call Op_mmultR(A1, Op_V(n,1), nsigma%f(n,t), 'n', t); enddo
+    Dt = A0
+    !$omp target update to(Dt)
+    call gpu_Vslice_R(Dt, Ndim, Ndim, 1, t, 'n', .false.)
+    !$omp target update from(Dt)
+    A2 = Dt
+    call acc_max(dsl(3), frob_rel(A2, A1))
+    A1 = A0
+    call Op_mmultL(A1, Otmp, nsigma%f(1,t), 'n', t, 1)
+    do n = 2, size(Op_V,1);  call Op_mmultL(A1, Op_V(n,1), nsigma%f(n,t), 'n', t, 1); enddo
+    Dt = A0
+    !$omp target update to(Dt)
+    call gpu_Vslice_L(Dt, Ndim, Ndim, 1, t, 'n', 1, .false.)
+    !$omp target update from(Dt)
+    A2 = Dt
+    call acc_max(dsl(3), frob_rel(A2, A1))
+    V_meta(4,1,1) = v_skip_of(Op_V(1,1))
+    !$omp target update to(V_meta)
+    !$omp target exit data map(delete: Dt)
+    deallocate(A0, A1, A2, Dt)
+  end subroutine test_slice
+
+!--------------------------------------------------------------------
+!> Synthetic operator set with overlapping site lists, mixed field types and one skipped operator, written over the
+!> gpu_state tables (host and device) for the duration of the test and restored afterwards.  The fused kernels
+!> (rows, columns, whole-slice wraps) must reproduce the sequential per-operator products bit for bit, as must the
+!> chained per-operator device routines.  Flavour 1 only; flavour 2 gets empty lists.
+  Subroutine test_synthetic_V(s, dmax, nsyn)
+    Implicit none
+    Integer(int64), intent(inout) :: s
+    Real (Kind=Kind(0.d0)), intent(out) :: dmax
+    Integer, intent(out) :: nsyn
+    Integer, parameter :: ns = 6
+    Integer, parameter :: n1s(ns) = (/ 3, 2, 4, 1, 3, 2 /), nts(ns) = (/ 1, 2, 1, 2, 1, 2 /)
+    Integer :: pool, n, i, j, poff, eoff, p, r, nf2, t, iv, sg, dirv, k, sp, q
+    Integer, allocatable :: Pcopy(:), cnt(:)
+    Integer, allocatable :: Vm_s(:,:,:), Vt_s(:), VP_s(:), vrp_s(:,:), vre_s(:,:)
+    Complex (Kind=Kind(0.d0)), allocatable :: Ve_s(:), ns_s(:,:)
+    Complex (Kind=Kind(0.d0)), allocatable :: A0(:,:), A1(:,:), A2(:,:), A3(:,:), Dt(:,:)
+    Character (len=1) :: cop
+    Real (Kind=Kind(0.d0)) :: x, y
+
+    dmax = 0.d0; nsyn = 0
+    if (size(Op_V,1) < ns .or. Ndim < 4) return
+    poff = sum(n1s)
+    eoff = 0
+    do n = 1, ns
+       eoff = eoff + n1s(n)*(2*nts(n)+1)
+    enddo
+    if (size(V_P) < poff .or. size(V_exp) < eoff .or. size(vr_ent,2) < poff .or. size(V_type) < ns) return
+    nsyn = ns
+    t = 1
+    ! save
+    allocate(Vm_s(size(V_meta,1),size(V_meta,2),size(V_meta,3)), Vt_s(size(V_type)), VP_s(size(V_P)), Ve_s(size(V_exp)))
+    allocate(vrp_s(size(vr_ptr,1),size(vr_ptr,2)), vre_s(size(vr_ent,1),size(vr_ent,2)), ns_s(size(nsigma_d,1),size(nsigma_d,2)))
+    Vm_s = V_meta; Vt_s = V_type; VP_s = V_P; Ve_s = V_exp; vrp_s = vr_ptr; vre_s = vr_ent; ns_s = nsigma_d
+    ! build
+    pool = min(Ndim, 8)
+    poff = 0; eoff = 0
+    do n = 1, ns
+       V_type(n) = nts(n)
+       V_meta(1,n,1) = n1s(n); V_meta(2,n,1) = poff; V_meta(3,n,1) = eoff
+       V_meta(4,n,1) = 0
+       if (n == 3) V_meta(4,n,1) = 1                      ! skipped by Op_mmultL/R (tiny coupling), not by the wraps
+       ! n1s distinct sites out of the pool: partial Fisher-Yates
+       allocate(Pcopy(pool))
+       do i = 1, pool; Pcopy(i) = i; enddo
+       do i = 1, n1s(n)
+          j = i + int((rnd(s) + 0.5d0)*real(pool - i + 1, kind(0.d0)))
+          if (j > pool) j = pool
+          k = Pcopy(i); Pcopy(i) = Pcopy(j); Pcopy(j) = k
+          V_P(poff+i) = Pcopy(i)
+       enddo
+       deallocate(Pcopy)
+       do i = 1, n1s(n)*(2*nts(n)+1)
+          x = 0.6d0 + abs(rnd(s)) + 0.3d0*rnd(s)
+          y = 0.4d0*rnd(s)
+          V_exp(eoff+i) = cmplx(x, y, kind(0.d0))
+       enddo
+       poff = poff + n1s(n); eoff = eoff + n1s(n)*(2*nts(n)+1)
+    enddo
+    ! per-site lists, flavour 1; flavour 2 empty (other flavours as well)
+    allocate(cnt(Ndim))
+    cnt = 0
+    do n = 1, ns
+       do i = 1, n1s(n)
+          r = V_P(V_meta(2,n,1)+i); cnt(r) = cnt(r) + 1
+       enddo
+    enddo
+    p = 1
+    do r = 1, Ndim
+       vr_ptr(r,1) = p; p = p + cnt(r)
+    enddo
+    vr_ptr(Ndim+1,1) = p
+    do nf2 = 2, size(vr_ptr,2)
+       vr_ptr(:,nf2) = p
+    enddo
+    do r = 1, Ndim
+       cnt(r) = vr_ptr(r,1)
+    enddo
+    do n = 1, ns
+       do i = 1, n1s(n)
+          r = V_P(V_meta(2,n,1)+i)
+          vr_ent(1,cnt(r)) = n; vr_ent(2,cnt(r)) = i; cnt(r) = cnt(r) + 1
+       enddo
+    enddo
+    deallocate(cnt)
+    do n = 1, ns
+       k = 1 + int((rnd(s) + 0.5d0)*real(2*nts(n), kind(0.d0)))      ! 1..2nt
+       sp = k - nts(n) - 1; if (sp >= 0) sp = sp + 1                  ! -nt..-1, 1..nt
+       nsigma_d(n,t) = cmplx(real(sp,kind(0.d0)), 0.d0, kind(0.d0))
+    enddo
+    ! device copies (self-test only: synthetic data, restored below)
+    !$omp target update to(V_meta, V_type, V_P, V_exp, vr_ptr, vr_ent, nsigma_d)
+
+    allocate(A0(Ndim,Ndim), A1(Ndim,Ndim), A2(Ndim,Ndim), A3(Ndim,Ndim), Dt(Ndim,Ndim))
+    !$omp target enter data map(alloc: Dt)
+    ! rows / columns, all variants
+    do iv = 0, 7
+       if (mod(iv,2) == 0) then; cop = 'n'; else; cop = 'c'; endif
+       dirv = merge(1, 0, mod(iv/2,2) == 1)                           ! 1 = descending
+       sg = merge(-1, 1, iv >= 4)
+       ! rows (sign irrelevant), use iv < 4 for R and all for L
+       if (iv < 4) then
+          call rand_mat(A0, s); A1 = A0
+          call ref_slice('R', A1, cop, 1, dirv == 1, t)
+          Dt = A0
+          !$omp target update to(Dt)
+          call gpu_Vslice_R(Dt, Ndim, Ndim, 1, t, cop, dirv == 1)
+          !$omp target update from(Dt)
+          A2 = Dt
+          call acc_max(dmax, frob_rel(A2, A1))
+          ! chained per-operator routines
+          A3 = A0
+          Dt = A0
+          !$omp target update to(Dt)
+          do q = 1, ns
+             n = merge(ns+1-q, q, dirv == 1)
+             call gpu_Vop_R(Dt, Ndim, Ndim, n, 1, t, cop)
+          enddo
+          !$omp target update from(Dt)
+          A3 = Dt
+          call acc_max(dmax, frob_rel(A3, A1))
+       endif
+       call rand_mat(A0, s); A1 = A0
+       call ref_slice('L', A1, cop, sg, dirv == 1, t)
+       Dt = A0
+       !$omp target update to(Dt)
+       call gpu_Vslice_L(Dt, Ndim, Ndim, 1, t, cop, sg, dirv == 1)
+       !$omp target update from(Dt)
+       A2 = Dt
+       call acc_max(dmax, frob_rel(A2, A1))
+       Dt = A0
+       !$omp target update to(Dt)
+       do q = 1, ns
+          n = merge(ns+1-q, q, dirv == 1)
+          call gpu_Vop_L(Dt, Ndim, Ndim, n, 1, t, cop, sg)
+       enddo
+       !$omp target update from(Dt)
+       A3 = Dt
+       call acc_max(dmax, frob_rel(A3, A1))
+    enddo
+    ! slice wraps, both directions; chained per-operator wraps
+    do iv = 1, 2
+       dirv = merge(1, -1, iv == 1)
+       call rand_mat(A0, s); A1 = A0
+       call ref_wrap(A1, dirv, t)
+       Dt = A0
+       !$omp target update to(Dt)
+       call gpu_Vwrap_all(Dt, Ndim, 1, t, dirv)
+       !$omp target update from(Dt)
+       A2 = Dt
+       call acc_max(dmax, frob_rel(A2, A1))
+       Dt = A0
+       !$omp target update to(Dt)
+       do q = 1, ns
+          n = merge(q, ns+1-q, dirv == 1)
+          call gpu_Vop_wrap(Dt, Ndim, n, 1, t, dirv, 1)
+       enddo
+       !$omp target update from(Dt)
+       A3 = Dt
+       call acc_max(dmax, frob_rel(A3, A1))
+    enddo
+    !$omp target exit data map(delete: Dt)
+    deallocate(A0, A1, A2, A3, Dt)
+    ! restore host and device
+    V_meta = Vm_s; V_type = Vt_s; V_P = VP_s; V_exp = Ve_s; vr_ptr = vrp_s; vr_ent = vre_s; nsigma_d = ns_s
+    !$omp target update to(V_meta, V_type, V_P, V_exp, vr_ptr, vr_ent, nsigma_d)
+    deallocate(Vm_s, Vt_s, VP_s, Ve_s, vrp_s, vre_s, ns_s)
+  end subroutine test_synthetic_V
+
+  ! Sequential reference from the flat tables (flavour 1, operators 1..6 in order or reversed), host, as ZSCAL loops
+  Subroutine ref_slice(side, M, cop, sg, desc, t)
+    Implicit none
+    Character (len=1), intent(in) :: side, cop
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(:,:)
+    Integer, intent(in) :: sg, t
+    Logical, intent(in) :: desc
+    Integer :: q, n, i, N1, po, eo, nt, sp
+    Complex (Kind=Kind(0.d0)) :: z
+    do q = 1, 6
+       n = q
+       if (desc) n = 7 - q
+       if (V_meta(4,n,1) == 1) cycle
+       N1 = V_meta(1,n,1); po = V_meta(2,n,1); eo = V_meta(3,n,1); nt = V_type(n)
+       sp = sg*nint(real(nsigma_d(n,t)))
+       do i = 1, N1
+          z = V_exp(eo + i + (sp+nt)*N1)
+          if (cop == 'c') z = conjg(z)
+          if (side == 'R') then
+             M(V_P(po+i),:) = z*M(V_P(po+i),:)
+          else
+             M(:,V_P(po+i)) = z*M(:,V_P(po+i))
+          endif
+       enddo
+    enddo
+  end subroutine ref_slice
+
+  Subroutine ref_wrap(M, dir, t)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(:,:)
+    Integer, intent(in) :: dir, t
+    Integer :: q, n, i, N1, po, eo, nt, sp
+    do q = 1, 6
+       n = q
+       if (dir < 0) n = 7 - q
+       N1 = V_meta(1,n,1); po = V_meta(2,n,1); eo = V_meta(3,n,1); nt = V_type(n)
+       sp = nint(real(nsigma_d(n,t)))
+       do i = 1, N1
+          M(V_P(po+i),:) = V_exp(eo + i + (dir*sp+nt)*N1) * M(V_P(po+i),:)
+       enddo
+       do i = 1, N1
+          M(:,V_P(po+i)) = V_exp(eo + i + (-dir*sp+nt)*N1) * M(:,V_P(po+i))
+       enddo
+    enddo
+  end subroutine ref_wrap
+
+!--------------------------------------------------------------------
+!> wrapur / wrapul / WRAPGR sequences over Nwrap slices (and a longer one over all Ltrot slices), device vs CPU, error
+!> after every slice (growth), round trip up/down.
+  Subroutine test_sequences(s, tol, nw, ncolp)
+    Implicit none
+    Integer(int64), intent(inout) :: s
+    Real (Kind=Kind(0.d0)), intent(in) :: tol
+    Integer, intent(in) :: nw, ncolp
+    Integer :: nf, nsl, t, ic
+    Real (Kind=Kind(0.d0)) :: dur(0:Ltrot), dul(0:Ltrot), dgu(0:Ltrot), dgd(0:Ltrot), dmax(5), dlong(4), dround, dret
+    Real (Kind=Kind(0.d0)) :: drt(0:2*Ltrot), dsens(0:2*Ltrot)
+    Complex (Kind=Kind(0.d0)), allocatable :: U0(:,:), U1(:,:), U2(:,:), Dt(:,:), G0(:,:), G1(:,:), Gp(:,:)
+    Character (len=1024) :: line
+
+    nsl = min(max(nw,1), Ltrot)
+    dmax = 0.d0; dlong = 0.d0; dround = 0.d0
+    do nf = 1, N_FL
+       do ic = 1, 2
+          if (ic == 1) then
+             gpu_dense_left_mode = 1
+          else
+             gpu_dense_left_mode = 0
+          endif
+          dur = 0.d0; dul = 0.d0; dgu = 0.d0; dgd = 0.d0; drt = 0.d0; dsens = 0.d0
+          ! ---- wrapur: U (Ndim x ncolp), slices 1..Ltrot one at a time, compare after each
+          allocate(U0(Ndim,ncolp), U1(Ndim,ncolp), U2(Ndim,ncolp), Dt(Ndim,ncolp))
+          call rand_mat(U0, s)
+          U1 = U0
+          !$omp target enter data map(alloc: Dt)
+          Dt = U0
+          !$omp target update to(Dt)
+          do t = 1, Ltrot
+             call cpu_wrapur(U1, nf, t-1, t)
+             call gpu_wrapur_slices(Dt, Ndim, ncolp, nf, t-1, t)
+             !$omp target update from(Dt)    ! self-test: compare after every slice
+             U2 = Dt
+             dur(t) = frob_rel(U2, U1)
+             if (.not. is_finite(dur(t))) dur(t) = huge(1.d0)
+          enddo
+          !$omp target exit data map(delete: Dt)
+          deallocate(U0, U1, U2, Dt)
+          ! ---- wrapul: U (Ndim x ncolp), slices Ltrot..1 descending
+          allocate(U0(Ndim,ncolp), U1(Ndim,ncolp), U2(Ndim,ncolp), Dt(Ndim,ncolp))
+          call rand_mat(U0, s)
+          U1 = U0
+          !$omp target enter data map(alloc: Dt)
+          Dt = U0
+          !$omp target update to(Dt)
+          do t = Ltrot, 1, -1
+             call cpu_wrapul(U1, nf, t-1, t)
+             call gpu_wrapul_slices(Dt, Ndim, ncolp, nf, t-1, t)
+             !$omp target update from(Dt)
+             U2 = Dt
+             dul(Ltrot-t+1) = frob_rel(U2, U1)
+          enddo
+          !$omp target exit data map(delete: Dt)
+          deallocate(U0, U1, U2, Dt)
+          ! ---- WRAPGRUP chain (slices 1..Ltrot) and WRAPGRDO chain (Ltrot..1), each from a fresh G (Ndim x Ndim)
+          allocate(G0(Ndim,Ndim), G1(Ndim,Ndim), U2(Ndim,Ndim), Dt(Ndim,Ndim))
+          !$omp target enter data map(alloc: Dt)
+          call rand_mat(G0, s)
+          G1 = G0; Dt = G0
+          !$omp target update to(Dt)
+          do t = 1, Ltrot
+             call cpu_wrapgr_up(G1, nf, t-1)
+             call gpu_wrapgr_up(Dt, Ndim, nf, t-1)
+             !$omp target update from(Dt)
+             U2 = Dt
+             dgu(t) = frob_rel(U2, G1)
+          enddo
+          call rand_mat(G0, s)
+          G1 = G0; Dt = G0
+          !$omp target update to(Dt)
+          do t = Ltrot, 1, -1
+             call cpu_wrapgr_do(G1, nf, t)
+             call gpu_wrapgr_do(Dt, Ndim, nf, t)
+             !$omp target update from(Dt)
+             U2 = Dt
+             dgd(Ltrot-t+1) = frob_rel(U2, G1)
+          enddo
+          ! ---- round trip: Nwrap up wraps then the Nwrap down wraps back (CPU, device, and a CPU run whose start matrix
+          ! is perturbed by 1e-16 relative: the intrinsic sensitivity of the chain to rounding)
+          call rand_mat(G0, s)
+          G1 = G0; Dt = G0
+          !$omp target update to(Dt)
+          allocate(Gp(Ndim,Ndim))
+          do t = 1, Ndim
+             Gp(:,t) = G0(:,t) * (1.d0 + 1.d-16*(1.d0 + rnd(s)))
+          enddo
+          drt = 0.d0; dsens = 0.d0
+          do t = 1, nsl
+             call cpu_wrapgr_up(G1, nf, t-1); call cpu_wrapgr_up(Gp, nf, t-1)
+             call gpu_wrapgr_up(Dt, Ndim, nf, t-1)
+             !$omp target update from(Dt)
+             U2 = Dt
+             drt(t) = frob_rel(U2, G1); dsens(t) = frob_rel(Gp, G1)
+          enddo
+          do t = nsl, 1, -1
+             call cpu_wrapgr_do(G1, nf, t); call cpu_wrapgr_do(Gp, nf, t)
+             call gpu_wrapgr_do(Dt, Ndim, nf, t)
+             !$omp target update from(Dt)
+             U2 = Dt
+             drt(2*nsl-t+1) = frob_rel(U2, G1); dsens(2*nsl-t+1) = frob_rel(Gp, G1)
+          enddo
+          dret = frob_rel(U2, G0)
+          !$omp target exit data map(delete: Dt)
+          deallocate(G0, G1, U2, Dt, Gp)
+          write(line,'(A,I0,A,I0,A,I0,A,ES10.3,A,ES10.3,A,ES10.3,A,ES10.3)') 'GPU wrap self-test up/down round trip flavour ', nf, &
+               & ' combination ', ic, ' (', nsl, ' up wraps, then ', drt(nsl), ' <- device vs CPU; CPU vs CPU with 1e-16 perturbed start ', dsens(nsl), &
+               & ' | after the down wraps: ', drt(2*nsl), ' vs ', dsens(2*nsl)
+          call say(line)
+          do t = 1, 2*nsl
+             call acc_max(dmax(5), drt(t))
+          enddo
+          call acc_max(dround, dret)
+          ! report: after Nwrap slices and growth
+          call growth_line('wrapur ', nf, ic, dur, nsl, line); call say(line)
+          call growth_line('wrapul ', nf, ic, dul, nsl, line); call say(line)
+          call growth_line('wrapgr_up ', nf, ic, dgu, nsl, line); call say(line)
+          call growth_line('wrapgr_do ', nf, ic, dgd, nsl, line); call say(line)
+          do t = 1, nsl
+             call acc_max(dmax(1), dur(t)); call acc_max(dmax(2), dul(t)); call acc_max(dmax(3), dgu(t))
+             call acc_max(dmax(4), dgd(t))
+          enddo
+          ! the longer chains (all Ltrot slices) are reported, not part of the criterion
+          do t = nsl+1, Ltrot
+             call acc_max(dlong(1), dur(t)); call acc_max(dlong(2), dul(t)); call acc_max(dlong(3), dgu(t))
+             call acc_max(dlong(4), dgd(t))
+          enddo
+       enddo
+    enddo
+    gpu_dense_left_mode = 0
+    write(line,'(A,I0,A,ES10.3,A,ES10.3,A,ES10.3,A,ES10.3,A,ES8.1)') 'GPU wrap self-test sequences after Nwrap = ', nw, &
+         & ' slices, max over slices, flavours, code-path combinations (device vs CPU): wrapur ', dmax(1), ', wrapul ', dmax(2), &
+         & ', wrapgr_up ', dmax(3), ', wrapgr_do ', dmax(4), ' (tol ', tol
+    call say(line)
+    write(line,'(A,I0,A,ES10.3,A,ES10.3,A,ES10.3,A,ES10.3,A,ES10.3,A,ES10.3)') 'GPU wrap self-test sequences beyond Nwrap up to ', Ltrot, &
+         & ' slices (reported, not a criterion; the round trip is as sensitive to rounding on the CPU, see the lines above): wrapur ', dlong(1), ', wrapul ', dlong(2), ', wrapgr_up ', dlong(3), &
+         & ', wrapgr_do ', dlong(4), '; up/down round trip device vs CPU ', dmax(5), ', device vs start ', dround
+    call say(line)
+    if (.not. (dmax(1) <= tol .and. dmax(2) <= tol .and. dmax(3) <= tol .and. dmax(4) <= tol)) &
+         & call selftest_fail('wrap sequences')
+  end subroutine test_sequences
+
+  Subroutine growth_line(name, nf, ic, d, nsl, line)
+    Implicit none
+    Character (len=*), intent(in) :: name
+    Integer, intent(in) :: nf, ic, nsl
+    Real (Kind=Kind(0.d0)), intent(in) :: d(0:)
+    Character (len=*), intent(out) :: line
+    Integer :: t
+    Character (len=64) :: s1
+    write(line,'(A,A,A,I0,A,I0,A,ES10.3,A,ES10.3,A)') 'GPU wrap self-test ', name, ' flavour ', nf, ' combination ', ic, &
+         & ': rel diff after 1 slice ', d(1), ', after Nwrap ', d(nsl), ' (per slice, every second:'
+    do t = 2, nsl, 2
+       write(s1,'(ES9.2)') d(t)
+       line = trim(line)//' '//trim(s1)
+    enddo
+    line = trim(line)//')'
+  end subroutine growth_line
+
+  Subroutine cpu_wrapur(U, nf, ntau, ntau1)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(inout) :: U(:,:)
+    Integer, intent(in) :: nf, ntau, ntau1
+    Integer :: t, n
+    do t = ntau + 1, ntau1
+       call Hop_mod_mmthr(U, nf, t)
+       do n = 1, size(Op_V,1)
+          call Op_mmultR(U, Op_V(n,nf), nsigma%f(n,t), 'n', t)
+       enddo
+    enddo
+  end subroutine cpu_wrapur
+
+  Subroutine cpu_wrapul(U, nf, ntau, ntau1)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(inout) :: U(:,:)
+    Integer, intent(in) :: nf, ntau, ntau1
+    Integer :: t, n
+    do t = ntau1, ntau + 1, -1
+       do n = size(Op_V,1), 1, -1
+          call Op_mmultR(U, Op_V(n,nf), nsigma%f(n,t), 'c', t)
+       enddo
+       call Hop_mod_mmthlc(U, nf, t)
+    enddo
+  end subroutine cpu_wrapul
+
+  Subroutine cpu_wrapgr_up(G, nf, ntau)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(inout) :: G(:,:)
+    Integer, intent(in) :: nf, ntau
+    Integer :: n
+    call Hop_mod_mmthr(G, nf, ntau+1)
+    call Hop_mod_mmthl_m1(G, nf, ntau+1)
+    do n = 1, size(Op_V,1)
+       call Op_Wrapup(G, Op_V(n,nf), nsigma%f(n,ntau+1), Ndim, 1, ntau+1)
+    enddo
+  end subroutine cpu_wrapgr_up
+
+  Subroutine cpu_wrapgr_do(G, nf, ntau)
+    Implicit none
+    Complex (Kind=Kind(0.d0)), intent(inout) :: G(:,:)
+    Integer, intent(in) :: nf, ntau
+    Integer :: n
+    do n = size(Op_V,1), 1, -1
+       call Op_Wrapdo(G, Op_V(n,nf), nsigma%f(n,ntau), Ndim, 2, ntau)
+       call Op_Wrapdo(G, Op_V(n,nf), nsigma%f(n,ntau), Ndim, 1, ntau)
+    enddo
+    call Hop_mod_mmthl(G, nf, ntau)
+    call Hop_mod_mmthr_m1(G, nf, ntau)
+  end subroutine cpu_wrapgr_do
 End Module gpu_wrap_mod
 #endif
