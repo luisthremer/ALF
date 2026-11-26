@@ -211,7 +211,7 @@ partly the same GEMM done one slice later with larger k. Expected gain: a few % 
 It could matter only where few accepts per slice meet a large N_delay (low acceptance, very large N_delay on the GPU,
 I7), and there it trades against carrying error over more wraps.
 
-**CPU timing (Mac, gfortran -O3, 1 thread per run, `gpu-port` 8d-head built on `rd/cgalf-t6`).** Hubbard Mz, checkerboard,
+**CPU timing (Mac, gfortran -O3, 1 thread per run, `gpu-port` 078d806b built on `rd/cgalf-t6`).** Hubbard Mz, checkerboard,
 U = 4, Beta = 4, Dtau = 0.1 (40 slices), N_delay = 32, same seed (all schemes run the identical trajectory: acceptance
 equal to all digits), 2 repetitions, s per sweep (mean; range in brackets). Raw: `docs/ai/phase2/cgalf_t6_raw.txt`
 (columns as `testsuite/lowrank/bench.sh`). L = 8/12 ran 3 jobs in parallel at load ~12 (noisy, ranges up to 12 %); L = 16
