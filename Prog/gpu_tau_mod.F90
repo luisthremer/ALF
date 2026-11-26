@@ -66,13 +66,18 @@ Module gpu_tau_mod
   Use Hamiltonian_main, only: Ndim, N_FL, N_FL_eff, Ltrot, Calc_Fl_map, Projector, reconstruction_needed
   Use QMC_runtime_var, only: get_Ltau
   Use Control, only: Control_Precision_tau_vals
+  Use MyMats, only: COMPARE
+  Use UDV_State_mod, only: UDV_State
+  Use wrapur_mod, only: WRAPUR
+  Use cgr2_2_mod, only: CGR2_2
+  Use tau_m_mod, only: PropR, PropRm1
   Use linalg_mod, only: la_zgemm, la_ztrsm, la_zunmqr, la_zgetrf, la_zgetri, la_zqrpp
 #if defined(STABLOG)
   Use linalg_mod, only: la_zgeqp3
 #endif
   Use qmc_walker_mod, only: qmc_walker_t
   Use gpu_state_mod, only: gpu_active, G_d, g_dev_ok, GT0_d, G0T_d, GTT_d, udv_U, udv_V, udv_D, udv_L, udw_U, udw_V, udw_D, udw_L, &
-       &                   info_line, gpu_env_get, gpu_env_is
+       &                   info_line, gpu_env_get, gpu_env_is, rel_diff, selftest_fail
   Use gpu_wrap_mod, only: gpu_mmthr, gpu_mmthl_m1, gpu_Vslice_R, gpu_Vslice_L
   Use gpu_stab_mod, only: gpu_stab_on, gpu_stab_tau_dev, gpu_stab_wrapur, gpu_stab_reset_r, dev_prec, k_ident, k_copy_c, k_ct, &
        &                  k_diagabs, k_divrows, say
@@ -80,7 +85,7 @@ Module gpu_tau_mod
   Implicit none
 
   Private
-  Public :: gpu_tau_on, gpu_tau_setup, gpu_tau_finalize, gpu_tau_pass
+  Public :: gpu_tau_on, gpu_tau_setup, gpu_tau_finalize, gpu_tau_pass, gpu_tau_selftest
 
   Logical, Save :: gpu_tau_on = .false.
   Integer, Save :: t_N = 0, t_N2 = 0, t_nfe = 0, t_lw = 0
@@ -100,6 +105,9 @@ Module gpu_tau_mod
 #endif
   Integer, Save :: fault = 0                                                   ! 1 perm, 2 prop, 3 prec, 4 blocks
   Integer, Save :: n_pass = 0, n_cgr = 0
+  Logical, Save :: prec_report = .true.                                      ! .false. in the self-test: the Control counters are not touched
+  Real (Kind=Kind(0.d0)), Save :: last_prec(2,4) = 0.d0                         ! last reduction: (max, sum) of the four pairs of tau_stab_cgr
+  Integer, Save :: prec_k = 0
 
 Contains
 
@@ -311,21 +319,23 @@ Contains
     call dev_cgr22(nfe, nst, G00_d(1,1,nf), GT0_d(1,1,nf), GTT_d(1,1,nf), G0T_d(1,1,nf))
     n_cgr = n_cgr + 1
     ! Control_Precision_tau(GR, G00), (HLP4, GTT), (HLP5, GT0), (HLP6, G0T)
-    call prec_pair(t_GR(1,1,nf), G00_d(1,1,nf))
-    call prec_pair(t_old(1,1,1), GTT_d(1,1,nf))
-    call prec_pair(t_old(1,1,2), GT0_d(1,1,nf))
-    call prec_pair(t_old(1,1,3), G0T_d(1,1,nf))
+    call prec_pair(1, t_GR(1,1,nf), G00_d(1,1,nf))
+    call prec_pair(2, t_old(1,1,1), GTT_d(1,1,nf))
+    call prec_pair(3, t_old(1,1,2), GT0_d(1,1,nf))
+    call prec_pair(4, t_old(1,1,3), G0T_d(1,1,nf))
   end subroutine tau_stab_cgr
 
 !> Control_Precision_tau(A, B) as a device reduction (dev_prec of gpu_stab_mod: one D->H of four numbers, 32 B)
-  Subroutine prec_pair(A, B)
+  Subroutine prec_pair(k, A, B)
     Implicit none
+    Integer, intent(in) :: k
     Complex (Kind=Kind(0.d0)), intent(in) :: A(t_N,t_N), B(t_N,t_N)
     Real (Kind=Kind(0.d0)) :: xmax, xsum
     Integer :: nna, nnb
     call dev_prec(t_N, A, B, xmax, xsum, nna, nnb)
     if (fault == 3) xmax = xmax*(1.d0 + 1.d-6)            ! negative control: wrong reduction
-    call Control_Precision_tau_vals(xmax, xsum, nna, nnb, t_N)
+    last_prec(1,k) = xmax; last_prec(2,k) = xsum
+    if (prec_report) call Control_Precision_tau_vals(xmax, xsum, nna, nnb, t_N)
   end subroutine prec_pair
 
 !> Stops the run after a failed LAPACK call
@@ -585,5 +595,124 @@ Contains
        enddo
     enddo
   end subroutine k_blocks
+
+!====================================================================
+!  Self-test (ALF_GPU_SELFTEST=4, run by the test executable 54-gpu-tau)
+!====================================================================
+!--------------------------------------------------------------------
+!> @brief
+!> One pass of the device tau pass against the upstream host code on the same state.
+!> @details
+!> Needs the device tau pass on and walker%udvst / walker%GR as set by Walker_init_stack / Walker_init_GR and handed to the
+!> device by Setup_gpu_stack.  Oracle: PropR / PropRm1 (tau_m_mod), WRAPUR and CGR2_2 on host objects.  Per slice GT0, G0T, GTT
+!> of the device against the host (max |A-B| / max |B| <= 1e-10); at every stabilisation point the four outputs of CGR2_2 the same
+!> way, and the four precision numbers (max, mean) of the device reduction against COMPARE of the downloaded device matrices
+!> (relative 1e-12: the reduction itself is tested, not the roundoff noise of the numbers).  A failure ends the run
+!> (selftest_fail).  The faults ALF_GPU_FAULT_TAU = perm, prop, prec, blocks must fail here.
+!--------------------------------------------------------------------
+  Subroutine gpu_tau_selftest(walker)
+    Implicit none
+    Type (qmc_walker_t), intent(inout) :: walker
+    Real (Kind=Kind(0.d0)), parameter :: tol_g = 1.d-10, tol_p = 1.d-12
+    Complex (Kind=Kind(0.d0)), Allocatable :: hGT0(:,:,:), hG0T(:,:,:), hGTT(:,:,:), hG00(:,:,:), hold(:,:,:), dA(:,:), dB(:,:)
+    Class (UDV_State), Allocatable :: udvr(:)
+    Integer :: n, nfe, nf, NT, NT1, NTST, NST, I, J, k
+    Real (Kind=Kind(0.d0)) :: r, xmax, xmean, worst_g, worst_p
+    Character (len=160) :: msg
+
+    if (.not. gpu_tau_on) call selftest_fail('tau self-test: the device tau pass is off')
+    n = t_N
+    prec_report = .false.
+    worst_g = 0.d0; worst_p = 0.d0
+    allocate(hGT0(n,n,N_FL), hG0T(n,n,N_FL), hGTT(n,n,N_FL), hG00(n,n,N_FL), hold(n,n,3), dA(n,n), dB(n,n))
+    ! host: TAU_M at tau = 0
+    do nfe = 1, t_nfe
+       nf = Calc_Fl_map(nfe)
+       do J = 1, n
+          do I = 1, n
+             hG00(I,J,nf) = walker%GR(I,J,nf)
+             hGT0(I,J,nf) = walker%GR(I,J,nf)
+             hGTT(I,J,nf) = walker%GR(I,J,nf)
+             if (I == J) then
+                hG0T(I,J,nf) = -(z1 - walker%GR(I,J,nf))
+             else
+                hG0T(I,J,nf) = walker%GR(I,J,nf)
+             endif
+          enddo
+       enddo
+       ! G0T off the diagonal is -(0 - G) = +G, the diagonal -(1 - G)
+    enddo
+    call tau_begin(walker%GR)
+    allocate(UDV_State :: udvr(t_nfe))
+    do nfe = 1, t_nfe
+       call udvr(nfe)%init(Ndim, 'r')
+    enddo
+    NST = 1
+    do NT = 0, Ltrot - 1
+       NT1 = NT + 1
+       call PropR(hGT0, NT1)
+       call PropRm1(hG0T, NT1)
+       call PropRm1(hGTT, NT1)
+       call PropR(hGTT, NT1)
+       call tau_slice(NT1)
+       do nfe = 1, t_nfe
+          nf = Calc_Fl_map(nfe)
+          ! D->H: device matrices of the slice, for the comparison with the host (self-test only)
+          !$omp target update from(GT0_d(:,:,nf), G0T_d(:,:,nf), GTT_d(:,:,nf))
+          r = max(rel_diff(GT0_d(:,:,nf), hGT0(:,:,nf)), rel_diff(G0T_d(:,:,nf), hG0T(:,:,nf)), rel_diff(GTT_d(:,:,nf), hGTT(:,:,nf)))
+          worst_g = max(worst_g, r)
+          if (.not. (r <= tol_g)) then
+             write(msg,'(A,I0,A,I0,A,ES10.3)') 'tau pass: propagation slice ', NT1, ', flavour ', nf, ': relative difference ', r
+             call selftest_fail(trim(msg))
+          endif
+       enddo
+       if (walker%Stab_nt(NST) == NT1) then
+          NTST = walker%Stab_nt(NST-1)
+          call WRAPUR(NTST, NT1, udvr)
+          call gpu_stab_wrapur(NTST, NT1)
+          do nfe = 1, t_nfe
+             nf = Calc_Fl_map(nfe)
+             hold(:,:,1) = hGTT(:,:,nf); hold(:,:,2) = hGT0(:,:,nf); hold(:,:,3) = hG0T(:,:,nf)
+             call CGR2_2(hGT0(:,:,nf), hG00(:,:,nf), hGTT(:,:,nf), hG0T(:,:,nf), udvr(nfe), walker%udvst(NST,nfe), Ndim)
+             call tau_stab_cgr(nfe, NST)
+             ! D->H: device outputs and the inputs of the precision pairs (self-test only)
+             !$omp target update from(G00_d(:,:,nf), GT0_d(:,:,nf), GTT_d(:,:,nf), G0T_d(:,:,nf), t_GR(:,:,nf), t_old(:,:,:))
+             r = max(rel_diff(G00_d(:,:,nf), hG00(:,:,nf)), rel_diff(GT0_d(:,:,nf), hGT0(:,:,nf)), &
+                  & rel_diff(GTT_d(:,:,nf), hGTT(:,:,nf)), rel_diff(G0T_d(:,:,nf), hG0T(:,:,nf)))
+             worst_g = max(worst_g, r)
+             if (.not. (r <= tol_g)) then
+                write(msg,'(A,I0,A,I0,A,ES10.3)') 'tau pass: CGR2_2 at stabilisation point ', NST, ', flavour ', nf, ': relative difference ', r
+                call selftest_fail(trim(msg))
+             endif
+             ! precision numbers: device reduction against COMPARE of the same (downloaded) device matrices
+             do k = 1, 4
+                select case (k)
+                case (1); dA = t_GR(:,:,nf);   dB = G00_d(:,:,nf)
+                case (2); dA = t_old(:,:,1);   dB = GTT_d(:,:,nf)
+                case (3); dA = t_old(:,:,2);   dB = GT0_d(:,:,nf)
+                case default; dA = t_old(:,:,3); dB = G0T_d(:,:,nf)
+                end select
+                if (rel_diff(dA, dA) > 0.d0 .or. rel_diff(dB, dB) > 0.d0) call selftest_fail('tau pass: non-finite matrix in a precision pair')
+                call COMPARE(dA, dB, xmax, xmean)
+                r = max(abs(last_prec(1,k) - xmax)/max(xmax, tiny(1.d0)), abs(last_prec(2,k)/dble(n*n) - xmean)/max(xmean, tiny(1.d0)))
+                worst_p = max(worst_p, r)
+                if (.not. (r <= tol_p)) then
+                   write(msg,'(A,I0,A,I0,A,ES10.3)') 'tau pass: precision reduction, pair ', k, ', flavour ', nf, ': relative difference ', r
+                   call selftest_fail(trim(msg))
+                endif
+             enddo
+          enddo
+          NST = NST + 1
+       endif
+    enddo
+    call tau_end()
+    do nfe = 1, t_nfe
+       call udvr(nfe)%dealloc
+    enddo
+    prec_report = .true.
+    write(msg,'(A,ES9.2,A,ES9.2,A,ES9.2,A,ES9.2)') 'GPU tau self-test PASSED: largest relative difference of the matrices ', worst_g, &
+         & ' (tolerance ', tol_g, '), of the precision reductions ', worst_p
+    call say(trim(msg))
+  end subroutine gpu_tau_selftest
 End Module gpu_tau_mod
 #endif
