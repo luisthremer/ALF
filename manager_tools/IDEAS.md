@@ -7,3 +7,6 @@ Owner's idea inbox. One line per idea: - YYYY-MM-DD <idea>. Claude never edits o
 - 2026-11-26 research-superpowers plugin: disabled for now; maybe enable it later for the R&D sessions. (from the chat) -> taken: CG_ALF_PLAN.md section 5a "Tools for R&D sessions" (2026-11-26)
 - 2026-11-26 research-desk plugin: off by default in the ALF development sessions, maybe on for the R&D sessions. (from the chat) -> taken: CG_ALF_PLAN.md section 5a "Tools for R&D sessions" (2026-11-26)
 - 2026-11-26 claude-bughunter plugin: turn it back on for P2.8. (from the chat) -> taken: ROADMAP.md P2.8, first step (2026-11-26)
+- 2026-11-26 Work on the Cholesky again! We probably have to increase n_wrap. (from the chat) -> taken: CG_ALF_PLAN.md section 3, idea I11 (2026-11-26)
+- 2026-11-26 Do the sweep not first in space but first in time; then we need to wrap, which is matrix-matrix multiplication; maybe better, not on the CPU but on the GPU? (from the chat) -> taken: CG_ALF_PLAN.md section 3, idea I12 (2026-11-26)
+- 2026-11-26 Or some optimised random path in imaginary space-time. (from the chat) -> taken: CG_ALF_PLAN.md section 3, idea I13 (2026-11-26)
