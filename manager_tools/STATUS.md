@@ -6,8 +6,8 @@
 
 ## Waiting for you
 Answer with the buttons under "Needs you" on the [progress page](https://claude.ai/artifact/PmMk2VMb8iUzXtnEYUcHc3).
-3. SuperMUC login for gpu-intel's device sessions (it asks when ready); first cap 40 GPU-hours of the estimated 76.
-4. Two proposed sessions wait as cards (the app runs at most 5 at once): CG-ALF T4 review, P2.5 run evidence.
+1. SuperMUC login for gpu-intel's device sessions (it asks on the progress page when ready); first cap 40 GPU-hours of the estimated 76.
+("Needs you" on the page is live: sessions add a row when they need you.)
 
 ## Done since the last owner message
 - Q13 decided: `Lowrank_cross_slice` stays off the CM lines, kept on branch `rd/lowrank-cross-slice`.
