@@ -21,6 +21,17 @@ Status values: `open`, `running`, `done (<date>, <commit>)`.
 | `cm/dev/<x>`, `cm/feat/<x>` | dev and canvas branch of a feature `<x>` (see BRANCHING.md) |
 | `archive/cm/<x>/{dev,feat}` | tags left behind after a merge |
 
+## Rule: bugs found along the way (owner, 2026-11-26)
+
+Every bug is classified at once and entered in `KNOWN_ISSUES.md` with class and status:
+**A** (silently wrong results in the current code path or a production configuration, or a guard hiding them) ->
+interrupt, entry first, warn production users, own small dev/canvas fix, merge, back to the step;
+**B** (real bug outside the current path) -> entry + whiteboard line, fixed in one batch feature after each phase
+merge; **C** (cosmetic/theoretical) -> entry only, fixed when the code is touched anyway.
+At most one interruption at a time and at most two unmerged feature branches (current step + one A fix);
+unsure between A and B -> ask the owner, treat as B meanwhile. Full text: `AGENTS.md`, Working mode.
+Status page and idea inbox: private repo `luisthremer/alf-ops` (`STATUS.md`, `IDEAS.md`), see `AGENTS.md`.
+
 ## P2.0 — Sync (done 2026-11-25)
 Fork `Code-modularity` = origin `Code-modularity_Phase6` (`af22b976`), a fast-forward of
 `Code-modularity`. Fork `master` = origin `master`.
@@ -29,7 +40,7 @@ Fork `Code-modularity` = origin `Code-modularity_Phase6` (`af22b976`), a fast-fo
 `AGENTS.md`, `CLAUDE.md`, `docs/ai/CODEMAP.md`, `docs/ai/BRANCHING.md`, this folder.
 Feature name `ai-docs`. Done when merged into `Code-modularity` via `cm/feat/ai-docs`.
 
-## P2.2 — Delayed and submatrix updates, native (open)
+## P2.2 — Delayed and submatrix updates, native (merged 2026-11-25, `2bb0258a`; step 2 "fastest" open)
 Feature name `lowrank`. Source: fork `master_ai_cpu` (`8b18b95c`, LOWRANK in hook form:
 `Prog/Lowrank/*`, `testsuite/Lowrank.tests/*`, `Documentation/lowrank*`).
 1. `cm/dev/lowrank`: port without hooks. Scheme parameters (`Sequential_scheme`, `N_delay`) in

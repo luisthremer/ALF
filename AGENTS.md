@@ -22,6 +22,29 @@ need to read the whole code base.
 - Never push to origin (ALF-QMC/ALF). The working remote is the fork (`luisthremer/ALF`).
 - Report what you ran and what you did not run. "Bitwise identical" is claimed only after the
   check in [`docs/ai/codemap/build.md`](docs/ai/codemap/build.md) §2 (or the script it names).
+- **Bugs found along the way** (owner rule, 2026-11-26): classify every bug at once and record it in
+  [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) with class and status (open / fixed in <merge>) before anything else.
+  - **A** — silently wrong results in the code path being worked on or in a configuration used in production
+    (the run ends normally but the numbers are wrong, or a guard that hides such failures): interrupt the current
+    step, write the entry, warn the production users (the session or card that runs production) at once, fix it as
+    its own small dev/canvas feature, merge, return to the step.
+  - **B** — a real bug outside the current code path (wrong results or crashes elsewhere, hangs, wrong measurements
+    of features nobody uses now): entry + one line on the whiteboard card; fixed in one batch feature after each
+    phase merge.
+  - **C** — cosmetic or theoretical (messages, limits far beyond any size we run, small inefficiencies): entry
+    only; fixed when that code is touched anyway.
+  - Limits: one interruption at a time (an A found during an A fix comes next, no stack); at most two unmerged
+    feature branches (the current step plus one A fix); unsure between A and B -> ask the owner, treat it as B
+    meanwhile.
+- **Status and ideas** (owner rule, 2026-11-26) live in the private repo `luisthremer/alf-ops`, not on the fork:
+  - `STATUS.md` is the only status page, rewritten at every step in the owner's format (Now / Waiting for you /
+    Done since the last owner message / Next 3 steps / Open branches and running jobs), one screen at most, details
+    only as links. Always `git pull --rebase` before writing, never force-push. Decisions that block the work are
+    also sent through the calendar-invite channel.
+  - `IDEAS.md` is the owner's inbox: read it only after a merge, after a finished step and at the start of a session;
+    triage each new line (fits a phase or CG-ALF idea -> add it there with a link; new research question -> own entry
+    with what would decide it; unclear -> question under "Waiting for you"), then append "-> taken: <where> (<date>)".
+    Never edit or delete the owner's lines. Ideas sent in the chat go there too unless the owner writes "urgent".
 
 ## What goes where
 

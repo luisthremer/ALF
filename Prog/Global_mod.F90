@@ -48,7 +48,7 @@ Module Global_mod
       Use runtime_error_mod, only: Terminate_on_error, ERROR_GLOBAL_UPDATES
       Use Hamiltonian_main, only: ham, Ndim, N_FL, N_FL_eff, N_SUN, Calc_Fl_map, Ltrot, Op_V, nsigma, &
            &                      Projector, WF_L, WF_R, Group_Comm, reconstruction_needed, LOG_T0_REJECTED
-      Use MyMats, only: DET_C, DET_C_LU
+      Use MyMats, only: DET_C_PHASE, DET_C_LU
       Use Operator_mod, only: Op_phase
       Use Control, only: Control_upgrade_Glob, Control_PrecisionP_Glob, Control_upgrade_Temp
       Use files_mod, only: str_to_upper
@@ -927,10 +927,11 @@ Module Global_mod
 
            !Call  UDV_WRAP_Pivot(TP,udvlocal%U, D, udvlocal%V, NCON,N_size,N_Size)
            Call  UDV_WRAP(TP,udvlocal%U, D, udvlocal%V, NCON )
-           Z  = DET_C(udvlocal%V, N_size) ! Det destroys its argument
+           ! |det V| = |det TP| = 1: underflow-safe products for large N (KNOWN_ISSUES.md)
+           Z  = DET_C_PHASE(udvlocal%V, N_size) ! Det destroys its argument
            !         Call MMULT(TP, udvl%U, udvlocal%U)
            CALL la_zgemm('C', 'N', N_size, N_size, N_size, alpha, udvl(nf_eff)%U, N_size, udvlocal%U, N_size, beta, TP, N_size)
-           Z1 = Det_C(TP, N_size)
+           Z1 = DET_C_PHASE(TP, N_size)
            Phase_det(nf_eff)   = Z*Z1/ABS(Z*Z1)
 #if !defined(STABLOG)
 #if !defined(STAB3)
