@@ -96,9 +96,9 @@ Sub-phases, each a dev/canvas pair under `cm/dev/gpu-*`:
 ## CPU-line queue (D4, owner 2026-11-26)
 gpu-port's unguarded CPU-path changes and other general features, each its own dev/canvas feature on
 `Code-modularity-CPU` (then merged into the GPU line), in this order unless the owner says otherwise:
-1. `ALF_UNSTABLE_THRESHOLD` (owner: first in the queue; small).
+1. `ALF_UNSTABLE_THRESHOLD` (owner: first in the queue; small). Done: merge `73fb16b8`.
 2. `prepare_sim.py`: general PARALLEL_PARAMS helper (Q4a), newest version from gpu-port
-   `Scripts_and_Parameters_files/Start_PP/` (327 lines), with the Helma documentation.
+   `Scripts_and_Parameters_files/Start_PP/` (327 lines), with the Helma documentation. Done: `Start_PP/` on the CPU line.
 3. `alf_exit` (clean exit path), `Trace_updates_mod`.
 4. `Timers_mod` / `ALF_TEAM_TIMERS` as base of the compile-time timing flag (CG-ALF T8).
 5. MaxEnt `N_boot` (with the MaxEnt branch).
