@@ -171,3 +171,90 @@ Correctness: confout byte-identical, acceptance identical, energy equal to 1e-16
 tracked phase agrees with the LU phase to 1.1e-14 over 194 CGR calls. With device observables the plain build runs at
 2.65 s per sweep at L = 24 (E3 had 13.3 s with host observables). S1 is safe and pays from L = 32 on; it also removes
 the LU product that caused the GPU determinant phase underflow. Candidate for the GPU line (owner decision).
+
+### T6 — `Lowrank_cross_slice` (2026-11-26, session rd-cgalf; code on `gpu-port`, `Prog/Lowrank_update_mod.F90`)
+
+**What it does.** Delayed/submatrix updates keep G in factored form $G = G_0 - X Y^T$ (submatrix: $G = G_0 - G_0(:,S)\,M\,(E_S^T - G_0(S,:))$)
+and normally flush ($G_0 \leftarrow G_0 - XY^T$, one rank-$k$ GEMM) at every slice end. With `Lowrank_cross_slice = .T.`
+the flush at the slice end is skipped; the pending factors are carried through the hopping wrap.
+
+**Derivation (exactness).** The wrap between slices is a similarity transform, $G \mapsto B\,G\,B^{-1}$ with $B = e^{-\Delta\tau T}$
+(up) or $B^{-1}$ (down). It is linear in G, so
+$$B\,(G_0 - XY^T)\,B^{-1} = B G_0 B^{-1} - (BX)\,(Y^T B^{-1}).$$
+Hence the update $G_0 \leftarrow BG_0B^{-1}$ (ALF's wrap, unchanged), $X \leftarrow BX$, $Y^T \leftarrow Y^T B^{-1}$
+(`Hop_mod_mmthr`, `Hop_mod_mmthl_m1`) represents exactly the same G. A pending submatrix block is first converted to
+delayed form, $X = G_0(:,S)M$, $Y_{:,m} = e_{S_m} - G_0(S_m,:)^T$, an exact identity. The vertex-wrap hook inside a slice
+is the same argument with $B = e^{V}$ already used by the non-cross-slice code. So in exact arithmetic G is the same
+matrix at every point as with the slice-end flush (or the standard rank-1 scheme).
+
+**Detailed balance.** The Markov chain is defined only by (i) the order of proposals, (ii) the acceptance ratio
+$R = \det[\,1 + \Delta (1 - G_{PP})\,]$ (times the bosonic weight ratio) and (iii) the random numbers. Cross-slice changes none of
+these: the order is the same fixed sequential sweep, and $G_{PP}$ is read from the exact low-rank representation
+(`Lowrank_propose` adds the $XY^T$ correction on the $P$ rows/columns). So the transition kernel is identical to
+the standard scheme's, which satisfies detailed balance (Metropolis/heat bath per vertex, fixed sequential order:
+stationarity holds per step, i.e. "balance"; ALF's usual argument). Every other reader of G (CGR / stabilisation,
+measurements, global/Langevin/HMC/tempering moves) is preceded by `Lowrank_read_point` → flush (13 read points in
+`main.F90`); `Global_tau` is refused. Therefore the method is **sound**; the only difference is roundoff.
+
+**Roundoff.** The pending factors now pass through up to Nwrap hopping wraps before the flush, and $\|B\|\,\|B^{-1}\|$ grows
+like $e^{2\Delta\tau\|T\|}$ per slice; the error of the delayed form grows with the number of slices carried, not
+with the matrix size. Measured earlier (2026-10-31, CPU): trajectories identical to the key-off run on start/tv/kondo/
+tv_flux/pv_adiab (20/20), Kondo Precision Green ratio on/off 1.47; debug shadow error ≤ 1.6e-12. Acceptable, but it
+is a loss, not a gain, in precision.
+
+**Cost model (why it gains little).** Per slice it saves one flush (ZGEMM $N\times N\times k$, $8N^2k$ flops) only when the
+slice ends with $k < N_\text{delay}$ pending columns; the capacity flushes inside the slice are unchanged. It adds two
+checkerboard hops on $N\times k$ and $k\times N$ blocks per slice ($O(N_\text{bond} k)$, cheap) plus the conversion
+for submatrix ($O(Nk^2)$). For Hubbard the number of accepts per slice is about acceptance × N ≈ 0.4 N, i.e. 26 / 58 / 102
+for L = 8 / 12 / 16 with N_delay = 32: the slice-end flush is at most one of 1-4 flushes per slice, and its saving is
+partly the same GEMM done one slice later with larger k. Expected gain: a few % at most at small L, → 0 at large L.
+It could matter only where few accepts per slice meet a large N_delay (low acceptance, very large N_delay on the GPU,
+I7), and there it trades against carrying error over more wraps.
+
+**CPU timing (Mac, gfortran -O3, 1 thread per run, `gpu-port` 078d806b built on `rd/cgalf-t6`).** Hubbard Mz, checkerboard,
+U = 4, Beta = 4, Dtau = 0.1 (40 slices), N_delay = 32, same seed (all schemes run the identical trajectory: acceptance
+equal to all digits), 2 repetitions, s per sweep (mean; range in brackets). Raw: `docs/ai/phase2/cgalf_t6_raw.txt`
+(columns as `testsuite/lowrank/bench.sh`). L = 8/12 ran 3 jobs in parallel at load ~12 (noisy, ranges up to 12 %); L = 16
+ran 2 in parallel at load ~5.
+
+| L (N) | standard | delayed off | delayed on | on/off | submatrix off | submatrix on | on/off |
+|---|---|---|---|---|---|---|---|
+| 8 (64) | 0.052 | 0.044 (±5 %) | 0.047 (±4 %) | 1.07 | 0.056 (±4 %) | 0.053 (±3 %) | 0.94 |
+| 12 (144) | 0.424 | 0.264 (±5 %) | 0.289 (±6 %) | 1.10 | 0.301 (±4 %) | 0.300 (±2 %) | 1.00 |
+| 16 (256) | 2.22 | 1.455 (±1.4 %) | 1.477 (±1.2 %) | 1.015 | 1.446 (±0.1 %) | 1.468 (±0.4 %) | 1.015 |
+
+Earlier scan (2026-10-31, Beta = 2, L = 8/12, 3 reps, quiet machine): on/off 1.074 / 0.967 / 1.016 / 1.017.
+
+**T6 verdict.** Sound (exact up to roundoff, same Markov chain; derivation above) but **not faster on the CPU**: at L = 16,
+the only low-noise point, cross-slice is 1.5 % *slower* for both schemes; at L = 8/12 the differences are inside the
+noise. Delayed/submatrix themselves give 1.5x over standard at L = 16. This matches the cost model (the slice-end flush
+is 1 of several flushes per slice and its saving shrinks with N). On the GPU the only plausible win is fewer small flush
+kernels per slice when N_delay is much larger than the accepts per slice (I7); that is better reached by tuning N_delay.
+Recommendation: do not port it to the GPU (PARKING #39 stays parked); keep it opt-in on the CPU or remove it (owner's open
+question 00 of 2026-10-31). GPU timing not done (needs Helma and the owner's go; not worth it given the CPU result).
+Repeat the L = 16 row at low load before quoting it outside this file.
+
+### T1 — stabilisation literature survey (2026-11-26, desk survey; nothing measured yet)
+
+References are from memory, not checked against the papers in this session (research-desk was off): verify before
+citing. "Cost" is per stabilisation of one N×N block (N = Ndim), compared with ALF's current QR with column pivoting (QRP,
+`ZGEQP3`, $\tfrac{4}{3}N^3$ real-flop equivalents ×4 for complex, BLAS-2 bound in the pivoting).
+
+| Method | Idea | Cost vs QRP | Accuracy | GPU fit | Reference |
+|---|---|---|---|---|---|
+| UDV with QRP (ALF today, STAB1/2/3) | $B\cdots B = UDV$, D separated by pivoted QR every Nwrap slices | 1 | reference; stable for any β | poor: pivoting is a column-norm search per step (BLAS-2, host syncs); 39 % of H100 kernel time (E2) | Loh et al., PRB 1989 / Int. J. Mod. Phys. B 1992; Assaad & Evertz, LNP 739 (2008); ALF 2.0, SciPost Phys. Codebases (2022) |
+| Pre-pivoted QR | pivot once by the column norms of $B\,U D$ (sort, permute), then *unpivoted* blocked QR (`geqrf`) | ~0.5-0.7 (all BLAS-3) | same as QRP in practice (D is already graded, so norm sorting ≈ QRP pivots) | good: `geqrf` is the fastest QR in cuBLAS/cuSOLVER/oneMKL | Bai, Lee, Li, Xu, Linear Algebra Appl. 435, 659 (2011); used by QUEST |
+| Scale-separated / log-scale D | store D as log or (mantissa, exponent); build G from $D_{\max}, D_{\min}$ split (STAB3, `STABLOG`) | ≈1 (+O(N)) | removes over/underflow for large β·U; needed at L ≥ 24 production | neutral (O(N) work) | Bauer, SciPost Phys. Core 2, 011 (2020) (`StableDQMC.jl`); ALF STAB3 / gpu-port `STABLOG` |
+| Unpivoted QR + scale tracking | QR without any pivoting, D from $|R_{ii}|$, rely on the graded structure | ~0.5 | can lose digits when the column scales are not ordered; ALF test 108 (gpu-port `docs/gpu/reports/108-stablog-pivot.md`) | very good | Bauer 2020 (comparison of QR variants); ALF report 108 |
+| CholeskyQR2 / shifted CholeskyQR3 | $A^\dagger A = R^\dagger R$, $Q = AR^{-1}$, repeated | ~0.3-0.5, all GEMM/SYRK | needs κ(block) ≲ 1e8 (CQR2) or ≲ 1e16 (sCQR3): only *after* D is factored out (apply to $B\,U$ columns scaled by D) | excellent (GEMM ceiling, E1: 60 TFLOP/s) | Fukaya, Nakatsukasa, Yanagisawa, Yamamoto, ScalA 2014; Fukaya et al., SIAM J. Sci. Comput. 42, A477 (2020) — idea I11 |
+| TSQR / CAQR (communication-avoiding) | tree of small QRs on row blocks; reduces panel latency | ~1 flops, fewer syncs | as Householder QR (stable) | good for tall-skinny panels; for square N×N mainly fewer kernel launches; batched over walkers (I1) | Demmel, Grigori, Hoemmen, Langou, SIAM J. Sci. Comput. 34, A206 (2012) |
+| Randomized QRCP (HQRRP) | choose pivots of a whole block from a small sketch $\Omega A$, then blocked QR | ~0.5-0.6, BLAS-3 | pivots as good as QRP for rank revealing | good | Martinsson, Quintana-Ortí, Heavner, van de Geijn, SIAM J. Sci. Comput. 39, C96 (2017) |
+| Mixed precision | wraps/updates in FP32 (or TF32), stabilisation and G in FP64; or FP32 panel + FP64 refinement | 0.5 on the GEMM share (FP32 vector) | must keep Precision Green < 1e-8; Nwrap shrinks | H100: no gain for GEMM (E1: FP64 tensor cores faster than FP32), gain on memory-bound parts only; A30/MI210/Max 1550 differ | Yang, Fox, Sanders, SIAM J. Sci. Comput. 43, A1723 (2021) (mixed-precision block Householder QR); idea I4 |
+| Adaptive Nwrap | choose Nwrap at run time from the measured Precision Green (stabilisation only as often as needed) | 1/(Nwrap gain) | controlled by construction | neutral; fewer syncs | no dedicated paper found from memory; ALF already reports Precision Green; idea I5 |
+| SVD-based (`gesvj`, Jacobi) | UDV via SVD instead of QR | 3-10 | most accurate | poor | Bauer 2020 (shows QR suffices) |
+
+**Reading.** The best GPU candidates are (1) **pre-pivoted unpivoted QR** (same accuracy as QRP in the literature, all BLAS-3,
+no code change outside the stabilisation kernel), (2) **CholeskyQR2 after scale separation** (GEMM speed; owner's I11), with
+(3) **adaptive Nwrap** on top of either. Mixed precision is low priority on the H100 (E1). Next step: E-measurement on the
+H100 (Helma, owner's go needed): cost per stabilisation and Precision Green vs Nwrap for QRP, pre-pivoted QR and CholeskyQR2
+at L = 24/32 on the production model.
