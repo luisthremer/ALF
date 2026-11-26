@@ -13,7 +13,7 @@ Program Test_Op_V_symm_fast
 
   Type (Operator), allocatable :: Op_V(:,:)
   Integer :: n_fail, n_cases, icase, kind_case, Ndim, n_op, N_FL, nf, n, i, j, Nb
-  Logical :: res_new, res_ref, expected
+  Logical :: res_new, res_ref, expected, check_expected
   Real (Kind=Kind(0.d0)) :: r(4), t0, t1
   Integer (Kind=8) :: c0, c1, crate
 
@@ -166,7 +166,11 @@ Program Test_Op_V_symm_fast
         n_fail = n_fail + 1
         write(*,'(A,I0,A,I0,A,L1,A,L1)') 'FAIL: case ', icase, ' kind ', kind_case, ': new = ', res_new, ', ref = ', res_ref
      endif
-     if (kind_case /= 8 .or. abs(log10(Op_V(1,1)%g%re) + 5.d0) > 0.6d0) then
+     ! Expected value not checked for couplings near the tolerance edge (kind 8, g ~ 1e-5).
+     ! Separate statement: .or. does not short-circuit, and log10 of a negative g traps in debug builds.
+     check_expected = .true.
+     if (kind_case == 8) check_expected = abs(log10(Op_V(1,1)%g%re) + 5.d0) > 0.6d0
+     if (check_expected) then
         if (res_ref .neqv. expected) then
            n_fail = n_fail + 1
            write(*,'(A,I0,A,I0,A,L1,A,L1)') 'FAIL: case ', icase, ' kind ', kind_case, ': ref = ', res_ref, &
