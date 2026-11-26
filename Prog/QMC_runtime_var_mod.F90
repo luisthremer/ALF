@@ -57,7 +57,7 @@ Module QMC_runtime_var
 
         Character (len=64) :: ham_name
 
-        !  Sequential local update: "standard" (rank-1, Upgrade2), "delayed" or "submatrix" (lowrank_update_mod)
+        !  Sequential local update: "standard" (rank-1, Upgrade2), "delayed", "submatrix" or "auto" (lowrank_update_mod)
         Character (len=64) :: Sequential_scheme
         Integer            :: N_delay
 
