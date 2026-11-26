@@ -378,3 +378,20 @@ target_include_directories(47-trace-updates PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}
 target_link_libraries(47-trace-updates "${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/Trace_updates_mod.o" ${LIB_LIST})
 add_test(NAME 47-trace-updates COMMAND 47-trace-updates WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 set_tests_properties(47-trace-updates PROPERTIES PASS_REGULAR_EXPRESSION "PASS: trace" TIMEOUT 60)
+
+# Timers_mod with -DALF_TIMERS (the program build leaves it off): stack timers, counters, timers.txt.
+# The module source is compiled into the test with its own module directory, so the Prog build's
+# timers_mod.mod (without the macro) is not used.
+add_executable(48-timers 48-timers.F90 "${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/Timers_mod.F90")
+target_compile_options(48-timers PRIVATE ${FLAG_LIST} -DALF_TIMERS)
+set_target_properties(48-timers PROPERTIES Fortran_MODULE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/mod_48")
+target_include_directories(48-timers PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules")
+target_link_libraries(48-timers ${LIB_LIST})
+if("${FLAG_LIST}" MATCHES "-DMPI")
+  add_test(NAME 48-timers
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS}
+      $<TARGET_FILE:48-timers> ${MPIEXEC_POSTFLAGS} WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+else()
+  add_test(NAME 48-timers COMMAND 48-timers WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+endif()
+set_tests_properties(48-timers PROPERTIES PASS_REGULAR_EXPRESSION "PASS: timers" TIMEOUT 60)
