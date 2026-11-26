@@ -23,7 +23,7 @@ for b in Code-modularity Code-modularity-CPU Code-modularity-GPU; do
   [ "$(git rev-parse "$b:manager_tools" 2>/dev/null || true)" = "$srctree" ] && { echo "$b: already the same"; continue; }
   idx="$(mktemp)"
   GIT_INDEX_FILE="$idx" git read-tree "$b"
-  GIT_INDEX_FILE="$idx" git rm -r -q --cached --ignore-unmatch manager_tools
+  GIT_INDEX_FILE="$idx" git rm -r -q -f --cached --ignore-unmatch manager_tools
   GIT_INDEX_FILE="$idx" git read-tree --prefix=manager_tools/ "$srctree"
   tree="$(GIT_INDEX_FILE="$idx" git write-tree)"
   rm -f "$idx"
