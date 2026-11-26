@@ -276,3 +276,88 @@ int alfhk_prec(int n, void* A, void* B, void* r) {
   return fin();
 }
 }  // extern "C"
+
+// ---- gpu_wrap_mod and gpu_lowrank_mod kernels (P2.4 step 2 amd, commit 5) ----------------------------------------------
+// Same loop bodies as the OpenMP kernels of the same name (one thread per loop iteration of the collapsed loops).
+// M(P(l), j) = W(l, j)
+__global__ void k_scatter_rows(int nd, int ncol, const int* P, cd* M, int ld, const cd* W, int ldw) {
+  long t = (long)blockIdx.x * blockDim.x + threadIdx.x; if (t >= (long)nd * ncol) return;
+  int l = t % nd, j = t / nd;
+  M[(P[l] - 1) + (long)j * ld] = W[l + (long)j * ldw];
+}
+// k_vslice_R: M(r,j) = (product over the active Op_V factors of row r, in order (desc: reversed)) * M(r,j)
+__global__ void k_vslice_r(int nd, int ncol, int ld, int nf, int t, int cj, int desc, int ldptr, int nop, int ldn,
+                           const int* vr_ptr, const int* vr_ent, const int* V_meta, const int* V_type, const cd* nsig,
+                           const cd* V_exp, cd* M) {
+  long tt = (long)blockIdx.x * blockDim.x + threadIdx.x; if (tt >= (long)nd * ncol) return;
+  int r = tt % nd, j = tt / nd;
+  int pa = vr_ptr[r + (long)(nf - 1) * ldptr], pb = vr_ptr[r + 1 + (long)(nf - 1) * ldptr] - 1;
+  if (pb < pa) return;
+  cd x = M[r + (long)j * ld];
+  for (int q = 0; q <= pb - pa; q++) {
+    int p = desc ? pb - q : pa + q;
+    int n = vr_ent[2 * (p - 1)], i = vr_ent[2 * (p - 1) + 1];
+    const int* mt = V_meta + 4L * ((n - 1) + (long)(nf - 1) * nop);
+    if (mt[3] != 1) {
+      int sp = (int)rint(nsig[(n - 1) + (long)(t - 1) * ldn].r);     // nint (round half away from zero; sp is integral)
+      cd z = V_exp[mt[2] + i + (long)(sp + V_type[n - 1]) * mt[0] - 1];
+      if (cj) z.i = -z.i;
+      x = z * x;
+    }
+  }
+  M[r + (long)j * ld] = x;
+}
+// k_blk_gather: gbk(a,c,fl) = Gk(bsk(a,fl), bsk(c,fl), nf(fl)),  gbk(nd,nd,2), bsk(nd,2), Gk(ld,ld,*)
+__global__ void k_blk_gather(int nfl, int nfa, int nfb, int ld, int b, int nd, const cd* G, const int* bsk, cd* gbk) {
+  long t = (long)blockIdx.x * blockDim.x + threadIdx.x; if (t >= (long)nfl * b * b) return;
+  int a = t % b, c = (t / b) % b, fl = (int)(t / ((long)b * b)) + 1;
+  int nf = (fl == 2) ? nfb : nfa;
+  const int* bs = bsk + (long)(fl - 1) * nd;
+  gbk[a + (long)c * nd + (long)(fl - 1) * nd * nd] = G[(bs[a] - 1) + (long)(bs[c] - 1) * ld + (long)(nf - 1) * ld * ld];
+}
+// k_blk_scale: row factor cbk(a) on row bsk(a) (and column factor cbk(nd+c) if the column is block site c); column factor on
+// the columns bsk(a) for the rows outside the block.  One thread per (fl, a, j), as the OpenMP collapse(3) loop.
+__global__ void k_blk_scale(int nfl, int nfa, int nfb, int ld, int b, int nd, int ldc, cd* G, const int* bsk, const cd* cbk) {
+  long t = (long)blockIdx.x * blockDim.x + threadIdx.x; if (t >= (long)nfl * b * ld) return;
+  int j = t % ld, a = (t / ld) % b, fl = (int)(t / ((long)ld * b)) + 1;
+  int nf = (fl == 2) ? nfb : nfa;
+  const int* bs = bsk + (long)(fl - 1) * nd;
+  const cd* cb = cbk + (long)(fl - 1) * ldc;
+  cd* Gf = G + (long)(nf - 1) * ld * ld;
+  int sa = bs[a] - 1, cj = 0;
+  for (int c = 0; c < b; c++) if (bs[c] - 1 == j) cj = c + 1;
+  cd v = cb[a] * Gf[sa + (long)j * ld];
+  if (cj > 0) v = cb[nd + cj - 1] * v;
+  Gf[sa + (long)j * ld] = v;
+  if (cj == 0) Gf[j + (long)sa * ld] = cb[nd + a] * Gf[j + (long)sa * ld];
+}
+// k_sub_flush_gather: C(i,m) = G(i,S(m)); Qt(i,m) = -G(S(m),i) (+1 and slot(i,nf) = 0 on i = S(m))
+__global__ void k_sub_flush_gather(int ld, int nrow, int k, int nf, int ldslot, const cd* G, const int* S, cd* C, cd* Qt, int* slot) {
+  long t = (long)blockIdx.x * blockDim.x + threadIdx.x; if (t >= (long)k * nrow) return;
+  int i = t % nrow, m = t / nrow, s = S[m] - 1;
+  C[i + (long)m * ld] = G[i + (long)s * ld];
+  cd q = -G[s + (long)i * ld];
+  if (i == s) { q.r += 1.0; slot[i + (long)(nf - 1) * ldslot] = 0; }
+  Qt[i + (long)m * ld] = q;
+}
+extern "C" {
+int alfhk_scatter_rows(int nd, int ncol, void* P, void* M, int ld, void* W, int ldw) {
+  long tot = (long)nd * ncol; if (tot <= 0) return 0;
+  LAUNCH(k_scatter_rows, nb(tot, 256), 256, nd, ncol, (const int*)P, (cd*)M, ld, (const cd*)W, ldw); return fin(); }
+int alfhk_vslice_r(int nd, int ncol, int ld, int nf, int t, int cj, int desc, int ldptr, int nop, int ldn, void* vr_ptr, void* vr_ent,
+                   void* V_meta, void* V_type, void* nsig, void* V_exp, void* M) {
+  long tot = (long)nd * ncol; if (tot <= 0) return 0;
+  LAUNCH(k_vslice_r, nb(tot, 256), 256, nd, ncol, ld, nf, t, cj, desc, ldptr, nop, ldn, (const int*)vr_ptr, (const int*)vr_ent,
+         (const int*)V_meta, (const int*)V_type, (const cd*)nsig, (const cd*)V_exp, (cd*)M); return fin(); }
+int alfhk_blk_gather(int nfl, int nfa, int nfb, int ld, int b, int nd, void* G, void* bsk, void* gbk) {
+  long tot = (long)nfl * b * b; if (tot <= 0) return 0;
+  LAUNCH(k_blk_gather, nb(tot, 128), 128, nfl, nfa, nfb, ld, b, nd, (const cd*)G, (const int*)bsk, (cd*)gbk); return fin(); }
+int alfhk_blk_scale(int nfl, int nfa, int nfb, int ld, int b, int nd, int ldc, void* G, void* bsk, void* cbk) {
+  long tot = (long)nfl * b * ld; if (tot <= 0) return 0;
+  LAUNCH(k_blk_scale, nb(tot, 256), 256, nfl, nfa, nfb, ld, b, nd, ldc, (cd*)G, (const int*)bsk, (const cd*)cbk); return fin(); }
+int alfhk_sub_flush_gather(int ld, int nrow, int k, int nf, int ldslot, void* G, void* S, void* C, void* Qt, void* slot) {
+  long tot = (long)k * nrow; if (tot <= 0) return 0;
+  LAUNCH(k_sub_flush_gather, nb(tot, 256), 256, ld, nrow, k, nf, ldslot, (const cd*)G, (const int*)S, (cd*)C, (cd*)Qt, (int*)slot);
+  return fin(); }
+}  // extern "C"
+

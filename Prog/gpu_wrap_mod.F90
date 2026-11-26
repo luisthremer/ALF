@@ -77,6 +77,9 @@ Module gpu_wrap_mod
   Use Hop_mod, only: hop_mod_mmthl, hop_mod_mmthl_m1, hop_mod_mmthlc, hop_mod_mmthr, hop_mod_mmthr_m1, &
        & hop_mod_symm
   Use linalg_mod, only: la_zgemm, la_zgemm_cr
+#if defined(ALF_LA_HIP)
+  Use alf_hipk_mod, only: hk_enabled, hk_copyz, hk_scatter_rows, hk_vslice_r
+#endif
   Use gpu_state_mod, only: finite_c, g_d, gpu_env_get, gpu_env_int, gpu_env_is, hop_ac, hop_at, hop_aux, hop_big, &
        & hop_cval, hop_gptr, hop_gstart, hop_meta, hop_p, hop_rval, hop_start, info_line, is_finite, nsigma_d, &
        & rand_mat, rnd, scr_c, selftest_fail, td_any, td_grp, td_n, v_exp, v_meta, v_p, v_type, vr_ent, vr_ptr
@@ -308,6 +311,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: a(nel)
     Complex (Kind=Kind(0.d0)), intent(inout) :: b(nel)
     Integer :: i
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_copyz(nel, a, b)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do
     do i = 1, nel
        b(i) = a(i)
@@ -862,6 +871,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,ncol)
     Complex (Kind=Kind(0.d0)), intent(in) :: W(ldw,ncol)
     Integer :: j, l
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_scatter_rows(nd, ncol, P, M, ld, W, ldw)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, ncol
        do l = 1, nd
@@ -1068,6 +1083,13 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,ncol)
     Integer :: jb, nblk, j, j1, j2, r, pa, pb, p, q, n, i, sp, nact
     Complex (Kind=Kind(0.d0)) :: x, z, zq(4)
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_vslice_r(nd, ncol, ld, nf, t, cj, desc, size(vr_ptr,1), size(V_meta,2), size(nsigma_d,1), vr_ptr, vr_ent, &
+            & V_meta, V_type, nsigma_d, V_exp, M)
+       return
+    endif
+#endif
 
     nblk = (ncol + vb - 1) / vb
     ! thread (r, column block): the factors of row r are looked up once per thread when there are at most 4 of them

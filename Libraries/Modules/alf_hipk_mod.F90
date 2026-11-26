@@ -45,6 +45,7 @@ module alf_hipk_mod
   public :: hk_enabled, hk_set_enabled
   public :: hk_setd, hk_setl, hk_scale_cols, hk_diagabs, hk_divrows, hk_phase, hk_scale_row1, hk_scale_col1, hk_triu, &
        &    hk_perm, hk_perm_vec, hk_ct, hk_rowdiv, hk_colinv, hk_tpup, hk_det_phase, hk_cgr_phase, hk_testscale, hk_prec
+  public :: hk_scatter_rows, hk_vslice_r, hk_blk_gather, hk_blk_scale, hk_sub_flush_gather
 
   ! HIP replacements on (default) or off (ALF_HIP_KERNELS=0: the OpenMP kernels run, for A/B checks); -1 = not read yet
   integer, save :: hk_state = -1
@@ -165,6 +166,32 @@ module alf_hipk_mod
       import :: c_ptr, c_int
       integer(c_int), value :: n
       type(c_ptr), value :: A, B, r
+    end function
+    integer(c_int) function alfhk_scatter_rows(nd, ncol, P, M, ld, W, ldw) bind(C, name='alfhk_scatter_rows')
+      import :: c_ptr, c_int
+      integer(c_int), value :: nd, ncol, ld, ldw
+      type(c_ptr), value :: P, M, W
+    end function
+    integer(c_int) function alfhk_vslice_r(nd, ncol, ld, nf, t, cj, desc, ldptr, nop, ldn, vr_ptr, vr_ent, V_meta, V_type, &
+         & nsig, V_exp, M) bind(C, name='alfhk_vslice_r')
+      import :: c_ptr, c_int
+      integer(c_int), value :: nd, ncol, ld, nf, t, cj, desc, ldptr, nop, ldn
+      type(c_ptr), value :: vr_ptr, vr_ent, V_meta, V_type, nsig, V_exp, M
+    end function
+    integer(c_int) function alfhk_blk_gather(nfl, nfa, nfb, ld, b, nd, G, bsk, gbk) bind(C, name='alfhk_blk_gather')
+      import :: c_ptr, c_int
+      integer(c_int), value :: nfl, nfa, nfb, ld, b, nd
+      type(c_ptr), value :: G, bsk, gbk
+    end function
+    integer(c_int) function alfhk_blk_scale(nfl, nfa, nfb, ld, b, nd, ldc, G, bsk, cbk) bind(C, name='alfhk_blk_scale')
+      import :: c_ptr, c_int
+      integer(c_int), value :: nfl, nfa, nfb, ld, b, nd, ldc
+      type(c_ptr), value :: G, bsk, cbk
+    end function
+    integer(c_int) function alfhk_sub_flush_gather(ld, nrow, k, nf, ldslot, G, S, C, Qt, slot) bind(C, name='alfhk_sub_flush_gather')
+      import :: c_ptr, c_int
+      integer(c_int), value :: ld, nrow, k, nf, ldslot
+      type(c_ptr), value :: G, S, C, Qt, slot
     end function
   end interface
 
@@ -443,6 +470,72 @@ contains
     !$omp end target data
     call chk(rc, 'prec')
   end subroutine hk_prec
+
+  !> M(P(l), j) = W(l, j)  (k_scatter_rows of gpu_wrap_mod)
+  subroutine hk_scatter_rows(nd, ncol, P, M, ld, W, ldw)
+    integer, intent(in) :: nd, ncol, ld, ldw
+    integer, target :: P(*)
+    complex(kind=kind(0.d0)), target :: M(*), W(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(P, M, W)
+    rc = alfhk_scatter_rows(int(nd,c_int), int(ncol,c_int), c_loc(P(1)), c_loc(M(1)), int(ld,c_int), c_loc(W(1)), int(ldw,c_int))
+    !$omp end target data
+    call chk(rc, 'scatter_rows')
+  end subroutine hk_scatter_rows
+
+  !> the Op_V slice of k_vslice_R (gpu_wrap_mod); ldptr, nop, ldn: leading extents of vr_ptr, V_meta (2nd), nsigma_d
+  subroutine hk_vslice_r(nd, ncol, ld, nf, t, cj, desc, ldptr, nop, ldn, vr_ptr, vr_ent, V_meta, V_type, nsig, V_exp, M)
+    integer, intent(in) :: nd, ncol, ld, nf, t, ldptr, nop, ldn
+    logical, intent(in) :: cj, desc
+    integer, target :: vr_ptr(*), vr_ent(*), V_meta(*), V_type(*)
+    complex(kind=kind(0.d0)), target :: nsig(*), V_exp(*), M(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(vr_ptr, vr_ent, V_meta, V_type, nsig, V_exp, M)
+    rc = alfhk_vslice_r(int(nd,c_int), int(ncol,c_int), int(ld,c_int), int(nf,c_int), int(t,c_int), int(merge(1,0,cj),c_int), &
+         & int(merge(1,0,desc),c_int), int(ldptr,c_int), int(nop,c_int), int(ldn,c_int), c_loc(vr_ptr(1)), c_loc(vr_ent(1)), &
+         & c_loc(V_meta(1)), c_loc(V_type(1)), c_loc(nsig(1)), c_loc(V_exp(1)), c_loc(M(1)))
+    !$omp end target data
+    call chk(rc, 'vslice_r')
+  end subroutine hk_vslice_r
+
+  !> k_blk_gather of gpu_lowrank_mod
+  subroutine hk_blk_gather(nfl, nfa, nfb, ld, b, nd, G, bsk, gbk)
+    integer, intent(in) :: nfl, nfa, nfb, ld, b, nd
+    complex(kind=kind(0.d0)), target :: G(*), gbk(*)
+    integer, target :: bsk(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(G, bsk, gbk)
+    rc = alfhk_blk_gather(int(nfl,c_int), int(nfa,c_int), int(nfb,c_int), int(ld,c_int), int(b,c_int), int(nd,c_int), &
+         & c_loc(G(1)), c_loc(bsk(1)), c_loc(gbk(1)))
+    !$omp end target data
+    call chk(rc, 'blk_gather')
+  end subroutine hk_blk_gather
+
+  !> k_blk_scale of gpu_lowrank_mod
+  subroutine hk_blk_scale(nfl, nfa, nfb, ld, b, nd, ldc, G, bsk, cbk)
+    integer, intent(in) :: nfl, nfa, nfb, ld, b, nd, ldc
+    complex(kind=kind(0.d0)), target :: G(*), cbk(*)
+    integer, target :: bsk(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(G, bsk, cbk)
+    rc = alfhk_blk_scale(int(nfl,c_int), int(nfa,c_int), int(nfb,c_int), int(ld,c_int), int(b,c_int), int(nd,c_int), &
+         & int(ldc,c_int), c_loc(G(1)), c_loc(bsk(1)), c_loc(cbk(1)))
+    !$omp end target data
+    call chk(rc, 'blk_scale')
+  end subroutine hk_blk_scale
+
+  !> k_sub_flush_gather of gpu_lowrank_mod
+  subroutine hk_sub_flush_gather(G, ld, nrow, S, k, nf, C, Qt, slot, ldslot)
+    integer, intent(in) :: ld, nrow, k, nf, ldslot
+    complex(kind=kind(0.d0)), target :: G(*), C(*), Qt(*)
+    integer, target :: S(*), slot(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(G, S, C, Qt, slot)
+    rc = alfhk_sub_flush_gather(int(ld,c_int), int(nrow,c_int), int(k,c_int), int(nf,c_int), int(ldslot,c_int), c_loc(G(1)), &
+         & c_loc(S(1)), c_loc(C(1)), c_loc(Qt(1)), c_loc(slot(1)))
+    !$omp end target data
+    call chk(rc, 'sub_flush_gather')
+  end subroutine hk_sub_flush_gather
 
 end module alf_hipk_mod
 #endif
