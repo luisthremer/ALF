@@ -53,7 +53,7 @@ Program Test_gpu_state
      Call Walker_alloc(walker)
      Call Setup_gpu(walker, 'info')
      Call check(gpu_active, 'mirror active')
-     Call check(info_has('ACTIVE (mirror, wraps and updates on the device path)'), 'info: ACTIVE line')
+     Call check(info_has('ACTIVE (mirror; wraps, updates and stabilisation on the device path)'), 'info: ACTIVE line')
      Call check(info_has('GPU build: backend'), 'info: backend line')
      Call check(info_has('GPU debug env reader:'), 'info: env reader line')
      Call Finalize_gpu()

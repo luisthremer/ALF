@@ -51,12 +51,102 @@
 !--------------------------------------------------------------------
 module linalg_mod
   use iso_c_binding, only: c_loc, c_f_pointer
+  use iso_fortran_env, only: int64
   implicit none
   private
-  public :: la_zgemm, la_zgemm_cr, la_zhemm, la_ztrsm, la_ztrmm, la_zgemv, la_zgeru, la_zscal, la_zcopy, &
+  public :: la_dznrm2, la_zqrpp, la_zgemm, la_zgemm_cr, la_zhemm, la_ztrsm, la_ztrmm, la_zgemv, la_zgeru, la_zscal, la_zcopy, &
        &    la_zlacpy, la_zgetrf, la_zgetrs, la_zgetri, la_zgeqrf, la_zgeqp3, la_zungqr, la_zunmqr, &
        &    la_zlaset, la_zlapmr, la_zlapmt, la_zgesvd, la_zheev, la_zgeev
 contains
+  !> Euclidean norm of a complex vector (BLAS 1); used by the GPU path (pre-pivot of the stabilisation)
+  real(kind=kind(0.d0)) function la_dznrm2(n, x, incx)
+    integer, intent(in) :: n, incx
+    complex(kind=kind(0.d0)), intent(in) :: x(*)
+    real(kind=kind(0.d0)), external :: dznrm2
+    la_dznrm2 = dznrm2(n, x, incx)
+  end function la_dznrm2
+
+  !> True if x is NaN or +-Inf (bit test on the exponent: not folded away under -ffast-math)
+  logical function la_not_finite(x)
+    real(kind=kind(0.d0)), intent(in) :: x
+    integer(int64), parameter :: expmask = int(z'7FF0000000000000', int64)
+    integer(int64) :: b
+    b = transfer(x, b)
+    la_not_finite = (iand(b, expmask) == expmask)
+  end function la_not_finite
+
+  !> QR with a column-norm pre-pivot, A(:,ipvt) = Q R (m >= n). The columns of A (m x n) are ordered by descending
+  !> 2-norm (DZNRM2; stable: equal norms keep their order), then ZGEQRF without further pivoting. On return A and tau
+  !> hold the ZGEQRF factors and ipvt(1:n) has ZGEQP3 semantics (column j of the permuted matrix is column ipvt(j) of
+  !> the input). lwork = -1: workspace query, work(1) = optimal size of ZGEQRF, nothing else is done.
+  !> info = -101: A (or a column norm) is NaN or Inf, A is not changed; otherwise the info of ZGEQRF.
+  !> Used by the GPU path; also the host reference of the device pre-pivoted decomposition.
+  subroutine la_zqrpp(m, n, a, lda, ipvt, tau, work, lwork, info)
+    integer, intent(in) :: m, n, lda, lwork
+    complex(kind=kind(0.d0)), intent(inout) :: a(lda,*)
+    integer, intent(out) :: ipvt(*)
+    complex(kind=kind(0.d0)), intent(inout) :: tau(*), work(*)
+    integer, intent(out) :: info
+    real(kind=kind(0.d0)) :: nrm(max(n,1))
+    complex(kind=kind(0.d0)) :: col(max(m,1))
+    integer :: i, j, k, kk
+    logical :: done(max(n,1))
+    external :: zgeqrf
+    info = 0
+    if (lwork == -1) then
+       call zgeqrf(m, n, a, lda, tau, work, lwork, info)
+       return
+    endif
+    if (m <= 0 .or. n <= 0) return
+    if (m < n) then
+       info = -1
+       return
+    endif
+    do j = 1, n
+       do i = 1, m
+          if (la_not_finite(dble(a(i,j))) .or. la_not_finite(aimag(a(i,j)))) then
+             info = -101
+             return
+          endif
+       enddo
+       nrm(j) = la_dznrm2(m, a(1,j), 1)
+       if (la_not_finite(nrm(j))) then
+          info = -101
+          return
+       endif
+    enddo
+    ! stable descending insertion sort of the column norms
+    do j = 1, n
+       ipvt(j) = j
+    enddo
+    do i = 2, n
+       kk = ipvt(i)
+       j = i - 1
+       do while (j >= 1)
+          if (nrm(ipvt(j)) >= nrm(kk)) exit
+          ipvt(j+1) = ipvt(j)
+          j = j - 1
+       enddo
+       ipvt(j+1) = kk
+    enddo
+    ! A(:,j) <- A(:,ipvt(j)) in place, following the cycles of the permutation
+    done = .false.
+    do i = 1, n
+       if (done(i)) cycle
+       col(1:m) = a(1:m,i)
+       j = i
+       do
+          done(j) = .true.
+          k = ipvt(j)
+          if (k == i) exit
+          a(1:m,j) = a(1:m,k)
+          j = k
+       enddo
+       a(1:m,j) = col(1:m)
+    enddo
+    call zgeqrf(m, n, a, lda, tau, work, lwork, info)
+  end subroutine la_zqrpp
+
   !> C = alpha op(A) op(B) + beta C (BLAS 3)
   subroutine la_zgemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc)
     character(len=1), intent(in) :: transa, transb

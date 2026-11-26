@@ -147,7 +147,7 @@ Program Main
 #endif
         Use qmc_setup_mod, only: Setup_model, Setup_fields, Setup_update_schemes, Write_info_parameters, Write_info_start, Write_info_end
 #ifdef ALF_GPU
-        Use qmc_setup_mod, only: Setup_gpu, Finalize_gpu
+        Use qmc_setup_mod, only: Setup_gpu, Setup_gpu_stack, Finalize_gpu
 #endif
         Use comm_mod, only: is_root, comm_world
         Use qmc_driver_mod, only: Langevin_update, HMC_update, MALA_update
@@ -328,6 +328,10 @@ Program Main
         ! Initial storage from Ltrot down to 0, then the Green function and phase on time slice 0
         Call Walker_init_stack(walker)
         Call Walker_init_GR(walker)
+#ifdef ALF_GPU
+        ! UDV stacks and Green function to the device stabilisation
+        Call Setup_gpu_stack(walker)
+#endif
 #ifdef MPI
         !WRITE(6,*) 'Phase is: ', Irank, PHASE, GR(1,1,1)
 #else

@@ -13,7 +13,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | ID | Issue | Class | Status |
 |---|---|---|---|
 | DP | Determinant phase underflow, CPU (CGR / DET_C) | A | fixed in aef50743 |
-| DP-GPU | Determinant phase underflow, GPU line | A | fixed on `fix/det-phase-underflow` (GPU line); not yet in every GPU branch |
+| DP-GPU | Determinant phase underflow, GPU line | A | fixed on the CM line with feature `gpu-stab` (step 1d, GPU=host: `k_det_phase` + the `LU_PHASE_SAFE` rule, test `52-gpu-stab` mode `phase`); device backends in step 2; not yet in every other GPU branch |
 | H1 | NaN guards removed by -ffast-math | A | fixed by feature `nan-guards` (G and scale checks by bit pattern) |
 | H2 | Large beta: scale overflow in CGR -> NaN | B | open; since aef50743 the run stops (phase guard) instead of silent NaN |
 | H3 | No measurements -> NaN observables | B | fixed by feature `b-batch-1` (start-up stop: NSweep < 1 or LOBS_ST > LOBS_EN) |
@@ -36,6 +36,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | L5 | Tempering messages | C | open |
 | L6 | GPU line: confin 0 gives finite wrong numbers | B | open (GPU line) |
 | G1 | GPU line: `ALF_GPU_SELFTEST` leaves test data in the device copy of G marked valid | B | fixed by feature `gpu-wrap-update` (step 1c; harmless in 1b, where the sweep did not use the mirror) |
+| G2 | GPU line: wrapped G (device wraps and updates, step 1c) less accurate than on the CPU: Precision Green mean 1.4 - 6x the CPU value, same chain | B (proposed) | open; observation, cause not isolated (see below) |
 | MK | Makefile: Prog objects not rebuilt after Libraries/Modules changes | B | open |
 | WF | Trial wave function normalisation, large N_part (suspected) | B | open, not reproduced |
 | P1 | Op_V_is_symmetric slow (start-up, Symm = .T.) | B | open; fast version on gpu-port |
@@ -215,5 +216,18 @@ AddressSanitizer/UBSan on Code-modularity for all models (no report), FPE traps 
   `Control_PrecisionP`. Verified on one H100 (L = 48 to 96); HIP, Intel and Ltau = 1 not rerun.
   Details: `docs/gpu/KNOWN_ISSUE_DET_PHASE_UNDERFLOW.md` on that branch; check script
   `docs/gpu/scripts/helma/check_large_N_phase.sh`.
+- **Status on the CM line:** fixed with feature `gpu-stab` (step 1d): the GPU=host stabilisation takes the phase from the LU
+  at every CGR; `k_det_phase` returns the normalised and the raw product and the host selects by the rule of `LU_PHASE_SAFE`
+  (bitwise the same rule, tested in `52-gpu-stab phase` at n = 3200 with the raw product underflowing); `Control_Check_Phase`
+  after every device CGR. The Helma check at L = 56 .. 96 belongs to the device backends (step 2).
 - **To do:** merge the fix into every GPU branch before it is ported (P2.4); a GPU branch that has
   not merged it must not be used for N >~ 2950.
+
+## G2. GPU line: Precision Green of the device path (observation, 2026-11-26)
+
+- **Applies to:** GPU=host (device wraps and updates of step 1c; with and without the device stabilisation of step 1d).
+- **Symptom:** Hubbard 4x4 (SU(2), Ltrot = 50, 6 sweeps), same chain (confout byte-identical to the CPU run): mean of the
+  `Precision Green` line of the info file, GPU path / CPU path: Nwrap = 10: 2.0e-14 / 1.3e-14, Nwrap = 25: 7.6e-11 / 1.7e-11
+  (step 1c canvas with host stabilisation: 9.5e-11 / 1.7e-11), Nwrap = 50: 8.9e-5 / 2.2e-5 (1c canvas 9.5e-5 / 2.2e-5). The
+  observables agree to 1e-11 .. 1e-5, i.e. within that noise. Not caused by the device stabilisation (the 1c canvas shows it).
+- **Cause:** not isolated (candidates: operation order of the device wraps, rank-1 update). To check before the device backends (step 2).

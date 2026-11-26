@@ -139,7 +139,7 @@ Module gpu_state_mod
   Public :: GT0_d, G0T_d, GTT_d, scr_c, scr_vec, scr_r, scr_work, scr_ipiv
   Public :: upd_cnt
   ! ticket 212: the single reader of every ALF_GPU_* variable (all other GPU files only call these)
-  Public :: gpu_env_get, gpu_env_is, gpu_env_int, gpu_env_fault_stab_eps, gpu_env_fault_tau_eps, gpu_env_check
+  Public :: gpu_env_get, gpu_env_is, gpu_env_int, gpu_env_fault_tau_eps, gpu_env_check
 
   Logical :: gpu_active = .false.
   Character (len=256) :: gpu_reason = 'gpu_state_setup not called'
@@ -202,11 +202,11 @@ Module gpu_state_mod
   Integer :: env_n = 0
   Character (len=96) :: env_reader = 'not read yet'
   ! Variables the allow-list reader looks up: every ALF_GPU_* / ALF_LA_TEST_* name used by the GPU port
-  Character (len=24), parameter :: env_allow(39) = [ Character(len=24) :: &
+  Character (len=24), parameter :: env_allow(35) = [ Character(len=24) :: &
        & 'ALF_GPU_DISABLE', 'ALF_GPU_DEBUG', 'ALF_GPU_SELFTEST', 'ALF_GPU_UPDTEST', 'ALF_GPU_FAULT', &
        & 'ALF_GPU_FAULT_STAB', 'ALF_GPU_FAULT_TAU', 'ALF_GPU_FAULT_TAU_AT', 'ALF_GPU_EXIT', 'ALF_GPU_NS', &
-       & 'ALF_GPU_NOUPDATE', 'ALF_GPU_NOOBS', 'ALF_GPU_OBS_SKIP', 'ALF_GPU_CGR_LU', 'ALF_GPU_STABCHECK', &
-       & 'ALF_GPU_STABTIME', 'ALF_GPU_STABMIX', 'ALF_GPU_TAU_NS', 'ALF_GPU_TAUSWAP', 'ALF_GPU_TAUTIME', &
+       & 'ALF_GPU_NOUPDATE', 'ALF_GPU_NOOBS', 'ALF_GPU_OBS_SKIP', &
+       & 'ALF_GPU_TAU_NS', 'ALF_GPU_TAUSWAP', 'ALF_GPU_TAUTIME', &
        & 'ALF_GPU_TAUTEST_V', 'ALF_GPU_TAUDIAG', 'ALF_GPU_TAUDIAG_NUL', 'ALF_GPU_TAUDIAG_VAR', &
        & 'ALF_GPU_TAUDIAG_QREF', 'ALF_GPU_TAUDIAG_SEED', 'ALF_GPU_TAUDIAG_QVAR', 'ALF_GPU_TAUDIAG_FROM', &
        & 'ALF_GPU_TAUDIAG_AMP', 'ALF_GPU_TAUDIAG_QHOST', 'ALF_GPU_TIMING', 'ALF_GPU_TRACE', 'ALF_GPU_VB', &
@@ -214,7 +214,6 @@ Module gpu_state_mod
        & 'ALF_LA_TEST_POISON_INFO' ]
   Logical :: env_read_done = .false.
   Integer :: env_rank = 0, env_size = 1              ! MPI_COMM_WORLD rank and size (1 and 0 without MPI)
-  Real (Kind=Kind(0.d0)) :: env_eps = 0.d0          ! x of ALF_GPU_FAULT_STAB=eps:<x>
   Real (Kind=Kind(0.d0)) :: env_eps_tau = 0.d0      ! x of ALF_GPU_FAULT_TAU=eps:<x> (ticket 207)
 
 Contains
@@ -371,12 +370,6 @@ Contains
     Endif
   End Subroutine gpu_env_int
 
-  !> x of ALF_GPU_FAULT_STAB=eps:<x>; 0 if that fault is not armed
-  Real (Kind=Kind(0.d0)) Function gpu_env_fault_stab_eps()
-    Implicit none
-    gpu_env_fault_stab_eps = env_eps
-  End Function gpu_env_fault_stab_eps
-
   !> x of ALF_GPU_FAULT_TAU=eps:<x>; 0 if that fault is not armed (ticket 207)
   Real (Kind=Kind(0.d0)) Function gpu_env_fault_tau_eps()
     Implicit none
@@ -430,7 +423,7 @@ Contains
     Real (Kind=Kind(0.d0)) :: x
     Character (len=6) :: bk
     If (.not. env_read_done) Call gpu_env_read()
-    env_eps = 0.d0; env_eps_tau = 0.d0
+    env_eps_tau = 0.d0
 #if defined(ALF_LA_CUDA)
     bk = 'CUDA'
 #elif defined(ALF_LA_ONEMKL)
@@ -488,17 +481,6 @@ Contains
        ok = .false.
        Select case (trim(v))
        Case ('perm', 'phase', 'nan'); ok = .true.
-       Case default
-          If (len_trim(v) > 4) then
-             If (v(1:4) == 'eps:') then
-                Read(v(5:),*,iostat=ios) x
-                If (ios == 0) then
-                   If (x > 0.d0 .and. x < 1.d300) then
-                      ok = .true.; env_eps = x
-                   Endif
-                Endif
-             Endif
-          Endif
        End Select
        If (.not. ok) then
           Call env_fail('GPU fault value invalid: ALF_GPU_FAULT_STAB='//trim(v))
@@ -697,7 +679,7 @@ Contains
 !> @details
 !> Called once per run between Walker_alloc and Walker_init_stack.  Runs the environment check, gpu_supported, builds
 !> the flat tables, allocates and maps the buffers and writes the state to the info file:
-!> "ACTIVE (mirror, wraps and updates on the device path)" or "INACTIVE, reason: ...".  Optional self-test
+!> "ACTIVE (mirror; wraps, updates and stabilisation on the device path)" or "INACTIVE, reason: ...".  Optional self-test
 !> (ALF_GPU_SELFTEST).  The walker is only read (NSTM).
 !> @param[in] walker   walker whose layout (NSTM) sizes the UDV buffers
 !> @param[in] file_info name of the info file (appended to by the group root)
@@ -746,10 +728,10 @@ Contains
     call system_clock(c1)
     tsetup = real(c1-c0,kind(0.d0))/real(crate,kind(0.d0))
     if (omp_get_num_devices() > 0) then
-       write(line,'(A,I0)') 'GPU path (gpu_state): ACTIVE (mirror, wraps and updates on the device path), OpenMP device ', &
+       write(line,'(A,I0)') 'GPU path (gpu_state): ACTIVE (mirror; wraps, updates and stabilisation on the device path), OpenMP device ', &
             & omp_get_default_device()
     else
-       line = 'GPU path (gpu_state): ACTIVE (mirror, wraps and updates on the device path), OpenMP host fallback (no offload device)'
+       line = 'GPU path (gpu_state): ACTIVE (mirror; wraps, updates and stabilisation on the device path), OpenMP host fallback (no offload device)'
     endif
     call info_line(line)
     write(line,'(A,I0,A,I0,A,I0)') 'GPU mirror: hopping elements ', g_nel, ', Op_V operators ', g_Nop*g_NFL, &
