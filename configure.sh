@@ -2,7 +2,7 @@
 # shellcheck disable=SC2059
 # This script sets necessary environment variables for compiling ALF.
 # You need to source it prior to executing make.
-USAGE="usage 'source configure.sh MACHINE MODE STAB'
+USAGE="usage 'source configure.sh MACHINE MODE STAB [HDF5] [Devel] [GPU=none|host]'
 
 Please choose one of the following MACHINEs:
  * GNU
@@ -29,6 +29,9 @@ Further optional arguments:
   Devel: Compile with additional flags for development and debugging
   HDF5: Compile with HDF5
   NO-INTERACTIVE: Do not ask for user confirmation during excution of this script
+  GPU=none|host: GPU target (default none = unchanged CPU build). GPU=host builds the GPU code path with
+               -DALF_GPU and the host backend (no offload target; for tests on machines without a GPU).
+               GPU=nvidia|intel|amd are not yet available on this line.
   NO-FALLBACK: Do not use a fallback option in case of an unknown/no machine,
                but instead return with value 1
 To hand an additional flag to the compiler, export it in the varible ALF_FLAGS_EXT prior to sourcing this script.
@@ -230,6 +233,7 @@ stabv=0
 HDF5_ENABLED=""
 NO_INTERACTIVE=""
 NO_FALLBACK=""
+GPU_TARGET="none"
 
 while [ "$#" -gt "0" ]; do
   ARG="$(echo "$1" | tr '[:lower:]' '[:upper:]')"
@@ -264,6 +268,19 @@ while [ "$#" -gt "0" ]; do
     ;;
     NO-FALLBACK)
       NO_FALLBACK="1"
+    ;;
+    GPU=NONE|GPU=HOST)
+      GPU_TARGET="$(echo "${ARG#GPU=}" | tr '[:upper:]' '[:lower:]')"
+    ;;
+    GPU=NVIDIA|GPU=INTEL|GPU=AMD)
+      printf "${RED}GPU=%s is not yet available on this line (P2.4 step 2)${NC}\n" "$(echo "${ARG#GPU=}" | tr '[:upper:]' '[:lower:]')" 1>&2
+      rm -r "$tmpdir"
+      return 1
+    ;;
+    GPU=*)
+      printf "${RED}Error: unknown GPU target '%s'. Allowed: GPU=none, GPU=host.${NC}\n" "${ARG#GPU=}" 1>&2
+      rm -r "$tmpdir"
+      return 1
     ;;
     *)
       if [ "$Machinev" = "1" ]; then
@@ -566,6 +583,18 @@ if [ "${HDF5_ENABLED}" = "1" ]; then
   ALF_FLAGS_ANA="${ALF_FLAGS_ANA} ${INC_HDF5} -DHDF5 -DHDF5_ZLIB"
   ALF_FLAGS_PROG="${ALF_FLAGS_PROG} -DHDF5 -DHDF5_ZLIB"
 fi
+# GPU target (GPU=none: nothing is changed; GPU=host: GPU code path on the host, no offload flags)
+case "$GPU_TARGET" in
+  host)
+    ALF_FLAGS_MODULES="${ALF_FLAGS_MODULES} -DALF_GPU"
+    ALF_FLAGS_PROG="${ALF_FLAGS_PROG} -DALF_GPU"
+    export ALF_GPU="host"
+    printf "\nGPU target: ${GREEN}host${NC} (-DALF_GPU, host backend, no offload)\n"
+  ;;
+  *)
+    unset ALF_GPU
+  ;;
+esac
 export ALF_FLAGS_QRREF
 export ALF_FLAGS_MODULES
 export ALF_FLAGS_ANA
