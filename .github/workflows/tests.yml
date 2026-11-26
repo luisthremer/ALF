@@ -204,6 +204,37 @@ jobs:
           ctest --test-dir testsuite/tests --output-on-failure
 
   # ======================
+  # GPU code path on the CPU (GPU=host: -DALF_GPU, no offload target; P2.4 plan, decision D2)
+  # ======================
+  gpu_host:
+    name: GPU=host (GNU serial) · ${{ matrix.stab }} · ${{ matrix.build }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        build: [optimized, debug]
+        stab: [default, LOG]
+    container:
+      image: ghcr.io/alf-qmc/alf-container/alf-requirements/trixie
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and test
+        shell: bash
+        env:
+          BUILD: ${{ matrix.build }}
+          STAB: ${{ matrix.stab }}
+          OMP_NUM_THREADS: '1'
+        run: |
+          if [ "$BUILD" = debug ]; then
+            export ALF_FLAGS_EXT='-O0 -fno-fast-math -g -fcheck=all -ffpe-trap=invalid,zero,overflow'
+          fi
+          if [ "$STAB" = LOG ]; then stab=LOG; else stab=""; fi
+          . ./configure.sh GNU noMPI $stab GPU=host
+          make -j2 all
+          cmake -S testsuite -B testsuite/tests
+          cmake --build testsuite/tests -j2
+          ctest --test-dir testsuite/tests --output-on-failure
+
+  # ======================
   # Valgrind
   # ======================
   valgrind_gnu_trixie:
