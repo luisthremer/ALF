@@ -1,0 +1,108 @@
+build	case	expect	verdict	gpu_state	vs_expect	info_reason	comparison	time_active/disabled	note
+serial	hub-mz-4x4	works	works	ACTIVE	OK		max scaled diff 2.09e-09 (tol 5.8e-09), 31 files	0.3s/0.1s	
+serial	hub-mz-6x6-20sw	works	works	ACTIVE	OK		max scaled diff 3.29e-10 (tol 3.2e-09), 31 files	14.5s/4.6s	Start/parameters as shipped (20 sweeps, 5 bins)
+serial	hub-su2-6x6-20sw	works	works	ACTIVE	OK		max scaled diff 1.37e-12 (tol 1.0e-11), 23 files	7.6s/2.5s	
+serial	hub-mz-6x6	works	works	ACTIVE	OK		max scaled diff 7.35e-10 (tol 6.9e-09), 31 files	1.2s/0.4s	
+serial	hub-su2-4x4	works	works	ACTIVE	OK		max scaled diff 9.01e-14 (tol 1.0e-11), 23 files	0.2s/0.1s	
+serial	hub-su2-6x6	works	works	ACTIVE	OK		max scaled diff 2.89e-13 (tol 1.0e-11), 23 files	0.7s/0.2s	
+serial	hub-nsun4-su2	works	works	ACTIVE	OK		max scaled diff 2.37e-13 (tol 1.0e-11), 23 files	0.2s/0.1s	N_SUN row
+serial	hub-nsun4-mz	works	works	ACTIVE	OK		max scaled diff 5.16e-11 (tol 4.2e-10), 31 files	0.2s/0.1s	N_SUN row
+serial	hub-complex-phiX	works	works	ACTIVE	OK		max scaled diff 3.42e-13 (tol 1.0e-11), 23 files	0.2s/0.1s	complex hopping
+serial	hub-complex-flux	works	works	ACTIVE	OK		max scaled diff 4.13e-13 (tol 1.0e-11), 23 files	0.2s/0.1s	complex hopping, flux
+serial	hub-ladder	works	works	ACTIVE	OK		max scaled diff 9.28e-12 (tol 1.7e-10), 31 files	0.2s/0.1s	
+serial	hub-bilayer-square	works	works	ACTIVE	OK		max scaled diff 6.88e-13 (tol 1.0e-11), 23 files	0.6s/0.4s	
+serial	hub-h0-pinning	works	works	ACTIVE	OK		max scaled diff 2.91e-10 (tol 2.6e-09), 33 files	0.3s/0.1s	
+serial	hub-symm-F	works	works	ACTIVE	OK		max scaled diff 9.41e-14 (tol 1.0e-11), 23 files	0.1s/0.1s	
+serial	hub-checkerboard-F	works	works	ACTIVE	OK		max scaled diff 1.19e-09 (tol 5.5e-09), 31 files	0.2s/0.2s	
+serial	hub-ltau0	works	works	ACTIVE	OK		max scaled diff 2.70e-11 (tol 5.8e-09), 21 files	0.2s/0.1s	
+serial	hub-lobs-window	works	works	ACTIVE	OK		max scaled diff 2.09e-09 (tol 5.8e-09), 31 files	0.2s/0.1s	LOBS_ST/LOBS_EN window
+serial	sch-delayed-N4	works	works	ACTIVE	OK		max scaled diff 2.09e-09 (tol 5.8e-09), 31 files	0.2s/0.1s	
+serial	sch-submatrix-N4	works	works	ACTIVE	OK		max scaled diff 2.09e-09 (tol 5.8e-09), 31 files	0.2s/0.1s	
+serial	sch-delayed-N16-su2	works	works	ACTIVE	OK		max scaled diff 2.89e-13 (tol 1.0e-11), 23 files	0.7s/0.2s	
+serial	sch-auto	refused:auto	refused	INACTIVE	OK	Sequential_scheme = "auto" is not supported on the GPU path	max scaled diff 0.00e+00 (tol 5.9e-09), 31 files	0.1s/0.1s	
+serial	sch-timed-N-1	refused:N_delay = -1	refused	INACTIVE	OK	timed automatic N_delay (N_delay = -1) is not supported on the GPU path	max scaled diff 0.00e+00 (tol 5.8e-09), 31 files	0.1s/0.1s	
+serial	sch-lowrank-cross-slice	stops	stops	NOINFO	OK		exit codes active 2, disabled 2; ALF Copyright (C) 2016 - 2026 The ALF project contributors | This Program comes with ABSOLUTELY NO WARRANTY; for details see license.GPL | This is free software, and you are welcome to redistribute it under certain conditions.	0.0s/0.0s	option does not exist on this line
+serial	mv-global	refused:global moves	refused	INACTIVE	OK	global moves are not supported on the GPU path	max scaled diff 0.00e+00 (tol 1.5e-11), 31 files	0.0s/0.0s	continuous fields (discrete Hubbard stops on every path)
+serial	mv-global-discrete	stops	stops	INACTIVE	OK	global moves are not supported on the GPU path	exit codes active 6, disabled 6; Hamiltonians/Hamiltonian_Hubbard_smod.F90 (1140): | Error in Hamiltonian setup | Terminating program	0.0s/0.0s	Hubbard has no discrete global move: model stops, CPU and GPU path alike
+serial	mv-global-tau	refused:global moves	refused	INACTIVE	OK	global moves are not supported on the GPU path	max scaled diff 0.00e+00 (tol 7.7e-11), 31 files	0.1s/0.1s	
+serial	mv-propose-S0	refused:Propose_S0	refused	INACTIVE	OK	Propose_S0 is not supported on the GPU path	max scaled diff 0.00e+00 (tol 5.8e-09), 31 files	0.1s/0.1s	
+serial	mv-langevin	refused:Langevin	refused	INACTIVE	OK	Langevin/HMC is not supported on the GPU path	max scaled diff 0.00e+00 (tol 1.0e-11), 24 files	0.1s/0.1s	
+serial	mv-hmc	refused:Langevin	refused	INACTIVE	OK	Langevin/HMC is not supported on the GPU path	max scaled diff 0.00e+00 (tol 1.2e-11), 23 files	0.1s/0.1s	
+serial	mv-mala-seq	refused:MALA	refused	INACTIVE	OK	MALA updates are not supported on the GPU path	max scaled diff 0.00e+00 (tol 1.0e-11), 23 files	0.1s/0.1s	
+serial	mv-mala-global	refused:MALA	refused	INACTIVE	OK	MALA updates are not supported on the GPU path	max scaled diff 0.00e+00 (tol 1.0e-11), 23 files	0.1s/0.1s	
+serial	mv-mala-global-tau	refused:MALA	refused	INACTIVE	OK	MALA updates are not supported on the GPU path	max scaled diff 0.00e+00 (tol 1.0e-11), 23 files	0.1s/0.1s	
+serial	mv-continuous-seq	refused:field type	refused	INACTIVE	OK	Hamiltonian Hubbard: Op_V(1,1) has field type 3 (only 1 and 2 supported)	max scaled diff 0.00e+00 (tol 1.0e-11), 23 files	0.1s/0.1s	HS field type 3 with sequential updates
+serial	proj-hubbard	refused:projector	refused	INACTIVE	OK	projector code is not supported on the GPU path	max scaled diff 0.00e+00 (tol 5.1e-09), 31 files	0.1s/0.1s	
+serial	mod-plain-vanilla	refused:Calc_Fl	refused	INACTIVE	OK	Calc_Fl with weight reconstruction (ham%weight_reconstruction) is not supported on the GPU path	max scaled diff 0.00e+00 (tol 1.0e-11), 31 files	0.0s/0.0s	
+serial	mod-plain-vanilla-proj	refused:projector	refused	INACTIVE	OK	projector code is not supported on the GPU path	max scaled diff 0.00e+00 (tol 1.0e-11), 21 files	0.2s/0.2s	
+serial	mod-kondo	refused	refused	INACTIVE	OK	Hamiltonian Kondo: Op_V(17,1) is not diagonal	max scaled diff 0.00e+00 (tol 1.2e-11), 31 files	0.2s/0.2s	
+serial	mod-tV	refused	refused	INACTIVE	OK	Hamiltonian tV: Op_V(1,1) is not diagonal	max scaled diff 0.00e+00 (tol 1.0e-11), 17 files	0.1s/0.1s	
+serial	mod-Z2-matter	refused	refused	INACTIVE	OK	Hamiltonian Z2_Matter: Op_V(1,1) is not diagonal	max scaled diff 0.00e+00 (tol 1.0e-11), 21 files	0.1s/0.1s	
+serial	mod-LRC	refused	refused	INACTIVE	OK	Hamiltonian LRC: Op_V(1,1) has field type 3 (only 1 and 2 supported)	max scaled diff 0.00e+00 (tol 1.0e-11), 18 files	0.1s/0.1s	
+serial	mod-spin-peierls	refused	refused	INACTIVE	OK	Hamiltonian Spin_Peierls: Op_V(37,1) is not diagonal	max scaled diff 0.00e+00 (tol 2.5e-10), 21 files	0.4s/0.3s	
+serial	restart-mz	works	works	ACTIVE	OK		max scaled diff 2.09e-09 (tol 5.8e-09), 32 files	0.2s/0.1s	restart
+serial	restart-su2-delayed	works	works	ACTIVE	OK		max scaled diff 2.69e-13 (tol 1.0e-11), 24 files	0.2s/0.1s	restart
+LOG	hub-mz-4x4	works	works	ACTIVE	OK		max scaled diff 7.35e-10 (tol 6.4e-09), 31 files	0.2s/0.1s	
+LOG	hub-mz-6x6-20sw	works	works	ACTIVE	OK		max scaled diff 5.06e-10 (tol 3.7e-09), 31 files	14.6s/4.7s	Start/parameters as shipped (20 sweeps, 5 bins)
+LOG	hub-su2-6x6-20sw	works	works	ACTIVE	OK		max scaled diff 1.88e-12 (tol 1.0e-11), 23 files	7.7s/2.4s	
+LOG	hub-mz-6x6	works	works	ACTIVE	OK		max scaled diff 2.74e-10 (tol 1.0e-08), 31 files	1.2s/0.4s	
+LOG	hub-su2-4x4	works	works	ACTIVE	OK		max scaled diff 7.10e-14 (tol 1.0e-11), 23 files	0.2s/0.1s	
+LOG	hub-su2-6x6	works	works	ACTIVE	OK		max scaled diff 2.21e-13 (tol 1.0e-11), 23 files	0.7s/0.2s	
+LOG	hub-nsun4-su2	works	works	ACTIVE	OK		max scaled diff 1.79e-13 (tol 1.0e-11), 23 files	0.2s/0.1s	N_SUN row
+LOG	hub-nsun4-mz	works	works	ACTIVE	OK		max scaled diff 2.60e-11 (tol 4.2e-10), 31 files	0.2s/0.1s	N_SUN row
+LOG	hub-complex-phiX	works	works	ACTIVE	OK		max scaled diff 1.04e-13 (tol 1.0e-11), 23 files	0.2s/0.1s	complex hopping
+LOG	hub-complex-flux	works	works	ACTIVE	OK		max scaled diff 2.01e-13 (tol 1.0e-11), 23 files	0.2s/0.1s	complex hopping, flux
+LOG	hub-ladder	works	works	ACTIVE	OK		max scaled diff 3.30e-11 (tol 1.5e-10), 31 files	0.2s/0.1s	
+LOG	hub-bilayer-square	works	works	ACTIVE	OK		max scaled diff 9.32e-13 (tol 1.0e-11), 23 files	0.6s/0.3s	
+LOG	hub-h0-pinning	works	works	ACTIVE	OK		max scaled diff 2.32e-10 (tol 3.5e-09), 33 files	0.2s/0.1s	
+LOG	hub-symm-F	works	works	ACTIVE	OK		max scaled diff 1.14e-13 (tol 1.0e-11), 23 files	0.1s/0.1s	
+LOG	hub-checkerboard-F	works	works	ACTIVE	OK		max scaled diff 2.46e-10 (tol 6.0e-09), 31 files	0.2s/0.2s	
+LOG	hub-ltau0	works	works	ACTIVE	OK		max scaled diff 7.92e-11 (tol 6.4e-09), 21 files	0.2s/0.1s	
+LOG	hub-lobs-window	works	works	ACTIVE	OK		max scaled diff 7.35e-10 (tol 6.4e-09), 31 files	0.2s/0.1s	LOBS_ST/LOBS_EN window
+LOG	sch-delayed-N4	works	works	ACTIVE	OK		max scaled diff 7.35e-10 (tol 6.7e-09), 31 files	0.2s/0.1s	
+LOG	sch-submatrix-N4	works	works	ACTIVE	OK		max scaled diff 7.35e-10 (tol 6.8e-09), 31 files	0.2s/0.1s	
+LOG	sch-delayed-N16-su2	works	works	ACTIVE	OK		max scaled diff 2.20e-13 (tol 1.0e-11), 23 files	0.7s/0.2s	
+LOG	sch-auto	refused:auto	refused	INACTIVE	OK	Sequential_scheme = "auto" is not supported on the GPU path	max scaled diff 0.00e+00 (tol 6.7e-09), 31 files	0.1s/0.1s	
+LOG	sch-timed-N-1	refused:N_delay = -1	refused	INACTIVE	OK	timed automatic N_delay (N_delay = -1) is not supported on the GPU path	max scaled diff 0.00e+00 (tol 6.5e-09), 31 files	0.2s/0.1s	
+LOG	sch-lowrank-cross-slice	stops	stops	NOINFO	OK		exit codes active 2, disabled 2; ALF Copyright (C) 2016 - 2026 The ALF project contributors | This Program comes with ABSOLUTELY NO WARRANTY; for details see license.GPL | This is free software, and you are welcome to redistribute it under certain conditions.	0.0s/0.0s	option does not exist on this line
+LOG	mv-global	refused:global moves	refused	INACTIVE	OK	global moves are not supported on the GPU path	max scaled diff 0.00e+00 (tol 1.7e-11), 31 files	0.0s/0.0s	continuous fields (discrete Hubbard stops on every path)
+LOG	mv-global-discrete	stops	stops	INACTIVE	OK	global moves are not supported on the GPU path	exit codes active 6, disabled 6; Hamiltonians/Hamiltonian_Hubbard_smod.F90 (1140): | Error in Hamiltonian setup | Terminating program	0.0s/0.0s	Hubbard has no discrete global move: model stops, CPU and GPU path alike
+LOG	mv-global-tau	refused:global moves	refused	INACTIVE	OK	global moves are not supported on the GPU path	max scaled diff 0.00e+00 (tol 7.5e-11), 31 files	0.1s/0.1s	
+LOG	mv-propose-S0	refused:Propose_S0	refused	INACTIVE	OK	Propose_S0 is not supported on the GPU path	max scaled diff 0.00e+00 (tol 6.4e-09), 31 files	0.1s/0.1s	
+LOG	mv-langevin	refused:Langevin	refused	INACTIVE	OK	Langevin/HMC is not supported on the GPU path	max scaled diff 0.00e+00 (tol 1.0e-11), 24 files	0.1s/0.1s	
+LOG	mv-hmc	refused:Langevin	refused	INACTIVE	OK	Langevin/HMC is not supported on the GPU path	max scaled diff 0.00e+00 (tol 1.7e-11), 23 files	0.1s/0.1s	
+LOG	mv-mala-seq	refused:MALA	refused	INACTIVE	OK	MALA updates are not supported on the GPU path	max scaled diff 0.00e+00 (tol 1.0e-11), 23 files	0.1s/0.1s	
+LOG	mv-mala-global	refused:MALA	refused	INACTIVE	OK	MALA updates are not supported on the GPU path	max scaled diff 0.00e+00 (tol 1.0e-11), 23 files	0.1s/0.1s	
+LOG	mv-mala-global-tau	refused:MALA	refused	INACTIVE	OK	MALA updates are not supported on the GPU path	max scaled diff 0.00e+00 (tol 1.0e-11), 23 files	0.1s/0.1s	
+LOG	mv-continuous-seq	refused:field type	refused	INACTIVE	OK	Hamiltonian Hubbard: Op_V(1,1) has field type 3 (only 1 and 2 supported)	max scaled diff 0.00e+00 (tol 1.0e-11), 23 files	0.1s/0.1s	HS field type 3 with sequential updates
+LOG	proj-hubbard	refused:projector	refused	INACTIVE	OK	projector code is not supported on the GPU path	max scaled diff 0.00e+00 (tol 5.0e-09), 31 files	0.1s/0.1s	
+LOG	mod-plain-vanilla	refused:Calc_Fl	refused	INACTIVE	OK	Calc_Fl with weight reconstruction (ham%weight_reconstruction) is not supported on the GPU path	max scaled diff 0.00e+00 (tol 1.0e-11), 31 files	0.0s/0.0s	
+LOG	mod-plain-vanilla-proj	refused:projector	refused	INACTIVE	OK	projector code is not supported on the GPU path	max scaled diff 0.00e+00 (tol 1.0e-11), 21 files	0.2s/0.2s	
+LOG	mod-kondo	refused	refused	INACTIVE	OK	Hamiltonian Kondo: Op_V(17,1) is not diagonal	max scaled diff 0.00e+00 (tol 1.4e-11), 31 files	0.2s/0.2s	
+LOG	mod-tV	refused	refused	INACTIVE	OK	Hamiltonian tV: Op_V(1,1) is not diagonal	max scaled diff 0.00e+00 (tol 1.0e-11), 17 files	0.1s/0.1s	
+LOG	mod-Z2-matter	refused	refused	INACTIVE	OK	Hamiltonian Z2_Matter: Op_V(1,1) is not diagonal	max scaled diff 0.00e+00 (tol 1.0e-11), 21 files	0.1s/0.1s	
+LOG	mod-LRC	refused	refused	INACTIVE	OK	Hamiltonian LRC: Op_V(1,1) has field type 3 (only 1 and 2 supported)	max scaled diff 0.00e+00 (tol 1.0e-11), 18 files	0.1s/0.1s	
+LOG	mod-spin-peierls	refused	refused	INACTIVE	OK	Hamiltonian Spin_Peierls: Op_V(37,1) is not diagonal	max scaled diff 0.00e+00 (tol 2.2e-10), 21 files	0.3s/0.3s	
+stab1	stab-mz-4x4	refused:STAB	refused	INACTIVE	OK	STAB1/STAB2/STAB3 stabilization is not supported on the GPU path (default and LOG only, ticket 206)	max scaled diff 0.00e+00 (tol 7.3e-09), 31 files	0.2s/0.2s	
+stab1	stab-su2-4x4	refused:STAB	refused	INACTIVE	OK	STAB1/STAB2/STAB3 stabilization is not supported on the GPU path (default and LOG only, ticket 206)	max scaled diff 0.00e+00 (tol 1.0e-11), 23 files	0.1s/0.1s	
+stab2	stab-mz-4x4	refused:STAB	refused	INACTIVE	OK	STAB1/STAB2/STAB3 stabilization is not supported on the GPU path (default and LOG only, ticket 206)	max scaled diff 0.00e+00 (tol 5.9e-09), 31 files	0.1s/0.1s	
+stab2	stab-su2-4x4	refused:STAB	refused	INACTIVE	OK	STAB1/STAB2/STAB3 stabilization is not supported on the GPU path (default and LOG only, ticket 206)	max scaled diff 0.00e+00 (tol 1.0e-11), 23 files	0.1s/0.1s	
+stab3	stab-mz-4x4	refused:STAB	refused	INACTIVE	OK	STAB1/STAB2/STAB3 stabilization is not supported on the GPU path (default and LOG only, ticket 206)	max scaled diff 0.00e+00 (tol 6.0e-09), 31 files	0.1s/0.1s	
+stab3	stab-su2-4x4	refused:STAB	refused	INACTIVE	OK	STAB1/STAB2/STAB3 stabilization is not supported on the GPU path (default and LOG only, ticket 206)	max scaled diff 0.00e+00 (tol 1.0e-11), 23 files	0.1s/0.1s	
+QRREF	hub-mz-4x4	works	works	ACTIVE	OK		max scaled diff 2.09e-09 (tol 5.8e-09), 31 files	0.2s/0.1s	
+QRREF	hub-su2-4x4	works	works	ACTIVE	OK		max scaled diff 9.01e-14 (tol 1.0e-11), 23 files	0.2s/0.1s	
+QRREF	sch-delayed-N4	works	works	ACTIVE	OK		max scaled diff 2.09e-09 (tol 5.8e-09), 31 files	0.2s/0.1s	
+MPI-np2	hub-mz-4x4	works	works	ACTIVE	OK		max scaled diff 1.06e-09 (tol 6.0e-09), 32 files	0.8s/0.7s	
+MPI-np2	hub-su2-4x4	works	works	ACTIVE	OK		max scaled diff 1.16e-13 (tol 1.0e-11), 24 files	0.7s/0.6s	
+MPI-np2	sch-delayed-N4	works	works	ACTIVE	OK		max scaled diff 1.06e-09 (tol 6.0e-09), 32 files	0.8s/0.7s	
+MPI-np2	sch-submatrix-N4	works	works	ACTIVE	OK		max scaled diff 1.06e-09 (tol 6.1e-09), 32 files	0.8s/0.7s	
+MPI-np2	mv-global	refused:global moves	refused	INACTIVE	OK	global moves are not supported on the GPU path	max scaled diff 0.00e+00 (tol 1.8e-11), 32 files	0.6s/0.6s	continuous fields (discrete Hubbard stops on every path)
+MPI-np2	mod-kondo	refused	refused	INACTIVE	OK	Hamiltonian Kondo: Op_V(17,1) is not diagonal	max scaled diff 0.00e+00 (tol 1.1e-11), 32 files	0.8s/0.8s	
+PP-np2	grp-mz-4x4	works	works	ACTIVE	OK		max scaled diff 1.04e-09 (tol 6.3e-09), 60 files	0.8s/0.7s	
+PP-np2	grp-su2-4x4-delayed	works	works	ACTIVE	OK		max scaled diff 1.06e-13 (tol 1.0e-11), 44 files	0.8s/0.6s	
+TEMPERING-np2	temper-mz-4x4	refused:tempering	refused	INACTIVE	OK	tempering is not supported on the GPU path	max scaled diff 0.00e+00 (tol 3.1e-09), 64 files	0.7s/0.7s	
+TEMPERING-np2	temper-su2-4x4-delayed	refused:tempering	refused	INACTIVE	OK	tempering is not supported on the GPU path	max scaled diff 0.00e+00 (tol 1.0e-11), 48 files	0.7s/0.6s	
+HDF5	hub-mz-4x4	works	works	ACTIVE	OK		max scaled diff 0.00e+00 (tol 5.8e-09), 4 files; .h5 via h5diff (exact for confout/refused, -d tol otherwise)	0.3s/0.1s	
+HDF5	hub-su2-4x4	works	works	ACTIVE	OK		max scaled diff 0.00e+00 (tol 1.0e-11), 4 files; .h5 via h5diff (exact for confout/refused, -d tol otherwise)	0.2s/0.1s	
+HDF5	sch-delayed-N4	works	works	ACTIVE	OK		max scaled diff 0.00e+00 (tol 5.8e-09), 4 files; .h5 via h5diff (exact for confout/refused, -d tol otherwise)	0.2s/0.1s	
+HDF5	mod-kondo	refused	refused	INACTIVE	OK	Hamiltonian Kondo: Op_V(17,1) is not diagonal	max scaled diff 0.00e+00 (tol 1.2e-11), 4 files; .h5 via h5diff (exact for confout/refused, -d tol otherwise)	0.2s/0.2s	
