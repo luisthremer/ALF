@@ -10,7 +10,7 @@ Program trace_updates_test
   close(u, status="delete")
   call Trace_update_write(3, 7, cmplx(0.5d0, -0.25d0, kind(0.d0)), 0.75d0, 0.125d0, .true.)
   call Trace_update_write(4, 1, cmplx(2.d0, 0.d0, kind(0.d0)), 0.0625d0, 0.5d0, .false.)
-  flush(97)
+  close(97)   ! the module's trace unit (it keeps the file open; gfortran refuses a second unit on it)
   open(newunit=u, file="trace_updates.txt", status="old", action="read")
   read(u, *, iostat=st) nt, n_op, re, im, w, r, itog
   if (st /= 0 .or. nt /= 3 .or. n_op /= 7 .or. re /= 0.5d0 .or. im /= -0.25d0 .or. w /= 0.75d0 &
