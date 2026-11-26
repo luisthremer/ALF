@@ -98,8 +98,10 @@ Module gpu_stab_mod
   Public :: gpu_stab_wrapur, gpu_stab_wrapul, gpu_stab_exchange, gpu_stab_store_l, gpu_stab_cgr, gpu_stab_recompute
   Public :: gpu_stab_reset_l, gpu_stab_reset_r, gpu_stab_reset_st
   Public :: gpu_lu_phase_select, k_det_phase, gpu_stab_hook, gpu_stab_selftest
+  Public :: gpu_stab_tau_dev, dev_prec, k_ident, k_copy_c, k_ct, k_diagabs, k_divrows, say     ! used by gpu_tau_mod
 
   Logical, Save :: gpu_stab_on = .false.      ! the device stabilisation replaces WRAPUR/WRAPUL/CGR in the sweeps
+  Logical, Save :: gpu_stab_tau_dev = .false.  ! the device tau pass reads udvst on the device: no D->H export of udvst (Ltau = 1)
 
   Integer, Save :: s_N = 0, s_nfe = 0, s_nstm = 0, s_lw = 0
   Integer, Allocatable, Save :: s_nt(:)                     ! Stab_nt(0:NSTM)
@@ -359,7 +361,7 @@ Contains
     else
        call copy_st_to_w(nst, nfe, 2)
        call copy_w_to_st(1, nfe, nst)
-       if (get_Ltau() == 1) then
+       if (get_Ltau() == 1 .and. .not. gpu_stab_tau_dev) then
           ! D->H of the stored left propagation: the host TAU_M reads walker%udvst (unavoidable until the device tau pass, step 1e)
           !$omp target update from(udv_U(:,:,nst,nfe), udv_V(:,:,nst,nfe))
           ust%U = udv_U(:,:,nst,nfe)
