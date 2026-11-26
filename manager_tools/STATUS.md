@@ -1,5 +1,5 @@
 ## Now
-P2.4 step 1d (`gpu-stab`: UDV stabilisation on the device with the determinant-phase fix for large N; Hubbard only): design done, one coding agent implements it on `cm/dev/gpu-stab`.
+P2.4 step 1d (`gpu-stab`: UDV stabilisation on the device, determinant-phase fix for large N; Hubbard only) on `cm/feat/gpu-stab`, 8 commits; CI running. Local: tests 70/70 (GPU=none), 95/95 (GPU=host default, STABLOG and bounds-checked); GPU=none 16/16 byte-identical; phase test at N = 3200 (the old code gives NaN there) passes; device vs CPU path on Hubbard 4x4: configurations byte-identical in all 12 cases, energies within 1.2e-10 (Mz) and 5e-14 (SU(2)). New bug G2 (class B, open): the device path's Precision Green is 1.4-6x the CPU's (already in 1c; observables unaffected); to check before step 2.
 
 ## Waiting for you
 All questions in detail: [QUESTIONS.md](QUESTIONS.md).
@@ -30,6 +30,6 @@ All questions in detail: [QUESTIONS.md](QUESTIONS.md).
 3. Step 2: vendor backends inside linalg_mod (needs the clusters).
 
 ## Open branches and running jobs
-- `cm/dev/gpu-stab` (step 1d, coding agent working).
+- `cm/feat/gpu-stab` + `cm/dev/gpu-stab` (step 1d, CI run 45866501847).
 - Side session "Interview owner on QUESTIONS.md decisions" (waits for you).
 - Cluster jobs: none. Plan: [P2_4_GPU_PLAN.md](https://github.com/luisthremer/ALF/blob/Code-modularity-GPU/docs/ai/phase2/P2_4_GPU_PLAN.md)
