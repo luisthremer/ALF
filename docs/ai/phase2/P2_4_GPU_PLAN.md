@@ -61,13 +61,13 @@ code comes only in step 2.
 | 1c | `gpu-wrap-update` | `gpu_wrap_mod`, `gpu_update_mod`, `gpu_lowrank_mod` adapted to CM's `lowrank_update_mod`; Wrapgr hooks; their `alf_la` calls become `linalg_mod` calls (missing wrappers added there with a case in test 13-linalg) | as 1a; GPU=host vs CPU trajectories agree (configurations byte-identical where the algorithm is the same) |
 | 1d | `gpu-stab` | `gpu_stab_mod` with the GPU determinant-phase fix of `fix/det-phase-underflow` (class A, must come with it) | as 1c, plus the N >~ 2950 phase test |
 | 1e | `gpu-obs-tau` | `gpu_obs_mod`, `gpu_tau_mod` (LAPACK through `linalg_mod`), hooks in `tau_m` and Hubbard `Obser` (Hubbard only, D3) | as 1c for observables and Ltau = 1 |
-| 2 | `gpu-nvidia`, `gpu-intel`, `gpu-amd` (parallel dev branches from the scaffold) | device backend inside `linalg_mod` (D1): CUDA (cuBLAS/cuSOLVER), ONEMKL + SYCL shims, HIP + kernels; GPU=none keeps the plain calls. Per-vendor extras later (S1/S2, intel-batched) | builds and the trajectory checks of `docs/gpu/VERIFICATION.md` on A30/H100, B580/Max 1550, MI210 |
+| 1f | `gpu-s1` | Speedup S1 (owner yes, 2026-11-26): determinant phase from the tracked det(U) of the Householder reflectors instead of an LU (`rd/cgalf-s1`), no LU; documented (why no LU; invariant: U stays the exact product of the tracked reflectors; check mode); the same approach for every vendor where possible (Q11). Own feature after 1d (scheduled after 1e, which was already running) | as 1d; phase identical to the LU path where both are defined; check mode passes |
+| 2 | `gpu-nvidia`, `gpu-intel`, `gpu-amd` (parallel dev branches from the scaffold) | device backend inside `linalg_mod` (D1): CUDA (cuBLAS/cuSOLVER), ONEMKL + SYCL shims, HIP + kernels; GPU=none keeps the plain calls. Per-vendor extras later (S2, intel-batched). `gpu-intel`: switches `ALFSH_OBSCORR=1`, `ALFSH_BLKFUSE=5`, `ALFSH_BLKPF=1` on by default after their own check on Max 1550, active values written to the `info` file (owner, Q4b); investigate the `Mz = T` deviation (L6 1.36e-10, L12 1.21e-9) with claude-bughunter (Q4c) | builds and the trajectory checks of `docs/gpu/VERIFICATION.md` on A30/H100, B580/Max 1550, MI210 |
 | 3-4 | integrate, consolidate | as in ROADMAP P2.4 | as in ROADMAP |
 
 Not in P2.4 (each its own feature later, with its own check): the CPU-path changes gpu-port made without a guard
-(`Op_V_is_symmetric` rewrite = CG-ALF T3, `ALF_UNSTABLE_THRESHOLD`, `alf_exit`, MaxEnt `N_boot`, `QR_PREPIVOT`
-variants, `Timers_mod`, `Trace_updates_mod`, `Lowrank_cross_slice`), the test Hamiltonian `LR_Jz_Test`, the defect
-model, tempering on the GPU.
+(D4: queue in ROADMAP.md "CPU-line queue"; `QR_PREPIVOT` variant 1 only as a test-only flag in 1d/1e), the test
+Hamiltonian `LR_Jz_Test`, the defect model, tempering on the GPU.
 
 ## 4. Decisions (owner, 2026-11-26)
 
@@ -82,8 +82,10 @@ model, tempering on the GPU.
   and in CI.
 - **D3 — decided: yes**, step 1 (1b-1e) covers the Hubbard model only (marked in the table above); other models
   keep the CPU path through `gpu_supported`, as on gpu-port. Other models: P2.6.
-- **D4 — open** (owner asked for more detail): gpu-port's unguarded CPU-path changes as separate CPU-line features
-  later, so GPU=none stays byte-identical to `Code-modularity-CPU`.
+- **D4 — decided: option (b)** (interview 2026-11-26): gpu-port's 8 unguarded CPU-path changes come as separate
+  CPU-line features later (ROADMAP.md "CPU-line queue"), so GPU=none stays byte-identical to `Code-modularity-CPU`.
+  Exceptions: `QR_PREPIVOT` as a test-only flag (default off) in 1d/1e; `ALF_UNSTABLE_THRESHOLD` first in the queue.
+- **S1 — decided: yes** (Q3, 2026-11-26): step 1f above. CG-ALF checks that tracking is right in general (T5).
 
 ## 5. Probes
 
