@@ -378,3 +378,13 @@ target_include_directories(47-trace-updates PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}
 target_link_libraries(47-trace-updates "${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/Trace_updates_mod.o" ${LIB_LIST})
 add_test(NAME 47-trace-updates COMMAND 47-trace-updates WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 set_tests_properties(47-trace-updates PROPERTIES PASS_REGULAR_EXPRESSION "PASS: trace" TIMEOUT 60)
+
+# Prog/Makefile (KNOWN_ISSUES.md, MK): a changed .mod file of Libraries/Modules must rebuild the Prog objects.
+# make -n -W pretends that runtime_error_mod.mod was just rewritten and prints the commands it would run.
+find_program(ALF_MAKE NAMES make gmake)
+if(ALF_MAKE)
+  add_test(NAME 50-make-lib-deps
+    COMMAND ${ALF_MAKE} -n -W ../Libraries/Modules/runtime_error_mod.mod ALF.out
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog)
+  set_tests_properties(50-make-lib-deps PROPERTIES PASS_REGULAR_EXPRESSION "-o [A-Za-z0-9_/]+\\.o " TIMEOUT 60)
+endif()
