@@ -50,8 +50,8 @@
 !>   Rank-k updates (N_non_zero > 1) are not implemented: gpu_supported refuses such models (the run stays on the CPU).
 !>
 !> G is device-authoritative while the sweep runs: WRAPGRUP/DO copy the host GR to G_d only when the device copy is not current
-!> (g_in).  Step 1c: Wrapgr_mod copies G_d back to GR at the end of every call (gpu_g_host) and marks the device copy stale
-!> (gpu_g_host_wrote), because the stabilisation and the measurements still run on the host; steps 1d/1e remove that bracket.
+!> (g_in) and leave the host GR stale (g_out).  The stabilisation (gpu_stab_mod, step 1d) keeps G on the device; the sweep
+!> (qmc_sweep_mod) fetches it (gpu_g_host) before each host reader of GR, and host code that writes GR calls gpu_g_host_wrote.
 !>
 !> Environment (debug runs): ALF_GPU_NOUPDATE=1 keeps the host WRAPGRUP/DO in a GPU build; ALF_GPU_FAULT=upd|nsig injects a
 !> fault into the device update (negative controls).
@@ -95,7 +95,7 @@ Contains
              enabled = .false.
              call info_line('GPU update path: DISABLED by ALF_GPU_NOUPDATE=1, host WRAPGRUP/DO')
           else
-             call info_line('GPU update path: ACTIVE (device wraps and local updates, host decision; G is copied to the host at the end of each slice until step 1d)')
+             call info_line('GPU update path: ACTIVE (device wraps and local updates, host decision; G stays on the device)')
              fault_upd  = gpu_env_is('ALF_GPU_FAULT', 'upd')
              fault_nsig = gpu_env_is('ALF_GPU_FAULT', 'nsig')
           endif

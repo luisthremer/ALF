@@ -2,7 +2,7 @@
 ! Usage: 52-gpu-stab <mode> [Nwrap]; one ctest per mode (see CMakeLists.txt), every mode in its own directory because
 ! Ham_set and the mirror write ./info.  The model is Hubbard on a 4x4 square lattice, beta = 2, Dtau = 0.1 (Ltrot = 20).
 !
-!   selftest [Nwrap]  stabilisation set-up with ALF_GPU_SELFTEST=3 in the environment: the self-test of gpu_stab_mod runs the
+!   selftest [Nwrap]  Setup_gpu with ALF_GPU_SELFTEST=3 in the environment: the self-test of gpu_stab_mod runs the
 !                     left and right chains (WRAPUL/WRAPUR + decompose) and CGR NVAR = 1, 2 at every stabilisation point
 !                     against the upstream host routines, and the precision reduction against COMPARE.  With
 !                     ALF_GPU_FAULT_STAB=perm|phase|nan it must fail (negative controls).
@@ -25,7 +25,7 @@ Program Test_gpu_stab
   Use qmc_setup_mod, only: Setup_model, Setup_fields, Setup_update_schemes, Setup_gpu, Finalize_gpu
   Use qmc_walker_mod, only: qmc_walker_t, Walker_layout, Walker_alloc, Walker_dealloc
   Use gpu_state_mod, only: gpu_active
-  Use gpu_stab_mod, only: gpu_stab_on, gpu_stab_setup, gpu_stab_hook, gpu_stab_finalize, gpu_lu_phase_select, k_det_phase
+  Use gpu_stab_mod, only: gpu_stab_on, gpu_lu_phase_select, k_det_phase
   Use MyMats, only: LU_PHASE_SAFE
   Use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
   Use iso_fortran_env, only: error_unit, int64
@@ -51,19 +51,13 @@ Program Test_gpu_stab
      Call setup_model_for_run(nwrap_arg, N_op)
      Call Walker_layout(walker, Ltrot, nwrap_arg)
      Call Walker_alloc(walker)
-     Call Setup_gpu(walker, 'info')
+     Call Setup_gpu(walker, 'info')           ! sets up the stabilisation and runs its self-test (ALF_GPU_SELFTEST=3); a failure ends the run
      If (.not. gpu_active) then
         Write(error_unit,*) 'GPU path inactive'
         n_fail = n_fail + 1
-     Else
-        Call gpu_stab_setup(walker)
-        If (.not. gpu_stab_on) then
-           Write(error_unit,*) 'GPU stabilisation inactive'
-           n_fail = n_fail + 1
-        Else
-           Call gpu_stab_hook()            ! runs the self-test (ALF_GPU_SELFTEST=3); a failure ends the run
-           Call gpu_stab_finalize()
-        Endif
+     Else If (.not. gpu_stab_on) then
+        Write(error_unit,*) 'GPU stabilisation inactive'
+        n_fail = n_fail + 1
      Endif
      Call Finalize_gpu()
      Call Walker_dealloc(walker)
