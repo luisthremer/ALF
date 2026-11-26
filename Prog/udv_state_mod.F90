@@ -253,14 +253,15 @@ CONTAINS
 !-------------------------------------------------------------------
      SUBROUTINE testscale_UDV_state(this)
        use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
+       use Control, only: Control_All_Finite
        IMPLICIT NONE
        CLASS(UDV_State), INTENT(IN) :: this
 
 #if !defined(STABLOG)
-       ! Check if any scale is NaN
-       if ( any(this%D /= this%D) )  then
+       ! Check if any scale is NaN or Inf (bit-pattern test: any(D /= D) is folded away under -ffast-math)
+       if ( .not. Control_All_Finite(this%D, size(this%D)) )  then
           write(error_unit,*) 
-          write(error_unit,*) "Error: At least one scale is NaN."
+          write(error_unit,*) "Error: At least one scale is NaN or Inf."
           write(error_unit,*) "       Switch to LOG is required."
           call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
        end if 
