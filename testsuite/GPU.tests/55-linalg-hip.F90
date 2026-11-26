@@ -5,7 +5,8 @@
 !> compared with the host call on unmapped copies: max |dev - host| / max(1, max |host|) <= TOL; the pivots of la_zqrpp and
 !> la_zgetrf must be equal; a NaN in the matrix must give info = -101 from the device la_zqrpp.  Run once with the own HIP QR
 !> and once with ALF_HIP_QR=0 (hipSOLVER).  Mode "mixed": la_zgemm with A on the device and B, C on the host must stop the run
-!> (ctest WILL_FAIL).  Prints "linalg HIP test PASSED" or "... FAILED".
+!> (ctest WILL_FAIL).  Identity input at n = 200 and 2400 (all tau = 0; rocSOLVER's blocked zgeqrf gives NaN there,
+!> KNOWN_ISSUES R1): the device result must equal the host one.  Prints "linalg HIP test PASSED" or "... FAILED".
 program linalg_hip_test
   use linalg_mod, only: la_zgemm, la_zgemm_cr, la_ztrsm, la_zgeqrf, la_zunmqr, la_zqrpp, la_zgetrf, la_zgetri
   use, intrinsic :: ieee_arithmetic, only: ieee_value, ieee_quiet_nan
@@ -138,7 +139,31 @@ contains
     !$omp target exit data map(from: Td) map(delete: ipd)
     call check('la_zgetri inverse', Td, T)
   end block
+  ! identity input (every reflector has tau = 0): n = 200 and 2400 (> 2304: hipSOLVER only); rocSOLVER's blocked zgeqrf
+  ! returns NaN there (KNOWN_ISSUES R1), linalg_hip_mod must give the exact host result (A = identity, tau = 0)
+  call ident_case(200); call ident_case(2400)
   end subroutine compare_all
+
+  subroutine ident_case(ni)
+    integer, intent(in) :: ni
+    complex(dp), allocatable :: Id(:,:), Ih(:,:), ti(:), th(:)
+    integer :: i, inf
+    allocate(Id(ni,ni), Ih(ni,ni), ti(ni), th(ni))
+    Ih = (0.d0, 0.d0)
+    do i = 1, ni
+       Ih(i,i) = (1.d0, 0.d0)
+    enddo
+    Id = Ih
+    call la_zgeqrf(ni, ni, Ih, ni, th, wk, size(wk), inf)
+    call need0('host zgeqrf (identity)', inf)
+    !$omp target enter data map(to: Id) map(alloc: ti)
+    call la_zgeqrf(ni, ni, Id, ni, ti, wk, size(wk), inf)
+    call need0('device la_zgeqrf (identity)', inf)
+    !$omp target exit data map(from: Id, ti)
+    if (any(Id /= Id)) call fail('la_zgeqrf (identity): NaN in the result')
+    call check('la_zgeqrf identity factors', Id, Ih)
+    call check('la_zgeqrf identity tau', reshape(ti, [ni,1]), reshape(th, [ni,1]))
+  end subroutine ident_case
 
   subroutine gemm_case(ta, tb)
     character(len=1), intent(in) :: ta, tb

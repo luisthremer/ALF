@@ -8,12 +8,14 @@
 #include <hip/hip_runtime_api.h>
 #include <hipblas/hipblas.h>
 #include <hipsolver/hipsolver.h>
+#include <rocsolver/rocsolver.h>
 #include <cstdint>
 #include <cstdio>
 
 static hipblasHandle_t hb = nullptr;
 static hipsolverHandle_t hs = nullptr;
 static int* dinfo = nullptr;
+static rocblas_handle rb = nullptr;   // rocSOLVER handle of the unblocked QR fallback (alfhp_zgeqr2)
 
 static hipblasOperation_t bop(int o) { return o == 0 ? HIPBLAS_OP_N : (o == 1 ? HIPBLAS_OP_T : HIPBLAS_OP_C); }
 static hipsolverOperation_t sop(int o) { return o == 0 ? HIPSOLVER_OP_N : (o == 1 ? HIPSOLVER_OP_T : HIPSOLVER_OP_C); }
@@ -34,6 +36,7 @@ int alfhp_init(int dev, char* name, int nname) {
   if (hipblasCreate(&hb) != HIPBLAS_STATUS_SUCCESS) return 3;
   if (hipsolverCreate(&hs) != HIPSOLVER_STATUS_SUCCESS) return 4;
   if (hipMalloc((void**)&dinfo, sizeof(int)) != hipSuccess) return 5;
+  if (rocblas_create_handle(&rb) != rocblas_status_success) return 6;
   alfhk_register_presync();     // no hook in the plugin: alf_hip_fin then simply never gets a presync -> see below
   return 0;
 }
@@ -41,6 +44,8 @@ void alfhp_finalize() {
   if (dinfo) (void)hipFree(dinfo);
   if (hs) hipsolverDestroy(hs);
   if (hb) hipblasDestroy(hb);
+  if (rb) rocblas_destroy_handle(rb);
+  rb = nullptr;
   dinfo = nullptr; hs = nullptr; hb = nullptr;
 }
 int alfhp_wait() { alf_hip_presync(); return hipDeviceSynchronize() == hipSuccess ? 0 : 1; }
@@ -82,6 +87,13 @@ int alfhp_zgeqrf_ws(int64_t m, int64_t n, int64_t lda, int64_t* ws) {
 }
 int alfhp_zgeqrf(int64_t m, int64_t n, void* A, int64_t lda, void* tau, void* work, int64_t lwork) {
   return fin(hipsolverZgeqrf(hs, (int)m, (int)n, Z(A), (int)lda, Z(tau), Z(work), (int)lwork, dinfo));
+}
+// unblocked QR (rocSOLVER geqr2): fallback when the blocked hipSOLVER/rocSOLVER zgeqrf returned NaN (tau = 0 blocks)
+int alfhp_zgeqr2(int64_t m, int64_t n, void* A, int64_t lda, void* tau) {
+  alf_hip_presync();
+  if (rocsolver_zgeqr2(rb, (rocblas_int)m, (rocblas_int)n, (rocblas_double_complex*)A, (rocblas_int)lda, (rocblas_double_complex*)tau) !=
+      rocblas_status_success) return 1000;
+  return hipDeviceSynchronize() == hipSuccess ? 0 : 999;
 }
 int alfhp_zunmqr_ws(int side, int trans, int64_t m, int64_t n, int64_t k, int64_t lda, int64_t ldc, int64_t* ws) {
   int l = 0;

@@ -685,7 +685,7 @@ case "$GPU_TARGET" in
     ALF_FLAGS_MODULES="$(echo "${ALF_FLAGS_MODULES} " | sed -e 's/ -static / /g' -e 's/ -ffast-math / /g' -e 's/ $//') ${_alf_amd}"
     ALF_FLAGS_ANA="$(echo "${ALF_FLAGS_ANA} " | sed -e 's/ -static / /g' -e 's/ -ffast-math / /g' -e 's/ $//') ${_alf_amd}"
     ALF_FLAGS_PROG="$(echo "${ALF_FLAGS_PROG} " | sed -e 's/ -static / /g' -e 's/ -ffast-math / /g' -e 's/ $//') ${_alf_amd}"
-    ALF_LIB="${ALF_LIB} -foffload=amdgcn-amdhsa -foffload-options=amdgcn-amdhsa=-march=${ALF_AMD_ARCH:-gfx90a} -L${ROCM_PATH:-/opt/rocm}/lib -Wl,-rpath,${ROCM_PATH:-/opt/rocm}/lib -lhipsolver -lhipblas -lamdhip64 -lstdc++"
+    ALF_LIB="${ALF_LIB} -foffload=amdgcn-amdhsa -foffload-options=amdgcn-amdhsa=-march=${ALF_AMD_ARCH:-gfx90a} -L${ROCM_PATH:-/opt/rocm}/lib -Wl,-rpath,${ROCM_PATH:-/opt/rocm}/lib -lhipsolver -lhipblas -lrocsolver -lrocblas -lamdhip64 -lstdc++"
     export ALF_LIB
     unset _alf_amd
     export ALF_GPU="amd"

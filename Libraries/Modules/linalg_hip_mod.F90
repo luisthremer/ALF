@@ -59,7 +59,9 @@ module linalg_hip_mod
   logical, save :: use_hq = .true.                             ! own HIP QR (ALF_HIP_QR=0 -> hipSOLVER)
   complex(kind=kind(0.d0)), allocatable, target, save :: dws(:)   ! device work of the hipSOLVER calls
   complex(kind=kind(0.d0)), allocatable, target, save :: dscr(:)  ! device n x n scratch of lh_zgetri
-  real(kind=kind(0.d0)), allocatable, target, save :: dnrm(:)     ! column norms of lh_zqrpp
+  complex(kind=kind(0.d0)), allocatable, target, save :: dbak(:)  ! copy of A before a hipSOLVER zgeqrf (NaN guard)
+  real(kind=kind(0.d0)), allocatable, target, save :: dnrm(:)     ! column norms (lh_zqrpp, NaN guard)
+  integer, save :: n_geqr2 = 0                                    ! number of zgeqrf results recomputed with geqr2
 
   interface
     integer(c_int) function alfhp_init(dev, name, nname) bind(C, name='alfhp_init')
@@ -127,6 +129,11 @@ module linalg_hip_mod
       type(c_ptr), value :: a, ipiv, b, work
       integer(c_int), value :: trans
       integer(c_int64_t), value :: n, nrhs, lda, ldb, lwork
+    end function
+    integer(c_int) function alfhp_zgeqr2(m, n, a, lda, tau) bind(C, name='alfhp_zgeqr2')
+      import :: c_ptr, c_int, c_int64_t
+      type(c_ptr), value :: a, tau
+      integer(c_int64_t), value :: m, n, lda
     end function
     integer(c_int) function alfhq_geqrf(m, n, a, lda, tau) bind(C, name='alfhq_geqrf')
       import :: c_ptr, c_int
@@ -217,6 +224,33 @@ contains
     allocate(a(max(n,1)))
     !$omp target enter data map(alloc: a)
   end subroutine ensure_z
+
+  subroutine ensure_dnrm(n)
+    integer, intent(in) :: n
+    if (allocated(dnrm)) then
+       if (size(dnrm) >= n) return
+       !$omp target exit data map(delete: dnrm)
+       deallocate(dnrm)
+    endif
+    allocate(dnrm(max(n,1)))
+    !$omp target enter data map(alloc: dnrm)
+  end subroutine ensure_dnrm
+
+  !> .true. if a column of A(m,n) holds a NaN or Inf (device column norms, n values D->H)
+  logical function has_nonfinite(m, n, a, lda)
+    integer, intent(in) :: m, n, lda
+    complex(kind=kind(0.d0)), target :: a(lda,*)
+    integer :: j
+    integer(kind=8) :: bits
+    call ensure_dnrm(n)
+    call hk_colnorms(m, n, a, lda, dnrm)
+    !$omp target update from(dnrm(1:n))
+    has_nonfinite = .false.
+    do j = 1, n
+       bits = transfer(dnrm(j), 0_8)
+       if (iand(bits, int(z'7FF0000000000000', 8)) == int(z'7FF0000000000000', 8)) has_nonfinite = .true.
+    enddo
+  end function has_nonfinite
 
   !> API failure codes of the shim (>= 998) stop the run; a solver info is returned
   integer function api(rc, what)
@@ -311,6 +345,10 @@ contains
        !$omp end target data
     endif
     if (rc == 3) then           ! size not supported by the HIP QR (m > 2304) or switched off: hipSOLVER
+       ! rocSOLVER's blocked zgeqrf (ROCm core-7.14) returns NaN with info = 0 when a 64-column block has tau = 0 (identity-like
+       ! input, n >= ~200; KNOWN_ISSUES R1).  Guard: keep a copy of A, test the result, recompute with the unblocked geqr2.
+       call ensure_z(dbak, lda*n)
+       call hk_copyz(lda*n, a, dbak)
        ws = 0
        lw = ws_size(alfhp_zgeqrf_ws(int(m,c_int64_t), int(n,c_int64_t), int(lda,c_int64_t), ws), ws, 'zgeqrf')
        call ensure_z(dws, lw)
@@ -318,6 +356,20 @@ contains
        rc = alfhp_zgeqrf(int(m,c_int64_t), int(n,c_int64_t), c_loc(a(1,1)), int(lda,c_int64_t), c_loc(tau(1)), &
             & c_loc(dws(1)), int(lw,c_int64_t))
        !$omp end target data
+       if (rc == 0) then
+          if (has_nonfinite(m, n, a, lda)) then
+             call hk_copyz(lda*n, dbak, a)
+             !$omp target data use_device_addr(a, tau)
+             rc = alfhp_zgeqr2(int(m,c_int64_t), int(n,c_int64_t), c_loc(a(1,1)), int(lda,c_int64_t), c_loc(tau(1)))
+             !$omp end target data
+             n_geqr2 = n_geqr2 + 1
+             if (n_geqr2 == 1) write(*,'(A,I0,A)') ' linalg (HIP): hipSOLVER zgeqrf returned NaN (rocSOLVER, tau = 0 block), n = ', &
+                  & n, '; recomputed with the unblocked rocsolver_zgeqr2 (reported once; KNOWN_ISSUES R1)'
+             if (rc == 0) then
+                if (has_nonfinite(m, n, a, lda)) rc = 1001
+             endif
+          endif
+       endif
     endif
     info = api(rc, 'zgeqrf')
   end subroutine lh_zgeqrf
@@ -371,16 +423,7 @@ contains
        return
     endif
     call lh_init()
-    if (allocated(dnrm)) then
-       if (size(dnrm) < n) then
-          !$omp target exit data map(delete: dnrm)
-          deallocate(dnrm)
-       endif
-    endif
-    if (.not. allocated(dnrm)) then
-       allocate(dnrm(n))
-       !$omp target enter data map(alloc: dnrm)
-    endif
+    call ensure_dnrm(n)
     call hk_colnorms(m, n, a, lda, dnrm)
     ! D->H: n column norms for the host sort
     !$omp target update from(dnrm(1:n))

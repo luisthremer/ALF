@@ -44,6 +44,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | MK | Makefile: Prog objects not rebuilt after Libraries/Modules changes | B | fixed in `cm/feat/b-batch-2` (commit "build: …"; test 50) |
 | WF | Trial wave function normalisation, large N_part (suspected) | B | open, not reproduced |
 | P1 | Op_V_is_symmetric slow (start-up, Symm = .T.) | B | open; fast version on gpu-port |
+| R1 | GPU=amd: rocSOLVER's blocked `zgeqrf` (ROCm core-7.14) returns NaN with info = 0 when a 64-column block has tau = 0 (identity-like input, n >= ~200); the own HIP QR covers only m <= 2304 | B | fixed by feature `gpu-amd` (step 2: NaN test after every hipSOLVER `zgeqrf`, recomputed with the unblocked `rocsolver_zgeqr2`; test `55-linalg-hip` identity n = 200, 2400); rocSOLVER report pending |
 
 ## Determinant phase underflow for N >~ 3000 (L >~ 54) in CGR / DET_C
 
@@ -330,4 +331,22 @@ AddressSanitizer/UBSan on Code-modularity for all models (no report), FPE traps 
   the LU-mode lanes of `gpu-state-e2e` run on the H100 (verified: SU(2) tracked vs LU 8.6e-15 after the fix, job 1465022;
   `docs/ai/phase2/nvidia/RESULTS.md`). When editing device code: pass complex host scalars into a serial target
   region with `map(to:)` or as two reals.
+
+## R1. GPU=amd: rocSOLVER blocked zgeqrf gives NaN on tau = 0 blocks (2026-11-26; fixed by feature `gpu-amd`)
+
+- **Applies to:** GPU=amd, `la_zgeqrf` / `la_zqrpp` on device data whenever hipSOLVER is used: m > 2304 (the own HIP QR
+  of `alf_hip_qr.hip.cpp` stops there, so every QR at L >= 49 on the square lattice) or `ALF_HIP_QR=0`. Also gpu-port
+  (same hipSOLVER call, no guard). ROCm core-7.14, rocSOLVER behind hipSOLVER, MI210.
+- **Symptom:** `hipsolverZgeqrf` returns info = 0, but from column 65 on the factors are NaN (identity n = 200: 9180 NaN below,
+  17884 above and 136 on the diagonal; n = 500 likewise; n <= 128 and random matrices are correct; `zunmqr` with tau = 0
+  reflectors is correct). Not silent on the GPU path: the NaN reaches the scales (`k_testscale` stops the run) or the tracked
+  det(U) of the upload (untracked slot, stop in CGR). Where it can occur: QR of identity-like U (the start-up upload of the
+  UDV stacks, `gpu_stab_put_udv` / `k_det_qr`; reset slots) at large N.
+- **Cause (probable, not traced into rocSOLVER):** the blocked path (switch at n = 128, block 64): the trailing update with
+  the T factor of a block whose reflectors all have tau = 0. The unblocked `rocsolver_zgeqr2` is correct.
+- **Fix:** `linalg_hip_mod` keeps a device copy of A before every hipSOLVER `zgeqrf`, tests the result for NaN/Inf with the
+  column-norm kernel (n values D->H) and, on a hit, restores A and recomputes with `rocsolver_zgeqr2` (one line in stdout at
+  the first occurrence). Cost on the hipSOLVER path: one N^2 device copy and one norm kernel per QR.
+- **Test:** `testsuite/GPU.tests/55-linalg-hip.F90`: identity n = 200 and n = 2400 against the host `zgeqrf` (exact),
+  run with the own QR and with `ALF_HIP_QR=0`.
 
