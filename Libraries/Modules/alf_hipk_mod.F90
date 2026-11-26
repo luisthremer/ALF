@@ -46,6 +46,7 @@ module alf_hipk_mod
   public :: hk_setd, hk_setl, hk_scale_cols, hk_diagabs, hk_divrows, hk_phase, hk_scale_row1, hk_scale_col1, hk_triu, &
        &    hk_perm, hk_perm_vec, hk_ct, hk_rowdiv, hk_colinv, hk_tpup, hk_det_phase, hk_cgr_phase, hk_testscale, hk_prec
   public :: hk_scatter_rows, hk_vslice_r, hk_blk_gather, hk_blk_scale, hk_sub_flush_gather
+  public :: hk_corr, hk_scalars
 
   ! HIP replacements on (default) or off (ALF_HIP_KERNELS=0: the OpenMP kernels run, for A/B checks); -1 = not read yet
   integer, save :: hk_state = -1
@@ -192,6 +193,18 @@ module alf_hipk_mod
       import :: c_ptr, c_int
       integer(c_int), value :: ld, nrow, k, nf, ldslot
       type(c_ptr), value :: G, S, C, Qt, slot
+    end function
+    integer(c_int) function alfhk_corr(kind, k, n, norb, nfl, ns, sq3, wr, wi, ld, g, jc, inv, acc, acc0) bind(C, name='alfhk_corr')
+      import :: c_ptr, c_int, c_double
+      integer(c_int), value :: kind, k, n, norb, nfl, ld
+      real(c_double), value :: ns, sq3, wr, wi
+      type(c_ptr), value :: g, jc, inv, acc, acc0
+    end function
+    integer(c_int) function alfhk_scalars(nk, hi, hj, hf, hc, n, norb, nfl, dec, ld, g, inv, uo, hres) bind(C, name='alfhk_scalars')
+      import :: c_ptr, c_int, c_double
+      integer(c_int), value :: nk, n, norb, nfl, dec, ld
+      type(c_ptr), value :: hi, hj, hf, hc, g, inv, uo
+      real(c_double) :: hres(6)
     end function
   end interface
 
@@ -536,6 +549,35 @@ contains
     !$omp end target data
     call chk(rc, 'sub_flush_gather')
   end subroutine hk_sub_flush_gather
+
+  !> equal-time correlation of kind kind_k (k_corr of gpu_obs_mod) into acc(:,1,:,:,k..) and acc0(:,k..)
+  subroutine hk_corr(kind_k, k, n, norb, nfl, ns, sq3, wr, wi, ld, g, jc, inv, acc, acc0)
+    integer, intent(in) :: kind_k, k, n, norb, nfl, ld
+    real(kind=kind(0.d0)), intent(in) :: ns, sq3, wr, wi
+    complex(kind=kind(0.d0)), target :: g(*), acc(*), acc0(*)
+    integer, target :: jc(*), inv(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(g, jc, inv, acc, acc0)
+    rc = alfhk_corr(int(kind_k,c_int), int(k,c_int), int(n,c_int), int(norb,c_int), int(nfl,c_int), ns, sq3, wr, wi, &
+         & int(ld,c_int), c_loc(g(1)), c_loc(jc(1)), c_loc(inv(1)), c_loc(acc(1)), c_loc(acc0(1)))
+    !$omp end target data
+    call chk(rc, 'corr')
+  end subroutine hk_corr
+
+  !> hres(1:6) = re/im of Zkin (before the N_SUN factor), Zpot, Zrho (before N_SUN) of measure_on (gpu_obs_mod); 48 B D->H
+  subroutine hk_scalars(nk, hi, hj, hf, hc, n, norb, nfl, dec, ld, g, inv, uo, hres)
+    integer, intent(in) :: nk, n, norb, nfl, dec, ld
+    integer, target :: hi(*), hj(*), hf(*), inv(*)
+    complex(kind=kind(0.d0)), target :: hc(*), g(*)
+    real(kind=kind(0.d0)), target :: uo(*)
+    real(kind=kind(0.d0)), intent(out) :: hres(6)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(hi, hj, hf, hc, g, inv, uo)
+    rc = alfhk_scalars(int(nk,c_int), c_loc(hi(1)), c_loc(hj(1)), c_loc(hf(1)), c_loc(hc(1)), int(n,c_int), int(norb,c_int), &
+         & int(nfl,c_int), int(dec,c_int), int(ld,c_int), c_loc(g(1)), c_loc(inv(1)), c_loc(uo(1)), hres)
+    !$omp end target data
+    call chk(rc, 'scalars')
+  end subroutine hk_scalars
 
 end module alf_hipk_mod
 #endif

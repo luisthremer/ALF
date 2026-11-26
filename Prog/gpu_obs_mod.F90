@@ -66,6 +66,9 @@ Module gpu_obs_mod
   Use Predefined_Hoppings, only: Hopping_Matrix_type, inquire_hop, Generic_hopping
   Use Hamiltonian_main, only: Obs_scal, Obs_eq, Obs_tau, Obs_local
   Use linalg_mod, only: la_zgemm
+#if defined(ALF_LA_HIP)
+  Use alf_hipk_mod, only: hk_enabled, hk_corr, hk_scalars
+#endif
   Use gpu_state_mod, only: gpu_active, G_d, g_dev_ok, td_symm_active, info_line, gpu_env_is
   Use gpu_stab_mod, only: gpu_stab_on
   Use gpu_wrap_mod, only: gpu_symm_build
@@ -368,10 +371,21 @@ Contains
     Complex (Kind=Kind(0.d0)) :: Zkin, Zpot, Zrho, zc, zt
     Real (Kind=Kind(0.d0)) :: wr, wi, sq3
     Integer :: I, nf, k, no, i1, J1, N, Norb, NFL_, NSUN, dec, kind_k
+#if defined(ALF_LA_HIP)
+    Real (Kind=Kind(0.d0)) :: hsc(6)
+#endif
 
     N = o_N; Norb = o_Norb; NFL_ = o_NFL; NSUN = o_NSUN; dec = o_dec; sq3 = sqrt(3.d0)
     wr = real(ZW); wi = aimag(ZW)
     ! ---- scalars: GRC(i,j,nf) = delta_ij - G(j,i,nf)
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_scalars(o_nk, hk_i, hk_j, hk_f, hk_c, N, Norb, NFL_, dec, nd, Gm, o_inv, o_uo, hsc)
+       Zkin = cmplx(hsc(1), hsc(2), kind(0.d0))*dble(NSUN)
+       Zpot = cmplx(hsc(3), hsc(4), kind(0.d0))
+       Zrho = cmplx(hsc(5), hsc(6), kind(0.d0))
+    else
+#endif
     Zkin = (0.d0, 0.d0)
     !$omp target teams distribute parallel do reduction(+:Zkin) private(i1,J1,nf,zc)
     do k = 1, o_nk
@@ -402,6 +416,9 @@ Contains
        enddo
     enddo
     ! D->H: three complex scalars per call (48 B) enter the host sums of Obs_scal
+#if defined(ALF_LA_HIP)
+    endif
+#endif
     Zrho = Zrho*dble(NSUN)
     Obs_scal(1)%Obs_vec(1) = Obs_scal(1)%Obs_vec(1) + Zkin*ZP*ZS
     Obs_scal(2)%Obs_vec(1) = Obs_scal(2)%Obs_vec(1) + Zpot*ZP*ZS
@@ -448,6 +465,12 @@ Contains
     Integer :: m, imj, no, no2, I, J, i1, j1, nf
     Complex (Kind=Kind(0.d0)) :: s1, s2, s3, z, zi, zj, zxy, zz, a, b, zs0
 
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_corr(kind_k, k, N, Norb, NFL, ns, sq3, wr, wi, nd, Gm, o_jc, o_inv, acc, acc0)
+       return
+    endif
+#endif
     if (kind_k == 1) then            ! Green
        !$omp target teams distribute private(imj,no,no2,s1)
        do m = 0, N*Norb*Norb - 1
@@ -691,11 +714,17 @@ Contains
     it = nt + 1
     ns = dble(NSUN); rn = 1.d0/dble(NFL); sq3 = sqrt(3.d0)
     if (kind_k == 1) then            ! Green: sum_nf GT0 / N_FL
+#if defined(ALF_LA_HIP)
+       !$omp target teams distribute parallel do private(imj,no,no2,s1,I,J,i1,j1,nf,z)
+#else
        !$omp target teams distribute private(imj,no,no2,s1)
+#endif
        do m = 0, N*Norb*Norb - 1
           imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
           s1 = (0.d0, 0.d0)
+#if !defined(ALF_LA_HIP)
           !$omp parallel do private(I,J,i1,j1,nf,z) reduction(+:s1)
+#endif
           do I = 1, N
              J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
              z = (0.d0, 0.d0)
@@ -704,28 +733,44 @@ Contains
              enddo
              s1 = s1 + z*rn
           enddo
+#if !defined(ALF_LA_HIP)
           !$omp end parallel do
+#endif
           tacc(imj,it,no,no2,k) = tacc(imj,it,no,no2,k) + s1*cmplx(wr,wi,kind(0.d0))
        enddo
     elseif (kind_k == 2) then        ! SpinSUN (N_FL = 1): - N_SUN G0T(J1,I1,1) GT0(I1,J1,1)
+#if defined(ALF_LA_HIP)
+       !$omp target teams distribute parallel do private(imj,no,no2,s1,I,J,i1,j1)
+#else
        !$omp target teams distribute private(imj,no,no2,s1)
+#endif
        do m = 0, N*Norb*Norb - 1
           imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
           s1 = (0.d0, 0.d0)
+#if !defined(ALF_LA_HIP)
           !$omp parallel do private(I,J,i1,j1) reduction(+:s1)
+#endif
           do I = 1, N
              J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
              s1 = s1 - ns*G0T(j1,i1,1)*GT0(i1,j1,1)
           enddo
+#if !defined(ALF_LA_HIP)
           !$omp end parallel do
+#endif
           tacc(imj,it,no,no2,k) = tacc(imj,it,no,no2,k) + s1*cmplx(wr,wi,kind(0.d0))
        enddo
     elseif (kind_k == 3) then        ! Den
+#if defined(ALF_LA_HIP)
+       !$omp target teams distribute parallel do private(imj,no,no2,s1,I,J,i1,j1,nf,z,zi,zj)
+#else
        !$omp target teams distribute private(imj,no,no2,s1)
+#endif
        do m = 0, N*Norb*Norb - 1
           imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
           s1 = (0.d0, 0.d0)
+#if !defined(ALF_LA_HIP)
           !$omp parallel do private(I,J,i1,j1,nf,z,zi,zj) reduction(+:s1)
+#endif
           do I = 1, N
              J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
              zi = (0.d0, 0.d0); zj = (0.d0, 0.d0); z = (0.d0, 0.d0)
@@ -736,7 +781,9 @@ Contains
              enddo
              s1 = s1 + (zi*ns)*(zj*ns) + z*ns
           enddo
+#if !defined(ALF_LA_HIP)
           !$omp end parallel do
+#endif
           tacc(imj,it,no,no2,k) = tacc(imj,it,no,no2,k) + s1*cmplx(wr,wi,kind(0.d0))
        enddo
        !$omp target teams distribute parallel do private(I,i1,zi,nf,zs0)
@@ -752,11 +799,17 @@ Contains
           tacc0(no,k) = tacc0(no,k) + zs0*cmplx(wr,wi,kind(0.d0))
        enddo
     else                             ! SpinMz (N_FL = 2): k = SpinZ, k+1 = SpinXY, k+2 = SpinT
+#if defined(ALF_LA_HIP)
+       !$omp target teams distribute parallel do private(imj,no,no2,s1,s2,s3,I,J,i1,j1,zxy,zz)
+#else
        !$omp target teams distribute private(imj,no,no2,s1,s2,s3)
+#endif
        do m = 0, N*Norb*Norb - 1
           imj = mod(m,N) + 1; no = mod(m/N,Norb) + 1; no2 = m/(N*Norb) + 1
           s1 = (0.d0, 0.d0); s2 = (0.d0, 0.d0); s3 = (0.d0, 0.d0)
+#if !defined(ALF_LA_HIP)
           !$omp parallel do private(I,J,i1,j1,zxy,zz) reduction(+:s1,s2,s3)
+#endif
           do I = 1, N
              J = o_jc(I,imj); i1 = o_inv(I,no); j1 = o_inv(J,no2)
              zz  = (GTT(i1,i1,1) - GTT(i1,i1,2))*(G00(j1,j1,1) - G00(j1,j1,2)) &
@@ -766,7 +819,9 @@ Contains
              s2 = s2 + zxy
              s3 = s3 + (2.d0*zxy + zz)/3.d0
           enddo
+#if !defined(ALF_LA_HIP)
           !$omp end parallel do
+#endif
           tacc(imj,it,no,no2,k)   = tacc(imj,it,no,no2,k)   + s1*cmplx(wr,wi,kind(0.d0))
           tacc(imj,it,no,no2,k+1) = tacc(imj,it,no,no2,k+1) + s2*cmplx(wr,wi,kind(0.d0))
           tacc(imj,it,no,no2,k+2) = tacc(imj,it,no,no2,k+2) + s3*cmplx(wr,wi,kind(0.d0))

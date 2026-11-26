@@ -361,3 +361,132 @@ int alfhk_sub_flush_gather(int ld, int nrow, int k, int nf, int ldslot, void* G,
   return fin(); }
 }  // extern "C"
 
+// ---- gpu_obs_mod kernels (P2.4 step 2 amd, commit 6): equal-time correlations (k_corr) and the scalars Zkin, Zpot, Zrho of
+// measure_on; one block per output element, block tree reduction (summation order differs from the OpenMP reductions).
+// From gpu-port; the H7 weights come in through uo(no) (host array o_uo).
+#define RB 128
+// One block per output element m = (imj,no,no2) (gather over the lattice sites I) for m < MT; blocks MT..MT+Norb-1 do the acc0 sums (kinds 3, 4).
+__global__ void k_corr(int kind, int k, int N, int Norb, int NFL, double ns, double sq3, double wr, double wi, int ld,
+                       const cd* G, const int* jc, const int* inv, cd* acc, cd* acc0) {
+  __shared__ double red[6][RB];
+  long MT = (long)N * Norb * Norb;
+  long m = blockIdx.x;
+  bool zero_part = (m >= MT);
+  int imj, no, no2;
+  if (!zero_part) { imj = m % N; no = (m / N) % Norb; no2 = m / ((long)N * Norb); }
+  else { no = (int)(m - MT); imj = 0; no2 = 0; }
+  cd s1, s2, s3;
+  const long ld2 = (long)ld * ld;
+  for (int I = threadIdx.x; I < N; I += blockDim.x) {
+    if (!zero_part) {
+      int J = jc[I + (long)imj * N] - 1;
+      int i1 = inv[I + (long)no * N] - 1, j1 = inv[J + (long)no2 * N] - 1;
+      cd one(1.0, 0.0);
+      if (kind == 1) {
+        cd z;
+        for (int nf = 0; nf < NFL; nf++) { cd a = -G[j1 + (long)i1 * ld + nf * ld2]; if (i1 == j1) a = a + one; z += a; }
+        s1 += z * ns;
+      } else if (kind == 2) {
+        cd a = -G[j1 + (long)i1 * ld]; if (i1 == j1) a = a + one;
+        s1 += (a * G[i1 + (long)j1 * ld]) * ns;
+      } else if (kind == 3) {
+        cd zi, zj, z;
+        for (int nf = 0; nf < NFL; nf++) {
+          zi += one - G[i1 + (long)i1 * ld + nf * ld2];
+          zj += one - G[j1 + (long)j1 * ld + nf * ld2];
+          cd a = -G[j1 + (long)i1 * ld + nf * ld2]; if (i1 == j1) a = a + one;
+          z += a * G[i1 + (long)j1 * ld + nf * ld2];
+        }
+        s1 += ((zi * ns) * (zj * ns)) + z * ns;
+      } else {
+        cd a = -G[j1 + (long)i1 * ld]; if (i1 == j1) a = a + one;
+        cd b = -G[j1 + (long)i1 * ld + ld2]; if (i1 == j1) b = b + one;
+        cd zxy = a * G[i1 + (long)j1 * ld + ld2] + b * G[i1 + (long)j1 * ld];
+        cd zi = (one - G[i1 + (long)i1 * ld + ld2]) - (one - G[i1 + (long)i1 * ld]);
+        cd zj = (one - G[j1 + (long)j1 * ld + ld2]) - (one - G[j1 + (long)j1 * ld]);
+        cd zz = a * G[i1 + (long)j1 * ld] + b * G[i1 + (long)j1 * ld + ld2] + zi * zj;
+        s1 += zz; s2 += zxy; s3 += (2.0 * zxy + zz) / 3.0;
+      }
+    } else {
+      int i1 = inv[I + (long)no * N] - 1;
+      cd one(1.0, 0.0);
+      if (kind == 3) {
+        cd zi;
+        for (int nf = 0; nf < NFL; nf++) zi += one - G[i1 + (long)i1 * ld + nf * ld2];
+        s1 += zi * ns;
+      } else {
+        s1 += (one - G[i1 + (long)i1 * ld + ld2]) - (one - G[i1 + (long)i1 * ld]);
+      }
+    }
+  }
+  red[0][threadIdx.x] = s1.r; red[1][threadIdx.x] = s1.i;
+  red[2][threadIdx.x] = s2.r; red[3][threadIdx.x] = s2.i;
+  red[4][threadIdx.x] = s3.r; red[5][threadIdx.x] = s3.i;
+  __syncthreads();
+  for (int st = RB / 2; st > 0; st >>= 1) {
+    if (threadIdx.x < st) for (int q = 0; q < 6; q++) red[q][threadIdx.x] += red[q][threadIdx.x + st];
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) {
+    cd w(wr, wi);
+    cd r1(red[0][0], red[1][0]), r2(red[2][0], red[3][0]), r3(red[4][0], red[5][0]);
+    if (!zero_part) {
+      acc[m + (long)(k - 1) * MT] += r1 * w;
+      if (kind == 4) { acc[m + (long)k * MT] += r2 * w; acc[m + (long)(k + 1) * MT] += r3 * w; }
+    } else {
+      acc0[no + (long)(k - 1) * Norb] += r1 * w;
+      if (kind == 4) acc0[no + (long)(k + 1) * Norb] += (r1 * w) / sq3;
+    }
+  }
+}
+
+// Zkin (nk terms), Zpot, Zrho in one block; out[0..5] = re/im of Zkin(before N_SUN), Zpot, Zrho
+__global__ void k_scalars(int nk, const int* hi, const int* hj, const int* hf, const cd* hc, int N, int Norb, int NFL, int dec,
+                          int ld, const cd* G, const int* inv, const double* uo, double* out) {
+  __shared__ double red[6][RB];
+  const long ld2 = (long)ld * ld;
+  cd zk, zp, zr;
+  cd one(1.0, 0.0);
+  for (int k = threadIdx.x; k < nk; k += blockDim.x) {
+    int i1 = hi[k] - 1, j1 = hj[k] - 1, nf = hf[k] - 1;
+    cd zc = -G[j1 + (long)i1 * ld + nf * ld2];
+    if (i1 == j1) zc = zc + one;
+    zk += hc[k] * zc;
+  }
+  for (int t = threadIdx.x; t < N * Norb; t += blockDim.x) {
+    int I = t % N, no = t / N;
+    int i1 = inv[I + (long)no * N] - 1;
+    cd zc = one - G[i1 + (long)i1 * ld];
+    cd zt = one - G[i1 + (long)i1 * ld + (long)(dec - 1) * ld2];
+    zp += (zc * zt) * uo[no];
+    for (int nf = 0; nf < NFL; nf++) zr += one - G[i1 + (long)i1 * ld + nf * ld2];
+  }
+  red[0][threadIdx.x] = zk.r; red[1][threadIdx.x] = zk.i;
+  red[2][threadIdx.x] = zp.r; red[3][threadIdx.x] = zp.i;
+  red[4][threadIdx.x] = zr.r; red[5][threadIdx.x] = zr.i;
+  __syncthreads();
+  for (int st = RB / 2; st > 0; st >>= 1) {
+    if (threadIdx.x < st) for (int q = 0; q < 6; q++) red[q][threadIdx.x] += red[q][threadIdx.x + st];
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) for (int q = 0; q < 6; q++) out[q] = red[q][0];
+}
+extern "C" {
+int alfhk_corr(int kind, int k, int N, int Norb, int NFL, double ns, double sq3, double wr, double wi, int ld,
+               void* G, void* jc, void* inv, void* acc, void* acc0) {
+  long MT = (long)N * Norb * Norb;
+  long blocks = MT + ((kind == 3 || kind == 4) ? Norb : 0);
+  LAUNCH(k_corr, blocks, RB, kind, k, N, Norb, NFL, ns, sq3, wr, wi, ld, (const cd*)G, (const int*)jc, (const int*)inv, (cd*)acc, (cd*)acc0);
+  return fin();
+}
+static double* dres = nullptr;
+int alfhk_scalars(int nk, void* hi, void* hj, void* hf, void* hc, int N, int Norb, int NFL, int dec, int ld, void* G, void* inv,
+                  void* uo, double* hres) {
+  if (!dres && hipMalloc((void**)&dres, 6 * sizeof(double)) != hipSuccess) return 3;
+  LAUNCH(k_scalars, 1, RB, nk, (const int*)hi, (const int*)hj, (const int*)hf, (const cd*)hc, N, Norb, NFL, dec, ld, (const cd*)G,
+         (const int*)inv, (const double*)uo, dres);
+  int r = fin();
+  if (r) return r;
+  return hipMemcpy(hres, dres, 6 * sizeof(double), hipMemcpyDeviceToHost) == hipSuccess ? 0 : 4;
+}
+}  // extern "C"
