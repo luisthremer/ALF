@@ -411,3 +411,13 @@ else()
   add_test(NAME 48-timers COMMAND 48-timers WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 endif()
 set_tests_properties(48-timers PROPERTIES PASS_REGULAR_EXPRESSION "PASS: timers" TIMEOUT 60)
+
+# Prog/Makefile (KNOWN_ISSUES.md, MK): a changed .mod file of Libraries/Modules must rebuild the Prog objects.
+# make -n -W pretends that runtime_error_mod.mod was just rewritten and prints the commands it would run.
+find_program(ALF_MAKE NAMES make gmake)
+if(ALF_MAKE)
+  add_test(NAME 50-make-lib-deps
+    COMMAND ${ALF_MAKE} -n -W ../Libraries/Modules/runtime_error_mod.mod ALF.out
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog)
+  set_tests_properties(50-make-lib-deps PROPERTIES PASS_REGULAR_EXPRESSION "-o [A-Za-z0-9_/]+\\.o " TIMEOUT 60)
+endif()
