@@ -108,8 +108,12 @@ Selected by `Sequential_scheme` = "standard" (default, nothing allocated) | "del
   Note argument order differs: WRAPUL(high, low), WRAPUR(low, high).
 
 ### cgr1_mod.F90 — equal-time G from UDV pair
-> **Known issue:** the phase comes from `DET_C` (raw LU-diagonal product), which can underflow to a
-> NaN phase for N >~ 3000; see `KNOWN_ISSUES.md` ("Determinant phase underflow").
+Phase source (default, STAB3, STABLOG branch; env `ALF_CGR_LU`, read by `CGR_work_alloc`): 0 = default since
+cpu-s1 (CG-ALF S1): phase of det(U_R^dagger U_L) = det_U(R) conj(det_U(L)) from the tracked `det_U` of the UDV
+states, no LU; 1 = LU (`DET_C_PHASE` of U_R^dagger U_L, underflow-safe, KNOWN_ISSUES "Determinant phase
+underflow"); 2 = both, compared at every CGR (`CGR_phase_compare`, stop above 1e-8; summary on stdout from
+`CGR_work_dealloc`). `ALF_CGR_FAULT=det` flips the tracked phase (test). An untracked U (`det_ok` false) stops the
+run. STAB1/STAB2 keep their own LU. The GPU path reads its own `ALF_GPU_CGR_LU` (`gpu_stab_mod`).
 State: private work arrays `TPUP, RHS (N,N), DUP, TAU (N), IPVT, VISITED (N)` (41–43), allocated once by
 `CGR_work_alloc(N)` (48, from Walker_alloc), `CGR_work_dealloc` (54). Used only by the default (QR) branch.
 - `CGR(PHASE,NVAR,GRUP,udvr,udvl)` (59): $G=(1+U_R D_R V_R V_L D_L U_L)^{-1}$ (in ALF's storage convention),
@@ -133,7 +137,9 @@ CGR2_2 STAB1/2, `Compute_Fermion_Det` (Global_mod:929).
 
 ### udv_state_mod.F90 — `Type UDV_State` (86–111)
 Fields: `U(ndim,n_part)`, `V(n_part,n_part)` (finite T only; absent in projector), `D(n_part)` or, with STABLOG,
-`L(n_part)` (log scales), `ndim`, `n_part`, `side` ('l'/'r').
+`L(n_part)` (log scales), `ndim`, `n_part`, `side` ('l'/'r'), `det_U` = det(U)/|det U| and `det_ok` (tracked by
+every writer of U: reset 1, decompose from the reflectors via `Householder_det_phase(TAU,N)` times the column-1
+phase, assignment and MPI_Sendrecv copy; used by CGR, `ALF_CGR_LU`).
 Methods: `alloc(t[,t_part])` (132), `init(t,side[,P])` (169), `dealloc` (295), `reset(side[,P])` (321),
 `assign` / `=` (398; deep copy), `decompose` (449; QR with pivoting of U·D, V updated, STABLOG variant),
 `print`, `setscale`, `getscale`, `testscale` (254; NaN abort / overflow warnings), `MPI_Sendrecv` (602, MPI).

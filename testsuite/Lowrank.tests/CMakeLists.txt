@@ -93,6 +93,18 @@ if(Python3_FOUND)
                      --work ${CMAKE_CURRENT_BINARY_DIR}/global_tau_range_runs)
     set_tests_properties(52-global-tau-range PROPERTIES PASS_REGULAR_EXPRESSION "PASS: global tau range" TIMEOUT 600)
   endif()
+  # CGR determinant phase: tracked det(U) against the LU, ALF_CGR_LU = 0/1/2 and fault det (cgr_phase_e2e.py).
+  # STAB1/STAB2 keep their own LU in CGR: there mode 2 must compare nothing.
+  set(CGR_PHASE_OPTIONS "")
+  if("${FLAG_LIST}" MATCHES "-DSTAB[12]")
+    set(CGR_PHASE_OPTIONS --no-tracked)
+  endif()
+  add_test(NAME cgr-phase-e2e
+           COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/cgr_phase_e2e.py ${LOWRANK_COMPARE_MPI}
+                   --exe ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/ALF.out
+                   --start ${CMAKE_CURRENT_SOURCE_DIR}/../../Scripts_and_Parameters_files/Start
+                   --work ${CMAKE_CURRENT_BINARY_DIR}/cgr_phase_runs ${CGR_PHASE_OPTIONS})
+  set_tests_properties(cgr-phase-e2e PROPERTIES TIMEOUT 1200)
   option(ALF_LOWRANK_FULL_TESTS "Run every delayed/submatrix comparison scenario (about 30 minutes)" OFF)
   if(ALF_LOWRANK_FULL_TESTS)
     add_test(NAME lowrank-compare-schemes-full
