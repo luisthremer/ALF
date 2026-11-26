@@ -27,6 +27,11 @@ SRCS = Mat_subroutines_mod.F90 \
 	random_wrap_mod.F90 \
 	runtime_error_mod.F90
 
+# CUDA backend of linalg_mod (GPU=nvidia only)
+ifeq ($(strip $(ALF_GPU)),nvidia)
+SRCS += linalg_cuda_mod.F90
+endif
+
 # Dependency helper variables
 DEPSFILE := .deps.mk
 DEPSGEN := ../../Prog/gen_deps.py
