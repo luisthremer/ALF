@@ -91,7 +91,7 @@ Program udv_det_phase
   if (abs(abs(udv%det_U) - 1.d0) > 1.d-12) call fail('diagonal N=3200: |det_U| /= 1')
   call udv%dealloc
 
-  write(6,'(A,ES10.3)') '48-udv-det-phase: OK, max |tracked - reference| = ', dmax
+  write(6,'(A,ES10.3)') '49-udv-det-phase: OK, max |tracked - reference| = ', dmax
 
 contains
 
@@ -116,7 +116,7 @@ contains
 
   subroutine fail(what)
     Character (len=*), intent(in) :: what
-    write(6,*) '48-udv-det-phase: FAILED: ', what
+    write(6,*) '49-udv-det-phase: FAILED: ', what
     error stop 1
   end subroutine fail
 
