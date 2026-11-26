@@ -1466,7 +1466,9 @@ Contains
     Complex (Kind=Kind(0.d0)) :: ph, z
     Real (Kind=Kind(0.d0)) :: x
     Integer :: i
-    !$omp target
+    ! map(to:): nvfortran 25.7 drops the imaginary part of an implicitly firstprivate complex scalar in a serial target region
+    ! (KNOWN_ISSUES G5)
+    !$omp target map(to: ph0)
     if (dev == 1) then
        ph = cs(7)
     else
