@@ -1,5 +1,5 @@
 ## Now
-P2.4 step 1b (`gpu_state_mod`, device mirror of model and walker; Hubbard only) on `cm/feat/gpu-state`: 5 commits, each builds with GPU=none and GPU=host; 81/81 tests with GPU=host (default and STABLOG), 67/67 with GPU=none, 16/16 byte-identical; new CI job `gpu_host`. CI running.
+P2.4 step 1c (`gpu-wrap-update`: GPU wraps, updates and lowrank on the device mirror, Hubbard only): design note in progress.
 
 ## Waiting for you
 All questions in detail: [QUESTIONS.md](QUESTIONS.md).
@@ -8,6 +8,7 @@ All questions in detail: [QUESTIONS.md](QUESTIONS.md).
 3. Q4a-d older GPU-port questions; Q5-Q10 things only you can do.
 
 ## Done since the last owner message
+- Merged step 1b (GPU state, device mirror of model and walker) into `Code-modularity-GPU`: [eb5b1022](https://github.com/luisthremer/ALF/commit/eb5b1022), CI run 45838961102 green (30 jobs, incl. the new `gpu_host` jobs); 81/81 tests GPU=host, 67/67 GPU=none, 16/16 byte-identical. Branches archived and deleted.
 - Merged: Phase-6 sync (CPU+GPU), B batch 1 (8 bugs, CPU, then into GPU), step 1a `GPU=none|host` (GPU); combination green in CI.
 - Ideas I11-I13 (Cholesky again, time-first sweep, random space-time path) in the CG-ALF plan.
 - Phase-6 sync merged (6G.E1-E7 linalg wrappers, STAB1 projector fix): 57/57 tests, 16/16 byte-identical, CI green.
@@ -23,10 +24,10 @@ All questions in detail: [QUESTIONS.md](QUESTIONS.md).
 - Inbox: two ideas now CG-ALF tasks T3 (fast `Op_V_is_symmetric`) and T4 (production guards from the Intel code); inbox is checked at least every two hours of work ([fc8561cf](https://github.com/luisthremer/ALF/commit/fc8561cf)).
 
 ## Next 3 steps
-1. Merge 1b when CI is green; then 1c (wraps, updates, lowrank on the mirror), tested with GPU=host.
+1. 1c (wraps, updates, lowrank on the mirror), tested with GPU=host.
 2. 1d stabilisation (with the GPU det-phase fix; S1 if you say yes), 1e observables/tau.
 3. Step 2: vendor backends inside linalg_mod (needs the clusters).
 
 ## Open branches and running jobs
-- `cm/feat/gpu-state` (step 1b, CI running).
+- None (1c branch not created yet).
 - Cluster jobs: none. Plan: [P2_4_GPU_PLAN.md](https://github.com/luisthremer/ALF/blob/Code-modularity-GPU/docs/ai/phase2/P2_4_GPU_PLAN.md)
