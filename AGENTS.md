@@ -38,13 +38,16 @@ need to read the whole code base.
     meanwhile.
     While CI runs on a canvas, the next canvas may already be prepared (owner, 2026-11-26); merges stay one
     after another.
-- **Status and ideas** (owner rule, 2026-11-26) live in the private repo `luisthremer/alf-ops`, not on the fork:
-  - `STATUS.md` is the only status page, rewritten at every step in the owner's format (Now / Waiting for you /
+- **Status and ideas** (owner rule, 2026-11-26) live in `manager_tools/` on branch `Code-modularity` of the fork
+  (public, owner's OK 2026-11-26; until then the private repo `luisthremer/alf-ops`). Commit them directly on
+  `Code-modularity` (they are not code: no dev/canvas), with `[skip ci]` in the subject:
+  - `manager_tools/STATUS.md` is the only status page, rewritten at every step in the owner's format (Now / Waiting for you /
     Done since the last owner message / Next 3 steps / Open branches and running jobs), one screen at most, details
     only as links. Always `git pull --rebase` before writing, never force-push. Decisions that block the work are
     also sent through the calendar-invite channel.
-  - `IDEAS.md` is the owner's inbox: read it at the start of a session, after every merge or finished step, and at least every two hours of work
-    (e.g. while waiting for CI) (owner, 2026-11-26: "make sure the inbox is checked from time to time");
+  - `manager_tools/IDEAS.md` is the owner's inbox: read it at the start of a session, after every merge or finished
+    step, and at least every two hours of work (e.g. while waiting for CI) (owner, 2026-11-26: "make sure the inbox
+    is checked from time to time");
     triage each new line (fits a phase or CG-ALF idea -> add it there with a link; new research question -> own entry
     with what would decide it; unclear -> question under "Waiting for you"), then append "-> taken: <where> (<date>)".
     Never edit or delete the owner's lines. Ideas sent in the chat go there too unless the owner writes "urgent".
