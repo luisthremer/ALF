@@ -124,6 +124,9 @@ Module gpu_state_mod
   Use qmc_walker_mod, only: qmc_walker_t
   Use UDV_State_mod, only: UDV_State
   Use comm_mod, only: is_root, comm_world_rank, comm_world_size
+#if defined(ALF_LA_ONEMKL)
+  Use linalg_onemkl_mod, only: om_finalize
+#endif
 
   Implicit none
 
@@ -1257,6 +1260,10 @@ Contains
     deallocate(td_grp, td_n)
     td_any = .false.; td_symm_active = .false.; have_tau = .false.
     g_nel = 0; g_nstat = 0; g_ngroups = 0
+#if defined(ALF_LA_ONEMKL)
+    ! oneMKL backend of linalg_mod: device scratch and the OpenMP interop queue (the other gpu_* modules are finalized)
+    call om_finalize()
+#endif
     gpu_active = .false.
   end subroutine gpu_state_finalize
 
