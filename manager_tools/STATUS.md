@@ -1,5 +1,5 @@
 ## Now
-P2.4 step 1c (`gpu-wrap-update`: GPU wraps, updates and lowrank on the device mirror, Hubbard only): design note done; one coding agent implements it on `cm/dev/gpu-wrap-update` (6 commits planned: `la_zgemm_cr`, wraps, self-tests, lowrank, updates + Wrapgr hooks, GPU=host vs CPU tests).
+P2.4 step 1c (`gpu-wrap-update`: wraps, local updates, delayed/submatrix on the device mirror; Hubbard only) on `cm/feat/gpu-wrap-update`, 9 commits; CI running. Local: every commit builds with GPU=none and GPU=host; tests 67/67 (none), 86/86 (host, default and STABLOG); GPU=none 16/16 byte-identical. Hubbard 4x4, device path vs CPU path in the same binary: configurations byte-identical; energies agree to 2e-11 absolute (1.5e-12 relative) with Mz, 1e-14 for SU(2).
 
 ## Waiting for you
 All questions in detail: [QUESTIONS.md](QUESTIONS.md).
@@ -29,5 +29,6 @@ All questions in detail: [QUESTIONS.md](QUESTIONS.md).
 3. Step 2: vendor backends inside linalg_mod (needs the clusters).
 
 ## Open branches and running jobs
-- `cm/dev/gpu-wrap-update` (step 1c, coding agent working).
+- `cm/feat/gpu-wrap-update` + `cm/dev/gpu-wrap-update` (step 1c, CI run 45851444872).
+- Side session "Interview owner on QUESTIONS.md decisions" (waits for you).
 - Cluster jobs: none. Plan: [P2_4_GPU_PLAN.md](https://github.com/luisthremer/ALF/blob/Code-modularity-GPU/docs/ai/phase2/P2_4_GPU_PLAN.md)
