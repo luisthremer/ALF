@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""End-to-end check of the GPU build (P2.4 steps 1b, 1c, 1d): Hubbard 4x4, same seeds, for each case
+"""End-to-end check of the GPU build (P2.4 steps 1b, 1c, 1d, 1e): Hubbard 4x4, same seeds, for each case
 
   active    ALF.out of the GPU build, GPU path active (device wraps, local updates and stabilisation; ALF_GPU_SELFTEST=1
             additionally runs the mirror self-test at start-up)
@@ -18,6 +18,12 @@ noise floor of the run itself.  (The Precision Green means of 'active' and 'disa
 wrap is unstable, the device wraps and updates of step 1c give a mean 4 - 6x that of the CPU, already without the device stabilisation.)
 Negative control (ALF_GPU_FAULT=upd, a deliberately wrong device
 update): the observables must then differ by more than 1e-8, i.e. the comparison can see an error.
+Step 1e (device observables and tau pass): every "ok" case also needs the info lines "GPU observables (step 1e): DEVICE" and
+"GPU tau pass (step 1e): ACTIVE" (Ltau = 1; "OFF, reason: Ltau /= 1" otherwise) and the counter "on-demand G copies ... D->H 0" (no host
+reader of G is left); the tau files (Green_tau, ...) are compared like all other files.  NOOBS_CASES are run a third time with
+ALF_GPU_NOOBS=1 (host observables, host TAU_M; same binary, same device chain): equal-time and scalar files must agree with 'active' to
+TOL_OBS = 1e-13 (summation order only), tau files to the tolerance of the case, and the info of that run must say
+"HOST, reason: ALF_GPU_NOOBS=1" and show a D->H count > 0.  Faults ALF_GPU_FAULT=obs and ALF_GPU_FAULT_TAU = prop, blocks must be seen.
 Cases: Mz-Hubbard (N_FL = 2) standard / delayed / submatrix with N_delay = 4, Ltau = 0, SU(2) Hubbard (Mz = .F., N_FL = 1) standard /
 delayed, small, odd and large Nwrap (2, 7, 25, 50 of Ltrot = 50), timed N_delay = -1 (refused).  The run of the build is Ltau = 1
 (time-displaced Green function: udvst exported to the host TAU_M) unless the case sets Ltau = 0.  .h5 files are compared with h5diff
@@ -25,6 +31,7 @@ if it is on the PATH, otherwise skipped with a note."""
 import argparse, filecmp, os, re, shutil, subprocess, sys
 
 TOL = 1.0e-11          # round-off of the device kernels: |x - y| / max(1, |y|) over all numbers of an output file
+TOL_OBS = 1.0e-13      # device against host observables of the same chain: summation order only
 FAULT_SEEN = 1.0e-8    # a negative control must change the observables by more than this
 NUM = re.compile(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[EeDd][-+]?\d+)?")
 NUM_WS = re.compile(r"\s*" + NUM.pattern)      # a number with its leading blanks (a minus sign takes the place of a blank)
@@ -42,14 +49,28 @@ CASES = [
     ("su2-nwrap7", {"Mz": ".F.", "Nwrap": "7"}, {}, "ok"),
     ("su2-nwrap25", {"Mz": ".F.", "Nwrap": "25"}, {}, "ok"),
     ("su2-nwrap50", {"Mz": ".F.", "Nwrap": "50"}, {}, "ok"),
+    # step 1e: measurement at every slice (LOBS 1..Ltrot = 50), pinning field (local observable on the device), bilayer lattice with
+    # U /= U2 (interaction energy weights, H7), Symm and Checkerboard off
+    ("mz-lobs-all", {"LOBS_ST": "1", "LOBS_EN": "50"}, {}, "ok"),
+    ("su2-lobs-all", {"Mz": ".F.", "LOBS_ST": "1", "LOBS_EN": "50"}, {}, "ok"),
+    ("mz-h0", {"ham_h0": "1.d0"}, {}, "ok"),
+    ("mz-bilayer-honeycomb", {"Lattice_type": '"Bilayer_honeycomb"', "L1": "2", "L2": "2", "ham_U2": "2.d0"}, {}, "ok"),
+    ("su2-symm-F", {"Mz": ".F.", "Symm": ".F."}, {}, "ok"),
+    ("mz-checkerboard-F", {"Checkerboard": ".F."}, {}, "ok"),
     ("timed-N-1", {"Sequential_scheme": '"delayed"', "N_delay": "-1"}, {}, "inactive:N_delay = -1"),
     ("fault-upd", {}, {"ALF_GPU_DEBUG": "1", "ALF_GPU_FAULT": "upd"}, "fault"),
     # a wrong pivot permutation of the device decomposition (ALF_GPU_FAULT_STAB=perm) makes G wrong at the first stabilisation: the run
     # must stop with an error (expectation "abort": the active run exits with a non-zero return code)
+    ("fault-obs", {}, {"ALF_GPU_DEBUG": "1", "ALF_GPU_FAULT": "obs"}, "fault"),
+    ("fault-tau-prop", {}, {"ALF_GPU_DEBUG": "1", "ALF_GPU_FAULT_TAU": "prop"}, "fault"),
+    ("fault-tau-blocks", {}, {"ALF_GPU_DEBUG": "1", "ALF_GPU_FAULT_TAU": "blocks"}, "fault"),
     ("fault-stab-perm", {}, {"ALF_GPU_DEBUG": "1", "ALF_GPU_FAULT_STAB": "perm"}, "abort"),
     # ALF_GPU_FAULT=nsig (stale device copy of the field) cannot be seen on the host backend: host and "device" array are the
     # same memory there, so it is not a case here (to be added for the vendor backends, step 2).
 ]
+
+
+NOOBS_CASES = ("mz-standard", "su2-standard", "mz-h0", "mz-bilayer-honeycomb", "mz-lobs-all", "su2-symm-F")
 
 
 def prepare(d, start, edits):
@@ -65,7 +86,7 @@ def prepare(d, start, edits):
         if n != 1:
             sys.exit("cannot set %s in parameters" % key)
     for key, val in edits.items():
-        if key in ("Mz", "Nwrap", "Ltau"):       # existing keys: replace the value
+        if key in ("Mz", "Nwrap", "Ltau", "L1", "L2", "Lattice_type", "Symm", "Checkerboard", "ham_h0", "ham_U2", "LOBS_ST", "LOBS_EN"):       # existing keys: replace the value
             t, n = re.subn(r"(?m)^(%s\s*=\s*)[^\s!]+" % key, r"\g<1>%s" % val, t, count=1)
         else:   # new key of &VAR_QMC, inserted before Ltau
             t, n = re.subn(r"(?m)^(Ltau\s*=)", "%s = %s\n\\g<1>" % (key, val), t, count=1)
@@ -126,7 +147,7 @@ def compare(a, b, strict, tol=TOL):
             bad.append(f)
         else:
             dd = numdiff(fa, fb)
-            if dd is None or dd[1] > tol:
+            if dd is None or dd[1] > (tol(f) if callable(tol) else tol):
                 bad.append("%s (%s)" % (f, "layout differs" if dd is None else "max abs diff %.3g, scaled %.3g" % dd))
             diffs[f] = dd
     return bad, diffs
@@ -144,6 +165,8 @@ def main():
     for label, edits, env, expect in CASES:
         dirs = {}
         runs = {"active": (a.exe, env), "disabled": (a.exe, {"ALF_GPU_DISABLE": "1"})}
+        if label in NOOBS_CASES:
+            runs["noobs"] = (a.exe, dict(env, ALF_GPU_DEBUG="1", ALF_GPU_NOOBS="1"))
         if a.ref_exe:
             runs["none"] = (a.ref_exe, {})
         for lab, (exe, e) in runs.items():
@@ -178,6 +201,20 @@ def main():
                 bad_case.append("stdout of the active run has no 'GPU self-test PASSED'")
             if expect == "ok" and "GPU update path: ACTIVE" not in info:
                 bad_case.append("info of the active run has no 'GPU update path: ACTIVE' line")
+            if expect == "ok":
+                tau_on = edits.get("Ltau", "1") != "0"
+                if "GPU observables (step 1e): DEVICE" not in info:
+                    bad_case.append("info of the active run has no 'GPU observables (step 1e): DEVICE' line")
+                want = "GPU tau pass (step 1e): ACTIVE" if tau_on else "GPU tau pass (step 1e): OFF, reason: Ltau /= 1"
+                if want not in info:
+                    bad_case.append("info of the active run has no '%s' line" % want)
+                if "local h0 T" in info and "ham_h0" not in edits:
+                    bad_case.append("local observable on the device without ham_h0")
+                if "ham_h0" in edits and "local h0 T" not in info:
+                    bad_case.append("ham_h0 /= 0 but the info line does not say 'local h0 T'")
+                m = re.search(r"on-demand G copies H->D (\d+) and D->H (\d+)", info)
+                if not m or m.group(2) != "0":
+                    bad_case.append("D->H count of on-demand G copies is not 0: %s" % (m.group(0) if m else "line missing"))
         if not os.path.exists(os.path.join(dirs["active"], "confout_0")) and not os.path.exists(os.path.join(dirs["active"], "data.h5")):
             bad_case.append("no confout_0 / data.h5 in the active run")
         gp_act, gp_dis = green_precision(dirs["active"]), green_precision(dirs["disabled"])
@@ -205,6 +242,18 @@ def main():
         for b in bad_case:
             print("    " + b)
         fail += bool(bad_case)
+        if "noobs" in dirs:
+            ninfo = open(os.path.join(dirs["noobs"], "info"), errors="replace").read()
+            tol_active = tol
+            badn, dn = compare(dirs["active"], dirs["noobs"], strict=False, tol=lambda f: tol_active if "_tau" in f else TOL_OBS)
+            mx = lambda sel: max([v[1] for f, v in dn.items() if v is not None and sel(f) and not f.startswith("confout")] + [0.0])
+            m = re.search(r"on-demand G copies H->D (\d+) and D->H (\d+)", ninfo)
+            okn = (not badn and "HOST, reason: ALF_GPU_NOOBS=1" in ninfo and m is not None and int(m.group(2)) > 0)
+            print("%-16s active vs NOOBS=1: max scaled diff equal-time/scalar files %.3g (tolerance %.0e), tau files %.3g, D->H count %s: %s" %
+                  (label, mx(lambda f: "_tau" not in f), TOL_OBS, mx(lambda f: "_tau" in f), m.group(2) if m else "?", "OK" if okn else "FAILED"))
+            for b in badn:
+                print("    not within the rules: " + b)
+            fail += not okn
         if a.ref_exe:
             bad_n = compare(dirs["none"], dirs["disabled"], strict=True)[0]
             print("%-16s none   vs disabled: %s" % (label, "byte-identical" if not bad_n else "DIFFER: " + " ".join(bad_n)))
