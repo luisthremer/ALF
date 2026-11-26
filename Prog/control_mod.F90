@@ -349,7 +349,8 @@ module Control
         Real    (Kind=Kind(0.d0)) :: XMAX, XMEAN
         Character (len=64) :: file1 
 
-        if (any(A /= A)) then
+        ! bit-pattern test: any(A /= A) is folded to .false. under -ffast-math (KNOWN_ISSUES.md, H1)
+        if (.not. Control_All_Finite(A, Ndim*Ndim)) then
 #if defined(TEMPERING) 
           write(File1,'(A,I0,A)') "Temp_",igroup,"/info"
 #else
@@ -360,19 +361,19 @@ module Control
 #ifdef MPI
           write(50,*) "Task", Irank_g, "of group", igroup, "reports:"
 #endif
-          write(50,*) "Green function A contains NaN, calculation is being aborted!"
+          write(50,*) "Green function A contains NaN or Inf, calculation is being aborted!"
           write(50,*)
           close(50)
           write(error_unit,*)
 #ifdef MPI
           write(error_unit,*) "Task", Irank_g, "of group", igroup, "reports:"
 #endif
-          write(error_unit,*) "Green function A contains NaN, calculation is being aborted!"
+          write(error_unit,*) "Green function A contains NaN or Inf, calculation is being aborted!"
           write(error_unit,*)
           CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
         endif
 
-        if (any(B /= B)) then
+        if (.not. Control_All_Finite(B, Ndim*Ndim)) then
 #if defined(TEMPERING) 
           write(File1,'(A,I0,A)') "Temp_",igroup,"/info"
 #else
@@ -383,14 +384,14 @@ module Control
 #ifdef MPI
           write(50,*) "Task", Irank_g, "of group", igroup, "reports:"
 #endif
-          write(50,*) "Green function B contains NaN, calculation is being aborted!"
+          write(50,*) "Green function B contains NaN or Inf, calculation is being aborted!"
           write(50,*)
           close(50)
           write(error_unit,*)
 #ifdef MPI
           write(error_unit,*) "Task", Irank_g, "of group", igroup, "reports:"
 #endif
-          write(error_unit,*) "Green function B contains NaN, calculation is being aborted!"
+          write(error_unit,*) "Green function B contains NaN or Inf, calculation is being aborted!"
           write(error_unit,*)
           CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
         endif
@@ -461,6 +462,21 @@ module Control
         b = transfer(x, b)
         Control_Is_Finite = ( iand(b, expmask) /= expmask )
       End Function Control_Is_Finite
+
+!> True if no element of the complex array A(1:n) is NaN or Inf (bit-pattern test, see Control_Is_Finite)
+      Logical Function Control_All_Finite(A, n)
+        Implicit none
+        Integer, INTENT(IN) :: n
+        Complex (Kind=Kind(0.D0)), INTENT(IN) :: A(n)
+        Integer :: i
+        Control_All_Finite = .true.
+        do i = 1, n
+           if ( .not. Control_Is_Finite(dble(A(i))) .or. .not. Control_Is_Finite(aimag(A(i))) ) then
+              Control_All_Finite = .false.
+              return
+           endif
+        enddo
+      End Function Control_All_Finite
 
 !--------------------------------------------------------------------
 !> @brief
