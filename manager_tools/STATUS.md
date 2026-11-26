@@ -1,12 +1,13 @@
 ## Now
-- G2/G3 fixes on `cm/feat/gpu-hopd-optin` (CI running): dense hopping product `Hd` opt-in (`ALF_GPU_HOPD=1`), so the device path has the CPU's precision; the device precision check now honours `ALF_UNSTABLE_THRESHOLD` (G3, found when 1e met the parallel CPU-line merge). melmac: tests 76/76 (GPU=none), 119/119 (GPU=host, also bounds-checked with FP traps); the threshold run aborts as it should.
-- P2.4 step 1f (speedup S1, no LU) on `cm/dev/gpu-s1`: coding agent working. Four commits; the fourth (LU removal) alone, so one `git revert` restores the LU.
+- P2.4 step 1f (speedup S1: CGR phase from the tracked det(U) of the QR reflectors, no LU) on `cm/feat/gpu-s1`, CI running. Four commits; the fourth switches the default alone, and a `git revert` of it gives the LU version exactly (checked). Tracked vs LU phase: 1.7e-15; configurations byte-identical; N = 3200 works. All four step commits pass on melmac (76/76 GPU=none, 119-127 GPU=host).
+- Live progress page for you: [ALF GPU Phase 2](https://claude.ai/artifact/PmMk2VMb8iUzXtnEYUcHc3) (private; updated after every merge or push).
 
 ## Waiting for you
 1. Q13: `Lowrank_cross_slice` is sound but not faster on the CPU: drop it (recommended) or keep as opt-in?
 2. Q14: measure the stabilisation candidates (CholeskyQR2, adaptive Nwrap) on the H100 (a few GPU-hours)? yes/no
 
 ## Done since the last owner message
+- Merged the G2/G3 fixes into the GPU line: [a576c1b6](https://github.com/luisthremer/ALF/commit/a576c1b6), CI run 45881567484 green.
 - Merged step 1e (device observables incl. local h0 on the device, device tau pass): [b75f9d91](https://github.com/luisthremer/ALF/commit/b75f9d91), CI run 45876811655 green; all 9 step commits built and tested on melmac (Linux); device observables need no G download (counter 0); device vs CPU observables within roundoff.
 - Merged on the CPU line (cpu-queue session): `ALF_UNSTABLE_THRESHOLD` (configurable G precision abort threshold) and `Start_PP/prepare_sim.py` (general PARALLEL_PARAMS helper, [954ba129](https://github.com/luisthremer/ALF/commit/954ba129)); both also in the GPU line.
 - G2 explained (with session g2-precision): only with Apple's Accelerate BLAS is the dense `Hd` product less precise (Linux reference BLAS: not worse); fix pending above.
@@ -19,12 +20,12 @@
 - Earlier today: Phase-6 sync, B batch 1, step 1a, CG-ALF ideas, upstream issues, branch clean-up (history: `git log manager_tools/STATUS.md`).
 
 ## Next 3 steps
-1. Merge the G2/G3 fixes; review and merge 1f (S1).
+1. Merge 1f (S1) when CI is green.
 2. CPU-line queue: next item `alf_exit` / `Trace_updates_mod` (cpu-queue session).
 3. Merge what the parallel sessions deliver (CPU-line queue, CG-ALF research results); then step 2 vendor backends (clusters).
 
 ## Open branches and running jobs
-- `cm/feat/gpu-hopd-optin` + `cm/dev/gpu-hopd-optin` (G2/G3, CI); `cm/dev/gpu-s1` (step 1f, local, coding agent).
+- `cm/feat/gpu-s1` + `cm/dev/gpu-s1` (step 1f, CI run 45886167489).
 - Parallel sessions reporting to the manager: cpu-queue (`ALF_UNSTABLE_THRESHOLD`, `prepare_sim.py`, CPU line), cgalf-research (T6, T1 done; waits for Q13/Q14), g2-precision (done). Builds with `make -j2`, `ctest -j2` while many sessions run.
 - Side session "Interview owner on QUESTIONS.md decisions": finished; can be archived on your yes.
 - Cluster jobs: none. Plan: [P2_4_GPU_PLAN.md](https://github.com/luisthremer/ALF/blob/Code-modularity-GPU/docs/ai/phase2/P2_4_GPU_PLAN.md)
