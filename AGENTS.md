@@ -38,9 +38,10 @@ need to read the whole code base.
     meanwhile.
     While CI runs on a canvas, the next canvas may already be prepared (owner, 2026-11-26); merges stay one
     after another.
-- **Status and ideas** (owner rule, 2026-11-26) live in `manager_tools/` on branch `Code-modularity` of the fork
-  (public, owner's OK 2026-11-26; until then the private repo `luisthremer/alf-ops`). Commit them directly on
-  `Code-modularity` (they are not code: no dev/canvas), with `[skip ci]` in the subject:
+- **Status and ideas** (owner rule, 2026-11-26) live in `manager_tools/` on `Code-modularity`, `Code-modularity-CPU`
+  and `Code-modularity-GPU` of the fork, the same on all three (public, owner's OK 2026-11-26; until then the private
+  repo `luisthremer/alf-ops`). Commit them directly (they are not code: no dev/canvas) with `[skip ci]` in the
+  subject on any of the three, then run `./manager_tools/sync.sh` to copy the folder to the other two:
   - `manager_tools/STATUS.md` is the only status page, rewritten at every step in the owner's format (Now / Waiting for you /
     Done since the last owner message / Next 3 steps / Open branches and running jobs), one screen at most, details
     only as links. Always `git pull --rebase` before writing, never force-push. Decisions that block the work are
