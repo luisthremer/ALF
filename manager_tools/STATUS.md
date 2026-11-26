@@ -1,5 +1,5 @@
 ## Now
-P2.4 step 1a `gpu-build` ready (canvas, 3 commits: GPU=none|host switch, `alf_la_mod` host backend, its tests): every commit builds, 69/69 tests, 16/16 scenarios byte-identical, CI green ([run 45804627437](https://github.com/luisthremer/ALF/actions/runs/45804627437)). Merge waits for your yes on question 4 (D1-D4).
+B-bug batch 1 (H3 H4 H6 H7 M1 M2 M3 M4) ready on `cm/feat/b-batch-1` for the CPU line: 6 commits, every commit builds, 67/67 tests, 16/16 scenarios byte-identical (only Bilayer_honeycomb energies change, on purpose); CI running ([run 45818167468](https://github.com/luisthremer/ALF/actions/runs/45818167468)), merged when green. Step 1a waits for Q1; step 1b design note ready.
 
 ## Waiting for you
 All questions with background and recommendation: [QUESTIONS.md](QUESTIONS.md).
@@ -10,6 +10,7 @@ All questions with background and recommendation: [QUESTIONS.md](QUESTIONS.md).
 5. Q5-Q7 only you: delete alf-ops online, GitHub token, research plugins off in claude.ai
 
 ## Done since the last owner message
+- B-bug batch 1 built and checked (8 bugs, regression tests); step 1b (GPU state) designed.
 - `manager_tools/` now on `Code-modularity`, `-CPU` and `-GPU`, kept equal by `manager_tools/sync.sh`.
 - P2.4 plan: gpu-port mapped (12 436 lines of common OpenMP offload code, vendor shims, hooks) and re-homed onto the refactored code; steps 1a-1e before vendor code.
 - Status and ideas moved from alf-ops into `manager_tools/` on `Code-modularity` (public, your OK); understand-anything removed (traces in the Trash); claude-bughunter off until P2.8.
@@ -25,6 +26,5 @@ All questions with background and recommendation: [QUESTIONS.md](QUESTIONS.md).
 3. CG-ALF tasks T3 (fast `Op_V_is_symmetric`) and T4 (production guards).
 
 ## Open branches and running jobs
-- `cm/feat/gpu-build` + `cm/dev/gpu-build` (step 1a, CI green, not merged: waits for question 4).
-- Baseline CI of the new lines: green on `Code-modularity-CPU` fc8561cf ([run 45797219302](https://github.com/luisthremer/ALF/actions/runs/45797219302)).
+- `cm/feat/gpu-build` (step 1a, CI green, waits for Q1); `cm/feat/b-batch-1` (CI running).
 - Cluster jobs: none. Plan: [P2_4_GPU_PLAN.md](https://github.com/luisthremer/ALF/blob/Code-modularity-GPU/docs/ai/phase2/P2_4_GPU_PLAN.md)
