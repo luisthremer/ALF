@@ -51,6 +51,7 @@ target_link_libraries(${iter} ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/Operator_mo
 endforeach(iter)
 
 foreach(iter ${cgr2_2tests})
+target_link_libraries(${iter} ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/control_mod.o)
 target_link_libraries(${iter} ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/cgr2_2_mod.o)
 target_link_libraries(${iter} ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/UDV_WRAP_mod.o)
 target_link_libraries(${iter} ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/QDRP_decompose_mod.o)
@@ -72,6 +73,7 @@ target_link_libraries(${iter} ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/udv_state_m
 endforeach(iter)
 
 foreach(iter ${udvstatetests})
+target_link_libraries(${iter} ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/control_mod.o)
 target_link_libraries(${iter} ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/UDV_WRAP_mod.o)
 target_link_libraries(${iter} ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/udv_state_mod.o)
 target_link_libraries(${iter} ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/QDRP_decompose_mod.o)
