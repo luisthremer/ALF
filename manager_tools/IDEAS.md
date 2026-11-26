@@ -10,3 +10,4 @@ Owner's idea inbox. One line per idea: - YYYY-MM-DD <idea>. Claude never edits o
 - 2026-11-26 Work on the Cholesky again! We probably have to increase n_wrap. (from the chat) -> taken: CG_ALF_PLAN.md section 3, idea I11 (2026-11-26)
 - 2026-11-26 Do the sweep not first in space but first in time; then we need to wrap, which is matrix-matrix multiplication; maybe better, not on the CPU but on the GPU? (from the chat) -> taken: CG_ALF_PLAN.md section 3, idea I12 (2026-11-26)
 - 2026-11-26 Or some optimised random path in imaginary space-time. (from the chat) -> taken: CG_ALF_PLAN.md section 3, idea I13 (2026-11-26)
+- 2026-11-26 Finish Fakher's walker (qmc_walker_t from Phase 6, maybe not finished) and use it for batched kernel calls over walkers, to increase the throughput. (from the chat) -> taken: CG_ALF_PLAN.md, new task T12 (finish the walker: all per-chain state in qmc_walker_t, N walkers per process), the base of idea I1 walker batching (2026-11-26)
