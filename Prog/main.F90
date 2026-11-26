@@ -146,6 +146,9 @@ Program Main
         Use qmc_setup_mod, only: Init_hdf5_file
 #endif
         Use qmc_setup_mod, only: Setup_model, Setup_fields, Setup_update_schemes, Write_info_parameters, Write_info_start, Write_info_end
+#ifdef ALF_GPU
+        Use qmc_setup_mod, only: Setup_gpu, Finalize_gpu
+#endif
         Use comm_mod, only: is_root, comm_world
         Use qmc_driver_mod, only: Langevin_update, HMC_update, MALA_update
         Use qmc_sweep_mod, only: Sweep_up, Sweep_down
@@ -317,6 +320,10 @@ Program Main
         
         !Call Test_Hamiltonian
         Call Walker_alloc(walker)
+#ifdef ALF_GPU
+        ! Device mirror of the model and walker layout (or the reason why the GPU path stays inactive)
+        Call Setup_gpu(walker, file_info)
+#endif
 
         ! Initial storage from Ltrot down to 0, then the Green function and phase on time slice 0
         Call Walker_init_stack(walker)
@@ -392,6 +399,9 @@ Program Main
         Enddo
 
         ! Deallocate things
+#ifdef ALF_GPU
+        Call Finalize_gpu()
+#endif
         Call Walker_dealloc(walker)
         If (get_N_Global_tau() > 0 .or. get_N_Global_tau_MALA() > 0 .or. get_Sequential_MALA()) then
            Call Wrapgr_dealloc

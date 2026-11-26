@@ -79,6 +79,10 @@ Module qmc_setup_mod
   Use comm_mod, only: is_root, comm_size
   Use iso8601_datetime_mod, only: iso8601_datetime
   Use iso_fortran_env, only: output_unit, error_unit
+#ifdef ALF_GPU
+  Use gpu_state_mod, only: gpu_state_setup, gpu_state_finalize
+  Use qmc_walker_mod, only: qmc_walker_t
+#endif
 #ifdef HDF5
   Use hdf5
   Use h5lt
@@ -91,6 +95,9 @@ Module qmc_setup_mod
   public :: Init_hdf5_file
 #endif
   public :: Write_info_end, Write_info_start, Write_info_parameters, Setup_update_schemes, Setup_fields, Setup_model
+#if defined(ALF_GPU)
+  public :: Setup_gpu, Finalize_gpu
+#endif
 
   contains
 
@@ -266,6 +273,30 @@ Module qmc_setup_mod
        enddo
       endif
     end Subroutine Setup_update_schemes
+
+
+#if defined(ALF_GPU)
+    !--------------------------------------------------------------------
+    !> @brief
+    !> GPU build only: builds the device mirror for the model and the walker layout, or records in the
+    !> info file why the GPU path stays inactive (gpu_state_mod). Called between Walker_alloc and
+    !> Walker_init_stack. The sweep does not use the mirror yet.
+    !--------------------------------------------------------------------
+    Subroutine Setup_gpu(walker, file_info)
+      Type (qmc_walker_t), intent(in) :: walker
+      Character (len=*),   intent(in) :: file_info
+
+      Call gpu_state_setup(walker, file_info)
+    end Subroutine Setup_gpu
+
+    !--------------------------------------------------------------------
+    !> @brief
+    !> GPU build only: releases the device mirror. Called before Walker_dealloc.
+    !--------------------------------------------------------------------
+    Subroutine Finalize_gpu()
+      Call gpu_state_finalize()
+    end Subroutine Finalize_gpu
+#endif
 
 
     !--------------------------------------------------------------------
