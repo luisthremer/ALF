@@ -128,6 +128,27 @@ Module runtime_error_mod
               
             end Subroutine Terminate_on_error
             
+            !--------------------------------------------------------------------
+            !> @brief
+            !> Ends the program with the process exit status \p code, without an error message.
+            !> @details
+            !> Standard-conforming replacement for the non-standard `call exit(code)`, for exits whose
+            !> status a job script reads (e.g. 2 = invalid environment setting). code = 0 and 2 are
+            !> returned as given, any other value as 1. Under MPI every rank that calls it stops.
+            !--------------------------------------------------------------------
+            Subroutine alf_exit(code)
+              Implicit none
+              Integer, intent(in) :: code
+              select case (code)
+              case (0)
+                stop 0
+              case (2)
+                stop 2
+              case default
+                error stop 1
+              end select
+            end Subroutine alf_exit
+
 end Module runtime_error_mod
           
     
