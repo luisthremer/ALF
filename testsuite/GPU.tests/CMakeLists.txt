@@ -86,6 +86,9 @@ else()
     "ALF_GPU_SELFTEST is set but the GPU path is inactive" plain)
   gpu_state_test(gpu-state-env-refused "ALF_GPU_NOUPDATE=1" "GPU debug env refused: ALF_GPU_NOUPDATE" plain)
   gpu_state_test(gpu-state-fault-value "ALF_GPU_DEBUG=1;ALF_GPU_FAULT=bogus" "GPU fault value invalid: ALF_GPU_FAULT=bogus" plain)
+  # ALF_GPU_CGR_LU (CGR phase source) is a debug variable with the values 0, 1, 2
+  gpu_state_test(gpu-state-cgr-lu-refused "ALF_GPU_CGR_LU=0" "GPU debug env refused: ALF_GPU_CGR_LU" plain)
+  gpu_state_test(gpu-state-cgr-lu-value "ALF_GPU_DEBUG=1;ALF_GPU_CGR_LU=3" "GPU env value invalid: ALF_GPU_CGR_LU=3" plain)
   gpu_state_test(gpu-state-envreader "ALF_GPU_DISABLE=1;ALF_GPU_FOO=1" "" envreader)
 
   # F: device wrap kernels (gpu_wrap_mod self-test run by Setup_gpu with ALF_GPU_SELFTEST=2), 51-gpu-wrap
@@ -130,12 +133,21 @@ else()
   endfunction()
   gpu_stab_test(gpu-stab-selftest "ALF_GPU_SELFTEST=3" "GPU stab self-test PASSED" selftest)
   gpu_stab_test(gpu-stab-selftest-nwrap7 "ALF_GPU_SELFTEST=3" "GPU stab self-test PASSED" selftest 7)
-  # fault controls: a wrong pivot permutation, a flipped CGR phase or a NaN scale must make the self-test fail
-  foreach(fault perm phase nan)
+  # fault controls: a wrong pivot permutation, a flipped CGR phase, a NaN scale or a flipped tracked det(U) phase must make the
+  # self-test fail (the self-test runs in check mode: tracked phase used and compared with the LU phase, whatever the default is)
+  foreach(fault perm phase nan det)
     gpu_stab_test(gpu-stab-fault-${fault} "ALF_GPU_SELFTEST=3;ALF_GPU_FAULT_STAB=${fault}" "GPU self-test FAILED" selftest)
   endforeach()
   # determinant phase of the LU factors at large N (raw product underflows), selection bitwise vs LU_PHASE_SAFE
   gpu_stab_test(gpu-stab-phase "" "gpu-stab test passed: phase" phase)
+  # tracked det(U) (speedup S1): the reflector formula against the LU phase (N = 4 .. 1000), unitary, tau = 0, complex last reflector,
+  # negative controls; n = 3200 (raw product underflows); an untracked slot stops CGR in the modes that use the tracked phase.
+  # Every test names its mode (ALF_GPU_CGR_LU), so the results do not depend on the default of the build.
+  gpu_stab_test(gpu-stab-refdet "" "gpu-stab test passed: refdet" refdet)
+  gpu_stab_test(gpu-stab-refdet-3200 "" "gpu-stab test passed: refdet3200" refdet3200)
+  gpu_stab_test(gpu-stab-untracked-tracked "ALF_GPU_DEBUG=1;ALF_GPU_CGR_LU=0" "untracked U in CGR" untracked)
+  gpu_stab_test(gpu-stab-untracked-check "ALF_GPU_DEBUG=1;ALF_GPU_CGR_LU=2" "untracked U in CGR" untracked)
+  gpu_stab_test(gpu-stab-untracked-lu "ALF_GPU_DEBUG=1;ALF_GPU_CGR_LU=1" "gpu-stab test passed: untracked" untracked)
 
   # H: device observables (gpu_obs_mod), 53-gpu-obs: random G through host Obser/OBSERT and the device, every observable to 1e-12
   function(gpu_obs_test name env regex)
