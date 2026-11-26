@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Network Graph</title>
+<style>
+:root{--bg:#fff;--panel:#f6f8fa;--fg:#1f2328;--muted:#656d76;--line:#d0d7de;--tag:#1f2328;--tagfg:#fff;--hi:#fff8c5;--tip:#ffffff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d1117;--panel:#161b22;--fg:#e6edf3;--muted:#8d96a0;--line:#30363d;--tag:#e6edf3;--tagfg:#0d1117;--hi:#3b2e00;--tip:#161b22}}
+:root[data-theme="dark"]{--bg:#0d1117;--panel:#161b22;--fg:#e6edf3;--muted:#8d96a0;--line:#30363d;--tag:#e6edf3;--tagfg:#0d1117;--hi:#3b2e00;--tip:#161b22}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+body{display:flex;flex-direction:column}
+header{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font-size:15px;margin:0;font-weight:600}
+header .meta{color:var(--muted)}
+header label{display:flex;gap:4px;align-items:center;color:var(--muted);cursor:pointer}
+header input[type=search]{padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);min-width:200px}
+header button{padding:3px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);cursor:pointer}
+#live{width:8px;height:8px;border-radius:50%;background:#2da44e;display:inline-block}
+#live.stale{background:#bf8700}
+#wrap{position:relative;flex:1;min-height:0;overflow:hidden}
+#scroller{position:absolute;inset:0;overflow:auto}
+#spacer{position:absolute;top:0;left:0;pointer-events:none}
+canvas{position:absolute;top:0;left:0;display:block;pointer-events:none}
+#tip{position:fixed;pointer-events:none;background:var(--tip);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 9px;max-width:460px;box-shadow:0 4px 14px rgba(0,0,0,.15);display:none;z-index:5}
+#tip b{font-family:ui-monospace,Menlo,monospace}
+#tip .s{margin-top:3px}
+#tip .m{color:var(--muted)}
+#toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--tag);color:var(--tagfg);padding:5px 12px;border-radius:6px;display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Network graph</h1>
+  <span class="meta"><span id="live" title="auto-update"></span> <span id="stamp"></span></span>
+  <input id="q" type="search" placeholder="Branch, hash or message — Enter jumps">
+  <label><input type="checkbox" id="showRemote" checked> remote labels</label>
+  <label><input type="checkbox" id="showTags"> tags</label>
+  <label><input type="checkbox" id="showAnon" checked> unnamed lines</label>
+  <span><button id="zout" title="Zoom out">−</button> <button id="zin" title="Zoom in">+</button></span>
+  <button id="end">Newest →</button>
+</header>
+<div id="wrap"><canvas id="cv"></canvas><div id="scroller"><div id="spacer"></div></div></div>
+<div id="tip"></div><div id="toast"></div>
+<script>
+(() => {
+const PALETTE = ["#4285f4","#3fb950","#8250df","#e3b341","#e16f24","#d1242f","#2a9d8f","#8250df","#f0883e","#6e7781","#1f6feb","#bf3989","#0a7d5c","#9a6700"];
+const LEFT = 210, AXIS = 34, PAD = 30;
+let D = null, colW = 22, rowH = 34;
+let visRows = [], rowY = {}, edges = [], hiRow = -1, hiCommit = -1, searchIdx = 0;
+const $ = id => document.getElementById(id);
+const sc = $("scroller"), cv = $("cv"), ctx = cv.getContext("2d"), spacer = $("spacer");
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const col = r => r === 0 ? PALETTE[0] : PALETTE[1 + (r - 1) % (PALETTE.length - 1)];
+const X = i => LEFT + PAD + i * colW;
+const opt = { remote: true, tags: false, anon: true };
+
+function prepare(keepRight) {
+  const rows = D.rows;
+  visRows = rows.map((r, i) => i).filter(i => opt.anon || rows[i].kind !== "anon");
+  rowY = {}; visRows.forEach((r, k) => rowY[r] = AXIS + k * rowH + rowH / 2);
+  edges = [];
+  D.c.forEach((c, i) => c[5].forEach((p, k) => {
+    if (rowY[c[1]] === undefined || rowY[D.c[p][1]] === undefined) return;
+    edges.push([p, i, k]);
+  }));
+  const fromRight = sc.scrollWidth - sc.scrollLeft - sc.clientWidth;
+  spacer.style.width = (X(D.c.length) + PAD + 240) + "px";
+  spacer.style.height = (AXIS + visRows.length * rowH + 220) + "px";
+  if (cv.clientWidth !== sc.clientWidth || cv.clientHeight !== sc.clientHeight) resize();
+  if (keepRight !== false) sc.scrollLeft = sc.scrollWidth - sc.clientWidth - (keepRight === "end" ? 0 : fromRight);
+  draw();
+}
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1, w = sc.clientWidth, h = sc.clientHeight;
+  cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + "px"; cv.style.height = h + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+
+function roundPath(pts, r) {
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length - 1; i++) ctx.arcTo(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], r);
+  ctx.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]);
+}
+function arrow(x, y, dir, c) {
+  const s = 4.5; ctx.fillStyle = c; ctx.beginPath();
+  if (dir === "r") { ctx.moveTo(x, y); ctx.lineTo(x - s * 1.6, y - s); ctx.lineTo(x - s * 1.6, y + s); }
+  else if (dir === "d") { ctx.moveTo(x, y); ctx.lineTo(x - s, y - s * 1.6); ctx.lineTo(x + s, y - s * 1.6); }
+  else { ctx.moveTo(x, y); ctx.lineTo(x - s, y + s * 1.6); ctx.lineTo(x + s, y + s * 1.6); }
+  ctx.fill();
+}
+
+function labelText(i) {
+  const L = D.labels[i]; if (!L) return null;
+  const order = { local: 0, remote: 1, tag: 2 };
+  const ns = L.filter(([n, k]) => k === "local" || (k === "remote" && opt.remote) || (k === "tag" && opt.tags))
+              .sort((a, b) => order[a[1]] - order[b[1]]).map(([n]) => n);
+  // collapse "fork/x" when local "x" is shown too
+  const set = new Set(ns);
+  return ns.filter(n => !(n.includes("/") && set.has(n.slice(n.indexOf("/") + 1)) && !set.has(n.slice(0, n.indexOf("/"))))).join("  ·  ") || null;
+}
+
+function draw() {
+  if (!D) return;
+  const w = sc.clientWidth, h = sc.clientHeight, sx = sc.scrollLeft, sy = sc.scrollTop;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = css("--bg"); ctx.fillRect(0, 0, w, h);
+  const i0 = Math.max(0, Math.floor((sx - PAD) / colW) - 2), i1 = Math.min(D.c.length - 1, Math.ceil((sx + w - LEFT - PAD) / colW) + 2);
+  const xmin = sx + LEFT - 10, xmax = sx + w + 10;
+  ctx.save(); ctx.translate(-sx, -sy);
+  // row stripes + highlight
+  visRows.forEach(r => { if (r === hiRow) { ctx.fillStyle = css("--hi"); ctx.fillRect(sx, rowY[r] - rowH / 2, w, rowH); } });
+  // edges
+  ctx.lineWidth = 2; ctx.lineCap = "round";
+  for (const [p, c, k] of edges) {
+    const xp = X(p), xc = X(c);
+    if (xc < xmin || xp > xmax) continue;
+    const yp = rowY[D.c[p][1]], yc = rowY[D.c[c][1]];
+    const same = yp === yc, color = col(k === 0 ? D.c[c][1] : D.c[p][1]);
+    ctx.strokeStyle = color; ctx.beginPath();
+    if (same) { ctx.moveTo(xp, yp); ctx.lineTo(xc, yc); ctx.stroke(); continue; }
+    if (k === 0) { // branch-off: down/up from parent, then along to child
+      const bx = Math.min(xp + colW * 0.5, xc - 6);
+      roundPath([[xp, yp], [xp, yc], [xc - 5, yc]], 7); ctx.stroke();
+      arrow(xc - 5, yc, "r", color);
+    } else { // merge: along parent row, then up/down into child
+      roundPath([[xp, yp], [xc, yp], [xc, yc + (yc > yp ? -5 : 5)]], 7); ctx.stroke();
+      arrow(xc, yc + (yc > yp ? -5 : 5), yc > yp ? "d" : "u", color);
+    }
+  }
+  // commits
+  for (let i = i0; i <= i1; i++) {
+    const c = D.c[i], y = rowY[c[1]]; if (y === undefined) continue;
+    ctx.fillStyle = col(c[1]); ctx.beginPath(); ctx.arc(X(i), y, i === hiCommit ? 6 : 4, 0, 7); ctx.fill();
+    if (i === D.head) { ctx.strokeStyle = css("--fg"); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(X(i), y, 7.5, 0, 7); ctx.stroke(); }
+  }
+  // labels (rotated, below the tip, like GitHub)
+  ctx.font = "600 12px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"; ctx.textBaseline = "middle";
+  for (const key in D.labels) {
+    const i = +key, x = X(i); if (x < xmin - 20 || x > xmax + 20) continue;
+    const y = rowY[D.c[i][1]]; if (y === undefined) continue;
+    const t = labelText(i); if (!t) continue;
+    const tw = ctx.measureText(t).width;
+    ctx.save(); ctx.translate(x, y + 9);
+    ctx.fillStyle = css("--tag"); ctx.beginPath();
+    ctx.moveTo(0, 0); ctx.lineTo(5, 6); ctx.lineTo(-5, 6); ctx.fill();
+    ctx.rotate(Math.PI / 2);
+    ctx.beginPath(); ctx.roundRect(6, -10, tw + 14, 20, 5); ctx.fill();
+    ctx.fillStyle = css("--tagfg"); ctx.fillText(t, 13, 1);
+    ctx.restore();
+  }
+  ctx.restore();
+  // date axis
+  ctx.fillStyle = css("--panel"); ctx.fillRect(0, 0, w, AXIS);
+  ctx.strokeStyle = css("--line"); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, AXIS - .5); ctx.lineTo(w, AXIS - .5); ctx.stroke();
+  ctx.font = "12px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"; ctx.textBaseline = "middle";
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  let lastM = null, lastD = null, lastX = -1e9;
+  if (i0 < D.c.length) { const d0 = new Date(D.c[i0][2] * 1000); ctx.fillStyle = css("--fg"); ctx.fillText(months[d0.getMonth()] + " " + d0.getFullYear(), LEFT + 4, 11); lastM = d0.getFullYear() * 12 + d0.getMonth(); }
+  for (let i = i0; i <= i1; i++) {
+    const d = new Date(D.c[i][2] * 1000), m = d.getFullYear() * 12 + d.getMonth(), day = d.toDateString();
+    const x = X(i) - sx;
+    if (m !== lastM) {
+      if (x > LEFT + 70) { ctx.fillStyle = css("--panel"); ctx.fillRect(x, 0, 90, 20); ctx.fillStyle = css("--fg"); ctx.fillText(months[d.getMonth()] + " " + d.getFullYear(), x + 3, 11); ctx.fillStyle = css("--line"); ctx.fillRect(x, 20, 1, AXIS - 20); }
+      lastM = m;
+    }
+    if (day !== lastD) {
+      if (x > LEFT && x - lastX > 22) { ctx.fillStyle = css("--muted"); ctx.fillText(String(d.getDate()), x - 4, 27); lastX = x; }
+      lastD = day;
+    }
+  }
+  // row names (sticky left column)
+  ctx.fillStyle = css("--panel"); ctx.fillRect(0, AXIS, LEFT, h - AXIS);
+  ctx.strokeStyle = css("--line"); ctx.beginPath(); ctx.moveTo(LEFT - .5, AXIS); ctx.lineTo(LEFT - .5, h); ctx.stroke();
+  ctx.fillRect(0, 0, LEFT, AXIS);
+  ctx.save(); ctx.beginPath(); ctx.rect(0, AXIS, LEFT - 1, h - AXIS); ctx.clip();
+  visRows.forEach(r => {
+    const y = rowY[r] - sy; if (y < AXIS - rowH || y > h + rowH) return;
+    if (r === hiRow) { ctx.fillStyle = css("--hi"); ctx.fillRect(0, y - rowH / 2, LEFT - 1, rowH); }
+    const R = D.rows[r];
+    ctx.fillStyle = col(r); ctx.fillRect(8, y - 5, 10, 10);
+    ctx.fillStyle = R.kind === "anon" ? css("--muted") : css("--fg");
+    ctx.font = (R.name === D.headRef || r === 0 ? "600 " : "") + "12px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif";
+    let t = R.kind === "anon" ? "(merged / deleted)" : R.name;
+    while (t.length > 3 && ctx.measureText(t).width > LEFT - 32) t = t.slice(0, -2);
+    if (t !== R.name && R.kind !== "anon") t += "…";
+    ctx.fillText(t, 24, y);
+  });
+  ctx.restore();
+}
+
+// --- interaction --------------------------------------------------------
+function hit(e) {
+  const rect = cv.getBoundingClientRect(), mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  if (mx < LEFT || my < AXIS) {
+    if (mx < LEFT && my >= AXIS) { const k = Math.floor((my + sc.scrollTop - AXIS) / rowH); return { row: visRows[k] }; }
+    return {};
+  }
+  const i = Math.round((mx + sc.scrollLeft - LEFT - PAD) / colW);
+  if (i < 0 || i >= D.c.length) return {};
+  const y = rowY[D.c[i][1]];
+  if (y !== undefined && Math.abs(my + sc.scrollTop - y) < rowH / 2) return { commit: i };
+  return {};
+}
+const tip = $("tip");
+sc.addEventListener("mousemove", e => {
+  if (!D) return;
+  const h = hit(e);
+  if (h.commit !== undefined) {
+    const c = D.c[h.commit], L = (D.labels[h.commit] || []).map(x => x[0]).join(", ");
+    tip.innerHTML = `<b></b> <span class="m"></span><div class="s"></div><div class="m l"></div>`;
+    tip.querySelector("b").textContent = c[0];
+    tip.querySelector(".m").textContent = c[3] + " · " + new Date(c[2] * 1000).toLocaleString();
+    tip.querySelector(".s").textContent = c[4];
+    tip.querySelector(".l").textContent = (D.rows[c[1]].name ? "line: " + D.rows[c[1]].name : "") + (L ? "   refs: " + L : "");
+    tip.style.display = "block";
+    tip.style.left = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8) + "px";
+    tip.style.top = Math.min(e.clientY + 14, innerHeight - tip.offsetHeight - 8) + "px";
+    sc.style.cursor = "pointer";
+  } else if (h.row !== undefined && D.rows[h.row]) {
+    tip.textContent = D.rows[h.row].name || "commits from merged or deleted branches";
+    tip.style.display = "block"; tip.style.left = e.clientX + 14 + "px"; tip.style.top = e.clientY + 14 + "px";
+    sc.style.cursor = "pointer";
+  } else { tip.style.display = "none"; sc.style.cursor = ""; }
+});
+sc.addEventListener("mouseleave", () => tip.style.display = "none");
+sc.addEventListener("click", e => {
+  const h = hit(e);
+  if (h.commit !== undefined) {
+    navigator.clipboard?.writeText(D.c[h.commit][0]).then(() => toast("Copied " + D.c[h.commit][0]), () => {});
+    hiRow = D.c[h.commit][1]; draw();
+  } else if (h.row !== undefined) { hiRow = h.row; jumpToRowTip(h.row); }
+});
+function toast(t) { const el = $("toast"); el.textContent = t; el.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => el.style.display = "none", 1400); }
+function jumpTo(i) {
+  hiCommit = i; hiRow = D.c[i][1];
+  sc.scrollLeft = X(i) - LEFT - (sc.clientWidth - LEFT) * 0.6;
+  sc.scrollTop = Math.max(0, rowY[hiRow] - sc.clientHeight / 2);
+  draw();
+}
+function jumpToRowTip(r) { for (let i = D.c.length - 1; i >= 0; i--) if (D.c[i][1] === r) return jumpTo(i); }
+$("q").addEventListener("keydown", e => {
+  if (e.key !== "Enter" || !D) return;
+  const q = e.target.value.trim().toLowerCase(); if (!q) { hiRow = hiCommit = -1; draw(); return; }
+  const hits = [];
+  for (const k in D.labels) if (D.labels[k].some(([n]) => n.toLowerCase().includes(q))) hits.push(+k);
+  if (!hits.length) D.c.forEach((c, i) => { if (c[0].startsWith(q) || c[4].toLowerCase().includes(q)) hits.push(i); });
+  hits.sort((a, b) => b - a);
+  if (!hits.length) return toast("No match");
+  searchIdx = e.shiftKey ? (searchIdx - 1 + hits.length) % hits.length : searchIdx % hits.length;
+  jumpTo(hits[searchIdx]); toast(`${searchIdx + 1} / ${hits.length}`); if (!e.shiftKey) searchIdx++;
+});
+$("q").addEventListener("input", () => searchIdx = 0);
+function zoom(f, anchorX) {
+  const ax = anchorX ?? sc.clientWidth / 2, i = (sc.scrollLeft + ax - LEFT - PAD) / colW;
+  colW = Math.max(4, Math.min(60, colW * f)); prepare(false);
+  sc.scrollLeft = LEFT + PAD + i * colW - ax; draw();
+}
+$("zin").onclick = () => zoom(1.4); $("zout").onclick = () => zoom(1 / 1.4);
+sc.addEventListener("wheel", e => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); zoom(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX - cv.getBoundingClientRect().left); } }, { passive: false });
+function toNewest() { sc.scrollLeft = sc.scrollWidth; const r = D.c[D.c.length - 1][1]; sc.scrollTop = Math.max(0, rowY[r] - sc.clientHeight / 2); draw(); }
+$("end").onclick = toNewest;
+$("showRemote").onchange = e => { opt.remote = e.target.checked; draw(); };
+$("showTags").onchange = e => { opt.tags = e.target.checked; draw(); };
+$("showAnon").onchange = e => { opt.anon = e.target.checked; prepare(false); };
+sc.addEventListener("scroll", () => requestAnimationFrame(draw));
+new ResizeObserver(resize).observe(sc);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+
+// --- live reload: poll version.js, fetch data.js only when it changed ----
+function load(src, cb) {
+  const s = document.createElement("script"); s.src = src + "?t=" + Date.now();
+  s.onload = () => { s.remove(); cb(true); }; s.onerror = () => { s.remove(); cb(false); };
+  document.head.appendChild(s);
+}
+function setData(first) {
+  const prevHi = hiRow >= 0 && D ? D.rows[hiRow]?.name : null, prevD = D;
+  D = window.NG_DATA;
+  const prevHead = prevD && prevD.head >= 0 ? prevD.c[prevD.head][0] : null;
+  hiRow = prevHi ? D.rows.findIndex(r => r.name === prevHi) : -1; hiCommit = -1;
+  document.title = D.repo + " · network";
+  $("title").textContent = D.repo + " — network graph";
+  $("stamp").textContent = `${D.c.length} commits · ${D.rows.filter(r => r.kind !== "anon").length} branch lines · updated ${new Date(D.generated * 1000).toLocaleTimeString()}`;
+  if (first && D.showUnnamed === false) { opt.anon = false; $("showAnon").checked = false; }
+  prepare(first ? "end" : true);
+  if (first) { if (D.head >= 0) jumpTo(D.head); else toNewest(); hiCommit = -1; draw(); }
+  else if (D.head >= 0 && D.c[D.head][0] !== prevHead) { jumpTo(D.head); toast("New HEAD " + D.c[D.head][0]); }
+}
+function poll() {
+  load("version.js", ok => {
+    $("live").classList.toggle("stale", !ok);
+    if (ok && window.NG_VERSION && (!D || window.NG_VERSION !== D.version))
+      load("data.js", ok2 => { if (ok2) setData(!D); setTimeout(poll, 2000); });
+    else setTimeout(poll, 2000);
+  });
+}
+resize(); poll();
+})();
+</script>
+</body>
+</html>

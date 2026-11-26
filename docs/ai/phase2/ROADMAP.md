@@ -30,7 +30,7 @@ interrupt, entry first, warn production users, own small dev/canvas fix, merge, 
 merge; **C** (cosmetic/theoretical) -> entry only, fixed when the code is touched anyway.
 At most one interruption at a time and at most two unmerged feature branches (current step + one A fix);
 unsure between A and B -> ask the owner, treat as B meanwhile. Full text: `AGENTS.md`, Working mode.
-Status page and idea inbox: `manager_tools/STATUS.md` and `manager_tools/IDEAS.md` on branch `Code-modularity` (until
+Status page and idea inbox: `manager_tools/STATUS.md` and `manager_tools/IDEAS.md` on the three main lines (until
 2026-11-26 the private repo `luisthremer/alf-ops`), see `AGENTS.md`.
 
 ## P2.0 — Sync (done 2026-11-25)

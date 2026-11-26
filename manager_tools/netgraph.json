@@ -1,0 +1,16 @@
+{
+  "_comment": "Branches shown in the network graph: the current GPU Development Phase 2 line (see STATUS.md). Patterns match local and fork/ names alike. row_tags: merged cm/* branches are deleted after an archive tag; those rows are named after the tag.",
+  "hide_remotes": [
+    "origin"
+  ],
+  "only": [
+    "master",
+    "Code-modularity*",
+    "cm/*",
+    "rd/*"
+  ],
+  "row_tags": [
+    "archive/cm/*"
+  ],
+  "show_unnamed": false
+}
