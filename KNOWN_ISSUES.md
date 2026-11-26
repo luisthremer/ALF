@@ -108,7 +108,8 @@ None is fixed yet; each fix becomes its own dev/canvas feature.
 `any(a /= a)` and `ieee_is_nan(a)` are folded to false (10-line test: a NaN read from input is not detected with
 `-O3 -ffast-math`, it is without). So "Green function contains NaN" (`Control_PrecisionG`, control_mod.F90) can never
 fire, and the silent NaN runs H2, H3, H4 end with return code 0. The phase guard of the det-phase feature tests the
-bit pattern (`Control_Is_Finite`) and is not affected. Fix: use the bit-pattern test in every NaN guard.
+bit pattern (`Control_Is_Finite`) and is not affected. **Fixed** (feature `nan-guards`): `Control_PrecisionG`
+and `testscale` (udv_state_mod) use `Control_All_Finite`, a bit-pattern test that also catches Inf.
 
 ### H2. Large beta: scale overflow in CGR gives NaN results with return code 0 (both, default build, high) — re-checked
 4x4 Hubbard U = 8, Beta = 30, Nwrap = 5 (also U = 4, Beta = 60; U = 20, Beta = 15): Precision Green, Phase and tau are
