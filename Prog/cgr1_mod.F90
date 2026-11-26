@@ -48,7 +48,10 @@ module cgr1_mod
   ! UR^dagger UL), 2 both: the tracked phase is used and compared with the LU phase at every CGR, a difference above
   ! PH_ABORT stops the run, count and maximum are printed by CGR_work_dealloc.  Unset: CGR_PHASE_DEFAULT.
   ! ALF_CGR_FAULT=det flips the sign of the tracked phase (negative control for mode 2).
-  INTEGER, PARAMETER :: CGR_PHASE_DEFAULT = 1
+  ! Default 0 (CG-ALF S1 on the CPU line, one commit: "git revert" of it makes the LU the default again).  Why no LU: the
+  ! reflectors of the two QRs fix det(UR) and det(UL) exactly, so the ZGETRF of UR^dagger UL at every CGR computes a
+  ! known number; the tracked phase never forms a raw product (no underflow for N > ~2950).
+  INTEGER, PARAMETER :: CGR_PHASE_DEFAULT = 0
   REAL (Kind=Kind(0.d0)), PARAMETER :: PH_ABORT = 1.d-8
   INTEGER :: cgr_phase_mode = CGR_PHASE_DEFAULT, ph_ncmp = 0
   LOGICAL :: cgr_fault_det = .false.
