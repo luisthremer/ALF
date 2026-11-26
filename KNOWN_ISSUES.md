@@ -14,7 +14,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 |---|---|---|---|
 | DP | Determinant phase underflow, CPU (CGR / DET_C) | A | fixed in aef50743 |
 | DP-GPU | Determinant phase underflow, GPU line | A | fixed on `fix/det-phase-underflow` (GPU line); not yet in every GPU branch |
-| H1 | NaN guards removed by -ffast-math | A | open — fix on `cm/dev/nan-guards` |
+| H1 | NaN guards removed by -ffast-math | A | fixed by feature `nan-guards` (G and scale checks by bit pattern) |
 | H2 | Large beta: scale overflow in CGR -> NaN | B | open; since aef50743 the run stops (phase guard) instead of silent NaN |
 | H3 | No measurements -> NaN observables | B | open |
 | H4 | confin with field value 0 -> NaN | B | open |
