@@ -57,6 +57,9 @@ module Control
     !> The environment variable ALF_UNSTABLE_THRESHOLD (read in control_init) can lower it, so that a
     !> corrupted G (e.g. faulty hardware) stops the run at once instead of entering the data.
     real    (Kind=Kind(0.d0)), private, save :: G_thresh = 10.d0
+    !> Control_Print warns (info file and stderr) when the largest G deviation of the run is above this value
+    !> (KNOWN_ISSUES.md, M6); the run itself is not changed.
+    real    (Kind=Kind(0.d0)), private, parameter :: G_warn = 1.d-3
     Integer (Kind=Kind(0.d0)) , private, save :: NC_up, ACC_up
     Integer (Kind=Kind(0.d0)) , private, save :: NC_eff_up, ACC_eff_up
     Integer (Kind=kind(0.d0)),  private, save :: NC_Glob_up, ACC_Glob_up
@@ -838,6 +841,12 @@ module Control
               XMEANG = XMEANG/dble(NCG)
               Write(50,*) ' Precision Green  Mean, Max : ', XMEANG, XMAXG
               Write(50,*) ' Precision Phase, Max       : ', XMAXP
+              If (XMAXG > G_warn) then
+                 Write(50,*) ' Warning: Precision Green Max above ', G_warn, &
+                      &      ': the results may be unreliable. Try a smaller Nwrap or Dtau.'
+                 Write(error_unit,*) 'Warning: Precision Green Max ', XMAXG, ' above ', G_warn, &
+                      &      ': the results may be unreliable. Try a smaller Nwrap or Dtau.'
+              endif
            endif
            If ( NCG_tau > 0 ) then
               XMEAN_tau = XMEAN_tau/dble(NCG_tau)

@@ -101,6 +101,7 @@ Module QMC_runtime_var
     public :: check_langevin_schemes_and_variables
     public :: check_update_schemes_compatibility
     public :: check_MALA_variables
+    public :: check_Langevin_HMC_variables
     public :: check_projector_Ltau
     public :: check_Nt_sequential_range
     public :: check_compatibility_reconstruct_greens_function
@@ -471,6 +472,55 @@ Module QMC_runtime_var
             endif
 
         end subroutine check_MALA_variables
+
+
+        !--------------------------------------------------------------------
+        !> @brief
+        !> Stops the run on parameters that make an update scheme do nothing
+        !> (KNOWN_ISSUES.md, M5).
+        !> @details
+        !> Ltau must be 0 or 1 and Amplitude must not be 0. Langevin needs
+        !> Delta_t_Langevin_HMC > 0 and Max_Force > 0; HMC (without Langevin,
+        !> which switches HMC off) needs Delta_t_Langevin_HMC > 0,
+        !> Leapfrog_steps >= 1 and N_HMC_sweeps >= 1.
+        !--------------------------------------------------------------------
+        subroutine check_Langevin_HMC_variables()
+
+            implicit none
+
+            if (Ltau /= 0 .and. Ltau /= 1) then
+                write(error_unit,'(A,I0,A)') "Error: Ltau = ", Ltau, " (must be 0 or 1)."
+                CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+            endif
+            if (Amplitude == 0.d0) then
+                write(error_unit,*) "Error: Amplitude = 0 freezes the continuous fields (no move can change them)."
+                CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+            endif
+            if (Langevin) then
+                if (Delta_t_Langevin_HMC <= 0.d0) then
+                    write(error_unit,*) "Error: Langevin=.True. requires Delta_t_Langevin_HMC > 0."
+                    CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+                endif
+                if (Max_Force <= 0.d0) then
+                    write(error_unit,*) "Error: Langevin=.True. requires Max_Force > 0."
+                    CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+                endif
+            elseif (HMC) then
+                if (Delta_t_Langevin_HMC <= 0.d0) then
+                    write(error_unit,*) "Error: HMC=.True. requires Delta_t_Langevin_HMC > 0."
+                    CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+                endif
+                if (Leapfrog_steps < 1) then
+                    write(error_unit,*) "Error: HMC=.True. requires Leapfrog_steps >= 1."
+                    CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+                endif
+                if (N_HMC_sweeps < 1) then
+                    write(error_unit,*) "Error: HMC=.True. requires N_HMC_sweeps >= 1."
+                    CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+                endif
+            endif
+
+        end subroutine check_Langevin_HMC_variables
 
 
         subroutine lock_QMC_runtime_settings()
