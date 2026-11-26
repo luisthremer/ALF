@@ -96,10 +96,10 @@ module Control
 !> @brief
 !> Reads ALF_UNSTABLE_THRESHOLD (optional, > 0) into the abort threshold of Control_PrecisionG.
 !> @details
-!> Unset or empty: the threshold stays 10. A non-positive or unparsable value stops the program.
+!> Unset or empty: the threshold stays 10. A non-positive or unparsable value ends the program with exit status 2.
 !--------------------------------------------------------------------
       subroutine control_read_threshold()
-        use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
+        use runtime_error_mod, only: alf_exit
         Implicit none
         Character (len=64) :: v
         Integer :: l, st
@@ -111,7 +111,7 @@ module Control
             G_thresh = x
           else
             write(error_unit,*) 'ALF_UNSTABLE_THRESHOLD not a positive number: ', trim(v)
-            CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+            call alf_exit(2)
           endif
         endif
       end subroutine control_read_threshold

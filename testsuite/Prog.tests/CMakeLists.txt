@@ -347,7 +347,7 @@ else()
 endif()
 
 # ALF_UNSTABLE_THRESHOLD (control_mod): a deviation of 0.5 passes with the default (10) and with 1.0,
-# aborts with 0.25; a non-positive or unparsable value stops the program with a message.
+# aborts with 0.25; a non-positive or unparsable value ends the program with exit status 2 (alf_exit).
 add_executable(45-unstable-threshold 45-unstable-threshold.F90)
 target_compile_options(45-unstable-threshold PRIVATE ${FLAG_LIST})
 target_include_directories(45-unstable-threshold PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../Prog"
@@ -365,13 +365,15 @@ if(NOT "${FLAG_LIST}" MATCHES "-DTEMPERING")
   set_tests_properties(45-unstable-threshold-0.25 PROPERTIES ENVIRONMENT "ALF_UNSTABLE_THRESHOLD=0.25"
     PASS_REGULAR_EXPRESSION "exceeding the threshold" FAIL_REGULAR_EXPRESSION "PASS: deviation" TIMEOUT 60)
 endif()
+set(EXPECT_EXIT ${CMAKE_CURRENT_SOURCE_DIR}/expect_exit.cmake)
 foreach(bad abc -1 0)
-  add_test(45-unstable-threshold-bad-${bad} 45-unstable-threshold)
-  set_tests_properties(45-unstable-threshold-bad-${bad} PROPERTIES ENVIRONMENT "ALF_UNSTABLE_THRESHOLD=${bad}"
+  add_test(NAME 45-unstable-threshold-bad-${bad}
+    COMMAND ${CMAKE_COMMAND} -DCMD=$<TARGET_FILE:45-unstable-threshold> -DEXPECTED=2
+      -DENVVAR=ALF_UNSTABLE_THRESHOLD=${bad} -P ${EXPECT_EXIT})
+  set_tests_properties(45-unstable-threshold-bad-${bad} PROPERTIES
     PASS_REGULAR_EXPRESSION "not a positive number" TIMEOUT 60)
 endforeach()
 
-set(EXPECT_EXIT ${CMAKE_CURRENT_SOURCE_DIR}/expect_exit.cmake)
 # alf_exit (runtime_error_mod): exit status 0 / 1 / 2, and 1 for any other code.
 add_executable(46-alf-exit 46-alf-exit.F90)
 target_compile_options(46-alf-exit PRIVATE ${FLAG_LIST})
