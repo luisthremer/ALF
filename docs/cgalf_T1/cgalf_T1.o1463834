@@ -1,0 +1,212 @@
+### Starting TaskPrologue of job 1463834 on h13-03 at Thu Nov 26 10:31:42 PM CET 2026
+Running on cores 96-127 with governor ondemand
+Thu Nov 26 22:31:42 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 595.91.07              Driver Version: 595.91.07      CUDA Version: 13.2     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA H100                    On  |   00000000:C6:00.0 Off |                    0 |
+| N/A   35C    P0             69W /  500W |       0MiB /  95830MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+### Finished TaskPrologue
+
+GPU 0: NVIDIA H100 (UUID: GPU-1904292a-e36b-af04-1e06-6ab207484b63)
+RESULT smoke_cqr L=24 nwrap=10 nsweep=1 rc=0 wall=5.644732519 cpu=2.858020100000000 acc=0.3178891782407408 pg_mean=4.1880639788863971E-014 pg_max=8.1308707990360847E-012
+  Precision Green  Mean, Max :    4.1880639788863971E-014 
+ rd/cgalf-stab: ALF_GPU_CHOLQR=1, decompose uses CholeskyQR2 (fallback: pre-pivoted QR)
+ rd/cgalf-stab: CholeskyQR2 decompositions 144, Cholesky failures (fallback to QR) 0
+RESULT tim_qr_L24_w5 L=24 nwrap=5 nsweep=1 rc=0 wall=5.282370012 cpu= acc= pg_mean= pg_max=
+RESULT tim_cqr_L24_w5 L=24 nwrap=5 nsweep=1 rc=0 wall=5.329009618 cpu= acc= pg_mean= pg_max=
+ rd/cgalf-stab: ALF_GPU_CHOLQR=1, decompose uses CholeskyQR2 (fallback: pre-pivoted QR)
+ rd/cgalf-stab: CholeskyQR2 decompositions 116, Cholesky failures (fallback to QR) 2
+ GPU stabilization hook: ALF_GPU_EXIT=1, stopping after the test
+ Stabilization,Wrap                  :             5
+ GPU stabilization (206): ACTIVE (decompose, CGR and precision check on the device), N = 576, Nstm = 48, pre-pivoted QR in decompose and CGR (default)
+ GPU stabilization hook: ALF_GPU_EXIT=1, stopping after the test
+ Stabilization,Wrap                  :             5
+ GPU stabilization (206): ACTIVE (decompose, CGR and precision check on the device), N = 576, Nstm = 48, pre-pivoted QR in decompose and CGR (default)
+RESULT tim_qr_L24_w10 L=24 nwrap=10 nsweep=1 rc=0 wall=5.270333541 cpu= acc= pg_mean= pg_max=
+RESULT tim_cqr_L24_w10 L=24 nwrap=10 nsweep=1 rc=0 wall=5.355586906 cpu= acc= pg_mean= pg_max=
+ rd/cgalf-stab: ALF_GPU_CHOLQR=1, decompose uses CholeskyQR2 (fallback: pre-pivoted QR)
+ rd/cgalf-stab: CholeskyQR2 decompositions 68, Cholesky failures (fallback to QR) 2
+ GPU stabilization hook: ALF_GPU_EXIT=1, stopping after the test
+ Stabilization,Wrap                  :            10
+ GPU stabilization (206): ACTIVE (decompose, CGR and precision check on the device), N = 576, Nstm = 24, pre-pivoted QR in decompose and CGR (default)
+ GPU stabilization hook: ALF_GPU_EXIT=1, stopping after the test
+ Stabilization,Wrap                  :            10
+ GPU stabilization (206): ACTIVE (decompose, CGR and precision check on the device), N = 576, Nstm = 24, pre-pivoted QR in decompose and CGR (default)
+RESULT tim_qr_L24_w20 L=24 nwrap=20 nsweep=1 rc=0 wall=5.509622302 cpu= acc= pg_mean= pg_max=
+RESULT tim_cqr_L24_w20 L=24 nwrap=20 nsweep=1 rc=0 wall=5.570305993 cpu= acc= pg_mean= pg_max=
+ rd/cgalf-stab: ALF_GPU_CHOLQR=1, decompose uses CholeskyQR2 (fallback: pre-pivoted QR)
+ rd/cgalf-stab: CholeskyQR2 decompositions 44, Cholesky failures (fallback to QR) 2
+ GPU stabilization hook: ALF_GPU_EXIT=1, stopping after the test
+ Stabilization,Wrap                  :            20
+ GPU stabilization (206): ACTIVE (decompose, CGR and precision check on the device), N = 576, Nstm = 12, pre-pivoted QR in decompose and CGR (default)
+ GPU stabilization hook: ALF_GPU_EXIT=1, stopping after the test
+ Stabilization,Wrap                  :            20
+ GPU stabilization (206): ACTIVE (decompose, CGR and precision check on the device), N = 576, Nstm = 12, pre-pivoted QR in decompose and CGR (default)
+RESULT tim_qr_L24_w40 L=24 nwrap=40 nsweep=1 rc=0 wall=6.117333387 cpu= acc= pg_mean= pg_max=
+RESULT tim_cqr_L24_w40 L=24 nwrap=40 nsweep=1 rc=0 wall=6.083211112 cpu= acc= pg_mean= pg_max=
+ rd/cgalf-stab: ALF_GPU_CHOLQR=1, decompose uses CholeskyQR2 (fallback: pre-pivoted QR)
+ rd/cgalf-stab: CholeskyQR2 decompositions 32, Cholesky failures (fallback to QR) 2
+ GPU stabilization hook: ALF_GPU_EXIT=1, stopping after the test
+ Stabilization,Wrap                  :            40
+ GPU stabilization (206): ACTIVE (decompose, CGR and precision check on the device), N = 576, Nstm = 6, pre-pivoted QR in decompose and CGR (default)
+ GPU stabilization hook: ALF_GPU_EXIT=1, stopping after the test
+ Stabilization,Wrap                  :            40
+ GPU stabilization (206): ACTIVE (decompose, CGR and precision check on the device), N = 576, Nstm = 6, pre-pivoted QR in decompose and CGR (default)
+RESULT tim_qr_L32_w5 L=32 nwrap=5 nsweep=1 rc=0 wall=24.147069993 cpu= acc= pg_mean= pg_max=
+RESULT tim_cqr_L32_w5 L=32 nwrap=5 nsweep=1 rc=0 wall=23.694303710 cpu= acc= pg_mean= pg_max=
+ rd/cgalf-stab: ALF_GPU_CHOLQR=1, decompose uses CholeskyQR2 (fallback: pre-pivoted QR)
+ rd/cgalf-stab: CholeskyQR2 decompositions 148, Cholesky failures (fallback to QR) 2
+ GPU stabilization hook: ALF_GPU_EXIT=1, stopping after the test
+ Stabilization,Wrap                  :             5
+ GPU stabilization (206): ACTIVE (decompose, CGR and precision check on the device), N = 1024, Nstm = 64, pre-pivoted QR in decompose and CGR (default)
+ GPU stabilization hook: ALF_GPU_EXIT=1, stopping after the test
+ Stabilization,Wrap                  :             5
+ GPU stabilization (206): ACTIVE (decompose, CGR and precision check on the device), N = 1024, Nstm = 64, pre-pivoted QR in decompose and CGR (default)
+RESULT tim_qr_L32_w10 L=32 nwrap=10 nsweep=1 rc=0 wall=27.789126493 cpu= acc= pg_mean= pg_max=
+RESULT tim_cqr_L32_w10 L=32 nwrap=10 nsweep=1 rc=0 wall=27.368861601 cpu= acc= pg_mean= pg_max=
+ rd/cgalf-stab: ALF_GPU_CHOLQR=1, decompose uses CholeskyQR2 (fallback: pre-pivoted QR)
+ rd/cgalf-stab: CholeskyQR2 decompositions 84, Cholesky failures (fallback to QR) 2
+ GPU stabilization hook: ALF_GPU_EXIT=1, stopping after the test
+ Stabilization,Wrap                  :            10
+ GPU stabilization (206): ACTIVE (decompose, CGR and precision check on the device), N = 1024, Nstm = 32, pre-pivoted QR in decompose and CGR (default)
+ GPU stabilization hook: ALF_GPU_EXIT=1, stopping after the test
+ Stabilization,Wrap                  :            10
+ GPU stabilization (206): ACTIVE (decompose, CGR and precision check on the device), N = 1024, Nstm = 32, pre-pivoted QR in decompose and CGR (default)
+RESULT tim_qr_L32_w20 L=32 nwrap=20 nsweep=1 rc=0 wall=35.620420449 cpu= acc= pg_mean= pg_max=
+RESULT tim_cqr_L32_w20 L=32 nwrap=20 nsweep=1 rc=0 wall=35.529103677 cpu= acc= pg_mean= pg_max=
+ rd/cgalf-stab: ALF_GPU_CHOLQR=1, decompose uses CholeskyQR2 (fallback: pre-pivoted QR)
+ rd/cgalf-stab: CholeskyQR2 decompositions 52, Cholesky failures (fallback to QR) 2
+ GPU stabilization hook: ALF_GPU_EXIT=1, stopping after the test
+ Stabilization,Wrap                  :            20
+ GPU stabilization (206): ACTIVE (decompose, CGR and precision check on the device), N = 1024, Nstm = 16, pre-pivoted QR in decompose and CGR (default)
+ GPU stabilization hook: ALF_GPU_EXIT=1, stopping after the test
+ Stabilization,Wrap                  :            20
+ GPU stabilization (206): ACTIVE (decompose, CGR and precision check on the device), N = 1024, Nstm = 16, pre-pivoted QR in decompose and CGR (default)
+RESULT tim_qr_L32_w40 L=32 nwrap=40 nsweep=1 rc=0 wall=52.571954558 cpu= acc= pg_mean= pg_max=
+RESULT tim_cqr_L32_w40 L=32 nwrap=40 nsweep=1 rc=0 wall=52.438346491 cpu= acc= pg_mean= pg_max=
+ rd/cgalf-stab: ALF_GPU_CHOLQR=1, decompose uses CholeskyQR2 (fallback: pre-pivoted QR)
+ rd/cgalf-stab: CholeskyQR2 decompositions 36, Cholesky failures (fallback to QR) 2
+ GPU stabilization hook: ALF_GPU_EXIT=1, stopping after the test
+ Stabilization,Wrap                  :            40
+ GPU stabilization (206): ACTIVE (decompose, CGR and precision check on the device), N = 1024, Nstm = 8, pre-pivoted QR in decompose and CGR (default)
+ GPU stabilization hook: ALF_GPU_EXIT=1, stopping after the test
+ Stabilization,Wrap                  :            40
+ GPU stabilization (206): ACTIVE (decompose, CGR and precision check on the device), N = 1024, Nstm = 8, pre-pivoted QR in decompose and CGR (default)
+RESULT pgd_qr_L24_w5 L=24 nwrap=5 nsweep=3 rc=0 wall=13.953082377 cpu=11.79502200000000 acc=0.3269157503858025 pg_mean=1.5683181757436562E-014 pg_max=1.2264485090586773E-011
+  Precision Green  Mean, Max :    1.5683181757436562E-014 
+RESULT pg_cqr_L24_w5 L=24 nwrap=5 nsweep=3 rc=0 wall=13.603626568 cpu=11.48681710000000 acc=0.3269157503858025 pg_mean=1.5775194604799563E-014 pg_max=8.0336194178741750E-012
+  Precision Green  Mean, Max :    1.5775194604799563E-014 
+ rd/cgalf-stab: ALF_GPU_CHOLQR=1, decompose uses CholeskyQR2 (fallback: pre-pivoted QR)
+ rd/cgalf-stab: CholeskyQR2 decompositions 672, Cholesky failures (fallback to QR) 0
+RESULT pgd_qr_L24_w10 L=24 nwrap=10 nsweep=3 rc=0 wall=10.412234457 cpu=8.380931800000001 acc=0.3269157503858025 pg_mean=2.4414917951597812E-014 pg_max=9.0239021423884379E-012
+  Precision Green  Mean, Max :    2.4414917951597812E-014 
+RESULT pg_cqr_L24_w10 L=24 nwrap=10 nsweep=3 rc=0 wall=10.169473885 cpu=8.161659000000000 acc=0.3269157503858025 pg_mean=2.4786510468035118E-014 pg_max=8.1308707990360847E-012
+  Precision Green  Mean, Max :    2.4786510468035118E-014 
+ rd/cgalf-stab: ALF_GPU_CHOLQR=1, decompose uses CholeskyQR2 (fallback: pre-pivoted QR)
+ rd/cgalf-stab: CholeskyQR2 decompositions 336, Cholesky failures (fallback to QR) 0
+RESULT pgd_qr_L24_w20 L=24 nwrap=20 nsweep=3 rc=0 wall=8.573994897 cpu=6.666513200000000 acc=0.3269157503858025 pg_mean=2.0908385111116269E-013 pg_max=8.2668052462126108E-011
+  Precision Green  Mean, Max :    2.0908385111116269E-013 
+RESULT pg_cqr_L24_w20 L=24 nwrap=20 nsweep=3 rc=0 wall=8.596874322 cpu=6.670152000000000 acc=0.3269157503858025 pg_mean=1.8165459289388270E-013 pg_max=6.8330165989147135E-011
+  Precision Green  Mean, Max :    1.8165459289388270E-013 
+ rd/cgalf-stab: ALF_GPU_CHOLQR=1, decompose uses CholeskyQR2 (fallback: pre-pivoted QR)
+ rd/cgalf-stab: CholeskyQR2 decompositions 168, Cholesky failures (fallback to QR) 0
+RESULT pgd_qr_L24_w40 L=24 nwrap=40 nsweep=3 rc=0 wall=7.854895199 cpu=5.794202100000000 acc=0.3269157503858025 pg_mean=2.9937935771963178E-011 pg_max=8.5935224185220619E-009
+  Precision Green  Mean, Max :    2.9937935771963178E-011 
+RESULT pg_cqr_L24_w40 L=24 nwrap=40 nsweep=3 rc=0 wall=7.610607235 cpu=5.741471100000000 acc=0.3269157503858025 pg_mean=2.8470175980519390E-011 pg_max=9.6766644122005899E-009
+  Precision Green  Mean, Max :    2.8470175980519390E-011 
+ rd/cgalf-stab: ALF_GPU_CHOLQR=1, decompose uses CholeskyQR2 (fallback: pre-pivoted QR)
+ rd/cgalf-stab: CholeskyQR2 decompositions 84, Cholesky failures (fallback to QR) 0
+RESULT pgd_qr_L32_w5 L=32 nwrap=5 nsweep=3 rc=0 wall=36.213534191 cpu=33.04455490000000 acc=0.3273289998372396 pg_mean=2.7866985187703623E-014 pg_max=3.1770399388445911E-011
+  Precision Green  Mean, Max :    2.7866985187703623E-014 
+RESULT pg_cqr_L32_w5 L=32 nwrap=5 nsweep=3 rc=0 wall=34.644080407 cpu=31.77719810000000 acc=0.3273289998372396 pg_mean=3.0444438462365882E-014 pg_max=6.7048701338794551E-011
+  Precision Green  Mean, Max :    3.0444438462365882E-014 
+ rd/cgalf-stab: ALF_GPU_CHOLQR=1, decompose uses CholeskyQR2 (fallback: pre-pivoted QR)
+ rd/cgalf-stab: CholeskyQR2 decompositions 896, Cholesky failures (fallback to QR) 0
+RESULT pgd_qr_L32_w10 L=32 nwrap=10 nsweep=3 rc=0 wall=26.301148332 cpu=23.56719190000000 acc=0.3273289998372396 pg_mean=5.1727114245726663E-014 pg_max=7.0416566819662054E-011
+  Precision Green  Mean, Max :    5.1727114245726663E-014 
+RESULT pg_cqr_L32_w10 L=32 nwrap=10 nsweep=3 rc=0 wall=25.355909817 cpu=22.85933400000000 acc=0.3273289998372396 pg_mean=5.2099159339139015E-014 pg_max=4.6048879250364725E-011
+  Precision Green  Mean, Max :    5.2099159339139015E-014 
+ rd/cgalf-stab: ALF_GPU_CHOLQR=1, decompose uses CholeskyQR2 (fallback: pre-pivoted QR)
+ rd/cgalf-stab: CholeskyQR2 decompositions 448, Cholesky failures (fallback to QR) 0
+RESULT pgd_qr_L32_w20 L=32 nwrap=20 nsweep=3 rc=0 wall=21.400135351 cpu=18.92071800000000 acc=0.3273289998372396 pg_mean=2.7653488724128495E-013 pg_max=9.5563108373385504E-011
+  Precision Green  Mean, Max :    2.7653488724128495E-013 
+RESULT pg_cqr_L32_w20 L=32 nwrap=20 nsweep=3 rc=0 wall=20.769847527 cpu=18.44406510000000 acc=0.3273289998372396 pg_mean=2.7715769614894952E-013 pg_max=9.9196342600105148E-011
+  Precision Green  Mean, Max :    2.7715769614894952E-013 
+ rd/cgalf-stab: ALF_GPU_CHOLQR=1, decompose uses CholeskyQR2 (fallback: pre-pivoted QR)
+ rd/cgalf-stab: CholeskyQR2 decompositions 224, Cholesky failures (fallback to QR) 0
+RESULT pgd_qr_L32_w40 L=32 nwrap=40 nsweep=3 rc=0 wall=18.892517798 cpu=16.53656110000000 acc=0.3273289998372396 pg_mean=2.7075764879429081E-011 pg_max=1.0082645703250689E-008
+  Precision Green  Mean, Max :    2.7075764879429081E-011 
+RESULT pg_cqr_L32_w40 L=32 nwrap=40 nsweep=3 rc=0 wall=18.558544373 cpu=16.23854500000000 acc=0.3273289998372396 pg_mean=2.6986372792908298E-011 pg_max=1.0049827157822731E-008
+  Precision Green  Mean, Max :    2.6986372792908298E-011 
+ rd/cgalf-stab: ALF_GPU_CHOLQR=1, decompose uses CholeskyQR2 (fallback: pre-pivoted QR)
+ rd/cgalf-stab: CholeskyQR2 decompositions 112, Cholesky failures (fallback to QR) 0
+ALLDONE
+=== JOB_STATISTICS ===
+=== current date     : Thu Nov 26 22:41:58 CET 2026
+= Job-ID             : 1463834 on helma
+= Job-Name           : cgalf_T1
+= Job-Command        : /home/hpc/b133ae/b133ae29/cgalf/T1/job.sh
+= Initial workdir    : /home/hpc/b133ae/b133ae29/cgalf/T1
+= Queue/Partition    : preempt
+= Slurm account      : b133ae with QOS=normal
+= Requested resources: cpu=32,mem=175G,node=1,billing=32,gres/gpu=1,gres/gpu:h100=1 for 01:00:00
+= Elapsed runtime    : 00:10:24
+= Total RAM usage    : 1.1 GiB of assigned 175 GiB (0.6%)
+= Node list          : h13-03
+= Subm/Elig/Start/End: 2026-11-26T22:31:00 / 2026-11-26T22:31:00 / 2026-11-26T22:31:33 / 2026-11-26T22:41:57
+======================
+=== Quota infos ======
+    Path                 Used     SoftQ    HardQ    Gracetime  Filec    FileQ    FiHaQ    FileGrace    
+    /home/hpc               8.8G   104.9G   209.7G        N/A      92K     300K     400K        N/A    
+    /hnvme               1943.5G     0.0K     0.0K        N/A      51K      61K      81K        N/A    
+======================
+=== GPU utilization ==
+gpu_name, gpu_bus_id, pid, gpu_utilization [%], mem_utilization [%], max_memory_usage [MiB], time [ms]
+NVIDIA H100, 00000000:C6:00.0, 2802011, 35 %, 0 %, 1608 MiB, 4694 ms
+NVIDIA H100, 00000000:C6:00.0, 2802056, 14 %, 0 %, 2030 MiB, 4670 ms
+NVIDIA H100, 00000000:C6:00.0, 2802088, 11 %, 0 %, 2030 MiB, 4702 ms
+NVIDIA H100, 00000000:C6:00.0, 2802124, 11 %, 0 %, 1544 MiB, 4659 ms
+NVIDIA H100, 00000000:C6:00.0, 2802156, 8 %, 0 %, 1544 MiB, 4746 ms
+NVIDIA H100, 00000000:C6:00.0, 2802206, 6 %, 0 %, 1300 MiB, 4892 ms
+NVIDIA H100, 00000000:C6:00.0, 2802241, 7 %, 0 %, 1300 MiB, 4954 ms
+NVIDIA H100, 00000000:C6:00.0, 2802278, 6 %, 0 %, 1180 MiB, 5490 ms
+NVIDIA H100, 00000000:C6:00.0, 2802310, 6 %, 0 %, 1180 MiB, 5477 ms
+NVIDIA H100, 00000000:C6:00.0, 2802350, 6 %, 0 %, 5322 MiB, 23309 ms
+NVIDIA H100, 00000000:C6:00.0, 2802410, 5 %, 0 %, 5338 MiB, 22850 ms
+NVIDIA H100, 00000000:C6:00.0, 2822026, 4 %, 0 %, 3272 MiB, 26950 ms
+NVIDIA H100, 00000000:C6:00.0, 2828156, 3 %, 0 %, 3288 MiB, 26534 ms
+NVIDIA H100, 00000000:C6:00.0, 2828206, 2 %, 0 %, 2248 MiB, 34792 ms
+NVIDIA H100, 00000000:C6:00.0, 2828269, 2 %, 0 %, 2264 MiB, 34691 ms
+NVIDIA H100, 00000000:C6:00.0, 2828333, 1 %, 0 %, 1736 MiB, 51535 ms
+NVIDIA H100, 00000000:C6:00.0, 2828565, 1 %, 0 %, 1752 MiB, 51589 ms
+NVIDIA H100, 00000000:C6:00.0, 2828644, 61 %, 1 %, 2086 MiB, 13341 ms
+NVIDIA H100, 00000000:C6:00.0, 2828677, 58 %, 1 %, 2092 MiB, 12991 ms
+NVIDIA H100, 00000000:C6:00.0, 2828716, 49 %, 1 %, 1600 MiB, 9799 ms
+NVIDIA H100, 00000000:C6:00.0, 2828769, 50 %, 1 %, 1608 MiB, 9553 ms
+NVIDIA H100, 00000000:C6:00.0, 2828801, 45 %, 1 %, 1356 MiB, 7965 ms
+NVIDIA H100, 00000000:C6:00.0, 2828847, 45 %, 1 %, 1362 MiB, 7983 ms
+NVIDIA H100, 00000000:C6:00.0, 2828880, 37 %, 1 %, 1236 MiB, 7235 ms
+NVIDIA H100, 00000000:C6:00.0, 2829095, 37 %, 1 %, 1242 MiB, 6999 ms
+NVIDIA H100, 00000000:C6:00.0, 2829149, 65 %, 4 %, 5488 MiB, 35374 ms
+NVIDIA H100, 00000000:C6:00.0, 2829220, 65 %, 5 %, 5504 MiB, 33804 ms
+NVIDIA H100, 00000000:C6:00.0, 2829280, 60 %, 6 %, 3438 MiB, 25459 ms
+NVIDIA H100, 00000000:C6:00.0, 2829334, 60 %, 6 %, 3454 MiB, 24522 ms
+NVIDIA H100, 00000000:C6:00.0, 2829539, 56 %, 6 %, 2414 MiB, 20561 ms
+NVIDIA H100, 00000000:C6:00.0, 2829597, 55 %, 7 %, 2430 MiB, 19930 ms
+NVIDIA H100, 00000000:C6:00.0, 2829644, 53 %, 7 %, 1902 MiB, 18061 ms
+NVIDIA H100, 00000000:C6:00.0, 2829679, 52 %, 7 %, 1918 MiB, 17715 ms

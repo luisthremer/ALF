@@ -1,0 +1,240 @@
+### Starting TaskPrologue of job 1463455 on h13-13 at Thu Nov 26 10:27:42 PM CET 2026
+Running on cores 64-95 with governor performance
+Thu Nov 26 22:27:42 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 595.91.07              Driver Version: 595.91.07      CUDA Version: 13.2     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA H100                    On  |   00000000:A6:00.0 Off |                    0 |
+| N/A   38C    P0             69W /  500W |       0MiB /  95830MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+### Finished TaskPrologue
+
+GPU 0: NVIDIA H100 (UUID: GPU-b68c69cf-d6c5-e90b-a0a5-0d0fc8a66143)
+RESULT smoke_qr L=24 nwrap=10 nsweep=1 rc=0 wall=5.628403751 cpu=2.893512900000000 acc=0.3178891782407408 pg_mean=4.0290158542890933E-014 pg_max=9.0239021423884379E-012
+  Precision Green  Mean, Max :    4.0290158542890933E-014 
+RESULT smoke_cqr L=24 nwrap=10 nsweep=1 rc=1 wall=.624124667 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+RESULT tim_qr_L24_w5 L=24 nwrap=5 nsweep=1 rc=1 wall=.652634712 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+RESULT tim_cqr_L24_w5 L=24 nwrap=5 nsweep=1 rc=1 wall=.621353351 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+ Stabilization,Wrap                  :             5
+ Stabilization,Wrap                  :             5
+RESULT tim_qr_L24_w10 L=24 nwrap=10 nsweep=1 rc=1 wall=.617344393 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+RESULT tim_cqr_L24_w10 L=24 nwrap=10 nsweep=1 rc=1 wall=.617752784 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+ Stabilization,Wrap                  :            10
+ Stabilization,Wrap                  :            10
+RESULT tim_qr_L24_w20 L=24 nwrap=20 nsweep=1 rc=1 wall=.613983427 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+RESULT tim_cqr_L24_w20 L=24 nwrap=20 nsweep=1 rc=1 wall=.715743823 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+ Stabilization,Wrap                  :            20
+ Stabilization,Wrap                  :            20
+RESULT tim_qr_L24_w40 L=24 nwrap=40 nsweep=1 rc=1 wall=.613199055 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+RESULT tim_cqr_L24_w40 L=24 nwrap=40 nsweep=1 rc=1 wall=.617139703 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+ Stabilization,Wrap                  :            40
+ Stabilization,Wrap                  :            40
+RESULT tim_qr_L32_w5 L=32 nwrap=5 nsweep=1 rc=1 wall=.880500733 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+RESULT tim_cqr_L32_w5 L=32 nwrap=5 nsweep=1 rc=1 wall=.840356615 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+ Stabilization,Wrap                  :             5
+ Stabilization,Wrap                  :             5
+RESULT tim_qr_L32_w10 L=32 nwrap=10 nsweep=1 rc=1 wall=.849010101 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+RESULT tim_cqr_L32_w10 L=32 nwrap=10 nsweep=1 rc=1 wall=.847562609 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+ Stabilization,Wrap                  :            10
+ Stabilization,Wrap                  :            10
+RESULT tim_qr_L32_w20 L=32 nwrap=20 nsweep=1 rc=1 wall=.839653644 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+RESULT tim_cqr_L32_w20 L=32 nwrap=20 nsweep=1 rc=1 wall=.848076860 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+ Stabilization,Wrap                  :            20
+ Stabilization,Wrap                  :            20
+RESULT tim_qr_L32_w40 L=32 nwrap=40 nsweep=1 rc=1 wall=.883134067 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+RESULT tim_cqr_L32_w40 L=32 nwrap=40 nsweep=1 rc=1 wall=.883100007 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+ Stabilization,Wrap                  :            40
+ Stabilization,Wrap                  :            40
+RESULT pg_qr_L24_w5 L=24 nwrap=5 nsweep=3 rc=0 wall=14.262140063 cpu=11.82107090000000 acc=0.3269157503858025 pg_mean=1.5683181757436562E-014 pg_max=1.2264485090586773E-011
+  Precision Green  Mean, Max :    1.5683181757436562E-014 
+RESULT pg_cqr_L24_w5 L=24 nwrap=5 nsweep=3 rc=1 wall=.621640192 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+RESULT pg_qr_L24_w10 L=24 nwrap=10 nsweep=3 rc=0 wall=10.279382992 cpu=8.301000999999999 acc=0.3269157503858025 pg_mean=2.4414917951597812E-014 pg_max=9.0239021423884379E-012
+  Precision Green  Mean, Max :    2.4414917951597812E-014 
+RESULT pg_cqr_L24_w10 L=24 nwrap=10 nsweep=3 rc=1 wall=.624373507 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+RESULT pg_qr_L24_w20 L=24 nwrap=20 nsweep=3 rc=0 wall=8.775847107 cpu=6.833422000000000 acc=0.3269157503858025 pg_mean=2.0908385111116269E-013 pg_max=8.2668052462126108E-011
+  Precision Green  Mean, Max :    2.0908385111116269E-013 
+RESULT pg_cqr_L24_w20 L=24 nwrap=20 nsweep=3 rc=1 wall=.628916353 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+RESULT pg_qr_L24_w40 L=24 nwrap=40 nsweep=3 rc=0 wall=7.721397561 cpu=5.701105900000000 acc=0.3269157503858025 pg_mean=2.9937935771963178E-011 pg_max=8.5935224185220619E-009
+  Precision Green  Mean, Max :    2.9937935771963178E-011 
+RESULT pg_cqr_L24_w40 L=24 nwrap=40 nsweep=3 rc=1 wall=.621697512 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+RESULT pg_qr_L32_w5 L=32 nwrap=5 nsweep=3 rc=0 wall=36.215121682 cpu=33.08352080000000 acc=0.3273289998372396 pg_mean=2.7866985187703623E-014 pg_max=3.1770399388445911E-011
+  Precision Green  Mean, Max :    2.7866985187703623E-014 
+RESULT pg_cqr_L32_w5 L=32 nwrap=5 nsweep=3 rc=1 wall=.850661487 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+RESULT pg_qr_L32_w10 L=32 nwrap=10 nsweep=3 rc=0 wall=26.133228225 cpu=23.42888600000000 acc=0.3273289998372396 pg_mean=5.1727114245726663E-014 pg_max=7.0416566819662054E-011
+  Precision Green  Mean, Max :    5.1727114245726663E-014 
+RESULT pg_cqr_L32_w10 L=32 nwrap=10 nsweep=3 rc=1 wall=.871038844 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+RESULT pg_qr_L32_w20 L=32 nwrap=20 nsweep=3 rc=0 wall=21.496871709 cpu=18.89584610000000 acc=0.3273289998372396 pg_mean=2.7653488724128495E-013 pg_max=9.5563108373385504E-011
+  Precision Green  Mean, Max :    2.7653488724128495E-013 
+RESULT pg_cqr_L32_w20 L=32 nwrap=20 nsweep=3 rc=1 wall=.839099874 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+RESULT pg_qr_L32_w40 L=32 nwrap=40 nsweep=3 rc=0 wall=18.777764361 cpu=16.33715300000000 acc=0.3273289998372396 pg_mean=2.7075764879429081E-011 pg_max=1.0082645703250689E-008
+  Precision Green  Mean, Max :    2.7075764879429081E-011 
+RESULT pg_cqr_L32_w40 L=32 nwrap=40 nsweep=3 rc=1 wall=.860044254 cpu= acc= pg_mean= pg_max=
+ gpu_state_mod.F90 (353):
+ Generic error                                                                                       
+ Terminating program
+Warning: ieee_inexact is signaling
+ERROR STOP 1
+ALLDONE
+=== JOB_STATISTICS ===
+=== current date     : Thu Nov 26 22:30:32 CET 2026
+= Job-ID             : 1463455 on helma
+= Job-Name           : cgalf_T1
+= Job-Command        : /home/hpc/b133ae/b133ae29/cgalf/T1/job.sh
+= Initial workdir    : /home/hpc/b133ae/b133ae29/cgalf/T1
+= Queue/Partition    : preempt
+= Slurm account      : b133ae with QOS=normal
+= Requested resources: cpu=32,mem=175G,node=1,billing=32,gres/gpu=1,gres/gpu:h100=1 for 01:00:00
+= Elapsed runtime    : 00:02:51
+= Total RAM usage    : 0.8 GiB of assigned 175 GiB (0.5%)
+= Node list          : h13-13
+= Subm/Elig/Start/End: 2026-11-26T21:32:15 / 2026-11-26T21:32:15 / 2026-11-26T22:27:41 / 2026-11-26T22:30:32
+======================
+=== Quota infos ======
+    Path                 Used     SoftQ    HardQ    Gracetime  Filec    FileQ    FiHaQ    FileGrace    
+    /home/hpc               8.4G   104.9G   209.7G        N/A      86K     300K     400K        N/A    
+    /hnvme               1943.5G     0.0K     0.0K        N/A      51K      61K      81K        N/A    
+======================
+=== GPU utilization ==
+gpu_name, gpu_bus_id, pid, gpu_utilization [%], mem_utilization [%], max_memory_usage [MiB], time [ms]
+NVIDIA H100, 00000000:A6:00.0, 2443629, 37 %, 0 %, 1600 MiB, 4710 ms
+NVIDIA H100, 00000000:A6:00.0, 2444169, 58 %, 1 %, 2086 MiB, 13664 ms
+NVIDIA H100, 00000000:A6:00.0, 2444345, 51 %, 1 %, 1600 MiB, 9677 ms
+NVIDIA H100, 00000000:A6:00.0, 2444603, 44 %, 1 %, 1356 MiB, 8176 ms
+NVIDIA H100, 00000000:A6:00.0, 2444665, 42 %, 1 %, 1236 MiB, 7110 ms
+NVIDIA H100, 00000000:A6:00.0, 2444750, 66 %, 4 %, 5488 MiB, 35389 ms
+NVIDIA H100, 00000000:A6:00.0, 2444823, 60 %, 6 %, 3438 MiB, 25306 ms
+NVIDIA H100, 00000000:A6:00.0, 2444912, 59 %, 7 %, 2414 MiB, 20612 ms
+NVIDIA H100, 00000000:A6:00.0, 2445153, 55 %, 8 %, 1902 MiB, 17951 ms
