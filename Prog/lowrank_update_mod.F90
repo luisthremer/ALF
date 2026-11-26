@@ -157,6 +157,9 @@ module Lowrank_update_mod
    use linalg_mod, only: la_zgemm, la_zgemv, la_zscal, la_zcopy, la_zgetrf, la_zgetrs
    use comm_mod, only: is_root, comm_reduce_sum, comm_bcast
    use iso_fortran_env, only: output_unit, error_unit
+#ifdef ALF_TIMERS
+   use Timers_mod, only: timer_flush_reason, FR_CAPACITY, timer_flush_begin, timer_flush_end, timer_flush_skip
+#endif
    implicit none
    private
 
@@ -1141,6 +1144,9 @@ contains
          if (.not. Op_V(n_op,Calc_Fl_map(nf_eff))%diag) nd_here = .true.
       Enddo
       call Accept_capacity(nd_here, ncap)
+#ifdef ALF_TIMERS
+      timer_flush_reason = FR_CAPACITY
+#endif
       if (any(n_cols > 0 .and. n_cols + r_add > ncap)) call Lowrank_flush(GR)
       if (nd_here .and. lr_scheme == SCHEME_SUBMATRIX) blk_nondiag = .true.
 
@@ -1282,6 +1288,9 @@ contains
       n_pend = n_pend + 1
       last_accept_cols = maxval(n_cols)
       ! Flush when a flavour's pending rank reaches N_delay (delayed: or the capacity)
+#ifdef ALF_TIMERS
+      timer_flush_reason = FR_CAPACITY
+#endif
       if (maxval(n_cols) >= ncap) call Lowrank_flush(GR)
 
    end subroutine Lowrank_accept
@@ -1584,6 +1593,9 @@ contains
 
       ! Submatrix capacity: flush after the padding and transform if a pending rank reached N_delay
       if (lr_scheme == SCHEME_SUBMATRIX) then
+#ifdef ALF_TIMERS
+         timer_flush_reason = FR_CAPACITY
+#endif
          if (blk_nondiag) then
             if (maxval(n_cols) >= min(lr_N_delay, K_ND)) call Lowrank_flush(GR)
          else
@@ -1698,7 +1710,15 @@ contains
 
       Integer :: nf, nf_eff, j
 
+#ifdef ALF_TIMERS
+      if (n_pend == 0) then
+         call timer_flush_skip()
+         return
+      endif
+      call timer_flush_begin(maxval(n_cols))
+#else
       if (n_pend == 0) return
+#endif
       Do nf_eff = 1,N_FL_eff
          j = n_cols(nf_eff)
          if (j == 0) cycle
@@ -1718,6 +1738,9 @@ contains
       blk_nondiag = .false.
       n_pend     = 0
       prop_valid = .false.
+#ifdef ALF_TIMERS
+      call timer_flush_end()
+#endif
 
    end subroutine Lowrank_flush
 
