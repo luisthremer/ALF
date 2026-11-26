@@ -196,6 +196,20 @@ else()
     gpu_tau_test(gpu-tau-fault-${fault} "ALF_GPU_SELFTEST=4;ALF_GPU_FAULT_TAU=${fault}" "GPU self-test FAILED" selftest 5 mz)
   endforeach()
 
+  # GPU=amd only: device path of linalg_mod against the host path (own HIP QR and hipSOLVER), mixed presence must stop
+  if("${FLAG_LIST}" MATCHES "-DALF_LA_HIP")
+    add_executable(55-linalg-hip 55-linalg-hip.F90)
+    target_compile_options(55-linalg-hip PRIVATE ${FLAG_LIST})
+    target_include_directories(55-linalg-hip PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules")
+    target_link_libraries(55-linalg-hip ${LIB_LIST})
+    add_test(NAME linalg-hip-hipqr COMMAND 55-linalg-hip compare)
+    add_test(NAME linalg-hip-hipsolver COMMAND 55-linalg-hip compare)
+    set_tests_properties(linalg-hip-hipsolver PROPERTIES ENVIRONMENT "ALF_HIP_QR=0")
+    set_tests_properties(linalg-hip-hipqr linalg-hip-hipsolver PROPERTIES PASS_REGULAR_EXPRESSION "linalg HIP test PASSED")
+    add_test(NAME linalg-hip-mixed COMMAND 55-linalg-hip mixed)
+    set_tests_properties(linalg-hip-mixed PROPERTIES WILL_FAIL TRUE)
+  endif()
+
   # E: whole ALF.out runs, Hubbard 4x4 (see gpu_e2e.py for the cases): GPU path active against the same binary with
   # ALF_GPU_DISABLE=1 (and, if ALF_GPU_REF_EXE names the ALF.out of a GPU=none build, against that): confout byte-identical,
   # observables equal to 1e-11; refusal of the timed N_delay; negative control ALF_GPU_FAULT=upd.

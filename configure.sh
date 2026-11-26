@@ -2,7 +2,7 @@
 # shellcheck disable=SC2059
 # This script sets necessary environment variables for compiling ALF.
 # You need to source it prior to executing make.
-USAGE="usage 'source configure.sh MACHINE MODE STAB [HDF5] [Devel] [GPU=none|host|intel|nvidia]'
+USAGE="usage 'source configure.sh MACHINE MODE STAB [HDF5] [Devel] [GPU=none|host|intel|nvidia|amd]'
 
 Please choose one of the following MACHINEs:
  * GNU
@@ -31,13 +31,14 @@ Further optional arguments:
   Devel: Compile with additional flags for development and debugging
   HDF5: Compile with HDF5
   NO-INTERACTIVE: Do not ask for user confirmation during excution of this script
-  GPU=none|host|intel|nvidia: GPU target (default none = unchanged CPU build). GPU=host builds the GPU code path with
+  GPU=none|host|intel|nvidia|amd: GPU target (default none = unchanged CPU build). GPU=host builds the GPU code path with
                -DALF_GPU and the host backend (no offload target; for tests on machines without a GPU).
                GPU=intel: MACHINE IntelLLVM/IntelX/SuperMUCNG2 only (ifx, OpenMP offload to spir64 (JIT), oneMKL + SYCL shim;
                needs icpx and MKLROOT). ALF_INTEL_AOT=pvc compiles ahead of time for the Max 1550 (start-up 65 s -> 14 s).
                GPU=nvidia: MACHINE PGI or HELMAGPU only (nvfortran, OpenMP offload, cuBLAS/cuSOLVER); compute capability
                from env ALF_GPU_CC (default cc80; HELMAGPU: cc90,cuda12.9).
-               GPU=amd is not yet available on this line.
+               GPU=amd: MACHINE GNU only (gfortran >= 14 with amdgcn offload, hipBLAS/hipSOLVER, HIP kernels);
+                        env ALF_AMD_ARCH (default gfx90a), ROCM_PATH (default /opt/rocm).
   NO-FALLBACK: Do not use a fallback option in case of an unknown/no machine,
                but instead return with value 1
 To hand an additional flag to the compiler, export it in the varible ALF_FLAGS_EXT prior to sourcing this script.
@@ -275,16 +276,11 @@ while [ "$#" -gt "0" ]; do
     NO-FALLBACK)
       NO_FALLBACK="1"
     ;;
-    GPU=NONE|GPU=HOST|GPU=INTEL|GPU=NVIDIA)
+    GPU=NONE|GPU=HOST|GPU=INTEL|GPU=NVIDIA|GPU=AMD)
       GPU_TARGET="$(echo "${ARG#GPU=}" | tr '[:upper:]' '[:lower:]')"
     ;;
-    GPU=AMD)
-      printf "${RED}GPU=%s is not yet available on this line (P2.4 step 2)${NC}\n" "$(echo "${ARG#GPU=}" | tr '[:upper:]' '[:lower:]')" 1>&2
-      rm -r "$tmpdir"
-      return 1
-    ;;
     GPU=*)
-      printf "${RED}Error: unknown GPU target '%s'. Allowed: GPU=none, GPU=host, GPU=intel, GPU=nvidia.${NC}\n" "${ARG#GPU=}" 1>&2
+      printf "${RED}Error: unknown GPU target '%s'. Allowed: GPU=none, GPU=host, GPU=intel, GPU=nvidia, GPU=amd.${NC}\n" "${ARG#GPU=}" 1>&2
       rm -r "$tmpdir"
       return 1
     ;;
@@ -676,6 +672,24 @@ case "$GPU_TARGET" in
     export ALF_LIB
     export ALF_GPU="nvidia"
     printf "\nGPU target: ${GREEN}nvidia${NC} (nvfortran, OpenMP offload %s, cuBLAS/cuSOLVER)\n" "${ALF_GPU_CC:-cc80}"
+  ;;
+  amd)
+    # gfortran (GCC >= 14) OpenMP offload to amdgcn (ALF_AMD_ARCH, default gfx90a = MI200), hipBLAS/hipSOLVER through a C++ shim.
+    # Offload needs dynamic libraries: drop -static; drop -ffast-math (GPU=amd runs were unstable with it on gpu-port, 2026-11-10).
+    if [ "$MACHINE" != "GNU" ]; then
+      printf "${RED}Error: GPU=amd requires MACHINE GNU (gfortran with GCC amdgcn offload); got '%s'.${NC}\n" "$MACHINE" 1>&2
+      rm -r "$tmpdir"
+      return 1
+    fi
+    _alf_amd="-foffload=amdgcn-amdhsa -foffload-options=amdgcn-amdhsa=-march=${ALF_AMD_ARCH:-gfx90a} -DALF_GPU -DALF_LA_HIP"
+    ALF_FLAGS_MODULES="$(echo "${ALF_FLAGS_MODULES} " | sed -e 's/ -static / /g' -e 's/ -ffast-math / /g' -e 's/ $//') ${_alf_amd}"
+    ALF_FLAGS_ANA="$(echo "${ALF_FLAGS_ANA} " | sed -e 's/ -static / /g' -e 's/ -ffast-math / /g' -e 's/ $//') ${_alf_amd}"
+    ALF_FLAGS_PROG="$(echo "${ALF_FLAGS_PROG} " | sed -e 's/ -static / /g' -e 's/ -ffast-math / /g' -e 's/ $//') ${_alf_amd}"
+    ALF_LIB="${ALF_LIB} -foffload=amdgcn-amdhsa -foffload-options=amdgcn-amdhsa=-march=${ALF_AMD_ARCH:-gfx90a} -L${ROCM_PATH:-/opt/rocm}/lib -Wl,-rpath,${ROCM_PATH:-/opt/rocm}/lib -lhipsolver -lhipblas -lamdhip64 -lstdc++"
+    export ALF_LIB
+    unset _alf_amd
+    export ALF_GPU="amd"
+    printf "\nGPU target: ${GREEN}amd${NC} (gfortran, OpenMP offload amdgcn %s, hipBLAS/hipSOLVER)\n" "${ALF_AMD_ARCH:-gfx90a}"
   ;;
   *)
     unset ALF_GPU
