@@ -57,6 +57,7 @@ Module qmc_walker_mod
   !> declare their dummy arguments ALLOCATABLE.
   !--------------------------------------------------------------------
 
+  Use iso_fortran_env, only: error_unit
   Use UDV_State_mod, only: UDV_State
   Use Hamiltonian_main, only: Ndim, N_FL, N_FL_eff, N_SUN, Calc_Fl_map, Projector, WF_L, WF_R, &
        &                      ham, nsigma, Op_V, reconstruction_needed
@@ -65,6 +66,7 @@ Module qmc_walker_mod
   Use cgr1_mod, only: CGR, CGR_work_alloc, CGR_work_dealloc
   Use Control, only: Control_PrecisionG, Control_PrecisionP
   Use QMC_runtime_var, only: get_Ltau
+  Use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
   Use Tau_m_mod, only: Tau_m_work_alloc, Tau_m_work_dealloc
   Use Tau_p_mod, only: Tau_p_work_alloc, Tau_p_work_dealloc
 
@@ -101,6 +103,11 @@ Module qmc_walker_mod
       Type (qmc_walker_t), intent(inout) :: walker
       Integer,             intent(in)    :: Ltrot, Nwrap
       Integer :: n
+
+      If ( Nwrap < 1 ) then
+         write(error_unit,*) "Error: Nwrap must be >= 1 (Nwrap = 0 or missing gives no stabilisation)."
+         CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      endif
 
       If ( mod(Ltrot,Nwrap) == 0  ) then
          walker%NSTM = Ltrot/Nwrap

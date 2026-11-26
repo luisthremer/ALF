@@ -227,6 +227,52 @@ else()
   endif()
   set_tests_properties(41-check-phase-fail PROPERTIES
     PASS_REGULAR_EXPRESSION "phase\\| /= 1: *\\( *NaN")
+
+  # Start-up checks outside QMC_runtime_var (KNOWN_ISSUES.md H4, M1, M3): each case must stop with its message.
+  add_executable(43-prog-checks-fail 43-prog-checks-fail.F90)
+  target_compile_options(43-prog-checks-fail PRIVATE ${FLAG_LIST})
+  target_include_directories(43-prog-checks-fail PRIVATE "${PROG_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules")
+  target_link_libraries(43-prog-checks-fail ${prog_objects} ${LIB_LIST})
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/43-prog-checks-fail.run")
+  foreach(case_msg "field0|does not fit to type" "ltrot|Dtau must be > 0" "nwrap|Nwrap must be >= 1")
+    string(REPLACE "|" ";" case_msg_list "${case_msg}")
+    list(GET case_msg_list 0 case_name)
+    list(GET case_msg_list 1 case_regex)
+    if("${FLAG_LIST}" MATCHES "-DMPI")
+      add_test(NAME 43-prog-checks-fail-${case_name}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS}
+          $<TARGET_FILE:43-prog-checks-fail> ${MPIEXEC_POSTFLAGS} ${case_name}
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/43-prog-checks-fail.run")
+    else()
+      add_test(NAME 43-prog-checks-fail-${case_name} COMMAND 43-prog-checks-fail ${case_name}
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/43-prog-checks-fail.run")
+    endif()
+    set_tests_properties(43-prog-checks-fail-${case_name} PROPERTIES
+      PASS_REGULAR_EXPRESSION "${case_regex}" TIMEOUT 60)
+  endforeach()
+
+  # Pot_scal weights of the Hubbard bilayer lattices (KNOWN_ISSUES.md H7)
+  add_executable(44-Hubbard-pot-weights 44-Hubbard-pot-weights.F90)
+  target_compile_options(44-Hubbard-pot-weights PRIVATE ${FLAG_LIST})
+  target_include_directories(44-Hubbard-pot-weights PRIVATE "${PROG_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules")
+  target_link_libraries(44-Hubbard-pot-weights ${prog_objects} ${LIB_LIST})
+  foreach(lattice Bilayer_square Bilayer_honeycomb)
+    set(run_dir "${CMAKE_CURRENT_BINARY_DIR}/44-Hubbard-pot-weights.${lattice}")
+    file(MAKE_DIRECTORY "${run_dir}")
+    if("${FLAG_LIST}" MATCHES "-DMPI")
+      add_test(NAME 44-Hubbard-pot-weights-${lattice}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS}
+          $<TARGET_FILE:44-Hubbard-pot-weights> ${MPIEXEC_POSTFLAGS} ${lattice}
+        WORKING_DIRECTORY "${run_dir}")
+    else()
+      add_test(NAME 44-Hubbard-pot-weights-${lattice} COMMAND 44-Hubbard-pot-weights ${lattice}
+        WORKING_DIRECTORY "${run_dir}")
+    endif()
+    set_tests_properties(44-Hubbard-pot-weights-${lattice} PROPERTIES
+      ENVIRONMENT "OMP_NUM_THREADS=1" TIMEOUT 60)
+  endforeach()
 endif()
 
 # Unit test for QMC_runtime_var (defaults, set/get round trip, lock).
@@ -263,6 +309,29 @@ else()
   add_test(NAME 38-QMC-runtime-lock-fail COMMAND 38-QMC-runtime-lock-fail)
 endif()
 set_tests_properties(38-QMC-runtime-lock-fail PROPERTIES WILL_FAIL TRUE TIMEOUT 60)
+
+# Start-up checks in QMC_runtime_var (KNOWN_ISSUES.md H3, M2, M4): each case must stop with its message.
+add_executable(42-QMC-runtime-checks-fail 42-QMC-runtime-checks-fail.F90)
+target_compile_options(42-QMC-runtime-checks-fail PRIVATE ${FLAG_LIST})
+target_include_directories(42-QMC-runtime-checks-fail PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../Prog"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules")
+target_link_libraries(42-QMC-runtime-checks-fail
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/QMC_runtime_var_mod.o" ${LIB_LIST})
+foreach(case_msg "nsweep|NSweep must be >= 1" "lobs|LOBS_ST > LOBS_EN" "projector|does not support Ltau = 1"
+    "ntseq_start|Nt_sequential_start" "ntseq_end|Nt_sequential_end")
+  string(REPLACE "|" ";" case_msg_list "${case_msg}")
+  list(GET case_msg_list 0 case_name)
+  list(GET case_msg_list 1 case_regex)
+  if("${FLAG_LIST}" MATCHES "-DMPI")
+    add_test(NAME 42-QMC-runtime-checks-fail-${case_name}
+      COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS}
+        $<TARGET_FILE:42-QMC-runtime-checks-fail> ${MPIEXEC_POSTFLAGS} ${case_name})
+  else()
+    add_test(NAME 42-QMC-runtime-checks-fail-${case_name} COMMAND 42-QMC-runtime-checks-fail ${case_name})
+  endif()
+  set_tests_properties(42-QMC-runtime-checks-fail-${case_name} PROPERTIES
+    PASS_REGULAR_EXPRESSION "${case_regex}" TIMEOUT 60)
+endforeach()
 
 # Unit test for the communication layer comm_mod (Libraries/Modules).
 add_executable(39-comm-mod 39-comm-mod.F90)
