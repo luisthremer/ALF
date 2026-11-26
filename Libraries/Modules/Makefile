@@ -27,6 +27,11 @@ SRCS = Mat_subroutines_mod.F90 \
 	random_wrap_mod.F90 \
 	runtime_error_mod.F90
 
+# GPU=intel (configure.sh): oneMKL device backend of linalg_mod
+ifeq ($(strip $(ALF_GPU)),intel)
+SRCS += linalg_onemkl_mod.F90
+endif
+
 # Dependency helper variables
 DEPSFILE := .deps.mk
 DEPSGEN := ../../Prog/gen_deps.py
