@@ -24,6 +24,12 @@ reader of G is left); the tau files (Green_tau, ...) are compared like all other
 ALF_GPU_NOOBS=1 (host observables, host TAU_M; same binary, same device chain): equal-time and scalar files must agree with 'active' to
 TOL_OBS = 1e-13 (summation order only), tau files to the tolerance of the case, and the info of that run must say
 "HOST, reason: ALF_GPU_NOOBS=1" and show a D->H count > 0.  Faults ALF_GPU_FAULT=obs and ALF_GPU_FAULT_TAU = prop, blocks must be seen.
+Step 1f (CGR phase from the tracked det(U), speedup S1): PHASE_CASES are run three more times, with the source of the CGR phase named in the
+environment (ALF_GPU_DEBUG=1, ALF_GPU_CGR_LU = 0 tracked, 1 LU, 2 both), so the checks do not depend on the default of the build:
+tracked against LU: confout byte-identical and every other file equal to TOL_PH (the phases differ at rounding level); check mode (2):
+every file byte-identical to the tracked run (the tracked phase is the one used), the info file reports the number of CGR calls compared
+and max |phase(tracked) - phase(LU)|, which must be below 1e-8 (the run aborts above that); tracked against 'disabled' like 'active'.
+Fault ALF_GPU_FAULT_STAB=det in check mode must stop the run.
 Cases: Mz-Hubbard (N_FL = 2) standard / delayed / submatrix with N_delay = 4, Ltau = 0, SU(2) Hubbard (Mz = .F., N_FL = 1) standard /
 delayed, small, odd and large Nwrap (2, 7, 25, 50 of Ltrot = 50), timed N_delay = -1 (refused).  The run of the build is Ltau = 1
 (time-displaced Green function: udvst exported to the host TAU_M) unless the case sets Ltau = 0.  .h5 files are compared with h5diff
@@ -33,6 +39,8 @@ import argparse, filecmp, os, re, shutil, subprocess, sys
 TOL = 1.0e-11          # round-off of the device kernels: |x - y| / max(1, |y|) over all numbers of an output file
 TOL_OBS = 1.0e-13      # device against host observables of the same chain: summation order only
 FAULT_SEEN = 1.0e-8    # a negative control must change the observables by more than this
+TOL_PH = 1.0e-13       # tracked against LU phase of the CGR (same binary): the phases differ at rounding level (1e-15), observables by 1e-13
+PH_ABORT = 1.0e-8      # check mode limit
 NUM = re.compile(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[EeDd][-+]?\d+)?")
 NUM_WS = re.compile(r"\s*" + NUM.pattern)      # a number with its leading blanks (a minus sign takes the place of a blank)
 ACTIVE_TEXT = "ACTIVE (mirror; wraps, updates and stabilisation on the device path)"
@@ -65,12 +73,18 @@ CASES = [
     ("fault-tau-prop", {}, {"ALF_GPU_DEBUG": "1", "ALF_GPU_FAULT_TAU": "prop"}, "fault"),
     ("fault-tau-blocks", {}, {"ALF_GPU_DEBUG": "1", "ALF_GPU_FAULT_TAU": "blocks"}, "fault"),
     ("fault-stab-perm", {}, {"ALF_GPU_DEBUG": "1", "ALF_GPU_FAULT_STAB": "perm"}, "abort"),
+    # a flipped sign of the tracked det(U) phase must be stopped by the check mode (compares with the LU phase)
+    ("fault-stab-det", {}, {"ALF_GPU_DEBUG": "1", "ALF_GPU_CGR_LU": "2", "ALF_GPU_FAULT_STAB": "det"}, "abort"),
     # ALF_GPU_FAULT=nsig (stale device copy of the field) cannot be seen on the host backend: host and "device" array are the
     # same memory there, so it is not a case here (to be added for the vendor backends, step 2).
 ]
 
 
 NOOBS_CASES = ("mz-standard", "su2-standard", "mz-h0", "mz-bilayer-honeycomb", "mz-lobs-all", "su2-symm-F")
+# step 1f: Mz-Hubbard (N_FL = 2, real), SU(2) Hubbard (N_FL = 1, complex phases of det U), both with Ltau = 1; large Nwrap; delayed
+PHASE_CASES = ("mz-standard", "su2-standard", "su2-nwrap25", "su2-delayed-N4")
+PHASE_MODES = (("cgr0", "0", "CGR phase: tracked reflector determinants (no LU)"), ("cgr1", "1", "CGR phase: LU (ZGETRF)"),
+               ("cgr2", "2", "CGR phase: tracked and LU, compared at every CGR (ALF_GPU_CGR_LU=2)"))
 
 
 def prepare(d, start, edits):
@@ -254,6 +268,37 @@ def main():
             for b in badn:
                 print("    not within the rules: " + b)
             fail += not okn
+        if label in PHASE_CASES:
+            pdirs = {}
+            for lab, m, text in PHASE_MODES:
+                pdirs[lab] = os.path.join(a.work, label, lab)
+                prepare(pdirs[lab], a.start, edits)
+                rc = run(a.exe, pdirs[lab], dict(env, ALF_GPU_DEBUG="1", ALF_GPU_CGR_LU=m), a.mpiexec)
+                if rc != 0:
+                    sys.exit("FAIL: %s: run '%s' exited with %d (see %s/stdout)" % (label, lab, rc, pdirs[lab]))
+            bad_p = []
+            for lab, m, text in PHASE_MODES:
+                if text not in open(os.path.join(pdirs[lab], "info"), errors="replace").read():
+                    bad_p.append("info of %s has no '%s'" % (lab, text))
+            bt, dt = compare(pdirs["cgr0"], pdirs["cgr1"], strict=False, tol=TOL_PH)           # tracked vs LU
+            bad_p += ["tracked vs LU: " + b for b in bt]
+            bc, _ = compare(pdirs["cgr2"], pdirs["cgr0"], strict=True)                          # check mode == tracked
+            bad_p += ["check vs tracked: " + b for b in bc]
+            bd, _ = compare(pdirs["cgr0"], dirs["disabled"], strict=False, tol=tol)             # tracked vs CPU path
+            bad_p += ["tracked vs disabled: " + b for b in bd]
+            m = re.search(r"CGR calls compared (\d+), max \|phase\(tracked\) - phase\(LU\)\|\s+(\S+)",
+                          open(os.path.join(pdirs["cgr2"], "info"), errors="replace").read())
+            ncmp, pdiff = (int(m.group(1)), float(m.group(2).replace("D", "E"))) if m else (0, float("nan"))
+            if not m or ncmp < 1 or not pdiff < PH_ABORT:
+                bad_p.append("check mode report missing or out of range")
+            obs = max([v[1] for f, v in dt.items() if v is not None and not f.startswith("confout")] + [0.0])
+            conf = "confout byte-identical" if dt.get("confout_0", (1, 1))[0] == 0.0 else "confout differs"
+            print("%-16s CGR phase tracked vs LU: %s, max scaled diff of the other files %.3g (tol %.0e); check mode: %d CGR calls, "
+                  "max phase diff %.3g (limit %.0e); check run == tracked run byte for byte: %s; %s" %
+                  (label, conf, obs, TOL_PH, ncmp, pdiff, PH_ABORT, "yes" if not bc else "NO", "OK" if not bad_p else "FAILED"))
+            for b in bad_p:
+                print("    " + b)
+            fail += bool(bad_p)
         if a.ref_exe:
             bad_n = compare(dirs["none"], dirs["disabled"], strict=True)[0]
             print("%-16s none   vs disabled: %s" % (label, "byte-identical" if not bad_n else "DIFFER: " + " ".join(bad_n)))
