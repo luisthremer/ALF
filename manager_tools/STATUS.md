@@ -1,5 +1,5 @@
 ## Now
-P2.4 plan written and merged: [P2_4_GPU_PLAN.md](https://github.com/luisthremer/ALF/blob/Code-modularity-GPU/docs/ai/phase2/P2_4_GPU_PLAN.md). Step 1a (`gpu-build`) waits for decisions D1-D4 below.
+P2.4 step 1a `gpu-build` ready (canvas, 3 commits: GPU=none|host switch, `alf_la_mod` host backend, its tests): every commit builds, 69/69 tests, 16/16 scenarios byte-identical, CI running ([run 45804627437](https://github.com/luisthremer/ALF/actions/runs/45804627437)). Merge waits for your yes on question 4 (D1-D4).
 
 ## Waiting for you
 1. Upstream issues for H7 (Bilayer_honeycomb energy) and H6 (Tempering hang, odd replicas): texts drafted in the manager chat, post them? yes/no
@@ -22,5 +22,6 @@ P2.4 plan written and merged: [P2_4_GPU_PLAN.md](https://github.com/luisthremer/
 3. CG-ALF tasks T3 (fast `Op_V_is_symmetric`) and T4 (production guards).
 
 ## Open branches and running jobs
-- No unmerged feature branches. Baseline CI on `Code-modularity-CPU` fc8561cf ([run 45797219302](https://github.com/luisthremer/ALF/actions/runs/45797219302)); later docs merges were [skip ci].
-- Cluster jobs: none. Plan: [ROADMAP.md](https://github.com/luisthremer/ALF/blob/Code-modularity-CPU/docs/ai/phase2/ROADMAP.md)
+- `cm/feat/gpu-build` + `cm/dev/gpu-build` (step 1a, CI running, not merged).
+- Baseline CI on `Code-modularity-CPU` fc8561cf ([run 45797219302](https://github.com/luisthremer/ALF/actions/runs/45797219302)).
+- Cluster jobs: none. Plan: [P2_4_GPU_PLAN.md](https://github.com/luisthremer/ALF/blob/Code-modularity-GPU/docs/ai/phase2/P2_4_GPU_PLAN.md)
