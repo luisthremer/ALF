@@ -93,6 +93,18 @@ Sub-phases, each a dev/canvas pair under `cm/dev/gpu-*`:
 4. **Consolidate**: canvas `cm/feat/gpu` with one task per commit, tree equal to the integrate
    tip, tested on every GPU machine, merge into `Code-modularity-GPU`, archive all branches.
 
+## CPU-line queue (D4, owner 2026-11-26)
+gpu-port's unguarded CPU-path changes and other general features, each its own dev/canvas feature on
+`Code-modularity-CPU` (then merged into the GPU line), in this order unless the owner says otherwise:
+1. `ALF_UNSTABLE_THRESHOLD` (owner: first in the queue; small).
+2. `prepare_sim.py`: general PARALLEL_PARAMS helper (Q4a), newest version from gpu-port
+   `Scripts_and_Parameters_files/Start_PP/` (327 lines), with the Helma documentation.
+3. `alf_exit` (clean exit path), `Trace_updates_mod`.
+4. `Timers_mod` / `ALF_TEAM_TIMERS` as base of the compile-time timing flag (CG-ALF T8).
+5. MaxEnt `N_boot` (with the MaxEnt branch).
+6. `QR_PREPIVOT` variants 2/3 (variant 1 is a test-only flag in P2.4 1d/1e).
+Elsewhere: `Op_V_is_symmetric` rewrite = CG-ALF T3; `Lowrank_cross_slice` = CG-ALF T6 (research branch now).
+
 ## P2.5 — Feature assessment (open, after P2.4)
 Table in `docs/ai/phase2/GPU_FEATURES.md`: every ALF feature (models, observables equal-time and
 time-displaced, global moves, Global_tau, Langevin/HMC/MALA, tempering, PARALLEL_PARAMS,
@@ -104,6 +116,9 @@ the test or run that shows it. Start from `docs/gpu/FEATURES.md` and `NOT_IMPLEM
 One dev/canvas pair per independent feature (`cm/dev/gpu-feat-<name>`), sub-branches for
 independent sub-features, consolidated and merged into `Code-modularity-GPU` one by one with CI
 green and the GPU checks passed. The table of P2.5 is updated at every merge.
+First (owner, Q4d): delayed and submatrix updates for every model (Kondo, tV, Spin_Peierls: non-diagonal and rank > 1
+vertices, `Calc_Fl` on the device; ticket 407 / "401-A", tag `archive/tickets/gpu-port-delayed-submatrix-rank-nd`),
+then a benchmark of which update scheme is fastest per model. Consistency across models has priority.
 
 ## P2.7 — Archive discipline (every phase)
 After each merge: annotated tags `archive/cm/<x>/dev` and `archive/cm/<x>/feat` whose message says
