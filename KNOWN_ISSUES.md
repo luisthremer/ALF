@@ -26,7 +26,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | M3 | Nwrap <= 0 accepted | B | fixed by feature `b-batch-1` (stop if Nwrap < 1) |
 | M4 | Nt_sequential range not checked -> segfault | B | fixed by feature `b-batch-1` (range check when the range is not empty) |
 | M5 | Langevin dt = 0 / Max_Force = 0 -> zeros; HMC/Amplitude edge cases | B | open |
-| M6 | Precision Green up to 10 passes silently | B | open |
+| M6 | Precision Green up to 10 passes silently | B | fixed in `cm/feat/b-batch-2` (commit "control: …"; warning above 1e-3, test 51) |
 | M7 | Phase update overflow for extreme R | C | open (from code reading) |
 | M8 | Code-modularity not bitwise identical to master (1e-14); global-tau threshold changed | B | open (to investigate with Fakher's history) |
 | L1 | master-only error-format bug | C | fixed on Code-modularity (Fakher) |
@@ -163,7 +163,8 @@ Fix: weight with `Ham_U_vec(no_I)` (host and device).
   HMC `Leapfrog_steps = 0` (acceptance 0, NaN "Phase diff"), `Amplitude = 0` (frozen chain, acceptance 1),
   `N_HMC_sweeps = 0` and `Ltau = 2` silently do nothing.
 - **M6. Precision Green up to 10 passes without a warning** (both): `Control_PrecisionG` aborts only above 10; 0.1 was
-  reached silently (continuous fields, U = 20, Nwrap = 10).
+  reached silently (continuous fields, U = 20, Nwrap = 10). **Fixed** in `cm/feat/b-batch-2`: `Control_Print`
+  writes a warning to info and stderr when Precision Green Max > 1e-3 (results unchanged; abort stays at 10).
 - **M7. Phase update `Phase*R/sqrt(R*conjg(R))`** (both, from code reading, not reproduced): overflows for |R| > 1.3e154
   and underflows for |R| < 1.5e-162 (upgrade_mod, Wrapgr_mod); the phase would become 0 or NaN. Use R/abs(R).
 
