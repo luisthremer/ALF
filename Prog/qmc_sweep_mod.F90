@@ -61,6 +61,7 @@ Module qmc_sweep_mod
   Use gpu_stab_mod, only: gpu_stab_on, gpu_stab_wrapur, gpu_stab_wrapul, gpu_stab_exchange, gpu_stab_recompute, &
        &                  gpu_stab_reset_l, gpu_stab_reset_r, gpu_stab_reset_st
   Use gpu_update_mod, only: gpu_g_host
+  Use gpu_obs_mod, only: gpu_obs_active
 #endif
   Use QMC_runtime_var, only: get_Propose_S0, get_Nt_sequential_start, get_Nt_sequential_end, &
        &                     get_N_Global_tau, get_Sequential_MALA, get_Delta_t_MALA_sequential, &
@@ -141,6 +142,10 @@ Module qmc_sweep_mod
             !write(*,*) "Phase before obser : ",phase
             Mc_step_weight = 1.d0
 #ifdef ALF_GPU
+            If (gpu_obs_active()) then
+               ! device observables: G_d is read in place, Symm is applied on the device (the host GR is read only if G_d is stale)
+               CALL ham%Obser( walker%GR, walker%PHASE, Ntau1, Mc_step_weight )
+            else
             ! G is device-authoritative: D->H of the stale flavours before the host readers below
             If (gpu_stab_on) Call gpu_g_host(walker%GR)
 #endif
@@ -154,6 +159,9 @@ Module qmc_sweep_mod
                If (reconstruction_needed) Call ham%GR_reconstruction( walker%GR )
                CALL ham%Obser( walker%GR, walker%PHASE, Ntau1, Mc_step_weight  )
             endif
+#ifdef ALF_GPU
+            Endif
+#endif
          ENDIF
       ENDDO
     end Subroutine Sweep_up
@@ -192,6 +200,10 @@ Module qmc_sweep_mod
             !write(*,*) "Phase before obser : ",phase
             Mc_step_weight = 1.d0
 #ifdef ALF_GPU
+            If (gpu_obs_active()) then
+               ! device observables: G_d is read in place, Symm is applied on the device (the host GR is read only if G_d is stale)
+               CALL ham%Obser( walker%GR, walker%PHASE, Ntau1, Mc_step_weight )
+            else
             ! G is device-authoritative: D->H of the stale flavours before the host readers below
             If (gpu_stab_on) Call gpu_g_host(walker%GR)
 #endif
@@ -205,6 +217,9 @@ Module qmc_sweep_mod
                If (reconstruction_needed) Call ham%GR_reconstruction( walker%GR )
                CALL ham%Obser( walker%GR, walker%PHASE, Ntau1,Mc_step_weight )
             endif
+#ifdef ALF_GPU
+            Endif
+#endif
          ENDIF
          IF ( walker%Stab_nt(NST) == NTAU1 .AND. NTAU1.NE.0 ) THEN
             NT1 = walker%Stab_nt(NST+1)

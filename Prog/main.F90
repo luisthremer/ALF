@@ -148,6 +148,7 @@ Program Main
         Use qmc_setup_mod, only: Setup_model, Setup_fields, Setup_update_schemes, Write_info_parameters, Write_info_start, Write_info_end
 #ifdef ALF_GPU
         Use qmc_setup_mod, only: Setup_gpu, Setup_gpu_stack, Finalize_gpu
+        Use gpu_obs_mod, only: gpu_obs_flush
 #endif
         Use comm_mod, only: is_root, comm_world
         Use qmc_driver_mod, only: Langevin_update, HMC_update, MALA_update
@@ -384,6 +385,10 @@ Program Main
               endif
 
            ENDDO
+#ifdef ALF_GPU
+           ! device observables: add the accumulators to the host Obs_* before Pr_obs normalises them (no-op without device observables)
+           Call gpu_obs_flush()
+#endif
            Call ham%Pr_obs(get_Ltau())
 #if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
            Call Global_Tempering_Pr

@@ -85,6 +85,7 @@ Module qmc_setup_mod
   Use gpu_lowrank_mod, only: gpu_lr_finalize
   Use gpu_update_mod, only: gpu_g_host_wrote
   Use gpu_stab_mod, only: gpu_stab_on, gpu_stab_setup, gpu_stab_hook, gpu_stab_finalize
+  Use gpu_obs_mod, only: gpu_obs_report, gpu_obs_finalize
   Use qmc_walker_mod, only: qmc_walker_t
 #endif
 #ifdef HDF5
@@ -297,6 +298,8 @@ Module qmc_setup_mod
       ! device stabilisation (on iff the device update path is active), then its self-test / fault controls
       Call gpu_stab_setup(walker)
       Call gpu_stab_hook()
+      ! one info line: device or host observables (the model data were stored by Alloc_obs)
+      If (gpu_active) Call gpu_obs_report()
     end Subroutine Setup_gpu
 
     !--------------------------------------------------------------------
@@ -321,6 +324,7 @@ Module qmc_setup_mod
     !> Called before Walker_dealloc.
     !--------------------------------------------------------------------
     Subroutine Finalize_gpu()
+      Call gpu_obs_finalize()
       Call gpu_lr_finalize()          ! writes the update counts, frees the device arrays of the delayed/submatrix state
       Call gpu_stab_finalize()
       Call gpu_state_finalize()

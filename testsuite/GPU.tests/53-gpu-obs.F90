@@ -148,7 +148,26 @@ contains
        Return
     Endif
 
-    ! model data for the device observables: the same lattice and hopping as Ham_Set builds (Alloc_obs hands them over from step 1e on)
+    ! the hook of Alloc_obs has set the device observables up (Setup_gpu reported them): drop them, so that ham%Obser below is the
+    ! host reference; the device is set up again from the replica of the model data after it
+    Call gpu_obs_finalize()
+    Allocate(Gh(Ndim,Ndim,N_FL,2), Gs(Ndim,Ndim,N_FL), Z0(Ndim,Ndim,N_FL))
+    Z0 = (0.d0, 0.d0)
+    Do k = 1, 2
+       Call fill_random(Gh(:,:,:,k))
+    Enddo
+    ph(1) = cmplx(1.d0, 0.d0, kind(0.d0)); ph(2) = cmplx(-0.6d0, 0.2d0, kind(0.d0)); ph(3) = cmplx(0.9d0, -0.1d0, kind(0.d0))
+    w(1) = 1.d0; w(2) = 0.7d0; w(3) = 1.3d0
+
+    ! ---- equal time, host: two measurements (the sweep hands Symm(G) to Obser)
+    Call ham%Init_obs(1)
+    Do k = 1, 2
+       Call host_obser(Gh(:,:,:,k), ph(k), w(k))
+    Enddo
+    Allocate(Hbuf(1))
+    Call pack_all(Hbuf, nhb, hblk, hlabel, .false.)
+
+    ! model data for the device observables: the same lattice and hopping as Ham_Set builds (Alloc_obs hands the model's own over, see e2e)
     Call Predefined_Latt(lat, L1, L2, Ndim_l, List, Invlist, Latt, Latt_unit)
     Allocate(tv(N_FL), t2v(N_FL), tpv(N_FL), cv(N_FL), fx(N_FL), fy(N_FL), nphi(N_FL))
     tv = 1.d0; t2v = 1.d0; tpv = 1.d0; cv = 0.d0; fx = 0.d0; fy = 0.d0; nphi = 0
@@ -169,21 +188,6 @@ contains
        Return
     Endif
 
-    Allocate(Gh(Ndim,Ndim,N_FL,2), Gs(Ndim,Ndim,N_FL), Z0(Ndim,Ndim,N_FL))
-    Z0 = (0.d0, 0.d0)
-    Do k = 1, 2
-       Call fill_random(Gh(:,:,:,k))
-    Enddo
-    ph(1) = cmplx(1.d0, 0.d0, kind(0.d0)); ph(2) = cmplx(-0.6d0, 0.2d0, kind(0.d0)); ph(3) = cmplx(0.9d0, -0.1d0, kind(0.d0))
-    w(1) = 1.d0; w(2) = 0.7d0; w(3) = 1.3d0
-
-    ! ---- equal time, host: two measurements (the sweep hands Symm(G) to Obser)
-    Call ham%Init_obs(1)
-    Do k = 1, 2
-       Call host_obser(Gh(:,:,:,k), ph(k), w(k))
-    Enddo
-    Allocate(Hbuf(1))
-    Call pack_all(Hbuf, nhb, hblk, hlabel, .false.)
     ! ---- equal time, device: first measurement uploads the host G, the second reads the device G with a zero host array
     Call ham%Init_obs(1)
     g_dev_ok = .false.
