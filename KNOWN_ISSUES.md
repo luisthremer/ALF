@@ -258,8 +258,8 @@ AddressSanitizer/UBSan on Code-modularity for all models (no report), FPE traps 
   Device stabilisation alone (ALF_GPU_NOUPDATE=1, which also moves the stabilisation to the host) = CPU to the last digit.
 - **Depends on the BLAS:** the numbers above are from the Mac (gfortran 16, Apple Accelerate). On Linux (melmac,
   gfortran 14, reference BLAS/LAPACK) the same runs give GPU/CPU 0.88 with `Hd` and 0.99 without (SU(2), checkerboard,
-  Nwrap = 25, 12 seeds, same chain; manager check 2026-11-26), i.e. `Hd` is not worse there. So the loss comes from how the
-  library ZGEMM rounds the one dense product; the per-factor path gives the CPU numbers on both platforms. Check again with
+  Nwrap = 25, 12 seeds, same chain; manager check 2026-11-26), i.e. `Hd` is not worse there. So the loss probably comes from how
+  the library ZGEMM rounds the one dense product (not proven: a Mac build against the reference BLAS failed for other reasons); the per-factor path gives the CPU numbers on both platforms. Check again with
   cuBLAS/oneMKL/hipBLAS in step 2.
 - **Fix (feature `gpu-hopd-optin`):** `Hd` is opt-in (`ALF_GPU_HOPD=1`, a debug/benchmark switch like `ALF_GPU_TL/TR/VB`; refused in
   production runs); the default is the per-factor checkerboard path, which gives the CPU numbers. Still to do: measure the
