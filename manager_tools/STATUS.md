@@ -1,11 +1,15 @@
 ## Now
-- P2.4 step 1f (S1) is merged into the GPU line. Next: step 2, the three vendor backends (NVIDIA, AMD, Intel), one session each, started one at a time.
+- P2.4 step 1f (S1) is merged into the GPU line. Step 2 in work: gpu-nvidia, gpu-amd, gpu-intel have accepted design notes and write code (common rule S2-1: presence dispatch, one vendor module each).
+- Also in parallel: b-batch-2 (CPU-line B bugs H5, M5, M6, MK), cpu-s1 (CG-ALF T5: tracked phase check, LU-free phase on the CPU line), cpu-queue (alf_exit, then Timers_mod), cgalf-research (H100 stabilisation scan).
 - GPU line CI run 45890936664 on 0bc71e66 (first run of 1f together with Trace_updates_mod).
 - Live progress page for you: [ALF GPU Phase 2](https://claude.ai/artifact/PmMk2VMb8iUzXtnEYUcHc3) (private; updated after every merge or push).
 
 ## Waiting for you
 Answer with the buttons under "Needs you" on the [progress page](https://claude.ai/artifact/PmMk2VMb8iUzXtnEYUcHc3).
 1. Q13: `Lowrank_cross_slice` is sound but not faster on the CPU: drop it (recommended) or keep as opt-in?
+2. Q15: switch on claude-bughunter for the Intel `Mz = T` investigation (Q12)?
+3. SuperMUC login for gpu-intel's device sessions (it asks when ready); first cap 40 GPU-hours of the estimated 76.
+4. Two proposed sessions wait as cards (the app runs at most 5 at once): CG-ALF T4 review, P2.5 run evidence.
 
 ## Done since the last owner message
 - Merged P2.4 step 1f (S1: CGR phase from the tracked det(U), no LU) into the GPU line: [a3e1220f](https://github.com/luisthremer/ALF/commit/a3e1220f), CI run 45886167489 green (30/30). The LU removal is the single commit 789fe086 (`git revert 789fe086` gives the LU version exactly).
@@ -29,6 +33,6 @@ Answer with the buttons under "Needs you" on the [progress page](https://claude.
 3. CG-ALF: H100 measurement of the stabilisation candidates (cgalf-research, Q14 yes).
 
 ## Open branches and running jobs
-- `cm/feat/alf-exit` + `cm/dev/alf-exit` (CPU line, being rebased by cpu-queue).
-- Sessions reporting to the manager: cpu-queue (alf_exit), cgalf-research (H100 measurement; Q13 open), g2-precision and p25-features (done; can be archived on your yes).
-- Cluster jobs: cgalf-research on Helma (preempt). Plan: [P2_4_GPU_PLAN.md](https://github.com/luisthremer/ALF/blob/Code-modularity-GPU/docs/ai/phase2/P2_4_GPU_PLAN.md)
+- `cm/feat/alf-exit` (CPU line, CI run 45890618713). Step-2 branches `cm/*/gpu-{nvidia,amd,intel}`, `cm/*/b-batch-2`, `rd/cgalf-t5` + `cm/*/cpu-s1` (being created).
+- GPU line CI run 45890936664 on 0bc71e66 (1f + Trace_updates_mod).
+- Cluster jobs: cgalf-research on Helma (cap 4 GPU-h), gpu-nvidia on Helma (cap 10 GPU-h), gpu-amd on amd, gpu-intel on SuperMUC (needs your login). Plan: [P2_4_GPU_PLAN.md](https://github.com/luisthremer/ALF/blob/Code-modularity-GPU/docs/ai/phase2/P2_4_GPU_PLAN.md)

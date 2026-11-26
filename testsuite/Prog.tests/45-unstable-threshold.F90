@@ -5,7 +5,7 @@
 !   unset            -> 0.5 < 10    -> passes, exit 0                       (45-unstable-threshold-default)
 !   = 1.0            -> 0.5 < 1     -> passes, exit 0                       (45-unstable-threshold-1.0)
 !   = 0.25           -> 0.5 > 0.25  -> "exceeding the threshold", abort     (45-unstable-threshold-0.25)
-!   = abc / -1 / 0   -> not a positive number -> message, program stops     (45-unstable-threshold-bad-*)
+!   = abc / -1 / 0   -> not a positive number -> alf_exit(2), exit status 2   (45-unstable-threshold-bad-*)
 Program unstable_threshold_test
   Use Control, only: control_read_threshold, Control_PrecisionG
   Implicit none
