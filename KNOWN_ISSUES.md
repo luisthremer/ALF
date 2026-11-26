@@ -35,7 +35,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | L4 | Restart not byte-identical for Langevin Ltau = 1 / HMC | C | open |
 | L5 | Tempering messages | C | open |
 | L6 | GPU line: confin 0 gives finite wrong numbers | B | open (GPU line) |
-| MK | Makefile: Prog objects not rebuilt after Libraries/Modules changes | B | open |
+| MK | Makefile: Prog objects not rebuilt after Libraries/Modules changes | B | fixed in `cm/feat/b-batch-2` (commit "build: …"; test 50) |
 | WF | Trial wave function normalisation, large N_part (suspected) | B | open, not reproduced |
 | P1 | Op_V_is_symmetric slow (start-up, Symm = .T.) | B | open; fast version on gpu-port |
 
@@ -84,8 +84,9 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
   projector run (`WaveFunction_mod.o` calling `DET_C`), gone after `make clean`.
 - **Who is affected:** incremental builds after library changes. CI and fresh builds are not.
 - **Workaround:** `make clean` (or `make cleanprog`) after changing anything in `Libraries/Modules`.
-- **Fix (open, P2.8):** let `gen_deps.py` add the library `.mod` files (or `modules_90.a`) as
-  dependencies of the `Prog/` objects.
+- **Fixed** in `cm/feat/b-batch-2` (commit "build: Prog objects rebuilt after Libraries/Modules changes"):
+  `Prog/Makefile` makes every object depend on the `.mod` files of `Libraries/Modules` (gfortran rewrites a
+  `.mod` only when the interface changes) and `ALF.out` on the two archives. Test `50-make-lib-deps`.
 
 ## Trial wave function normalisation for large N_part (suspected, not checked)
 

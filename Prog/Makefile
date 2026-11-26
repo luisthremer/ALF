@@ -25,6 +25,12 @@ ALF.out: $(DEPSFILE) $(OBJS)
 	@echo "Link program"
 	$(ALF_FC) -o "ALF.out" $(OBJS) $(ALF_LIB)
 
+# Libraries (KNOWN_ISSUES.md, MK): every object is rebuilt when a .mod file of Libraries/Modules changes
+# (gfortran rewrites a .mod only when the module interface changes), and ALF.out is relinked when an
+# archive changes. The lists are empty when the libraries are not built yet.
+$(OBJS): $(wildcard ../Libraries/Modules/*.mod)
+ALF.out: $(wildcard ../Libraries/Modules/modules_90.a ../Libraries/libqrref/libqrref.a)
+
 OHAM := $(shell ./parse_ham.py --print_obj_list 2>/dev/null)
 
 Hamiltonian_main_mod.o: Hamiltonians_interface.h Hamiltonians_case.h
