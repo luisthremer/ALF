@@ -139,7 +139,7 @@ Module gpu_state_mod
   Public :: GT0_d, G0T_d, GTT_d, scr_c, scr_vec, scr_r, scr_work, scr_ipiv
   Public :: upd_cnt
   ! ticket 212: the single reader of every ALF_GPU_* variable (all other GPU files only call these)
-  Public :: gpu_env_get, gpu_env_is, gpu_env_int, gpu_env_fault_tau_eps, gpu_env_check
+  Public :: gpu_env_get, gpu_env_is, gpu_env_int, gpu_env_check
 
   Logical :: gpu_active = .false.
   Character (len=256) :: gpu_reason = 'gpu_state_setup not called'
@@ -201,20 +201,12 @@ Module gpu_state_mod
   Character (len=256) :: env_val(ENV_MAX)  = ''
   Integer :: env_n = 0
   Character (len=96) :: env_reader = 'not read yet'
-  ! Variables the allow-list reader looks up: every ALF_GPU_* / ALF_LA_TEST_* name used by the GPU port
-  Character (len=24), parameter :: env_allow(35) = [ Character(len=24) :: &
-       & 'ALF_GPU_DISABLE', 'ALF_GPU_DEBUG', 'ALF_GPU_SELFTEST', 'ALF_GPU_UPDTEST', 'ALF_GPU_FAULT', &
-       & 'ALF_GPU_FAULT_STAB', 'ALF_GPU_FAULT_TAU', 'ALF_GPU_FAULT_TAU_AT', 'ALF_GPU_EXIT', 'ALF_GPU_NS', &
-       & 'ALF_GPU_NOUPDATE', 'ALF_GPU_NOOBS', 'ALF_GPU_OBS_SKIP', &
-       & 'ALF_GPU_TAU_NS', 'ALF_GPU_TAUSWAP', 'ALF_GPU_TAUTIME', &
-       & 'ALF_GPU_TAUTEST_V', 'ALF_GPU_TAUDIAG', 'ALF_GPU_TAUDIAG_NUL', 'ALF_GPU_TAUDIAG_VAR', &
-       & 'ALF_GPU_TAUDIAG_QREF', 'ALF_GPU_TAUDIAG_SEED', 'ALF_GPU_TAUDIAG_QVAR', 'ALF_GPU_TAUDIAG_FROM', &
-       & 'ALF_GPU_TAUDIAG_AMP', 'ALF_GPU_TAUDIAG_QHOST', 'ALF_GPU_TIMING', 'ALF_GPU_TRACE', 'ALF_GPU_VB', &
-       & 'ALF_GPU_TR', 'ALF_GPU_TL', 'ALF_LA_TEST_BREAK_ORDER', 'ALF_LA_TEST_BADSTREAM', 'ALF_LA_TEST_WRONG_LD', &
-       & 'ALF_LA_TEST_POISON_INFO' ]
+  ! Variables the allow-list reader looks up: every ALF_GPU_* name that acts in the GPU port (step 1e)
+  Character (len=24), parameter :: env_allow(11) = [ Character(len=24) :: &
+       & 'ALF_GPU_DISABLE', 'ALF_GPU_DEBUG', 'ALF_GPU_SELFTEST', 'ALF_GPU_FAULT', 'ALF_GPU_FAULT_STAB', 'ALF_GPU_FAULT_TAU', &
+       & 'ALF_GPU_NOUPDATE', 'ALF_GPU_NOOBS', 'ALF_GPU_TL', 'ALF_GPU_TR', 'ALF_GPU_VB' ]
   Logical :: env_read_done = .false.
   Integer :: env_rank = 0, env_size = 1              ! MPI_COMM_WORLD rank and size (1 and 0 without MPI)
-  Real (Kind=Kind(0.d0)) :: env_eps_tau = 0.d0      ! x of ALF_GPU_FAULT_TAU=eps:<x> (ticket 207)
 
 Contains
 
@@ -223,7 +215,7 @@ Contains
 !> The one and only reader of the ALF_GPU_* environment.
 !> @details
 !> Listed / refused: defined and not empty (the value '0' included: ALF_GPU_NS=0 is the active setting of that
-!> switch).  Debug run: ALF_GPU_SELFTEST / _UPDTEST / _DEBUG set to a non-empty value other than '0'.
+!> switch).  Debug run: ALF_GPU_SELFTEST / _DEBUG set to a non-empty value other than '0'.
 !> Reader 1 (Linux, /proc present): /proc/self/environ lists the whole environment (Fortran cannot enumerate it), so
 !> unknown names (typos, other switches) are seen as well.  Reader 2 (no /proc, e.g. macOS): get_environment_variable
 !> over the fixed allow-list env_allow; unknown or misspelt names are NOT seen.  gpu_env_reader_name says which ran.
@@ -370,12 +362,6 @@ Contains
     Endif
   End Subroutine gpu_env_int
 
-  !> x of ALF_GPU_FAULT_TAU=eps:<x>; 0 if that fault is not armed (ticket 207)
-  Real (Kind=Kind(0.d0)) Function gpu_env_fault_tau_eps()
-    Implicit none
-    gpu_env_fault_tau_eps = env_eps_tau
-  End Function gpu_env_fault_tau_eps
-
   !> rank in and size of MPI_COMM_WORLD (0 and 1 in a build without MPI)
   Subroutine env_mpi_ids()
     Implicit none
@@ -419,11 +405,9 @@ Contains
     Integer :: ln
     Character (len=256) :: v
     Logical :: debug_run, ok
-    Integer :: i, ios
-    Real (Kind=Kind(0.d0)) :: x
+    Integer :: i
     Character (len=6) :: bk
     If (.not. env_read_done) Call gpu_env_read()
-    env_eps_tau = 0.d0
 #if defined(ALF_LA_CUDA)
     bk = 'CUDA'
 #elif defined(ALF_LA_ONEMKL)
@@ -455,7 +439,7 @@ Contains
     debug_run = .false.
     Do i = 1, env_n
        Select case (trim(env_name(i)))
-       Case ('ALF_GPU_SELFTEST', 'ALF_GPU_UPDTEST', 'ALF_GPU_DEBUG'); if (trim(env_val(i)) /= '0') debug_run = .true.
+       Case ('ALF_GPU_SELFTEST', 'ALF_GPU_DEBUG'); if (trim(env_val(i)) /= '0') debug_run = .true.
        End Select
     Enddo
     If (.not. debug_run) then
@@ -471,7 +455,7 @@ Contains
     ! fault values: an unknown or unparsable value is an error in every run
     If (gpu_env_get('ALF_GPU_FAULT', v)) then
        Select case (trim(v))
-       Case ('hop', 'hopc', 'vexp', 'nan', 'order', 'upd', 'nsig', 'hostonly', 'obs')
+       Case ('hop', 'hopc', 'vexp', 'nan', 'order', 'upd', 'nsig', 'obs')
        Case default
           Call env_fail('GPU fault value invalid: ALF_GPU_FAULT='//trim(v))
        End Select
@@ -487,22 +471,11 @@ Contains
        Endif
        Call env_say('GPU fault armed: ALF_GPU_FAULT_STAB='//trim(v))
     Endif
-    ! ticket 207 (gpu_tau_mod): perm|prop|prec|blocks, or the graded fault eps:<x> of the ALF_GPU_SELFTEST=4 comparison
+    ! gpu_tau_mod: perm|prop|prec|blocks
     If (gpu_env_get('ALF_GPU_FAULT_TAU', v)) then
        ok = .false.
        Select case (trim(v))
        Case ('perm', 'prop', 'prec', 'blocks'); ok = .true.
-       Case default
-          If (len_trim(v) > 4) then
-             If (v(1:4) == 'eps:') then
-                Read(v(5:),*,iostat=ios) x
-                If (ios == 0) then
-                   If (x > 0.d0 .and. x < 1.d300) then
-                      ok = .true.; env_eps_tau = x
-                   Endif
-                Endif
-             Endif
-          Endif
        End Select
        If (.not. ok) then
           Call env_fail('GPU fault value invalid: ALF_GPU_FAULT_TAU='//trim(v))

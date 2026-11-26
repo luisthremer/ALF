@@ -62,6 +62,7 @@ Module qmc_sweep_mod
        &                  gpu_stab_reset_l, gpu_stab_reset_r, gpu_stab_reset_st
   Use gpu_update_mod, only: gpu_g_host
   Use gpu_obs_mod, only: gpu_obs_active
+  Use gpu_tau_mod, only: gpu_tau_on, gpu_tau_pass
 #endif
   Use QMC_runtime_var, only: get_Propose_S0, get_Nt_sequential_start, get_Nt_sequential_end, &
        &                     get_N_Global_tau, get_Sequential_MALA, get_Delta_t_MALA_sequential, &
@@ -289,10 +290,17 @@ Module qmc_sweep_mod
 
       IF ( get_Ltau() == 1 .and. .not. Projector ) then
 #ifdef ALF_GPU
+         If (gpu_tau_on) then
+            ! device tau pass: G_d and udvst stay on the device, observables are measured there
+            Call gpu_tau_pass(walker)
+         else
          ! TAU_M reads GR (and udvst, exported at the exchange) on the host
          If (gpu_stab_on) Call gpu_g_host(walker%GR)
 #endif
          Call TAU_M( walker%udvst, walker%GR, walker%PHASE, walker%NSTM, get_Nwrap(), walker%STAB_NT, get_LOBS_ST(), get_LOBS_EN() )
+#ifdef ALF_GPU
+         Endif
+#endif
       endif
       ! When Nwrap > Thtrot+1, the smallest Stab_nt(1)=Nwrap already exceeds
       ! THTROT+1, so the backward-loop condition Stab_nt(NST)<=THTROT+1 was
