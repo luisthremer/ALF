@@ -1,0 +1,65 @@
+Start_PP: parameter scans for the parallel-parameters mode (PP) of ALF
+=======================================================================
+
+prepare_sim.py turns ONE template `parameters` file, in which some parameters are given as sets of values,
+into one directory Temp_<i>/ per combination of values. ALF compiled with PP (configure.sh ... PP ...)
+then runs all of them in one MPI job: mpi_per_parameter_set ranks per Temp_<i>. The same layout is used
+by parallel tempering (TEMPERING), see ../Start_Tempering.
+
+Files
+  parameters          example template (lattice-size scan with linked N_Phi and Beta, U scan)
+  prepare_sim.py      the generator (needs f90nml: pip install f90nml; pyALF installs it too)
+  seeds               one integer seed per MPI rank (needs at least as many lines as ranks)
+  out_to_in_temper.sh renames confout_* to confin_* in every Temp_*/ before a continuation run
+
+Usage
+  python3 prepare_sim.py [-t TEMPLATE] [-o OUTDIR] [--no-links]
+  python3 prepare_sim.py --self-test       # generates a built-in example in a temp dir and checks it
+  python3 prepare_sim.py --help
+Defaults: TEMPLATE = ./parameters, OUTDIR = . (as the original script, which took no arguments).
+
+Template syntax
+  ham_U = {0.5d0, 1.5d0, 3.0d0}              set: one simulation per value
+  L2    = [4, 6, 8; VAR_lattice, L1]         linked list: element i goes with element i of the set
+                                             VAR_lattice/L1 (same length); it does not add combinations
+  everything else                            copied unchanged
+Independent sets are combined as a Cartesian product. ham_name = {"Hubbard", "tV"} is allowed; the sets in
+VAR_Hubbard (VAR_tV) are only varied for ham_name = "Hubbard" ("tV"); the rules are in RULES in
+prepare_sim.py. VAR_errors and VAR_Max_Stoch are never varied.
+For every combination the script writes OUTDIR/Temp_<i>/parameters and a symbolic link named after the
+varied values (e.g. ham_name_Hubbard_ham_u_0.5_l1_6_l2_6_beta_6_n_phi_18 -> Temp_<i>), and prints the
+number of sets and the required number of MPI ranks.
+
+Worked example: U scan of the Hubbard model, 4 values of U, 2 independent walkers (ranks) per U
+  mkdir run && cd run
+  cp $ALF_DIR/Scripts_and_Parameters_files/Start_PP/{parameters,seeds,prepare_sim.py} .
+  # edit parameters:
+  #   &VAR_lattice  L1 = 6,  L2 = 6                    (scalars: no lattice scan)
+  #   &VAR_Model_Generic  N_Phi = 0, Beta = 5.d0
+  #   &VAR_TEMP     mpi_per_parameter_set = 2, N_exchange_steps = 0
+  #   &VAR_Hubbard  ham_U = {2.d0, 4.d0, 6.d0, 8.d0}
+  python3 prepare_sim.py
+  #   -> 4 parameter sets written to ./Temp_<i>; mpi_per_parameter_set = 2: run with mpiexec -n 8
+  mpiexec -n 8 $ALF_DIR/Prog/ALF.out
+Rank r writes to Temp_<r / mpi_per_parameter_set>/. To continue: ./out_to_in_temper.sh, then run again.
+The example template as shipped scans L = 4, 6, 8 (with N_Phi = L^2/2 and Beta = L linked to L1) times
+7 values of U: 21 sets.
+
+Notes
+  * mpi_per_parameter_set is read from &VAR_TEMP of the top-level parameters; the number of ranks must be
+    (number of Temp_<i>) * mpi_per_parameter_set.
+  * Runs with different Beta or lattice size in one job take different times per bin; use CPU_MAX with a
+    large NBin, or scan only parameters that do not change the cost.
+
+On Helma (NHR@FAU), CPU nodes
+  Build:   . ./configure.sh HELMA PP NO-INTERACTIVE && make -j8     (ifx, Intel MPI, MKL)
+  Job:     copy ../JobfileHelma.sh into the run directory, set the ##...## fields with
+           ##Nnodes## * ##NtaskPnode## = (number of Temp_<i>) * mpi_per_parameter_set, and replace its line
+           `bash ./out_to_in.sh` by `bash ./out_to_in_temper.sh` (PP uses Temp_<i>/confout_*).
+  Restart: ALF reads confin_*, not confout_*: out_to_in_temper.sh must run before every continuation run,
+           otherwise ALF starts a fresh configuration. NBin counts the bins of the current run; the data
+           files are appended, so a chain of 24 h jobs continues the Markov chain (checked on Helma
+           H100 nodes with the GPU build, 2026-11: the restarted bins agree with an uninterrupted run).
+  python3 on the login node: pip install --user f90nml (or use the pyALF environment).
+  The GPU build and GPU job scripts for Helma are documented on the fork branch gpu-port
+  (docs/gpu/platforms/helma_h100.md); they come to Code-modularity-GPU with P2.4.
