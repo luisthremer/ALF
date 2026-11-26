@@ -38,6 +38,8 @@ gpu-port/tags only); (b) bring it to the CPU line as an opt-in feature anyway. R
 - **Q14 (T1):** "Yes" (button on the progress page, 2026-11-26 20:14 UTC). Measure the stabilisation candidates
   (pre-pivoted unpivoted QR, CholeskyQR2 after scale separation, adaptive Nwrap) on the Helma H100, preempt partition,
   a few GPU-hours: cost per stabilisation and Precision Green against Nwrap at L = 24 and 32. Session cgalf-research.
+- **Q15 (Q12):** "Yes" (button on the progress page, 2026-11-26 20:53 UTC): claude-bughunter for the Intel `Mz = T`
+  investigation (gpu-intel, its section 6).
 - **Q6:** GitHub plugin switched off by you (2026-11-26).
 - **Q2, Q5, Q7, Q8, Q9, Q10: closed.** Upstream issues posted (#662, #663); `luisthremer/alf-ops` already deleted; research
   plugins off; Fakher asked about ALF-QMC/ALF#660 and #655 (branches `fix/det-c-underflow`, `docs/ai-development-rules`

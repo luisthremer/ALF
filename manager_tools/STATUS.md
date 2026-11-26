@@ -7,11 +7,11 @@
 ## Waiting for you
 Answer with the buttons under "Needs you" on the [progress page](https://claude.ai/artifact/PmMk2VMb8iUzXtnEYUcHc3).
 1. Q13: `Lowrank_cross_slice` is sound but not faster on the CPU: drop it (recommended) or keep as opt-in?
-2. Q15: switch on claude-bughunter for the Intel `Mz = T` investigation (Q12)?
 3. SuperMUC login for gpu-intel's device sessions (it asks when ready); first cap 40 GPU-hours of the estimated 76.
 4. Two proposed sessions wait as cards (the app runs at most 5 at once): CG-ALF T4 review, P2.5 run evidence.
 
 ## Done since the last owner message
+- Q15 answered yes: claude-bughunter for the Intel `Mz = T` investigation. Merged `alf_exit` (CPU 7466aa71, GPU 04c26bce).
 - Merged P2.4 step 1f (S1: CGR phase from the tracked det(U), no LU) into the GPU line: [a3e1220f](https://github.com/luisthremer/ALF/commit/a3e1220f), CI run 45886167489 green (30/30). The LU removal is the single commit 789fe086 (`git revert 789fe086` gives the LU version exactly).
 - Merged `Trace_updates_mod` (debug trace of every Metropolis decision, behind `ALF_TRACE_UPDATES`; default build unchanged) into the CPU line ([0440f859](https://github.com/luisthremer/ALF/commit/0440f859), CI run 45888075085 green) and the GPU line (0bc71e66).
 - Q14 answered "Yes" on the progress page: session cgalf-research measures the stabilisation candidates on the Helma H100.
