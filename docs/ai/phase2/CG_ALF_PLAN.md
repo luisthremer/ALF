@@ -52,7 +52,7 @@ is t_min(L) = sum over kernel classes of max(F_k / P_k, bytes_k / BW).
 
 Model-agnostic rule: every idea is a property of ALF's matrices (real/complex, dense/checkerboard), never of one Hamiltonian.
 
-## 3a. Tasks from the owner's idea inbox (alf-ops IDEAS.md)
+## 3a. Tasks from the owner's idea inbox (`manager_tools/IDEAS.md`, formerly alf-ops)
 
 | # | Task | What decides it | Links |
 |---|---|---|---|
@@ -72,6 +72,13 @@ Model-agnostic rule: every idea is a property of ALF's matrices (real/complex, d
 R&D branches `rd/<idea>` (free history) on top of the GPU code (`gpu-port` today, `Code-modularity-GPU` after P2.4).
 Anything that survives goes through dev/canvas (docs/ai/BRANCHING.md). Results go into this file (table in section 2/3)
 and `docs/ai/phase2/CG_ALF_IDEAS.md` (one line per idea: status, measured gain).
+
+## 5a. Tools for R&D sessions (owner, 2026-11-26)
+
+- `research-desk` (citation check, paper notes and comparison, referee-style review): off by default in the ALF
+  development sessions, maybe on for the R&D sessions (e.g. the stabilisation survey T1).
+- `research-superpowers` (full literature workflow): disabled for now; maybe enable it later for R&D.
+Both are account plugins (claude.ai settings); only the owner switches them.
 
 ## 6. Budget
 

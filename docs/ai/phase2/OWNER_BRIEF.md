@@ -31,6 +31,8 @@ Later decisions by the owner:
   approval) with `STATUS.md` (fixed format, rewritten at every step, pull --rebase, never force-push) and `IDEAS.md`
   (owner's inbox, read only at fixed points, triaged, owner lines never edited). Blocking decisions also by calendar
   invite. Whiteboard card: only the pointer to STATUS.md and the current step.
+- 2026-11-26, later: status and ideas move to `manager_tools/` on branch `Code-modularity` of the public fork (owner:
+  public is OK); the private repo alf-ops is removed. `manager_tools/` also holds the owner's network-graph tool.
 - 2026-11-26, ideas: "A new way to stabilise: literature survey, then measure candidates" -> CG-ALF T1 / I5;
   "Optimise the real GPU usage (FLOPs, not busy time)" -> CG-ALF T2 (metric, E0-E4).
 - 2026-11-26: "Allowing the next canvas to be prepared (not merged) while CI runs" -> okay; the owner likes

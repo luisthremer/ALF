@@ -1,0 +1,9 @@
+Owner's idea inbox. One line per idea: - YYYY-MM-DD <idea>. Claude never edits or deletes these lines; it only appends '-> taken: <where> (<date>)'.
+
+- 2026-11-26 A new way to stabilise: literature survey (newer stabilisation algorithms for DQMC), then measure candidates. -> taken: CG_ALF_PLAN.md, idea I5 + new task T1 "stabilisation literature survey" (decided by: survey of candidates, then E-measurements of cost and Precision Green per candidate) (2026-11-26)
+- 2026-11-26 Optimise the real GPU usage (FLOPs, not "busy" time). -> taken: CG_ALF_PLAN.md, section 1 (metric) and experiments E0-E4, ideas I1/I6/I7/I8 (2026-11-26)
+- 2026-11-26 Revive ai/feat/op-v-symm-fast (fast Op_V_is_symmetric) for CG-ALF. (from the chat) -> taken: CG-ALF idea, row to be added to CG_ALF_PLAN.md section 3 in the next CG-ALF docs canvas (fixes the start-up cost of KNOWN_ISSUES P1, hours at large N with Symm = .T.); branch kept (2026-11-26) -> taken: CG_ALF_PLAN.md section 3a, task T3 (merged fc8561cf) (2026-11-26)
+- 2026-11-26 CG-ALF should investigate the Intel GPU production code (tags stp/production-mpi-intel-large-prompt, stp/production-mpi-intel-large-prompt-team-combined, stp/production-mpi-intel-unstable-guard): maybe it has interesting features, e.g. guards for production on HPC. (from the chat) -> taken: CG_ALF_PLAN.md section 3a, task T4 (merged fc8561cf); branches tagged stp/ and deleted (2026-11-26)
+- 2026-11-26 research-superpowers plugin: disabled for now; maybe enable it later for the R&D sessions. (from the chat) -> taken: CG_ALF_PLAN.md section 5a "Tools for R&D sessions" (2026-11-26)
+- 2026-11-26 research-desk plugin: off by default in the ALF development sessions, maybe on for the R&D sessions. (from the chat) -> taken: CG_ALF_PLAN.md section 5a "Tools for R&D sessions" (2026-11-26)
+- 2026-11-26 claude-bughunter plugin: turn it back on for P2.8. (from the chat) -> taken: ROADMAP.md P2.8, first step (2026-11-26)
