@@ -1,5 +1,6 @@
 ## Now
-- P2.4 step 1f (speedup S1: CGR phase from the tracked det(U) of the QR reflectors, no LU) on `cm/feat/gpu-s1`, CI run 45886167489 at 29/30 green. Four commits; the fourth switches the default alone, and a `git revert` of it gives the LU version exactly (checked). Tracked vs LU phase: 1.7e-15; configurations byte-identical; N = 3200 works. All four step commits pass on melmac (76/76 GPU=none, 119-127 GPU=host).
+- P2.4 step 1f (S1) is merged into the GPU line. Next: step 2, the three vendor backends (NVIDIA, AMD, Intel), one session each, started one at a time.
+- GPU line CI run 45890936664 on 0bc71e66 (first run of 1f together with Trace_updates_mod).
 - Live progress page for you: [ALF GPU Phase 2](https://claude.ai/artifact/PmMk2VMb8iUzXtnEYUcHc3) (private; updated after every merge or push).
 
 ## Waiting for you
@@ -7,6 +8,8 @@ Answer with the buttons under "Needs you" on the [progress page](https://claude.
 1. Q13: `Lowrank_cross_slice` is sound but not faster on the CPU: drop it (recommended) or keep as opt-in?
 
 ## Done since the last owner message
+- Merged P2.4 step 1f (S1: CGR phase from the tracked det(U), no LU) into the GPU line: [a3e1220f](https://github.com/luisthremer/ALF/commit/a3e1220f), CI run 45886167489 green (30/30). The LU removal is the single commit 789fe086 (`git revert 789fe086` gives the LU version exactly).
+- Merged `Trace_updates_mod` (debug trace of every Metropolis decision, behind `ALF_TRACE_UPDATES`; default build unchanged) into the CPU line ([0440f859](https://github.com/luisthremer/ALF/commit/0440f859), CI run 45888075085 green) and the GPU line (0bc71e66).
 - Q14 answered "Yes" on the progress page: session cgalf-research measures the stabilisation candidates on the Helma H100.
 - Merged the G2/G3 fixes into the GPU line: [a576c1b6](https://github.com/luisthremer/ALF/commit/a576c1b6), CI run 45881567484 green.
 - Merged step 1e (device observables incl. local h0 on the device, device tau pass): [b75f9d91](https://github.com/luisthremer/ALF/commit/b75f9d91), CI run 45876811655 green; all 9 step commits built and tested on melmac (Linux); device observables need no G download (counter 0); device vs CPU observables within roundoff.
@@ -21,13 +24,11 @@ Answer with the buttons under "Needs you" on the [progress page](https://claude.
 - Earlier today: Phase-6 sync, B batch 1, step 1a, CG-ALF ideas, upstream issues, branch clean-up (history: `git log manager_tools/STATUS.md`).
 
 ## Next 3 steps
-1. Handover done; merge 1f (S1) when CI is green.
-1b. Start the three vendor sessions of step 2 (NVIDIA on Helma, AMD on amd, Intel on SuperMUC).
-2. CPU-line queue: next item `alf_exit` / `Trace_updates_mod` (cpu-queue session).
-3. Merge what the parallel sessions deliver (CPU-line queue, CG-ALF research results); then step 2 vendor backends (clusters).
+1. Start the three vendor sessions of step 2 (NVIDIA on Helma, AMD on amd, Intel on SuperMUC), one at a time.
+2. CPU-line queue: merge `alf_exit` when its rebased canvas is green (cpu-queue session).
+3. CG-ALF: H100 measurement of the stabilisation candidates (cgalf-research, Q14 yes).
 
 ## Open branches and running jobs
-- `cm/feat/gpu-s1` + `cm/dev/gpu-s1` (step 1f, CI run 45886167489).
-- Parallel sessions reporting to the manager: cpu-queue (`ALF_UNSTABLE_THRESHOLD`, `prepare_sim.py`, CPU line), cgalf-research (T6, T1 done; Q14 yes: H100 measurement next; waits for Q13), g2-precision (done). Builds with `make -j2`, `ctest -j2` while many sessions run.
-- Side session "Interview owner on QUESTIONS.md decisions": finished; can be archived on your yes.
-- Cluster jobs: none. Plan: [P2_4_GPU_PLAN.md](https://github.com/luisthremer/ALF/blob/Code-modularity-GPU/docs/ai/phase2/P2_4_GPU_PLAN.md)
+- `cm/feat/alf-exit` + `cm/dev/alf-exit` (CPU line, being rebased by cpu-queue).
+- Sessions reporting to the manager: cpu-queue (alf_exit), cgalf-research (H100 measurement; Q13 open), g2-precision and p25-features (done; can be archived on your yes).
+- Cluster jobs: cgalf-research on Helma (preempt). Plan: [P2_4_GPU_PLAN.md](https://github.com/luisthremer/ALF/blob/Code-modularity-GPU/docs/ai/phase2/P2_4_GPU_PLAN.md)
