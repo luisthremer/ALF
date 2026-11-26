@@ -43,7 +43,8 @@ need to read the whole code base.
     Done since the last owner message / Next 3 steps / Open branches and running jobs), one screen at most, details
     only as links. Always `git pull --rebase` before writing, never force-push. Decisions that block the work are
     also sent through the calendar-invite channel.
-  - `IDEAS.md` is the owner's inbox: read it only after a merge, after a finished step and at the start of a session;
+  - `IDEAS.md` is the owner's inbox: read it at the start of a session, after every merge or finished step, and at least every two hours of work
+    (e.g. while waiting for CI) (owner, 2026-11-26: "make sure the inbox is checked from time to time");
     triage each new line (fits a phase or CG-ALF idea -> add it there with a link; new research question -> own entry
     with what would decide it; unclear -> question under "Waiting for you"), then append "-> taken: <where> (<date>)".
     Never edit or delete the owner's lines. Ideas sent in the chat go there too unless the owner writes "urgent".
