@@ -33,7 +33,7 @@ Verified 2026-11-25 by reading files; "unverified" marks anything not run.
 - `Devel`: GNU adds `-Wconversion -fcheck=all -g -fbacktrace -fmax-errors=10 -pedantic -Werror -Wno-error=cpp`.
 - `ALF_FLAGS_EXT`: extra flags appended everywhere (export before sourcing).
 - GNU opt flags: `-cpp -O3 -ffree-line-length-none -ffast-math -fopenmp`; `-std=f2008` for Prog/Analysis.
-- No GPU switch exists in configure.sh (a `GPU=none|nvidia|intel` switch is only planned; GPU work lives on separate branches, see docs/ai/phase2/ROADMAP.md).
+- `configure.sh ... GPU=none|host` (GPU line `Code-modularity-GPU`, P2.4 step 1a): `GPU=host` builds the OpenMP device path (`gpu_*_mod`) running on the host; `GPU=none` (default) gives the CPU code unchanged. Vendor backends (`GPU=nvidia|intel|amd`) come with P2.4 step 2, see docs/ai/phase2/P2_4_GPU_PLAN.md.
 - Exports: `ALF_DIR ALF_FC ALF_LIB ALF_FLAGS_QRREF ALF_FLAGS_MODULES ALF_FLAGS_ANA ALF_FLAGS_PROG`.
 - Preprocessor macros actually used in Prog/ + Libraries/Modules: MPI (178 #if lines), HDF5, TEMPERING,
   PARALLEL_PARAMS, HDF5_ZLIB, STAB1/2/3, STABLOG (cgr1, wrapur, udv_state…), OLDNAG, `__PGI`/`__NVCOMPILER`.

@@ -10,7 +10,9 @@ program test_linalg
   real(dp)    :: rwork1(5*n), rwork2(5*n), s1(n), s2(n)
   complex(dp) :: U1(n,n), U2(n,n), V1(n,n), V2(n,n), w1(n), w2(n)
   integer     :: ipiv1(n), ipiv2(n), jpvt1(n), jpvt2(n), info1, info2, n_fail
-  external :: zgemm, zhemm, ztrsm, ztrmm, zgemv, zgeru, zscal, zcopy, zlacpy, &
+  real(dp)    :: Br(n,m), Cr2(2*n,m)
+  complex(dp) :: Cc(n,m), Cd(n,m)
+  external :: dgemm, zgemm, zhemm, ztrsm, ztrmm, zgemv, zgeru, zscal, zcopy, zlacpy, &
        &      zgetrf, zgetrs, zgetri, zgeqrf, zgeqp3, zungqr, zunmqr, &
        &      zlaset, zlapmr, zlapmt, zgesvd, zheev, zgeev
 
@@ -21,6 +23,15 @@ program test_linalg
   call zgemm('N', 'C', n, m, n, alpha, A, n, H, n, beta, C1, n)
   call la_zgemm('N', 'C', n, m, n, alpha, A, n, H, n, beta, C2, n)
   call check('zgemm', all(C1 == C2))
+
+  ! la_zgemm_cr: bitwise the DGEMM on the interleaved real view; 1e-14 vs la_zgemm with cmplx(B)
+  call random_number(Br)
+  Cc = (0.d0, 0.d0); Cd = (0.d0, 0.d0)
+  call la_zgemm_cr(n, m, n, A, n, Br, n, Cc, n)
+  call dgemm('N', 'N', 2*n, m, n, 1.d0, transfer(A, 0.d0, 2*n*n), 2*n, Br, n, 0.d0, Cr2, 2*n)
+  call check('zgemm_cr bitwise', all(Cc == cmplx(Cr2(1::2,:), Cr2(2::2,:), kind=dp)))
+  call la_zgemm('N', 'N', n, m, n, (1.d0, 0.d0), A, n, cmplx(Br, 0.d0, kind=dp), n, (0.d0, 0.d0), Cd, n)
+  call check('zgemm_cr vs zgemm', maxval(abs(Cc - Cd)) < 1.d-14)
 
   C1 = B; C2 = B
   call zhemm('L', 'U', n, n, alpha, H, n, A, n, beta, C1, n)

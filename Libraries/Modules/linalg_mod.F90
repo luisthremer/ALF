@@ -50,9 +50,10 @@
 !> here are checked by the compiler (types, ranks, intents).
 !--------------------------------------------------------------------
 module linalg_mod
+  use iso_c_binding, only: c_loc, c_f_pointer
   implicit none
   private
-  public :: la_zgemm, la_zhemm, la_ztrsm, la_ztrmm, la_zgemv, la_zgeru, la_zscal, la_zcopy, &
+  public :: la_zgemm, la_zgemm_cr, la_zhemm, la_ztrsm, la_ztrmm, la_zgemv, la_zgeru, la_zscal, la_zcopy, &
        &    la_zlacpy, la_zgetrf, la_zgetrs, la_zgetri, la_zgeqrf, la_zgeqp3, la_zungqr, la_zunmqr, &
        &    la_zlaset, la_zlapmr, la_zlapmt, la_zgesvd, la_zheev, la_zgeev
 contains
@@ -66,6 +67,23 @@ contains
     external :: zgemm
     call zgemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc)
   end subroutine la_zgemm
+
+  !> C(complex m x n) = A(complex m x k) * B(REAL k x n): one DGEMM on the interleaved real view of A and C
+  !> (real 2m x k and 2m x n). lda, ldc in complex elements, ldb in real elements. Used by the GPU path (dense B_T).
+  subroutine la_zgemm_cr(m, n, k, a, lda, b, ldb, c, ldc)
+    integer, intent(in) :: m, n, k, lda, ldb, ldc
+    complex(kind=kind(0.d0)), target, intent(in) :: a(lda,*)
+    real(kind=kind(0.d0)), intent(in) :: b(ldb,*)
+    complex(kind=kind(0.d0)), target, intent(inout) :: c(ldc,*)
+    real(kind=kind(0.d0)), pointer, contiguous :: ar(:,:), cr(:,:)
+    real(kind=kind(0.d0)), parameter :: one = 1.d0, zero = 0.d0
+    external :: dgemm
+    if (m <= 0 .or. n <= 0) return
+    ! real views of the complex arrays (contiguous pointers: no copy-in/out when passed on)
+    call c_f_pointer(c_loc(a(1,1)), ar, [2*lda, k])
+    call c_f_pointer(c_loc(c(1,1)), cr, [2*ldc, n])
+    call dgemm('N', 'N', 2*m, n, k, one, ar, 2*lda, b, ldb, zero, cr, 2*ldc)
+  end subroutine la_zgemm_cr
 
   !> C = alpha A B + beta C or alpha B A + beta C, A Hermitian (BLAS 3)
   subroutine la_zhemm(side, uplo, m, n, alpha, a, lda, b, ldb, beta, c, ldc)
