@@ -3,11 +3,10 @@ P2.4 step 1d (`gpu-stab`: UDV stabilisation on the device, determinant-phase fix
 
 ## Waiting for you
 All questions in detail: [QUESTIONS.md](QUESTIONS.md).
-1. Q1/D4: gpu-port's unguarded CPU-path changes later as separate CPU-line features? yes/no
-2. Q3: speedup S1 into the GPU line? (memo for your professor in QUESTIONS.md)
-3. Q4a-d older GPU-port questions; Q5-Q10 things only you can do.
+1. Q11: S1 "make it consistent" = the same tracked-phase method on every vendor (not a per-vendor patchwork)? yes/no
 
 ## Done since the last owner message
+- Your interview decisions are in the plans (CPU and GPU lines, [255251ff](https://github.com/luisthremer/ALF/commit/255251ff)): D4 (b) with a CPU-line queue in ROADMAP (ALF_UNSTABLE_THRESHOLD first, prepare_sim.py as general PP helper), S1 as P2.4 step 1f, Intel switches default with info report, P2.6 starts with delayed/submatrix for every model, CG-ALF tasks T5-T11 (tracking check, cross-slice research branch, Intel ideas on CUDA, timing flag, benchmark list, auto-tuning, new hardware). Q5-Q10 closed; Q12: I ask you to switch claude-bughunter on when needed.
 - Merged step 1c (device wraps, local updates, delayed/submatrix) into `Code-modularity-GPU`: [0c222961](https://github.com/luisthremer/ALF/commit/0c222961), CI run 45854274445 green. Local: tests 67/67 (GPU=none), 86/86 (GPU=host, default and STABLOG, also bounds-checked), 16/16 byte-identical; device vs CPU path on Hubbard 4x4: configurations byte-identical, energies within 2e-11 (Mz) and 1e-14 (SU(2)). Found and fixed on the way: G1 (1b self-test left stale device G, class B), `Sequential_scheme = "auto"` would have stopped GPU runs (now refused on the GPU path). Branches archived and deleted.
 - Merged step 1b (GPU state, device mirror of model and walker) into `Code-modularity-GPU`: [eb5b1022](https://github.com/luisthremer/ALF/commit/eb5b1022), CI run 45838961102 green (30 jobs, incl. the new `gpu_host` jobs); 81/81 tests GPU=host, 67/67 GPU=none, 16/16 byte-identical. Branches archived and deleted.
 - Merged: Phase-6 sync (CPU+GPU), B batch 1 (8 bugs, CPU, then into GPU), step 1a `GPU=none|host` (GPU); combination green in CI.
@@ -25,8 +24,8 @@ All questions in detail: [QUESTIONS.md](QUESTIONS.md).
 - Inbox: two ideas now CG-ALF tasks T3 (fast `Op_V_is_symmetric`) and T4 (production guards from the Intel code); inbox is checked at least every two hours of work ([fc8561cf](https://github.com/luisthremer/ALF/commit/fc8561cf)).
 
 ## Next 3 steps
-1. 1d stabilisation (with the GPU det-phase fix; S1 only if you say yes).
-2. 1e observables and tau.
+1. Merge 1d (stabilisation) when CI is green; 1e (observables, tau) is being implemented.
+2. 1f: speedup S1 (your yes).
 3. Step 2: vendor backends inside linalg_mod (needs the clusters).
 
 ## Open branches and running jobs
