@@ -96,8 +96,9 @@ else()
     gpu_wrap_test(gpu-wrap-fault-${fault} "ALF_GPU_SELFTEST=2;ALF_GPU_FAULT=${fault}" "GPU self-test FAILED" selftest)
   endforeach()
 
-  # E: whole ALF.out runs, Hubbard 4x4: mirror active + self-test against the same binary with ALF_GPU_DISABLE=1
-  # (and, if ALF_GPU_REF_EXE names the ALF.out of a GPU=none build, against that): outputs byte-identical.
+  # E: whole ALF.out runs, Hubbard 4x4 (see gpu_e2e.py for the cases): GPU path active against the same binary with
+  # ALF_GPU_DISABLE=1 (and, if ALF_GPU_REF_EXE names the ALF.out of a GPU=none build, against that): confout byte-identical,
+  # observables equal to 1e-11; refusal of the timed N_delay; negative control ALF_GPU_FAULT=upd.
   find_package(Python3 COMPONENTS Interpreter)
   if(Python3_FOUND)
     set(gpu_e2e_args --exe ${PROG_DIR}/ALF.out --start ${CMAKE_CURRENT_SOURCE_DIR}/../../Scripts_and_Parameters_files/Start
