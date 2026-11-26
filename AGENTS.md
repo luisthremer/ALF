@@ -36,6 +36,8 @@ need to read the whole code base.
   - Limits: one interruption at a time (an A found during an A fix comes next, no stack); at most two unmerged
     feature branches (the current step plus one A fix); unsure between A and B -> ask the owner, treat it as B
     meanwhile.
+    While CI runs on a canvas, the next canvas may already be prepared (owner, 2026-11-26); merges stay one
+    after another.
 - **Status and ideas** (owner rule, 2026-11-26) live in the private repo `luisthremer/alf-ops`, not on the fork:
   - `STATUS.md` is the only status page, rewritten at every step in the owner's format (Now / Waiting for you /
     Done since the last owner message / Next 3 steps / Open branches and running jobs), one screen at most, details

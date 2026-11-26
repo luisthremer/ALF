@@ -17,6 +17,12 @@ Later decisions by the owner:
   bugs!" One subagent of that phase uses the plugin https://github.com/elementalsouls/Claude-BugHunter
   (installed as `claude-bughunter@elementalsouls`). Known issues go into `KNOWN_ISSUES.md`, starting
   with the fix on branch `fix/det-phase-underflow` (commit 0b3ffba).
+- 2026-11-25: "When will we fix these bugs?" -> fix the CPU determinant phase bug on this line
+  right after the ai-docs and lowrank merges (det-phase feature), then continue with the plan.
+- 2026-11-25 evening: keep the session running over night and work on the plan. SuperMUC-NG
+  Phase 2 may be used (ssh alias `supermuc2`, kept alive: ControlPersist 24h, ServerAliveInterval
+  60; login by the owner's expect script). "Try to also break ALF and find issues", for master and
+  for the Code-modularity-CPU and -GPU branches (bug hunt started early, ROADMAP P2.8).
 - 2026-11-26, bug rule: every bug found along the way is classified A / B / C at once (A: silently wrong results in
   the current path or in production -> interrupt and fix now as its own feature, warn production users; B: real bug
   elsewhere -> KNOWN_ISSUES + whiteboard line, batch fix after each phase merge; C: cosmetic/theoretical -> entry
@@ -27,6 +33,8 @@ Later decisions by the owner:
   invite. Whiteboard card: only the pointer to STATUS.md and the current step.
 - 2026-11-26, ideas: "A new way to stabilise: literature survey, then measure candidates" -> CG-ALF T1 / I5;
   "Optimise the real GPU usage (FLOPs, not busy time)" -> CG-ALF T2 (metric, E0-E4).
+- 2026-11-26: "Allowing the next canvas to be prepared (not merged) while CI runs" -> okay; the owner likes
+  developing in parallel. Merges stay one after another.
 
 ---
 
