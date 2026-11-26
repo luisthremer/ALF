@@ -43,7 +43,7 @@ is t_min(L) = sum over kernel classes of max(F_k / P_k, bytes_k / BW).
 | I2 | **Real arithmetic** where the model allows it (real hopping, real HS coupling: Hubbard Mz without flux, many others): compile/run-time choice of real vs complex G | ~2-4x fewer FLOPs and 2x less memory for every N^3 kernel | E1 (DGEMM vs ZGEMM ceiling) | identical physics; roundoff differs |
 | I3 | **Numbers module** (generalises I2; start from `precdef` / Florian Goth's work): kind parameters chosen at compile time per model class (real/complex, integer hopping where it pays) | enables I2, I4 cleanly | design review | — |
 | I4 | **Mixed precision**: FP32 (or TF32/FP32-split on tensor cores) for wraps and updates between stabilisations, FP64 for stabilisation and measurements; precision checks decide Nwrap | up to 2x (FP32 vector) or more (tensor cores) on the GEMM share | E1 (SGEMM/CGEMM ceilings), then precision study: Precision Green, observables vs FP64 within error bars, ED tests | must be validated per model class |
-| I5 | **Fewer stabilisations**: adaptive Nwrap from the measured precision; cheaper stabilisation (QR without pivoting + scale tracking, CholeskyQR2 was rejected earlier: re-check on H100) | stabilisation is 25-55 % of the time | E2, precision study | must keep Precision Green < 1e-8 |
+| I5 | (owner idea 2026-11-26, alf-ops IDEAS.md; see task T1) **Fewer stabilisations**: adaptive Nwrap from the measured precision; cheaper stabilisation (QR without pivoting + scale tracking, CholeskyQR2 was rejected earlier: re-check on H100) | stabilisation is 25-55 % of the time | E2, precision study | must keep Precision Green < 1e-8 |
 | I6 | **Kernel fusion / CUDA graphs** for the per-slice chain (wrap, update, flush) | single-chain latency (the 65 % sync time) | E2 | bitwise |
 | I7 | **Delayed/submatrix block size on GPU** retuned for H100 (N_delay larger, flush as one GEMM) | flush GEMMs are the largest kernel class at L = 32 | E1, E2 | roundoff |
 | I8 | **Measurements**: equal-time observables as GEMMs over all sites (batched), skip unused outputs | 5-17 % | E2 | summation order |
@@ -51,6 +51,13 @@ is t_min(L) = sum over kernel classes of max(F_k / P_k, bytes_k / BW).
 | I10 | **Throughput after warm-up**: split a thermalised chain into many independent chains (I1) | sweeps/s per GPU | — | statistical independence must be checked (autocorrelation) |
 
 Model-agnostic rule: every idea is a property of ALF's matrices (real/complex, dense/checkerboard), never of one Hamiltonian.
+
+## 3a. Tasks from the owner's idea inbox (alf-ops IDEAS.md)
+
+| # | Task | What decides it | Links |
+|---|---|---|---|
+| T1 | **Stabilisation literature survey** (owner, 2026-11-26): newer stabilisation algorithms for DQMC (e.g. scale-separated QR variants, block/communication-avoiding QR, mixed-precision stabilisation, log-scale schemes, fewer or adaptive stabilisations), then measure the candidates | a survey table (method, cost, accuracy, GPU fit, reference), then E-measurements on the H100: cost per stabilisation and Precision Green for each candidate vs the current QR with pivoting | idea I5; E2 shows QR panels = 39 % of GPU kernel time |
+| T2 | **Real GPU usage** (owner, 2026-11-26): optimise FLOPs, not "busy" time | the efficiency E per kernel class (section 1) moving towards the E1 ceilings | section 1, E0-E4, ideas I1, I6, I7, I8 |
 
 ## 4. Validation protocol (every idea)
 
