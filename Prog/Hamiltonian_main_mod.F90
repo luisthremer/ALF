@@ -1120,7 +1120,13 @@
 
       if (Ltrot == HAM_VAR_UNSET_INT .or. Ltrot <= 0) then
          write(error_unit, '(A,I0)') 'Ham_set error: Ltrot was not set or has invalid value: ', Ltrot
-         write(error_unit, '(A)') 'Ltrot must be a positive integer (number of time slices).'
+         write(error_unit, '(A)') 'Ltrot must be a positive integer (number of time slices); check that Dtau > 0.'
+         CALL Terminate_on_error(ERROR_HAMILTONIAN,__FILE__,__LINE__)
+      endif
+
+      ! Ltrot = nint(Beta/Dtau) is huge (nint of Inf) for Dtau = 0
+      if (Ltrot == huge(Ltrot)) then
+         write(error_unit, '(A)') 'Ham_set error: Ltrot = nint(Beta/Dtau) overflows; Dtau must be > 0 and finite.'
          CALL Terminate_on_error(ERROR_HAMILTONIAN,__FILE__,__LINE__)
       endif
 
