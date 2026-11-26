@@ -1,5 +1,5 @@
 ## Now
-Fakher's newest Phase-6 commits (6G.E1-E7 linalg wrappers, STAB1 projector fix) merged on `cm/feat/phase6-sync` (57/57 tests, 16/16 byte-identical) and B batch 1: both in CI, merged into the CPU line when green. P2.4 plan updated with your D1-D3; step 1a is redone for `linalg_mod` after the sync.
+Fakher's Phase-6 commits merged into the CPU and GPU lines ([095b21a6](https://github.com/luisthremer/ALF/commit/095b21a6)). In CI: B batch 1 (rebased on it) and the redone step 1a (`GPU=none|host` only, D1: no alf_la). Both merged when green; then step 1b.
 
 ## Waiting for you
 All questions in detail: [QUESTIONS.md](QUESTIONS.md).
@@ -8,6 +8,7 @@ All questions in detail: [QUESTIONS.md](QUESTIONS.md).
 3. Q4a-d older GPU-port questions; Q5-Q10 things only you can do.
 
 ## Done since the last owner message
+- Phase-6 sync merged (6G.E1-E7 linalg wrappers, STAB1 projector fix): 57/57 tests, 16/16 byte-identical, CI green.
 - Upstream issues posted: ALF-QMC/ALF#662 (H7), #663 (H6). P2.4 plan: D1 linalg_mod, D2 GPU=host, D3 Hubbard only.
 - B-bug batch 1 built and checked (8 bugs, regression tests); step 1b (GPU state) designed.
 - `manager_tools/` now on `Code-modularity`, `-CPU` and `-GPU`, kept equal by `manager_tools/sync.sh`.
@@ -25,5 +26,5 @@ All questions in detail: [QUESTIONS.md](QUESTIONS.md).
 3. CG-ALF tasks T3 (fast `Op_V_is_symmetric`) and T4 (production guards).
 
 ## Open branches and running jobs
-- `cm/feat/b-batch-1` and `cm/feat/phase6-sync` (CI running, CPU line); `cm/feat/gpu-build` (to be redone for D1).
+- `cm/feat/b-batch-1` (CI on the new base), `cm/feat/gpu-build` (step 1a redone for D1, CI running).
 - Cluster jobs: none. Plan: [P2_4_GPU_PLAN.md](https://github.com/luisthremer/ALF/blob/Code-modularity-GPU/docs/ai/phase2/P2_4_GPU_PLAN.md)
