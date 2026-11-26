@@ -10,6 +10,7 @@ Please choose one of the following MACHINEs:
  * IntelLLVM or IntelX
  * PGI
  * SuperMUC-NG
+ * SuperMUCNG2 or PVC (SuperMUC-NG Phase 2, Intel Max 1550; also with GPU=intel)
  * JUWELS
  * FRITZ-ifort
  * FRITZ-ifx
@@ -31,7 +32,7 @@ Further optional arguments:
   NO-INTERACTIVE: Do not ask for user confirmation during excution of this script
   GPU=none|host|intel: GPU target (default none = unchanged CPU build). GPU=host builds the GPU code path with
                -DALF_GPU and the host backend (no offload target; for tests on machines without a GPU).
-               GPU=intel: MACHINE IntelLLVM/IntelX only (ifx, OpenMP offload to spir64 (JIT), oneMKL + SYCL shim;
+               GPU=intel: MACHINE IntelLLVM/IntelX/SuperMUCNG2 only (ifx, OpenMP offload to spir64 (JIT), oneMKL + SYCL shim;
                needs icpx and MKLROOT). ALF_INTEL_AOT=pvc compiles ahead of time for the Max 1550 (start-up 65 s -> 14 s).
                GPU=nvidia|amd are not yet available on this line.
   NO-FALLBACK: Do not use a fallback option in case of an unknown/no machine,
@@ -449,6 +450,25 @@ case $MACHINE in
     INC_HDF5="$HDF5_INC"
   ;;
 
+  #LRZ SuperMUC-NG Phase 2 (Intel Max 1550 nodes; build on the login node). Module set of gpu-port's Phase 2 production
+  #(stp/production-mpi-intel-*): ifx >= 2025.3 (omp_lib interop), MKL of the same release, LRZ HDF5 (no download).
+  SUPERMUCNG2|PVC)
+    module load intel/2025.3.0 intel-mpi/2021.15.0
+    module unload intel-mkl            # the login default MKL is another release
+    module load intel-mkl/2025.3.0
+    # no -static: the LRZ libraries (and the offload runtime of GPU=intel) are shared
+    F90OPTFLAGS="$(echo " ${INTELLLVMOPTFLAGS} " | sed -e 's/ -static / /g' -e 's/^ //' -e 's/ $//')"
+    F90USEFULFLAGS="$INTELLLVMUSEFULFLAGS"
+    ALF_FC="$INTELLLVMCOMPILER"
+    LIB_BLAS_LAPACK="-qmkl"
+    if [ "${HDF5_ENABLED}" = "1" ]; then
+      module load hdf5/1.14.5-intel25
+      INC_HDF5="$HDF5_INC"
+      # LRZ HDF5 keeps the Fortran C stubs in separate libraries (after the Fortran ones)
+      LIB_HDF5="-L$HDF5_LIBDIR -lhdf5_hl_fortran -lhdf5_hl_f90cstub -lhdf5_fortran -lhdf5_f90cstub -lhdf5_hl -lhdf5 -lz -ldl -lm"
+    fi
+  ;;
+
   #JUWELS enviroment
   JUWELS)
     module load Intel
@@ -548,8 +568,9 @@ case $MACHINE in
   ;;
 esac
 
-if [ "$GPU_TARGET" = "intel" ] && [ "$MACHINE" != "INTELLLVM" ] && [ "$MACHINE" != "INTELX" ]; then
-  printf "${RED}Error: GPU=intel requires MACHINE IntelLLVM or IntelX (ifx); got '%s'.${NC}\n" "$MACHINE" 1>&2
+if [ "$GPU_TARGET" = "intel" ] && [ "$MACHINE" != "INTELLLVM" ] && [ "$MACHINE" != "INTELX" ] \
+   && [ "$MACHINE" != "SUPERMUCNG2" ] && [ "$MACHINE" != "PVC" ]; then
+  printf "${RED}Error: GPU=intel requires MACHINE IntelLLVM, IntelX or SuperMUCNG2 (ifx); got '%s'.${NC}\n" "$MACHINE" 1>&2
   rm -r "$tmpdir"
   return 1
 fi
