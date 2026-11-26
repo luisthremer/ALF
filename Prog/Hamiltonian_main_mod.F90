@@ -159,8 +159,11 @@
     private
     public :: Alloc_Ham, ham_base, ham, LOG_T0_REJECTED, Validate_Ham_Variables
     public :: Setup_flavor_map, Clear_Ham_state, Set_Group_Comm, Set_model_for_testing
-#ifdef __PGI
+#if defined(__PGI) || defined(ALF_GPU)
     public :: Obs_scal, Obs_eq, Obs_tau
+#endif
+#ifdef ALF_GPU
+    public :: Obs_local   ! gpu_obs_mod: local observable of ham_h0 /= 0
 #endif
       
       ! Sentinel value for rejected global moves in log scale
