@@ -27,6 +27,16 @@ SRCS = Mat_subroutines_mod.F90 \
 	random_wrap_mod.F90 \
 	runtime_error_mod.F90
 
+# GPU=amd (configure.sh exports ALF_GPU=amd): the HIP device path of linalg_mod (Fortran layer, C++ hipBLAS/hipSOLVER shim,
+# HIP kernels and QR); ROCM_PATH and ALF_AMD_ARCH come from configure.sh
+ifeq ($(ALF_GPU),amd)
+SRCS += linalg_hip_mod.F90 alf_hipk_mod.F90
+ALF_AMD_ARCH ?= gfx90a
+ROCM_INC ?= $(if $(ROCM_PATH),$(ROCM_PATH),/opt/rocm)/include
+HIPCC ?= $(if $(ROCM_PATH),$(ROCM_PATH),/opt/rocm)/bin/hipcc
+HIPOBJS = alf_la_hip_shim.o alf_hip_kernels.o alf_hip_qr.o
+endif
+
 # Dependency helper variables
 DEPSFILE := .deps.mk
 DEPSGEN := ../../Prog/gen_deps.py
@@ -36,8 +46,15 @@ lib: $(LIB) libfakeintel.so
 # OBJS and MODS are auto-generated into $(DEPSFILE) by gen_deps.py
 -include $(DEPSFILE)
 
-$(LIB): $(DEPSFILE) $(OBJS)
-	ar -r $(LIB) $(OBJS)
+$(LIB): $(DEPSFILE) $(OBJS) $(HIPOBJS)
+	ar -r $(LIB) $(OBJS) $(HIPOBJS)
+
+alf_la_hip_shim.o: alf_la_hip_shim.cpp
+	g++ -O2 -std=c++17 -D__HIP_PLATFORM_AMD__ -I$(ROCM_INC) -c $< -o $@
+alf_hip_kernels.o: alf_hip_kernels.hip.cpp
+	$(HIPCC) -O2 --offload-arch=$(ALF_AMD_ARCH) -I$(ROCM_INC) -c $< -o $@
+alf_hip_qr.o: alf_hip_qr.hip.cpp
+	$(HIPCC) -O2 --offload-arch=$(ALF_AMD_ARCH) -I$(ROCM_INC) -c $< -o $@
 
 lattices_x86-64.so: runtime_error_mod.F90 lattices_interface_mod.F90 matrix_mod.F90 lattices_v3_mod.F90
 	(make clean)
@@ -76,7 +93,7 @@ $(DEPSFILE): $(SRCS) $(DEPSGEN)
 	python3 $(DEPSGEN) $(SRCS) > $(DEPSFILE)
 
 clean: $(DEPSFILE)
-	rm -f $(OBJS) $(MODS) $(LIB) $(DEPSFILE) libfakeintel.so
+	rm -f $(OBJS) $(MODS) $(LIB) $(DEPSFILE) libfakeintel.so alf_la_hip_shim.o alf_hip_kernels.o alf_hip_qr.o
 
 #unused modules: histograms histograms_v2 log_mesh natural_constants
 #unused, except for in Prog/FFA_Orginals/: precdef

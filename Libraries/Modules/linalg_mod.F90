@@ -52,6 +52,10 @@
 module linalg_mod
   use iso_c_binding, only: c_loc, c_f_pointer
   use iso_fortran_env, only: int64
+#if defined(ALF_LA_HIP)
+  use linalg_hip_mod, only: lh_pz, lh_pd, lh_pi, lh_dev, lh_zgemm, lh_zgemm_cr, lh_ztrsm, lh_zgeqrf, lh_zunmqr, lh_zqrpp, &
+       &    lh_zgetrf, lh_zgetri
+#endif
   implicit none
   private
   public :: la_dznrm2, la_zqrpp, la_zgemm, la_zgemm_cr, la_zhemm, la_ztrsm, la_ztrmm, la_zgemv, la_zgeru, la_zscal, la_zcopy, &
@@ -97,6 +101,12 @@ contains
        call zgeqrf(m, n, a, lda, tau, work, lwork, info)
        return
     endif
+#if defined(ALF_LA_HIP)
+    if (lh_dev([lh_pz(a), lh_pz(tau), lh_pi(ipvt)], 'la_zqrpp')) then
+       call lh_zqrpp(m, n, a, lda, ipvt, tau, info)
+       return
+    endif
+#endif
     if (m <= 0 .or. n <= 0) return
     if (m < n) then
        info = -1
@@ -155,6 +165,12 @@ contains
     complex(kind=kind(0.d0)), intent(in) :: a(lda,*), b(ldb,*)
     complex(kind=kind(0.d0)), intent(inout) :: c(ldc,*)
     external :: zgemm
+#if defined(ALF_LA_HIP)
+    if (lh_dev([lh_pz(a), lh_pz(b), lh_pz(c)], 'la_zgemm')) then
+       call lh_zgemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc)
+       return
+    endif
+#endif
     call zgemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc)
   end subroutine la_zgemm
 
@@ -169,6 +185,12 @@ contains
     real(kind=kind(0.d0)), parameter :: one = 1.d0, zero = 0.d0
     external :: dgemm
     if (m <= 0 .or. n <= 0) return
+#if defined(ALF_LA_HIP)
+    if (lh_dev([lh_pz(a), lh_pd(b), lh_pz(c)], 'la_zgemm_cr')) then
+       call lh_zgemm_cr(m, n, k, a, lda, b, ldb, c, ldc)
+       return
+    endif
+#endif
     ! real views of the complex arrays (contiguous pointers: no copy-in/out when passed on)
     call c_f_pointer(c_loc(a(1,1)), ar, [2*lda, k])
     call c_f_pointer(c_loc(c(1,1)), cr, [2*ldc, n])
@@ -194,6 +216,12 @@ contains
     complex(kind=kind(0.d0)), intent(in) :: a(lda,*)
     complex(kind=kind(0.d0)), intent(inout) :: b(ldb,*)
     external :: ztrsm
+#if defined(ALF_LA_HIP)
+    if (lh_dev([lh_pz(a), lh_pz(b)], 'la_ztrsm')) then
+       call lh_ztrsm(side, uplo, transa, diag, m, n, alpha, a, lda, b, ldb)
+       return
+    endif
+#endif
     call ztrsm(side, uplo, transa, diag, m, n, alpha, a, lda, b, ldb)
   end subroutine la_ztrsm
 
@@ -263,6 +291,12 @@ contains
     complex(kind=kind(0.d0)), intent(inout) :: a(lda,*)
     integer, intent(out) :: ipiv(*), info
     external :: zgetrf
+#if defined(ALF_LA_HIP)
+    if (lh_dev([lh_pz(a), lh_pi(ipiv)], 'la_zgetrf')) then
+       call lh_zgetrf(m, n, a, lda, ipiv, info)
+       return
+    endif
+#endif
     call zgetrf(m, n, a, lda, ipiv, info)
   end subroutine la_zgetrf
 
@@ -286,6 +320,14 @@ contains
     complex(kind=kind(0.d0)), intent(inout) :: work(*)
     integer, intent(out) :: info
     external :: zgetri
+#if defined(ALF_LA_HIP)
+    if (lwork /= -1) then
+       if (lh_dev([lh_pz(a), lh_pi(ipiv)], 'la_zgetri')) then
+          call lh_zgetri(n, a, lda, ipiv, info)
+          return
+       endif
+    endif
+#endif
     call zgetri(n, a, lda, ipiv, work, lwork, info)
   end subroutine la_zgetri
 
@@ -296,6 +338,14 @@ contains
     complex(kind=kind(0.d0)), intent(inout) :: tau(*), work(*)
     integer, intent(out) :: info
     external :: zgeqrf
+#if defined(ALF_LA_HIP)
+    if (lwork /= -1) then
+       if (lh_dev([lh_pz(a), lh_pz(tau)], 'la_zgeqrf')) then
+          call lh_zgeqrf(m, n, a, lda, tau, info)
+          return
+       endif
+    endif
+#endif
     call zgeqrf(m, n, a, lda, tau, work, lwork, info)
   end subroutine la_zgeqrf
 
@@ -330,6 +380,14 @@ contains
     complex(kind=kind(0.d0)), intent(inout) :: c(ldc,*), work(*)
     integer, intent(out) :: info
     external :: zunmqr
+#if defined(ALF_LA_HIP)
+    if (lwork /= -1) then
+       if (lh_dev([lh_pz(a), lh_pz(tau), lh_pz(c)], 'la_zunmqr')) then
+          call lh_zunmqr(side, trans, m, n, k, a, lda, tau, c, ldc, info)
+          return
+       endif
+    endif
+#endif
     call zunmqr(side, trans, m, n, k, a, lda, tau, c, ldc, work, lwork, info)
   end subroutine la_zunmqr
 
