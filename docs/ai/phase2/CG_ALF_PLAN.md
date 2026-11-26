@@ -131,3 +131,17 @@ division. The GPU kernels take ~1.4 s of the 13.3 s per sweep. So the "setup" se
 measurements, and the docs' 3.5 s per sweep (device observables) is the right single-chain reference.
 Lessons: (1) every measurement must stay on the device — a host fallback costs an order of magnitude, silently
 (the info line says only that the GPU path is active); (2) E4 onwards uses ham_h0 = 0 (device observables).
+
+### E4 — LU-free determinant phase on CUDA (`rd/cgalf-s1`, job 1453558), ham_h0 = 0 (device observables)
+
+Time per sweep from NSweep 6 - NSweep 2 (H100, single chain, production parameters without the defect):
+
+| L | before (`rd/flopcount`) | with S1 | change |
+|---|---|---|---|
+| 24 | 2.65 s | 2.63 s | ~0 (noise) |
+| 32 | 8.57 s | 7.49 s | **-12.6 %** |
+
+Correctness: confout byte-identical, acceptance identical, energy equal to 1e-16 relative; with ALF_GPU_CGR_LU=2 the
+tracked phase agrees with the LU phase to 1.1e-14 over 194 CGR calls. With device observables the plain build runs at
+2.65 s per sweep at L = 24 (E3 had 13.3 s with host observables). S1 is safe and pays from L = 32 on; it also removes
+the LU product that caused the GPU determinant phase underflow. Candidate for the GPU line (owner decision).
