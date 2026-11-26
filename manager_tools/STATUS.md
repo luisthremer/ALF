@@ -1,15 +1,15 @@
 ## Now
-P2.4 step 1a `gpu-build` ready (canvas, 3 commits: GPU=none|host switch, `alf_la_mod` host backend, its tests): every commit builds, 69/69 tests, 16/16 scenarios byte-identical, CI green ([run 45804627437](https://github.com/luisthremer/ALF/actions/runs/45804627437)). Merge waits for your yes on question 4 (D1-D4).
+Fakher's newest Phase-6 commits (6G.E1-E7 linalg wrappers, STAB1 projector fix) merged on `cm/feat/phase6-sync` (57/57 tests, 16/16 byte-identical) and B batch 1: both in CI, merged into the CPU line when green. P2.4 plan updated with your D1-D3; step 1a is redone for `linalg_mod` after the sync.
 
 ## Waiting for you
-All questions with background and recommendation: [QUESTIONS.md](QUESTIONS.md).
-1. Q1 P2.4 decisions D1-D4 (merge of step 1a waits for this). yes/no
-2. Q2 post the upstream issues H7 and H6? post/corrections
-3. Q3 speedup S1 into the GPU line? (a) after step 1d / (b) CG-ALF / (c) no
-4. Q4a-d older GPU-port questions: accept the proposed places? yes/no each
-5. Q5-Q7 only you: delete alf-ops online, GitHub token, research plugins off in claude.ai
+All questions in detail: [QUESTIONS.md](QUESTIONS.md).
+1. Q1/D4: gpu-port's unguarded CPU-path changes later as separate CPU-line features? yes/no
+2. Q3: speedup S1 into the GPU line? (memo for your professor in QUESTIONS.md)
+3. Q4a-d older GPU-port questions; Q5-Q10 things only you can do.
 
 ## Done since the last owner message
+- Upstream issues posted: ALF-QMC/ALF#662 (H7), #663 (H6). P2.4 plan: D1 linalg_mod, D2 GPU=host, D3 Hubbard only.
+- B-bug batch 1 built and checked (8 bugs, regression tests); step 1b (GPU state) designed.
 - `manager_tools/` now on `Code-modularity`, `-CPU` and `-GPU`, kept equal by `manager_tools/sync.sh`.
 - P2.4 plan: gpu-port mapped (12 436 lines of common OpenMP offload code, vendor shims, hooks) and re-homed onto the refactored code; steps 1a-1e before vendor code.
 - Status and ideas moved from alf-ops into `manager_tools/` on `Code-modularity` (public, your OK); understand-anything removed (traces in the Trash); claude-bughunter off until P2.8.
@@ -25,6 +25,5 @@ All questions with background and recommendation: [QUESTIONS.md](QUESTIONS.md).
 3. CG-ALF tasks T3 (fast `Op_V_is_symmetric`) and T4 (production guards).
 
 ## Open branches and running jobs
-- `cm/feat/gpu-build` + `cm/dev/gpu-build` (step 1a, CI green, not merged: waits for question 4).
-- Baseline CI of the new lines: green on `Code-modularity-CPU` fc8561cf ([run 45797219302](https://github.com/luisthremer/ALF/actions/runs/45797219302)).
+- `cm/feat/b-batch-1` and `cm/feat/phase6-sync` (CI running, CPU line); `cm/feat/gpu-build` (to be redone for D1).
 - Cluster jobs: none. Plan: [P2_4_GPU_PLAN.md](https://github.com/luisthremer/ALF/blob/Code-modularity-GPU/docs/ai/phase2/P2_4_GPU_PLAN.md)

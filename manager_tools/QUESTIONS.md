@@ -5,35 +5,22 @@ recommendation. Answer in the chat with the number, e.g. "Q1 yes".
 
 ## A. Block the next step
 
-**Q1. P2.4 decisions D1-D4 (merge of step 1a waits for this).** Plan: `docs/ai/phase2/P2_4_GPU_PLAN.md`, section 4.
-Step 1a (`cm/feat/gpu-build`: `GPU=none|host` switch, `alf_la_mod` host backend, 12 tests) is green in CI and
-byte-identical in all 16 scenarios.
-- D1: the GPU linear-algebra layer `alf_la` sits *beside* Fakher's `linalg_mod`, not inside it (ROADMAP said
-  "inside"). Inside would need device pointers, module-owned workspaces and asynchronous error checks in every host
-  caller and would still not cover the GPU code that is not BLAS (pivoting, wraps, updates, measurements).
-- D2: a `GPU=host` test build that runs the whole GPU code path on the CPU (probe: works; configurations
-  byte-identical to the CPU path; slow, so small sizes only). Lets us test steps 1b-1e on the Mac and in CI.
-- D3: step 1 covers Hubbard only (the GPU observables exist only for Hubbard); other models keep running on the CPU
-  path, as on gpu-port.
-- D4: the changes gpu-port made to the CPU path without a guard (`Op_V_is_symmetric` rewrite, `ALF_UNSTABLE_THRESHOLD`,
-  `alf_exit`, MaxEnt `N_boot`, `QR_PREPIVOT`, timers, `Lowrank_cross_slice`) come later as separate CPU-line features,
-  so `GPU=none` stays byte-identical.
-Recommendation: yes to all four. Then: merge 1a, start 1b (GPU state on the walker).
+**Q1. P2.4 decisions — answered 2026-11-26.** D1: dispatch inside `linalg_mod` (no `alf_la_mod`; step 1a is
+redone accordingly). D2: yes (`GPU=host`). D3: yes, Hubbard only, now written into the plan. **D4 still open:**
+gpu-port changed seven things on the CPU path without a guard; the proposal is to bring each later as its own
+CPU-line feature with its own check, so `GPU=none` stays byte-identical to `Code-modularity-CPU` (details in the
+manager chat, 2026-11-26). yes/no
 
 ## B. Upstream (ALF-QMC/ALF)
 
-**Q2. Post the two bug reports?** You said yes in principle; the texts are drafted in the manager worktree,
-`.handoff/upstream_issues_H6_H7.md`. Each starts with "written by an AI assistant during an automated bug hunt;
-Luis Thremer has not checked it". H7: Bilayer_honeycomb potential/total energy uses weights (U, U2, 0, 0) instead of
-(U, U, U2, U2) (master 4c690b04, `Hamiltonian_Hubbard_smod.F90` lines 762-763; Markov chain unaffected). H6: Tempering
-with an odd number of parameter sets deadlocks, one set crashes in MPI_Finalize (`main.F90` 246, `Global_mod.F90`
-164/191). Answer "post" (as is) or corrections.
+**Q2. Upstream issues — done:** posted as ALF-QMC/ALF#662 (H7) and #663 (H6), 2026-11-26.
 
 ## C. GPU line
 
 **Q3. Speedup S1 into the GPU line?** The GPU determinant phase from tracked U determinants instead of an LU
 (`rd/cgalf-s1`, origin `speedup/nvidia`). Measured on the H100: -12.6 % per sweep at L = 32, configurations
-byte-identical. Looks vendor-neutral but was measured on CUDA only. Options: (a) yes, as a feature after step 1d of
+byte-identical. Already default for Intel on gpu-port (Max 1550, L = 24: 4.45 -> 4.04 s, -9 %); AMD kernels do not track
+det(U) yet; STABLOG keeps the LU. Decision memo for the professor: https://claude.ai/artifact/12cwQ6G6urYNRZntuZKFzj Options: (a) yes, as a feature after step 1d of
 P2.4 (stabilisation), with a check on all three vendors; (b) later in CG-ALF; (c) no. Recommendation: (a).
 Also decides whether `rd/cgalf-s1` and `speedup/nvidia` stay.
 
