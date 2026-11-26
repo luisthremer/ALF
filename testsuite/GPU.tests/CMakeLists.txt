@@ -208,6 +208,15 @@ else()
     set_tests_properties(linalg-hip-hipqr linalg-hip-hipsolver PROPERTIES PASS_REGULAR_EXPRESSION "linalg HIP test PASSED")
     add_test(NAME linalg-hip-mixed COMMAND 55-linalg-hip mixed)
     set_tests_properties(linalg-hip-mixed PROPERTIES WILL_FAIL TRUE)
+    # kernel level: the HIP replacements of the gpu_stab_mod kernels against the OpenMP kernels on the same device data
+    add_executable(56-hipk-stab 56-hipk-stab.F90)
+    target_compile_options(56-hipk-stab PRIVATE ${FLAG_LIST})
+    target_include_directories(56-hipk-stab PRIVATE "${PROG_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules")
+    target_link_libraries(56-hipk-stab ${prog_objects} ${LIB_LIST})
+    add_test(NAME hipk-stab COMMAND 56-hipk-stab)
+    add_test(NAME hipk-stab-hipsolver COMMAND 56-hipk-stab)
+    set_tests_properties(hipk-stab-hipsolver PROPERTIES ENVIRONMENT "ALF_HIP_QR=0")
+    set_tests_properties(hipk-stab hipk-stab-hipsolver PROPERTIES PASS_REGULAR_EXPRESSION "HIP stab kernel test PASSED")
   endif()
 
   # E: whole ALF.out runs, Hubbard 4x4 (see gpu_e2e.py for the cases): GPU path active against the same binary with
