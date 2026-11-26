@@ -73,7 +73,7 @@ Feature name `lowrank`. Source: fork `master_ai_cpu` (`8b18b95c`, LOWRANK in hoo
 The CPU line takes later CPU-only work; the GPU line merges the CPU line regularly
 (`Code-modularity-CPU` → `-GPU`, never the other way round).
 
-## P2.4 — GPU port onto Code-modularity-GPU (open)
+## P2.4 — GPU port onto Code-modularity-GPU (open; plan: [`P2_4_GPU_PLAN.md`](P2_4_GPU_PLAN.md))
 Existing GPU work to bring over (fork, state 2026-11-25):
 - `gpu-port` — general GPU code, backends `GPU=nvidia|intel|amd`, macros `ALF_LA_CUDA`,
   `ALF_LA_ONEMKL`, `ALF_LA_HIP`; docs in `docs/gpu/` (README, FEATURES, NOT_IMPLEMENTED,
