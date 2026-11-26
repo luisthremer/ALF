@@ -421,3 +421,29 @@ if(ALF_MAKE)
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog)
   set_tests_properties(50-make-lib-deps PROPERTIES PASS_REGULAR_EXPRESSION "-o [A-Za-z0-9_/]+\\.o " TIMEOUT 60)
 endif()
+
+# Precision Green warning (control_mod, KNOWN_ISSUES.md M6): a deviation of 0.5 is reported, one of 1e-6 is not.
+if(NOT "${FLAG_LIST}" MATCHES "-DTEMPERING")
+  # (with TEMPERING Control_Print writes Temp_<igroup>/info, a directory a unit test does not have)
+  add_executable(51-precision-green-warning 51-precision-green-warning.F90)
+  target_compile_options(51-precision-green-warning PRIVATE ${FLAG_LIST})
+  target_include_directories(51-precision-green-warning PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../Prog"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules")
+  target_link_libraries(51-precision-green-warning "${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/control_mod.o" ${LIB_LIST})
+  foreach(case large small)
+    file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/51-${case})
+    if("${FLAG_LIST}" MATCHES "-DMPI")
+      add_test(NAME 51-precision-green-warning-${case}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS}
+          $<TARGET_FILE:51-precision-green-warning> ${MPIEXEC_POSTFLAGS} ${case}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/51-${case})
+    else()
+      add_test(NAME 51-precision-green-warning-${case} COMMAND 51-precision-green-warning ${case}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/51-${case})
+    endif()
+  endforeach()
+  set_tests_properties(51-precision-green-warning-large PROPERTIES
+    PASS_REGULAR_EXPRESSION "Warning: Precision Green Max" TIMEOUT 60)
+  set_tests_properties(51-precision-green-warning-small PROPERTIES
+    PASS_REGULAR_EXPRESSION "PASS: summary written" FAIL_REGULAR_EXPRESSION "Warning: Precision Green" TIMEOUT 60)
+endif()
