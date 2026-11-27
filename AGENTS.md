@@ -59,7 +59,7 @@ need to read the whole code base.
 |---|---|---|
 | Orchestration of a run | `Prog/main.F90` | Calls only. No logic, no new state. |
 | One-time setup, info file | `Prog/qmc_setup_mod.F90` | `Setup_model`, `Setup_fields`, `Setup_update_schemes`, `Write_info_*`. |
-| Per-walker state (G, UDV stacks, phase) | `Prog/qmc_walker_mod.F90` (`qmc_walker_t`) | Large arrays are allocated once per run in `Walker_alloc`, not per call. |
+| Per-walker state (G, UDV stacks, phase) | `Prog/qmc_walker_mod.F90` (`qmc_walker_t`) | Large arrays are allocated once per run in `Walker_alloc`, not per call. With `N_walkers > 1`, `Walker_activate`/`Walker_deactivate` swap the walker's fields (`nsigma%f`) and RNG state in and out; new per-chain module state must be added there (engine.md §5). |
 | Sweeps | `Prog/qmc_sweep_mod.F90` | `Sweep_up`, `Sweep_down`. |
 | Langevin / HMC / global MALA steps | `Prog/qmc_driver_mod.F90` | |
 | Propagation of G through a slice, local updates | `Prog/Wrapgr_mod.F90` (`WRAPGRUP`, `WRAPGRDO`) | Local update: `Upgrade2` (`upgrade_mod`), or delayed/submatrix (`lowrank_update_mod`, selected by `Sequential_scheme`). |

@@ -38,9 +38,173 @@
 !> This constructs a decompostion Mat = Q D R P^* using a pivoted QR decomposition
 !--------------------------------------------------------------------
 Module QDRP_mod
-  Use linalg_mod, only: la_zgeqp3
+  Use linalg_mod, only: la_zgeqp3, la_zgeqrf, la_zunmqr
+
+  !> Test-only pre-pivoted QR in CGR / CGR2_2 (default off). Compile with ALF_FLAGS_EXT="-DQR_PREPIVOT[=v]"
+  !> (v = 1 static norm sort, 2 two-pass, 3 blocked re-ranking with block size -DQR_PPNB=n, default 32).
+  !> The call sites use QDRP_prepivot(..., QR_PP_VARIANT, QR_PP_NB) instead of QDRP_decompose.
+#if defined(QR_PREPIVOT)
+#if QR_PREPIVOT < 1 || QR_PREPIVOT > 3
+#error "QR_PREPIVOT must be 1, 2 or 3"
+#endif
+  Integer, parameter :: QR_PP_VARIANT = QR_PREPIVOT
+#else
+  Integer, parameter :: QR_PP_VARIANT = 0
+#endif
+#if defined(QR_PPNB)
+  Integer, parameter :: QR_PP_NB = QR_PPNB
+#else
+  Integer, parameter :: QR_PP_NB = 32
+#endif
 
 Contains
+
+!--------------------------------------------------------------------
+!> @brief
+!> QDRP_decompose with a pre-pivot instead of ZGEQP3's column pivoting (gpu-port tickets 104, 108).
+!> @details
+!> Same contract as QDRP_decompose (Mat = reflectors and R with D separated, TAU, WORK allocated here,
+!> LWORK); IPVT has ZGEQP3 semantics (column j of Mat*P is column IPVT(j) of Mat), entries beyond N_part
+!> are the identity. The reflectors form one ZGEQRF-format set, so ZUNMQR and the det(Q) phase work unchanged.
+!>   variant 0: plain QDRP_decompose (ZGEQP3).
+!>   variant 1: column 2-norms, stable descending sort, unpivoted QR (the CPU form of the device la_zqrpp).
+!>   variant 2: two-pass: variant-1 order, unpivoted QR of a copy, re-sort (stable) by |R_jj|, unpivoted QR
+!>              of the re-sorted original (2 x geqrf).
+!>   variant 3: blocked re-ranking: per panel of nb columns the remaining columns are sorted by their exact
+!>              residual 2-norm, the panel is factored (ZGEQRF), Q^H is applied to the trailing columns (ZUNMQR)
+!>              and their residual norms are recomputed (DZNRM2, no downdating). nb = 1 gives ZGEQP3's pivots.
+!--------------------------------------------------------------------
+    SUBROUTINE QDRP_prepivot(Ndim, N_part, Mat, D, IPVT, TAU, WORK, LWORK, variant, nb)
+      Implicit None
+      Integer, intent(in) :: Ndim, N_part, variant, nb
+      Integer, intent(inout) :: LWORK
+      Integer, Dimension(:), intent(inout), Allocatable :: IPVT
+      COMPLEX(Kind=Kind(0.d0)), Intent(inout) :: Mat(Ndim, N_part)   ! leading Ndim x N_part block of the caller's array
+      COMPLEX(Kind=Kind(0.d0)), Dimension(:), Intent(inout) :: D
+      COMPLEX(Kind=Kind(0.d0)), Dimension(:), Intent(inout), Allocatable :: TAU
+      COMPLEX(Kind=Kind(0.d0)), Dimension(:), Intent(INOUT), Allocatable :: WORK
+
+      Real(Kind=Kind(0.d0)), external :: DZNRM2
+      Real(Kind=Kind(0.d0)), allocatable :: nrm(:), RWORK(:)
+      Complex(Kind=Kind(0.d0)), allocatable :: tmp(:,:), w1(:)
+      Complex(Kind=Kind(0.d0)) :: wq(1)
+      Integer, allocatable :: perm(:), ord(:)
+      Integer :: i, j, k, b, r, info, lw, nbl
+      Real(Kind=Kind(0.d0)) :: X
+
+      if (variant < 1 .or. variant > 3) then
+         call QDRP_decompose(Ndim, N_part, Mat, D, IPVT, TAU, WORK, LWORK)
+         return
+      endif
+      allocate(nrm(N_part), tmp(Ndim, N_part), perm(size(IPVT)), ord(N_part))
+      do j = 1, N_part
+         nrm(j) = DZNRM2(Ndim, Mat(1,j), 1)
+      enddo
+      do j = 1, size(IPVT)
+         perm(j) = j
+      enddo
+
+      if (variant /= 3) then
+         call sort_desc(nrm, perm(1:N_part))
+         if (variant == 2) then
+            ! pass 1: unpivoted QR of the sorted copy; only |R_jj| is used
+            do j = 1, N_part
+               tmp(:,j) = Mat(1:Ndim, perm(j))
+            enddo
+            call la_zgeqrf(Ndim, N_part, tmp, Ndim, TAU, wq, -1, info)
+            lw = int(dble(wq(1)))
+            allocate(w1(lw))
+            call la_zgeqrf(Ndim, N_part, tmp, Ndim, TAU, w1, lw, info)
+            deallocate(w1)
+            do j = 1, N_part
+               nrm(j) = abs(tmp(j,j))
+               ord(j) = j
+            enddo
+            call sort_desc(nrm, ord)
+            ord = perm(ord)
+            perm(1:N_part) = ord
+         endif
+         do j = 1, N_part
+            tmp(:,j) = Mat(1:Ndim, perm(j))
+         enddo
+         Mat(1:Ndim, 1:N_part) = tmp
+         IPVT = 1   ! all columns fixed: LAPACK pivoting off
+         call QDRP_decompose(Ndim, N_part, Mat, D, IPVT, TAU, WORK, LWORK)
+         IPVT = perm
+         deallocate(nrm, tmp, perm, ord)
+         return
+      endif
+
+      ! variant 3
+      nbl = max(1, min(nb, N_part))
+      call la_zgeqrf(Ndim, nbl, Mat, Ndim, TAU, wq, -1, info)
+      lw = int(dble(wq(1)))
+      call la_zunmqr('L', 'C', Ndim, N_part, nbl, Mat, Ndim, TAU, Mat, Ndim, wq, -1, info)
+      lw = max(lw, int(dble(wq(1))))
+      allocate(w1(lw))
+      k = 1
+      do while (k <= N_part)
+         r = N_part - k + 1
+         b = min(nbl, r)
+         ! re-rank the remaining columns by their current residual norm (stable, descending)
+         do i = 1, r
+            ord(i) = k + i - 1
+         enddo
+         call sort_desc(nrm, ord(1:r))
+         do i = 1, r
+            tmp(:,i) = Mat(1:Ndim, ord(i))
+         enddo
+         Mat(1:Ndim, k:N_part) = tmp(:, 1:r)
+         nrm(k:N_part) = nrm(ord(1:r))
+         perm(k:N_part) = perm(ord(1:r))
+         ! factor the panel, apply Q^H to the trailing columns, recompute their residual norms exactly
+         call la_zgeqrf(Ndim-k+1, b, Mat(k,k), Ndim, TAU(k), w1, lw, info)
+         if (k + b <= N_part) then
+            call la_zunmqr('L', 'C', Ndim-k+1, N_part-k-b+1, b, Mat(k,k), Ndim, TAU(k), &
+                 &         Mat(k,k+b), Ndim, w1, lw, info)
+            do j = k + b, N_part
+               nrm(j) = DZNRM2(Ndim-k-b+1, Mat(k+b,j), 1)
+            enddo
+         endif
+         k = k + b
+      enddo
+      deallocate(w1)
+      ! same WORK/LWORK contract as QDRP_decompose (WORK is used afterwards by ZUNMQR)
+      allocate(RWORK(2*Ndim))
+      call la_zgeqp3(Ndim, N_part, Mat, Ndim, IPVT, TAU, wq, -1, RWORK, info)
+      LWORK = int(dble(wq(1)))
+      allocate(WORK(LWORK))
+      deallocate(RWORK)
+      ! separate off D (as QDRP_decompose)
+      do i = 1, N_part
+         X = ABS(Mat(i, i))
+         D(i) = X
+         do j = i, N_part
+            Mat(i, j) = Mat(i, j) / X
+         enddo
+      enddo
+      IPVT = perm
+      deallocate(nrm, tmp, perm, ord)
+
+    contains
+
+      !> Stable insertion sort of idx, descending by key(idx(:)).
+      subroutine sort_desc(key, idx)
+        Real(Kind=Kind(0.d0)), intent(in) :: key(:)
+        Integer, intent(inout) :: idx(:)
+        Integer :: ii, jj, kk
+        do ii = 2, size(idx)
+           kk = idx(ii)
+           jj = ii - 1
+           do while (jj >= 1)
+              if (key(idx(jj)) >= key(kk)) exit
+              idx(jj+1) = idx(jj)
+              jj = jj - 1
+           enddo
+           idx(jj+1) = kk
+        enddo
+      end subroutine sort_desc
+    END SUBROUTINE QDRP_prepivot
 
 !--------------------------------------------------------------------
 !> @author 

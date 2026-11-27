@@ -39,11 +39,12 @@ add_executable(34-Op-V-symm-pass 34-Op-V-symm-pass.F90)
 add_executable(35-Op-V-symm-fail 35-Op-V-symm-fail.F90)
 add_executable(49-udv-det-phase 49-udv-det-phase.F90)
 add_executable(53-Op-V-symm-fast 53-Op-V-symm-fast.F90)
+add_executable(54-qdrp-prepivot 54-qdrp-prepivot.F90)
 # set(operatorparts 1-copy-sel-rows 2-copy-sel-columns 3-opmult 4-opmultct 5-FillExpOps 6-opexpmult-1 6-opexpmult-2 7-opexpmultct-1 7-opexpmultct-2 9-Op-Phase 10-Op-mmultL 11-Op-mmultR 13-Op-Wrapup 14-Op-Wrapdo 21-Op-make 22-sl-mat-mults)
 set(operatorparts 9-Op-Phase 10-Op-mmultL 11-Op-mmultR 13-Op-Wrapup 14-Op-Wrapdo 21-Op-make 22-sl-mat-mults 26-Test-Polymorphic-Fortran 27-Op-mmultL-m1.F90 28-Op-validate 29-Op-validate-hermitian-fail 30-Op-validate-type-fail 31-Op-validate-projector-fail 32-Op-validate-1x1-fail 33-Op-equal 34-Op-V-symm-pass 35-Op-V-symm-fail 53-Op-V-symm-fast)
 set(cgr2_2tests 16-get-blocks 17-solve-extended-system)
 #set(cgr2_1tests 8-scalematrix-1 8-scalematrix-2)
-set(cgr1tests 15-cgr 20-qdrp 23-cgrp)
+set(cgr1tests 15-cgr 20-qdrp 23-cgrp 54-qdrp-prepivot)
 set(udvstatetests 18-ul-update-matrices 19-ur-update-matrices 24-udv 25-assign-UDV-state 49-udv-det-phase)
 set(progtests ${operatorparts} ${cgr1tests} ${cgr2_1tests} ${cgr2_2tests} ${udvstatetests})
 
@@ -145,6 +146,7 @@ add_test(34-Op-V-symm-pass 34-Op-V-symm-pass)
 add_test(35-Op-V-symm-fail 35-Op-V-symm-fail)
 set_tests_properties(35-Op-V-symm-fail PROPERTIES WILL_FAIL TRUE)
 add_test(53-Op-V-symm-fast 53-Op-V-symm-fast)
+add_test(54-qdrp-prepivot 54-qdrp-prepivot)
 
 # Hamiltonian smoke test: Alloc_Ham + Ham_set + Validate_Ham_Variables with
 # default parameters, one ctest per model in Prog/Hamiltonians.list (and
@@ -323,11 +325,15 @@ target_include_directories(42-QMC-runtime-checks-fail PRIVATE "${CMAKE_CURRENT_S
   "${CMAKE_CURRENT_SOURCE_DIR}/../../Libraries/Modules")
 target_link_libraries(42-QMC-runtime-checks-fail
   "${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/QMC_runtime_var_mod.o" ${LIB_LIST})
-foreach(case_msg "nsweep|NSweep must be >= 1" "lobs|LOBS_ST > LOBS_EN" "projector|does not support Ltau = 1"
+set(qmc_check_cases "nsweep|NSweep must be >= 1" "lobs|LOBS_ST > LOBS_EN" "projector|does not support Ltau = 1"
     "ntseq_start|Nt_sequential_start" "ntseq_end|Nt_sequential_end" "ltau|Ltau = 2 \\(must be 0 or 1\\)"
     "amplitude|Amplitude = 0 freezes" "langevin_dt|Langevin=.True. requires Delta_t_Langevin_HMC"
     "langevin_force|Langevin=.True. requires Max_Force" "hmc_dt|HMC=.True. requires Delta_t_Langevin_HMC"
     "hmc_leapfrog|HMC=.True. requires Leapfrog_steps" "hmc_sweeps|HMC=.True. requires N_HMC_sweeps")
+if("${FLAG_LIST}" MATCHES "-DALF_GPU")
+  list(APPEND qmc_check_cases "walkers_gpu|N_walkers > 1 is not supported \\(yet\\) in GPU builds")
+endif()
+foreach(case_msg ${qmc_check_cases})
   string(REPLACE "|" ";" case_msg_list "${case_msg}")
   list(GET case_msg_list 0 case_name)
   list(GET case_msg_list 1 case_regex)

@@ -62,6 +62,7 @@ Module qmc_setup_mod
        &                     get_N_Global_tau, get_N_Global_tau_MALA, get_N_HMC_sweeps, get_NBin, &
        &                     get_NSweep, get_Nt_sequential_end, get_Nt_sequential_start, get_Nwrap, &
        &                     get_Propose_S0, get_sequential, get_Sequential_MALA, get_Sequential_scheme, get_N_delay, &
+       &                     get_N_walkers, &
        &                     get_Tempering_calc_det, set_default_global_tau_sampling, &
        &                     set_default_values_measuring_interval, set_N_Global_tau, &
        &                     set_N_Global_tau_MALA, set_Nt_sequential_end, set_Nt_sequential_start
@@ -77,7 +78,8 @@ Module qmc_setup_mod
   Use Langevin_HMC_mod, only: Langevin_HMC, Metropolis_Langevin
   Use Natural_Constants, only: Eps_small
   Use mpi_shared_memory, only: use_mpi_shm
-  Use comm_mod, only: is_root, comm_size
+  Use comm_mod, only: is_root, comm_size, comm_rank
+  Use qmc_walker_mod, only: qmc_walker_t, Walker_deactivate
   Use iso8601_datetime_mod, only: iso8601_datetime
   Use iso_fortran_env, only: output_unit, error_unit
 #ifdef ALF_GPU
@@ -88,7 +90,6 @@ Module qmc_setup_mod
   Use gpu_stab_mod, only: gpu_stab_on, gpu_stab_setup, gpu_stab_hook, gpu_stab_finalize, gpu_stab_put_udv
   Use gpu_obs_mod, only: gpu_obs_report, gpu_obs_finalize
   Use gpu_tau_mod, only: gpu_tau_setup, gpu_tau_finalize
-  Use qmc_walker_mod, only: qmc_walker_t
 #endif
 #ifdef HDF5
   Use hdf5
@@ -101,7 +102,8 @@ Module qmc_setup_mod
 #if defined(HDF5)
   public :: Init_hdf5_file
 #endif
-  public :: Write_info_end, Write_info_start, Write_info_parameters, Setup_update_schemes, Setup_fields, Setup_model
+  public :: Write_info_end, Write_info_start, Write_info_parameters, Setup_update_schemes, Setup_fields, Setup_model, &
+       &    Setup_walker_fields
 #if defined(ALF_GPU)
   public :: Setup_gpu, Setup_gpu_stack, Finalize_gpu
 #endif
@@ -177,9 +179,12 @@ Module qmc_setup_mod
     !> @brief
     !> Auxiliary fields: types and flip protocols, random number generator
     !> and initial configuration.
+    !> With several walkers per process, chain and n_chains select the seed
+    !> line and the confin_ file of the chain (Chain_seed in Fields_mod).
     !--------------------------------------------------------------------
-    Subroutine Setup_fields(N_op)
+    Subroutine Setup_fields(N_op, chain, n_chains)
       Integer, intent(in) :: N_op
+      Integer, intent(in), optional :: chain, n_chains
       Integer :: n, Seed_in
       Character (len=64) :: file_seeds
       Complex (Kind=Kind(0.d0)), allocatable, dimension(:,:) :: Initial_field
@@ -191,17 +196,45 @@ Module qmc_setup_mod
       Enddo
 
       File_seeds="seeds"
-      Call Set_Random_number_Generator(File_seeds,Seed_in)
+      Call Set_Random_number_Generator(File_seeds,Seed_in,chain,n_chains)
       !Write(6,*) Seed_in
 
       Call ham%Hamiltonian_set_nsigma(Initial_field)
       if (allocated(Initial_field)) then
-         Call nsigma%in(Group_Comm,Initial_field)
+         Call nsigma%in(Group_Comm,Initial_field,chain=chain,n_chains=n_chains)
          deallocate(Initial_field)
       else
-         Call nsigma%in(Group_Comm)
+         Call nsigma%in(Group_Comm,chain=chain,n_chains=n_chains)
       endif
     end Subroutine Setup_fields
+
+
+    !--------------------------------------------------------------------
+    !> @brief
+    !> Fields and random number generator of every walker of this process.
+    !> @details
+    !> Walker iw of group rank r is chain c = r*N_w + iw - 1 of
+    !> C = size*N_w chains; with one walker per process (N_w = 1) this is
+    !> Setup_fields as before and c = r. Every walker leaves deactivated.
+    !--------------------------------------------------------------------
+    Subroutine Setup_walker_fields(walkers, N_op)
+      Type (qmc_walker_t), intent(inout) :: walkers(:)
+      Integer,             intent(in)    :: N_op
+      Integer :: iw, N_w
+
+      N_w = size(walkers)
+      Do iw = 1, N_w
+         walkers(iw)%chain = comm_rank(Group_Comm)*N_w + iw - 1
+         If (N_w == 1) then
+            Call Setup_fields(N_op)
+         else
+            ! types and flip protocols are the same for every chain; Setup_fields makes them anew
+            If (iw > 1) deallocate(nsigma%t, nsigma%flip_protocol)
+            Call Setup_fields(N_op, walkers(iw)%chain, comm_size(Group_Comm)*N_w)
+         endif
+         Call Walker_deactivate(walkers(iw))
+      Enddo
+    end Subroutine Setup_walker_fields
 
 
     !--------------------------------------------------------------------
@@ -363,6 +396,8 @@ Module qmc_setup_mod
          Write(50,*) 'Measure Int.                        : ', get_LOBS_ST(), get_LOBS_EN()
          Write(50,*) 'Stabilization,Wrap                  : ', get_Nwrap()
          Write(50,*) 'Nstm                                : ', NSTM
+         If (get_N_walkers() > 1) &
+              &  Write(50,*) 'Walkers (chains) per process        : ', get_N_walkers()
          Write(50,*) 'Ltau                                : ', get_Ltau()
          Write(50,*) '# of interacting Ops per time slice : ', Size(OP_V,1)
          If ( get_Propose_S0() ) &

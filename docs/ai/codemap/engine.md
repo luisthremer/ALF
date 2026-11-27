@@ -33,6 +33,9 @@ Purpose: one type holding all large per-walker arrays + init/stabilisation helpe
 - `Recompute_GR_phase(walker, NVAR)` (229): stabilisation point: Test=GR, CGR(Z1,NVAR,GR,udvr,udvl),
   `Control_PrecisionG(GR,Test)`, Op_phase, `Control_PrecisionP(Z,Phase)`, Phase=Z. (GPU stabilisation hook.)
 - `Reset_udv(udv(:), side)` (258): reset to identity or trial WF (projector).
+- `Walker_activate(walker)` / `Walker_deactivate(walker)` (T12): swap the per-chain state that lives outside the
+  walker (`nsigma%f` by `move_alloc`, RNG state by `random_seed` get/put) in and out; no-ops when
+  `N_walkers = 1`. Components `chain`, `f`, `rng`. See §5.
 USEs: UDV_State_mod, Hamiltonian_main, Operator_mod(Op_phase), wrapul_mod, cgr1_mod, Control, Tau_m/Tau_p_mod.
 
 ### qmc_sweep_mod.F90 — sequential sweeps (32–211)
@@ -131,9 +134,12 @@ State: private work arrays `TPUP, RHS (N,N), DUP, TAU (N), IPVT, VISITED (N)` (4
 CGR2_2 STAB1/2, `Compute_Fermion_Det` (Global_mod:929).
 
 ### QDRP_decompose_mod.F90 — `Module QDRP_mod` (40)
-- `QDRP_decompose(Ndim,N_part,Mat,D,IPVT,TAU,WORK,LWORK)` (61): `la_zgeqp3` pivoted QR; D = |R_ii|, R rows scaled;
+- `QDRP_decompose(Ndim,N_part,Mat,D,IPVT,TAU,WORK,LWORK)` (225): `la_zgeqp3` pivoted QR; D = |R_ii|, R rows scaled;
   allocates WORK (caller deallocates).
-- `Pivot_phase(Phase,IPVT,N_size)` (104): sign of permutation.
+- `Pivot_phase(Phase,IPVT,N_size)` (268): sign of permutation.
+- `QDRP_prepivot(...,variant,nb)` (77): test-only pre-pivoted QR (variants 1 static norm sort, 2 two-pass, 3 blocked
+  re-ranking), same contract as `QDRP_decompose`; used by the CGR / CGR2_2 QRs only with `-DQR_PREPIVOT[=v]`
+  (`QR_PP_VARIANT`, `QR_PP_NB` from `-DQR_PPNB`). See docs/ai/phase2/CPU_QR_PREPIVOT.md.
 
 ### udv_state_mod.F90 — `Type UDV_State` (86–111)
 Fields: `U(ndim,n_part)`, `V(n_part,n_part)` (finite T only; absent in projector), `D(n_part)` or, with STABLOG,
@@ -411,3 +417,22 @@ GR ← B_T(ntau)^{-1} GR B_T(ntau)                         (Hop_mod_mmthl, Hop_m
   sites at 176 / 380 with a new routine taking `GR, n, ntau, PHASE, HS_new, S0_ratio, T0_Proposal_ratio, Acc`, plus a
   flush call before line 218 (UP) / after 396 (DO) and before global-τ calls; selector would be a new VAR_QMC flag in
   QMC_runtime_var passed through qmc_sweep:87/145 (Wrapgr_mod has no QMC_runtime_var USE).
+
+---------------------------------------------------------------------------------------------
+## 5. Several walkers per process (`N_walkers`, CG-ALF T12)
+
+`&VAR_QMC` `N_walkers` (default 1) runs that many independent Markov chains one after another in each process.
+- Chain index $c = r\,N_w + (w-1)$ (r = rank in `Group_Comm`, w = walker); C = ranks × N_w chains. Chain c takes line
+  $C - c$ of `seeds` (`Chain_seed` in `Fields_mod`), the line rank c gets in a C-rank run with one walker, and reads
+  `confin_<c>` / writes `confout_<c>`. With N_w = 1 the old code path runs (`Setup_walker_fields` calls `Setup_fields(N_op)`).
+- main: `Setup_walker_fields`, then per walker activate → `Walker_alloc` / `Walker_init_stack` / `Walker_init_GR` →
+  deactivate; in the sweep loop `DO iw` around global moves and `Sweep_up/Sweep_down` with activate/deactivate; per bin
+  `nsigma%out(Group_Comm, chain)` per walker.
+- Per chain and swapped: `nsigma%f`, RNG state (`nsigma%t`, `%flip_protocol` come from `Op_V`, same for all chains). Shared on purpose: kernel work arrays (`cgr1`, `tau_m/p`, allocated
+  once: `n_walkers_alloc`), `Wrapgr_mod` `GR_ST`, low-rank pending state (flushed at every slice end; `Walker_deactivate`
+  asserts it), `Control` statistics (sums over walkers like the MPI reduction), observable accumulators (one bin per
+  process averages over its walkers; format unchanged; walkers are independent chains, so error bars stay valid).
+- Refused for N_walkers > 1 (`check_update_schemes_compatibility`): Langevin, HMC, MALA (their cached forces are not per
+  walker yet) and tempering builds. GPU builds: refused until device state is per walker (T12 PART B).
+- Gate: `testsuite/walkers/walker_gate.py` (N walkers = N separate runs and = N MPI ranks, confout byte-identical; restart);
+  unit test `40-walker` (swap round trip).
