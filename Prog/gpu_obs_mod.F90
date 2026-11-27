@@ -95,7 +95,7 @@ Module gpu_obs_mod
   Character (len=200), Save :: o_reason = 'gpu_obs_setup not called'
 #if defined(ALF_LA_ONEMKL)
   Logical, Save :: o_corr_sycl = .false.   ! ALFSH_OBSCORR=1: corr as a SYCL kernel (libalfsb alfsb_corr) on the OpenMP interop queue
-  Logical, Parameter :: OBSCORR_DEFAULT = .false.   ! when ALFSH_OBSCORR is not set (an explicit 0|1 always wins)
+  Logical, Parameter :: OBSCORR_DEFAULT = .true.    ! when ALFSH_OBSCORR is not set (an explicit 0|1 always wins); on since gpu-intel-speed (Q4b)
   Interface
     Integer (c_int) Function alfsb_corr(q, kind, k, n, norb, nfl, ns, sq3, wr, wi, ld, g, jc, inv, acc, acc0) Bind(C, name='alfsb_corr')
       Import :: c_ptr, c_int, c_double

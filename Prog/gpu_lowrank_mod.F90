@@ -126,8 +126,9 @@ Module gpu_lowrank_mod
   ! oneMKL GEMM on the interop queue (libalfsb, Libraries/Modules/alf_la_sycl_blk.cpp), no wait except the D2H of the block gather
   Logical, Save :: ab_on = .false., ab_pending = .false.
   ! defaults when the variable is not set (an explicit ALFSH_ASYNCBLK=0|1, ALFSH_BLKFUSE=0..5, ALFSH_BLKPF=0|1 always wins)
-  Logical, Parameter :: AB_ASYNC_DEFAULT = .false., AB_PF_DEFAULT = .false.
-  Integer, Parameter :: AB_FUSE_DEFAULT = 0
+  ! on by default since feature gpu-intel-speed (owner decision Q4b, after the Max 1550 check; docs/ai/phase2/intel/RESULTS.md)
+  Logical, Parameter :: AB_ASYNC_DEFAULT = .true., AB_PF_DEFAULT = .true.
+  Integer, Parameter :: AB_FUSE_DEFAULT = 5
   Type (c_ptr), Save :: ab_pG, ab_pX, ab_pS, ab_pBs, ab_pBS2, ab_pCb, ab_pSl, ab_pNs, ab_pGb, ab_ph
   Complex (Kind=Kind(0.d0)), Pointer, Save :: gbh(:,:,:) => null()      ! host-USM landing buffer of the block gather
   ! Fused block steps (env ALFSH_BLKFUSE = 1..5, needs ALFSH_ASYNCBLK=1; default 0 = the path above, unchanged): fewer host submissions
