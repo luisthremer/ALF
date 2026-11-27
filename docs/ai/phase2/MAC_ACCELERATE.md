@@ -55,7 +55,7 @@ sessions (load 4-6), so timings carry about 5 % noise. Script: `mac_blas_bench.p
 - `Precision Green` is the same order for all three (mean 5e-11 to 7e-11 at the Hubbard 16 start-up default,
   4e-14 for Kondo 12). The Hubbard 16 maximum of 1e-7 to 1e-6 is the Nwrap = 10 default, not the library.
 - **Reference LAPACK 3.12 (Homebrew) aborts the Kondo 12x12 run** (G difference 107 > 10, return code 3, 1 and 4 threads),
-  where Accelerate and OpenBLAS run clean. Cause not investigated; recorded as KNOWN_ISSUES R1 (class C: nobody runs reference BLAS on the Mac).
+  where Accelerate and OpenBLAS run clean. Cause not investigated; recorded as KNOWN_ISSUES MAC1 (class C: nobody runs reference BLAS on the Mac).
 
 Verdict: no leverage row (no measured gain from Accelerate). The default stays Accelerate so that Mac results do not change;
 `ALF_MAC_BLAS=openblas` is the faster choice for these sizes if the owner wants a Mac production default.

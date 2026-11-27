@@ -49,7 +49,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | Z8 | "Switch to LOG" message for absurd but finite inputs (U = 1e5, field 1e3) | C | open |
 | Z9 | Size limits: Ndim^2 in default integers, O(N^2) lattice tables | C | open (part of L3) |
 | Z10 | Namelist errors stop with the bare gfortran message ("End of file") | C | open |
-| R1 | macOS: Homebrew reference LAPACK/BLAS 3.12 aborts Kondo 12x12 (G difference 107, Accelerate and OpenBLAS fine) | C | open, cause not investigated; see `docs/ai/phase2/MAC_ACCELERATE.md` |
+| MAC1 | macOS: Homebrew reference LAPACK/BLAS 3.12 aborts Kondo 12x12 (G difference 107, Accelerate and OpenBLAS fine) | C | open, cause not investigated; see `docs/ai/phase2/MAC_ACCELERATE.md` |
 
 ## Determinant phase underflow for N >~ 3000 (L >~ 54) in CGR / DET_C
 
