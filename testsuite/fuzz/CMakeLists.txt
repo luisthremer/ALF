@@ -42,4 +42,6 @@ if(Python3_FOUND AND NOT "${FLAG_LIST}" MATCHES "-D(MPI|TEMPERING|PARALLEL_PARAM
             ok_base)
   # no bins or no measured time slice
   fuzz_test(57-fuzz-no-measurements FALSE par_NBin_0 par_NBin_neg par_LOBS_neg par_LOBS_beyond ok_base)
+  # NaN field values (confin_0.h5)
+  fuzz_test(58-fuzz-field-nan TRUE h5_field_nan h5_ok_restart)
 endif()
