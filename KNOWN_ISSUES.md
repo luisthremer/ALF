@@ -158,7 +158,9 @@ claude-bughunter plugin was not available in the session that ran this (triage b
   skipped and the guard passes silently; `MPI_Sendrecv_UDV_state` (`n = ndim*ndim`, tempering) and the L3 entries
   likewise. Runs: L = 200 stops in `lattices_v3_mod.F90:350` allocating 6.4 GB for an integer table of Latt%N^2
   entries, before G (25.6 GB) is allocated: the lattice tables are O(N^2) memory. Ltrot = 1e8 / 2e9 (Beta = 1e7 / 2e8)
-  stop cleanly with gfortran's "Error allocating ... bytes" (25.6 GB / 512 GB for the fields). `N_SUN = 200`, Ltrot = 1,
+  stop cleanly with gfortran's "Error allocating ... bytes" (25.6 GB / 512 GB for the fields). Dtau = 1e-300 stops with
+  the M1 message, except in builds with `-ffpe-trap=invalid` (CI "MALA ... (debug)"): there `Ltrot = nint(Beta/Dtau)`
+  (in every model) traps with SIGFPE before the check. `N_SUN = 200`, Ltrot = 1,
   the 1-D chain and L = 1 behave. None of the overflows is reachable at today's sizes (G alone would need >= 32 GB).
 - **Z10. Namelist errors** (C, open). A missing namelist, an unknown key or a wrong type stops with the gfortran
   runtime error and the file and line of the READ ("End of file", "Cannot match namelist object name l3"), rc 2.

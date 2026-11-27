@@ -16,7 +16,7 @@ The outcome is classified:
 A case expects "stop" (bad input) or "run" (valid input). FAIL = a stop case that crashes, hangs,
 runs out of memory or runs on; or a run case that does not finish cleanly.
 
-Usage: fuzz_inputs.py ALF_DIR ALF_EXE WORK_DIR [--only CASE,CASE,...] [--hdf5] [--timeout S] [--mem-gb G]
+Usage: fuzz_inputs.py ALF_DIR ALF_EXE WORK_DIR [--only CASE,CASE,...] [--hdf5 [--h5fc PATH]] [--timeout S] [--mem-gb G]
 """
 import argparse
 import math
@@ -308,15 +308,26 @@ H5_CASES = [
 def limit(mem_gb):
     def fn():
         b = int(mem_gb * 2**30)
-        resource.setrlimit(resource.RLIMIT_AS, (b, b))
-        os.setsid()
+        try:
+            resource.setrlimit(resource.RLIMIT_AS, (b, b))
+        except (ValueError, OSError):
+            pass  # macOS: RLIMIT_AS cannot be set; the memory cases are skipped there (MEM_LIMIT)
     return fn
+
+
+def mem_limit_works():
+    probe = "import resource; resource.setrlimit(resource.RLIMIT_AS, (2**31, 2**31))"
+    return subprocess.run([sys.executable, "-c", probe], capture_output=True).returncode == 0
+
+
+MEM_CASES = ("size_L_200_memlimit", "size_Ltrot_1e8", "size_Ltrot_2e9")  # allocate > 20 GB without the limit
 
 
 def run(exe, d, timeout, mem_gb):
     env = dict(os.environ, OMP_NUM_THREADS="1")
     with open(os.path.join(d, "stdout"), "w") as so, open(os.path.join(d, "stderr"), "w") as se:
-        proc = subprocess.Popen([exe], cwd=d, stdout=so, stderr=se, env=env, preexec_fn=limit(mem_gb))
+        proc = subprocess.Popen([exe], cwd=d, stdout=so, stderr=se, env=env, preexec_fn=limit(mem_gb),
+                                start_new_session=True)
         try:
             rc = proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -441,14 +452,17 @@ def main():
     ap.add_argument("work")
     ap.add_argument("--only", default="", help="comma-separated case names")
     ap.add_argument("--hdf5", action="store_true", help="ALF_EXE is an HDF5 build: run the HDF5 cases")
+    ap.add_argument("--h5fc", default="", help="h5fc of the HDF5 that ALF was built with (default: PATH, then ALF_DIR/HDF5)")
     ap.add_argument("--timeout", type=float, default=60)
     ap.add_argument("--mem-gb", type=float, default=2.0)
     args = ap.parse_args()
     exe = os.path.abspath(args.exe)
+    args.work = os.path.abspath(args.work)
     os.makedirs(args.work, exist_ok=True)
     ctx = reference(args.alf, exe, args.work, args, args.hdf5)
     if args.hdf5:
-        h5fc = [os.path.join(r, "h5fc") for r, _, f in os.walk(os.path.abspath(os.path.join(args.alf, "HDF5"))) if "h5fc" in f][0]
+        h5fc = args.h5fc or shutil.which("h5fc") or \
+            [os.path.join(r, "h5fc") for r, _, f in os.walk(os.path.abspath(os.path.join(args.alf, "HDF5"))) if "h5fc" in f][0]
         ctx["h5mut"] = os.path.join(args.work, "h5mut")
         subprocess.run([h5fc, "-o", ctx["h5mut"], os.path.join(os.path.dirname(os.path.abspath(__file__)), "h5mut.f90")],
                        check=True, cwd=args.work)
@@ -459,7 +473,11 @@ def main():
         assert not unknown, "unknown cases: %s" % sorted(unknown)
         cases = [c for c in cases if c[0] in only]
     n_fail = 0
+    mem_ok = mem_limit_works()
     for name, expect, setup in cases:
+        if name in MEM_CASES and not mem_ok:
+            print("%-26s %-6s %-7s skipped: the memory limit cannot be set on this system" % (name, expect, "skip"))
+            continue
         d = os.path.join(args.work, name)
         shutil.rmtree(d, ignore_errors=True)
         os.makedirs(d)
