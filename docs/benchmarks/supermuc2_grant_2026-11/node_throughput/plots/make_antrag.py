@@ -39,22 +39,26 @@ else:
 complete = set(full) >= PLANNED
 out.append(f"\\newcommand{{\\Complete}}{{{'yes' if complete else 'no'}}}")
 
-t = ["\\begin{tabular}{@{}rllrrr@{}}\\toprule",
-     "$L$ & node, code (commit) & best configuration & work units per node-hour & factor vs CPU & energy per unit (kJ)\\\\\\midrule"]
+SHORT = {"cpu": "CPU", "gpu": "GPU", "gpub": "GPU, Intel-opt."}
+CONF = {"cpu": lambda r: f"{r['ranks']} proc.\\ $\\times$ {r['threads']} thr.",
+        "gpu": lambda r: f"{r['w']} proc./tile, {r['threads']} thr.",
+        "gpub": lambda r: f"{r['w']} proc./tile, {r['threads']} thr."}
+t = ["\\begin{tabular}{rlllrrr}",
+     "$L$ & node & commit & configuration & work units / node-h & speedup & kJ / unit\\\\", "\\hline"]
 for i, L in enumerate(Ls):
     if i:
-        t.append("\\addlinespace")
+        t.append("\\hline")
     c = b.get(("cpu", L))
-    for s in SIDES:
-        r = b.get((s, L))
-        lab = f"{NAME[s]} (\\texttt{{{COMMIT[s]}}})"
+    for s_ in SIDES:
+        r = b.get((s_, L))
+        head = f"{L} & {SHORT[s_]} & \\texttt{{{COMMIT[s_]}}}"
         if not r:
-            t.append(f"{L} & {lab} & \\multicolumn{{4}}{{l}}{{\\emph{{run not finished}}}}\\\\")
+            t.append(f"{head} & \\multicolumn{{4}}{{l}}{{\\emph{{running}}}}\\\\")
             continue
-        thr, err = r["throughput_node_h"], r["throughput_err"]
+        thr = r["throughput_node_h"]
         fac = f"{thr / c['throughput_node_h']:.1f}" if c else "--"
-        e = POWER[s] * 3600 / thr / 1000
-        t.append(f"{L} & {lab} & {LAYOUT[s](r)} & ${num(thr)} \\pm {num(err)}$ & {fac} & {e:.3f}\\\\")
-t.append("\\bottomrule\\end{tabular}")
+        e = POWER[s_] * 3600 / thr / 1000
+        t.append(f"{head} & {CONF[s_](r)} & {num(thr)} & {fac} & {e:.3f}\\\\")
+t.append("\\end{tabular}")
 out.append("\\newcommand{\\AntragTable}{%\n" + "\n".join(t) + "}")
 print("\n".join(out))

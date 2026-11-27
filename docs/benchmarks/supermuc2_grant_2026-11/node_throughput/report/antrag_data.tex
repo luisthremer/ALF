@@ -4,21 +4,22 @@
 \newcommand{\Eratio}{1.3}
 \newcommand{\Complete}{no}
 \newcommand{\AntragTable}{%
-\begin{tabular}{@{}rllrrr@{}}\toprule
-$L$ & node, code (commit) & best configuration & work units per node-hour & factor vs CPU & energy per unit (kJ)\\\midrule
-16 & CPU node (2 $\times$ Xeon 8480L) (\texttt{410c7b04}) & 112 MPI proc.\ $\times$ 1 thread & $144\,581 \pm 780$ & 1.0 & 0.017\\
-16 & GPU node, standard GPU code (\texttt{410c7b04}) & 4 MPI proc./GPU tile, 1 thread & $171\,088 \pm 1\,463$ & 1.2 & 0.065\\
-16 & GPU node, Intel-optimised code (\texttt{d1060305}) & 4 MPI proc./GPU tile, 1 thread & $389\,496 \pm 2\,949$ & 2.7 & 0.029\\
-\addlinespace
-24 & CPU node (2 $\times$ Xeon 8480L) (\texttt{410c7b04}) & 112 MPI proc.\ $\times$ 1 thread & $18\,266 \pm 8$ & 1.0 & 0.138\\
-24 & GPU node, standard GPU code (\texttt{410c7b04}) & 4 MPI proc./GPU tile, 3 threads & $28\,664 \pm 138$ & 1.6 & 0.389\\
-24 & GPU node, Intel-optimised code (\texttt{d1060305}) & 4 MPI proc./GPU tile, 1 thread & $106\,700 \pm 301$ & 5.8 & 0.105\\
-\addlinespace
-32 & CPU node (2 $\times$ Xeon 8480L) (\texttt{410c7b04}) & \multicolumn{4}{l}{\emph{run not finished}}\\
-32 & GPU node, standard GPU code (\texttt{410c7b04}) & 2 MPI proc./GPU tile, 7 threads & $11\,676 \pm 34$ & -- & 0.956\\
-32 & GPU node, Intel-optimised code (\texttt{d1060305}) & 4 MPI proc./GPU tile, 1 thread & $29\,159 \pm 19$ & -- & 0.383\\
-\addlinespace
-36 & CPU node (2 $\times$ Xeon 8480L) (\texttt{410c7b04}) & \multicolumn{4}{l}{\emph{run not finished}}\\
-36 & GPU node, standard GPU code (\texttt{410c7b04}) & 2 MPI proc./GPU tile, 7 threads & $7\,311 \pm 7$ & -- & 1.526\\
-36 & GPU node, Intel-optimised code (\texttt{d1060305}) & 4 MPI proc./GPU tile, 1 thread & $14\,795 \pm 11$ & -- & 0.754\\
-\bottomrule\end{tabular}}
+\begin{tabular}{rlllrrr}
+$L$ & node & commit & configuration & work units / node-h & speedup & kJ / unit\\
+\hline
+16 & CPU & \texttt{410c7b04} & 112 proc.\ $\times$ 1 thr. & 144\,581 & 1.0 & 0.017\\
+16 & GPU & \texttt{410c7b04} & 4 proc./tile, 1 thr. & 171\,088 & 1.2 & 0.065\\
+16 & GPU, Intel-opt. & \texttt{d1060305} & 4 proc./tile, 1 thr. & 389\,496 & 2.7 & 0.029\\
+\hline
+24 & CPU & \texttt{410c7b04} & 112 proc.\ $\times$ 1 thr. & 18\,266 & 1.0 & 0.138\\
+24 & GPU & \texttt{410c7b04} & 4 proc./tile, 3 thr. & 28\,664 & 1.6 & 0.389\\
+24 & GPU, Intel-opt. & \texttt{d1060305} & 4 proc./tile, 1 thr. & 106\,700 & 5.8 & 0.105\\
+\hline
+32 & CPU & \texttt{410c7b04} & \multicolumn{4}{l}{\emph{running}}\\
+32 & GPU & \texttt{410c7b04} & 2 proc./tile, 7 thr. & 11\,676 & -- & 0.956\\
+32 & GPU, Intel-opt. & \texttt{d1060305} & 4 proc./tile, 1 thr. & 29\,159 & -- & 0.383\\
+\hline
+36 & CPU & \texttt{410c7b04} & \multicolumn{4}{l}{\emph{running}}\\
+36 & GPU & \texttt{410c7b04} & 2 proc./tile, 7 thr. & 7\,311 & -- & 1.526\\
+36 & GPU, Intel-opt. & \texttt{d1060305} & 4 proc./tile, 1 thr. & 14\,795 & -- & 0.754\\
+\end{tabular}}
