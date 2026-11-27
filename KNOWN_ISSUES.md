@@ -38,6 +38,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | MK | Makefile: Prog objects not rebuilt after Libraries/Modules changes | B | fixed in `cm/feat/b-batch-2` (commit "build: …"; test 50) |
 | WF | Trial wave function normalisation, large N_part (suspected) | B | open, not reproduced |
 | P1 | Op_V_is_symmetric slow (start-up, Symm = .T.) | B | fixed in a9fdbd64 (CPU line) |
+| G11 | CPU delayed / submatrix rank-r accept in the Woodbury form: Precision Green ~25x worse than standard (Spin_Peierls 12x12) | B | fixed in `cm/feat/g11` (CPU); device `k_gen_accept`: GPU line |
 | Z1 | NaN/Inf in a real model parameter: NaN results (rc 0) or segfault | B | fixed in `cm/feat/p28-fuzz` |
 | Z2 | NaN/Inf in a real `&VAR_QMC` parameter (Amplitude = Inf freezes the chain) | B | fixed in `cm/feat/p28-fuzz` |
 | Z3 | NBin < 1 or a measuring interval outside 1..Ltrot: nothing written / NaN, rc 0 | B | fixed in `cm/feat/p28-fuzz` |
@@ -107,6 +108,24 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
   raw LU product can under- or overflow for large `N_part` as above. Here the magnitude matters, so
   `DET_C_PHASE` is not a fix; a log-determinant would be. Projector runs with large N_part only.
   Status: suspected from the code, not reproduced (P2.8).
+
+## G11. Delayed / submatrix rank-r accept loses precision (Woodbury form)
+
+- **Applies to:** `lowrank_update_mod` (`Sequential_scheme = "delayed"` and `"submatrix"`) before `cm/feat/g11`; the
+  device delayed general path (`k_gen_accept`, GPU line) has the same form and stays open there.
+- **Symptom:** Spin_Peierls 12x12 (Beta = 2, U = 1.5, Lambda = 0.1, omega0 = 0.5, N_delay = 4, 4 sweeps, Ltau = 0):
+  Precision Green mean standard 4.2e-11, delayed 1.05e-9 (24.8x), submatrix 1.2e-9 (28.6x). (GPU line, other settings:
+  9.0e-12 against 2.5-2.8e-10.) Hubbard and the other rank-1 models are not affected.
+- **Cause:** as G10 on the GPU line. The non-diagonal rank-2 vertices (type-4 J terms) were applied as
+  `G - (G(:,P) Delta Mat^-1) V^T` (K = Delta Mat^-1 by LU); Upgrade2 applies `G - (G(:,P) X) (V Tri)^T` with the r x r
+  factors X, Tri of its Sherman-Morrison recursion (X Tri^T = Delta Mat^-1 in exact arithmetic). In the submatrix
+  scheme the loss also comes from the M representation itself: with Upgrade2's grouping inside M it stays at 24.5x.
+- **Fix (`cm/feat/g11`):** `Accept_xtri` (same recursion as Upgrade2 and the device `rk_xtri`) gives X, Tri from the
+  cached G_PP (`prop_Gpp`, stored by Lowrank_propose). Delayed rank r >= 2: new columns `X = G(:,P) X`, `Y = V Tri`.
+  Submatrix: a non-diagonal rank r >= 2 vertex flushes first and is applied to G directly (`Accept_direct`, as
+  Upgrade2, the same as the GPU submatrix path); diagonal rank r >= 2 vertices use `(a X)(Tri^T b^T)` in M. Rank 1 is
+  unchanged (bit for bit), so is the default scheme (standard). After: delayed 1.08x, submatrix 1.00x; CPU time of
+  the test unchanged (2.1 s each). Regression test `62-rank-r-precision` (Lowrank.tests, ratio <= 2).
 
 ## Input fuzzing and size probes 2026-11-27 (P2.8.3, P2.8.1)
 

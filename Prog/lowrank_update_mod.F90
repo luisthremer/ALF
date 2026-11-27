@@ -154,7 +154,7 @@
 
 module Lowrank_update_mod
    use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
-   use linalg_mod, only: la_zgemm, la_zgemv, la_zscal, la_zcopy, la_zgetrf, la_zgetrs
+   use linalg_mod, only: la_zgemm, la_zgemv, la_zscal, la_zcopy
    use comm_mod, only: is_root, comm_reduce_sum, comm_bcast
    use iso_fortran_env, only: output_unit, error_unit
 #ifdef ALF_TIMERS
@@ -216,6 +216,7 @@ module Lowrank_update_mod
    Integer,                   allocatable :: prop_r(:)        ! N_non_zero per computed flavour
    Complex (Kind=Kind(0.d0)), allocatable :: prop_Delta(:,:)   ! Delta_m = e^{Z1 E_m} - 1, (N_P_LIM, N_FL_eff)
    Complex (Kind=Kind(0.d0)), allocatable :: prop_Mat(:,:,:)   ! Mat = I + (I - G_PP) Delta, (N_P_LIM, N_P_LIM, N_FL_eff)
+   Complex (Kind=Kind(0.d0)), allocatable :: prop_Gpp(:,:,:)   ! G_PP of the current G, (N_P_LIM, N_P_LIM, N_FL_eff)
    Complex (Kind=Kind(0.d0)), allocatable :: prop_d(:)         ! det(Mat) as Upgrade2, per computed flavour
 
    Complex (Kind=Kind(0.d0)), parameter :: cone  = cmplx( 1.d0, 0.d0, kind(0.d0))
@@ -242,6 +243,7 @@ module Lowrank_update_mod
    Complex (Kind=Kind(0.d0)), allocatable :: prop_W(:,:,:), prop_GPS(:,:,:)
    ! workspaces: rows / columns of M on P (Xg, Tg as for delayed; Mc, Tc), a (Aw), a K (Ak), b^T (Bt)
    Complex (Kind=Kind(0.d0)), allocatable :: Mc(:,:), Tc(:,:), Aw(:,:), Ak(:,:), Bt(:,:)
+   Complex (Kind=Kind(0.d0)), allocatable :: Tb(:,:)   ! Tri^T b^T (rank r >= 2 accept)
    Complex (Kind=Kind(0.d0)), allocatable :: Cw(:,:), Rw(:,:), Mw(:,:)  ! flush workspace: G0(:,S), E_S^T-G0(S,:), M Rw
 
 contains
@@ -413,7 +415,8 @@ contains
       n_cols = 0
       n_pend = 0
       allocate (prop_r(N_FL_eff), prop_Delta(N_P_LIM, N_FL_eff), prop_Mat(N_P_LIM, N_P_LIM, N_FL_eff))
-      allocate (prop_d(N_FL_eff))
+      allocate (prop_d(N_FL_eff), prop_Gpp(N_P_LIM, N_P_LIM, N_FL_eff))
+      prop_Gpp   = czero
       prop_r     = 0
       prop_Delta = czero
       prop_Mat   = czero
@@ -433,6 +436,7 @@ contains
          allocate (Xg(N_P_LIM, N_cols_max), Tg(N_P_LIM, N_cols_max))
          allocate (Mc(N_cols_max, N_P_LIM), Tc(N_cols_max, N_P_LIM))
          allocate (Aw(N_cols_max, N_P_LIM), Ak(N_cols_max, N_P_LIM), Bt(N_P_LIM, N_cols_max))
+         allocate (Tb(N_P_LIM, N_cols_max))
          allocate (Cw(Ndim, N_cols_max), Rw(N_cols_max, Ndim), Mw(N_cols_max, Ndim))
          S    = 0
          slot = 0
@@ -733,6 +737,7 @@ contains
       if (allocated(Aw))       deallocate (Aw)
       if (allocated(Ak))       deallocate (Ak)
       if (allocated(Bt))       deallocate (Bt)
+      if (allocated(Tb))       deallocate (Tb)
       if (allocated(Cw))       deallocate (Cw)
       if (allocated(Rw))       deallocate (Rw)
       if (allocated(Mw))       deallocate (Mw)
@@ -740,6 +745,7 @@ contains
       if (allocated(prop_Delta)) deallocate (prop_Delta)
       if (allocated(prop_Mat))   deallocate (prop_Mat)
       if (allocated(prop_d))     deallocate (prop_d)
+      if (allocated(prop_Gpp))   deallocate (prop_Gpp)
       prop_valid = .false.
       lr_initialised = .false.
       lr_scheme  = SCHEME_STANDARD
@@ -955,6 +961,7 @@ contains
          case (SCHEME_SUBMATRIX)
             call Submatrix_Gpp(GR, n_op, nf, nf_eff, r, Gb)
          end select
+         prop_Gpp(1:r,1:r,nf_eff) = Gb(1:r,1:r)       ! for the rank r >= 2 accept (Accept_xtri)
 
          ! Mat = I + (I - G_PP) Delta, Upgrade2's loop
          Do m = 1,r
@@ -1066,9 +1073,9 @@ contains
 !>     j = n_cols:
 !>       C  = G0(:,P_a) - X(:,1:j) Y(P_a,1:j)^T          (ZGEMM, Ndim x r)
 !>       Rw = G0(P_a,:) - X(P_a,1:j) Y(:,1:j)^T          (ZGEMM, r x Ndim)
-!>       X(:,j+1:j+r) = C Delta Mat^{-1},  Y(:,j+1:j+r) = (E_P^T - Rw)^T
-!>     with Mat^{-1} from ZGETRF/ZGETRS on a copy of Mat, i.e. the Woodbury update
-!>     G' = G - G(:,P_a) Delta Mat^{-1} (E_P^T - G(P_a,:)) on the current G. r = 1 uses project 1's
+!>       X(:,j+1:j+r) = C X_r,  Y(:,j+1:j+r) = V Tri,  V = (E_P^T - Rw)^T
+!>     with X_r, Tri (r x r) from Accept_xtri, i.e. Upgrade2's grouping G' = G - (G(:,P_a) X_r) (V Tri)^T
+!>     on the current G (X_r Tri^T = Delta Mat^{-1}; the Woodbury product loses precision, G11). r = 1 uses project 1's
 !>     in-place sequence (ZCOPY, 2 x ZGEMV, ZSCAL with Delta/d), the same algebra. Capacity: if a
 !>     flavour has p = j > 0 pending columns and p + r > N_delay, G is flushed first.
 !>  *  submatrix, per computed flavour with at least one
@@ -1077,8 +1084,8 @@ contains
 !>     Lowrank_propose:
 !>       a   = J - M~ (J - G0(S',P_a)) = J - [W; 0]                 (k' x r)
 !>       b^T = J^T + G0(P_a,S') M~      = J^T + [G0(P_a,S) M, 0]     (r x k', ZGEMM)
-!>       M   <- M~ + a (Delta Mat^{-1}) b^T                         (2 x ZGEMM, O(k'^2 r))
-!>     with Mat^{-1} from ZGETRF/ZGETRS (r = 1: Delta Mat^{-1} = Delta/d). One formula for disjoint,
+!>       M   <- M~ + (a X_r) (Tri^T b^T)                            (3 x ZGEMM, O(k'^2 r))
+!>     with X_r, Tri from Accept_xtri (r = 1: M~ + (a Delta/d) b^T). One formula for disjoint,
 !>     overlapping and repeated sites. Capacity: if a flavour has p = k > 0 pending sites and
 !>     p + r' > N_delay (r' = active sites not yet in S), G is flushed first (then k = 0: a = J, b = J);
 !>     N_delay is replaced by min(N_delay, K_ND) if this vertex or the current block has a non-diagonal
@@ -1105,10 +1112,11 @@ contains
       Complex (Kind=Kind(0.d0)), Intent(In)    :: Hs_new
 
       Complex (Kind=Kind(0.d0)) :: z
-      Complex (Kind=Kind(0.d0)) :: Mi(N_P_LIM,N_P_LIM), K(N_P_LIM,N_P_LIM)
-      Integer                   :: nf, nf_eff, p, j, r, m, info, ncap, kp
+      Complex (Kind=Kind(0.d0)) :: K(N_P_LIM,N_P_LIM), Xm(N_P_LIM,N_P_LIM), Tm(N_P_LIM,N_P_LIM)
+      Integer                   :: nf, nf_eff, p, j, r, m, ncap, kp
       Logical                   :: nd_here
-      Integer                   :: r_add(lr_N_FL_eff), ipiv(N_P_LIM)
+      Integer                   :: r_add(lr_N_FL_eff)
+      Logical                   :: direct(lr_N_FL_eff)
 
       if (.not. Lowrank_eligible(n_op)) then
          Write(error_unit,'(A,I0)') ' Lowrank_accept: vertex not eligible, n_op = ', n_op
@@ -1206,32 +1214,40 @@ contains
                p = Op_V(n_op,nf)%P(m)
                Y(p,j+m,nf_eff) = Y(p,j+m,nf_eff) + 1.d0
             enddo
-            ! K = Delta Mat^{-1}
-            Mi(1:r,1:r) = prop_Mat(1:r,1:r,nf_eff)
-            call la_zgetrf(r, r, Mi, N_P_LIM, ipiv, info)
-            K = czero
-            do m = 1, r
-               K(m,m) = cone
-            enddo
-            if (info == 0) call la_zgetrs('N', r, r, Mi, N_P_LIM, ipiv, K, N_P_LIM, info)
-            if (info /= 0) then
-               Write(error_unit,'(A,I0,A,I0)') ' Lowrank_accept: singular Mat (accepted ratio 0?), n_op = ', &
-                    &                          n_op, ', info = ', info
-               CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
-            endif
-            do m = 1, r
-               K(m,1:r) = prop_Delta(m,nf_eff) * K(m,1:r)
-            enddo
-            ! X(:,j+1:j+r) = C Delta Mat^{-1}
-            call la_zgemm('N', 'N', Ndim, r, r, cone, Cd, Ndim, K, N_P_LIM, czero, X(1,j+1,nf_eff), Ndim)
+            ! Upgrade2's grouping (G11, as G10 on the GPU line): G' = G - (C X) (V Tri)^T with X, Tri from
+            ! Accept_xtri, not the Woodbury form (C Delta Mat^{-1}) V^T, which loses ~30x precision for the
+            ! non-diagonal rank-r vertices of Spin_Peierls. Y(:,j+1:j+r) holds V.
+            call Accept_xtri(r, prop_Gpp(1:r,1:r,nf_eff), prop_Delta(1:r,nf_eff), Xm(1:r,1:r), Tm(1:r,1:r))
+            ! X(:,j+1:j+r) = C X
+            call la_zgemm('N', 'N', Ndim, r, r, cone, Cd, Ndim, Xm, N_P_LIM, czero, X(1,j+1,nf_eff), Ndim)
+            ! Y(:,j+1:j+r) = V Tri  (Cd, no longer needed, holds V)
+            Cd(:,1:r) = Y(:,j+1:j+r,nf_eff)
+            call la_zgemm('N', 'N', Ndim, r, r, cone, Cd, Ndim, Tm, N_P_LIM, czero, Y(1,j+1,nf_eff), Ndim)
             n_cols(nf_eff) = j + r
          Enddo
       case (SCHEME_SUBMATRIX)
+         ! A non-diagonal rank r >= 2 update loses up to ~25x in Precision Green in the M representation
+         ! (G11): flush, then apply it to G directly in Upgrade2's grouping, as the standard update does
+         direct = .false.
+         Do nf_eff = 1,N_FL_eff
+            r = prop_r(nf_eff)
+            if (r < 2) cycle
+            if (all(prop_Delta(1:r,nf_eff) == czero)) cycle
+            if (.not. Op_V(n_op,Calc_Fl_map(nf_eff))%diag) direct(nf_eff) = .true.
+         Enddo
+#ifdef ALF_TIMERS
+         timer_flush_reason = FR_CAPACITY
+#endif
+         if (any(direct) .and. any(n_cols > 0)) call Lowrank_flush(GR)
          Do nf_eff = 1,N_FL_eff
             r = prop_r(nf_eff)
             if (r == 0) cycle
             if (all(prop_Delta(1:r,nf_eff) == czero)) cycle      ! no padding, no change
             nf = Calc_Fl_map(nf_eff)
+            if (direct(nf_eff)) then
+               call Accept_direct(GR(:,:,nf), n_op, nf, r, prop_Delta(1:r,nf_eff))
+               cycle
+            endif
             j  = n_cols(nf_eff)                                   ! k (0 after a capacity flush)
             ! Pad S with the active sites not yet pending: zero rows / columns of M (exact)
             kp = j
@@ -1254,29 +1270,18 @@ contains
                Aw(p,m) = Aw(p,m) + cone
                Bt(m,p) = Bt(m,p) + cone
             enddo
-            ! K = Delta Mat^{-1}  (r = 1: Delta/d)
             if (r == 1) then
+               ! M <- M~ + (a K) b^T with K = Delta/d
                K(1,1) = prop_Delta(1,nf_eff)/prop_d(nf_eff)
+               call la_zgemm('N', 'N', kp, r, r, cone, Aw, N_cols_max, K, N_P_LIM, czero, Ak, N_cols_max)
+               call la_zgemm('N', 'N', kp, kp, r, cone, Ak, N_cols_max, Bt, N_P_LIM, cone, Msub(1,1,nf_eff), N_cols_max)
             else
-               Mi(1:r,1:r) = prop_Mat(1:r,1:r,nf_eff)
-               call la_zgetrf(r, r, Mi, N_P_LIM, ipiv, info)
-               K = czero
-               do m = 1, r
-                  K(m,m) = cone
-               enddo
-               if (info == 0) call la_zgetrs('N', r, r, Mi, N_P_LIM, ipiv, K, N_P_LIM, info)
-               if (info /= 0) then
-                  Write(error_unit,'(A,I0,A,I0)') ' Lowrank_accept: singular Mat (accepted ratio 0?), n_op = ', &
-                       &                          n_op, ', info = ', info
-                  CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
-               endif
-               do m = 1, r
-                  K(m,1:r) = prop_Delta(m,nf_eff) * K(m,1:r)
-               enddo
+               ! Upgrade2's grouping (G11): M <- M~ + (a X) (Tri^T b^T) instead of (a Delta Mat^{-1}) b^T
+               call Accept_xtri(r, prop_Gpp(1:r,1:r,nf_eff), prop_Delta(1:r,nf_eff), Xm(1:r,1:r), Tm(1:r,1:r))
+               call la_zgemm('N', 'N', kp, r, r, cone, Aw, N_cols_max, Xm, N_P_LIM, czero, Ak, N_cols_max)
+               call la_zgemm('T', 'N', r, kp, r, cone, Tm, N_P_LIM, Bt, N_P_LIM, czero, Tb, N_P_LIM)
+               call la_zgemm('N', 'N', kp, kp, r, cone, Ak, N_cols_max, Tb, N_P_LIM, cone, Msub(1,1,nf_eff), N_cols_max)
             endif
-            ! M <- M~ + (a K) b^T
-            call la_zgemm('N', 'N', kp, r, r, cone, Aw, N_cols_max, K, N_P_LIM, czero, Ak, N_cols_max)
-            call la_zgemm('N', 'N', kp, kp, r, cone, Ak, N_cols_max, Bt, N_P_LIM, cone, Msub(1,1,nf_eff), N_cols_max)
             n_cols(nf_eff) = kp
          Enddo
       end select
@@ -1858,6 +1863,85 @@ contains
       Msub(1:k,k,nf_eff) = czero
 
    end subroutine Submatrix_pad
+
+!--------------------------------------------------------------------
+!> @brief
+!> Rank-r accept applied to the explicit Green function G of one flavour (nothing pending), as Upgrade2:
+!> G <- G - (G(:,P) X) (V Tri)^T, X and Tri from Accept_xtri on G(P,P).
+!--------------------------------------------------------------------
+   subroutine Accept_direct(G, n_op, nf, r, Delta)
+      Use Hamiltonian_main, only: Op_V, Ndim
+      Implicit none
+      Complex (Kind=Kind(0.d0)), Intent(InOut) :: G(Ndim,Ndim)
+      Integer,                   Intent(In)    :: n_op, nf, r
+      Complex (Kind=Kind(0.d0)), Intent(In)    :: Delta(r)
+      Complex (Kind=Kind(0.d0)) :: gb(r,r), Xm(r,r), Tm(r,r)
+      Complex (Kind=Kind(0.d0)), allocatable :: C(:,:), V(:,:), CX(:,:), VT(:,:)
+      Integer :: m, n, p
+      allocate (C(Ndim,r), V(Ndim,r), CX(Ndim,r), VT(Ndim,r))
+      do m = 1, r
+         p = Op_V(n_op,nf)%P(m)
+         do n = 1, r
+            gb(n,m) = G(Op_V(n_op,nf)%P(n), p)
+         enddo
+         C(:,m)  = G(:,p)
+         V(:,m)  = - G(p,:)
+         V(p,m)  = V(p,m) + cone
+      enddo
+      call Accept_xtri(r, gb, Delta, Xm, Tm)
+      call la_zgemm('N', 'N', Ndim, r, r, cone, C, Ndim, Xm, r, czero, CX, Ndim)
+      call la_zgemm('N', 'N', Ndim, r, r, cone, V, Ndim, Tm, r, czero, VT, Ndim)
+      call la_zgemm('N', 'T', Ndim, Ndim, r, cmone, CX, Ndim, VT, Ndim, cone, G, Ndim)
+      deallocate (C, V, CX, VT)
+   end subroutine Accept_direct
+
+!--------------------------------------------------------------------
+!> @brief
+!> The r x r factors of the rank-r accept in Upgrade2's grouping, G' = G - (G(:,P) X) (V Tri)^T, with
+!> V(:,k) = e_{P(k)} - G(P(k),:)^T and u_k = Delta_k e_{P(k)}.
+!> @details
+!> Upgrade2's Sherman-Morrison recursion for x_v, y_v (y_v = V Tri) restricted to the rows P, where x_v
+!> lives: X = x_v(P,:). X Tri^T = Delta Mat^{-1} in exact arithmetic, but the Woodbury product
+!> (G(:,P) Delta Mat^{-1}) V^T loses up to ~30x in Precision Green for non-diagonal rank-r vertices
+!> (KNOWN_ISSUES.md G11; the device form is rk_xtri, G10). Inputs: gb(a,b) = G(P(a),P(b)), Delta(1:r).
+!--------------------------------------------------------------------
+   subroutine Accept_xtri(r, gb, Delta, X, Tri)
+      Implicit none
+      Integer,                   Intent(In)  :: r
+      Complex (Kind=Kind(0.d0)), Intent(In)  :: gb(r,r), Delta(r)
+      Complex (Kind=Kind(0.d0)), Intent(Out) :: X(r,r), Tri(r,r)
+      Complex (Kind=Kind(0.d0)) :: Vp(r,r), syu(r), sxv(r), Z
+      Integer :: n, m, k
+      ! Vp(a,k) = v(P(a),k) = delta(a,k) - G(P(k),P(a))
+      do k = 1, r
+         do n = 1, r
+            Vp(n,k) = - gb(k,n)
+         enddo
+         Vp(k,k) = 1.d0 - gb(k,k)
+      enddo
+      X = czero; Tri = czero
+      X(1,1) = Delta(1)/(1.d0 + Vp(1,1)*Delta(1))
+      Tri(1,1) = cone
+      do n = 2, r
+         X(n,n) = Delta(n)
+         Tri(n,n) = cone
+         Z = 1.d0 + Delta(n)*Vp(n,n)
+         do m = 1, n-1
+            ! syu(m) = - y_v(P(n),m) u(P(n),n),  sxv(m) = - sum_k x_v(P(k),m) v(P(k),n)
+            syu(m) = - sum(Vp(n,1:n-1)*Tri(1:n-1,m)) * Delta(n)
+            sxv(m) = - sum(X(1:n-1,m)*Vp(1:n-1,n))
+         enddo
+         do m = 1, n-1
+            X(:,n) = X(:,n) + X(:,m)*syu(m)
+            Tri(:,n) = Tri(:,n) + Tri(:,m)*sxv(m)
+         enddo
+         do m = 1, n-1
+            Z = Z - syu(m)*sxv(m)
+         enddo
+         Z = 1.d0/Z                         ! as Upgrade2: reciprocal, then scale
+         X(:,n) = X(:,n) * Z
+      enddo
+   end subroutine Accept_xtri
 
 
 end module Lowrank_update_mod

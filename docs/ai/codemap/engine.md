@@ -99,8 +99,10 @@ Selected by `Sequential_scheme` = "standard" (default, nothing allocated) | "del
   Upgrade2 "Final"; `Lowrank_tune_slice_begin/_end` (timed N_delay = -1).
 - Module state (private): the pending X, Y / S, M per computed flavour, eligibility, N_delay and timing.
   For a GPU port this state belongs per walker.
+- Rank r >= 2 accepts in Upgrade2's grouping (`Accept_xtri`; submatrix: non-diagonal ones flush and go to G
+  directly, `Accept_direct`), KNOWN_ISSUES G11.
 - Tests: `testsuite/Lowrank.tests` (36-lowrank-unit; lowrank-compare-schemes: same configurations as
-  standard). Derivations: `Documentation/lowrank.tex`, `Documentation/lowrank/*.md`.
+  standard; 62-rank-r-precision: Precision Green of delayed / submatrix within 2x of standard). Derivations: `Documentation/lowrank.tex`, `Documentation/lowrank/*.md`.
 
 ### wrapul_mod.F90 / wrapur_mod.F90 — propagation + UDV (no state)
 - `WRAPUL(NTAU1, NTAU, UDVL)` (wrapul:37): left prop. $(B(\beta,\tau_1))^\dagger \to (B(\beta,\tau))^\dagger$, NTAU1>NTAU.
