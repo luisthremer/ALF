@@ -127,7 +127,7 @@ Contains
     Logical                   :: LR_n   ! vertex n handled by the delayed/submatrix scheme
 
 #ifdef ALF_GPU
-    ! Device path (gpu_update_mod; MALA and global moves are refused by gpu_supported). G stays on the device: the sweep
+    ! Device path (gpu_update_mod, also the global tau moves; MALA is refused by gpu_supported). G stays on the device: the sweep
     ! (qmc_sweep_mod) fetches it with gpu_g_host before the host readers. The delayed/submatrix state of the CPU Lowrank
     ! module stays idle.
     if (gpu_upd_enabled()) then
@@ -344,7 +344,7 @@ Contains
     Logical                   :: LR_n   ! vertex n handled by the delayed/submatrix scheme
 
 #ifdef ALF_GPU
-    ! Device path (gpu_update_mod; MALA and global moves are refused by gpu_supported). G stays on the device: the sweep
+    ! Device path (gpu_update_mod, also the global tau moves; MALA is refused by gpu_supported). G stays on the device: the sweep
     ! (qmc_sweep_mod) fetches it with gpu_g_host before the host readers. The delayed/submatrix state of the CPU Lowrank
     ! module stays idle.
     if (gpu_upd_enabled()) then

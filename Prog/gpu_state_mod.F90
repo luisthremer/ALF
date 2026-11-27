@@ -87,8 +87,8 @@
 !>
 !>  Notes for the update step (1c): the determinant ratio contains exp(Z1*Op_V%alpha) (upgrade_mod.F90:193) and
 !>  alpha is not in the mirror; nsigma_d is a copy made at setup and goes stale as soon as updates run (205 must keep
-!>  it in sync); N and P of an operator may differ between flavours (V_meta is per (n,nf)).  gpu_supported refuses
-!>  runs with Propose_S0.  Calc_Fl (reconstruction_needed) runs: ratio and CGR phase use ham%weight_reconstruction, the
+!>  it in sync); N and P of an operator may differ between flavours (V_meta is per (n,nf)).  Propose_S0 and the global
+!>  tau moves run on the device (P2.6, gpu_update_mod).  Calc_Fl (reconstruction_needed) runs: ratio and CGR phase use ham%weight_reconstruction, the
 !>  observables and the tau pass stay on the host (GR(T)_reconstruction).
 !>  (From the gpu-port notes, for step 1c:) alpha stays on the host (Op_V%alpha); per-flavour N/P are read from the host Op_V;
 !>  gpu_supported also refuses N_non_zero > 1 (the device update is rank 1).
@@ -595,12 +595,16 @@ Contains
     if (get_Langevin() .or. get_HMC()) then
        reason = 'Langevin/HMC is not supported on the GPU path'; return
     endif
-    if (get_Global_moves() .or. get_Global_tau_moves() .or. get_N_Global_tau() > 0) then
-       reason = 'global moves are not supported on the GPU path'; return
+    ! Global_moves: the host-fallback hook (Global_Updates on the host, udv / G / fields uploaded) waits for a model that needs it
+    if (get_Global_moves()) then
+       reason = 'global moves (Global_moves) are not supported on the GPU path: no device-path model implements Global_move ' &
+            & //'(Hubbard only for type-3 fields)'; return
     endif
-    if (get_Propose_S0()) then
-       reason = 'Propose_S0 is not supported on the GPU path'; return
+#if defined(ALF_LA_HIP) || defined(ALF_LA_ONEMKL)
+    if (get_Global_tau_moves() .or. get_N_Global_tau() > 0 .or. get_Propose_S0()) then
+       reason = 'global tau moves / Propose_S0: not yet checked on GPU=amd and GPU=intel'; return
     endif
+#endif
     if (get_Sequential_MALA() .or. get_Global_MALA_moves() .or. get_Global_tau_MALA_moves() .or. get_N_Global_tau_MALA() > 0) then
        reason = 'MALA updates are not supported on the GPU path'; return
     endif
