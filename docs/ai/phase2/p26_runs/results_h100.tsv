@@ -1,0 +1,28 @@
+h100	kondo-std	works	works	ACTIVE	OK		max scaled diff 2.73e-12 (tol 1.0e-11), 31 files	4.4s/1.7s	
+h100	kondo-dly4	works	works	ACTIVE	OK		max scaled diff 2.73e-12 (tol 1.0e-11), 31 files	4.1s/1.7s	
+h100	kondo-dly16	works	works	ACTIVE	OK		max scaled diff 2.73e-12 (tol 1.0e-11), 31 files	4.3s/1.7s	
+h100	kondo-sub4	works	works	ACTIVE	OK		max scaled diff 2.78e-12 (tol 1.0e-11), 31 files	4.3s/1.7s	
+h100	tV-std	works	works	ACTIVE	OK		max scaled diff 5.68e-14 (tol 1.0e-11), 17 files	4.6s/1.5s	
+h100	tV-dly4	works	works	ACTIVE	OK		max scaled diff 2.43e-13 (tol 1.0e-11), 17 files	3.8s/1.7s	
+h100	tV-dly16	works	works	ACTIVE	OK		max scaled diff 6.62e-14 (tol 1.0e-11), 17 files	4.1s/1.5s	
+h100	tV-sub4	works	works	ACTIVE	OK		max scaled diff 9.14e-14 (tol 1.0e-11), 17 files	3.3s/1.5s	
+h100	sp-std	works	works	ACTIVE	OK		max scaled diff 6.07e-11 (tol 2.4e-10), 21 files	4.3s/1.8s	
+h100	sp-dly4	works	works	ACTIVE	OK		max scaled diff 5.70e-11 (tol 2.5e-10), 21 files	5.0s/1.8s	
+h100	sp-dly16	works	works	ACTIVE	OK		max scaled diff 5.70e-11 (tol 2.0e-10), 21 files	5.7s/1.9s	
+h100	sp-sub4	works	works	ACTIVE	OK		max scaled diff 5.70e-11 (tol 3.1e-10), 21 files	4.4s/1.8s	
+h100	tV-std-tau	works	works	ACTIVE	OK		max scaled diff 5.68e-14 (tol 1.0e-11), 23 files	4.1s/2.1s	
+h100	hub-mz-4x4	works	works	ACTIVE	OK		max scaled diff 8.69e-10 (tol 4.3e-09), 31 files	3.4s/1.6s	
+h100	hub-dly4	works	works	ACTIVE	OK		max scaled diff 8.69e-10 (tol 4.4e-09), 31 files	3.1s/1.7s	
+h100	hub-sub4	works	works	ACTIVE	OK		max scaled diff 8.69e-10 (tol 4.4e-09), 31 files	3.1s/1.7s	
+h100	big-kondo-std	works	FAIL	ACTIVE	MISMATCH		max scaled diff 1.26e-11 (tol 1.0e-11), 31 files; BAD: Dimer_tau (max abs diff 1.26e-11, scaled 1.26e-11)	23.9s/10.1s	
+h100	big-kondo-dly16	works	FAIL	ACTIVE	MISMATCH		max scaled diff 1.26e-11 (tol 1.0e-11), 31 files; BAD: Dimer_tau (max abs diff 1.26e-11, scaled 1.26e-11)	31.0s/9.9s	
+h100	big-kondo-dly32	works	FAIL	ACTIVE	MISMATCH		max scaled diff 1.26e-11 (tol 1.0e-11), 31 files; BAD: Dimer_tau (max abs diff 1.26e-11, scaled 1.26e-11)	31.8s/10.0s	
+h100	big-kondo-sub16	works	FAIL	ACTIVE	MISMATCH		max scaled diff 1.26e-11 (tol 1.0e-11), 31 files; BAD: Dimer_tau (max abs diff 1.26e-11, scaled 1.26e-11)	25.4s/10.0s	
+h100	big-tV-std	works	works	ACTIVE	OK		max scaled diff 4.82e-12 (tol 1.3e-11), 17 files	39.8s/6.2s	
+h100	big-tV-dly16	works	works	ACTIVE	OK		max scaled diff 9.15e-12 (tol 1.3e-11), 17 files	61.9s/6.2s	
+h100	big-tV-dly32	works	works	ACTIVE	OK		max scaled diff 4.27e-12 (tol 1.6e-11), 17 files	62.3s/6.8s	
+h100	big-tV-sub16	works	works	ACTIVE	OK		max scaled diff 4.04e-12 (tol 1.3e-11), 17 files	40.0s/6.1s	
+h100	big-sp-std	works	works	ACTIVE	OK		max scaled diff 5.51e-11 (tol 6.7e-10), 21 files	34.6s/13.5s	
+h100	big-sp-dly16	works	works	ACTIVE	OK		max scaled diff 8.69e-11 (tol 3.6e-10), 21 files	47.6s/13.5s	
+h100	big-sp-dly32	works	works	ACTIVE	OK		max scaled diff 4.36e-11 (tol 5.3e-10), 21 files	49.4s/14.6s	
+h100	big-sp-sub16	works	works	ACTIVE	OK		max scaled diff 3.76e-10 (tol 6.6e-10), 21 files	35.6s/13.4s	
