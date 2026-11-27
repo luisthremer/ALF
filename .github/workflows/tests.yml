@@ -212,7 +212,7 @@ jobs:
     strategy:
       matrix:
         build: [optimized, debug]
-        stab: [default, LOG]
+        stab: [default, LOG, STAB3]
     container:
       image: ghcr.io/alf-qmc/alf-container/alf-requirements/trixie
     steps:
@@ -227,7 +227,7 @@ jobs:
           if [ "$BUILD" = debug ]; then
             export ALF_FLAGS_EXT='-O0 -fno-fast-math -g -fcheck=all -ffpe-trap=invalid,zero,overflow'
           fi
-          if [ "$STAB" = LOG ]; then stab=LOG; else stab=""; fi
+          if [ "$STAB" = default ]; then stab=""; else stab=$STAB; fi
           . ./configure.sh GNU noMPI $stab GPU=host
           make -j2 all
           cmake -S testsuite -B testsuite/tests

@@ -48,12 +48,12 @@
 !> CGR2_2 on the device (dev_cgr22), the algorithm of cgr2_2_mod (default, STAB3 and STABLOG; STAB1/2 are refused), 2N x 2N, N = Ndim:
 !>   MYU2 = U2^dagger, V1INV = V1^-1 (ZGETRF + ZGETRI as INV), D1m, D2m = D, or the STAB3 / STABLOG splitting, the branch D1(1) > D2(1)
 !>   (L1(1) > L2(1) in STABLOG: two scalars D->H), HLPB2 from the four N x N blocks, HLPB1 = HLPB2^dagger, QR: default = column-norm
-!>   pre-pivot + unpivoted ZGEQRF (la_zqrpp, as the device decomposition of gpu_stab_mod), STABLOG = host ZGEQP3 with D->H / H->D of
+!>   pre-pivot + unpivoted ZGEQRF (la_zqrpp, as the device decomposition of gpu_stab_mod), STAB3, STABLOG = host ZGEQP3 with D->H / H->D of
 !>   the matrix; D separated as |R_ii|; solve_extended_System = rows of [[UCT,0],[0,VINV]] permuted by IPVT, ZTRSM('L','U','C'), row
 !>   scaling with conj(1/D), ZUNMQR('L','N'); get_blocks into G00 / G0T / GT0 / GTT.
 !>
 !> Transfers per stabilisation point and flavour: D1(1), D2(1) (32 B, or L1(1), L2(1) 16 B) D->H; precision numbers 4 x 32 B D->H;
-!> STABLOG additionally the 2N x 2N matrix both ways for ZGEQP3.  Nothing per slice.
+!> STAB3 and STABLOG additionally the 2N x 2N matrix both ways for ZGEQP3.  Nothing per slice.
 !>
 !> Negative controls ALF_GPU_FAULT_TAU = perm (wrong permutation), prop (wrong propagation of GT0 at slice 2), prec (wrong precision
 !> reduction), blocks (wrong block of GT0).
@@ -75,7 +75,7 @@ Module gpu_tau_mod
 #if defined(ALF_LA_CUDA)
   Use linalg_cuda_mod, only: la_cuda_sync
 #endif
-#if defined(STABLOG)
+#if defined(STABLOG) || defined(STAB3)
   Use linalg_mod, only: la_zgeqp3
 #endif
   Use qmc_walker_mod, only: qmc_walker_t
@@ -106,7 +106,7 @@ Module gpu_tau_mod
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: t_tau(:), t_D3(:), t_Dm1(:), t_Dm2(:), t_work(:)
   Real    (Kind=Kind(0.d0)), Allocatable, Save :: t_Rs(:,:)                    ! N x 2 row scale factors (STABLOG)
   Integer, Allocatable, Save :: t_ipvt(:), t_ipiv(:)
-#if defined(STABLOG)
+#if defined(STABLOG) || defined(STAB3)
   Real    (Kind=Kind(0.d0)), Allocatable, Save :: t_rw(:)                      ! RWORK of ZGEQP3
 #endif
   Integer, Save :: fault = 0                                                   ! 1 perm, 2 prop, 3 prec, 4 blocks
@@ -162,7 +162,7 @@ Contains
     lw = max(lw, int(real(wq(1))))
     call la_zgetri(n, t_V1i, n, t_ipiv, wq, -1, info)
     lw = max(lw, int(real(wq(1))))
-#if defined(STABLOG)
+#if defined(STABLOG) || defined(STAB3)
     allocate(t_rw(2*n2))
     call la_zgeqp3(n2, n2, t_H1, n2, t_ipvt, t_tau, wq, -1, t_rw, info)
     lw = max(lw, int(real(wq(1))))
@@ -186,7 +186,7 @@ Contains
 #if defined(STABLOG)
     line = trim(line)//', CGR2_2 QR: host ZGEQP3 (STABLOG)'
 #elif defined(STAB3)
-    line = trim(line)//', CGR2_2 QR: pre-pivoted, D+/D- split (STAB3)'
+    line = trim(line)//', CGR2_2 QR: host ZGEQP3, D+/D- split (STAB3)'
 #else
     line = trim(line)//', CGR2_2 QR: pre-pivoted (default)'
 #endif
@@ -222,7 +222,7 @@ Contains
     call info_line(trim(line))
     !$omp target exit data map(delete: t_H1, t_H2, t_V1i, t_U2h, t_old, t_GR, t_tau, t_D3, t_Dm1, t_Dm2, t_Rs, t_ipvt, t_ipiv, G00_d, t_work)
     deallocate(t_H1, t_H2, t_V1i, t_U2h, t_old, t_GR, t_tau, t_D3, t_Dm1, t_Dm2, t_Rs, t_ipvt, t_ipiv, G00_d, t_work)
-#if defined(STABLOG)
+#if defined(STABLOG) || defined(STAB3)
     deallocate(t_rw)
 #endif
     gpu_tau_on = .false.
@@ -411,7 +411,7 @@ Contains
     call k_build_H2(n, br, t_V1i, t_U2h, udv_D(1,nst,nfe), udv_U(1,1,nst,nfe), udw_D(1,2,nfe), udw_V(1,1,2,nfe), t_H2)
 #endif
     call k_ct(n2, t_H2, n2, t_H1, n2)                      ! HLPB1 = conjg(transpose(HLPB2))
-#if defined(STABLOG)
+#if defined(STABLOG) || defined(STAB3)
     ! host ZGEQP3: D->H of HLPB1 (16 (2N)^2 B), H->D of the factors, tau and the permutation (unavoidable: no device QRCP)
     !$omp target update from(t_H1)
     t_ipvt = 0

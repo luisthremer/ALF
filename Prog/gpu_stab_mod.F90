@@ -44,7 +44,7 @@
 !>     factor, Q = reflectors applied to the unit matrix by ZUNMQR (not ZUNGQR: accuracy of the Precision Green).
 !>     STABLOG = the CPU algorithm itself: log-norm selection sort (norms D->H, swap permutation H->D, columns gathered on the
 !>     device), unpivoted QR (ZGEQRF), the exp(L_j - L_i) row scaling and the log update;
-!>   * gpu_stab_cgr: CGR for NVAR = 1 and 2 (cgr1_mod, branches default and STABLOG).  Default: la_zqrpp.  STABLOG: ZGEQP3 on
+!>   * gpu_stab_cgr: CGR for NVAR = 1 and 2 (cgr1_mod, branches default, STAB3, STABLOG).  Default: la_zqrpp.  STAB3, STABLOG: ZGEQP3 on
 !>     the host (la_zgeqp3, upstream numerics).  D separation, phase (permutation sign, R diagonal, reflector determinants),
 !>     ZUNMQR, ZTRSM, ZLAPMR/T and the final GEMM on the device;
 !>   * the determinant phase of U_R^dagger U_L, from one of two sources (ALF_GPU_CGR_LU, "det tracking" below).  LU: ZGETRF at
@@ -68,7 +68,7 @@
 !> The la_* calls (linalg_mod) are the places a vendor backend replaces (P2.4 step 2); with GPU=host they run on the host.
 !> Transfers (N = Ndim): decompose default 24 B D->H (scale test) + 8 N + 4 N B inside la_zqrpp; STABLOG 8 N B D->H (log norms)
 !> and 4 N B H->D (permutation); CGR 32 B D->H (LU phase; none with the tracked phase) + 16 B D->H (phase) + 32 B D->H (precision
-!> numbers); STABLOG CGR
+!> numbers); STAB3 and STABLOG CGR
 !> additionally 16 N^2 B each way for the host ZGEQP3; backward sweep with Ltau = 1: udvst(NST) D->H, 32 N^2 + 16 N B.
 !>
 !> Det tracking (speedup S1).  ZGEQRF writes U = H_1 ... H_n R, H_i = I - tau_i v_i v_i^H with v_i(i) = 1 and |v_i|^2 = 2 Re(tau_i) /
@@ -111,7 +111,7 @@ Module gpu_stab_mod
        &                  hk_scale_row1, hk_scale_col1, hk_triu, hk_perm, hk_perm_vec, hk_ct, hk_rowdiv, hk_colinv, hk_tpup, &
        &                  hk_det_phase, hk_cgr_phase, hk_testscale, hk_prec
 #endif
-#if defined(STABLOG)
+#if defined(STABLOG) || defined(STAB3)
   Use linalg_mod, only: la_zgeqp3
 #endif
   Use QMC_runtime_var, only: get_Ltau
@@ -162,7 +162,7 @@ Module gpu_stab_mod
   Real    (Kind=Kind(0.d0)), Allocatable, Save :: st_nrm(:), st_Lt(:)          ! log norms (STABLOG); L work vector
   Real    (Kind=Kind(0.d0)), Allocatable, Save :: st_pw(:)                     ! per-column partial sums of k_prec
   Integer, Allocatable, Save :: st_ipvt(:), st_perm(:), st_ipiv(:)             ! pivot (ZGEQP3 semantics), sort permutation, LU pivots
-#if defined(STABLOG)
+#if defined(STABLOG) || defined(STAB3)
   Real    (Kind=Kind(0.d0)), Allocatable, Save :: st_rw(:)                     ! RWORK of ZGEQP3
 #endif
   Logical, Save :: warn_once = .true.
@@ -227,7 +227,7 @@ Contains
     lw = max(lw, int(real(wq(1))))
     call la_zunmqr('R', 'N', n, n, n, sA, n, st_tau, sB, n, wq, -1, info)
     lw = max(lw, int(real(wq(1))))
-#if defined(STABLOG)
+#if defined(STABLOG) || defined(STAB3)
     allocate(st_rw(2*n))
     call la_zgeqp3(n, n, sA, n, st_ipvt, st_tau, wq, -1, st_rw, info)
     lw = max(lw, int(real(wq(1))))
@@ -245,7 +245,7 @@ Contains
 #if defined(STABLOG)
     line = trim(line)//', STABLOG: log-norm pivoting in decompose, host ZGEQP3 in CGR'
 #elif defined(STAB3)
-    line = trim(line)//', STAB3: column-norm pre-pivoted QR in decompose and CGR, D+/D- split in CGR'
+    line = trim(line)//', STAB3: column-norm pre-pivoted QR in decompose, D+/D- split and host ZGEQP3 in CGR'
 #else
     line = trim(line)//', default: column-norm pre-pivoted QR in decompose and CGR'
 #endif
@@ -272,7 +272,7 @@ Contains
     !$omp target exit data map(delete: sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_ipvt, st_perm, st_ipiv, udw_det, udv_det)
     deallocate(sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_ipvt, st_perm, st_ipiv, st_work, s_nt)
     deallocate(udw_det, udv_det, w_det_ok, st_det_ok)
-#if defined(STABLOG)
+#if defined(STABLOG) || defined(STAB3)
     deallocate(st_rw)
 #endif
     gpu_stab_on = .false.
@@ -953,8 +953,8 @@ Contains
     Complex (Kind=Kind(0.d0)) :: ph1
 
     n = s_N
-#if defined(STABLOG)
-    ! STABLOG: host ZGEQP3 (upstream numerics): D->H of T, H->D of the factors, tau, ipvt (unavoidable: no device QRCP, 16 N^2 B each way)
+#if defined(STABLOG) || defined(STAB3)
+    ! STABLOG, STAB3: host ZGEQP3 (upstream numerics; for STAB3 the pre-pivoted QR doubled the Precision Green, P2_6_stab_design.md): D->H of T, H->D of the factors, tau, ipvt (unavoidable: no device QRCP, 16 N^2 B each way)
     !$omp target update from(T)
     st_ipvt = 0
     call la_zgeqp3(n, n, T, n, st_ipvt, st_tau, st_work, s_lw, st_rw, info)
