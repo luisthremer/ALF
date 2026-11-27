@@ -194,58 +194,6 @@ module cgr2_2_mod
          end subroutine solve_extended_System
 #endif
 
-#if defined(QR_PREPIVOT)
-!--------------------------------------------------------------------
-!> @brief
-!> Test-only (default off, -DQR_PREPIVOT): QDRP_decompose of a square matrix with a static norm pre-pivot.
-!> @details
-!> Sorts the columns of A by 2-norm (stable, descending) and factors them unpivoted. IPVT gets ZGEQP3 semantics
-!> (column j of A*P is column IPVT(j) of A). CPU oracle of the pre-pivoted decomposition of gpu_stab_mod (la_zqrpp);
-!> same code as in udv_state_mod and cgr1_mod.
-!--------------------------------------------------------------------
-      Subroutine prepivot_qdrp(N, A, D, IPVT, TAU, WORK, LWORK)
-        Use QDRP_mod, only: QDRP_decompose
-        Use linalg_mod, only: la_dznrm2
-        Implicit none
-        Integer, intent(in) :: N
-        Integer, intent(inout) :: LWORK
-        Complex (Kind=Kind(0.d0)), intent(inout) :: A(N,N), D(:)
-        Complex (Kind=Kind(0.d0)), intent(inout), allocatable :: TAU(:), WORK(:)
-        Integer, intent(inout), allocatable :: IPVT(:)
-
-        Real(Kind=Kind(0.d0)), allocatable :: pp_nrm(:)
-        Complex(Kind=Kind(0.d0)), allocatable :: pp_tmp(:,:)
-        Integer, allocatable :: pp_perm(:)
-        Integer :: pp_i, pp_j, pp_k
-        Allocate(pp_nrm(N), pp_tmp(N,N), pp_perm(size(IPVT)))
-        do pp_j = 1, N
-           pp_nrm(pp_j) = la_dznrm2(N, A(1,pp_j), 1)
-           pp_perm(pp_j) = pp_j
-        enddo
-        do pp_j = N+1, size(IPVT)
-           pp_perm(pp_j) = pp_j
-        enddo
-        do pp_i = 2, N
-           pp_k = pp_perm(pp_i)
-           pp_j = pp_i - 1
-           do while (pp_j >= 1)
-              if (pp_nrm(pp_perm(pp_j)) >= pp_nrm(pp_k)) exit
-              pp_perm(pp_j+1) = pp_perm(pp_j)
-              pp_j = pp_j - 1
-           enddo
-           pp_perm(pp_j+1) = pp_k
-        enddo
-        do pp_j = 1, N
-           pp_tmp(:,pp_j) = A(1:N,pp_perm(pp_j))
-        enddo
-        A = pp_tmp
-        IPVT = 1   ! all columns fixed: LAPACK pivoting off
-        call QDRP_decompose(N, N, A, D, IPVT, TAU, WORK, LWORK)
-        IPVT = pp_perm
-        Deallocate(pp_nrm, pp_tmp, pp_perm)
-      End Subroutine prepivot_qdrp
-#endif
-
 !--------------------------------------------------------------------
 
       SUBROUTINE CGR2_2(GRT0, GR00, GRTT, GR0T, udv2, udv1, LQ)
@@ -371,6 +319,9 @@ module cgr2_2_mod
         deallocate(V1INV, D3B)
 #else
         Use QDRP_mod, only: QDRP_decompose
+#if defined(QR_PREPIVOT)
+        Use QDRP_mod, only: QDRP_prepivot, QR_PP_VARIANT, QR_PP_NB
+#endif
         Implicit none
 
         !  Arguments
@@ -458,7 +409,8 @@ module cgr2_2_mod
            ! HLPB1 = CT(HLPB2)
            HLPB1 = conjg(transpose(HLPB2))
 #if defined(QR_PREPIVOT)
-           call prepivot_qdrp(LQ2, HLPB1, D3, IPVT, TAU, WORK, LWORK)
+           ! Test-only (default off): pre-pivoted QR instead of ZGEQP3, see QDRP_prepivot
+           call QDRP_prepivot(LQ2, LQ2, HLPB1, D3, IPVT, TAU, WORK, LWORK, QR_PP_VARIANT, QR_PP_NB)
 #else
            call QDRP_decompose(LQ2, LQ2, HLPB1, D3, IPVT, TAU, WORK, LWORK)
 #endif
@@ -477,7 +429,8 @@ module cgr2_2_mod
            ! HLPB1 = CT(HLPB2)
            HLPB1 = conjg(transpose(HLPB2))
 #if defined(QR_PREPIVOT)
-           call prepivot_qdrp(LQ2, HLPB1, D3, IPVT, TAU, WORK, LWORK)
+           ! Test-only (default off): pre-pivoted QR instead of ZGEQP3, see QDRP_prepivot
+           call QDRP_prepivot(LQ2, LQ2, HLPB1, D3, IPVT, TAU, WORK, LWORK, QR_PP_VARIANT, QR_PP_NB)
 #else
            call QDRP_decompose(LQ2, LQ2, HLPB1, D3, IPVT, TAU, WORK, LWORK)
 #endif

@@ -49,6 +49,8 @@ _PARAMS_GENERIC = OrderedDict([
          'N_delay': {'comment': 'Delayed/submatrix block size: 0 '
                                 'automatic, -1 timed, >= 1 fixed',
                      'value': 0},
+         'N_walkers': {'comment': 'Independent Markov chains per process',
+                       'value': 1},
          'Max_Force_MALA_sequential': {'comment': 'Max Force for '
                                                   'sequential MALA '
                                                   'updates',

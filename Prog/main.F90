@@ -124,7 +124,7 @@ Program Main
              &                     get_n_global, get_n_global_tau, get_n_global_tau_mala, get_nbin, &
              &                     get_nsweep, get_nwrap, get_sequential, get_sequential_mala, &
              &                     get_tempering_calc_det, read_and_broadcast_qmc_var_and_ham_name, &
-             &                     set_mpi_per_parameter_set, apply_CPU_MAX_policy
+             &                     set_mpi_per_parameter_set, apply_CPU_MAX_policy, get_N_walkers
         Use Hamiltonian_main, only: ham, Clear_Ham_state, Set_Group_Comm, Ltrot, nsigma, Group_Comm
         Use files_mod, only: str_to_upper
         Use Natural_Constants, only: Eps_small
@@ -145,7 +145,7 @@ Program Main
 #if defined(HDF5)
         Use qmc_setup_mod, only: Init_hdf5_file
 #endif
-        Use qmc_setup_mod, only: Setup_model, Setup_fields, Setup_update_schemes, Write_info_parameters, Write_info_start, Write_info_end
+        Use qmc_setup_mod, only: Setup_model, Setup_walker_fields, Setup_update_schemes, Write_info_parameters, Write_info_start, Write_info_end
 #ifdef ALF_GPU
         Use qmc_setup_mod, only: Setup_gpu, Setup_gpu_stack, Finalize_gpu
         Use gpu_obs_mod, only: gpu_obs_flush
@@ -154,6 +154,7 @@ Program Main
         Use qmc_driver_mod, only: Langevin_update, HMC_update, MALA_update
         Use qmc_sweep_mod, only: Sweep_up, Sweep_down
         Use qmc_walker_mod, only: qmc_walker_t, Walker_layout, Walker_alloc, Walker_dealloc, &
+             &                    Walker_activate, Walker_deactivate, &
              &                    Walker_init_stack, Walker_init_GR
          
 #ifdef ALF_TIMERS
@@ -164,7 +165,9 @@ Program Main
 
 #include "git.h"
         ! State of the Monte Carlo walker: Green function, phase, UDV propagations and storage
-        Type (qmc_walker_t) :: walker
+        ! N_walkers independent chains per process (one by default); they run one after another
+        Type (qmc_walker_t), allocatable :: walkers(:)
+        Integer :: iw
        
         Integer :: NBC, NSW
         Character (len=64) :: file_info, file_git_info
@@ -302,7 +305,8 @@ Program Main
         ! CPU_MAX > 0: run until the time limit (NBin is set very large)
         Call apply_CPU_MAX_policy()
 
-        Call Setup_fields(N_op)
+        allocate(walkers(get_N_walkers()))
+        Call Setup_walker_fields(walkers, N_op)
         
 #if defined(HDF5)
 #if defined(TEMPERING)
@@ -317,26 +321,31 @@ Program Main
         Call control_init(Group_Comm)
         Call ham%Alloc_obs(get_Ltau())
 
-        Call Walker_layout(walker, Ltrot, get_Nwrap())
+        Do iw = 1, size(walkers)
+           Call Walker_layout(walkers(iw), Ltrot, get_Nwrap())
+        Enddo
 
         Call Setup_update_schemes(N_op, file_info)
 
-        Call Write_info_parameters(file_info, walker%NSTM, N_op, chunk_size_gb)
+        Call Write_info_parameters(file_info, walkers(1)%NSTM, N_op, chunk_size_gb)
         
         !Call Test_Hamiltonian
-        Call Walker_alloc(walker)
+        Do iw = 1, size(walkers)
+           Call Walker_activate(walkers(iw))
+           Call Walker_alloc(walkers(iw))
 #ifdef ALF_GPU
-        ! Device mirror of the model and walker layout (or the reason why the GPU path stays inactive)
-        Call Setup_gpu(walker, file_info)
+           ! Device mirror of the model and walker layout (or the reason why the GPU path stays inactive)
+           Call Setup_gpu(walkers(iw), file_info)
 #endif
-
-        ! Initial storage from Ltrot down to 0, then the Green function and phase on time slice 0
-        Call Walker_init_stack(walker)
-        Call Walker_init_GR(walker)
+           ! Initial storage from Ltrot down to 0, then the Green function and phase on time slice 0
+           Call Walker_init_stack(walkers(iw))
+           Call Walker_init_GR(walkers(iw))
 #ifdef ALF_GPU
-        ! UDV stacks and Green function to the device stabilisation
-        Call Setup_gpu_stack(walker)
+           ! UDV stacks and Green function to the device stabilisation
+           Call Setup_gpu_stack(walkers(iw))
 #endif
+           Call Walker_deactivate(walkers(iw))
+        Enddo
 #ifdef MPI
         !WRITE(6,*) 'Phase is: ', Irank, PHASE, GR(1,1,1)
 #else
@@ -364,43 +373,51 @@ Program Main
            DO NSW = 1, get_NSweep()
 #ifdef ALF_TIMERS
               call timer_sweep_begin()
-              call timer_push(T_GLOBAL)
+#endif
+              DO iw = 1, size(walkers)
+                 Call Walker_activate(walkers(iw))
+                 associate (walker => walkers(iw))
+#ifdef ALF_TIMERS
+                 call timer_push(T_GLOBAL)
 #endif
 
 #if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
-              IF (MOD(NSW,get_N_Tempering_frequency()) == 0) then
-                 !Write(6,*) "Irank, Call tempering", Irank, NSW, get_N_exchange_steps()
-                 CALL Exchange_Step(walker%Phase,walker%GR,walker%udvr, walker%udvl,walker%Stab_nt, walker%udvst, get_N_exchange_steps(), get_Tempering_calc_det())
-              endif
+                 IF (MOD(NSW,get_N_Tempering_frequency()) == 0) then
+                    !Write(6,*) "Irank, Call tempering", Irank, NSW, get_N_exchange_steps()
+                    CALL Exchange_Step(walker%Phase,walker%GR,walker%udvr, walker%udvl,walker%Stab_nt, walker%udvst, get_N_exchange_steps(), get_Tempering_calc_det())
+                 endif
 #endif
-              ! Global updates
-              If ( get_Global_moves() ) Call Global_Updates(walker%Phase, walker%GR, walker%udvr, walker%udvl, walker%Stab_nt, walker%udvst, get_N_Global() )
+                 ! Global updates
+                 If ( get_Global_moves() ) Call Global_Updates(walker%Phase, walker%GR, walker%udvr, walker%udvl, walker%Stab_nt, walker%udvst, get_N_Global() )
 #ifdef ALF_TIMERS
-              call timer_pop(T_GLOBAL)
-              call timer_push(T_LANGEVIN_HMC)
+                 call timer_pop(T_GLOBAL)
+                 call timer_push(T_LANGEVIN_HMC)
 #endif
 
 
-              If ( str_to_upper(Langevin_HMC%get_Update_scheme()) == "LANGEVIN" )  then
-                 Call Langevin_update(walker)
-              endif
+                 If ( str_to_upper(Langevin_HMC%get_Update_scheme()) == "LANGEVIN" )  then
+                    Call Langevin_update(walker)
+                 endif
 
-              If (  str_to_upper(Langevin_HMC%get_Update_scheme()) == "HMC" )  then
-                 Call HMC_update(walker)
-              endif
+                 If (  str_to_upper(Langevin_HMC%get_Update_scheme()) == "HMC" )  then
+                    Call HMC_update(walker)
+                 endif
 
-              If (  str_to_upper(Metropolis_Langevin%get_Update_scheme()) == "MALA" )  then
-                 Call MALA_update(walker, NSW)
-              endif
+                 If (  str_to_upper(Metropolis_Langevin%get_Update_scheme()) == "MALA" )  then
+                    Call MALA_update(walker, NSW)
+                 endif
 #ifdef ALF_TIMERS
-              call timer_pop(T_LANGEVIN_HMC)
+                 call timer_pop(T_LANGEVIN_HMC)
 #endif
 
-              If (get_sequential())  then 
-                 Call Sweep_up(walker)
+                 If (get_sequential())  then 
+                    Call Sweep_up(walker)
                  
-                 Call Sweep_down(walker)
-              endif
+                    Call Sweep_down(walker)
+                 endif
+                 end associate
+                 Call Walker_deactivate(walkers(iw))
+              ENDDO
 #ifdef ALF_TIMERS
               call timer_sweep_end()
 #endif
@@ -415,7 +432,11 @@ Program Main
            Call Global_Tempering_Pr
 #endif
 
-           Call nsigma%out(Group_Comm)
+           Do iw = 1, size(walkers)
+              Call Walker_activate(walkers(iw))
+              Call nsigma%out(Group_Comm, walkers(iw)%chain)
+              Call Walker_deactivate(walkers(iw))
+           Enddo
 #ifdef ALF_TIMERS
            call timer_bin_end(NBC, Group_Comm, file_info)
 #endif
@@ -435,7 +456,10 @@ Program Main
 #ifdef ALF_GPU
         Call Finalize_gpu()
 #endif
-        Call Walker_dealloc(walker)
+        Do iw = 1, size(walkers)
+           Call Walker_dealloc(walkers(iw))
+        Enddo
+        deallocate(walkers)
         If (get_N_Global_tau() > 0 .or. get_N_Global_tau_MALA() > 0 .or. get_Sequential_MALA()) then
            Call Wrapgr_dealloc
         endif
