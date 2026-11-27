@@ -108,7 +108,7 @@ No `private` statement: everything public. Uses `mpi_shared_memory` (U and M_exp
 - `Op_exp(g,Op,Mat)` :494 — `Mat = exp(g O)` (full N×N).
 - `Op_mmultL(Mat,Op,HS_Field,cop,nt,sign)` :558, `Op_mmultR(Mat,Op,HS_Field,cop,nt)` :651 — multiply `Mat` by `exp(±g Phi P^T O P)` from left/right; `cop` = 'N'/'T'/'C'.
 - `Op_Wrapup` :746 / `Op_Wrapdo` :865 `(Mat,Op,HS_Field,Ndim,N_Type,nt)` — Green-function wrapping; `N_Type`=1 full, 2 basis change only (not `Op%type`).
-- `Op_equal(a,b)` :964, `Op_V_is_symmetric(Op_V,N_FL,Ndim)` :1028, `Op_is_real(Op)` :1106, type-bound `get_g_t_alloc()` :1125.
+- `Op_equal(a,b)` :966, `Op_V_is_symmetric(Op_V,N_FL,Ndim)` :1037 (all-diagonal shortcut, else column-local products), `Op_is_real(Op)` :1151, type-bound `get_g_t_alloc()` :1170.
 
 ### 1.5 `Prog/Fields_mod.F90` (module `Fields_mod`) — see section 4
 Public: `Fields`, `Fields_init` (:71-72). Private module state: `Phi_st(-2:2,2)`, `Gama_st(-2:2,2)`, `Flip_st(-2:2,3)`, `Amplitude` (:75-77), set in `Fields_init(Amplitude_in)` :258.

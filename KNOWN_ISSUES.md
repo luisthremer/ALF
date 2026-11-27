@@ -37,7 +37,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | L6 | GPU line: confin 0 gives finite wrong numbers | B | open (GPU line) |
 | MK | Makefile: Prog objects not rebuilt after Libraries/Modules changes | B | fixed in `cm/feat/b-batch-2` (commit "build: …"; test 50) |
 | WF | Trial wave function normalisation, large N_part (suspected) | B | open, not reproduced |
-| P1 | Op_V_is_symmetric slow (start-up, Symm = .T.) | B | open; fast version on gpu-port |
+| P1 | Op_V_is_symmetric slow (start-up, Symm = .T.) | B | fixed in a9fdbd64 (CPU line) |
 
 ## Determinant phase underflow for N >~ 3000 (L >~ 54) in CGR / DET_C
 
@@ -203,6 +203,10 @@ Fix: weight with `Ham_U_vec(no_I)` (host and device).
 - **P1.** `Op_V_is_symmetric` (start-up check for Symm = .T.) multiplies dense Ndim x Ndim matrices for every operator,
   O(n_op Ndim^3): ~100 s at L = 24 on a CPU, much longer at L >= 40. A fast version exists on the GPU line (`gpu-port`)
   and as fork branch `ai/feat/op-v-symm-fast` (82157fe2).
+  **Fixed in a9fdbd64** (`cm/feat/opv-symm-fast`, CG-ALF T3): all-diagonal operator sets return at once, otherwise each
+  factor is multiplied in on its own columns, O(n_op Ndim N^2). Check alone, old -> new (melmac, GNU, 1 thread, loaded
+  node): Hubbard L = 24/32: 142 s / 1341 s -> < 0.1 ms; tV L = 24/32/48: 247 s / 2330 s / ~17 h (extrapolated) ->
+  0.02 / 0.08 / 0.44 s. Same result as the old check on 100 testsuite scenarios and in unit test 53.
 
 ### Checked and fine
 Parameter edges with clear errors (Dtau < 0, Beta <= 0, N_SUN = 0, N_FL = 3, unknown lattice, odd L with checkerboard),
