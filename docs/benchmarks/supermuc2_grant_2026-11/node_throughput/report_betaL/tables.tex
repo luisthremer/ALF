@@ -10,13 +10,13 @@ $L$ & side & commit & best layout & sweeps per node-hour & factor vs CPU\\\midru
 24 & GPU & \texttt{410c7b04} & \texttt{w4t3} & $4\,679 \pm 10$ & 1.52\\
 24 & GPU Intel-opt. & \texttt{d1060305} & \texttt{w4t1} & $17\,204 \pm 20$ & 5.58\\
 \addlinespace
-32 & CPU & \texttt{410c7b04} & -- & running & --\\
-32 & GPU & \texttt{410c7b04} & \texttt{w2t7} & $1\,431 \pm 3$ & --\\
-32 & GPU Intel-opt. & \texttt{d1060305} & \texttt{w4t1} & $3\,652 \pm 2$ & --\\
+32 & CPU & \texttt{410c7b04} & \texttt{t2} & $276 \pm 0$ & 1.00\\
+32 & GPU & \texttt{410c7b04} & \texttt{w2t7} & $1\,431 \pm 3$ & 5.19\\
+32 & GPU Intel-opt. & \texttt{d1060305} & \texttt{w4t1} & $3\,652 \pm 2$ & 13.24\\
 \addlinespace
-36 & CPU & \texttt{410c7b04} & -- & running & --\\
-36 & GPU & \texttt{410c7b04} & \texttt{w2t7} & $814 \pm 2$ & --\\
-36 & GPU Intel-opt. & \texttt{d1060305} & \texttt{w4t1} & $1\,665 \pm 1$ & --\\
+36 & CPU & \texttt{410c7b04} & \texttt{t2} & $194 \pm 0$ & 1.00\\
+36 & GPU & \texttt{410c7b04} & \texttt{w2t7} & $814 \pm 2$ & 4.20\\
+36 & GPU Intel-opt. & \texttt{d1060305} & \texttt{w4t1} & $1\,665 \pm 1$ & 8.58\\
 \bottomrule\end{tabular}\end{table}
 \begin{table}[h]\centering\small
 \caption{All layouts at $L=16$ ($\beta=4$). Time per sweep of one walker (mean of the timed sweeps, $\pm$ standard error; averaged over repeats) and node throughput.}
@@ -44,6 +44,7 @@ GPU Intel-opt. & \texttt{d1060305} & \texttt{w4t3} & 4 walker/tile, 3 thr. & $7.
 \caption{All layouts at $L=32$ ($\beta=4$). Time per sweep of one walker (mean of the timed sweeps, $\pm$ standard error; averaged over repeats) and node throughput.}
 \begin{tabular}{@{}llllrr@{}}\toprule
 side & commit & tag & layout & time per sweep (s) & sweeps per node-hour\\\midrule
+CPU & \texttt{410c7b04} & \texttt{t2} & 56 ranks $\times$ 2 thr. & $730.694 \pm 0.234$ & $276 \pm 0$\\
 GPU & \texttt{410c7b04} & \texttt{w2t7} & 2 walker/tile, 7 thr. & $40.255 \pm 0.089$ & $1\,431 \pm 3$\\
 GPU & \texttt{410c7b04} & \texttt{w4t3} & 4 walker/tile, 3 thr. & $88.303 \pm 0.065$ & $1\,305 \pm 1$\\
 GPU Intel-opt. & \texttt{d1060305} & \texttt{w4t1} & 4 walker/tile, 1 thr. & $31.541 \pm 0.018$ & $3\,652 \pm 2$\\
@@ -53,6 +54,8 @@ GPU Intel-opt. & \texttt{d1060305} & \texttt{w4t3} & 4 walker/tile, 3 thr. & $34
 \caption{All layouts at $L=36$ ($\beta=4$). Time per sweep of one walker (mean of the timed sweeps, $\pm$ standard error; averaged over repeats) and node throughput.}
 \begin{tabular}{@{}llllrr@{}}\toprule
 side & commit & tag & layout & time per sweep (s) & sweeps per node-hour\\\midrule
+CPU & \texttt{410c7b04} & \texttt{t2} & 56 ranks $\times$ 2 thr. & $1\,039.180 \pm 0.364$ & $194 \pm 0$\\
+CPU & \texttt{410c7b04} & \texttt{t4} & 28 ranks $\times$ 4 thr. & $705.638 \pm 0.801$ & $143 \pm 0$\\
 GPU & \texttt{410c7b04} & \texttt{w2t7} & 2 walker/tile, 7 thr. & $70.766 \pm 0.144$ & $814 \pm 2$\\
 GPU & \texttt{410c7b04} & \texttt{w4t3} & 4 walker/tile, 3 thr. & $155.706 \pm 0.080$ & $740 \pm 0$\\
 GPU Intel-opt. & \texttt{d1060305} & \texttt{w4t1} & 4 walker/tile, 1 thr. & $69.185 \pm 0.044$ & $1\,665 \pm 1$\\
