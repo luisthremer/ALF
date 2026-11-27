@@ -89,7 +89,7 @@
 !>  alpha is not in the mirror; nsigma_d is a copy made at setup and goes stale as soon as updates run (205 must keep
 !>  it in sync); N and P of an operator may differ between flavours (V_meta is per (n,nf)).  gpu_supported refuses
 !>  runs with Propose_S0.  Calc_Fl (reconstruction_needed) runs: ratio and CGR phase use ham%weight_reconstruction, the
-!>  observables and the tau pass stay on the host (GR(T)_reconstruction); refused on GPU=amd (not yet verified, R2).
+!>  observables and the tau pass stay on the host (GR(T)_reconstruction).
 !>  (From the gpu-port notes, for step 1c:) alpha stays on the host (Op_V%alpha); per-flavour N/P are read from the host Op_V;
 !>  gpu_supported also refuses N_non_zero > 1 (the device update is rank 1).
 !>
@@ -608,11 +608,6 @@ Contains
        ! Timed automatic N_delay: lowrank_update_mod times candidate values at run time; the device path uses the one N_delay
        ! Lowrank_current_N_delay() has at its first use, so the timed search stays on the CPU.
        reason = 'timed automatic N_delay (N_delay = -1) is not supported on the GPU path'; return
-    endif
-    if (reconstruction_needed) then
-#if defined(ALF_LA_HIP)
-       reason = 'Calc_Fl with weight reconstruction: not yet verified on GPU=amd'; return
-#endif
     endif
     nd = omp_get_num_devices()
     if (nd < 1) then
