@@ -94,7 +94,7 @@ Module gpu_stab_mod
 
   Use iso_fortran_env, only: output_unit, error_unit, int64
   Use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
-  Use Hamiltonian_main, only: Ndim, N_FL, N_FL_eff, N_SUN, Calc_Fl_map, Nsigma, Op_V
+  Use Hamiltonian_main, only: Ndim, N_FL, N_FL_eff, N_SUN, Calc_Fl_map, Nsigma, Op_V, ham, reconstruction_needed
   Use Operator_mod, only: Op_phase
   Use QDRP_mod, only: Pivot_phase
   Use Control, only: Control_PrecisionG_vals, Control_PrecisionP, Control_Check_Phase, Control_Is_Finite
@@ -798,7 +798,8 @@ Contains
        call Op_phase(Z1, OP_V, Nsigma, nf)
        walker%Phase_array(nf) = Z1
     enddo
-    ! (gpu_supported refuses models with reconstruction_needed, so ham%weight_reconstruction is not needed here)
+    ! phases of the non-calculated flavours, as Recompute_GR_phase
+    if (reconstruction_needed) call ham%weight_reconstruction(walker%Phase_array)
     Z = product(walker%Phase_array)
     Z = Z**N_SUN
     Call Control_PrecisionP(Z, walker%Phase)

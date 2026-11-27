@@ -62,7 +62,7 @@ Module gpu_update_mod
   Use iso_fortran_env, only: output_unit, error_unit, int64
   Use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
   Use Fields_mod, only: fields
-  Use Hamiltonian_main, only: calc_fl_map, ham, n_fl, n_fl_eff, n_sun, ndim, nsigma, op_v
+  Use Hamiltonian_main, only: calc_fl_map, ham, n_fl, n_fl_eff, n_sun, ndim, nsigma, op_v, reconstruction_needed
   Use Control, only: Control_upgrade, Control_upgrade_eff
   Use Random_Wrap, only: ranf_wrap
   Use gpu_state_mod, only: g_d, g_dev_ok, g_host_ok, gpu_active, gpu_env_is, info_line, nsigma_d, scr_vec, &
@@ -306,6 +306,9 @@ Contains
        endif
        Ratio(nf) =  D_Mat * exp( Z1*Op_V(n_op,nf)%alpha )
     Enddo
+
+    ! Fill the non-calculated flavours, as Upgrade2
+    if (reconstruction_needed) call ham%weight_reconstruction(Ratio)
 
     Ratiotot = Product(Ratio)
     nf = 1
