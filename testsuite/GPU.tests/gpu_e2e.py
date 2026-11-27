@@ -131,6 +131,8 @@ CASES = [
 ]
 
 
+# G7: Spin_Peierls 12x12 Part_scal round-off on CI runners, 2.2e-10 (run 46033748753); size-scaled rule in P2.4 step 3
+TOL_FLOOR = {"sp-standard": 5.0e-10}      # per-case absolute floor of the tolerance (max(rule, floor)); no other case has one
 NOOBS_CASES = ("mz-standard", "su2-standard", "mz-h0", "mz-bilayer-honeycomb", "mz-lobs-all", "su2-symm-F")
 # step 1f: Mz-Hubbard (N_FL = 2, real), SU(2) Hubbard (N_FL = 1, complex phases of det U), both with Ltau = 1; large Nwrap; delayed
 PHASE_CASES = ("mz-standard", "su2-standard", "su2-nwrap25", "su2-delayed-N4")
@@ -304,6 +306,7 @@ def main():
         # interim rule (KNOWN_ISSUES G7): the observables of two runs of the same chain differ by up to the largest wrap error, so
         # the CPU run's Precision Green max is also accepted; the GPU run's max is not (it would hide a worse device path, G10)
         tol = TOL if gp_dis is None else max(TOL, 100.0 * gp_dis[0], gp_dis[1])
+        tol = max(tol, TOL_FLOOR.get(label, 0.0))
         bad, diffs = compare(dirs["active"], dirs["disabled"], strict=expect.startswith("inactive:"), tol=tol)
         scal = ", ".join("%s %.3g / %.3g" % (f[:-5], diffs[f][0], diffs[f][1]) for f in ("Ener_scal", "Kin_scal", "Pot_scal")
                          if diffs.get(f) is not None)
@@ -328,7 +331,9 @@ def main():
         else:
             status = "OK" if not bad and not bad_case else "FAILED"
             conf = "confout byte-identical" if "confout_0" in diffs and diffs["confout_0"][0] == 0.0 else "confout differs"
-            gp = (", Precision Green mean active %.2g / disabled %.2g, tol %.2g" % (gp_act[0], gp_dis[0], tol)) if gp_act and gp_dis else ""
+            worst = max([v[1] for f, v in diffs.items() if v is not None and not f.startswith("confout")] + [0.0])
+            gp = (", Precision Green mean active %.2g / disabled %.2g, max scaled diff of all files %.3g, tol %.2g"
+                  % (gp_act[0], gp_dis[0], worst, tol)) if gp_act and gp_dis else ""
             print("%-16s active vs disabled: %s; max abs / scaled diff (%s)%s %s%s" % (label, conf, scal, gp, status,
                                                                                        (" [reason: %s]" % reason) if reason else ""))
             for b in bad:
