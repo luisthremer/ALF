@@ -47,6 +47,7 @@ module alf_hipk_mod
        &    hk_perm, hk_perm_vec, hk_ct, hk_rowdiv, hk_colinv, hk_tpup, hk_det_phase, hk_cgr_phase, hk_testscale, hk_prec
   public :: hk_scatter_rows, hk_vslice_r, hk_blk_gather, hk_blk_scale, hk_sub_flush_gather
   public :: hk_corr, hk_scalars
+  public :: hk_cb_left, hk_cb_right
 
   ! HIP replacements on (default) or off (ALF_HIP_KERNELS=0: the OpenMP kernels run, for A/B checks); -1 = not read yet
   integer, save :: hk_state = -1
@@ -205,6 +206,16 @@ module alf_hipk_mod
       integer(c_int), value :: nk, n, norb, nfl, dec, ld
       type(c_ptr), value :: hi, hj, hf, hc, g, inv, uo
       real(c_double) :: hres(6)
+    end function
+    integer(c_int) function alfhk_cb_left(M, ld, ncol, e1, e2, k, tl, meta, P, R, C) bind(C, name='alfhk_cb_left')
+      import :: c_ptr, c_int
+      integer(c_int), value :: ld, ncol, e1, e2, k, tl
+      type(c_ptr), value :: M, meta, P, R, C
+    end function
+    integer(c_int) function alfhk_cb_right(M, ld, nrow, e1, e2, k, tl, meta, P, R, C) bind(C, name='alfhk_cb_right')
+      import :: c_ptr, c_int
+      integer(c_int), value :: ld, nrow, e1, e2, k, tl
+      type(c_ptr), value :: M, meta, P, R, C
     end function
   end interface
 
@@ -586,6 +597,34 @@ contains
     !$omp end target data
     call chk(rc, 'scalars')
   end subroutine hk_scalars
+
+  !> checkerboard group product, left (k_cb_left_g of gpu_wrap_mod): M(P(e),j) = A_e M(P(e),j) for the elements e1..e2 of a group
+  subroutine hk_cb_left(M, ld, ncol, e1, e2, k, tl, meta, P, R, C)
+    integer, intent(in) :: ld, ncol, e1, e2, k, tl
+    complex(kind=kind(0.d0)), target :: M(*), C(*)
+    integer, target :: meta(*), P(*)
+    real(kind=kind(0.d0)), target :: R(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(M, meta, P, R, C)
+    rc = alfhk_cb_left(c_loc(M(1)), int(ld,c_int), int(ncol,c_int), int(e1,c_int), int(e2,c_int), int(k,c_int), int(tl,c_int), &
+         & c_loc(meta(1)), c_loc(P(1)), c_loc(R(1)), c_loc(C(1)))
+    !$omp end target data
+    call chk(rc, 'cb_left')
+  end subroutine hk_cb_left
+
+  !> checkerboard group product, right (k_cb_right_g of gpu_wrap_mod): M(i,P(e)) = M(i,P(e)) A_e
+  subroutine hk_cb_right(M, ld, nrow, e1, e2, k, tl, meta, P, R, C)
+    integer, intent(in) :: ld, nrow, e1, e2, k, tl
+    complex(kind=kind(0.d0)), target :: M(*), C(*)
+    integer, target :: meta(*), P(*)
+    real(kind=kind(0.d0)), target :: R(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(M, meta, P, R, C)
+    rc = alfhk_cb_right(c_loc(M(1)), int(ld,c_int), int(nrow,c_int), int(e1,c_int), int(e2,c_int), int(k,c_int), int(tl,c_int), &
+         & c_loc(meta(1)), c_loc(P(1)), c_loc(R(1)), c_loc(C(1)))
+    !$omp end target data
+    call chk(rc, 'cb_right')
+  end subroutine hk_cb_right
 
 end module alf_hipk_mod
 #endif
