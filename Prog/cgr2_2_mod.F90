@@ -319,6 +319,9 @@ module cgr2_2_mod
         deallocate(V1INV, D3B)
 #else
         Use QDRP_mod, only: QDRP_decompose
+#if defined(QR_PREPIVOT)
+        Use QDRP_mod, only: QDRP_prepivot, QR_PP_VARIANT, QR_PP_NB
+#endif
         Implicit none
 
         !  Arguments
@@ -405,7 +408,12 @@ module cgr2_2_mod
            ENDDO
            ! HLPB1 = CT(HLPB2)
            HLPB1 = conjg(transpose(HLPB2))
+#if defined(QR_PREPIVOT)
+           ! Test-only (default off): pre-pivoted QR instead of ZGEQP3, see QDRP_prepivot
+           call QDRP_prepivot(LQ2, LQ2, HLPB1, D3, IPVT, TAU, WORK, LWORK, QR_PP_VARIANT, QR_PP_NB)
+#else
            call QDRP_decompose(LQ2, LQ2, HLPB1, D3, IPVT, TAU, WORK, LWORK)
+#endif
            call solve_extended_System(HLPB2, V1INV, MYU2, HLPB1, D3, TAU, IPVT, LQ, WORK, LWORK)
            call get_blocks(GR00, GR0T, GRT0, GRTT, HLPB2, LQ)
         Else
@@ -420,7 +428,12 @@ module cgr2_2_mod
            ENDDO
            ! HLPB1 = CT(HLPB2)
            HLPB1 = conjg(transpose(HLPB2))
+#if defined(QR_PREPIVOT)
+           ! Test-only (default off): pre-pivoted QR instead of ZGEQP3, see QDRP_prepivot
+           call QDRP_prepivot(LQ2, LQ2, HLPB1, D3, IPVT, TAU, WORK, LWORK, QR_PP_VARIANT, QR_PP_NB)
+#else
            call QDRP_decompose(LQ2, LQ2, HLPB1, D3, IPVT, TAU, WORK, LWORK)
+#endif
            call solve_extended_System(HLPB2, MYU2, V1INV, HLPB1, D3, TAU, IPVT, LQ, WORK, LWORK)
            call get_blocks(GRTT, GRT0, GR0T, GR00, HLPB2, LQ)
         Endif

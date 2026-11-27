@@ -267,6 +267,9 @@ module cgr1_mod
         USE MyMats, only: DET_C_PHASE, MMULT
         Use Control, only: Control_Check_Phase
         USE QDRP_mod, only: QDRP_decompose
+#if defined(QR_PREPIVOT)
+        USE QDRP_mod, only: QDRP_prepivot, QR_PP_VARIANT, QR_PP_NB
+#endif
         Use iso_fortran_env, only: error_unit
         Use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
         
@@ -424,7 +427,12 @@ module cgr1_mod
             TPUP = TPUP_temp
             Deallocate(TPUP_temp)
         ENDIF
+#if defined(QR_PREPIVOT)
+        ! Test-only (default off): pre-pivoted QR instead of ZGEQP3, see QDRP_prepivot
+        call QDRP_prepivot(N_size, udvl%N_part, TPUP, DUP, IPVT, TAU, WORK, LWORK, QR_PP_VARIANT, QR_PP_NB)
+#else
         call QDRP_decompose(N_size, udvl%N_part, TPUP, DUP, IPVT, TAU, WORK, LWORK)
+#endif
         ! Calculate the sign of the permutation from the pivoting. Somehow the format used by the QR decomposition of lapack
         ! is different from that of the LU decomposition of lapack
         VISITED = 0
