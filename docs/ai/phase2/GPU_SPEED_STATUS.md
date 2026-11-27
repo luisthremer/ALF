@@ -78,7 +78,7 @@ Gain is in sweeps/s per GPU in the production layout (MPS multi-chain) unless st
 
 | # | lever | expected gain | evidence | cost | line / phase |
 |---|---|---|---|---|---|
-| 1 | Device observables for ham_h0 ≠ 0 (the production pinning field, Jakob's parameter set). Today `gpu_obs_mod.F90:111` returns early and every measurement runs on the host Obser. | L = 24, h0 = 1: 13.3 → ~2.7 s/sweep, i.e. up to 5x for production runs | measured: E3 13.3 s against 2.6 s at h0 = 0; H0SLOW | small to medium: one more local observable (Obs_local) on the device | GPU line, P2.9.x |
+| 1 | Device observables for ham_h0 ≠ 0 (the production pinning field, Jakob's parameter set). Today `gpu_obs_mod.F90:111` returns early and every measurement runs on the host Obser. | L = 24, h0 = 1: 13.3 → ~2.7 s/sweep, i.e. up to 5x for production runs | measured: E3 13.3 s against 2.6 s at h0 = 0; H0SLOW; conflict with `helma_h100.md` resolved below | small: the device code existed until 920eb6dc and was removed, restore it for the single upstream Obs_local | GPU line, P2.9.x |
 | 2 | Nwrap 10 → 20 (cgalf-research T1, `rd/cgalf-stab` 7ad95cf6, `docs/cgalf_T1/README.md`) | −20 % sweep time at L = 24/32 | measured by T1; Precision Green max ~1e-10 (cold start; a thermalised check is running) | parameter only, after the thermalised check | CG-ALF T1 / production input |
 | 3 | Remove the per-vertex host round trip: Metropolis decision on the device (pre-generated uniforms keep the chain bitwise identical), then CUDA graphs over a whole N_delay block | single chain up to −45 % (GPU idle about 50 %); in MPS production est. −10 to −25 % | estimated from nsys (85k syncs per sweep, 1.4 s idle per sweep at L = 24) | medium: `gpu_lowrank_mod`, RNG order | GPU line, P2.9.5 |
 | 4 | Faster CGR QR: CholeskyQR2 or batched flavours (2 QRs per call) for the `la_qrpp` path, not only the decompose | QR is 33-36 % of kernel time; est. −10 to −20 % kernel time | measured share; gain estimated from T1's 16-26 % per QR plus batching | medium; Precision Green gate as in T1 | CG-ALF (extends T1) |
@@ -86,6 +86,14 @@ Gain is in sweeps/s per GPU in the production layout (MPS multi-chain) unless st
 | 6 | Parallel per-i factors in the stabilisation phase kernels (this session's prototype) | single chain −3 to −6 % at L = 24, 0 to −2 % at L = 32; MPS ±1 % | measured, see below | done, prototype | GPU line, P2.9.6 |
 | — | Larger N_delay | **negative**: at L = 32 it is slower above 64 | measured, scan below | — | drop |
 | — | N_FL = 1 when h0 = 0 (spin symmetry) | −50 % | estimated | model-specific; production uses h0 = 1 | not pursued |
+
+**Lever 1 vs `helma_h100.md` (3.51 s at L = 24, labelled h0 = 1): both are right, for different code.**
+- The H100 page dates from 2026-11-11 and benchmarked the fork's defect Hamiltonian. Its `gpu_obs_mod` still measured the
+  local observables on the device (info line "point-defect local observables").
+- Commit 920eb6dc (2026-11-13) replaced it by upstream's `ham_h0` and removed that device code; with h0 ≠ 0 the device
+  measurement now declines (`gpu_obs_mod.F90:111`). E3 (2026-11-26, `CG_ALF_PLAN.md`) ran this later code: 13.3 s/sweep, GPU
+  kernels 1.4 s, the rest host Obser. The 3.51 s is therefore not valid for today's h0 = 1 and the 5x holds.
+- Not re-measured here: h0 = 1 on the current branch was only checked by E3; `H0SLOW` below is a second, coarse point.
 
 **Ranking logic:** 1 applies only to h0 ≠ 0, but that is the production case. 2 is a free parameter change.
 3 and 4 are the two code levers that act on the measured gap. 5 is the largest but also the most expensive.
