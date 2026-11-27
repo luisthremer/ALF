@@ -46,7 +46,7 @@ out.append("\\bottomrule\\end{tabular}\\end{table}")
 for L in Ls:
     sel = sorted([r for r in rows if r["L"] == L], key=lambda r: (list(SIDES).index(r["side"]), r["tag"]))
     out.append("\\begin{table}[h]\\centering\\small")
-    out.append(f"\\caption{{All layouts at $L={L}$ ($\\beta=4$). Time per sweep of one walker (mean of 10 timed sweeps, "
+    out.append(f"\\caption{{All layouts at $L={L}$ ($\\beta=4$). Time per sweep of one walker (mean of the timed sweeps, "
                f"$\\pm$ standard error; averaged over repeats) and node throughput.}}")
     out.append("\\begin{tabular}{@{}llllrr@{}}\\toprule")
     out.append("side & commit & tag & layout & time per sweep (s) & sweeps per node-hour\\\\\\midrule")

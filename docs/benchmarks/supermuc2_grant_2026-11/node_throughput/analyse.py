@@ -36,8 +36,15 @@ def meta(d):
     return m
 
 
+def nbin_of(d):
+    import re as _re
+    m = _re.search(r"NBin\s*=\s*(\d+)", open(os.path.join(d, "parameters")).read())
+    return int(m.group(1)) if m else NBIN
+
+
 def bins(d):
     """Return [(first, last, n_events)] per burst; burst 0 is the file creation."""
+    NBIN = nbin_of(d)
     ev = sorted({int(line.split()[0]) for line in open(os.path.join(d, "watch.txt")) if len(line.split()) == 3})
     if len(ev) < NBIN + 1:
         raise ValueError(f"only {len(ev)} write events, need >= {NBIN + 1}")

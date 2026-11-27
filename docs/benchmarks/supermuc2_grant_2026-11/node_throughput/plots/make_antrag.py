@@ -25,7 +25,9 @@ def num(x, nd=0):
 rows = load(sys.argv[1])
 b = best(rows)
 Ls = sorted({r["L"] for r in rows})
-NLAY = {"cpu": 5, "gpu": 5, "gpub": 5}   # configurations per side and L in the test
+import os
+_n = int(os.environ.get("NLAY", "5"))
+NLAY = {"cpu": _n, "gpu": _n, "gpub": _n}   # configurations per side and L in the test
 done = lambda s_, L: len({r["tag"] for r in rows if r["side"] == s_ and r["L"] == L}) >= NLAY[s_]
 full = [L for L in Ls if all((s, L) in b and done(s, L) for s in SIDES)]
 out = []
@@ -70,7 +72,7 @@ for i, L in enumerate(Ls):
 t.append("\\end{tabular}")
 out.append("\\newcommand{\\AntragTable}{%\n" + "\n".join(t) + "}")
 # data file for the pgfplots figures (best layout per side; nan = not finished)
-with open(__file__.rsplit("/", 2)[0] + "/report/antrag_best.dat", "w") as f:
+with open(__file__.rsplit("/", 2)[0] + "/" + os.environ.get("REPORTDIR", "report") + "/antrag_best.dat", "w") as f:
     f.write("L thr_cpu thr_gpu thr_gpub e_cpu e_gpu e_gpub fac_gpub\n")
     for L in Ls:
         v = []
@@ -79,7 +81,7 @@ with open(__file__.rsplit("/", 2)[0] + "/report/antrag_best.dat", "w") as f:
         e = [POWER[s_] * 3600 / x / 1000 if x == x else float("nan") for s_, x in zip(SIDES, v)]
         fac = v[2] / v[0] if v[0] == v[0] and v[2] == v[2] else float("nan")
         f.write(f"{L} " + " ".join(f"{x:.6g}" for x in v + e + [fac]) + "\n")
-with open(__file__.rsplit("/", 2)[0] + "/report/antrag_fac.dat", "w") as f:   # speedup labels, only where both exist
+with open(__file__.rsplit("/", 2)[0] + "/" + os.environ.get("REPORTDIR", "report") + "/antrag_fac.dat", "w") as f:   # speedup labels, only where both exist
     f.write("L thr_gpub fac\n")
     for L in Ls:
         c, g = b.get(("cpu", L)), b.get(("gpub", L))

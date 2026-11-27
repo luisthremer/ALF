@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Write an ALF parameters file for the node throughput test.
 
-usage: make_params.py TEMPLATE L NRANKS > parameters
+usage: make_params.py TEMPLATE L NRANKS [BETA] [NBIN] > parameters   (BETA "L" = Beta equal to L; defaults 4, 11)
 
 TEMPLATE is the production file RUN_L24/Temp_0/parameters (jakob_params, h0 = 1, Beta = L).
 Changed here (owner, 2026-11-27): L1 = L2 = L, N_Phi = L^2/2, Beta = 4, Ltau = 0, ham_h0 = 0,
@@ -12,9 +12,12 @@ import re
 import sys
 
 tmpl, L, nr = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+beta = sys.argv[4] if len(sys.argv) > 4 else "4"
+beta = str(L) if beta == "L" else beta
+nbin = sys.argv[5] if len(sys.argv) > 5 else "11"
 new = {
-    "L1": str(L), "L2": str(L), "N_Phi": str(L * L // 2), "Beta": "4.d0", "Ltau": "0",
-    "ham_h0": "0.d0", "ham_U": "5.25d0", "NSweep": "1", "NBin": "11", "CPU_MAX": "0.0",
+    "L1": str(L), "L2": str(L), "N_Phi": str(L * L // 2), "Beta": f"{beta}.d0", "Ltau": "0",
+    "ham_h0": "0.d0", "ham_U": "5.25d0", "NSweep": "1", "NBin": nbin, "CPU_MAX": "0.0",
     "mpi_per_parameter_set": str(nr),
     # kept, but asserted, because the test depends on them
     "Mz": ".F.", "Symm": ".T.", "Checkerboard": ".T.", "N_FL": "2", "Dtau": "0.1d0",

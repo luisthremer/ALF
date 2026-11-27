@@ -1,0 +1,33 @@
+% Figure for the proposal version: node throughput and energy per work unit. Compile: pdflatex node_performance.tex
+% Data: antrag_best.dat, antrag_fac.dat (written by plots/make_antrag.py from results.csv).
+\documentclass[border=2pt]{standalone}
+\usepackage{times}
+\usepackage[T1]{fontenc}
+\usepackage[usenames,dvipsnames]{xcolor}
+\usepackage{pgfplots}\pgfplotsset{compat=1.18}
+\pgfplotsset{every axis/.append style={font=\small, grid=major, grid style={gray!25}},
+  every axis legend/.append style={font=\footnotesize, draw=none}}
+\begin{document}
+\begin{tabular}{@{}c@{}}
+\ref{leg}\\[2pt]
+\begin{tikzpicture}
+\begin{axis}[width=8cm, height=5.6cm, ymode=log, xtick={16,24,32,36}, xlabel={system size $L$ ($N=L^2$)}, unbounded coords=jump, mark size=2pt, thick, ylabel={work units per node-hour}, enlarge y limits=0.12,
+  legend columns=3, legend to name=leg, legend style={/tikz/every even column/.append style={column sep=10pt}}]
+\addplot[color=RoyalBlue, mark=*] table[x=L, y=thr_cpu]{antrag_best.dat}; \addlegendentry{CPU node, ALF CPU}
+\addplot[color=ForestGreen, mark=square*] table[x=L, y=thr_gpu]{antrag_best.dat}; \addlegendentry{GPU node, ALF GPU}
+\addplot[color=BurntOrange, mark=triangle*] table[x=L, y=thr_gpub]{antrag_best.dat}; \addlegendentry{GPU node, ALF GPU Intel-optimised}
+\addplot[only marks, mark=none, nodes near coords={\pgfmathprintnumber[fixed,precision=1]{\pgfplotspointmeta}$\times$},
+  nodes near coords align={above}, every node near coord/.style={font=\scriptsize, color=BurntOrange},
+  point meta=explicit, forget plot] table[x=L, y=thr_gpub, meta=fac]{antrag_fac.dat};
+\end{axis}
+\end{tikzpicture}\hspace{6mm}
+\begin{tikzpicture}
+\begin{axis}[width=8cm, height=5.6cm, ymode=log, xtick={16,24,32,36}, xlabel={system size $L$ ($N=L^2$)}, unbounded coords=jump, mark size=2pt, thick, ylabel={energy per work unit (kJ)}]
+\addplot[color=RoyalBlue, mark=*] table[x=L, y=e_cpu]{antrag_best.dat};
+\addplot[color=ForestGreen, mark=square*] table[x=L, y=e_gpu]{antrag_best.dat};
+\addplot[color=BurntOrange, mark=triangle*] table[x=L, y=e_gpub]{antrag_best.dat};
+\end{axis}
+\end{tikzpicture}
+
+\end{tabular}
+\end{document}

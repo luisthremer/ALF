@@ -8,3 +8,12 @@ report/antrag_fac.dat
 report/figures/*.aux
 report/figures/*.log
 report/figures/*.dat
+report_betaL/*.aux
+report_betaL/*.log
+report_betaL/*.out
+report_betaL/report.pdf
+report_betaL/antrag.pdf
+report_betaL/*.dat
+report_betaL/figures/*.aux
+report_betaL/figures/*.log
+report_betaL/figures/*.dat

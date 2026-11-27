@@ -28,7 +28,8 @@ esac
 [ -n "$LAYOUTS_OVERRIDE" ] && LAYOUTS=$LAYOUTS_OVERRIDE   # multi.sh: one layout per node
 [ "$SIDE" != cpu ] && export OMP_TARGET_OFFLOAD=MANDATORY ZE_FLAT_DEVICE_HIERARCHY=FLAT ALF_UNSTABLE_THRESHOLD=1e-4
 echo "job $SLURM_JOB_ID host $(hostname) side $SIDE L $L exe $EXE md5 $(md5sum < $EXE | cut -c1-32) start $(date -Is)"
-SHM=/dev/shm/nt_${SLURM_JOB_ID}_${SLURM_STEP_ID:-0}; mkdir -p $SHM $A/runs
+RD=$A/${RUNDIR:-runs}   # beta=L series: RUNDIR=runs_betaL
+SHM=/dev/shm/nt_${SLURM_JOB_ID}_${SLURM_STEP_ID:-0}; mkdir -p $SHM $RD
 for rep in $(seq ${REPEAT:-1}); do for lay in $LAYOUTS; do
   a=${lay%:*}; b=${lay#*:}
   if [ $SIDE = cpu ]; then export MODE=cpu T=$a; NR=$(( (56 / a) * 2 )); TH=$a; TAG=t${a}; unset W
@@ -36,7 +37,7 @@ for rep in $(seq ${REPEAT:-1}); do for lay in $LAYOUTS; do
        c=$(( a < 4 ? a : 4 )); export ZEX_NUMBER_OF_CCS=$(for t in 0 1 2 3 4 5 6 7; do printf '%s:%s,' $t $c; done | sed 's/,$//'); fi
   export NR OMP_NUM_THREADS=$TH MKL_NUM_THREADS=$TH
   R=${SIDE}_L${L}_${TAG}_r${rep}; D=$SHM/$R; mkdir -p $D/Temp_0; cd $D
-  python3 $J/make_params.py $J/template_parameters_RUN_L24.txt $L $NR > parameters || exit 3
+  python3 $J/make_params.py $J/template_parameters_RUN_L24.txt $L $NR ${BETA:-4} ${NBIN:-11} > parameters || exit 3
   cp parameters Temp_0/parameters
   python3 -c "import random; random.seed(1000+$L); print('\n'.join('%12d' % random.randint(1, 2**30) for _ in range($NR)))" > seeds
   echo "== $R ranks $NR threads $TH ${ZEX_NUMBER_OF_CCS:+CCS $ZEX_NUMBER_OF_CCS} start $(date -Is)"
@@ -46,10 +47,10 @@ for rep in $(seq ${REPEAT:-1}); do for lay in $LAYOUTS; do
   timeout ${RUN_TIMEOUT:-4500} mpiexec ${NT_LOCAL:+-bootstrap fork -hosts $(hostname)} -n $NR -ppn $NR $J/pin.sh $EXE > run.log 2>&1 & P=$!
   python3 $J/watch.py $D/Temp_0/data.h5 $P > watch.txt & WP=$!
   wait $P; RC=$?; T1=$(date +%s%N); wait $WP; [ -n "$XP" ] && kill $XP
-  echo "side=$SIDE L=$L tag=$TAG rep=$rep ranks=$NR threads=$TH w=${W:-} rc=$RC t0_ns=$T0 t1_ns=$T1 node=$(hostname) job=$SLURM_JOB_ID exe=$EXE" > meta.txt
+  echo "side=$SIDE L=$L beta=${BETA:-4} nbin=${NBIN:-11} tag=$TAG rep=$rep ranks=$NR threads=$TH w=${W:-} rc=$RC t0_ns=$T0 t1_ns=$T1 node=$(hostname) job=$SLURM_JOB_ID exe=$EXE" > meta.txt
   echo "   rc=$RC wall $(( (T1 - T0) / 1000000 )) ms, bin writes $(wc -l < watch.txt)"
   grep -A1 -E "Precision Green" Temp_0/info | tail -1; grep -E "Acceptance" Temp_0/info | tail -1
   rm -f Temp_0/confout_* confout_*   # configurations are not needed for timing
-  cp -r $D $A/runs/${R}_$SLURM_JOB_ID; rm -rf $D
+  cp -r $D $RD/${R}_$SLURM_JOB_ID; rm -rf $D
 done; done
 rm -rf $SHM; echo "end $(date -Is)"

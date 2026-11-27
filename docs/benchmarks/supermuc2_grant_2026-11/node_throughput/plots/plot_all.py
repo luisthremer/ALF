@@ -24,6 +24,7 @@ import scienceplots  # noqa: E402,F401
 plt.style.use(["science", "no-latex"])
 # --antrag: method-independent axis labels for the proposal version (work unit = one sweep of one independent simulation)
 ANTRAG = "--antrag" in sys.argv
+BL = "$L$ ($" + os.environ.get("BETA_LABEL", "\\beta = 4") + "$)"
 THR_LABEL = "work units per node-hour" if ANTRAG else "sweeps per node-hour"
 E_LABEL = "energy per work unit (kJ, TDP estimate)" if ANTRAG else "energy per sweep (kJ, TDP estimate)"
 
@@ -95,7 +96,7 @@ def fig_throughput(rows, out, fake):
                 ax.annotate(f"{g / b[('cpu', L)]['throughput_node_h']:.1f}x", (L, g), textcoords="offset points",
                             xytext=(0, 5), ha="center", fontsize=6)
     ax.set_yscale("log"); ax.set_xticks(Ls)
-    ax.set_xlabel("$L$ ($N = L^2$)" if ANTRAG else "$L$ ($\\beta = 4$)"); ax.set_ylabel(THR_LABEL)
+    ax.set_xlabel("$L$ ($N = L^2$)" if ANTRAG else BL); ax.set_ylabel(THR_LABEL)
     ax.legend(fontsize=6)
     save(fig, out, "throughput_vs_L", fake)
 
@@ -168,7 +169,7 @@ def fig_energy(rows, out, fake):
             ee = [x * p["throughput_err"] / p["throughput_node_h"] for x, p in zip(e, pts)]
             ax.errorbar([p["L"] for p in pts], e, yerr=ee, color=col, marker=mk, ms=4, capsize=2, label=lab)
     ax.set_yscale("log"); ax.set_xticks(Ls)
-    ax.set_xlabel("$L$ ($N = L^2$)" if ANTRAG else "$L$ ($\\beta = 4$)"); ax.set_ylabel(E_LABEL)
+    ax.set_xlabel("$L$ ($N = L^2$)" if ANTRAG else BL); ax.set_ylabel(E_LABEL)
     ax.legend(fontsize=6)
     ax.text(0.02, 0.02, f"CPU node {P_CPU_NODE:.0f} W, GPU node {P_GPU_NODE:.0f} W", transform=ax.transAxes, fontsize=5)
     save(fig, out, "energy_per_sweep", fake)

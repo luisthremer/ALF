@@ -48,3 +48,10 @@ L=32 t4 submitted separately (job 566820 would hit its time limit before t4).
 Update 11:55: proposal version published (preliminary) to git@git.physik.uni-wuerzburg.de:fassaad/juelich.git, folder
 `SuperMUC_Phase2_Conversion_2026/` (commit ee2ab33): main.tex = report/antrag.tex, antrag_data.tex, datastate.tex,
 figures/node_performance.{tex,pdf,dat}. Re-copy and push after the last CPU runs.
+
+## beta = L series (2026-11-27, owner: "as fast as possible in wall-clock time")
+Same test at production temperature beta = L, only the configurations that were best at beta = 4 (CPU t1, t2, t4 backup at
+L=36; ALF GPU w2t7, w4t3; Intel-opt. w4t1, w4t3), NBIN 6, CPU L=32/36 NBIN 3-4. `submit_betaL.sh` (jobs 566844-566848):
+three 4-node test jobs (`multi2.sh`, one run per node) + CPU t1 at L=32/36 on general. Runs: `runs_betaL/`.
+Reports: `SET=betaL ./prelim.sh` -> `report_betaL/report_prelim.pdf` (internal) and `report_betaL/antrag_prelim.pdf`
+(proposal version); the beta = 4 reports in `report/` are unchanged.
