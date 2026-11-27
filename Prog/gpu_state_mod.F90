@@ -564,9 +564,12 @@ Contains
 #if defined(STAB1) || defined(STAB2) || defined(STAB3)
     reason = 'STAB1/STAB2/STAB3 stabilization is not supported on the GPU path (default and LOG only, ticket 206)'; return
 #endif
+#if defined(ALF_LA_HIP) || defined(ALF_LA_ONEMKL)
+    ! projector: GPU=amd refuses (KNOWN_ISSUES R2), GPU=intel until its check on the Max 1550
     if (Projector) then
-       reason = 'projector code is not supported on the GPU path'; return
+       reason = 'projector code is not supported on the GPU path of this backend (GPU=host and GPU=nvidia only)'; return
     endif
+#endif
     if (get_Langevin() .or. get_HMC()) then
        reason = 'Langevin/HMC is not supported on the GPU path'; return
     endif
