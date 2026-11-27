@@ -245,7 +245,7 @@ Contains
 #if defined(STABLOG)
     line = trim(line)//', STABLOG: log-norm pivoting in decompose, host ZGEQP3 in CGR'
 #elif defined(STAB3)
-    line = trim(line)//', STAB3: column-norm pre-pivoted QR in decompose, D+/D- split and host ZGEQP3 in CGR'
+    line = trim(line)//', STAB3: D+/D- split and host ZGEQP3 in CGR'
 #else
     line = trim(line)//', default: column-norm pre-pivoted QR in decompose and CGR'
 #endif
