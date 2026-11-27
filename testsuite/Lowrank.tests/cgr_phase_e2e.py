@@ -21,6 +21,7 @@ sys.path.insert(0, HERE)
 from compare_schemes import make_text, prepare, with_scheme, numbers, h5_text  # noqa: E402
 
 TOL = 1.0e-10
+TOL_DEV = 1.0e-13   # mode 2 against mode 0 on a device backend: two runs of the same binary differ at rounding level
 CHECK = re.compile(r"CGR phase check \(ALF_CGR_LU=2\): CGR calls compared (\d+), max \|phase\(tracked\) - phase\(LU\)\| +(\S+)")
 SKIP = {"info", "info_git", "parameters", "seeds", "stdout"}
 BASE = {"L1": 4, "L2": 4, "Beta": 2.0, "Nsweep": 4, "NBin": 1, "Ltau": 1,
@@ -93,6 +94,9 @@ def main():
             if not ok:
                 bad.append("%s: check line compared %s, max %s" % (name, n, x))
         print("%-16s mode 2: %s" % (name, ", ".join("%s CGRs max %s" % f for f in found)))
+        info0 = os.path.join(dirs["0"], "info")                 # missing in tempering builds (Temp_<n>/info): no GPU path there
+        m_dev = re.search(r"GPU build: backend (\w+)", open(info0, errors="replace").read()) if os.path.exists(info0) else None
+        dev = bool(m_dev) and m_dev.group(1) != "HOST"
         f0 = outputs(dirs["0"])
         if f0 != outputs(dirs["1"]) or f0 != outputs(dirs["2"]):
             bad.append("%s: output file lists differ" % name)
@@ -104,7 +108,13 @@ def main():
             same = (lambda x, y: h5_text(x) == h5_text(y)) if f.endswith(".h5") else \
                    (lambda x, y: filecmp.cmp(x, y, shallow=False))
             if not same(p0, p2):
-                bad.append("%s: %s mode 2 differs from mode 0" % (name, f))
+                # byte for byte on the CPU and GPU=host; on a device backend (CUDA, ONEMKL, HIP) re-runs are not bitwise
+                # (device reductions), so there confout byte-identical and the other numbers to TOL_DEV
+                n0, n2 = numbers(p0), numbers(p2)
+                dev_ok = dev and not os.path.basename(f).startswith("confout") and not f.endswith(".h5") and len(n0) == len(n2) \
+                    and max([abs(x - y)/max(1.0, abs(y)) for x, y in zip(n2, n0)] + [0.0]) <= TOL_DEV
+                if not dev_ok:
+                    bad.append("%s: %s mode 2 differs from mode 0" % (name, f))
             if same(p0, p1):
                 continue
             if os.path.basename(f).startswith("confout"):

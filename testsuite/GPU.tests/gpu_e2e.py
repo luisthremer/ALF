@@ -141,6 +141,12 @@ def green_precision(d):
     return (float(m.group(1).replace("D", "E")), float(m.group(2).replace("D", "E"))) if m else None
 
 
+def device_backend(d):
+    """True if the info file of run directory d names a device backend (CUDA, ONEMKL, HIP), False for HOST or a CPU run"""
+    m = re.search(r"GPU build: backend (\w+)", open(os.path.join(d, "info"), errors="replace").read())
+    return bool(m) and m.group(1) != "HOST"
+
+
 def compare(a, b, strict, tol=TOL):
     """(files that are not within the rules, {file: (max abs diff, max scaled diff)} of the numeric files).  strict: every file
     byte-identical; else confout_* byte-identical and every other file equal to tol (scaled)."""
@@ -282,7 +288,10 @@ def main():
                     bad_p.append("info of %s has no '%s'" % (lab, text))
             bt, dt = compare(pdirs["cgr0"], pdirs["cgr1"], strict=False, tol=TOL_PH)           # tracked vs LU
             bad_p += ["tracked vs LU: " + b for b in bt]
-            bc, _ = compare(pdirs["cgr2"], pdirs["cgr0"], strict=True)                          # check mode == tracked
+            # check mode == tracked: byte for byte on the host backend; on a device backend two runs of the same binary differ at
+            # rounding level (device reductions, KNOWN_ISSUES G5 section), so there confout byte-identical and the rest to TOL_OBS
+            dev = device_backend(pdirs["cgr0"])
+            bc, _ = compare(pdirs["cgr2"], pdirs["cgr0"], strict=not dev, tol=TOL_OBS)
             bad_p += ["check vs tracked: " + b for b in bc]
             bd, _ = compare(pdirs["cgr0"], dirs["disabled"], strict=False, tol=tol)             # tracked vs CPU path
             bad_p += ["tracked vs disabled: " + b for b in bd]
@@ -294,8 +303,9 @@ def main():
             obs = max([v[1] for f, v in dt.items() if v is not None and not f.startswith("confout")] + [0.0])
             conf = "confout byte-identical" if dt.get("confout_0", (1, 1))[0] == 0.0 else "confout differs"
             print("%-16s CGR phase tracked vs LU: %s, max scaled diff of the other files %.3g (tol %.0e); check mode: %d CGR calls, "
-                  "max phase diff %.3g (limit %.0e); check run == tracked run byte for byte: %s; %s" %
-                  (label, conf, obs, TOL_PH, ncmp, pdiff, PH_ABORT, "yes" if not bc else "NO", "OK" if not bad_p else "FAILED"))
+                  "max phase diff %.3g (limit %.0e); check run == tracked run %s: %s; %s" %
+                  (label, conf, obs, TOL_PH, ncmp, pdiff, PH_ABORT, "to 1e-13 (device)" if dev else "byte for byte",
+                   "yes" if not bc else "NO", "OK" if not bad_p else "FAILED"))
             for b in bad_p:
                 print("    " + b)
             fail += bool(bad_p)
