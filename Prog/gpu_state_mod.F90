@@ -561,8 +561,13 @@ Contains
 #if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
     reason = 'tempering is not supported on the GPU path'; return
 #endif
-#if defined(STAB1) || defined(STAB2) || defined(STAB3)
-    reason = 'STAB1/STAB2/STAB3 stabilization is not supported on the GPU path (default and LOG only, ticket 206)'; return
+! STAB1/STAB2: a port would be a second device stabilisation (own wrap, decompositions, CGR with the LU), see GPU_FEATURES.md
+#if defined(STAB1) || defined(STAB2)
+    reason = 'STAB1/STAB2 (legacy stabilization, reference only) are not supported on the GPU path: use the default, STAB3 or LOG'
+    return
+#endif
+#if defined(STAB3) && defined(ALF_LA_HIP)
+    reason = 'STAB3 is not supported on GPU=amd (KNOWN_ISSUES R2)'; return
 #endif
     if (Projector) then
        reason = 'projector code is not supported on the GPU path'; return

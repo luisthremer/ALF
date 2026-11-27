@@ -81,7 +81,8 @@ Backends of gpu-port: NVIDIA = nvfortran OpenMP offload + cuBLAS/cuSOLVER; Intel
 | **Stabilisation** | | | | | |
 | Default (pre-pivoted QR) | works | works | works | **works**: info `GPU stabilization (step 1d): ACTIVE`, CGR phase from the tracked reflector determinants (1f) | all `serial` Hubbard runs; ctest `gpu-stab-selftest`, `gpu-stab-selftest-nwrap7` |
 | `LOG` | host-assisted | same | same | **works** (host `ZGEQP3` in CGR, `STABLOG`): the whole case table (41 cases: 20 works, 19 refused, 2 stops) gives the same verdicts as the serial build | `[LOG/*]`; info `GPU tau pass ... CGR2_2 QR: host ZGEQP3 (STABLOG)` |
-| STAB1, STAB2, STAB3 | refused | refused | refused | **refused** (compile-time, whole build): `STAB1/STAB2/STAB3 stabilization is not supported on the GPU path (default and LOG only, ticket 206)` | `[stab1/stab-mz-4x4]`, `stab2`, `stab3` |
+| STAB3 | refused | refused | refused | **works** (P2.6 `p26-stab`): info `... STAB3: column-norm pre-pivoted QR in decompose, D+/D- split and host ZGEQP3 in CGR`; CGR and CGR2_2 split the scales as `cgr1_mod` / `cgr2_2_mod`, QR by host ZGEQP3 as STABLOG; tracked det(U) phase (S1) applies. GPU=amd: **refused** (`STAB3 is not supported on GPU=amd (KNOWN_ISSUES R2)`) | [§ P2.6 stab](#p26-stab-stab1-stab2-stab3-2026-11-27); ctest 144/144 in a STAB3 GPU=host build (gpu-stab-selftest: device vs host STAB3 CGR 3.1e-15, gpu-state-e2e); CI job GPU=host STAB3 |
+| STAB1, STAB2 | refused | refused | refused | **refused** (compile-time, whole build): `STAB1/STAB2 (legacy stabilization, reference only) are not supported on the GPU path: use the default, STAB3 or LOG`; output byte-identical to `ALF_GPU_DISABLE=1` | [§ P2.6 stab](#p26-stab-stab1-stab2-stab3-2026-11-27) |
 | `QRREF` | untested | untested | untested | **works** (3 cases, `QRREF is defined` in info, GPU path ACTIVE) | `[QRREF/hub-mz-4x4]`, `hub-su2-4x4`, `sch-delayed-N4` |
 | Determinant-phase underflow, N >~ 2950 | fixed only on `fix/det-phase-underflow` | same | AMD own branch | **works as a unit test** (tracked det(U) formula at n = 3200 gives modulus 1 and the analytic phase; LU phase rule bitwise); no full-model run at that N here (needs a lattice of ~3000 sites) | ctest `gpu-stab-phase`, `gpu-stab-refdet`, `gpu-stab-refdet-3200`; KNOWN_ISSUES DP-GPU |
 | **Observables** | | | | | |
@@ -108,11 +109,41 @@ Backends of gpu-port: NVIDIA = nvfortran OpenMP offload + cuBLAS/cuSOLVER; Intel
    **LRC** at field type 3, **Plain_Vanilla** at the weight reconstruction. First: delayed/submatrix with rank > 1 and non-diagonal vertices
    (ROADMAP P2.6, ticket 407); LRC needs field type 3 (continuous), Plain_Vanilla the `Calc_Fl` weight reconstruction.
 2. Features that fall back by design and are covered by a test now: auto/timed N_delay, global moves, Langevin/HMC, MALA, `Propose_S0`, projector, tempering,
-   STAB1-3 (all refused and identical to the CPU path).
+   STAB1/2 (refused and identical to the CPU path; STAB3 works since P2.6 `p26-stab`).
 3. Still untested after this round: HS field type 4, vertices of rank > 1 / differing field types / `g_t` (no stock model reaches those checks),
    time-dependent hopping and the defect model (not on this line), entanglement, a full-model run at N ~ 3000.
 4. Vendor columns cannot be filled for the new line until P2.4 step 2 (they re-run `p25_runs/run_all.sh` with the vendor binary: the script takes the binary
    and variants as arguments).
+
+## P2.6 stab: STAB1, STAB2, STAB3 (2026-11-27)
+
+Feature `p26-stab` (design `.handoff/P2_6_stab_design.md`). **STAB3 ported, STAB1/STAB2 kept refused.**
+
+Why STAB1/STAB2 stay refused: (1) nobody runs them: no production run (none of 9185 `info` files on the owner's Mac is from a STAB1/2
+build), no CI job, and the upstream manual (`Documentation/running.tex`) calls STAB1 "for reference only"; (2) a port is a second device
+stabilisation, not a variant: their own wrap order (`wrapur/wrapul`: B-product from the identity, then x U x D), two decompositions
+(`UDV_WRAP_Pivot`), their own CGR (UDV of TPUP, `INV`, `ZGETRF`, `ZGETRS`) and CGR2_2, about the size of P2.4 steps 1b-1d; (3) the tracked
+phase (S1) does not apply (their CGR needs the LU for G itself; `Det_C` in STAB1's pivot is the raw product of the underflow class), so the
+device would need the LU at every CGR; (4) the refusal already gives output byte-identical to `ALF_GPU_DISABLE=1`: slower, never wrong.
+
+STAB3 on the device: decompose, wraps, scale test and det tracking are the default ones (STAB3 changes only CGR and CGR2_2 on the CPU).
+CGR: `k_tpup_stab3` (the four cases of `cgr1_mod`), RHS rows / columns scaled by 1/D where D > 1 (`k_rowscale_d`, `k_colscale_d`); CGR2_2:
+D1m/D2m split and rows of V1^-1 / U2^dagger scaled (`k_dm_d`, `k_rowscale_d`). The QR of CGR and CGR2_2 is host ZGEQP3, as for STABLOG
+(16 N^2 B each way per CGR): with the device pre-pivoted QR (`la_zqrpp`) the split matrix, whose columns are not graded, gave a Precision Green
+twice as noisy as the default path (table).
+
+Evidence (melmac, gfortran, GPU=host, `OMP_NUM_THREADS=1`, Hubbard from `Scripts_and_Parameters_files/Start`, 6 sweeps x 2 bins, GPU path vs
+`ALF_GPU_DISABLE=1` of the same binary, same seeds; scripts `~/work/ALF_P2/p26stab/` on melmac):
+
+| Check | Result |
+|---|---|
+| GPU=none default and STAB3, GPU=host default and LOG: branch vs base ad11a3b4, 16 serial scenarios of `test_branch_parameters.json` | all byte-identical (4 x 16) |
+| ctest, STAB3 GPU=host build | 144/144 (gpu-stab-selftest: device vs host CGR max rel diff G 3.1e-15, phase 0; tracked vs LU phase 0; gpu-state-e2e incl. tau pass, faults, phase modes) |
+| ctest, STAB1 / STAB2 GPU=host builds | 105/144: the 39 GPU self-tests need an active GPU path; same failing list on the base build (pre-existing, no CI job builds these) |
+| STAB1, STAB2: Start run, GPU path vs `ALF_GPU_DISABLE=1` | refusal in `info`; all 33 output files byte-identical |
+| Precision Green mean GPU/CPU, Mz Hubbard L = 8, 8 seeds, geometric mean of the ratio | default 1.76; STAB3 with host ZGEQP3 **1.80**; STAB3 with the device pre-pivoted QR 3.74 (not used) |
+| Precision Green mean, Mz L = 16, one seed (GPU / CPU) | default 8.4e-11 / 6.2e-11; STAB3 host ZGEQP3 1.7e-10 / 6.5e-11; STAB3 pre-pivoted 8.7e-10 / 6.5e-11 |
+| STAB3 GPU vs CPU, `confout` | byte-identical in every case (4x4 e2e set, L = 8 Mz / SU(2) / submatrix, L = 16, L = 8 Beta = 20 U = 8) |
 
 ## 3. Run evidence in the gpu-port docs (not repeated on the new line)
 
