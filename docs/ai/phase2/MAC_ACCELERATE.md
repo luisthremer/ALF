@@ -14,7 +14,7 @@ not to Homebrew. So Mac results were already Accelerate results (cf. the ZGEMM r
 
 | `ALF_MAC_BLAS` | link line |
 |---|---|
-| `accelerate` (default) | `-framework Accelerate -fopenmp` |
+| `accelerate` (default) | `-Wl,-framework,Accelerate -fopenmp` (one token: the CMake test suite splits `ALF_LIB` at blanks) |
 | `openblas` | Homebrew OpenBLAS (`brew --prefix openblas`) |
 | `reference` | Homebrew reference LAPACK/BLAS 3.12 |
 
