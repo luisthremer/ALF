@@ -64,7 +64,7 @@
        Use hdf5
        use h5lt
 #endif
-       Use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC, ERROR_FIELDS, ERROR_FILE_NOT_FOUND
+       Use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC, ERROR_FIELDS, ERROR_FILE_NOT_FOUND, Is_finite
        Use Random_Wrap, only: RANSET, RANGET, NRANF, GET_SEED_LEN, RANF_WRAP
        use iso_fortran_env, only: output_unit, error_unit
 
@@ -579,6 +579,11 @@
          !Write(6,*) "Fields_set", size(this%f,1), size(this%f,2)
          Do nt = 1,size(this%f,2)
             Do I = 1,size(this%f,1)
+               ! NaN passes the comparisons below (e.g. from confin_0.h5) and crashes the run later
+               if (.not. (Is_finite(real(this%f(I,nt))) .and. Is_finite(aimag(this%f(I,nt))))) then
+                  write(error_unit, '(A,I0,A,I0,A)') "Field I=", I, " nt=", nt, " is NaN or Inf"
+                  CALL Terminate_on_error(ERROR_FIELDS,__FILE__,__LINE__)
+               endif
                Select Case(this%t(i))
                Case(1)
                   ! Field should be 1 or -1

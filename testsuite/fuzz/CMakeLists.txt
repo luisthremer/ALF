@@ -40,4 +40,6 @@ if(Python3_FOUND AND NOT "${FLAG_LIST}" MATCHES "-D(MPI|TEMPERING|PARALLEL_PARAM
   # NaN/Inf in a real parameter of &VAR_QMC
   fuzz_test(56-fuzz-qmc-params FALSE par_CPU_MAX_nan par_Amplitude_inf_cont par_dtLangevin_nan par_MaxForce_inf
             ok_base)
+  # no bins or no measured time slice
+  fuzz_test(57-fuzz-no-measurements FALSE par_NBin_0 par_NBin_neg par_LOBS_neg par_LOBS_beyond ok_base)
 endif()

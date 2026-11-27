@@ -1,12 +1,13 @@
 ! Unit test for start-up checks outside QMC_runtime_var. Usage: 43-prog-checks-fail <case>
 ! Each case must terminate with the message that ctest matches (PASS_REGULAR_EXPRESSION).
-! KNOWN_ISSUES.md: H4 (confin field 0), M1 (Ltrot from Dtau = 0), M3 (Nwrap < 1).
+! KNOWN_ISSUES.md: H4 (confin field 0), Z4 (NaN field), M1 (Ltrot from Dtau = 0), M3 (Nwrap < 1).
 Program Test_prog_checks_fail
 
   Use Fields_mod, only: Fields
   Use Hamiltonian_main, only: Set_model_for_testing, Validate_Ham_Variables
   Use Operator_mod, only: Operator
   Use qmc_walker_mod, only: qmc_walker_t, Walker_layout
+  Use, intrinsic :: ieee_arithmetic, only: ieee_value, ieee_quiet_nan
 #ifdef MPI
   Use mpi
 #endif
@@ -35,6 +36,15 @@ Program Test_prog_checks_fail
      Call nsigma%make(2, 3)
      nsigma%t = 1
      allocate(f0(2,3));  f0 = (0.d0, 0.d0)
+     Call nsigma%in(group_comm, Initial_field=f0)
+  Case ("fieldnan") ! a NaN start field must be rejected (passes the type tests, e.g. from confin_0.h5)
+     Open(newunit=unit_seeds, file='seeds', status='replace', action='write')
+     write(unit_seeds,*) 1234
+     Close(unit_seeds)
+     Call nsigma%make(2, 3)
+     nsigma%t = 2
+     allocate(f0(2,3));  f0 = (1.d0, 0.d0)
+     f0(2,2) = cmplx(ieee_value(1.d0, ieee_quiet_nan), 0.d0, kind(0.d0))  ! NaN without an FP exception
      Call nsigma%in(group_comm, Initial_field=f0)
   Case ("ltrot")    ! Dtau = 0 gives Ltrot = nint(Inf) = huge
      allocate(Op_T(0,1), Op_V(0,1))
