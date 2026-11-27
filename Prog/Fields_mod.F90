@@ -64,7 +64,7 @@
        Use hdf5
        use h5lt
 #endif
-       Use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC, ERROR_FIELDS, ERROR_FILE_NOT_FOUND
+       Use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC, ERROR_FIELDS, ERROR_FILE_NOT_FOUND, Is_finite
        Use Random_Wrap, only: RANSET, RANGET, NRANF, GET_SEED_LEN, RANF_WRAP
        use iso_fortran_env, only: output_unit, error_unit
 
@@ -579,6 +579,11 @@
          !Write(6,*) "Fields_set", size(this%f,1), size(this%f,2)
          Do nt = 1,size(this%f,2)
             Do I = 1,size(this%f,1)
+               ! NaN passes the comparisons below (e.g. from confin_0.h5) and crashes the run later
+               if (.not. (Is_finite(real(this%f(I,nt))) .and. Is_finite(aimag(this%f(I,nt))))) then
+                  write(error_unit, '(A,I0,A,I0,A)') "Field I=", I, " nt=", nt, " is NaN or Inf"
+                  CALL Terminate_on_error(ERROR_FIELDS,__FILE__,__LINE__)
+               endif
                Select Case(this%t(i))
                Case(1)
                   ! Field should be 1 or -1
@@ -682,9 +687,10 @@
             Class (Fields)    , INTENT(INOUT) :: this
             CHARACTER (LEN=64), intent(in)    :: filename
 
-            INTEGER                :: K, I, NT, I1
+            INTEGER                :: K, I, NT, I1, ios
             INTEGER,ALLOCATABLE    :: SEED_VEC(:)
             Real (Kind=Kind(0.d0)) :: X
+            Character (len=256)    :: line
 
             CALL GET_SEED_LEN(K)
             ALLOCATE(SEED_VEC(K))
@@ -705,6 +711,17 @@
                   Endif
                ENDDO
             ENDDO
+            ! More values than fields: a confin of a larger lattice or of more time slices would be used in part
+            DO
+               READ(10,'(A)',IOSTAT=ios) line
+               IF (ios /= 0) EXIT
+               IF (len_trim(line) > 0) THEN
+                  write(error_unit,'(A,A,A,I0,A,I0,A)') "Fields_read_conf: ", trim(filename), &
+                       & " has more values than the ", SIZE(this%f,1), " x ", SIZE(this%f,2), &
+                       & " fields of this run (another lattice size or Beta?)"
+                  CALL Terminate_on_error(ERROR_FIELDS,__FILE__,__LINE__)
+               ENDIF
+            ENDDO
             CLOSE(10)
             DEALLOCATE(SEED_VEC)
         END SUBROUTINE Fields_read_conf
@@ -718,9 +735,13 @@
 
             INTEGER             :: K, hdferr
             INTEGER,ALLOCATABLE :: SEED_VEC(:)
-            INTEGER(HID_T)      :: file_id, dset_id, dataspace
+            INTEGER(HID_T)      :: file_id, dset_id
             Character (len=64)  :: dset_name
             INTEGER(HSIZE_T), allocatable :: dims(:)
+            INTEGER(HSIZE_T)    :: dims_file(3)
+            INTEGER(SIZE_T)     :: type_size
+            INTEGER             :: type_class
+            LOGICAL             :: exists
 
             INTEGER :: rank
             real    (Kind=Kind(0.d0)), allocatable :: f_tmp_real(:,:)
@@ -730,50 +751,79 @@
             CALL GET_SEED_LEN(K)
             ALLOCATE(SEED_VEC(K))
 
+            ! Every HDF5 call is checked: an unreadable file, a missing dataset or a dataset of another shape
+            ! (e.g. a confin of another lattice size) would otherwise leave the seed or the fields undefined or
+            ! overrun the buffers (KNOWN_ISSUES.md, P2.8 input fuzzing).
             CALL h5fopen_f(filename, H5F_ACC_RDONLY_F, file_id, hdferr)
+            if (hdferr /= 0) call conf_h5_error("cannot be opened as an HDF5 file")
 
             !Open and read random seed dataset
             dset_name = "seed"
+            call dataset_shape(dset_name)
+            if (rank /= 1 .or. dims_file(1) /= int(K, HSIZE_T)) call conf_h5_error("dataset 'seed' does not hold the seed")
             allocate( dims(1) )
             dims(1) = K
             CALL h5ltread_dataset_int_f(file_id, dset_name, SEED_VEC, dims, hdferr)
+            if (hdferr /= 0) call conf_h5_error("dataset 'seed' cannot be read")
             CALL RANSET(SEED_VEC)
             deallocate( dims, SEED_VEC )
 
             if (SIZE(this%f) > 0) then
                !Open and read configuration dataset
                dset_name = "configuration"
-               !Open the  dataset.
-               CALL h5dopen_f(file_id, dset_name, dset_id, hdferr)
-         
-               !Get dataset's dataspace handle.
-               CALL h5dget_space_f(dset_id, dataspace, hdferr)
-         
-               !Get dataspace's rank.
-               CALL h5sget_simple_extent_ndims_f(dataspace, rank, hdferr)
+               call dataset_shape(dset_name)
                if (rank == 2) then
                   ! rank=2 -> Read real config values
                   allocate( dims(2) )
                   dims = [SIZE(this%f,1), SIZE(this%f,2)]
+                  if (any(dims_file(1:2) /= dims)) call conf_h5_error("dataset 'configuration' does not fit the fields")
                   allocate(f_tmp_real(dims(1), dims(2)))
                   CALL h5ltread_dataset_double_f(file_id, dset_name, f_tmp_real, dims, hdferr)
+                  if (hdferr /= 0) call conf_h5_error("dataset 'configuration' cannot be read")
                   this%f(:,:) = f_tmp_real(:,:)
                   deallocate(dims, f_tmp_real)
-               else
+               elseif (rank == 3) then
                   ! Read complex config values
                   allocate( dims(3) )
                   dims = [2, SIZE(this%f,1), SIZE(this%f,2)]
+                  if (any(dims_file(1:3) /= dims)) call conf_h5_error("dataset 'configuration' does not fit the fields")
+                  !Open the  dataset.
+                  CALL h5dopen_f(file_id, dset_name, dset_id, hdferr)
+                  if (hdferr /= 0) call conf_h5_error("dataset 'configuration' cannot be opened")
                   allocate(f_tmp_cplx(SIZE(this%f,1), SIZE(this%f,2)))
                   dat_ptr = C_LOC(f_tmp_cplx(1,1))
                   CALL H5dread_f(dset_id, H5T_NATIVE_DOUBLE, dat_ptr, hdferr)
+                  if (hdferr /= 0) call conf_h5_error("dataset 'configuration' cannot be read")
                   this%f(:,:) = f_tmp_cplx(:,:)
                   deallocate(dims, f_tmp_cplx)
+                  CALL h5dclose_f(dset_id, hdferr)
+               else
+                  call conf_h5_error("dataset 'configuration' does not fit the fields")
                endif
-
-               CALL h5sclose_f(dataspace, hdferr)
-               CALL h5dclose_f(dset_id, hdferr)
             endif
             CALL h5fclose_f(file_id, hdferr)
+
+        contains
+
+            ! rank and dims_file of dataset name; stops if it does not exist
+            subroutine dataset_shape(name)
+              Character (len=*), intent(in) :: name
+              CALL h5lexists_f(file_id, trim(name), exists, hdferr)
+              if (hdferr /= 0 .or. .not. exists) call conf_h5_error("has no dataset '" // trim(name) // "'")
+              CALL h5ltget_dataset_ndims_f(file_id, trim(name), rank, hdferr)
+              if (hdferr /= 0 .or. rank < 1 .or. rank > 3) &
+                   & call conf_h5_error("dataset '" // trim(name) // "' has an unexpected shape")
+              dims_file = 0
+              CALL h5ltget_dataset_info_f(file_id, trim(name), dims_file, type_class, type_size, hdferr)
+              if (hdferr /= 0) call conf_h5_error("dataset '" // trim(name) // "' cannot be inspected")
+            end subroutine dataset_shape
+
+            subroutine conf_h5_error(what)
+              Character (len=*), intent(in) :: what
+              write(error_unit,'(A,A,A,A)') "Fields_read_conf_h5: ", trim(filename), " ", what
+              CALL Terminate_on_error(ERROR_FIELDS,__FILE__,__LINE__)
+            end subroutine conf_h5_error
+
         END SUBROUTINE Fields_read_conf_h5
 #endif
 

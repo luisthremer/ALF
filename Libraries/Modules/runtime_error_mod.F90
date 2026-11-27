@@ -43,7 +43,7 @@ Module runtime_error_mod
 #if defined(MPI)
           Use mpi
 #endif
-          use iso_fortran_env, only: output_unit, error_unit
+          use iso_fortran_env, only: output_unit, error_unit, int64
 
     !========================================================================
 
@@ -148,6 +148,35 @@ Module runtime_error_mod
                 error stop 1
               end select
             end Subroutine alf_exit
+
+            !--------------------------------------------------------------------
+            !> @brief
+            !> True if x is neither NaN nor Inf.
+            !> @details
+            !> Bit-pattern test: under -ffast-math `x /= x` and ieee_is_nan are folded to false.
+            !--------------------------------------------------------------------
+            Elemental Logical Function Is_finite(x)
+              Implicit none
+              Real (Kind=Kind(0.d0)), Intent(IN) :: x
+              Integer (Kind=int64), parameter :: expmask = int(z'7FF0000000000000', int64)
+              Is_finite = iand(transfer(x, 0_int64), expmask) /= expmask
+            end Function Is_finite
+
+            !--------------------------------------------------------------------
+            !> @brief
+            !> Stops the program if an input parameter (all elements of values) is NaN or Inf.
+            !> @param values  the parameter, as an array ([x] for a scalar)
+            !> @param nml_name, par_name  namelist and parameter name for the message
+            !--------------------------------------------------------------------
+            Subroutine Check_finite_parameter(values, nml_name, par_name)
+              Implicit none
+              Real (Kind=Kind(0.d0)), Intent(IN) :: values(:)
+              Character (len=*),      Intent(IN) :: nml_name, par_name
+              if (.not. all(Is_finite(values))) then
+                write(error_unit,*) "Error: parameter ", trim(par_name), " in &", trim(nml_name), " is NaN or Inf."
+                Call Terminate_on_error(ERROR_GENERIC, __FILE__, __LINE__)
+              endif
+            end Subroutine Check_finite_parameter
 
 end Module runtime_error_mod
           

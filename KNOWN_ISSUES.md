@@ -30,14 +30,24 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | M7 | Phase update overflow for extreme R | C | open (from code reading) |
 | M8 | Code-modularity not bitwise identical to master (1e-14); global-tau threshold changed | B | open (to investigate with Fakher's history) |
 | L1 | master-only error-format bug | C | fixed on Code-modularity (Fakher) |
-| L2 | confin from another L accepted silently | C | open |
-| L3 | Default-integer overflow at very large Ndim | C | open |
+| L2 | confin from another L accepted silently | C | fixed in `cm/feat/p28-fuzz` (Z6) |
+| L3 | Default-integer overflow at very large Ndim | C | open; extended by the P2.8.1 scan (Z9) |
 | L4 | Restart not byte-identical for Langevin Ltau = 1 / HMC | C | open |
 | L5 | Tempering messages | C | open |
 | L6 | GPU line: confin 0 gives finite wrong numbers | B | open (GPU line) |
 | MK | Makefile: Prog objects not rebuilt after Libraries/Modules changes | B | fixed in `cm/feat/b-batch-2` (commit "build: …"; test 50) |
 | WF | Trial wave function normalisation, large N_part (suspected) | B | open, not reproduced |
 | P1 | Op_V_is_symmetric slow (start-up, Symm = .T.) | B | fixed in a9fdbd64 (CPU line) |
+| Z1 | NaN/Inf in a real model parameter: NaN results (rc 0) or segfault | B | fixed in `cm/feat/p28-fuzz` |
+| Z2 | NaN/Inf in a real `&VAR_QMC` parameter (Amplitude = Inf freezes the chain) | B | fixed in `cm/feat/p28-fuzz` |
+| Z3 | NBin < 1 or a measuring interval outside 1..Ltrot: nothing written / NaN, rc 0 | B | fixed in `cm/feat/p28-fuzz` |
+| Z4 | NaN field values pass Fields_test, then segfault | B | fixed in `cm/feat/p28-fuzz` |
+| Z5 | confin_0.h5 read without error checks: heap overflow, undefined seed | B | fixed in `cm/feat/p28-fuzz` |
+| Z6 | Text confin with more values than fields accepted (= L2) | C | fixed in `cm/feat/p28-fuzz` |
+| Z7 | data.h5 that HDF5 cannot open: every bin lost with rc 0, or abort at the end | B | fixed in `cm/feat/p28-fuzz` |
+| Z8 | "Switch to LOG" message for absurd but finite inputs (U = 1e5, field 1e3) | C | open |
+| Z9 | Size limits: Ndim^2 in default integers, O(N^2) lattice tables | C | open (part of L3) |
+| Z10 | Namelist errors stop with the bare gfortran message ("End of file") | C | open |
 
 ## Determinant phase underflow for N >~ 3000 (L >~ 54) in CGR / DET_C
 
@@ -97,6 +107,71 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
   raw LU product can under- or overflow for large `N_part` as above. Here the magnitude matters, so
   `DET_C_PHASE` is not a fix; a log-determinant would be. Projector runs with large N_part only.
   Status: suspected from the code, not reproduced (P2.8).
+
+## Input fuzzing and size probes 2026-11-27 (P2.8.3, P2.8.1)
+
+Harness `testsuite/fuzz/fuzz_inputs.py` (helper `h5mut.f90` for HDF5 files): each case starts from
+`Scripts_and_Parameters_files/Start` (4x4 Hubbard, Beta = 1, 3 sweeps, 2 bins, Ltau = 0), changes one input
+(`parameters`, `seeds`, `confin_0`, `confin_0.h5`, `data.h5`) and runs `ALF.out` with 60 s and 2 GB limits. Outcome
+classes: clean stop (ALF message), runtime stop (gfortran message with file and line), memory stop (gfortran
+"Error allocating N bytes"), crash, hang, NaN (rc 0 with NaN in an observable or the precision lines), frozen
+(acceptance 0), runs. 102 text cases and 14 HDF5 cases (GNU, noMPI, melmac): on `Code-modularity-CPU` 9dc3037a
+13 text and 6 HDF5 cases fail, with the fixes none. CTest: `54-fuzz-*` to
+`61-fuzz-*` (serial builds), unit cases `42-...-lobs_window`, `42-...-nbin`, `43-...-fieldnan`. The
+claude-bughunter plugin was not available in the session that ran this (triage by hand, same classes).
+
+- **Z1. NaN/Inf in a real model parameter** (B). `ham_U = NaN`: no interaction operator is built (`abs(U) > eps` is
+  false), return code 0, `Pot_scal`/`Ener_scal` NaN, every other observable that of the free system. `Phi_X = NaN`:
+  rc 0, `Kin_scal`/`Ener_scal` NaN, Green and spin correlations finite. `ham_T = NaN`: segfault in
+  `test_checkerboard_decomposition` (Predefined_Hop_mod). The namelist reader accepts `NaN` and `Inf`. **Fixed:** the
+  generated `read_parameters` (`Prog/parse_ham_mod.py`) calls `Check_finite_parameter` (runtime_error_mod, bit-pattern
+  test) for every real parameter of every model; `Prog/Makefile` regenerates the readers when the generator changes.
+- **Z2. NaN/Inf in a real `&VAR_QMC` parameter** (B). `Amplitude = Inf` (continuous fields): acceptance 0, the chain
+  never moves, finite results, rc 0; `Amplitude = NaN` stopped with the wrong message "Amplitude = 0"; `CPU_MAX = NaN`
+  accepted; Langevin with `Max_Force = Inf` ran without a force cap. **Fixed:** `read_and_broadcast_QMC_var_and_ham_name` checks CPU_MAX, Amplitude and the Langevin/HMC/MALA
+  step sizes and forces.
+- **Z3. No bins or no measured time slice** (B, H3 class). `NBin = 0` or `< 0` (without CPU_MAX): rc 0, no bin, no
+  output file. `LOBS_ST = -5, LOBS_EN = -1` (also `LOBS_ST > Ltrot`): the window is not empty, so the H3 check passes,
+  but no slice is measured: NaN in every equal-time observable, rc 0. **Fixed** in
+  `set_default_values_measuring_interval`: stop if the window has no slice in 1..Ltrot or NBin < 1 without CPU_MAX.
+- **Z4. NaN field values pass Fields_test** (B). All type tests compare with NaN, which is false, so a NaN field
+  (from `confin_0.h5`) passes and the run segfaults in `Op_mmultR` (index from the field value). **Fixed:**
+  Fields_test stops on any NaN or Inf field (bit-pattern test).
+- **Z5. confin_0.h5 is read without any error check** (B). A file of a larger lattice (L = 6 into L = 4): the
+  dataset is read into the smaller buffer, heap corruption, SIGABRT. Missing or short `seed` dataset: HDF5 error
+  messages, then the run goes on with an undefined seed, rc 0. An unreadable file (empty, truncated, garbage) left
+  seed and fields undefined; only the type test of the discrete fields stopped it (continuous fields would have run on
+  garbage). **Fixed:** `Fields_read_conf_h5` checks the open, the existence, rank and shape of both datasets and
+  every read.
+- **Z6. Text confin with more values than fields** (C, = L2). A confin of L = 6 (or of a larger Beta) in an L = 4
+  run: the first values are used, rc 0. **Fixed:** `Fields_read_conf` stops if a non-blank line follows the last
+  field. Fewer values already stopped (gfortran "End of file").
+- **Z7. data.h5 that HDF5 cannot open** (B). A garbage `data.h5`: every bin's `h5fopen` fails unchecked, 600 KB of
+  HDF5 messages, rc 0, no bin saved. A truncated one: the run aborts (SIGABRT) after the last sweep, results lost.
+  **Fixed:** `Init_hdf5_file` stops at start-up if an existing data file cannot be opened (or a new one cannot be
+  created); Print_bin stops if the open fails during the run.
+- **Z8. "Switch to LOG" for absurd but finite inputs** (C, open). `ham_U = 1e5`, `ham_T = 1e200`, `ham_chem = 1e5`,
+  a continuous field of 1e3: the run stops with "At least one scale is NaN or Inf. Switch to LOG is required.", which
+  points at the build instead of the input.
+- **Z9. Size limits** (C, open; P2.8.1, adds to L3). Static scan for default-integer products of sizes:
+  `Control_All_Finite(A, Ndim*Ndim)` (control_mod, the nan-guards check) overflows for Ndim >= 46341, the loop is then
+  skipped and the guard passes silently; `MPI_Sendrecv_UDV_state` (`n = ndim*ndim`, tempering) and the L3 entries
+  likewise. Runs: L = 200 stops in `lattices_v3_mod.F90:350` allocating 6.4 GB for an integer table of Latt%N^2
+  entries, before G (25.6 GB) is allocated: the lattice tables are O(N^2) memory. Ltrot = 1e8 / 2e9 (Beta = 1e7 / 2e8)
+  stop cleanly with gfortran's "Error allocating ... bytes" (25.6 GB / 512 GB for the fields). Dtau = 1e-300 stops with
+  the M1 message, except in builds with `-ffpe-trap=invalid` (CI "MALA ... (debug)"): there `Ltrot = nint(Beta/Dtau)`
+  (in every model) traps with SIGFPE before the check. `N_SUN = 200`, Ltrot = 1,
+  the 1-D chain and L = 1 behave. None of the overflows is reachable at today's sizes (G alone would need >= 32 GB).
+- **Z10. Namelist errors** (C, open). A missing namelist, an unknown key or a wrong type stops with the gfortran
+  runtime error and the file and line of the READ ("End of file", "Cannot match namelist object name l3"), rc 2.
+  Clear enough for a wrong key; "End of file" for a missing `&VAR_lattice` does not name the namelist.
+- **Checked and fine:** missing/empty parameters file, CRLF line ends, tabs, a UTF-8 BOM, duplicate keys (last wins),
+  Beta/Dtau/Theta NaN, Inf, < 0, 1e-300 (Ltrot/Thtrot checks), Ltau, N_SUN, N_FL, L1/L2 out of range, unknown
+  ham_name or lattice, seeds missing/empty/garbage/real/huge/binary (gfortran stops), seeds 0 and negative (run),
+  confin empty/truncated/garbage/binary/too short/field 0, 3, 0.5, NaN as text, both confin_0 and confin_0.h5,
+  continuous fields NaN/Inf (stopped, see Z8 for the message), `CPU_MAX < 0`, huge Nwrap, N_Phi, NSweep (runs).
+- **Not checked:** MPI, tempering and PARALLEL_PARAMS input handling (several ranks reading partly corrupted files),
+  models other than Hubbard, the analysis programs, the Intel compiler.
 
 ## Bug hunt 2026-11-25 (P2.8, run early): summary
 
