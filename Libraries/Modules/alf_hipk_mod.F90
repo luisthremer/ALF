@@ -174,10 +174,10 @@ module alf_hipk_mod
       integer(c_int), value :: nd, ncol, ld, ldw
       type(c_ptr), value :: P, M, W
     end function
-    integer(c_int) function alfhk_vslice_r(nd, ncol, ld, nf, t, cj, desc, ldptr, nop, ldn, vr_ptr, vr_ent, V_meta, V_type, &
+    integer(c_int) function alfhk_vslice_r(nd, ncol, ld, nf, t, cj, desc, ldptr, ldm, nop, ldn, vr_ptr, vr_ent, V_meta, V_type, &
          & nsig, V_exp, M) bind(C, name='alfhk_vslice_r')
       import :: c_ptr, c_int
-      integer(c_int), value :: nd, ncol, ld, nf, t, cj, desc, ldptr, nop, ldn
+      integer(c_int), value :: nd, ncol, ld, nf, t, cj, desc, ldptr, ldm, nop, ldn
       type(c_ptr), value :: vr_ptr, vr_ent, V_meta, V_type, nsig, V_exp, M
     end function
     integer(c_int) function alfhk_blk_gather(nfl, nfa, nfb, ld, b, nd, G, bsk, gbk) bind(C, name='alfhk_blk_gather')
@@ -515,16 +515,16 @@ contains
     call chk(rc, 'scatter_rows')
   end subroutine hk_scatter_rows
 
-  !> the Op_V slice of k_vslice_R (gpu_wrap_mod); ldptr, nop, ldn: leading extents of vr_ptr, V_meta (2nd), nsigma_d
-  subroutine hk_vslice_r(nd, ncol, ld, nf, t, cj, desc, ldptr, nop, ldn, vr_ptr, vr_ent, V_meta, V_type, nsig, V_exp, M)
-    integer, intent(in) :: nd, ncol, ld, nf, t, ldptr, nop, ldn
+  !> the Op_V slice of k_vslice_R (gpu_wrap_mod); ldptr, ldm, nop, ldn: extents of vr_ptr (1st), V_meta (1st, 2nd), nsigma_d (1st)
+  subroutine hk_vslice_r(nd, ncol, ld, nf, t, cj, desc, ldptr, ldm, nop, ldn, vr_ptr, vr_ent, V_meta, V_type, nsig, V_exp, M)
+    integer, intent(in) :: nd, ncol, ld, nf, t, ldptr, ldm, nop, ldn
     logical, intent(in) :: cj, desc
     integer, target :: vr_ptr(*), vr_ent(*), V_meta(*), V_type(*)
     complex(kind=kind(0.d0)), target :: nsig(*), V_exp(*), M(*)
     integer(c_int) :: rc
     !$omp target data use_device_addr(vr_ptr, vr_ent, V_meta, V_type, nsig, V_exp, M)
     rc = alfhk_vslice_r(int(nd,c_int), int(ncol,c_int), int(ld,c_int), int(nf,c_int), int(t,c_int), int(merge(1,0,cj),c_int), &
-         & int(merge(1,0,desc),c_int), int(ldptr,c_int), int(nop,c_int), int(ldn,c_int), c_loc(vr_ptr(1)), c_loc(vr_ent(1)), &
+         & int(merge(1,0,desc),c_int), int(ldptr,c_int), int(ldm,c_int), int(nop,c_int), int(ldn,c_int), c_loc(vr_ptr(1)), c_loc(vr_ent(1)), &
          & c_loc(V_meta(1)), c_loc(V_type(1)), c_loc(nsig(1)), c_loc(V_exp(1)), c_loc(M(1)))
     !$omp end target data
     call chk(rc, 'vslice_r')
