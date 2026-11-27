@@ -687,9 +687,10 @@
             Class (Fields)    , INTENT(INOUT) :: this
             CHARACTER (LEN=64), intent(in)    :: filename
 
-            INTEGER                :: K, I, NT, I1
+            INTEGER                :: K, I, NT, I1, ios
             INTEGER,ALLOCATABLE    :: SEED_VEC(:)
             Real (Kind=Kind(0.d0)) :: X
+            Character (len=256)    :: line
 
             CALL GET_SEED_LEN(K)
             ALLOCATE(SEED_VEC(K))
@@ -709,6 +710,17 @@
                      Read(10,*)  this%f(I,NT)
                   Endif
                ENDDO
+            ENDDO
+            ! More values than fields: a confin of a larger lattice or of more time slices would be used in part
+            DO
+               READ(10,'(A)',IOSTAT=ios) line
+               IF (ios /= 0) EXIT
+               IF (len_trim(line) > 0) THEN
+                  write(error_unit,'(A,A,A,I0,A,I0,A)') "Fields_read_conf: ", trim(filename), &
+                       & " has more values than the ", SIZE(this%f,1), " x ", SIZE(this%f,2), &
+                       & " fields of this run (another lattice size or Beta?)"
+                  CALL Terminate_on_error(ERROR_FIELDS,__FILE__,__LINE__)
+               ENDIF
             ENDDO
             CLOSE(10)
             DEALLOCATE(SEED_VEC)

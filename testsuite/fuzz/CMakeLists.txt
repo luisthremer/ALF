@@ -44,4 +44,7 @@ if(Python3_FOUND AND NOT "${FLAG_LIST}" MATCHES "-D(MPI|TEMPERING|PARALLEL_PARAM
   fuzz_test(57-fuzz-no-measurements FALSE par_NBin_0 par_NBin_neg par_LOBS_neg par_LOBS_beyond ok_base)
   # NaN field values (confin_0.h5)
   fuzz_test(58-fuzz-field-nan TRUE h5_field_nan h5_ok_restart)
+  # confin_0.h5: unreadable file, missing datasets, datasets of another shape
+  fuzz_test(59-fuzz-h5-restart TRUE h5_empty h5_truncated h5_garbage h5_from_L6 h5_from_L2 h5_no_configuration
+            h5_no_seed h5_short_seed h5_config_int h5_ok_restart)
 endif()
