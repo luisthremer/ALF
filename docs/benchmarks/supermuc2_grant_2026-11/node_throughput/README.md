@@ -26,3 +26,11 @@ python plots/plot_all.py results.csv plots/out        # needs matplotlib + scien
 ```
 Smoke job note: at L=16 the production layout (4 walkers/tile, 3 threads) was slower than 4 walkers/tile with 1 thread
 (1.18 vs 0.66 s per sweep) and had unusually long bin writes; the GPU jobs therefore run every layout twice.
+
+## Parallel CPU part and preliminary report (2026-11-27, owner: "run all simulations in parallel")
+The four single-node CPU jobs were cancelled (566801-566804) and replaced by `multi.sh` jobs (`submit_cpu_parallel.sh`,
+566809-566814): one job with 4 nodes runs one layout per node at the same time (`srun` steps; mpiexec with fork bootstrap
+on the local host), because the test partition allows only 5 running jobs per user.
+
+`./prelim.sh` builds `report/report_prelim.pdf` from all runs finished so far (`./prelim.sh fake`: fake data).
+`report/report.tex` explains the layouts (x axes) in Tables 1-2; results tables come from `plots/make_tables.py`.

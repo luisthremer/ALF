@@ -25,9 +25,10 @@ case $SIDE in
         export LD_LIBRARY_PATH=$A/bin_batched_d1060305/pp:$LD_LIBRARY_PATH ;;
   *) echo "unknown side $SIDE"; exit 2 ;;
 esac
+[ -n "$LAYOUTS_OVERRIDE" ] && LAYOUTS=$LAYOUTS_OVERRIDE   # multi.sh: one layout per node
 [ "$SIDE" != cpu ] && export OMP_TARGET_OFFLOAD=MANDATORY ZE_FLAT_DEVICE_HIERARCHY=FLAT ALF_UNSTABLE_THRESHOLD=1e-4
 echo "job $SLURM_JOB_ID host $(hostname) side $SIDE L $L exe $EXE md5 $(md5sum < $EXE | cut -c1-32) start $(date -Is)"
-SHM=/dev/shm/nt_$SLURM_JOB_ID; mkdir -p $SHM $A/runs
+SHM=/dev/shm/nt_${SLURM_JOB_ID}_${SLURM_STEP_ID:-0}; mkdir -p $SHM $A/runs
 for rep in $(seq ${REPEAT:-1}); do for lay in $LAYOUTS; do
   a=${lay%:*}; b=${lay#*:}
   if [ $SIDE = cpu ]; then export MODE=cpu T=$a; NR=$(( (56 / a) * 2 )); TH=$a; TAG=t${a}; unset W
@@ -42,7 +43,7 @@ for rep in $(seq ${REPEAT:-1}); do for lay in $LAYOUTS; do
   XP=""
   if [ $SIDE != cpu ]; then xpu-smi dump -d -1 -m 0,1,8,9,11 -i 1 > xpu.txt 2>&1 & XP=$!; fi
   T0=$(date +%s%N)
-  timeout ${RUN_TIMEOUT:-4500} mpiexec -n $NR -ppn $NR $J/pin.sh $EXE > run.log 2>&1 & P=$!
+  timeout ${RUN_TIMEOUT:-4500} mpiexec ${NT_LOCAL:+-bootstrap fork -hosts $(hostname)} -n $NR -ppn $NR $J/pin.sh $EXE > run.log 2>&1 & P=$!
   python3 $J/watch.py $D/Temp_0/data.h5 $P > watch.txt & WP=$!
   wait $P; RC=$?; T1=$(date +%s%N); wait $WP; [ -n "$XP" ] && kill $XP
   echo "side=$SIDE L=$L tag=$TAG rep=$rep ranks=$NR threads=$TH w=${W:-} rc=$RC t0_ns=$T0 t1_ns=$T1 node=$(hostname) job=$SLURM_JOB_ID exe=$EXE" > meta.txt
