@@ -164,9 +164,12 @@ Module qmc_setup_mod
     !> @brief
     !> Auxiliary fields: types and flip protocols, random number generator
     !> and initial configuration.
+    !> With several walkers per process, chain and n_chains select the seed
+    !> line and the confin_ file of the chain (Chain_seed in Fields_mod).
     !--------------------------------------------------------------------
-    Subroutine Setup_fields(N_op)
+    Subroutine Setup_fields(N_op, chain, n_chains)
       Integer, intent(in) :: N_op
+      Integer, intent(in), optional :: chain, n_chains
       Integer :: n, Seed_in
       Character (len=64) :: file_seeds
       Complex (Kind=Kind(0.d0)), allocatable, dimension(:,:) :: Initial_field
@@ -178,15 +181,15 @@ Module qmc_setup_mod
       Enddo
 
       File_seeds="seeds"
-      Call Set_Random_number_Generator(File_seeds,Seed_in)
+      Call Set_Random_number_Generator(File_seeds,Seed_in,chain,n_chains)
       !Write(6,*) Seed_in
 
       Call ham%Hamiltonian_set_nsigma(Initial_field)
       if (allocated(Initial_field)) then
-         Call nsigma%in(Group_Comm,Initial_field)
+         Call nsigma%in(Group_Comm,Initial_field,chain=chain,n_chains=n_chains)
          deallocate(Initial_field)
       else
-         Call nsigma%in(Group_Comm)
+         Call nsigma%in(Group_Comm,chain=chain,n_chains=n_chains)
       endif
     end Subroutine Setup_fields
 
