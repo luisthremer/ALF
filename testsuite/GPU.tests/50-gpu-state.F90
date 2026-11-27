@@ -307,14 +307,19 @@ contains
     Call refuse('Global_MALA_moves', 'MALA')
     Call refuse('Global_tau_MALA_moves', 'MALA')
     Call refuse('N_Global_tau_MALA', 'MALA')
-    ! projector code: a toy model flagged as projector (the refusal comes before any operator is looked at)
+    ! projector code: a toy model flagged as projector; refused only on GPU=amd (R2) and GPU=intel (not checked yet), before any
+    ! operator is looked at; elsewhere the projector is not a refusal reason
     Call Clear_Ham_state()
     Allocate(Op_T(0,2), Op_V(0,2))
     Call Set_model_for_testing(4, 2, 1, 10, 0, .true., .false., Op_T, Op_V)
     Call Setup_flavor_map()
     ok = gpu_supported(reason)
     If (len_trim(build_reason) == 0) then
-       Call check(.not. ok .and. index(reason, 'projector') > 0, 'projector refused: '//trim(reason))
+#if defined(ALF_LA_HIP) || defined(ALF_LA_ONEMKL)
+       Call check(.not. ok .and. index(reason, 'projector') > 0, 'projector refused (this backend): '//trim(reason))
+#else
+       Call check(index(reason, 'projector') == 0, 'projector not refused: '//trim(reason))
+#endif
     else
        Call check(.not. ok .and. index(reason, trim(build_reason)) > 0, 'projector (build-wide): '//trim(reason))
     endif
