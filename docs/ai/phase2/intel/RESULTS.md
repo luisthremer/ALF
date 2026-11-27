@@ -101,3 +101,8 @@ Layout question (job 566660, L = 24, N_delay 32): one run alone with 1 / 12 pinn
 once, 12 pinned threads each: 29.6-32.6 s. Pinning, thread count and node load change nothing. In the same harness this line and
 intel-batched agree (above), so the factor to intel-batched's documented 3.75 s/sweep (its internal TEAM_TIMERS, mpiexec launch)
 is a difference of measurement, not of code; not pursued further (open for whoever needs absolute Intel throughput).
+
+## P2.6.1 check on the Max 1550 (2026-11-27)
+
+Kondo, tV and Spin_Peierls x standard / delayed / submatrix, small and big (job 566852, `job_p26.sbatch`): results, CPU floor, the
+Kondo bisection (cause: the pre-pivoted QR, KNOWN_ISSUES G9) and the timings per scheme in `../p26_runs/README.md` (section Max 1550).

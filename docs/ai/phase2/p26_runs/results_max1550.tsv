@@ -1,0 +1,28 @@
+max1550	kondo-std	works	works	ACTIVE	OK		max scaled diff 5.04e-12 (tol 1.0e-11), 31 files	22.0s/2.6s	
+max1550	sp-std	works	FAIL	ACTIVE	MISMATCH		max scaled diff 1.38e-10 (tol 9.0e-11), 21 files; BAD: Dimer_eq (max abs diff 8.6e-10, scaled 1.38e-10)	9.0s/3.2s	
+max1550	big-kondo-std	works	FAIL	ACTIVE	MISMATCH		max scaled diff 6.61e-10 (tol 1.0e-11), 31 files; BAD: Den_tau (max abs diff 3.95e-11, scaled 3.95e-11), Dimer_tau (max abs diff 6.61e-10, scaled 6.61e-10), Greenf_tau (max abs diff 3.89e-11, scaled 3.89e-11), SpinZ_tau (max abs diff 3.94e-11, scaled 3.94e-11)	41.0s/15.1s	
+max1550	big-sp-std	works	works	ACTIVE	OK		max scaled diff 2.47e-10 (tol 3.9e-10), 21 files	60.6s/19.2s	
+max1550	kondo-dly4	works	works	ACTIVE	OK		max scaled diff 5.04e-12 (tol 1.0e-11), 31 files	23.6s/2.6s	
+max1550	sp-dly4	works	works	ACTIVE	OK		max scaled diff 6.91e-11 (tol 1.2e-10), 21 files	10.9s/3.1s	
+max1550	big-kondo-dly16	works	FAIL	ACTIVE	MISMATCH		max scaled diff 6.61e-10 (tol 1.0e-11), 31 files; BAD: Den_tau (max abs diff 3.95e-11, scaled 3.95e-11), Dimer_tau (max abs diff 6.61e-10, scaled 6.61e-10), Greenf_tau (max abs diff 3.89e-11, scaled 3.89e-11), SpinZ_tau (max abs diff 3.94e-11, scaled 3.94e-11)	59.5s/15.3s	
+max1550	big-sp-dly16	works	works	ACTIVE	OK		max scaled diff 5.15e-11 (tol 4.8e-10), 21 files	101.6s/19.4s	
+max1550	kondo-dly16	works	works	ACTIVE	OK		max scaled diff 5.04e-12 (tol 1.0e-11), 31 files	24.2s/2.6s	
+max1550	sp-dly16	works	works	ACTIVE	OK		max scaled diff 9.76e-11 (tol 1.3e-10), 21 files	12.6s/3.3s	
+max1550	big-kondo-dly32	works	FAIL	ACTIVE	MISMATCH		max scaled diff 6.61e-10 (tol 1.0e-11), 31 files; BAD: Den_tau (max abs diff 3.95e-11, scaled 3.95e-11), Dimer_tau (max abs diff 6.61e-10, scaled 6.61e-10), Greenf_tau (max abs diff 3.89e-11, scaled 3.89e-11), SpinZ_tau (max abs diff 3.94e-11, scaled 3.94e-11)	63.0s/15.8s	
+max1550	big-sp-dly32	works	works	ACTIVE	OK		max scaled diff 4.19e-10 (tol 5.5e-10), 21 files	106.2s/20.2s	
+max1550	kondo-sub4	works	works	ACTIVE	OK		max scaled diff 5.04e-12 (tol 1.0e-11), 31 files	22.5s/2.9s	
+max1550	sp-sub4	works	works	ACTIVE	OK		max scaled diff 4.80e-11 (tol 1.2e-10), 21 files	8.4s/3.1s	
+max1550	big-kondo-sub16	works	FAIL	ACTIVE	MISMATCH		max scaled diff 6.61e-10 (tol 1.0e-11), 31 files; BAD: Den_tau (max abs diff 3.95e-11, scaled 3.95e-11), Dimer_tau (max abs diff 6.61e-10, scaled 6.61e-10), Greenf_tau (max abs diff 3.89e-11, scaled 3.89e-11), SpinZ_tau (max abs diff 3.94e-11, scaled 3.94e-11)	41.2s/15.3s	
+max1550	big-sp-sub16	works	FAIL	ACTIVE	MISMATCH		max scaled diff 5.64e-10 (tol 4.6e-10), 21 files; BAD: Part_scal (max abs diff 5.64e-10, scaled 5.64e-10)	63.5s/19.4s	
+max1550	tV-std	works	works	ACTIVE	OK		max scaled diff 7.56e-14 (tol 1.0e-11), 17 files	21.6s/2.1s	
+max1550	tV-std-tau	works	works	ACTIVE	OK		max scaled diff 7.56e-14 (tol 1.0e-11), 23 files	6.3s/1.9s	
+max1550	big-tV-std	works	works	ACTIVE	OK		max scaled diff 1.19e-11 (tol 1.6e-11), 17 files	77.6s/15.4s	
+max1550	tV-dly4	works	works	ACTIVE	OK		max scaled diff 2.23e-13 (tol 1.0e-11), 17 files	23.3s/1.8s	
+max1550	hub-mz-4x4	works	works	ACTIVE	OK		max scaled diff 1.59e-10 (tol 2.1e-09), 31 files	5.5s/1.6s	
+max1550	big-tV-dly16	works	FAIL	ACTIVE	MISMATCH		max scaled diff 5.45e-11 (tol 1.8e-11), 17 files; BAD: Den_eq (max abs diff 3.17e-11, scaled 2.63e-11), Ener_scal (max abs diff 7.9e-11, scaled 5.45e-11), Kin_scal (max abs diff 5.42e-11, scaled 2.98e-11), Part_scal (max abs diff 6.32e-11, scaled 2.58e-11), Pot_scal (max abs diff 1.33e-10, scaled 4.07e-11)	138.1s/16.7s	
+max1550	tV-dly16	works	works	ACTIVE	OK		max scaled diff 1.97e-13 (tol 1.0e-11), 17 files	24.0s/2.0s	
+max1550	hub-dly4	works	works	ACTIVE	OK		max scaled diff 1.59e-10 (tol 2.2e-09), 31 files	5.5s/1.6s	
+max1550	big-tV-dly32	works	FAIL	ACTIVE	MISMATCH		max scaled diff 4.93e-11 (tol 2.1e-11), 17 files; BAD: Den_eq (max abs diff 2.86e-11, scaled 2.38e-11), Ener_scal (max abs diff 7.15e-11, scaled 4.93e-11), Kin_scal (max abs diff 4.88e-11, scaled 2.68e-11), Part_scal (max abs diff 5.72e-11, scaled 2.34e-11), Pot_scal (max abs diff 1.2e-10, scaled 3.68e-11)	131.6s/16.9s	
+max1550	tV-sub4	works	works	ACTIVE	OK		max scaled diff 6.21e-14 (tol 1.0e-11), 17 files	21.8s/1.9s	
+max1550	hub-sub4	works	works	ACTIVE	OK		max scaled diff 1.59e-10 (tol 2.2e-09), 31 files	5.4s/1.7s	
+max1550	big-tV-sub16	works	FAIL	ACTIVE	MISMATCH		max scaled diff 2.40e-11 (tol 1.6e-11), 17 files; BAD: Ener_scal (max abs diff 3.48e-11, scaled 2.4e-11), Pot_scal (max abs diff 5.9e-11, scaled 1.8e-11)	85.6s/15.4s	
