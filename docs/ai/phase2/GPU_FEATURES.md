@@ -49,7 +49,7 @@ Backends of gpu-port: NVIDIA = nvfortran OpenMP offload + cuBLAS/cuSOLVER; Intel
 | Spin_Peierls | same | same | same | **refused**: `Hamiltonian Spin_Peierls: Op_V(37,1) is not diagonal` | `[serial/mod-spin-peierls]` |
 | Z2_Matter | same | same | same | **refused**: `Hamiltonian Z2_Matter: Op_V(1,1) is not diagonal` | `[serial/mod-Z2-matter]` |
 | LRC | same | same | same | **refused**: `Hamiltonian LRC: Op_V(1,1) has field type 3 (only 1 and 2 supported)` | `[serial/mod-LRC]` |
-| Plain_Vanilla | same | same | same | **refused**: `Calc_Fl with weight reconstruction (ham%weight_reconstruction) is not supported on the GPU path`; with `Projector = T`: `projector code is not supported` | `[serial/mod-plain-vanilla]`, `mod-plain-vanilla-proj` |
+| Plain_Vanilla | same | same | same | **works** (P2.6 `p26-calcfl`): device updates (standard, delayed, submatrix) and stabilisation with `ham%weight_reconstruction` in the ratio and the CGR phase; observables and tau pass on the host (`GR(T)_reconstruction`; info `GPU observables: HOST`, `GPU tau pass: OFF, reason: Projector or reconstruction`). Same seeds vs `ALF_GPU_DISABLE=1`: confout byte-identical, scaled diff <= 1.3e-11 (U > 0 half filling, 4x4 and 6x6) and <= 7e-16 (U < 0 off half filling); CUDA H100 the same (<= 2.5e-12, also 8x8). **GPU=amd: refused** (`not yet verified on GPU=amd`, R2). With `Projector = T`: `projector code is not supported` | ctest `gpu-state-e2e` cases `pv-*` (GPU=host, melmac); Helma job 1468063 (GPU=nvidia); `[serial/mod-plain-vanilla-proj]` |
 | LR_Jz_Test | not run | same | same | n/a (not built on this line) | `Prog/Hamiltonians/` |
 | Non-diagonal `Op_V` | refused | refused | refused | **refused** (quotes above: Kondo, tV, Spin_Peierls, Z2_Matter) | `[serial/mod-kondo]`; ctest `gpu-state-refusals` covers only the option-level refusals |
 | HS field type 3 (continuous) | refused | refused | refused | **refused**: `Hamiltonian Hubbard: Op_V(1,1) has field type 3 (only 1 and 2 supported)` (Hubbard `Continuous = T`, sequential updates) | `[serial/mv-continuous-seq]` |
@@ -57,7 +57,7 @@ Backends of gpu-port: NVIDIA = nvfortran OpenMP offload + cuBLAS/cuSOLVER; Intel
 | Rank > 1 vertices (`N_non_zero` > 1) | refused | refused | refused | untested by a run (every stock model with such vertices is already stopped by the non-diagonal / field-type checks first); refusal is in code | `gpu_supported`; ticket 407 |
 | Field type differs between flavours | refused | refused | refused | untested (no stock model produces it) | code only |
 | Time-dependent coupling of `Op_V` (`g_t`) | refused | refused | refused | untested (no model with `g_t` on this line) | code only |
-| `Calc_Fl` / weight reconstruction | refused | refused | refused | **refused** (Plain_Vanilla, quote above) | `[serial/mod-plain-vanilla]` |
+| `Calc_Fl` / weight reconstruction | refused | refused | refused | **works** (Plain_Vanilla, row above; device observables stay refused with Calc_Fl, the host measures); GPU=amd refused | ctest `gpu-state-e2e` `pv-*` |
 | **Hopping, Trotter** | | | | | |
 | Checkerboard hopping | works | works | works | **works** (default) | all Hubbard runs; ctest `gpu-wrap-selftest` |
 | Dense hopping | works | works | works | **works** (`Checkerboard = F`) | `[serial/hub-checkerboard-F]`; ctest `gpu-state-tables-dense`, `gpu-wrap-selftest-dense` |
@@ -105,7 +105,7 @@ Backends of gpu-port: NVIDIA = nvfortran OpenMP offload + cuBLAS/cuSOLVER; Intel
 ## 2. What decides P2.6 (reading of the table)
 
 1. Everything that is not a Hubbard-like rank-1 diagonal vertex falls back to the CPU. Measured: **Kondo, tV, Spin_Peierls, Z2_Matter** stop at "Op_V not diagonal",
-   **LRC** at field type 3, **Plain_Vanilla** at the weight reconstruction. First: delayed/submatrix with rank > 1 and non-diagonal vertices
+   **LRC** at field type 3; **Plain_Vanilla** (weight reconstruction) runs since P2.6 `p26-calcfl`. First: delayed/submatrix with rank > 1 and non-diagonal vertices
    (ROADMAP P2.6, ticket 407); LRC needs field type 3 (continuous), Plain_Vanilla the `Calc_Fl` weight reconstruction.
 2. Features that fall back by design and are covered by a test now: auto/timed N_delay, global moves, Langevin/HMC, MALA, `Propose_S0`, projector, tempering,
    STAB1-3 (all refused and identical to the CPU path).
