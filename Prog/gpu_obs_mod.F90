@@ -64,7 +64,7 @@ Module gpu_obs_mod
   Use Natural_Constants, only: Eps_small
   Use Lattices_v3, only: Lattice, Unit_cell
   Use Predefined_Hoppings, only: Hopping_Matrix_type, inquire_hop, Generic_hopping
-  Use Hamiltonian_main, only: Obs_scal, Obs_eq, Obs_tau, Obs_local
+  Use Hamiltonian_main, only: Obs_scal, Obs_eq, Obs_tau, Obs_local, reconstruction_needed
   Use linalg_mod, only: la_zgemm
 #if defined(ALF_LA_HIP)
   Use alf_hipk_mod, only: hk_enabled, hk_corr, hk_scalars
@@ -164,6 +164,9 @@ Contains
     o_h0 = (abs(h0) >= Eps_small)
     o_reason = 'N_FL is not 1 or 2'
     if (N_FL /= 1 .and. N_FL /= 2) return
+    ! the device measurement reads G of every flavour; with Calc_Fl the host Obser measures after GR_reconstruction
+    o_reason = 'Calc_Fl (weight reconstruction)'
+    if (reconstruction_needed) return
     o_reason = 'Obs_eq is not allocated'
     if (.not. allocated(Obs_eq)) return
     o_reason = 'Obs_eq layout is not the one of the Hubbard model'
