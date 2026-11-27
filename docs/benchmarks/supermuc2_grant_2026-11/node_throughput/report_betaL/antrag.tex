@@ -39,17 +39,18 @@ Toolchain: Intel oneAPI 2025.3, Intel MPI 2021.15, oneMKL 2025.3.
 
 \subsection*{Benchmark}
 \begin{itemize}
-\item Dense complex matrices of dimension $N=L^2$ (256 to 1296), $10L$ per configuration (160 to 360); cost per sweep $\propto N^3$
+\item Dense complex matrices of dimension $N=L^2$ (256 to 3136), $10L$ per configuration (160 to 560); cost per sweep $\propto N^3$
   (matrix products, QR and LU decompositions).
 \item Work unit: one sweep of one independent simulation (one simulation per MPI process).
 \item One full node per run, best configuration per node type: CPU node = 112 cores (2 $\times$ Xeon 8480L),
   GPU node = 4 $\times$ Intel Max 1550 (8 tiles).
 \item 2 to 5 sweeps timed individually per run; sweep-to-sweep variation $<1\,\%$.
-\item CPU node at $L=36$: 112 MPI processes $\times$ 1 thread exceed the node memory (run killed), so 56 $\times$ 2 is the best possible configuration there.
+\item CPU node at $L=36$: 112 MPI processes $\times$ 1 thread exceed the node memory (run killed), so 56 $\times$ 2 is the best possible configuration there. CPU node measured up to $L=36$ only; $L=44$--56: GPU node only, both GPU codes with the fix for the determinant phase. At $L=56$ the device memory limits the configuration: 2 processes per tile (16 per node) fail for both codes (device out of memory), so 1 process per tile (8 per node) is used there.
+\item \textbf{Not tuned:} the GPU runs use the production settings of $L=36$ and shared core pinning for the processes of a tile; first tests with disjoint cores per process are up to 2$\times$ faster at $L=40$, so the GPU numbers are lower bounds (re-measurement in progress).
 \end{itemize}
 
 \begin{table}[H]
-\caption{Throughput of one SuperMUC-NG Phase 2 node at LRZ in its best configuration; speedup relative to the CPU node.
+\caption{Throughput of one SuperMUC-NG Phase 2 node at LRZ in its best configuration; speedup relative to the CPU node (CPU node measured up to $L=36$).
 Energy per work unit estimated from vendor ratings (CPU node 700\,W, GPU node 3100\,W). \StarNote}
 \label{tab:node}
 \begin{center}\setlength{\tabcolsep}{7pt}\renewcommand{\arraystretch}{1.15}\small

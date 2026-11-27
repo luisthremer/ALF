@@ -2,6 +2,8 @@
 # Per-rank pinning wrapper: mpiexec -n NR ./pin.sh EXE   (Intel MPI pinning is switched off, I_MPI_PIN=0)
 # Node: 2 NUMA domains x 56 cores (0-55 | 56-111), hyperthreads +112. GPUs 0,1 (tiles 0-3) on NUMA 0, GPUs 2,3 (tiles 4-7) on NUMA 1.
 # MODE=cpu: rank r gets T consecutive physical cores inside one NUMA domain (R ranks split evenly over the 2 sockets).
+# PINMODE=excl (MODE=gpu): disjoint core slices per rank instead of all 14 cores shared by the W ranks of a tile (OMP_PLACES=cores then
+#           puts the first threads of all W ranks on the same cores).
 # MODE=gpu: rank r -> tile r / W (ZE_AFFINITY_MASK, flat hierarchy); bound to that tile's 14 nearby cores and their
 #           hyperthreads (the GPU runtime's helper threads need room; pinning a rank to one cpu made it ~6x slower, jobs 560229-34).
 r=${MPI_LOCALRANKID:?MPI_LOCALRANKID not set}
@@ -13,5 +15,8 @@ else
   tile=$(( r / W )); s=$(( tile / 4 ))
   c0=$(( s * 56 + (tile % 4) * 14 )); c1=$(( c0 + 13 ))
   export ZE_AFFINITY_MASK=$tile
+  if [ "$PINMODE" = excl ]; then   # tuning variant: the W ranks of a tile get disjoint core slices (14/W cores each, plus their hyperthreads)
+    sp=$(( 14 / W )); j=$(( r % W )); c0=$(( c0 + j * sp )); c1=$(( c0 + sp - 1 ))
+  fi
   exec numactl --physcpubind=$c0-$c1,$(( c0 + 112 ))-$(( c1 + 112 )) --membind=$s "$@"
 fi

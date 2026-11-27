@@ -4,6 +4,7 @@
 #   SIDE = cpu  (build_cpu-pp, 410c7b04)       layouts: threads 1 2 4 6 8 -> ranks 112 56 28 18 14
 #          gpu  (build_pp, 410c7b04)           layouts: walkers/tile 1 2 4 8 (threads 14 7 3 1) + 4/tile with 1 thread
 #          gpub (intel-batched d1060305, production run-time switches of RUN_L36_batched)   same GPU layouts
+# large-L series with the det-phase fix: EXE_GPU=<ALF.out of antrag/2026-11-27-detfix> BINB=<dir with ALF.out + libs of intel-batched-detfix>
 #SBATCH --output=%x.%j.log
 #SBATCH --error=%x.%j.err
 #SBATCH --no-requeue
@@ -18,11 +19,11 @@ source $A/jobs/env_intel_pvc.sh
 export I_MPI_PIN=0 OMP_PROC_BIND=close OMP_PLACES=cores
 case $SIDE in
   cpu)  EXE=$A/build_cpu-pp/Prog/ALF.out; LAYOUTS="1:1 2:1 4:1 6:1 8:1"; unset OMP_TARGET_OFFLOAD ;;   # T:-
-  gpu)  EXE=$A/build_pp/Prog/ALF.out;     LAYOUTS="1:14 2:7 4:3 8:1 4:1" ;;                          # W:T
-  gpub) EXE=$A/bin_batched_d1060305/pp/ALF.out; LAYOUTS="1:14 2:7 4:3 8:1 4:1"
+  gpu)  EXE=${EXE_GPU:-$A/build_pp/Prog/ALF.out};     LAYOUTS="1:14 2:7 4:3 8:1 4:1" ;;                          # W:T
+  gpub) BINB=${BINB:-$A/bin_batched_d1060305/pp}; EXE=$BINB/ALF.out; LAYOUTS="1:14 2:7 4:3 8:1 4:1"
         export LIBOMPTARGET_LEVEL_ZERO_STAGING_BUFFER_SIZE=1048576 ALFSH_ASYNCBLK=1 ALFSH_DEVQR=2 ALFSH_DEVUNMQR=1 ALFSH_QRNB=16 \
                ALFSH_OBSCORR=1 ALFSH_BLKFUSE=5 ALFSH_BLKPF=1
-        export LD_LIBRARY_PATH=$A/bin_batched_d1060305/pp:$LD_LIBRARY_PATH ;;
+        export LD_LIBRARY_PATH=$BINB:$LD_LIBRARY_PATH ;;
   *) echo "unknown side $SIDE"; exit 2 ;;
 esac
 [ -n "$LAYOUTS_OVERRIDE" ] && LAYOUTS=$LAYOUTS_OVERRIDE   # multi.sh: one layout per node
@@ -36,8 +37,11 @@ for rep in $(seq ${REPEAT:-1}); do for lay in $LAYOUTS; do
   else export MODE=gpu W=$a; NR=$(( 8 * a )); TH=$b; TAG=w${a}t${b}; unset T
        c=$(( a < 4 ? a : 4 )); export ZEX_NUMBER_OF_CCS=$(for t in 0 1 2 3 4 5 6 7; do printf '%s:%s,' $t $c; done | sed 's/,$//'); fi
   export NR OMP_NUM_THREADS=$TH MKL_NUM_THREADS=$TH
-  R=${SIDE}_L${L}_${TAG}_r${rep}; D=$SHM/$R; mkdir -p $D/Temp_0; cd $D
+  [ -n "$EXTRA" ] && eval "export $EXTRA"   # tuning variants: EXTRA='ALFSH_QRNB=32 ALFSH_BLKFUSE=3'
+  R=${SIDE}_L${L}_${TAG}${VARIANT:+_$VARIANT}_r${rep}; D=$SHM/$R; mkdir -p $D/Temp_0; cd $D
   python3 $J/make_params.py $J/template_parameters_RUN_L24.txt $L $NR ${BETA:-4} ${NBIN:-11} > parameters || exit 3
+  [ -n "$NDELAY" ] && sed -i -E "s/^(N_delay[[:space:]]*=[[:space:]]*).*/\\1$NDELAY/" parameters
+  [ -n "$NWRAP" ] && sed -i -E "s/^(Nwrap[[:space:]]*=[[:space:]]*).*/\\1$NWRAP/" parameters
   cp parameters Temp_0/parameters
   python3 -c "import random; random.seed(1000+$L); print('\n'.join('%12d' % random.randint(1, 2**30) for _ in range($NR)))" > seeds
   echo "== $R ranks $NR threads $TH ${ZEX_NUMBER_OF_CCS:+CCS $ZEX_NUMBER_OF_CCS} start $(date -Is)"
@@ -47,7 +51,7 @@ for rep in $(seq ${REPEAT:-1}); do for lay in $LAYOUTS; do
   timeout ${RUN_TIMEOUT:-4500} mpiexec ${NT_LOCAL:+-bootstrap fork -hosts $(hostname)} -n $NR -ppn $NR $J/pin.sh $EXE > run.log 2>&1 & P=$!
   python3 $J/watch.py $D/Temp_0/data.h5 $P > watch.txt & WP=$!
   wait $P; RC=$?; T1=$(date +%s%N); wait $WP; [ -n "$XP" ] && kill $XP
-  echo "side=$SIDE L=$L beta=${BETA:-4} nbin=${NBIN:-11} tag=$TAG rep=$rep ranks=$NR threads=$TH w=${W:-} rc=$RC t0_ns=$T0 t1_ns=$T1 node=$(hostname) job=$SLURM_JOB_ID exe=$EXE" > meta.txt
+  echo "side=$SIDE L=$L beta=${BETA:-4} nbin=${NBIN:-11} tag=$TAG${VARIANT:+_$VARIANT} rep=$rep ranks=$NR threads=$TH w=${W:-} rc=$RC t0_ns=$T0 t1_ns=$T1 node=$(hostname) job=$SLURM_JOB_ID exe=$EXE" > meta.txt
   echo "   rc=$RC wall $(( (T1 - T0) / 1000000 )) ms, bin writes $(wc -l < watch.txt)"
   grep -A1 -E "Precision Green" Temp_0/info | tail -1; grep -E "Acceptance" Temp_0/info | tail -1
   rm -f Temp_0/confout_* confout_*   # configurations are not needed for timing

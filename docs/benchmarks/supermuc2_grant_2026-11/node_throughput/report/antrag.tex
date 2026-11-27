@@ -39,17 +39,18 @@ Toolchain: Intel oneAPI 2025.3, Intel MPI 2021.15, oneMKL 2025.3.
 
 \subsection*{Benchmark}
 \begin{itemize}
-\item Dense complex matrices of dimension $N=L^2$ (256 to 1600), 40 per configuration; cost per sweep $\propto N^3$
+\item Dense complex matrices of dimension $N=L^2$ (256 to 3136), 40 per configuration; cost per sweep $\propto N^3$
   (matrix products, QR and LU decompositions).
 \item Work unit: one sweep of one independent simulation (one simulation per MPI process).
 \item One full node per run, best configuration per node type: CPU node = 112 cores (2 $\times$ Xeon 8480L),
   GPU node = 4 $\times$ Intel Max 1550 (8 tiles).
 \item 10 sweeps timed individually per run (5 for the CPU at $L=40$); errors $<1\,\%$ (standard error).
-\item $L=16$--36: all configurations; $L=40$: only the fastest configurations.
+\item $L=16$--36: all configurations; $L=40$--56: only the fastest configurations. CPU node measured up to $L=40$ only; $L=44$--56 GPU node only (both GPU codes with the fix for the determinant phase, which underflows from $L\approx54$ without it).
+\item \textbf{Not tuned:} the GPU runs use the production settings of $L=36$ and shared core pinning for the processes of a tile; first tests with disjoint cores per process are up to 2$\times$ faster at $L=40$, so the GPU numbers are lower bounds (re-measurement in progress).
 \end{itemize}
 
 \begin{table}[H]
-\caption{Throughput of one SuperMUC-NG Phase 2 node at LRZ in its best configuration; speedup relative to the CPU node.
+\caption{Throughput of one SuperMUC-NG Phase 2 node at LRZ in its best configuration; speedup relative to the CPU node (CPU node measured up to $L=40$).
 Energy per work unit estimated from vendor ratings (CPU node 700\,W, GPU node 3100\,W). \StarNote}
 \label{tab:node}
 \begin{center}\setlength{\tabcolsep}{7pt}\renewcommand{\arraystretch}{1.15}\small
@@ -59,7 +60,7 @@ Energy per work unit estimated from vendor ratings (CPU node 700\,W, GPU node 31
 
 \begin{figure}[H]\centering
 \includegraphics[width=\textwidth]{figures/node_performance}
-\caption{Left: node throughput of the best configuration; numbers = speedup of the GPU node (ALF GPU Intel-optimised) over the
+\caption{Left: node throughput of the best configuration (CPU node up to $L=40$); numbers = speedup of the GPU node (ALF GPU Intel-optimised) over the
 CPU node. Right: estimated energy per work unit (vendor power ratings: CPU node 700\,W, GPU node 3100\,W).}
 \end{figure}
 

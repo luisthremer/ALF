@@ -52,7 +52,7 @@ else:
 facs = [(L, b[("gpub", L)]["throughput_node_h"] / b[("cpu", L)]["throughput_node_h"]) for L in Ls if L in full]
 out.append("\\newcommand{\\FacList}{" + ", ".join(f"{f:.1f}$\\times$ ($L={L}$)" for L, f in facs) + "}")
 complete = set(full) >= PLANNED
-partial = any(not done(s_, L) for s_ in SIDES for L in Ls)
+partial = any(not done(s_, L) for s_ in SIDES for L in Ls if (s_, L) in b)   # a side without any run at that L (CPU above L = 40) is not partial
 out.append("\\newcommand{\\StarNote}{" + ("$^*$\\,best of the configurations finished so far; no speedup given." if partial else "") + "}")
 out.append(f"\\newcommand{{\\Complete}}{{{'yes' if complete else 'no'}}}")
 
@@ -71,7 +71,7 @@ for i, L in enumerate(Ls):
         r = b.get((s_, L))
         head = f"{L} & {SHORT[s_]} & {CODE[s_]}"
         if not r:
-            t.append(f"{head} & \\multicolumn{{4}}{{l}}{{\\emph{{running}}}}\\\\")
+            t.append(f"{head} & \\multicolumn{{4}}{{l}}{{\\emph{{{'not measured' if s_ == 'cpu' else 'running'}}}}}\\\\")
             continue
         thr = r["throughput_node_h"]
         fac = f"{thr / c['throughput_node_h']:.1f}" if c else "--"
