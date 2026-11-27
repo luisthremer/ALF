@@ -369,7 +369,8 @@ case $MACHINE in
     if [ "$(uname -s)" = "Darwin" ]; then
       case "${ALF_MAC_BLAS:-accelerate}" in
         accelerate)
-          LIB_BLAS_LAPACK="-framework Accelerate -fopenmp"
+          # one token: the CMake test suite splits ALF_LIB at blanks and would turn a bare "Accelerate" into -lAccelerate
+          LIB_BLAS_LAPACK="-Wl,-framework,Accelerate -fopenmp"
         ;;
         openblas)
           BREW_PREFIX="$(brew --prefix openblas 2>/dev/null || echo /opt/homebrew/opt/openblas)"
