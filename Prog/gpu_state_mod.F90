@@ -596,9 +596,15 @@ Contains
        reason = 'projector code is not supported on the GPU path of this backend (GPU=host and GPU=nvidia only)'; return
     endif
 #endif
-    if (get_Langevin() .or. get_HMC()) then
-       reason = 'Langevin/HMC is not supported on the GPU path'; return
+    ! P2.6 (p26-langevin): Langevin runs on the device path (force pass and storage reset in gpu_langevin_mod); HMC not yet
+    if (get_HMC()) then
+       reason = 'HMC is not supported on the GPU path'; return
     endif
+#if defined(ALF_LA_ONEMKL)
+    if (get_Langevin()) then
+       reason = 'Langevin: not yet verified on GPU=intel'; return
+    endif
+#endif
     if (get_Global_moves() .or. get_Global_tau_moves() .or. get_N_Global_tau() > 0) then
        reason = 'global moves are not supported on the GPU path'; return
     endif

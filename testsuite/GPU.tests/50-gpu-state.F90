@@ -300,8 +300,13 @@ contains
     else
        Call check(.not. ok .and. index(reason, trim(build_reason)) > 0, 'build-wide refusal: '//trim(reason))
     endif
-    Call refuse('Langevin', 'Langevin/HMC')
-    Call refuse('HMC', 'Langevin/HMC')
+    ! P2.6 (p26-langevin): Langevin runs on the device path (not yet on GPU=intel); HMC is refused
+#if defined(ALF_LA_ONEMKL)
+    Call refuse('Langevin', 'Langevin')
+#else
+    Call accept_opt('Langevin')
+#endif
+    Call refuse('HMC', 'HMC')
     Call refuse('Global_moves', 'global moves')
     Call refuse('Global_tau_moves', 'global moves')
     Call refuse('N_Global_tau', 'global moves')
@@ -348,6 +353,29 @@ contains
     Write(*,'(A,A,A,A)') ' refusal ', option, ': ', trim(reason)
     Call switch(option, .false.)
   end Subroutine refuse
+
+  Subroutine accept_opt(option)
+    Character (len=*), intent(in) :: option
+    Character (len=256) :: reason
+    Character (len=64) :: build_reason
+    Logical :: ok
+    build_reason = ''
+#if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
+    build_reason = 'tempering'
+#elif defined(STAB1) || defined(STAB2)
+    build_reason = 'STAB1/STAB2'
+#elif defined(STAB3) && defined(ALF_LA_HIP)
+    build_reason = 'STAB3 is not supported on GPU=amd'
+#endif
+    Call switch(option, .true.)
+    ok = gpu_supported(reason)
+    If (len_trim(build_reason) == 0) then
+       Call check(ok, 'accepted: '//option//' '//trim(reason))
+    else
+       Call check(.not. ok .and. index(reason, trim(build_reason)) > 0, 'build-wide refusal with '//option//': '//trim(reason))
+    endif
+    Call switch(option, .false.)
+  end Subroutine accept_opt
 
   Subroutine switch(option, on)
     Character (len=*), intent(in) :: option
