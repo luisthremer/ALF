@@ -74,6 +74,16 @@
 !>    skip flag = 1 iff |g| < Eps_machine: Op_mmultL/R then return early (kernels for L/R must honour the flag),
 !>    Op_Wrapup/Op_Wrapdo do NOT check g and always apply the table (wrap kernels must ignore the flag).
 !>  Fields: nsigma_d(N_op,Ltrot) = nsigma%f, nsigma_t(N_op) = nsigma%t.
+!>  P2.6.1 (port of gpu-port ticket 401-A): non-diagonal and rank > 1 operators (N <= V_NMAX = 8) and field type 4:
+!>    V_meta(5,n,nf) = N_non_zero, V_meta(6,n,nf) = 1 iff Op%diag, V_meta(7,n,nf) = uoff (-1 if diagonal), V_meta(8,n,nf) = moff
+!>    (-1 if diagonal or type > 2).  V_U(uoff + i + (j-1)*N) = Op%U(i,j).  V_M(moff + (s+t)*N*N + i + (j-1)*N) = M_exp(i,j,s) of
+!>    Op_set, recomputed with the public Op_exp exactly as Op_set does (types 1, 2; s = 0 identity, unused).
+!>    Type 4 (no tables, continuous field): V_E(poff+i) = Op%E(i), V_g(n,nf) = Op%g, V_phi4(s) = Phi of a type-2 field s; the
+!>    kernels form exp(Phi g E) on the device (Phi = V_phi4(nint(Re f)) * sqrt(1 + Im f), Fields_Phi).
+!>    Segments (host only, build_vseg): per flavour the operators 1..N_op in order, v_seg(1:3,k) = (kind, n1, n2) for
+!>    k = v_sstart(nf)..v_sstart(nf+1)-1: kind 0 = run of consecutive table operators (diagonal, type 1/2), kind 1 = maximal
+!>    run of consecutive other operators with pairwise disjoint P (one dense-block launch).  v_hasnd(nf): the flavour has an
+!>    operator of kind 1; without one the slice kernels keep the fused all-operator kernels (Hubbard unchanged).
 !>
 !>  Notes for the update step (1c): the determinant ratio contains exp(Z1*Op_V%alpha) (upgrade_mod.F90:193) and
 !>  alpha is not in the mirror; nsigma_d is a copy made at setup and goes stale as soon as updates run (205 must keep
@@ -116,7 +126,8 @@ Module gpu_state_mod
   Use alf_hipk_mod, only: hk_enabled
 #endif
   Use Natural_Constants, only: Eps_machine
-  Use Operator_mod, only: Operator, Op_mmultL, Op_mmultR, Op_Wrapup, Op_Wrapdo, Op_get_E_exp
+  Use Operator_mod, only: Operator, Op_mmultL, Op_mmultR, Op_Wrapup, Op_Wrapdo, Op_get_E_exp, Op_exp
+  Use Fields_mod, only: Fields
   Use Hamiltonian_main, only: N_FL, N_FL_eff, Ndim, Ltrot, Op_V, nsigma, Calc_Fl_map, Projector, &
        &                      reconstruction_needed, Group_Comm
   Use QMC_runtime_var, only: get_Langevin, get_HMC, get_Global_moves, get_Global_tau_moves, get_N_Global_tau, &
@@ -144,6 +155,7 @@ Module gpu_state_mod
   Public :: td_grp, td_n, td_any, td_symm_active
   Public :: rnd, rand_mat, rel_diff, is_finite, finite_c, selftest_fail, info_line, same_bits_c, same_bits
   Public :: V_meta, V_type, V_P, V_exp, nsigma_d, nsigma_t
+  Public :: V_U, V_M, V_E, V_g, V_phi4, v_sstart, v_seg, v_hasnd, V_NMAX, v_nd
   Public :: G_d, g_dev_ok, g_host_ok, udv_U, udv_V, udv_D, udv_L, udw_U, udw_V, udw_D, udw_L
   Public :: GT0_d, G0T_d, GTT_d, scr_c, scr_vec, scr_r, scr_work, scr_ipiv
   Public :: upd_cnt
@@ -172,6 +184,13 @@ Module gpu_state_mod
   Complex (Kind=Kind(0.d0)), Allocatable :: hop_Cval(:)
   Integer,                 Allocatable :: V_meta(:,:,:), V_type(:), V_P(:)
   Complex (Kind=Kind(0.d0)), Allocatable :: V_exp(:)
+  ! P2.6.1: non-diagonal / type-4 operators (see header)
+  Complex (Kind=Kind(0.d0)), Allocatable :: V_U(:), V_M(:), V_g(:,:)
+  Real    (Kind=Kind(0.d0)), Allocatable :: V_E(:)
+  Real    (Kind=Kind(0.d0)) :: V_phi4(-2:2)
+  Integer,                 Allocatable :: v_sstart(:), v_seg(:,:)
+  Logical,                 Allocatable :: v_hasnd(:)
+  Integer, Parameter :: V_NMAX = 8         ! largest operator N the device kernels accept (gpu_supported refuses larger)
   Complex (Kind=Kind(0.d0)), Allocatable :: nsigma_d(:,:)
   Integer,                 Allocatable :: nsigma_t(:)
   ! ticket 204: groups, dense auxiliaries, per-site operator lists (see header)
@@ -715,6 +734,7 @@ Contains
     call build_groups()
     call build_V()
     call build_vrows()
+    call build_vseg()
     allocate( nsigma_d(g_Nop, g_Ltrot), nsigma_t(g_Nop) )
     nsigma_d = nsigma%f
     nsigma_t = nsigma%t
@@ -736,6 +756,12 @@ Contains
     write(line,'(A,I0,A,I0,A,L1)') 'GPU mirror: checkerboard groups ', g_ngroups, ' (flavour 1: ', hop_gstart(2)-hop_gstart(1), &
          & ' groups), dense element(s) in flavour 1: ', hop_big(1)
     call info_line(line)
+    if (any(v_hasnd)) then
+       write(line,'(A,I0,A,I0,A,I0,A,I0)') 'GPU mirror: non-diagonal operators ', count(V_meta(6,:,:) == 0), ', max N ', &
+            & maxval(V_meta(1,:,:)), ', max N_non_zero (update rank) ', maxval(V_meta(5,:,:)), &
+            & ', slice segments (all flavours) ', v_sstart(size(v_sstart)) - 1
+       call info_line(line)
+    endif
     call report_layout()
     ! timing of setup includes the host->device copies, not the self-test
     if (td_any) then
@@ -1162,11 +1188,12 @@ Contains
 !--------------------------------------------------------------------
   Subroutine build_V()
     Implicit none
-    Integer :: n, nf, nt, nsum, ne, np, ne0
-    Complex (Kind=Kind(0.d0)), allocatable :: E(:,:)
+    Integer :: n, nf, nt, nsum, ne, np, ne0, nu, nm, uo, mo, k, sg
+    Complex (Kind=Kind(0.d0)), allocatable :: E(:,:), Mt(:,:)
+    Type (Fields) :: fs
 
-    allocate(V_meta(4,g_Nop,N_FL), V_type(g_Nop))
-    np = 0; ne = 0
+    allocate(V_meta(8,g_Nop,N_FL), V_type(g_Nop), V_g(g_Nop,N_FL))
+    np = 0; ne = 0; nu = 0; nm = 0
     do nf = 1, N_FL
        do n = 1, g_Nop
           nt = Op_V(n,nf)%type
@@ -1174,28 +1201,134 @@ Contains
           V_meta(2,n,nf) = np
           V_meta(3,n,nf) = ne
           V_meta(4,n,nf) = v_skip(Op_V(n,nf))
+          V_meta(5,n,nf) = Op_V(n,nf)%N_non_zero
+          V_meta(6,n,nf) = merge(1, 0, Op_V(n,nf)%diag)
+          V_meta(7,n,nf) = -1; V_meta(8,n,nf) = -1
+          V_g(n,nf) = Op_V(n,nf)%g
           np = np + Op_V(n,nf)%N
-          ne = ne + Op_V(n,nf)%N*(2*nt+1)
+          if (nt <= 2) ne = ne + Op_V(n,nf)%N*(2*nt+1)      ! types > 2 have no table (E_exp not allocated by Op_set)
+          if (.not. Op_V(n,nf)%diag) then
+             V_meta(7,n,nf) = nu
+             nu = nu + Op_V(n,nf)%N**2
+             if (nt <= 2) then
+                V_meta(8,n,nf) = nm
+                nm = nm + Op_V(n,nf)%N**2*(2*nt+1)
+             endif
+          endif
        enddo
     enddo
-    allocate(V_P(max(np,1)), V_exp(max(ne,1)))
-    V_P = 0; V_exp = cmplx(1.d0,0.d0,kind(0.d0))
+    allocate(V_P(max(np,1)), V_exp(max(ne,1)), V_E(max(np,1)), V_U(max(nu,1)), V_M(max(nm,1)))
+    V_P = 0; V_exp = cmplx(1.d0,0.d0,kind(0.d0)); V_E = 0.d0
+    V_U = cmplx(0.d0,0.d0,kind(0.d0)); V_M = cmplx(0.d0,0.d0,kind(0.d0))
     do n = 1, g_Nop
        V_type(n) = Op_V(n,1)%type
+    enddo
+    call fs%make(1,1)
+    fs%t(1) = 2
+    V_phi4 = 0.d0
+    do k = -2, 2
+       if (k == 0) cycle
+       fs%f(1,1) = cmplx(real(k,kind(0.d0)), 0.d0, kind(0.d0))
+       V_phi4(k) = real(fs%Phi(1,1), kind(0.d0))
     enddo
     do nf = 1, N_FL
        do n = 1, g_Nop
           nt = Op_V(n,nf)%type
           nsum = Op_V(n,nf)%N
           V_P(V_meta(2,n,nf)+1:V_meta(2,n,nf)+nsum) = Op_V(n,nf)%P(1:nsum)
-          call Op_get_E_exp(Op_V(n,nf), E)          ! private table of Operator_mod, same numbers ALF applies
-          ne0 = V_meta(3,n,nf)
-          V_exp(ne0+1:ne0+nsum*(2*nt+1)) = reshape(E, (/nsum*(2*nt+1)/))
-          V_exp(ne0+nt*nsum+1:ne0+(nt+1)*nsum) = cmplx(1.d0,0.d0,kind(0.d0))   ! sp = 0: unused
-          deallocate(E)
+          V_E(V_meta(2,n,nf)+1:V_meta(2,n,nf)+nsum) = Op_V(n,nf)%E(1:nsum)
+          if (nt <= 2) then
+             call Op_get_E_exp(Op_V(n,nf), E)          ! private table of Operator_mod, same numbers ALF applies
+             ne0 = V_meta(3,n,nf)
+             V_exp(ne0+1:ne0+nsum*(2*nt+1)) = reshape(E, (/nsum*(2*nt+1)/))
+             V_exp(ne0+nt*nsum+1:ne0+(nt+1)*nsum) = cmplx(1.d0,0.d0,kind(0.d0))   ! sp = 0: unused
+             deallocate(E)
+          endif
+          if (Op_V(n,nf)%diag) cycle
+          uo = V_meta(7,n,nf)
+          V_U(uo+1:uo+nsum*nsum) = reshape(Op_V(n,nf)%U(1:nsum,1:nsum), (/nsum*nsum/))
+          if (nt > 2) cycle
+          ! M_exp of Op_set: Op_exp(+g Phi(k)) for s = k > 0, Op_exp(-g Phi(k)) for s = -k (Op_exp is deterministic)
+          mo = V_meta(8,n,nf)
+          allocate(Mt(nsum,nsum))
+          fs%t(1) = nt
+          do k = 1, nt
+             fs%f(1,1) = cmplx(real(k,kind(0.d0)), 0.d0, kind(0.d0))
+             do sg = 1, -1, -2
+                call Op_exp(real(sg,kind(0.d0))*Op_V(n,nf)%g*fs%Phi(1,1), Op_V(n,nf), Mt)
+                V_M(mo + (sg*k+nt)*nsum*nsum + 1 : mo + (sg*k+nt+1)*nsum*nsum) = reshape(Mt, (/nsum*nsum/))
+             enddo
+          enddo
+          do k = 1, nsum                                     ! s = 0: identity (unused)
+             V_M(mo + nt*nsum*nsum + k + (k-1)*nsum) = cmplx(1.d0,0.d0,kind(0.d0))
+          enddo
+          deallocate(Mt)
        enddo
     enddo
+    call fs%clear()
   end subroutine build_V
+
+!--------------------------------------------------------------------
+!> P2.6.1: kind of operator (n,nf) for the slice kernels: 0 = table operator (diagonal, type 1 or 2: fused per-row kernels),
+!> 1 = non-diagonal or type > 2 (dense-block / on-the-fly kernels of gpu_wrap_mod)
+  Integer function v_nd(n, nf)
+    Implicit none
+    Integer, intent(in) :: n, nf
+    v_nd = 0
+    if (V_meta(6,n,nf) == 0 .or. V_type(n) > 2) v_nd = 1
+  end function v_nd
+
+!--------------------------------------------------------------------
+!> P2.6.1: segments of the operator order per flavour (see header), host only.
+  Subroutine build_vseg()
+    Implicit none
+    Integer :: nf, n, ns, pass, kd, n1, l, m
+    Integer, allocatable :: mark(:)
+    Logical :: ok
+    if (allocated(v_seg)) deallocate(v_seg, v_sstart, v_hasnd)
+    allocate(v_sstart(size(V_meta,3)+1), v_hasnd(size(V_meta,3)), mark(g_Ndim))
+    do pass = 1, 2
+       ns = 0
+       do nf = 1, size(V_meta,3)
+          v_sstart(nf) = ns + 1
+          v_hasnd(nf) = .false.
+          do n = 1, size(V_meta,2)
+             if (v_nd(n,nf) == 1) v_hasnd(nf) = .true.
+          enddo
+          if (.not. v_hasnd(nf)) cycle
+          mark = 0
+          n = 1
+          do while (n <= size(V_meta,2))
+             ns = ns + 1
+             kd = v_nd(n,nf)
+             n1 = n
+             if (kd == 1) then
+                do l = 1, V_meta(1,n,nf); mark(V_P(V_meta(2,n,nf)+l)) = ns; enddo
+             endif
+             n = n + 1
+             do while (n <= size(V_meta,2))
+                if (v_nd(n,nf) /= kd) exit
+                if (kd == 1) then
+                   ok = .true.
+                   do l = 1, V_meta(1,n,nf)
+                      m = V_P(V_meta(2,n,nf)+l)
+                      if (mark(m) == ns) ok = .false.
+                   enddo
+                   if (.not. ok) exit
+                   do l = 1, V_meta(1,n,nf); mark(V_P(V_meta(2,n,nf)+l)) = ns; enddo
+                endif
+                n = n + 1
+             enddo
+             if (pass == 2) then
+                v_seg(1,ns) = kd; v_seg(2,ns) = n1; v_seg(3,ns) = n - 1
+             endif
+          enddo
+       enddo
+       v_sstart(size(V_meta,3)+1) = ns + 1
+       if (pass == 1) allocate(v_seg(3, max(ns,1)))
+    enddo
+    deallocate(mark)
+  end subroutine build_vseg
 
 !--------------------------------------------------------------------
   ! 1 iff Op_mmultL/R return early for this operator (constant coupling).
@@ -1233,6 +1366,7 @@ Contains
     ! One-time host->device copies of the constant data (unavoidable: the device cannot read the host objects).
     !$omp target enter data map(to: hop_start, hop_meta, hop_P, hop_Rval, hop_Cval)
     !$omp target enter data map(to: V_meta, V_type, V_P, V_exp)
+    !$omp target enter data map(to: V_U, V_M, V_E, V_g, V_phi4)      ! P2.6.1: non-diagonal / type-4 operator data
     !$omp target enter data map(to: nsigma_d, nsigma_t)
     ! ticket 204: group table, dense auxiliaries and per-site operator lists (constant data, uploaded once)
     !$omp target enter data map(to: hop_gptr, hop_aux, hop_At, hop_Ac, vr_ptr, vr_ent)
@@ -1262,9 +1396,11 @@ Contains
     !$omp target exit data map(delete: hop_gptr, hop_aux, hop_At, hop_Ac, vr_ptr, vr_ent)
     !$omp target exit data map(delete: nsigma_d, nsigma_t)
     !$omp target exit data map(delete: V_meta, V_type, V_P, V_exp)
+    !$omp target exit data map(delete: V_U, V_M, V_E, V_g, V_phi4)
     !$omp target exit data map(delete: hop_start, hop_meta, hop_P, hop_Rval, hop_Cval)
     deallocate(scr_c, scr_vec, scr_r, scr_ipiv, scr_work, udv_D, udv_L, udw_D, udw_L)
     deallocate(G_d, g_dev_ok, g_host_ok, udv_U, udv_V, udw_U, udw_V, nsigma_d, nsigma_t)
+    deallocate(V_U, V_M, V_E, V_g, v_seg, v_sstart, v_hasnd)
     deallocate(V_meta, V_type, V_P, V_exp, hop_start, hop_meta, hop_P, hop_Rval, hop_Cval)
     deallocate(hop_gstart, hop_gptr, hop_big, hop_aux, hop_At, hop_Ac, vr_ptr, vr_ent)
     deallocate(td_grp, td_n)
@@ -1454,6 +1590,10 @@ Contains
     call lay('V_type', 'int', shape(V_type), 4_int64*size(V_type), tot)
     call lay('V_P', 'int', shape(V_P), 4_int64*size(V_P), tot)
     call lay('V_exp', 'complex', shape(V_exp), 16_int64*size(V_exp), tot)
+    call lay('V_U', 'complex', shape(V_U), 16_int64*size(V_U), tot)
+    call lay('V_M', 'complex', shape(V_M), 16_int64*size(V_M), tot)
+    call lay('V_E', 'real', shape(V_E), 8_int64*size(V_E), tot)
+    call lay('V_g', 'complex', shape(V_g), 16_int64*size(V_g), tot)
     call lay('nsigma_d', 'complex', shape(nsigma_d), 16_int64*size(nsigma_d), tot)
     call lay('nsigma_t', 'int', shape(nsigma_t), 4_int64*size(nsigma_t), tot)
     call lay('hop_gptr', 'int', shape(hop_gptr), 4_int64*size(hop_gptr), tot)
@@ -1803,6 +1943,7 @@ Contains
     dv = 0.d0; nsp = 0
     do nf = 1, N_FL
        do n = 1, g_Nop
+          if (v_nd(n,nf) == 1) cycle       ! P2.6.1: non-table operators are tested against Operator_mod in gpu_wrap_mod
           nt = V_type(n)
           do sp = -nt, nt
              if (sp == 0) cycle
@@ -1832,6 +1973,7 @@ Contains
     dw = 0.d0; dskip = 0.d0
     do nf = 1, N_FL
        do n = 1, g_Nop
+          if (v_nd(n,nf) == 1) cycle
           nt = V_type(n)
           do sp = -nt, nt
              if (sp == 0) cycle
@@ -1846,6 +1988,7 @@ Contains
     Otmp = Op_V(1,1)
     Otmp%g = cmplx(1.d-20, 0.d0, kind(0.d0))
     nt = V_type(1)
+    if (v_nd(1,1) == 1) nt = 0          ! P2.6.1: the tiny-g check below uses the table of a diagonal operator 1 only
     if (v_skip(Otmp) /= 1 .or. v_skip(Op_V(1,1)) /= V_meta(4,1,1)) call selftest_fail('skip flag')
     do sp = -nt, nt
        if (sp == 0) cycle
