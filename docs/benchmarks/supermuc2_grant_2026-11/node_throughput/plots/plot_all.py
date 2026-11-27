@@ -107,7 +107,8 @@ def fig_layout(rows, out, fake):
         ax.bar(xs, [r["throughput_node_h"] for r in sel], yerr=[r["throughput_err"] for r in sel],
                color=[SIDES[r["side"]][1] for r in sel], capsize=1.5)
         ax.set_xticks(list(xs)); ax.set_xticklabels([r["tag"] for r in sel], rotation=90, fontsize=5)
-        ax.set_title(f"$L={L}$", fontsize=7); ax.set_yscale("log")
+        ax.set_title(f"$L={L}$", fontsize=7); ax.set_ylim(bottom=0)
+        ax.ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
     axs[0].set_ylabel("sweeps per node-hour")
     handles = [plt.Rectangle((0, 0), 1, 1, color=c) for _, c, _ in SIDES.values()]
     fig.legend(handles, [l for l, _, _ in SIDES.values()], loc="upper center", ncol=3, fontsize=6, frameon=False)
