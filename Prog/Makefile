@@ -12,7 +12,7 @@ SRCS = Hamiltonians/LRC_mod.F90 control_mod.F90 Fields_mod.F90 Operator_mod.F90 
 # GPU code path (GPU=host or a vendor target in configure.sh sets ALF_GPU): the device mirror module is compiled only then.
 # gen_deps.py ignores a "use gpu_state_mod" of a file when no listed source provides it, so GPU=none is unaffected.
 ifneq ($(strip $(ALF_GPU)),)
-SRCS += gpu_state_mod.F90 gpu_wrap_mod.F90 gpu_lowrank_mod.F90 gpu_update_mod.F90 gpu_stab_mod.F90 gpu_obs_mod.F90 gpu_tau_mod.F90
+SRCS += gpu_state_mod.F90 gpu_wrap_mod.F90 gpu_lowrank_mod.F90 gpu_update_mod.F90 gpu_stab_mod.F90 gpu_obs_mod.F90 gpu_tau_mod.F90 gpu_lang_hook_mod.F90 gpu_langevin_mod.F90
 endif
 
 # Stamp file holding the value of ALF_GPU: a change (none <-> host) regenerates $(DEPSFILE) and rebuilds all Prog
@@ -82,7 +82,7 @@ $(DEPSFILE): $(ALF_GPU_STAMP) $(SRCS) $(DEPSGEN) Hamiltonians.list $(HAM_LIST_D)
 
 tidy: $(DEPSFILE)
 	rm -f $(OBJS) $(OHAM) $(MODS) hamiltonian*.mod hamiltonian*.smod $(DEPSFILE) .echo_compile_mods $(ALF_GPU_STAMP)
-	rm -f gpu_state_mod.o gpu_state_mod.mod gpu_wrap_mod.o gpu_wrap_mod.mod gpu_lowrank_mod.o gpu_lowrank_mod.mod gpu_update_mod.o gpu_update_mod.mod gpu_stab_mod.o gpu_stab_mod.mod gpu_obs_mod.o gpu_obs_mod.mod gpu_tau_mod.o gpu_tau_mod.mod
+	rm -f gpu_state_mod.o gpu_state_mod.mod gpu_wrap_mod.o gpu_wrap_mod.mod gpu_lowrank_mod.o gpu_lowrank_mod.mod gpu_update_mod.o gpu_update_mod.mod gpu_stab_mod.o gpu_stab_mod.mod gpu_obs_mod.o gpu_obs_mod.mod gpu_tau_mod.o gpu_tau_mod.mod gpu_lang_hook_mod.o gpu_lang_hook_mod.mod gpu_langevin_mod.o gpu_langevin_mod.mod
 	rm -f git.h .parse_parameters Hamiltonians_interface.h Hamiltonians_case.h Hamiltonians/Hamiltonian_*_read_write_parameters.F90
 
 clean: tidy

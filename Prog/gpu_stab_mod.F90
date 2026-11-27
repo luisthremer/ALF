@@ -130,6 +130,7 @@ Module gpu_stab_mod
   Public :: gpu_stab_on, gpu_stab_setup, gpu_stab_finalize
   Public :: gpu_stab_wrapur, gpu_stab_wrapul, gpu_stab_exchange, gpu_stab_store_l, gpu_stab_cgr, gpu_stab_recompute
   Public :: gpu_stab_reset_l, gpu_stab_reset_r, gpu_stab_reset_st, gpu_stab_put_udv, gpu_stab_untrack, gpu_stab_export_r
+  Public :: gpu_stab_load_l, gpu_stab_get_st          ! p26-langevin: read-only access to the storage
   Public :: gpu_lu_phase_select, k_det_phase, gpu_stab_hook, gpu_stab_selftest
   Public :: k_det_qr, k_det_phase_u, k_set_one      ! det tracking (tests)
 #if defined(ALF_LA_HIP)
@@ -458,6 +459,31 @@ Contains
     call k_copy_c(s_N, udv_D(1,nst,nfe), udw_D(1,wslot,nfe))
 #endif
   end subroutine copy_st_to_w
+
+!> @brief udvl(nfe) = udvst(nst, nfe), the storage unchanged (device to device; Langevin force pass, as udvl = udvst(NST))
+  Subroutine gpu_stab_load_l(nst, nfe)
+    Implicit none
+    Integer, intent(in) :: nst, nfe
+    call copy_st_to_w(nst, nfe, 1)
+  end subroutine gpu_stab_load_l
+
+!> @brief host object ust = udvst(nst, nfe) (D->H, the device storage unchanged; for host readers of walker%udvst)
+  Subroutine gpu_stab_get_st(nst, nfe, ust)
+    Implicit none
+    Integer, intent(in) :: nst, nfe
+    Class (UDV_State), intent(inout) :: ust
+    !$omp target update from(udv_U(:,:,nst,nfe), udv_V(:,:,nst,nfe))
+    ust%U = udv_U(:,:,nst,nfe)
+    ust%V = udv_V(:,:,nst,nfe)
+    ust%side = 'l'
+#if defined(STABLOG)
+    !$omp target update from(udv_L(:,nst,nfe))
+    ust%L = udv_L(:,nst,nfe)
+#else
+    !$omp target update from(udv_D(:,nst,nfe))
+    ust%D = udv_D(:,nst,nfe)
+#endif
+  end subroutine gpu_stab_get_st
 
 !> @brief udvst(nst, nfe) = udvl(nfe) (initial pass, device to device)
   Subroutine gpu_stab_store_l(nst, nfe)

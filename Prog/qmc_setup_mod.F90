@@ -90,6 +90,7 @@ Module qmc_setup_mod
   Use gpu_stab_mod, only: gpu_stab_on, gpu_stab_setup, gpu_stab_hook, gpu_stab_finalize, gpu_stab_put_udv
   Use gpu_obs_mod, only: gpu_obs_report, gpu_obs_finalize
   Use gpu_tau_mod, only: gpu_tau_setup, gpu_tau_finalize
+  Use gpu_langevin_mod, only: gpu_lang_register
 #endif
 #ifdef HDF5
   Use hdf5
@@ -354,6 +355,8 @@ Module qmc_setup_mod
          Call gpu_stab_put_udv(walker)
          ! Walker_init_GR wrote the host GR: the device copy is stale
          Call gpu_g_host_wrote()
+         ! P2.6 (p26-langevin): Langevin_HMC_mod's force pass and storage reset on the device
+         Call gpu_lang_register()
       Endif
     end Subroutine Setup_gpu_stack
 

@@ -52,6 +52,9 @@
 #ifdef MPI
         Use mpi
 #endif
+#ifdef ALF_GPU
+        Use gpu_lang_hook_mod, only: gpu_lang_forces_p, gpu_lang_reset_p, gpu_lang_finalize_p
+#endif
 
         
         Implicit none
@@ -129,6 +132,13 @@
         Integer :: NSTM, nf, nf_eff, NST, NTAU, nt1, Ntau1, NVAR
         Complex (Kind=Kind(0.d0)) :: Z, Z1, Phase_array(N_FL)
         
+#ifdef ALF_GPU
+        If (associated(gpu_lang_forces_p)) then
+           ! P2.6 (p26-langevin): the force pass on the device path (gpu_langevin_mod, set when the device stabilisation is on)
+           Call gpu_lang_forces_p(this%Forces, Phase, GR, GR_Tilde, Stab_nt, LOBS_ST, LOBS_EN, Calc_Obser_eq, this%Delta_t_running)
+           return
+        endif
+#endif
         NSTM = Size(Stab_nt,1) - 1 
         !Do  n = 0,NSTM
         !   Write(6,*)  n, Stab_nt(n)
@@ -279,6 +289,13 @@
         Complex (Kind=Kind(0.d0)) :: Z, Phase_array(N_FL)
 
         
+#ifdef ALF_GPU
+        If (associated(gpu_lang_reset_p)) then
+           ! P2.6 (p26-langevin): storage and G on slice 0 rebuilt on the device path (gpu_langevin_mod)
+           Call gpu_lang_reset_p(Phase, GR, Stab_nt, udvst)
+           return
+        endif
+#endif
         NSTM = Size(Stab_nt,1) - 1 
         Do nf_eff = 1,N_FL_eff
            nf=Calc_FL_map(nf_eff)
@@ -874,6 +891,9 @@
         INTEGER                :: STATUS(MPI_STATUS_SIZE), ISIZE, IRANK
         CALL MPI_COMM_SIZE(MPI_COMM_WORLD,ISIZE,IERR)
         CALL MPI_COMM_RANK(MPI_COMM_WORLD,IRANK,IERR)
+#endif
+#ifdef ALF_GPU
+        If (associated(gpu_lang_finalize_p)) Call gpu_lang_finalize_p()
 #endif
 
         select case (this%scheme) !(trim(this%Update_scheme))

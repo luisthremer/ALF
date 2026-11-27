@@ -90,7 +90,7 @@ Module gpu_wrap_mod
   Private
   Public :: gpu_mmthr, gpu_mmthr_m1, gpu_mmthlc, gpu_mmthl, gpu_mmthl_m1, gpu_symm, gpu_symm_build, gpu_symm_td
   Public :: gpu_mmthr_d, gpu_mmthl_m1_d, gpu_mmthl_d, gpu_mmthr_m1_d, gpu_hopd_on
-  Public :: gpu_Vop_R, gpu_Vop_L, gpu_Vop_wrap, gpu_Vslice_R, gpu_Vslice_L, gpu_Vwrap_all, k_nd_rows
+  Public :: gpu_Vop_R, gpu_Vop_L, gpu_Vop_wrap, gpu_Vslice_R, gpu_Vslice_L, gpu_Vwrap_all, k_nd_rows, gpu_nd_wrap_seg
   Public :: gpu_wrapur_slices, gpu_wrapul_slices, gpu_wrapgr_up, gpu_wrapgr_do
   Public :: gpu_wrap_hook, gpu_wrap_selftest
   Public :: gpu_dense_left_mode, gpu_tl, gpu_tr, gpu_vb, gpu_n_launch, gpu_n_lib
@@ -1113,6 +1113,32 @@ Contains
     endif
     gpu_n_launch = gpu_n_launch + 2
   end subroutine nd_wrap
+
+!> P2.6 (p26-langevin): Op_Wrapup / Op_Wrapdo (N_Type ntype) of the operators n1..n2 of one "nd" segment of flavour nf (pairwise
+!> disjoint P, v_seg kind 1): the wraps of different operators act on disjoint rows and columns, so one launch per side gives
+!> the sequential result.  ntype = 2 is skipped when every operator of the range is diagonal (Op_Wrapup does nothing then).
+  Subroutine gpu_nd_wrap_seg(G, ld, n1, n2, nf, t, dir, ntype)
+    Implicit none
+    Integer, intent(in) :: ld, n1, n2, nf, t, dir, ntype
+    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,*)
+    if (ntype == 2) then
+       if (all(V_meta(6,n1:n2,nf) == 1)) return
+    endif
+    if (dir > 0 .and. ntype == 1) then
+       call k_nd_cols(G, ld, Ndim, nf, t, n1, n2, 4, -1)
+       call k_nd_rows(G, ld, Ndim, nf, t, n1, n2, 5, 1, 0)
+    elseif (dir > 0) then
+       call k_nd_rows(G, ld, Ndim, nf, t, n1, n2, 6, 1, 0)
+       call k_nd_cols(G, ld, Ndim, nf, t, n1, n2, 7, 1)
+    elseif (ntype == 1) then
+       call k_nd_rows(G, ld, Ndim, nf, t, n1, n2, 4, -1, 0)
+       call k_nd_cols(G, ld, Ndim, nf, t, n1, n2, 5, 1)
+    else
+       call k_nd_cols(G, ld, Ndim, nf, t, n1, n2, 6, 1)
+       call k_nd_rows(G, ld, Ndim, nf, t, n1, n2, 7, 1, 0)
+    endif
+    gpu_n_launch = gpu_n_launch + 2
+  end subroutine gpu_nd_wrap_seg
 
   Integer function mexp_mode(cop)
     Implicit none

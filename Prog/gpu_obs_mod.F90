@@ -65,6 +65,7 @@ Module gpu_obs_mod
   Use Lattices_v3, only: Lattice, Unit_cell
   Use Predefined_Hoppings, only: Hopping_Matrix_type, inquire_hop, Generic_hopping
   Use Hamiltonian_main, only: Obs_scal, Obs_eq, Obs_tau, Obs_local, reconstruction_needed
+  Use QMC_runtime_var, only: get_Langevin, get_Ltau
   Use linalg_mod, only: la_zgemm
 #if defined(ALF_LA_HIP)
   Use alf_hipk_mod, only: hk_enabled, hk_corr, hk_scalars
@@ -167,6 +168,10 @@ Contains
     ! the device measurement reads G of every flavour; with Calc_Fl the host Obser measures after GR_reconstruction
     o_reason = 'Calc_Fl (weight reconstruction)'
     if (reconstruction_needed) return
+    ! Langevin with Ltau = 1: the equal-time and time-displaced measurements are made by the host Tau_m on its own host copies
+    ! (qmc_driver_mod), which the device observables (G_d) would not see
+    o_reason = 'Langevin with Ltau = 1 (measurements in the host Tau_m)'
+    if (get_Langevin() .and. get_Ltau() == 1) return
     o_reason = 'Obs_eq is not allocated'
     if (.not. allocated(Obs_eq)) return
     o_reason = 'Obs_eq layout is not the one of the Hubbard model'
