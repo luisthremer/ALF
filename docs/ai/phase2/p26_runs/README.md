@@ -28,3 +28,23 @@ Build of p26-7 (cce147cf; p26-8 changes only an argument list) and of the base 5
   16 25.4; big-tV std 39.8 / 6.2, delayed 16 61.9, delayed 32 62.3, submatrix 16 40.0; big-sp std 34.6 / 13.5, delayed 16 47.6,
   delayed 32 49.4, submatrix 16 35.6.  At these sizes the GPU path is 2.4 - 10x slower than one CPU core and the delayed device path
   is slower than standard (per-vertex launches and transfers dominate; Hubbard 4x4 is 2x slower too).  Scaling with Ndim: P2.6.2.
+
+## p26-langevin (part A: field type 3 and Langevin force pass on the device), 2026-11-27/28
+
+Base `Code-modularity-GPU` bdc30bf9; code commits rebased from `mac/p26-langevin-wip` c8300128. Cases: `cases_langevin.py` (10), `cases_type3.py` (10),
+`cases_p26.py`, `cases_calcfl.py` (together 28), runner `../p25_runs/p25_run.py` (`P25_CONFOUT_NUMERIC=1`: confout under the tolerance rule, the fields are continuous).
+Precision Green ratio: `pgratio.py` (GPU mean / CPU mean per case).
+
+| Machine | Result | Precision Green ratio |
+|---|---|---|
+| GPU=host (melmac) | ctest 159/159; 48/48 cases OK (Langevin max scaled diff 1.6e-12) | 0.82 - 1.40 |
+| H100 (Helma, nvhpc 25.7, job 1475700) | 48/48 OK | 0.84 - 1.84, except lang-mz-12x12 2.31 (8.9e-13 vs 3.9e-13) and lrc-lang-12x12 2.68 (1.2e-14 vs 4.6e-15): ratios of numbers near machine precision, not G10 (KNOWN_ISSUES G7) |
+| MI210 (amd, gfortran amdgcn + HIP) | 48/48 OK | 0.60 - 1.22 (lang-mz-12x12 0.60, lrc-lang-12x12 0.68) |
+| GPU=none | byte-identical to the base on the 16 bitwise cases (`bw_gpu_amd.py`) | n/a |
+
+`lang-su2-4x4` with NSweep 4 failed once on both H100 (Den_eq, Ener_scal 1.5e-10) and MI210 (Pot_scal 5.3e-11 against 1e-11). CPU-only nulls of the same binary
+(Nwrap 10 -> 5; H100 job 1473891: Den_eq 3.6e-10 against GPU 1.6e-10; MI210: Pot_scal 4.4e-11) are as large: round-off amplification of Langevin dynamics, KNOWN_ISSUES G9.
+The case now runs NSweep 2.
+
+Outside the agreed area (named in the commit bodies): `qmc_setup_mod.F90` (one line, `Call gpu_lang_register()`), `gpu_obs_mod.F90` (device observables refused
+for Langevin with Ltau = 1: Tau_m measures on the host), `p25_run.py`. HMC and MALA stay refused (part B). GPU=intel refuses type 3 and Langevin.

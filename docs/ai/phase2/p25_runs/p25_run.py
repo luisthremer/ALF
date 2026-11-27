@@ -17,8 +17,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "..", "..", "testsuite", "GPU.tests"))
 import gpu_e2e as e2e   # compare(), green_precision(), numdiff()
 
-def compare(a, b, strict, tol):
-    """like gpu_e2e.compare, but .h5 files are compared with h5diff -d tol (absolute; the values are of order 1) unless strict or confout"""
+def compare(a, b, strict, tol, confout_numeric=False):
+    """like gpu_e2e.compare, but .h5 files are compared with h5diff -d tol (absolute; the values are of order 1) unless strict or confout.
+    confout_numeric (case env P25_CONFOUT_NUMERIC=1, continuous fields of Langevin runs): confout under the tolerance rule too, since
+    the field update uses the forces and round-off of the forces enters the fields"""
     import filecmp
     bad, diffs = [], {}
     for f in e2e.files(a):
@@ -26,7 +28,7 @@ def compare(a, b, strict, tol):
         if not os.path.exists(fb):
             bad.append(f + " (missing)")
         elif f.endswith(".h5"):   # HDF5 files carry creation times: never byte-compared
-            exact = strict or f.startswith("confout")
+            exact = strict or (f.startswith("confout") and not confout_numeric)
             if not shutil.which("h5diff"):
                 print("note: no h5diff, %s not compared" % f)
             elif subprocess.call(["h5diff"] + ([] if exact else ["-d", repr(tol)]) + [fa, fb], stdout=subprocess.DEVNULL) != 0:
@@ -35,7 +37,7 @@ def compare(a, b, strict, tol):
                 diffs[f] = (0.0, 0.0)   # equal (exact or within h5diff -d tol), no number to report
         elif filecmp.cmp(fa, fb, shallow=False):
             diffs[f] = (0.0, 0.0)
-        elif strict or f.startswith("confout"):
+        elif strict or (f.startswith("confout") and not confout_numeric):
             bad.append(f)
         else:
             dd = e2e.numdiff(fa, fb)
@@ -130,7 +132,7 @@ def main():
             for sa, sd in zip(subdirs(da, a.groups), subdirs(dd, a.groups)):
                 gp = e2e.green_precision(sd)
                 tol = max(tol, 100 * gp[0]) if gp else tol
-                b, df = compare(sa, sd, state != "ACTIVE", tol)
+                b, df = compare(sa, sd, state != "ACTIVE", tol, env.get("P25_CONFOUT_NUMERIC") == "1")
                 bad += b; diffs.update({os.path.basename(sa) + "/" + k: v for k, v in df.items()})
             mx = max([v[1] for v in diffs.values() if v] + [0.0])
             if state == "ACTIVE":
