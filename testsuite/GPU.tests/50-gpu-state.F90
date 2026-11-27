@@ -24,7 +24,7 @@ Program Test_gpu_state
   Use QMC_runtime_var, only: set_QMC_runtime_default_var, set_ham_name, set_Nwrap, set_Ltau, get_Nwrap, &
        &                     set_Langevin, set_HMC, set_Global_moves, set_Global_tau_moves, set_N_Global_tau, &
        &                     set_Propose_S0, set_Sequential_MALA, set_Global_MALA_moves, set_Global_tau_MALA_moves, &
-       &                     set_N_Global_tau_MALA, set_default_global_tau_sampling, set_NSweep
+       &                     set_N_Global_tau_MALA, set_default_global_tau_sampling, set_NSweep, set_NBin
   Use qmc_setup_mod, only: Setup_model, Setup_fields, Setup_update_schemes, Setup_gpu, Finalize_gpu
   Use qmc_walker_mod, only: qmc_walker_t, Walker_layout, Walker_alloc, Walker_dealloc
   Use UDV_State_mod, only: UDV_State
@@ -154,6 +154,7 @@ contains
     Call set_ham_name('Hubbard')
     Call set_Nwrap(5)
     Call set_NSweep(1)          ! the start-up check (KNOWN_ISSUES H3) needs at least one sweep
+    Call set_NBin(1)            ! the start-up check of P2.8 needs at least one bin
     Call set_Ltau(1)
     Call Setup_model(N_op)
     Call Setup_fields(N_op)
@@ -309,14 +310,19 @@ contains
     Call refuse('Global_MALA_moves', 'MALA')
     Call refuse('Global_tau_MALA_moves', 'MALA')
     Call refuse('N_Global_tau_MALA', 'MALA')
-    ! projector code: a toy model flagged as projector (the refusal comes before any operator is looked at)
+    ! projector code: a toy model flagged as projector; refused only on GPU=amd (R2) and GPU=intel (not checked yet), before any
+    ! operator is looked at; elsewhere the projector is not a refusal reason
     Call Clear_Ham_state()
     Allocate(Op_T(0,2), Op_V(0,2))
     Call Set_model_for_testing(4, 2, 1, 10, 0, .true., .false., Op_T, Op_V)
     Call Setup_flavor_map()
     ok = gpu_supported(reason)
     If (len_trim(build_reason) == 0) then
-       Call check(.not. ok .and. index(reason, 'projector') > 0, 'projector refused: '//trim(reason))
+#if defined(ALF_LA_HIP) || defined(ALF_LA_ONEMKL)
+       Call check(.not. ok .and. index(reason, 'projector') > 0, 'projector refused (this backend): '//trim(reason))
+#else
+       Call check(index(reason, 'projector') == 0, 'projector not refused: '//trim(reason))
+#endif
     else
        Call check(.not. ok .and. index(reason, trim(build_reason)) > 0, 'projector (build-wide): '//trim(reason))
     endif

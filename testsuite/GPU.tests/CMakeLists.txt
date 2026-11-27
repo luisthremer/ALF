@@ -138,6 +138,13 @@ else()
   foreach(fault perm phase nan det)
     gpu_stab_test(gpu-stab-fault-${fault} "ALF_GPU_SELFTEST=3;ALF_GPU_FAULT_STAB=${fault}" "GPU self-test FAILED" selftest)
   endforeach()
+  # projector (Projector = .T.): decompose of the Ndim x N_part states and CGRP on the device against the host; wrong pivot sign and
+  # flipped CGRP phase must fail
+  gpu_stab_test(gpu-stab-selftest-proj "ALF_GPU_SELFTEST=3" "GPU stab self-test PASSED" selftest-proj)
+  gpu_stab_test(gpu-stab-selftest-proj-nwrap7 "ALF_GPU_SELFTEST=3" "GPU stab self-test PASSED" selftest-proj 7)
+  foreach(fault perm phase)
+    gpu_stab_test(gpu-stab-fault-proj-${fault} "ALF_GPU_SELFTEST=3;ALF_GPU_FAULT_STAB=${fault}" "GPU self-test FAILED" selftest-proj)
+  endforeach()
   # determinant phase of the LU factors at large N (raw product underflows), selection bitwise vs LU_PHASE_SAFE
   gpu_stab_test(gpu-stab-phase "" "gpu-stab test passed: phase" phase)
   # tracked det(U) (speedup S1): the reflector formula against the LU phase (N = 4 .. 1000), unitary, tau = 0, complex last reflector,
