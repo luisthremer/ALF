@@ -30,6 +30,7 @@ Numbers are copied from the merge messages, the plans and the session reports; e
 | R3 | **Per-factor hopping product on the GPU** (dense `Hd` opt-in, G2) | Precision Green GPU/CPU 1.4-2.5x -> 1.00-1.01 (12 seeds) | GPU line a576c1b6 | merged | GPU only |
 | R4 | **Configurable precision abort** (`ALF_UNSTABLE_THRESHOLD`) | production can set the abort threshold per run | CPU line 73fb16b8 | merged | yes |
 | R5 | **G wrapped outside the sequential range** (H5, `Global_tau_moves` with partial `Nt_sequential`) | before: Precision Green 1.12 with return code 0; after: 2e-14 | CPU line bce3cfbe (B batch 2) | merged | **yes**: real bug in upstream |
+| R6 | **Rank-r accept of delayed/submatrix in Upgrade2's grouping** (G11; G10 on the device common kernel) | Spin_Peierls 12x12 Precision Green: CPU delayed 24.8x -> 1.08x, submatrix 28.6x -> 1.00x of standard; device delayed (GPU=host) 18.1x -> 0.99x; CPU time unchanged | CPU line f708694b, GPU line c66dbe1e | merged | **yes**: precision loss in upstream delayed/submatrix |
 
 ## Rule
 Every merge that gains speed, size or robustness adds or updates a row here (the manager checks it at the merge).
