@@ -75,3 +75,29 @@ other parameters and its V7 switch set; its own 20-seed run reached 1.16e-9 with
 ## Budget
 
 About 24 GPU-h of pn93la (estimate from the job lengths; sacct was unreachable): builds on the login node; jobs 566620-566646.
+
+## S-c: the Intel switches (feature `gpu-intel-speed`, 2026-11-27)
+
+Switches (all oneMKL only): `ALFSH_ASYNCBLK` (asynchronous SYCL block path of the submatrix update), `ALFSH_BLKFUSE=0..5` (fused
+block steps; >= 2 needs N_delay <= 64), `ALFSH_BLKPF` (prefetch of the next block, needs BLKFUSE >= 2), `ALFSH_OBSCORR` (correlation
+sums as a SYCL kernel). The info file names the active values, e.g.
+`GPU Intel block path (submatrix): ALFSH_ASYNCBLK=1, ALFSH_BLKFUSE=5, ALFSH_BLKPF=1` and `GPU observables ...: ALFSH_OBSCORR=1`.
+
+| Check | Job | Result |
+|---|---|---|
+| Gate with ASYNCBLK=1 BLKFUSE=5 BLKPF=1 OBSCORR=1 in the GPU lanes (default and STABLOG builds; Mz/SU(2), L 6-16 + 24, Ltau 0/1, delayed/submatrix, CGR_LU=2 lane) | 566761 | 50/50 PASS, negative controls FAIL; worst deviations as with the switches off (Mz L24 1.2e-10, STABLOG Mz 3.6e-11); prefetch 30 000 hits, 0 misses |
+| Fusion levels 1-5 with and without prefetch (intel box, B580, smoke) | - | all PASS (8x8 Mz T/F, Ltau 0/1) |
+| GPU=none 16 scenarios vs bb4b089c, GPU=host ctest (melmac) | - | byte-identical; 143/143 |
+
+Speed (job 566762): reference set (Beta = L, N_FL 2, U 5.3, h0 1, Nwrap 10, submatrix N_delay 32), one run per tile, 8 runs on the
+node, s/sweep = (CPU time NBin 2 - NBin 1) / 3 sweeps:
+
+| L | this line, switches off | this line, switches on | intel-batched tip, same switches | gpu-port tip |
+|---|---|---|---|---|
+| 24 | 32.3 | 30.0 (-7 %) | 28.5 | 46.8 |
+| 32 | 77.8 | 73.7 (-5 %) | 77.1 | 156.0 |
+
+Layout question (job 566660, L = 24, N_delay 32): one run alone with 1 / 12 pinned / 14 threads: 34.9 / 30.6 / 30.8 s; 8 runs at
+once, 12 pinned threads each: 29.6-32.6 s. Pinning, thread count and node load change nothing. In the same harness this line and
+intel-batched agree (above), so the factor to intel-batched's documented 3.75 s/sweep (its internal TEAM_TIMERS, mpiexec launch)
+is a difference of measurement, not of code; not pursued further (open for whoever needs absolute Intel throughput).
