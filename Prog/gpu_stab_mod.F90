@@ -101,7 +101,7 @@ Module gpu_stab_mod
   Use MyMats, only: COMPARE
   Use wrapur_mod, only: WRAPUR
   Use wrapul_mod, only: WRAPUL
-  Use cgr1_mod, only: CGR
+  Use cgr1_mod, only: CGR, CGRP
   Use linalg_mod, only: la_zgemm, la_ztrsm, la_zunmqr, la_zgeqrf, la_zgetrf, la_zqrpp
 #if defined(ALF_LA_CUDA)
   Use linalg_cuda_mod, only: la_cuda_sync
@@ -534,6 +534,9 @@ Contains
     Implicit none
     Character (len=1), intent(in) :: side
     Integer, intent(in) :: slot, nfe
+    if (s_proj) then
+       call dev_decompose_p(side, s_nc(nfe), udw_U(1,1,slot,nfe)); return
+    endif
 #if defined(STABLOG)
     call dev_decompose(side, udw_U(1,1,slot,nfe), udw_V(1,1,slot,nfe), udw_L(1,slot,nfe))
 #else
@@ -770,7 +773,11 @@ Contains
           !$omp target update to(st_Gt)
        endif
     endif
-    call dev_cgr(nfe, nvar)
+    if (s_proj) then
+       call dev_cgrp(nfe)
+    else
+       call dev_cgr(nfe, nvar)
+    endif
 #if defined(ALF_LA_CUDA)
     call la_cuda_sync()                            ! cuSOLVER info of this stabilisation, before its results are used
 #endif
@@ -1873,7 +1880,11 @@ Contains
        end select
     endif
     if (gpu_env_is('ALF_GPU_SELFTEST', '3')) then
-       call gpu_stab_selftest()
+       if (s_proj) then
+          call gpu_stab_selftest_proj()
+       else
+          call gpu_stab_selftest()
+       endif
        do st = 1, s_nfe
           call gpu_stab_reset_l(st); call gpu_stab_reset_r(st)
           do ib = 1, s_nstm
@@ -2175,6 +2186,91 @@ Contains
     !$omp target enter data map(to: p_wf) map(alloc: p_S, p_R)
   end subroutine proj_setup
 
+!> @brief Projector decompose of an Ndim x np state (decompose_UDV_state without V): QR, U = Q, column 1 times the phase.
+!> @details Pre-pivoted QR (la_zqrpp; the CPU uses ZGEQP3, or a log-norm sort in STABLOG builds): another pivot order only
+!> changes U by a matrix of positive determinant (Q R P^-1 times the phase of det R P^-1), so CGRP's G and phase are the same.
+  Subroutine dev_decompose_p(side, np, U)
+    Implicit none
+    Character (len=1), intent(in) :: side
+    Integer, intent(in) :: np
+    Complex (Kind=Kind(0.d0)), intent(inout) :: U(s_N,s_N)
+    Integer :: n, sgn, info
+    Complex (Kind=Kind(0.d0)) :: ph1
+
+    n = s_N
+    call la_zqrpp(n, np, U, n, st_ipvt, st_tau, st_work, s_lw, info)
+    if (info /= 0) call lapack_fail('decompose (projector): la_zqrpp (-101: NaN or Inf in the matrix to decompose)', info)
+    call fault_perm()
+    call k_diagabs(np, U, n, st_Dl)
+    call k_divrows(np, U, n, st_Dl)                       ! R(i,j) /= |R(i,i)| (QDRP_decompose)
+    ph1 = z1
+    call Pivot_phase(ph1, st_ipvt, np)
+    sgn = nint(real(ph1))
+    call k_phase(np, U, n, sgn, .not. (side == 'R' .or. side == 'r'), st_c, st_tau)
+    call k_ident(n, sC, n)
+    call la_zunmqr('L', 'N', n, np, np, U, n, st_tau, sC, n, st_work, s_lw, info)   ! Q (first np columns)
+    if (info /= 0) call lapack_fail('decompose (projector): zunmqr', info)
+    call k_copy_c(n*np, sC, U)
+    call k_scale_col1(n, U, n, st_c)                      ! first column of U times the phase
+  end subroutine dev_decompose_p
+
+!> @brief CGRP (cgr1_mod) on the device states of flavour nfe: S = U_L^dagger U_R, G = 1 - U_R S^-1 U_L^dagger -> st_Gn,
+!> phase of the LU of S -> st_c(3).
+!> @details The LU of S (np x np) runs on host LAPACK (16 np^2 B each way): the phase is CGRP's loop bit for bit, the pivots
+!> become one row permutation, applied while R = U_L^dagger is formed; the two triangular solves (= ZGETRS) and the GEMM run
+!> on the device.
+  Subroutine dev_cgrp(nfe)
+    Implicit none
+    Integer, intent(in) :: nfe
+    Integer :: n, np, ld, i, j, info
+    Complex (Kind=Kind(0.d0)), Allocatable :: hS(:,:)
+    Integer, Allocatable :: hp(:)
+    Complex (Kind=Kind(0.d0)) :: ph
+
+    n = s_N; np = s_nc(nfe); ld = s_npm
+    call la_zgemm('C', 'N', np, np, n, z1, udw_U(1,1,1,nfe), n, udw_U(1,1,2,nfe), n, z0, p_S, ld)
+#if defined(ALF_LA_CUDA)
+    call la_cuda_sync()                                   ! S complete before the D->H
+#endif
+    !$omp target update from(p_S)
+    allocate(hS(np,np), hp(np))
+    hS = p_S(1:np,1:np)                                   ! unmapped copy: linalg_mod takes the host path
+    call la_zgetrf(np, np, hS, np, hp, info)
+    ph = z1
+    do i = 1, np
+       if (hp(i) /= i) then
+          ph = -ph * hS(i,i)/abs(hS(i,i))
+       else
+          ph =  ph * hS(i,i)/abs(hS(i,i))
+       endif
+    enddo
+    if (fault == 2) ph = -ph                              ! negative control: flipped phase
+    do i = 1, np
+       st_perm(i) = i
+    enddo
+    do i = 1, np                                          ! ZLASWP: row i <-> row hp(i), in order
+       j = st_perm(i); st_perm(i) = st_perm(hp(i)); st_perm(hp(i)) = j
+    enddo
+    if (fault == 1 .and. np > 1) then                     ! negative control: wrong row permutation (a wrong pivot sign of the
+       j = st_perm(1); st_perm(1) = st_perm(2); st_perm(2) = j   ! decompose alone is a constant sign of every CGRP: invisible)
+    endif
+    p_S(1:np,1:np) = hS
+    st_c(3) = ph
+    !$omp target update to(p_S, st_c(3:3), st_perm(1:np))
+    deallocate(hS, hp)
+    ! R = P U_L^dagger (np x n)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = 1, n
+       do i = 1, np
+          p_R(i,j) = conjg(udw_U(j, st_perm(i), 1, nfe))
+       enddo
+    enddo
+    call la_ztrsm('L', 'L', 'N', 'U', np, n, z1, p_S, ld, p_R, ld)
+    call la_ztrsm('L', 'U', 'N', 'N', np, n, z1, p_S, ld, p_R, ld)
+    call k_ident(n, st_Gn, n)
+    call la_zgemm('N', 'N', n, n, np, -z1, udw_U(1,1,2,nfe), n, p_R, ld, z1, st_Gn, n)
+  end subroutine dev_cgrp
+
 !> @brief Projector, Ltau = 1: D->H of the device udvr (slot 2) into the host walker%udvr, which the host Tau_p reads.
 !> @param[inout] udvr host objects walker%udvr (U, N_part columns, side)
   Subroutine gpu_stab_export_r(udvr)
@@ -2187,6 +2283,74 @@ Contains
        udvr(nfe)%side = 'r'
     enddo
   end subroutine gpu_stab_export_r
+
+!> @brief Self-test of the projector path (ALF_GPU_SELFTEST=3, Projector = .T.): left chain from WF_L, right chain from WF_R
+!> with WRAPUL / WRAPUR + decompose on host and device, CGRP at every stabilisation point: G and phase against the host CGRP
+!> (both are independent of the pivot choice of the decompositions).  ALF_GPU_FAULT_STAB=perm (CGRP row permutation) and phase
+!> must make it fail.
+  Subroutine gpu_stab_selftest_proj()
+    Implicit none
+    Real (Kind=Kind(0.d0)), parameter :: tol = 1.d-10
+    Class (UDV_State), Allocatable :: hl(:), hr(:), hst(:,:)
+    Complex (Kind=Kind(0.d0)), Allocatable :: Gh(:,:), Gd(:,:,:)
+    Complex (Kind=Kind(0.d0)) :: ph_h, ph_d
+    Integer :: N, nfe, nf, nst, NT1, NT, nblk
+    Real (Kind=Kind(0.d0)) :: mg, mph
+    Character (len=256) :: line
+
+    N = s_N
+    in_selftest = .true.
+    call say('GPU stabilization self-test (projector) start')
+    allocate(hl(s_nfe), hr(s_nfe), hst(s_nstm, s_nfe), Gh(N,N), Gd(N,N,N_FL))
+    Gd = z0
+    do nfe = 1, s_nfe
+       nf = Calc_Fl_map(nfe)
+       call hl(nfe)%init(N, 'l', WF_L(nf)%P); call hr(nfe)%init(N, 'r', WF_R(nf)%P)
+       do nst = 1, s_nstm
+          call hst(nst,nfe)%alloc(N, s_nc(nfe))
+       enddo
+       hst(s_nstm,nfe) = hl(nfe)
+       call gpu_stab_reset_l(nfe); call gpu_stab_reset_r(nfe)
+       call gpu_stab_reset_st(s_nstm, nfe)
+    enddo
+    do nst = s_nstm-1, 1, -1
+       NT1 = s_nt(nst+1); NT = s_nt(nst)
+       call WRAPUL(NT1, NT, hl)
+       call gpu_stab_wrapul(NT1, NT)
+       do nfe = 1, s_nfe
+          hst(nst,nfe) = hl(nfe)
+          call gpu_stab_store_l(nst, nfe)
+       enddo
+    enddo
+    mg = 0.d0; mph = 0.d0; nblk = 0
+    do nst = 1, s_nstm
+       NT1 = s_nt(nst-1); NT = s_nt(nst)
+       call WRAPUR(NT1, NT, hr)
+       call gpu_stab_wrapur(NT1, NT)
+       do nfe = 1, s_nfe
+          nf = Calc_Fl_map(nfe)
+          call gpu_stab_exchange(nst, nfe, .true., hr(nfe))   ! device: udvl = udvst(nst) (host object not written)
+          call CGRP(ph_h, Gh, hr(nfe), hst(nst,nfe))
+          call gpu_stab_cgr(nfe, nf, 1, Gd, ph_d, .false.)
+          call mx(mg, rel_diff(Gd(:,:,nf), Gh))
+          call mx(mph, abs(ph_d - ph_h))
+       enddo
+       nblk = nblk + 1
+    enddo
+    write(line,'(A,I0,A,ES10.3,A,ES10.3,A,ES8.1,A)') 'GPU stab self-test projector CGRP at ', nblk, &
+         & ' stabilization points x flavours: max rel diff G ', mg, ', phase ', mph, ' (tol ', tol, ')'
+    call say(line)
+    if (.not. (mg <= tol .and. mph <= tol)) call selftest_fail('stab: projector CGRP')
+    do nfe = 1, s_nfe
+       call hl(nfe)%dealloc; call hr(nfe)%dealloc
+       do nst = 1, s_nstm
+          call hst(nst,nfe)%dealloc
+       enddo
+    enddo
+    deallocate(hl, hr, hst, Gh, Gd)
+    in_selftest = .false.
+    call say('GPU stab self-test PASSED')
+  end subroutine gpu_stab_selftest_proj
 
 End Module gpu_stab_mod
 #endif
