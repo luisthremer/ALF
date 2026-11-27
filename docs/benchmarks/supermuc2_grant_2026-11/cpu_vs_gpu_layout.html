@@ -1,0 +1,196 @@
+<title>ALF Node Throughput Test</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+/* Layout: one reading column, tables for the run matrix, two node diagrams side by side (stack on phones). */
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --fg:#1b2230; --muted:#5b6474; --line:#d9dee6;
+  --cpu:#2f6fb0; --gpu:#c0532a; --accent:#2f6fb0; --warn:#9a6a00; --warnbg:#fff4d6;
+  --f-display:"Space Grotesk",system-ui,sans-serif; --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12161d; --panel:#1a2029; --fg:#e4e8ee; --muted:#9aa4b2; --line:#2c3440;
+  --cpu:#6ea8e6; --gpu:#ec8a62; --accent:#6ea8e6; --warn:#e7c060; --warnbg:#2d2614; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12161d; --panel:#1a2029; --fg:#e4e8ee; --muted:#9aa4b2; --line:#2c3440;
+  --cpu:#6ea8e6; --gpu:#ec8a62; --accent:#6ea8e6; --warn:#e7c060; --warnbg:#2d2614; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 56px}
+main{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.2}
+h1{font-size:1.9rem} h2{font-size:1.3rem} h3{font-size:1.02rem}
+p{margin:0;max-width:72ch} .muted{color:var(--muted)}
+section{display:flex;flex-direction:column;gap:12px}
+.eyebrow{font-family:var(--f-mono);font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+code,.mono{font-family:var(--f-mono);font-size:.88em}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:.9rem}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{font-weight:600;color:var(--muted);font-size:.78rem;letter-spacing:.03em;text-transform:uppercase}
+tr:last-child td{border-bottom:none}
+td.n{text-align:right}
+.tag{display:inline-block;font-family:var(--f-mono);font-size:.74rem;padding:1px 7px;border-radius:10px;border:1px solid currentColor}
+.cpu{color:var(--cpu)} .gpu{color:var(--gpu)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.grid2>*{min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.note{background:var(--warnbg);border-left:3px solid var(--warn);padding:10px 14px;border-radius:4px}
+ul,ol{margin:0;padding-left:1.25em;display:flex;flex-direction:column;gap:4px;max-width:76ch}
+svg text{fill:var(--fg);font-family:var(--f-mono);font-size:11px}
+svg .lbl{fill:var(--muted)}
+.status{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+</style>
+
+<main>
+<header style="display:flex;flex-direction:column;gap:8px">
+  <span class="eyebrow">SuperMUC-NG Phase 2 · grant proposal · draft 2026-11-27</span>
+  <h1>ALF node throughput: GPU node vs CPU node</h1>
+  <p>Test layout for comparing how many Monte Carlo sweeps one full Phase 2 node delivers on its four Max 1550 GPUs and on its 112 CPU cores. <strong>Nothing has been submitted.</strong> This page is for review before the runs start.</p>
+  <div class="status"><span class="tag gpu">GPU build: build_pp</span><span class="tag cpu">CPU build: build_cpu-pp</span><span class="tag" style="color:var(--muted)">ALF 410c7b04 · /hppfs/work/pn73xu/di38zuw/ANTRAG_2026-11-27</span></div>
+</header>
+
+<section>
+  <h2>Question the test answers</h2>
+  <p>On one full node, what is the best throughput (sweeps per node-hour) with the GPUs, what is the best with the CPUs alone, and what is the ratio, for three lattice sizes at fixed β? Energy per sweep is then estimated from the hardware power ratings, comparing a GPU node with a notional CPU-only node (same two CPUs, no GPUs).</p>
+</section>
+
+<section>
+  <h2>Node topology (measured, job 566788)</h2>
+  <p>2 sockets × 56 cores Xeon Platinum 8480L, 2 hyperthreads per core, <strong>2 NUMA domains</strong> (no sub-NUMA clustering), 256 GB each. GPUs 0 and 1 hang on NUMA 0, GPUs 2 and 3 on NUMA 1. Each GPU has 2 tiles, so each tile has 14 nearby cores.</p>
+  <div class="tbl">
+  <svg viewBox="0 0 900 190" width="900" height="190" role="img" aria-label="Node diagram: two NUMA domains with 56 cores each, each attached to two GPUs with two tiles">
+    <rect x="10" y="10" width="430" height="170" rx="6" fill="none" stroke="var(--cpu)" stroke-width="1.5"/>
+    <rect x="460" y="10" width="430" height="170" rx="6" fill="none" stroke="var(--cpu)" stroke-width="1.5"/>
+    <text x="22" y="32">NUMA 0 · socket 0 · cores 0–55 (HT 112–167)</text>
+    <text x="472" y="32">NUMA 1 · socket 1 · cores 56–111 (HT 168–223)</text>
+    <g>
+      <rect x="22" y="48" width="196" height="60" rx="4" fill="none" stroke="var(--gpu)"/><text x="32" y="68">GPU 0</text>
+      <rect x="32" y="76" width="84" height="24" rx="3" fill="var(--gpu)" fill-opacity=".14" stroke="var(--gpu)"/><text x="40" y="92">tile 0.0</text>
+      <rect x="124" y="76" width="84" height="24" rx="3" fill="var(--gpu)" fill-opacity=".14" stroke="var(--gpu)"/><text x="132" y="92">tile 0.1</text>
+      <rect x="232" y="48" width="196" height="60" rx="4" fill="none" stroke="var(--gpu)"/><text x="242" y="68">GPU 1</text>
+      <rect x="242" y="76" width="84" height="24" rx="3" fill="var(--gpu)" fill-opacity=".14" stroke="var(--gpu)"/><text x="250" y="92">tile 1.0</text>
+      <rect x="334" y="76" width="84" height="24" rx="3" fill="var(--gpu)" fill-opacity=".14" stroke="var(--gpu)"/><text x="342" y="92">tile 1.1</text>
+      <rect x="472" y="48" width="196" height="60" rx="4" fill="none" stroke="var(--gpu)"/><text x="482" y="68">GPU 2</text>
+      <rect x="482" y="76" width="84" height="24" rx="3" fill="var(--gpu)" fill-opacity=".14" stroke="var(--gpu)"/><text x="490" y="92">tile 2.0</text>
+      <rect x="574" y="76" width="84" height="24" rx="3" fill="var(--gpu)" fill-opacity=".14" stroke="var(--gpu)"/><text x="582" y="92">tile 2.1</text>
+      <rect x="682" y="48" width="196" height="60" rx="4" fill="none" stroke="var(--gpu)"/><text x="692" y="68">GPU 3</text>
+      <rect x="692" y="76" width="84" height="24" rx="3" fill="var(--gpu)" fill-opacity=".14" stroke="var(--gpu)"/><text x="700" y="92">tile 3.0</text>
+      <rect x="784" y="76" width="84" height="24" rx="3" fill="var(--gpu)" fill-opacity=".14" stroke="var(--gpu)"/><text x="792" y="92">tile 3.1</text>
+    </g>
+    <g>
+      <rect x="22" y="124" width="406" height="40" rx="3" fill="var(--cpu)" fill-opacity=".10" stroke="var(--cpu)"/>
+      <text x="32" y="148">56 cores = 4 tiles × 14 cores; CPU ranks never span both boxes</text>
+      <rect x="472" y="124" width="406" height="40" rx="3" fill="var(--cpu)" fill-opacity=".10" stroke="var(--cpu)"/>
+      <text x="482" y="148">56 cores = 4 tiles × 14 cores</text>
+    </g>
+  </svg>
+  </div>
+</section>
+
+<section>
+  <h2>Physics parameters (all runs)</h2>
+  <div class="tbl"><table>
+    <tr><th>Parameter</th><th>Value</th><th>Source</th></tr>
+    <tr><td>Model, lattice</td><td>Hubbard, square, L1 = L2 = L</td><td>owner</td></tr>
+    <tr><td>L</td><td><strong>16, 24, 32</strong> (Ndim 256, 576, 1024)</td><td>owner: three sizes; values are Claude's proposal</td></tr>
+    <tr><td>β, Δτ</td><td>β = 4 fixed, Δτ = 0.1 (Ltrot = 40)</td><td>owner</td></tr>
+    <tr><td>Ltau</td><td>1 (time-displaced measurements on; on the GPU they run on the device)</td><td>owner</td></tr>
+    <tr><td>ham_h0</td><td>0</td><td>owner</td></tr>
+    <tr><td>Symm, Checkerboard</td><td>.T., .T.</td><td>owner</td></tr>
+    <tr><td>ham_U</td><td>5.25, one parameter set per run</td><td>proposal (middle of the production U range)</td></tr>
+    <tr><td>N_SUN, N_FL, Mz</td><td>2, 2, .F.</td><td>proposal: as in the production parameter set (jakob_params)</td></tr>
+    <tr><td>Rest</td><td>N_Phi = L²/2, Bulk, ham_T = 1, T2/U2/Tperp as production, Nwrap 10, submatrix, N_delay 64</td><td>jakob_params</td></tr>
+    <tr><td>Run length</td><td>NSweep = 1, NBin = 11, CPU_MAX = 0: 11 sweeps, the first one dropped (start-up, JIT), 10 timed</td><td>owner: 10 timed sweeps with error bar</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>Run matrix</h2>
+  <p>Every run uses one full node and fills it. A rank is one walker (independent Markov chain). All walkers belong to one parameter set, so they synchronise once per bin.</p>
+  <div class="grid2">
+  <div class="card">
+    <h3 class="cpu">CPU node (build_cpu-pp)</h3>
+    <p class="muted">Ranks × OpenMP threads; ranks are split evenly over the two sockets and pinned inside one NUMA domain (<code>I_MPI_PIN_DOMAIN=omp</code>, compact, one thread per physical core, no hyperthreads).</p>
+    <div class="tbl"><table>
+      <tr><th>Threads</th><th>Ranks</th><th>per socket</th><th>Cores used</th></tr>
+      <tr><td class="n">1</td><td class="n">112</td><td class="n">56</td><td class="n">112</td></tr>
+      <tr><td class="n">2</td><td class="n">56</td><td class="n">28</td><td class="n">112</td></tr>
+      <tr><td class="n">4</td><td class="n">28</td><td class="n">14</td><td class="n">112</td></tr>
+      <tr><td class="n">6</td><td class="n">18</td><td class="n">9</td><td class="n">108</td></tr>
+      <tr><td class="n">8</td><td class="n">14</td><td class="n">7</td><td class="n">112</td></tr>
+    </table></div>
+    <p class="muted">6 threads leave 2 cores per socket idle, since 6 does not divide 56. 7 or 14 threads would fill a socket exactly; add them if wanted.</p>
+  </div>
+  <div class="card">
+    <h3 class="gpu">GPU node (build_pp)</h3>
+    <p class="muted">Walkers per tile on all 8 tiles. Each rank is pinned to the socket of its tile. Host threads = the tile's 14 cores shared among its walkers. Compute engines per tile via <code>ZEX_NUMBER_OF_CCS</code>.</p>
+    <div class="tbl"><table>
+      <tr><th>Walkers/tile</th><th>Ranks</th><th>Threads</th><th>CCS/tile</th></tr>
+      <tr><td class="n">1</td><td class="n">8</td><td class="n">14</td><td class="n">1</td></tr>
+      <tr><td class="n">2</td><td class="n">16</td><td class="n">7</td><td class="n">2</td></tr>
+      <tr><td class="n">4</td><td class="n">32</td><td class="n">3</td><td class="n">4</td></tr>
+      <tr><td class="n">8</td><td class="n">64</td><td class="n">1</td><td class="n">4</td></tr>
+      <tr><td class="n">4 (check)</td><td class="n">32</td><td class="n">1</td><td class="n">4</td></tr>
+    </table></div>
+    <p class="muted">4 walkers/tile with 3 threads is the production layout. The 1-thread check shows whether host threads matter on the GPU; no full OpenMP scan there, since almost all work runs on the tile.</p>
+  </div>
+  </div>
+  <p>Total: 5 CPU + 5 GPU layouts × 3 sizes = <strong>30 runs</strong>. They are packed into one job per size and device, so 6 jobs, each running its layouts one after another on the same node.</p>
+</section>
+
+<section>
+  <h2>Timing and error bars</h2>
+  <ol>
+    <li>Each run writes to node-local memory (<code>/dev/shm</code>), so file-system noise stays out of the sweep time; the run directory is copied to <code>ANTRAG_2026-11-27/runs/</code> afterwards.</li>
+    <li>With NSweep = 1, rank 0 writes one bin per sweep to <code>data.h5</code>. A watcher logs the file's modification time with nanosecond resolution; the gap between two writes is the time of one sweep of all walkers (the slowest walker sets it, since the walkers synchronise at the bin).</li>
+    <li>Sweeps 2–11 give 10 times t<sub>i</sub>. Reported: t̄ ± σ/√10 per run.</li>
+    <li>Node throughput = N<sub>walkers</sub> × 3600 / t̄ sweeps per node-hour, with the same relative error. Best layout per device and size, then GPU/CPU ratio with propagated error.</li>
+    <li>The per-sweep time includes writing one bin of observables (equal-time and time-displaced). In production a bin holds 10 sweeps, so this test slightly favours the side whose sweeps are slower; the size of this effect is estimated from the time between the end of the last sweep and the file write.</li>
+  </ol>
+  <p>Also logged on the GPU runs, at 1 s intervals: utilisation, power and memory per tile (<code>xpu-smi dump</code>, metrics 0, 1, 18). This costs nothing and gives the GPU-usage plot.</p>
+</section>
+
+<section>
+  <h2>Energy (estimate from hardware ratings)</h2>
+  <p>Energy per sweep = P<sub>node</sub> / (node throughput). The ratings below are vendor TDPs and must be checked against the data sheets before they go into the proposal.</p>
+  <div class="tbl"><table>
+    <tr><th>Node</th><th>Components</th><th>P<sub>node</sub> (TDP sum)</th></tr>
+    <tr><td><span class="tag cpu">CPU-only node</span></td><td>2 × Xeon 8480L at 350 W</td><td class="n">700 W</td></tr>
+    <tr><td><span class="tag gpu">GPU node</span></td><td>4 × Max 1550 at 600 W + 2 × Xeon 8480L at 350 W</td><td class="n">3100 W</td></tr>
+  </table></div>
+  <p class="muted">Memory, network and cooling are left out for both. The measured tile power from xpu-smi can be shown as a cross-check of the 600 W figure.</p>
+</section>
+
+<section>
+  <h2>Plots for the proposal</h2>
+  <ol>
+    <li><strong>Main figure.</strong> Node throughput (sweeps per node-hour, log scale) against L: best CPU layout and best GPU layout, with error bars, and the GPU/CPU factor written at each L.</li>
+    <li><strong>Layout scan.</strong> Throughput per layout, one panel per L: CPU bars by threads per rank, GPU bars by walkers per tile. Shows that each side was tuned before comparing.</li>
+    <li><strong>Time per sweep of one walker</strong> against layout. Shows the trade-off: more walkers per tile means more throughput but slower single chains.</li>
+    <li><strong>Energy per sweep</strong> against L, GPU node vs CPU-only node (estimated).</li>
+    <li><strong>GPU usage</strong>: mean tile utilisation and power against walkers per tile, from xpu-smi.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>Cost</h2>
+  <p>Rough estimate, based on the earlier CPU measurement (L = 32, β = 32, 14 ranks × 8 threads: 380 s per sweep) scaled to β = 4 with Ltau = 1. The single-thread CPU runs at L = 32 dominate (about 1 h).</p>
+  <div class="tbl"><table>
+    <tr><th>Part</th><th>Jobs</th><th>Node-hours</th></tr>
+    <tr><td>CPU, L = 16 / 24 / 32</td><td class="n">3</td><td class="n">≈ 0.3 / 0.8 / 2</td></tr>
+    <tr><td>GPU, L = 16 / 24 / 32</td><td class="n">3</td><td class="n">≈ 0.3 each</td></tr>
+    <tr><td><strong>Total</strong></td><td class="n">6</td><td class="n"><strong>≈ 4–5 node-h ≈ 16–20 GPU-h</strong> (whole node charged, 4 GPU-h per node-hour)</td></tr>
+  </table></div>
+  <p class="muted">Partition: test (≤ 4 nodes, 1 h) for the GPU jobs and the CPU jobs at L = 16, 24; general for the CPU job at L = 32 (over 1 h). Charged to pn93la.</p>
+</section>
+
+<section>
+  <h2>Open points for the owner</h2>
+  <div class="note"><ul>
+    <li>L = 16, 24, 32 as the three sizes?</li>
+    <li>U = 5.25 and N_FL = 2 (as in production) acceptable, or N_FL = 1 with h0 = 0?</li>
+    <li>Add 7 and 14 threads per rank on the CPU (they fill a socket exactly)?</li>
+    <li>Energy: are TDP sums enough, or should the CPU power counters (RAPL) be read as well?</li>
+  </ul></div>
+</section>
+</main>
