@@ -119,9 +119,10 @@ Module gpu_stab_mod
   Use QMC_runtime_var, only: get_Ltau
   Use qmc_walker_mod, only: qmc_walker_t
   Use UDV_State_mod, only: UDV_State
-  Use gpu_state_mod, only: gpu_put_udv, gpu_active, G_d, g_dev_ok, g_host_ok, udv_U, udv_V, udv_D, udv_L, udw_U, udw_V, udw_D, udw_L, &
+  Use gpu_state_mod, only: gpu_put_udv, gpu_get_udv, nsigma_d, gpu_active, G_d, g_dev_ok, g_host_ok, udv_U, udv_V, udv_D, udv_L, udw_U, udw_V, udw_D, udw_L, &
        &                   info_line, gpu_env_get, gpu_env_is, selftest_fail, rnd, rel_diff, finite_c, is_finite
-  Use gpu_update_mod, only: gpu_upd_enabled
+  Use gpu_update_mod, only: gpu_upd_enabled, gpu_g_host, gpu_g_host_wrote
+  Use gpu_lowrank_mod, only: gpu_lr_pending
   Use gpu_wrap_mod, only: gpu_wrapur_slices, gpu_wrapul_slices
 
   Implicit none
@@ -130,6 +131,7 @@ Module gpu_stab_mod
   Public :: gpu_stab_on, gpu_stab_setup, gpu_stab_finalize
   Public :: gpu_stab_wrapur, gpu_stab_wrapul, gpu_stab_exchange, gpu_stab_store_l, gpu_stab_cgr, gpu_stab_recompute
   Public :: gpu_stab_reset_l, gpu_stab_reset_r, gpu_stab_reset_st, gpu_stab_put_udv, gpu_stab_untrack, gpu_stab_export_r
+  Public :: gpu_temper_pre, gpu_temper_post
   Public :: gpu_lu_phase_select, k_det_phase, gpu_stab_hook, gpu_stab_selftest
   Public :: k_det_qr, k_det_phase_u, k_set_one      ! det tracking (tests)
 #if defined(ALF_LA_HIP)
@@ -1224,6 +1226,45 @@ Contains
        enddo
     enddo
   end subroutine gpu_stab_put_udv
+
+!--------------------------------------------------------------------
+!> @brief
+!> Tempering (TEMPERING without PARALLEL_PARAMS), before Exchange_Step: the host walker becomes current.  Exchange_Step is
+!> host code (weights from udvl/udvst, MPI swap of nsigma, GR and the stacks); on the device path the device owns them.
+!> D->H of udvst, udvl, udvr and of G.  The call site is the start of a sweep: no low-rank update may be pending.
+!> @param[inout] walker the active walker
+!--------------------------------------------------------------------
+  Subroutine gpu_temper_pre(walker)
+    Implicit none
+    Type (qmc_walker_t), intent(inout) :: walker
+    if (.not. gpu_stab_on) return
+    if (gpu_lr_pending() /= 0) then
+       write(error_unit,*) 'gpu_temper_pre: pending low-rank update at the tempering exchange'
+       call Terminate_on_error(ERROR_GENERIC, __FILE__, __LINE__)
+    endif
+    call gpu_get_udv(walker)
+    call gpu_g_host(walker%GR)
+  end subroutine gpu_temper_pre
+
+!--------------------------------------------------------------------
+!> @brief
+!> Tempering, after Exchange_Step: fields, stacks and G of the (possibly new) configuration back to the device.  The stacks go
+!> through gpu_stab_put_udv (it re-derives the tracked det(U) of every slot); G was written by the host (CGR or MPI swap), the
+!> device copy is marked stale and uploaded at its next use.  ALF_GPU_FAULT=temper keeps the old nsigma_d (negative control).
+!> @param[in] walker the active walker
+!--------------------------------------------------------------------
+  Subroutine gpu_temper_post(walker)
+    Implicit none
+    Type (qmc_walker_t), intent(in) :: walker
+    if (.not. gpu_active) return
+    if (.not. gpu_env_is('ALF_GPU_FAULT', 'temper')) then
+       nsigma_d = nsigma%f
+       !$omp target update to(nsigma_d)
+    endif
+    if (.not. gpu_stab_on) return
+    call gpu_stab_put_udv(walker)
+    call gpu_g_host_wrote()
+  end subroutine gpu_temper_post
 
   !> det of the uploaded U (n x n, device) into d(1): QR of a copy in sA
   Subroutine upload_det(U, d)

@@ -148,7 +148,7 @@ Program Main
         Use qmc_setup_mod, only: Setup_model, Setup_walker_fields, Setup_update_schemes, Write_info_parameters, Write_info_start, Write_info_end
 #ifdef ALF_GPU
         Use qmc_setup_mod, only: Setup_gpu, Setup_gpu_stack, Finalize_gpu
-        Use gpu_obs_mod, only: gpu_obs_flush
+        Use gpu_obs_mod, only: gpu_obs_flush; Use gpu_stab_mod, only: gpu_temper_pre, gpu_temper_post   ! one line: __LINE__ below unchanged
 #endif
         Use comm_mod, only: is_root, comm_world
         Use qmc_driver_mod, only: Langevin_update, HMC_update, MALA_update
@@ -384,7 +384,14 @@ Program Main
 #if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
                  IF (MOD(NSW,get_N_Tempering_frequency()) == 0) then
                     !Write(6,*) "Irank, Call tempering", Irank, NSW, get_N_exchange_steps()
+#ifdef ALF_GPU
+                    ! device path: the host walker is made current before, the device after the host exchange
+                    Call gpu_temper_pre(walker)
+#endif
                     CALL Exchange_Step(walker%Phase,walker%GR,walker%udvr, walker%udvl,walker%Stab_nt, walker%udvst, get_N_exchange_steps(), get_Tempering_calc_det())
+#ifdef ALF_GPU
+                    Call gpu_temper_post(walker)
+#endif
                  endif
 #endif
                  ! Global updates

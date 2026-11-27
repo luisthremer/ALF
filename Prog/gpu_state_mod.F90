@@ -489,7 +489,7 @@ Contains
     ! fault values: an unknown or unparsable value is an error in every run
     If (gpu_env_get('ALF_GPU_FAULT', v)) then
        Select case (trim(v))
-       Case ('hop', 'hopc', 'vexp', 'nan', 'order', 'upd', 'nsig', 'obs')
+       Case ('hop', 'hopc', 'vexp', 'nan', 'order', 'upd', 'nsig', 'obs', 'temper')
        Case default
           Call env_fail('GPU fault value invalid: ALF_GPU_FAULT='//trim(v))
        End Select
@@ -577,9 +577,10 @@ Contains
 ! Plain MPI (independent chains, one Markov chain per rank, bins averaged over the group on the host) is supported: each rank
 ! owns its own device mirror and uses the host random numbers; the only MPI traffic stays the host-side observable reduction.
 ! Parallel parameters (PARALLEL_PARAMS, "PP"): the groups are independent runs with their own parameter set and no exchange step
-! (main.F90 skips Exchange_Step), so the device mirror needs no change.  Real tempering (state exchange) stays refused.
-#if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
-    reason = 'tempering is not supported on the GPU path'; return
+! (main.F90 skips Exchange_Step), so the device mirror needs no change.  Tempering (state exchange, P2.6): Exchange_Step stays
+! host code, main.F90 brackets it with gpu_temper_pre / gpu_temper_post (gpu_stab_mod); not yet verified on GPU=amd.
+#if defined(TEMPERING) && !defined(PARALLEL_PARAMS) && defined(ALF_LA_HIP)
+    reason = 'tempering: not yet verified on GPU=amd'; return
 #endif
 ! STAB1/STAB2: a port would be a second device stabilisation (own wrap, decompositions, CGR with the LU), see GPU_FEATURES.md
 #if defined(STAB1) || defined(STAB2)
