@@ -78,7 +78,7 @@ Module gpu_wrap_mod
        & hop_mod_symm
   Use linalg_mod, only: la_zgemm, la_zgemm_cr
 #if defined(ALF_LA_HIP)
-  Use alf_hipk_mod, only: hk_enabled, hk_copyz, hk_scatter_rows, hk_vslice_r, hk_cb_left, hk_cb_right
+  Use alf_hipk_mod, only: hk_enabled, hk_copyz, hk_scatter_rows, hk_vslice_r, hk_cb_left, hk_cb_right, hk_nd
 #endif
   Use gpu_state_mod, only: finite_c, g_d, gpu_env_get, gpu_env_int, gpu_env_is, hop_ac, hop_at, hop_aux, hop_big, &
        & hop_cval, hop_gptr, hop_gstart, hop_meta, hop_p, hop_rval, hop_start, info_line, is_finite, nsigma_d, &
@@ -1208,6 +1208,13 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,ncol)
     Integer :: j, n, i, l, N1, po, s, mt(5)
     Complex (Kind=Kind(0.d0)) :: z(V_NMAX), zk(V_NMAX), acc
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_nd(.true., M, ld, ncol, nf, t, na, nb, mode, sf, tw, size(V_meta,1), size(V_meta,2), size(nsigma_d,1), &
+            & size(V_g,1), V_meta, V_type, V_g, V_E, V_phi4, nsigma_d, V_P, V_M, V_U, V_exp)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do collapse(2) private(i, l, N1, po, s, mt, z, zk, acc)
     do j = 1, ncol
        do n = na, nb
@@ -1244,6 +1251,13 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,Ndim)
     Integer :: j, n, i, l, N1, po, s, mt(5)
     Complex (Kind=Kind(0.d0)) :: z(V_NMAX), zk(V_NMAX), acc
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_nd(.false., M, ld, nrow, nf, t, na, nb, mode, sf, 0, size(V_meta,1), size(V_meta,2), size(nsigma_d,1), &
+            & size(V_g,1), V_meta, V_type, V_g, V_E, V_phi4, nsigma_d, V_P, V_M, V_U, V_exp)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do collapse(2) private(i, l, N1, po, s, mt, z, zk, acc)
     do j = 1, nrow
        do n = na, nb

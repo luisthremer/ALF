@@ -48,7 +48,7 @@ module alf_hipk_mod
   public :: hk_scatter_rows, hk_vslice_r, hk_blk_gather, hk_blk_scale, hk_sub_flush_gather
   public :: hk_corr, hk_scalars
   public :: hk_cb_left, hk_cb_right
-  public :: hk_dly_gpp, hk_dly_wrap
+  public :: hk_dly_gpp, hk_dly_wrap, hk_nd
 
   ! HIP replacements on (default) or off (ALF_HIP_KERNELS=0: the OpenMP kernels run, for A/B checks); -1 = not read yet
   integer, save :: hk_state = -1
@@ -227,6 +227,12 @@ module alf_hipk_mod
       import :: c_ptr, c_int
       integer(c_int), value :: ld, nd, jcnt, n, t, dir, r, eo, nt, ldn
       type(c_ptr), value :: G, X, Y, nsig, vexp
+    end function
+    integer(c_int) function alfhk_nd(rows, M, ld, len, nf, t, n1, n2, mode, sf, tw, ldm, nop, ldn, ldg, Vmeta, Vtype, Vg, VE, &
+         & ph4, nsig, VP, VM, VU, Vx) bind(C, name='alfhk_nd')
+      import :: c_ptr, c_int
+      integer(c_int), value :: rows, ld, len, nf, t, n1, n2, mode, sf, tw, ldm, nop, ldn, ldg
+      type(c_ptr), value :: M, Vmeta, Vtype, Vg, VE, ph4, nsig, VP, VM, VU, Vx
     end function
   end interface
 
@@ -660,6 +666,24 @@ contains
     !$omp end target data
     call chk(rc, 'dly_wrap')
   end subroutine hk_dly_wrap
+
+  !> k_nd_rows (rows = .true., len = ncol) / k_nd_cols (len = nrow) of gpu_wrap_mod: non-diagonal / type-4 operators n1..n2.
+  !> ldm, nop, ldn, ldg: extents of V_meta (1st, 2nd), nsigma_d (1st), V_g (1st); ph4 = V_phi4(-2:2)
+  subroutine hk_nd(rows, M, ld, len, nf, t, n1, n2, mode, sf, tw, ldm, nop, ldn, ldg, Vmeta, Vtype, Vg, VE, ph4, nsig, VP, VM, VU, Vx)
+    logical, intent(in) :: rows
+    integer, intent(in) :: ld, len, nf, t, n1, n2, mode, sf, tw, ldm, nop, ldn, ldg
+    complex(kind=kind(0.d0)), target :: M(*), Vg(*), nsig(*), VM(*), VU(*), Vx(*)
+    integer, target :: Vmeta(*), Vtype(*), VP(*)
+    real(kind=kind(0.d0)), target :: VE(*), ph4(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(M, Vmeta, Vtype, Vg, VE, ph4, nsig, VP, VM, VU, Vx)
+    rc = alfhk_nd(int(merge(1,0,rows),c_int), c_loc(M(1)), int(ld,c_int), int(len,c_int), int(nf,c_int), int(t,c_int), &
+         & int(n1,c_int), int(n2,c_int), int(mode,c_int), int(sf,c_int), int(tw,c_int), int(ldm,c_int), int(nop,c_int), &
+         & int(ldn,c_int), int(ldg,c_int), c_loc(Vmeta(1)), c_loc(Vtype(1)), c_loc(Vg(1)), c_loc(VE(1)), c_loc(ph4(1)), &
+         & c_loc(nsig(1)), c_loc(VP(1)), c_loc(VM(1)), c_loc(VU(1)), c_loc(Vx(1)))
+    !$omp end target data
+    call chk(rc, 'nd')
+  end subroutine hk_nd
 
 end module alf_hipk_mod
 #endif

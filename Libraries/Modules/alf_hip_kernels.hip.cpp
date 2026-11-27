@@ -655,3 +655,96 @@ int alfhk_dly_wrap(void* G, void* X, void* Y, int ld, int nd, int jcnt, int n, i
   LAUNCH(k_dly_wrap_h, nb(nloop, 128), 128, (cd*)G, (cd*)X, (cd*)Y, (long)ld, nd, jcnt, n, t, dir, r, eo, nt, (const cd*)nsig, (long)ldn, (const cd*)Vexp);
   return fin(); }
 }  // extern "C"
+
+// ---- P2.6.1 non-diagonal / type-4 operators: k_nd_rows / k_nd_cols of gpu_wrap_mod (nd_work, nd_factors there) ------------
+// One OpenMP launch costs ~230 us here; these two are ~80 % of the device time of the P2.6 models on the MI210.
+struct NdC {
+  int ldm, nop, ldn, ldg;                 // leading extents of V_meta (1st, 2nd), nsigma_d, V_g
+  const int* Vmeta; const int* Vtype; const cd* Vg; const double* VE; const double* ph4;   // ph4 = V_phi4(-2:2)
+  const cd* nsig; const int* VP; const cd* VM; const cd* VU; const cd* Vx;
+};
+__device__ inline cd conjz(cd a) { return cd(a.r, -a.i); }
+__device__ inline cd expz(cd a) { double e = exp(a.r); return cd(e * cos(a.i), e * sin(a.i)); }
+__device__ inline int nintd(double x) { return (int)round(x); }        // Fortran nint: half away from zero
+// nd_work of gpu_wrap_mod; mt = (N, eoff, uoff, moff, type); a, b, Fortran 1-based
+__device__ cd nd_work_h(const int* mt, int mode, int s, int a, int b, const cd* zk, const NdC& c) {
+  int N1 = mt[0], eo = mt[1], uo = mt[2], mo = mt[3], nt = mt[4];
+  int ia = a, ib = b;
+  if (mode == 2 || mode == 3 || mode == 5 || mode == 7) { ia = b; ib = a; }
+  cd w;
+  if (mode <= 3) {
+    if (nt <= 2) w = c.VM[mo + (long)(s + nt) * N1 * N1 + ia + (ib - 1) * N1 - 1];
+    else {
+      w = (zk[0] * conjz(c.VU[uo + ib - 1])) * c.VU[uo + ia - 1];
+      for (int k = 2; k <= N1; k++) w = w + (zk[k - 1] * conjz(c.VU[uo + ib + (k - 1) * N1 - 1])) * c.VU[uo + ia + (k - 1) * N1 - 1];
+    }
+  } else w = c.VU[uo + ia + (ib - 1) * N1 - 1];
+  if (mode == 3 || mode == 5 || mode == 7) w = conjz(w);
+  if (mode == 4) w = (nt <= 2) ? w * c.Vx[eo + b + (s + nt) * N1 - 1] : w * zk[b - 1];
+  else if (mode == 5) w = (nt <= 2) ? c.Vx[eo + a + (s + nt) * N1 - 1] * w : zk[a - 1] * w;
+  return w;
+}
+// nd_factors of gpu_wrap_mod; E = V_E(poff+1:)
+__device__ void nd_factors_h(int N1, int nt, cd g, const double* E, const double* ph4, cd f, int mode, int sf, int* s, cd* zk) {
+  *s = sf * nintd(f.r);
+  if (nt <= 2 || mode >= 6) return;
+  double xr = 1.0 + f.i;
+  cd sq = xr >= 0 ? cd(sqrt(xr), 0.0) : cd(0.0, sqrt(-xr));
+  cd phi = cd(ph4[nintd(f.r) + 2], 0.0) * sq;
+  for (int k = 0; k < N1; k++) {
+    if (mode <= 3) zk[k] = expz(((double)sf * g * phi) * E[k]);
+    else { cd x = (phi * g) * E[k]; if (sf < 0) x = -x; zk[k] = expz(x); }
+  }
+}
+// operator setup of one thread: returns false if the operator is skipped
+__device__ inline bool nd_setup(const NdC& c, int n, int nf, int t, int mode, int sf, int* mt, int* po, int* s, cd* zk) {
+  const int* vm = c.Vmeta + (long)c.ldm * ((n - 1) + (long)(nf - 1) * c.nop);
+  if (mode <= 3 && vm[3] == 1) return false;
+  mt[0] = vm[0]; mt[1] = vm[2]; mt[2] = vm[6]; mt[3] = vm[7]; mt[4] = c.Vtype[n - 1]; *po = vm[1];
+  nd_factors_h(mt[0], mt[4], c.Vg[(n - 1) + (long)(nf - 1) * c.ldg], c.VE + *po, c.ph4, c.nsig[(n - 1) + (long)(t - 1) * c.ldn],
+               mode, sf, s, zk);
+  return true;
+}
+// rows P of M <- WORK M(P,:) (tw = 1: WORK^T); thread = (operator n fastest, column j), as the OpenMP collapse(2)
+__global__ void k_nd_rows_h(cd* M, long ld, int ncol, int nf, int t, int na, int nb, int mode, int sf, int tw, NdC c) {
+  int nn = nb - na + 1;
+  long tt = (long)blockIdx.x * blockDim.x + threadIdx.x; if (tt >= (long)ncol * nn) return;
+  int n = na + (int)(tt % nn); long j = tt / nn;
+  int mt[5], po, s; cd zk[8], z[8];
+  if (!nd_setup(c, n, nf, t, mode, sf, mt, &po, &s, zk)) return;
+  int N1 = mt[0];
+  for (int l = 0; l < N1; l++) z[l] = M[(c.VP[po + l] - 1) + j * ld];
+  for (int i = 1; i <= N1; i++) {
+    cd acc;
+    if (tw == 0) { acc = nd_work_h(mt, mode, s, i, 1, zk, c) * z[0]; for (int l = 2; l <= N1; l++) acc = acc + nd_work_h(mt, mode, s, i, l, zk, c) * z[l - 1]; }
+    else         { acc = nd_work_h(mt, mode, s, 1, i, zk, c) * z[0]; for (int l = 2; l <= N1; l++) acc = acc + nd_work_h(mt, mode, s, l, i, zk, c) * z[l - 1]; }
+    M[(c.VP[po + i - 1] - 1) + j * ld] = acc;
+  }
+}
+// columns P of M (rows 1..nrow) <- M(:,P) WORK; thread = (operator n fastest, row j)
+__global__ void k_nd_cols_h(cd* M, long ld, int nrow, int nf, int t, int na, int nb, int mode, int sf, NdC c) {
+  int nn = nb - na + 1;
+  long tt = (long)blockIdx.x * blockDim.x + threadIdx.x; if (tt >= (long)nrow * nn) return;
+  int n = na + (int)(tt % nn); long j = tt / nn;
+  int mt[5], po, s; cd zk[8], z[8];
+  if (!nd_setup(c, n, nf, t, mode, sf, mt, &po, &s, zk)) return;
+  int N1 = mt[0];
+  for (int l = 0; l < N1; l++) z[l] = M[j + (long)(c.VP[po + l] - 1) * ld];
+  for (int i = 1; i <= N1; i++) {
+    cd acc = z[0] * nd_work_h(mt, mode, s, 1, i, zk, c);
+    for (int l = 2; l <= N1; l++) acc = acc + z[l - 1] * nd_work_h(mt, mode, s, l, i, zk, c);
+    M[j + (long)(c.VP[po + i - 1] - 1) * ld] = acc;
+  }
+}
+extern "C" {
+// rows = 1: k_nd_rows (len = ncol), else k_nd_cols (len = nrow, tw ignored)
+int alfhk_nd(int rows, void* M, int ld, int len, int nf, int t, int n1, int n2, int mode, int sf, int tw,
+             int ldm, int nop, int ldn, int ldg, void* Vmeta, void* Vtype, void* Vg, void* VE, void* ph4, void* nsig,
+             void* VP, void* VM, void* VU, void* Vx) {
+  long tot = (long)len * (n2 - n1 + 1); if (tot <= 0) return 0;
+  NdC c = {ldm, nop, ldn, ldg, (const int*)Vmeta, (const int*)Vtype, (const cd*)Vg, (const double*)VE, (const double*)ph4,
+           (const cd*)nsig, (const int*)VP, (const cd*)VM, (const cd*)VU, (const cd*)Vx};
+  if (rows) { LAUNCH(k_nd_rows_h, nb(tot, 128), 128, (cd*)M, (long)ld, len, nf, t, n1, n2, mode, sf, tw, c); }
+  else      { LAUNCH(k_nd_cols_h, nb(tot, 128), 128, (cd*)M, (long)ld, len, nf, t, n1, n2, mode, sf, c); }
+  return fin(); }
+}  // extern "C"
