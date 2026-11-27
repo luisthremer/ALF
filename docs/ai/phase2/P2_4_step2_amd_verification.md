@@ -57,9 +57,9 @@ Hubbard Mz, Ltrot 64 (beta 6.4), Nwrap 10, Ltau 0, Symm F, submatrix N_delay 32,
 |---|---|---|---|---|---|---|
 | 56 (3136) | 0 | 0.411 | 0 | 1.8e-10 / 1.1e-6 | 328 | 13 GB |
 | 60 (3600) | 0 | 0.413 | 0 | 3.0e-10 / 1.8e-6 | 775 | 17 GB |
-| 64 (4096) | not run (stopped to keep amd under 85 % RAM; rerun alone) | | | | | |
+| 64 (4096) | 0 | 0.412 | 0 | 3.0e-10 / 2.3e-6 | 364 | 22 GB (run alone) |
 
-The R1 guard fired at the start-up upload (identity U) in both runs, as expected.
+The R1 guard fired at the start-up upload (identity U) in every run, as expected.
 
 ## gpu-port and production (for the production stream)
 
@@ -74,7 +74,25 @@ GPU vs CPU Den_eq 2.0e-9, scalar Im 3.3e-9; null CPU -O2 vs CPU -O3 Den_eq 2.2e-
 6x6, Checkerboard T, Nwrap 10, 4 seeds, same chain: Precision Green mean GPU/CPU 1.02 .. 1.28 (mean 1.12) with `ALF_GPU_HOPD=0`
 (default), 1.18 .. 1.25 (mean 1.22) with `ALF_GPU_HOPD=1`. Nwrap 25 is unstable on this input for the CPU path as well (rc 3).
 
+## Speed against gpu-port (follow-up, final tree on 75b9c881+, measured 2026-11-27)
+
+MI210 alone (one run at a time), Hubbard Mz, beta 5, dtau 0.1, Nwrap 10, Ltau 0, Checkerboard T, submatrix N_delay 32,
+ham_h0 = 0 unless stated, NBin 1. Seconds per sweep in steady state = (wall(4 sweeps) - wall(2 sweeps)) / 2, same input for both
+codes (`amd:~/p2_amd/spd2.sh`, results `amd:~/p2_amd/spd/results_symmF.txt`). `Symm = F` for both: with `Symm = T` the start-up
+check `Op_V_is_symmetric` of the CM line (KNOWN_ISSUES P1; its fast version is LEVERAGES row 1, in review) dominates the wall time
+(CM L = 24: ~230 s start-up; L = 32: 2377 s for 2 sweeps against 70 s on gpu-port).
+
+| L (N) | gpu-port 078d806b (Hd on, its default) | CM, `ALF_GPU_HOPD=1` (Hd) | CM default (`HOPD=0`, per-factor, G2) | CM default, h0 = 1 |
+|---|---|---|---|---|
+| 24 (576) | 1.85 | 1.10 (1.7x faster) | 5.36 (2.9x slower) | 6.08 |
+| 32 (1024) | 18.2 | 16.9 | 14.2 | 16.9 |
+
+At L = 32 (Ndim 1024 > `HOPD_NMAX` = 800) the dense product is not used anyway; the two CM columns measure the same path and their
+spread (14.2 .. 16.9 s) is the run-to-run noise: CM is 1.1-1.3x faster than gpu-port there. At L = 24 the per-factor hopping
+product (the G2 default) costs 4.9x on amdgcn: every checkerboard group is one libgomp target launch (~150 us each). For AMD
+production at Ndim <= 800, `ALF_GPU_HOPD=1` (Precision Green 1.2x the CPU value on this input, section above) or a HIP kernel for the
+group product (next step) is the choice.
+
 ## Not done in this feature
 
-Speed against gpu-port at L = 24/32 (scripts ready: `amd:~/p2_amd/spd.sh`, gpu-port build `amd:~/p2_amd/gp`); L = 64; the root
-cause of R2 (GCC 15 offload is not available on amd).
+The root cause of R2 (GCC 15 offload is not available on amd); a HIP kernel for the per-factor checkerboard product.
