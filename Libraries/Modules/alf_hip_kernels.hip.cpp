@@ -286,7 +286,7 @@ __global__ void k_scatter_rows(int nd, int ncol, const int* P, cd* M, int ld, co
   M[(P[l] - 1) + (long)j * ld] = W[l + (long)j * ldw];
 }
 // k_vslice_R: M(r,j) = (product over the active Op_V factors of row r, in order (desc: reversed)) * M(r,j)
-__global__ void k_vslice_r(int nd, int ncol, int ld, int nf, int t, int cj, int desc, int ldptr, int nop, int ldn,
+__global__ void k_vslice_r(int nd, int ncol, int ld, int nf, int t, int cj, int desc, int ldptr, int ldm, int nop, int ldn,
                            const int* vr_ptr, const int* vr_ent, const int* V_meta, const int* V_type, const cd* nsig,
                            const cd* V_exp, cd* M) {
   long tt = (long)blockIdx.x * blockDim.x + threadIdx.x; if (tt >= (long)nd * ncol) return;
@@ -297,7 +297,7 @@ __global__ void k_vslice_r(int nd, int ncol, int ld, int nf, int t, int cj, int 
   for (int q = 0; q <= pb - pa; q++) {
     int p = desc ? pb - q : pa + q;
     int n = vr_ent[2 * (p - 1)], i = vr_ent[2 * (p - 1) + 1];
-    const int* mt = V_meta + 4L * ((n - 1) + (long)(nf - 1) * nop);
+    const int* mt = V_meta + (long)ldm * ((n - 1) + (long)(nf - 1) * nop);   // ldm = size(V_meta,1)
     if (mt[3] != 1) {
       int sp = (int)rint(nsig[(n - 1) + (long)(t - 1) * ldn].r);     // nint (round half away from zero; sp is integral)
       cd z = V_exp[mt[2] + i + (long)(sp + V_type[n - 1]) * mt[0] - 1];
@@ -344,10 +344,10 @@ extern "C" {
 int alfhk_scatter_rows(int nd, int ncol, void* P, void* M, int ld, void* W, int ldw) {
   long tot = (long)nd * ncol; if (tot <= 0) return 0;
   LAUNCH(k_scatter_rows, nb(tot, 256), 256, nd, ncol, (const int*)P, (cd*)M, ld, (const cd*)W, ldw); return fin(); }
-int alfhk_vslice_r(int nd, int ncol, int ld, int nf, int t, int cj, int desc, int ldptr, int nop, int ldn, void* vr_ptr, void* vr_ent,
+int alfhk_vslice_r(int nd, int ncol, int ld, int nf, int t, int cj, int desc, int ldptr, int ldm, int nop, int ldn, void* vr_ptr, void* vr_ent,
                    void* V_meta, void* V_type, void* nsig, void* V_exp, void* M) {
   long tot = (long)nd * ncol; if (tot <= 0) return 0;
-  LAUNCH(k_vslice_r, nb(tot, 256), 256, nd, ncol, ld, nf, t, cj, desc, ldptr, nop, ldn, (const int*)vr_ptr, (const int*)vr_ent,
+  LAUNCH(k_vslice_r, nb(tot, 256), 256, nd, ncol, ld, nf, t, cj, desc, ldptr, ldm, nop, ldn, (const int*)vr_ptr, (const int*)vr_ent,
          (const int*)V_meta, (const int*)V_type, (const cd*)nsig, (const cd*)V_exp, (cd*)M); return fin(); }
 int alfhk_blk_gather(int nfl, int nfa, int nfb, int ld, int b, int nd, void* G, void* bsk, void* gbk) {
   long tot = (long)nfl * b * b; if (tot <= 0) return 0;

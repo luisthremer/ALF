@@ -1362,7 +1362,7 @@ Contains
     Complex (Kind=Kind(0.d0)) :: x, z, zq(4)
 #if defined(ALF_LA_HIP)
     if (hk_enabled()) then
-       call hk_vslice_r(nd, ncol, ld, nf, t, cj, desc, size(vr_ptr,1), size(V_meta,2), size(nsigma_d,1), vr_ptr, vr_ent, &
+       call hk_vslice_r(nd, ncol, ld, nf, t, cj, desc, size(vr_ptr,1), size(V_meta,1), size(V_meta,2), size(nsigma_d,1), vr_ptr, vr_ent, &
             & V_meta, V_type, nsigma_d, V_exp, M)
        return
     endif

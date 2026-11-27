@@ -46,6 +46,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | P1 | Op_V_is_symmetric slow (start-up, Symm = .T.) | B | fixed in a9fdbd64 (CPU line) |
 | R1 | GPU=amd: rocSOLVER's blocked `zgeqrf` (ROCm core-7.14) returns NaN with info = 0 when a 64-column block has tau = 0 (identity-like input, n >= ~200); the own HIP QR covers only m <= 2304 | B | fixed by feature `gpu-amd` (step 2: NaN test after every hipSOLVER `zgeqrf`, recomputed with the unblocked `rocsolver_zgeqr2`; test `55-linalg-hip` identity n = 200, 2400); rocSOLVER report pending |
 | R2 | GPU=amd (gfortran 14 amdgcn offload): CM's OpenMP target kernels give wrong results in full runs, depending on layout and timing (OpenMP permutation kernels of gpu_stab_mod at 6x6; device `la_zgetrf` in the CGR of the LU check mode: wrong tau observables (Precision tau 2e-3, silent), NaN G, libgomp mapping fatal, GCN queue error); correct in isolation | A (GPU=amd only; CUDA and GPU=host not affected) | open, investigating, root cause unknown. Mitigation in feature `gpu-amd`: HIP replacements mandatory on GPU=amd (`ALF_HIP_KERNELS=0` debug only), CGR-phase LU of the debug modes on host LAPACK, broad default-path verification |
+| R3 | GPU=amd: the HIP slice kernel `hk_vslice_r` (feature `gpu-amd`) read `V_meta` with a fixed stride 4; feature `p26-models` (merged d1e0dce6) widened `V_meta` to (8, Nop, N_FL), so every GPU=amd run of the GPU line from d1e0dce6 on used wrong vertex factors (Hubbard 4x4 Mz: stop "CGR: la_zqrpp (-101: NaN or Inf in the matrix)") | A (GPU=amd only) | fixed by feature `gpu-amd-p26` (stride `size(V_meta,1)` passed to the kernel) |
 | G7 | GPU line: the device stabilisation (column-norm pre-pivoted QR, all device paths and GPU=host) moves Mz SpinXY/SpinT equal-time correlations at L >= 24 by ~1e-8 relative against the CPU path (ZGEQP3); CPU with -DQR_PREPIVOT 4.3e-9, GPU=host 6.6e-9, CUDA/AMD/gpu-port of the same order; not a backend bug. The e2e tolerance (100 x Precision Green mean) is too tight there: it needs size scaling for Mz | C | open (property of the algorithm; tolerance rule to be scaled in step 3) |
 | G8 | GPU line: the stabilisation self-test `ALF_GPU_SELFTEST=3` reports a CGR phase difference of order 1 (1.8 - 2.0) between device and host for N_SUN = 2 models (Hubbard SU(2) `Mz = .F.`, Kondo, Spin_Peierls) and stops; G agrees to 1e-14, and the production runs agree (phase precision 1e-11, sign columns equal). Found in P2.6.1; reproduced on the unchanged base 5c0af0a4 (Hubbard SU(2)) | C | open (debug self-test only; probably the self-test compares a phase of different convention for N_SUN > 1, not investigated) |
 | G9 | GPU line, H100 (GPU=nvidia): Kondo 8x8 bilayer (Ndim 128), every scheme: Dimer_tau of the GPU path differs from the CPU path by 1.26e-11, above the floor 1e-11 of the e2e rule (confout identical, Precision Green mean 7e-14); GPU=host and the 4x4 cases are within it. Round-off of the device tau pass, same family as G7 | C | open (tolerance rule for tau files to be scaled with size, together with G7) |
@@ -380,4 +381,15 @@ AddressSanitizer/UBSan on Code-modularity for all models (no report), FPE traps 
   verification GPU=amd vs `ALF_GPU_DISABLE=1` over sizes, schemes and builds (see the feature's report). GPU=amd is
   "experimental: R2 open" until the cause is known.
 - **Next:** reproducer below the full code; GCC 15 offload; upstream report.
+
+## R3. GPU=amd: HIP slice kernel read the old V_meta layout (2026-11-27; fixed by feature `gpu-amd-p26`)
+
+- **Applies to:** GPU=amd builds of `Code-modularity-GPU` from d1e0dce6 (merge of `p26-models`) until the fix; every model and
+  scheme (the Op_V slice `k_vslice_R` runs in every wrap). CUDA, oneMKL, GPU=host: not affected (they index `V_meta` by name).
+- **Cause:** `alfhk_vslice_r` computed the address of `V_meta(:,n,nf)` with a hard-coded leading extent 4; `p26-models`
+  added entries 5..8 (N_non_zero, diag flag, uoff, moff). The kernel read entries of other operators.
+- **Symptom:** Hubbard 4x4 Mz (standard, delayed, submatrix) stops with "CGR: la_zqrpp (-101: NaN or Inf in the matrix)".
+  Wrong but finite factors are possible on other inputs, so silent wrong results cannot be ruled out for runs made in that window.
+- **Fix:** the leading extent `size(V_meta,1)` is passed to the kernel. Check: the Hubbard regression cases of
+  `cases_p26.py` and the P2.6 gate (`docs/ai/phase2/P2_4_step2_amd_verification.md`).
 
