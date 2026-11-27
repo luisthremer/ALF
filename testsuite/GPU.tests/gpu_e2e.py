@@ -9,7 +9,7 @@
 Requirements per case: the info file of the active run says "ACTIVE (mirror, wraps and updates on the device path)" (cases that
 must stay inactive: an INACTIVE line with the expected reason, and then every output file byte-identical to 'disabled');
 confout_0 byte-identical to 'disabled' (the Markov chain is the CPU one for these short runs); every other output file equal to
-'disabled' to max(1e-11, 100 x Precision Green mean of the 'disabled' run) (|x - y| / max(1, |y|)).  The 1e-11 is the round-off of the device
+'disabled' to max(1e-11, 100 x Precision Green mean, Precision Green max) of the 'disabled' run (|x - y| / max(1, |y|)).  The 1e-11 is the round-off of the device
 kernels (e.g. FMA).  Since step 1d the device decomposition (ZGEQRF + ZUNMQR, column-norm pre-pivot) differs from the CPU one (ZGEQP3,
 ZUNGQR) in the last bits of G at every stabilisation point, and the wrap instability amplifies that by the factor that also makes the
 Precision Green line of the info file (mean deviation of the wrapped from the recomputed G) non-zero: 6e-11 for the Mz-Hubbard run
@@ -279,7 +279,9 @@ def main():
         if not os.path.exists(os.path.join(dirs["active"], "confout_0")) and not os.path.exists(os.path.join(dirs["active"], "data.h5")):
             bad_case.append("no confout_0 / data.h5 in the active run")
         gp_act, gp_dis = green_precision(dirs["active"]), green_precision(dirs["disabled"])
-        tol = TOL if gp_dis is None else max(TOL, 100.0 * gp_dis[0])
+        # interim rule (KNOWN_ISSUES G7): the observables of two runs of the same chain differ by up to the largest wrap error, so
+        # the CPU run's Precision Green max is also accepted; the GPU run's max is not (it would hide a worse device path, G10)
+        tol = TOL if gp_dis is None else max(TOL, 100.0 * gp_dis[0], gp_dis[1])
         bad, diffs = compare(dirs["active"], dirs["disabled"], strict=expect.startswith("inactive:"), tol=tol)
         scal = ", ".join("%s %.3g / %.3g" % (f[:-5], diffs[f][0], diffs[f][1]) for f in ("Ener_scal", "Kin_scal", "Pot_scal")
                          if diffs.get(f) is not None)
