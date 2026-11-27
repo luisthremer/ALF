@@ -77,6 +77,9 @@ Module gpu_wrap_mod
   Use Hop_mod, only: hop_mod_mmthl, hop_mod_mmthl_m1, hop_mod_mmthlc, hop_mod_mmthr, hop_mod_mmthr_m1, &
        & hop_mod_symm
   Use linalg_mod, only: la_zgemm, la_zgemm_cr
+#if defined(ALF_LA_HIP)
+  Use alf_hipk_mod, only: hk_enabled, hk_copyz, hk_scatter_rows, hk_vslice_r
+#endif
   Use gpu_state_mod, only: finite_c, g_d, gpu_env_get, gpu_env_int, gpu_env_is, hop_ac, hop_at, hop_aux, hop_big, &
        & hop_cval, hop_gptr, hop_gstart, hop_meta, hop_p, hop_rval, hop_start, info_line, is_finite, nsigma_d, &
        & rand_mat, rnd, scr_c, selftest_fail, td_any, td_grp, td_n, v_exp, v_meta, v_p, v_type, vr_ent, vr_ptr
@@ -308,6 +311,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: a(nel)
     Complex (Kind=Kind(0.d0)), intent(inout) :: b(nel)
     Integer :: i
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_copyz(nel, a, b)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do
     do i = 1, nel
        b(i) = a(i)
@@ -494,6 +503,9 @@ Contains
           r = hP(po+1)
           a = hR(mo+1)
           !GCC$ novector
+#if defined(ALF_LA_HIP)
+          !GCC$ novector
+#endif
           do j = j1, j2
              M(r,j) = cmplx(a*real(M(r,j)), a*aimag(M(r,j)), kind(0.d0))
           enddo
@@ -501,6 +513,9 @@ Contains
           r1 = hP(po+1); r2 = hP(po+2)
           a11 = hR(mo+1); a21 = hR(mo+2); a12 = hR(mo+3); a22 = hR(mo+4)
           !GCC$ novector
+#if defined(ALF_LA_HIP)
+          !GCC$ novector
+#endif
           do j = j1, j2
              w1 = M(r1,j); w2 = M(r2,j)
              zr = a11*real(w1) + a12*real(w2); zi = a11*aimag(w1) + a12*aimag(w2)
@@ -510,16 +525,28 @@ Contains
           enddo
        else
           !GCC$ novector
+#if defined(ALF_LA_HIP)
+          !GCC$ novector
+#endif
           do j = j1, j2
              !GCC$ novector
+#if defined(ALF_LA_HIP)
+             !GCC$ novector
+#endif
              do l = 1, nd
                 w(l) = M(hP(po+l), j)
              enddo
              !GCC$ novector
+#if defined(ALF_LA_HIP)
+             !GCC$ novector
+#endif
              do i = 1, nd
                 a = hR(mo + i)
                 zr = a*real(w(1)); zi = a*aimag(w(1))
                 !GCC$ novector
+#if defined(ALF_LA_HIP)
+                !GCC$ novector
+#endif
                 do l = 2, nd
                    a = hR(mo + i + (l-1)*nd)
                    zr = zr + a*real(w(l)); zi = zi + a*aimag(w(l))
@@ -533,6 +560,9 @@ Contains
           r = hP(po+1)
           c11 = hC(mo+1)
           !GCC$ novector
+#if defined(ALF_LA_HIP)
+          !GCC$ novector
+#endif
           do j = j1, j2
              M(r,j) = c11 * M(r,j)
           enddo
@@ -540,6 +570,9 @@ Contains
           r1 = hP(po+1); r2 = hP(po+2)
           c11 = hC(mo+1); c21 = hC(mo+2); c12 = hC(mo+3); c22 = hC(mo+4)
           !GCC$ novector
+#if defined(ALF_LA_HIP)
+          !GCC$ novector
+#endif
           do j = j1, j2
              w1 = M(r1,j); w2 = M(r2,j)
              M(r1,j) = c11*w1 + c12*w2
@@ -547,15 +580,27 @@ Contains
           enddo
        else
           !GCC$ novector
+#if defined(ALF_LA_HIP)
+          !GCC$ novector
+#endif
           do j = j1, j2
              !GCC$ novector
+#if defined(ALF_LA_HIP)
+             !GCC$ novector
+#endif
              do l = 1, nd
                 w(l) = M(hP(po+l), j)
              enddo
              !GCC$ novector
+#if defined(ALF_LA_HIP)
+             !GCC$ novector
+#endif
              do i = 1, nd
                 z = hC(mo + i) * w(1)
                 !GCC$ novector
+#if defined(ALF_LA_HIP)
+                !GCC$ novector
+#endif
                 do l = 2, nd
                    z = z + hC(mo + i + (l-1)*nd) * w(l)
                 enddo
@@ -584,6 +629,9 @@ Contains
           c = hP(po+1)
           a = hR(mo+1)
           !GCC$ novector
+#if defined(ALF_LA_HIP)
+          !GCC$ novector
+#endif
           do i = i1, i2, istep
              M(i,c) = cmplx(a*real(M(i,c)), a*aimag(M(i,c)), kind(0.d0))
           enddo
@@ -591,6 +639,9 @@ Contains
           c1 = hP(po+1); c2 = hP(po+2)
           a11 = hR(mo+1); a21 = hR(mo+2); a12 = hR(mo+3); a22 = hR(mo+4)
           !GCC$ novector
+#if defined(ALF_LA_HIP)
+          !GCC$ novector
+#endif
           do i = i1, i2, istep
              w1 = M(i,c1); w2 = M(i,c2)
              zr = a11*real(w1) + a21*real(w2); zi = a11*aimag(w1) + a21*aimag(w2)
@@ -600,16 +651,28 @@ Contains
           enddo
        else
           !GCC$ novector
+#if defined(ALF_LA_HIP)
+          !GCC$ novector
+#endif
           do i = i1, i2, istep
              !GCC$ novector
+#if defined(ALF_LA_HIP)
+             !GCC$ novector
+#endif
              do l = 1, nd
                 w(l) = M(i, hP(po+l))
              enddo
              !GCC$ novector
+#if defined(ALF_LA_HIP)
+             !GCC$ novector
+#endif
              do j = 1, nd
                 a = hR(mo + 1 + (j-1)*nd)
                 zr = a*real(w(1)); zi = a*aimag(w(1))
                 !GCC$ novector
+#if defined(ALF_LA_HIP)
+                !GCC$ novector
+#endif
                 do l = 2, nd
                    a = hR(mo + l + (j-1)*nd)
                    zr = zr + a*real(w(l)); zi = zi + a*aimag(w(l))
@@ -623,6 +686,9 @@ Contains
           c = hP(po+1)
           c11 = hC(mo+1)
           !GCC$ novector
+#if defined(ALF_LA_HIP)
+          !GCC$ novector
+#endif
           do i = i1, i2, istep
              M(i,c) = M(i,c) * c11
           enddo
@@ -630,6 +696,9 @@ Contains
           c1 = hP(po+1); c2 = hP(po+2)
           c11 = hC(mo+1); c21 = hC(mo+2); c12 = hC(mo+3); c22 = hC(mo+4)
           !GCC$ novector
+#if defined(ALF_LA_HIP)
+          !GCC$ novector
+#endif
           do i = i1, i2, istep
              w1 = M(i,c1); w2 = M(i,c2)
              M(i,c1) = w1*c11 + w2*c21
@@ -637,15 +706,27 @@ Contains
           enddo
        else
           !GCC$ novector
+#if defined(ALF_LA_HIP)
+          !GCC$ novector
+#endif
           do i = i1, i2, istep
              !GCC$ novector
+#if defined(ALF_LA_HIP)
+             !GCC$ novector
+#endif
              do l = 1, nd
                 w(l) = M(i, hP(po+l))
              enddo
              !GCC$ novector
+#if defined(ALF_LA_HIP)
+             !GCC$ novector
+#endif
              do j = 1, nd
                 z = w(1) * hC(mo + 1 + (j-1)*nd)
                 !GCC$ novector
+#if defined(ALF_LA_HIP)
+                !GCC$ novector
+#endif
                 do l = 2, nd
                    z = z + w(l) * hC(mo + l + (j-1)*nd)
                 enddo
@@ -790,6 +871,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,ncol)
     Complex (Kind=Kind(0.d0)), intent(in) :: W(ldw,ncol)
     Integer :: j, l
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_scatter_rows(nd, ncol, P, M, ld, W, ldw)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, ncol
        do l = 1, nd
@@ -996,6 +1083,13 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,ncol)
     Integer :: jb, nblk, j, j1, j2, r, pa, pb, p, q, n, i, sp, nact
     Complex (Kind=Kind(0.d0)) :: x, z, zq(4)
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_vslice_r(nd, ncol, ld, nf, t, cj, desc, size(vr_ptr,1), size(V_meta,2), size(nsigma_d,1), vr_ptr, vr_ent, &
+            & V_meta, V_type, nsigma_d, V_exp, M)
+       return
+    endif
+#endif
 
     nblk = (ncol + vb - 1) / vb
     ! thread (r, column block): the factors of row r are looked up once per thread when there are at most 4 of them

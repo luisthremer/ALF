@@ -44,6 +44,23 @@ Verified 2026-11-25 by reading files; "unverified" marks anything not run.
 - `ALF_FLAGS_EXT`: extra flags appended everywhere (export before sourcing).
 - GNU opt flags: `-cpp -O3 -ffree-line-length-none -ffast-math -fopenmp`; `-std=f2008` for Prog/Analysis.
 - `configure.sh ... GPU=none|host` (GPU line `Code-modularity-GPU`, P2.4 step 1a): `GPU=host` builds the OpenMP device path (`gpu_*_mod`) running on the host; `GPU=none` (default) gives the CPU code unchanged. Vendor backends (`GPU=nvidia|intel|amd`) come with P2.4 step 2, see docs/ai/phase2/P2_4_GPU_PLAN.md.
+- `GPU=amd` (P2.4 step 2), **experimental: KNOWN_ISSUES R2 open** (OpenMP target kernels unreliable on gfortran-14 amdgcn;
+  the HIP replacements are mandatory). On the amd machine (MI210): `source configure.sh AMDGPU noMPI GPU=amd NO-INTERACTIVE && make`
+  (MACHINE `AMDGPU` = GNU plus the toolchain under `ALF_AMD_HOME`, default `~/amd`: `env.sh` with the gcc 14 offload compiler,
+  the patched libgomp plugin as `ALF_GOMP`, ROCm `/opt/rocm/core-7.14` with dev headers; it lists missing pieces and stops).
+  Elsewhere MACHINE GNU with gfortran >= 14 built with amdgcn offload, ROCm (hipcc, hipBLAS, hipSOLVER,
+  rocSOLVER); env `ALF_AMD_ARCH` (default gfx90a), `ROCM_PATH`, `ROCM_INC`. Flags `-foffload=amdgcn-amdhsa -DALF_GPU
+  -DALF_LA_HIP`, no `-static`, no `-ffast-math`. The HIP code is `Libraries/Modules/linalg_hip_mod.F90` (device path of
+  `linalg_mod`, presence dispatch), `alf_hipk_mod.F90` + `alf_hip_kernels.hip.cpp` (HIP kernels replacing hot OpenMP kernels
+  of `gpu_*_mod` inside `#if defined(ALF_LA_HIP)`), `alf_hip_qr.hip.cpp` (own QR, m <= 2304), `alf_la_hip_shim.cpp`.
+  Run-time switches: `ALF_HIP_QR=0` (hipSOLVER QR only), `ALF_HIP_KERNELS=0` (the OpenMP kernels instead of the HIP ones;
+  debug only, needs `ALF_GPU_DEBUG=1`, warned in the info file; R2), `ALF_HIP_ASYNC=0` (synchronise after every HIP call). Recommended: `GCN_NUM_THREADS=4`,
+  `OMP_TARGET_OFFLOAD=MANDATORY`, and gpu-port's patched libgomp GCN plugin (`docs/gpu/platforms/amd_mi210/*.patch` on
+  `fork/gpu-port`: pooled launches, presync hook for the deferred synchronisation; without it every HIP call synchronises).
+  Device tests: `testsuite/GPU.tests/55-linalg-hip` (wrappers vs host), `56-hipk-stab` (HIP vs OpenMP stab kernels),
+  registered only for `-DALF_LA_HIP`. CI does not build GPU=amd (no ROCm/amdgcn there): check on the MI210 (`ssh amd`).
+  Known: KNOWN_ISSUES R1 (rocSOLVER zgeqrf NaN, guarded), R2 (open; the CGR-phase LU of the debug modes
+  `ALF_GPU_CGR_LU=1,2` runs on host LAPACK on GPU=amd).
 - Exports: `ALF_DIR ALF_FC ALF_LIB ALF_FLAGS_QRREF ALF_FLAGS_MODULES ALF_FLAGS_ANA ALF_FLAGS_PROG`.
 - Preprocessor macros actually used in Prog/ + Libraries/Modules: MPI (178 #if lines), HDF5, TEMPERING,
   PARALLEL_PARAMS, HDF5_ZLIB, STAB1/2/3, STABLOG (cgr1, wrapur, udv_state…), OLDNAG, `__PGI`/`__NVCOMPILER`.

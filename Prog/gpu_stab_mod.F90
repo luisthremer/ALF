@@ -106,6 +106,11 @@ Module gpu_stab_mod
 #if defined(ALF_LA_CUDA)
   Use linalg_cuda_mod, only: la_cuda_sync
 #endif
+#if defined(ALF_LA_HIP)
+  Use alf_hipk_mod, only: hk_enabled, hk_ident, hk_setd, hk_setl, hk_copyz, hk_scale_cols, hk_diagabs, hk_divrows, hk_phase, &
+       &                  hk_scale_row1, hk_scale_col1, hk_triu, hk_perm, hk_perm_vec, hk_ct, hk_rowdiv, hk_colinv, hk_tpup, &
+       &                  hk_det_phase, hk_cgr_phase, hk_testscale, hk_prec
+#endif
 #if defined(STABLOG)
   Use linalg_mod, only: la_zgeqp3
 #endif
@@ -125,6 +130,12 @@ Module gpu_stab_mod
   Public :: gpu_stab_reset_l, gpu_stab_reset_r, gpu_stab_reset_st, gpu_stab_put_udv, gpu_stab_untrack
   Public :: gpu_lu_phase_select, k_det_phase, gpu_stab_hook, gpu_stab_selftest
   Public :: k_det_qr, k_det_phase_u, k_set_one      ! det tracking (tests)
+#if defined(ALF_LA_HIP)
+  Public :: k_phase, k_cgr_phase, k_scale_cols, k_rowdiv, k_colinv, k_perm_rows, k_iperm_cols, k_triu, k_testscale  ! 56-hipk-stab
+#if !defined(STABLOG)
+  Public :: k_tpup
+#endif
+#endif
   Public :: gpu_stab_tau_dev, dev_prec, k_ident, k_copy_c, k_ct, k_diagabs, k_divrows, say     ! used by gpu_tau_mod
 
   Logical, Save :: gpu_stab_on = .false.      ! the device stabilisation replaces WRAPUR/WRAPUL/CGR in the sweeps
@@ -270,6 +281,12 @@ Contains
     Integer, intent(in) :: n, ld
     Complex (Kind=Kind(0.d0)), intent(inout) :: U(ld,n)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_ident(n, ld, U)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
@@ -287,6 +304,12 @@ Contains
     Integer, intent(in) :: n
     Complex (Kind=Kind(0.d0)), intent(inout) :: D(n)
     Integer :: i
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_setd(n, D)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do
     do i = 1, n
        D(i) = z1
@@ -298,6 +321,12 @@ Contains
     Integer, intent(in) :: n
     Real (Kind=Kind(0.d0)), intent(inout) :: L(n)
     Integer :: i
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_setl(n, L)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do
     do i = 1, n
        L(i) = 0.d0
@@ -310,6 +339,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: a(nel)
     Complex (Kind=Kind(0.d0)), intent(inout) :: b(nel)
     Integer :: i
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_copyz(nel, a, b)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do
     do i = 1, nel
        b(i) = a(i)
@@ -813,7 +848,13 @@ Contains
     if (use_lu) then
        ! LU of the RHS (sA is not read after k_tpup, cgr_solve overwrites it).  The kernel returns the normalised phase and the raw
        ! determinant, the host selects (LU_PHASE_SAFE rule) and forms Phase = conj(det)/|det|.
+#if defined(ALF_LA_HIP)
+       ! GPU=amd: this LU (debug modes 1, 2 only) runs on host LAPACK: the device la_zgetrf here was followed by layout-dependent
+       ! wrong results (KNOWN_ISSUES R2).  D->H of the RHS, host LU on an unmapped copy, H->D of the factors and pivots.
+       call host_lu(n, info)
+#else
        call la_zgetrf(n, n, sA, n, st_ipiv, info)
+#endif
        if (info < 0) call lapack_fail('CGR: zgetrf', info)
        call k_det_phase(n, sA, n, st_ipiv, st_c)
        ! D->H: normalised LU phase and raw determinant (32 B)
@@ -872,6 +913,26 @@ Contains
     Integer, intent(in) :: slot, nfe
     w_det_ok(slot,nfe) = .false.
   end subroutine gpu_stab_untrack
+
+#if defined(ALF_LA_HIP)
+  !> GPU=amd, debug modes ALF_GPU_CGR_LU = 1, 2: LU of the RHS sA on host LAPACK (KNOWN_ISSUES R2); sA and st_ipiv end as after
+  !> la_zgetrf on the device.  The copies are not mapped, so linalg_mod's presence dispatch takes the host path.
+  Subroutine host_lu(n, info)
+    Implicit none
+    Integer, intent(in) :: n
+    Integer, intent(out) :: info
+    Complex (Kind=Kind(0.d0)), Allocatable :: hA(:,:)
+    Integer, Allocatable :: hp(:)
+    allocate(hA(n,n), hp(n))
+    !$omp target update from(sA)
+    hA = sA
+    call la_zgetrf(n, n, hA, n, hp, info)
+    sA = hA
+    st_ipiv(1:n) = hp
+    !$omp target update to(sA, st_ipiv)
+    deallocate(hA, hp)
+  end subroutine host_lu
+#endif
 
   !> The part of CGR after the matrix T = TPUP is built: QR, phase, solve.  T is destroyed.  Result in st_Gn, phase st_c(3).
   !> ph0: the LU phase (host), used if devph is .false.; devph: the tracked phase st_c(7) on the device is used instead.
@@ -956,6 +1017,12 @@ Contains
     Real (Kind=Kind(0.d0)) :: amod
     Integer :: i, sg
     Logical :: zero
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_det_phase(n, lda, A, ipiv, cs)
+       return
+    endif
+#endif
     !$omp target
     raw = cmplx(1.d0, 0.d0, kind(0.d0))
     p = cmplx(1.d0, 0.d0, kind(0.d0))
@@ -1136,6 +1203,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: U(ld,n)
     Complex (Kind=Kind(0.d0)), intent(in) :: D(n)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_scale_cols(n, ld, U, D)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
@@ -1151,6 +1224,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: U(ld,n)
     Complex (Kind=Kind(0.d0)), intent(inout) :: D(n)
     Integer :: i
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_diagabs(n, ld, U, D)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do
     do i = 1, n
        D(i) = cmplx(abs(U(i,i)), 0.d0, kind(0.d0))
@@ -1165,6 +1244,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: D(n)
     Integer :: i, j
     Real (Kind=Kind(0.d0)) :: x
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_divrows(n, ld, U, D)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do collapse(2) private(x)
     do j = 1, n
        do i = 1, n
@@ -1187,6 +1272,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: cs(8)
     Complex (Kind=Kind(0.d0)) :: ph, dq
     Integer :: i
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_phase(n, ld, U, sgn, cj, tau, cs)
+       return
+    endif
+#endif
     !$omp target
     ph = cmplx(1.d0, 0.d0, kind(0.d0))
     dq = cmplx(1.d0, 0.d0, kind(0.d0))
@@ -1209,6 +1300,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: U(ld,n)
     Complex (Kind=Kind(0.d0)), intent(in) :: cs(8)
     Integer :: j
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_scale_row1(n, ld, U, cs)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do
     do j = 1, n
        U(1,j) = cs(2)*U(1,j)
@@ -1222,6 +1319,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: U(ld,n)
     Complex (Kind=Kind(0.d0)), intent(in) :: cs(8)
     Integer :: i
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_scale_col1(n, ld, U, cs)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do
     do i = 1, n
        U(i,1) = cs(1)*U(i,1)
@@ -1235,6 +1338,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: U(ld,n)
     Complex (Kind=Kind(0.d0)), intent(inout) :: R(ldr,n)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_triu(n, ld, U, ldr, R)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
@@ -1255,6 +1364,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: X(ldx,n)
     Complex (Kind=Kind(0.d0)), intent(inout) :: W(ldw,n)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_perm(0, n, X, ldx, perm, W, ldw)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
@@ -1271,6 +1386,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: X(ldx,n)
     Complex (Kind=Kind(0.d0)), intent(inout) :: W(ldw,n)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_perm(1, n, X, ldx, perm, W, ldw)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
@@ -1287,6 +1408,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: X(ldx,n)
     Complex (Kind=Kind(0.d0)), intent(inout) :: W(ldw,n)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_perm(2, n, X, ldx, perm, W, ldw)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
@@ -1303,6 +1430,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: X(ldx,n)
     Complex (Kind=Kind(0.d0)), intent(inout) :: W(ldw,n)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_perm(3, n, X, ldx, perm, W, ldw)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
@@ -1320,6 +1453,12 @@ Contains
     Real (Kind=Kind(0.d0)), intent(in) :: L(n)
     Real (Kind=Kind(0.d0)), intent(inout) :: W(n)
     Integer :: i
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_perm_vec(n, L, perm, W)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do
     do i = 1, n
        W(i) = L(perm(i))
@@ -1334,6 +1473,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: A(lda,n)
     Complex (Kind=Kind(0.d0)), intent(inout) :: B(ldb,n)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_ct(n, A, lda, B, ldb)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
@@ -1349,6 +1494,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: A(lda,n)
     Complex (Kind=Kind(0.d0)), intent(in) :: D(n)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_rowdiv(n, lda, A, D)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
@@ -1365,6 +1516,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: D(n)
     Integer :: i, j
     Real (Kind=Kind(0.d0)) :: sv
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_colinv(n, lda, A, D)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do collapse(2) private(sv)
     do j = 1, n
        do i = 1, n
@@ -1382,6 +1539,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: T(n,n)
     Complex (Kind=Kind(0.d0)), intent(in) :: R(n,n), Dr(n), Dl(n)
     Integer :: i, j
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_tpup(n, T, R, Dr, Dl)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do collapse(2)
     do j = 1, n
        do i = 1, n
@@ -1472,6 +1635,12 @@ Contains
     Complex (Kind=Kind(0.d0)) :: ph, z
     Real (Kind=Kind(0.d0)) :: x
     Integer :: i
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_cgr_phase(n, ld, T, tau, cs, nvar, sgn, bad, ph0, dev)
+       return
+    endif
+#endif
     ! map(to:): nvfortran 25.7 drops the imaginary part of an implicitly firstprivate complex scalar in a serial target region
     ! (KNOWN_ISSUES G5)
     !$omp target map(to: ph0)
@@ -1508,6 +1677,12 @@ Contains
     Real (Kind=Kind(0.d0)), intent(inout) :: r(16)
     Integer :: i, nn
     Real (Kind=Kind(0.d0)) :: a, b
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_testscale(n, D, r, merge(1, 0, fault == 3))
+       return
+    endif
+#endif
     nn = 0
     !$omp target teams distribute parallel do reduction(+:nn) private(a, b)
     do i = 1, n
@@ -1531,6 +1706,12 @@ Contains
     Integer :: i, j, na, nb
     Real (Kind=Kind(0.d0)) :: xm, xs, d, cs
     Logical :: fa, fb
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_prec(n, A, B, r)
+       return
+    endif
+#endif
     xm = 0.d0; xs = 0.d0; na = 0; nb = 0
     ! the sum has a fixed order: one thread per column sums serially into st_pw(j), then one thread adds the n column
     ! sums in order (max and the integer counts are order independent and stay reductions)

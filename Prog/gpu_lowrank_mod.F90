@@ -66,6 +66,9 @@ Module gpu_lowrank_mod
   Use QMC_runtime_var, only: get_Sequential_scheme
   Use lowrank_update_mod, only: Lowrank_current_N_delay
   Use linalg_mod, only: la_zgemm
+#if defined(ALF_LA_HIP)
+  Use alf_hipk_mod, only: hk_enabled, hk_blk_gather, hk_blk_scale, hk_sub_flush_gather
+#endif
   Use gpu_state_mod, only: g_d, info_line, nsigma_d, scr_c, upd_cnt, v_exp, v_meta, v_type
 
   Implicit none
@@ -323,6 +326,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: C(ld,k), Qt(ld,k)
     Integer, intent(inout) :: slot(ld,nfg)
     Integer :: i, m
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_sub_flush_gather(G, ld, nrow, S, k, nf, C, Qt, slot, ld)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do collapse(2) map(alloc: G, S, C, Qt, slot)
     do m = 1, k
        do i = 1, nrow
@@ -1145,6 +1154,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: gbk(nd_,nd_,2), Gk(ld,ld,nfg)
     Integer, intent(in) :: bsk(nd_,2)
     Integer :: fl, a, c, nf
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_blk_gather(nfl, nfa, nfb, ld, b, nd_, Gk, bsk, gbk)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do collapse(3) private(nf) map(alloc: gbk, bsk, Gk)
     do fl = 1, nfl
        do c = 1, b
@@ -1170,6 +1185,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: cbk(ldc,2)
     Integer :: fl, a, j, c, cj, nf, sa
     Complex (Kind=Kind(0.d0)) :: v
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_blk_scale(nfl, nfa, nfb, ld, b, nd_, ldc, Gk, bsk, cbk)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do collapse(3) private(nf, sa, c, cj, v) map(alloc: Gk, bsk, cbk)
     do fl = 1, nfl
        do a = 1, b
