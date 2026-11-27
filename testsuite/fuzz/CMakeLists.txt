@@ -35,4 +35,6 @@ if(Python3_FOUND AND NOT "${FLAG_LIST}" MATCHES "-D(MPI|TEMPERING|PARALLEL_PARAM
             confin_empty confin_truncated confin_garbage confin_field_0 confin_field_3 confin_field_neg2
             cont_ok_restart cont_field_nan confin_and_h5 size_L1_1 size_chain_L2_1 size_Ltrot_1 size_Ltrot_2e9)
   fuzz_test(54-fuzz-baseline-hdf5 TRUE h5_ok_restart h5_empty h5_no_configuration)
+  # NaN/Inf in a real model parameter (generated readers, parse_ham_mod.py)
+  fuzz_test(55-fuzz-model-params FALSE par_U_nan par_T_nan par_PhiX_nan par_U2_nan par_chem_nan ok_base)
 endif()

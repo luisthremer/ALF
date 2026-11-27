@@ -1074,7 +1074,7 @@ Module QMC_runtime_var
         subroutine read_and_broadcast_QMC_var_and_ham_name(Group_Comm)
 
           use iso_fortran_env, only: error_unit
-          use runtime_error_mod, only: Terminate_on_error, ERROR_FILE_NOT_FOUND
+          use runtime_error_mod, only: Terminate_on_error, ERROR_FILE_NOT_FOUND, Check_finite_parameter
 
           implicit none
 
@@ -1113,6 +1113,17 @@ Module QMC_runtime_var
              REWIND(5)
              READ(5,NML=VAR_HAM_NAME)
              CLOSE(5)
+             ! NaN or Inf in a real parameter: e.g. Amplitude = Inf freezes the chain with return code 0 (KNOWN_ISSUES.md)
+             Call Check_finite_parameter([CPU_MAX], "VAR_QMC", "CPU_MAX")
+             Call Check_finite_parameter([Amplitude], "VAR_QMC", "Amplitude")
+             Call Check_finite_parameter([Delta_t_Langevin_HMC], "VAR_QMC", "Delta_t_Langevin_HMC")
+             Call Check_finite_parameter([Max_Force], "VAR_QMC", "Max_Force")
+             Call Check_finite_parameter([Delta_t_MALA_sequential], "VAR_QMC", "Delta_t_MALA_sequential")
+             Call Check_finite_parameter([Max_Force_MALA_sequential], "VAR_QMC", "Max_Force_MALA_sequential")
+             Call Check_finite_parameter([Delta_t_MALA_global_tau], "VAR_QMC", "Delta_t_MALA_global_tau")
+             Call Check_finite_parameter([Max_Force_MALA_global_tau], "VAR_QMC", "Max_Force_MALA_global_tau")
+             Call Check_finite_parameter([Delta_t_MALA_global], "VAR_QMC", "Delta_t_MALA_global")
+             Call Check_finite_parameter([MAX_Force_MALA_global], "VAR_QMC", "MAX_Force_MALA_global")
 #ifdef MPI
            Endif
            call broadcast_QMC_runtime_var(MPI_COMM_i)
