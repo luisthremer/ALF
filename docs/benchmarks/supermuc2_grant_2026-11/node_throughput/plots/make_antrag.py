@@ -25,7 +25,9 @@ def num(x, nd=0):
 rows = load(sys.argv[1])
 b = best(rows)
 Ls = sorted({r["L"] for r in rows})
-full = [L for L in Ls if all((s, L) in b for s in SIDES)]
+NLAY = {"cpu": 5, "gpu": 5, "gpub": 5}   # configurations per side and L in the test
+done = lambda s_, L: len({r["tag"] for r in rows if r["side"] == s_ and r["L"] == L}) >= NLAY[s_]
+full = [L for L in Ls if all((s, L) in b and done(s, L) for s in SIDES)]
 out = []
 if full:
     L = full[-1]
@@ -37,6 +39,8 @@ if full:
 else:
     out += ["\\newcommand{\\Lmax}{--}", "\\newcommand{\\FacIntel}{--}", "\\newcommand{\\FacBase}{--}", "\\newcommand{\\Eratio}{--}"]
 complete = set(full) >= PLANNED
+partial = any(not done(s_, L) for s_ in SIDES for L in Ls)
+out.append("\\newcommand{\\StarNote}{" + ("$^*$\\,best of the configurations finished so far; no speedup given." if partial else "") + "}")
 out.append(f"\\newcommand{{\\Complete}}{{{'yes' if complete else 'no'}}}")
 
 SHORT = {"cpu": "CPU", "gpu": "GPU", "gpub": "GPU"}
@@ -59,7 +63,10 @@ for i, L in enumerate(Ls):
         thr = r["throughput_node_h"]
         fac = f"{thr / c['throughput_node_h']:.1f}" if c else "--"
         e = POWER[s_] * 3600 / thr / 1000
-        t.append(f"{head} & {CONF[s_](r)} & {num(thr)} & {fac} & {e:.3f}\\\\")
+        star = "" if done(s_, L) else "$^*$"
+        if c and not done("cpu", L):
+            fac = "--"
+        t.append(f"{head} & {CONF[s_](r)}{star} & {num(thr)} & {fac} & {e:.3f}\\\\")
 t.append("\\end{tabular}")
 out.append("\\newcommand{\\AntragTable}{%\n" + "\n".join(t) + "}")
 # data file for the pgfplots figures (best layout per side; nan = not finished)
@@ -76,6 +83,6 @@ with open(__file__.rsplit("/", 2)[0] + "/report/antrag_fac.dat", "w") as f:   # 
     f.write("L thr_gpub fac\n")
     for L in Ls:
         c, g = b.get(("cpu", L)), b.get(("gpub", L))
-        if c and g:
+        if c and g and done("cpu", L) and done("gpub", L):
             f.write(f"{L} {g['throughput_node_h']:.6g} {g['throughput_node_h'] / c['throughput_node_h']:.4g}\n")
 print("\n".join(out))

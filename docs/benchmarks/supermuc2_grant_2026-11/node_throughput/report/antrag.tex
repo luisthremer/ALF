@@ -47,7 +47,7 @@ Toolchain: Intel oneAPI 2025.3, Intel MPI 2021.15, oneMKL 2025.3.
 
 \begin{table}[H]
 \caption{Throughput of one SuperMUC-NG Phase 2 node at LRZ in its best configuration; speedup relative to the CPU node.
-Energy per work unit estimated from vendor ratings (CPU node 700\,W, GPU node 3100\,W).}
+Energy per work unit estimated from vendor ratings (CPU node 700\,W, GPU node 3100\,W). \StarNote}
 \label{tab:node}
 \begin{center}\setlength{\tabcolsep}{7pt}\renewcommand{\arraystretch}{1.15}\small
 \AntragTable
@@ -57,7 +57,7 @@ Energy per work unit estimated from vendor ratings (CPU node 700\,W, GPU node 31
 \begin{figure}[H]\centering
 \ref{leg}\\[2pt]
 \begin{tikzpicture}
-\begin{axis}[width=0.5\textwidth, height=5.6cm, ymode=log, xtick={16,24,32,36}, xlabel={system size $L$ ($N=L^2$)}, unbounded coords=jump, mark size=2pt, thick, ylabel={work units per node-hour}, enlarge y limits={upper, value=0.15},
+\begin{axis}[width=0.5\textwidth, height=5.6cm, ymode=log, xtick={16,24,32,36}, xlabel={system size $L$ ($N=L^2$)}, unbounded coords=jump, mark size=2pt, thick, ylabel={work units per node-hour}, enlarge y limits=0.12,
   legend columns=3, legend to name=leg, legend style={/tikz/every even column/.append style={column sep=10pt}}]
 \addplot[color=RoyalBlue, mark=*] table[x=L, y=thr_cpu]{antrag_best.dat}; \addlegendentry{CPU node, ALF CPU}
 \addplot[color=ForestGreen, mark=square*] table[x=L, y=thr_gpu]{antrag_best.dat}; \addlegendentry{GPU node, ALF GPU}
@@ -82,7 +82,7 @@ CPU node. Right: estimated energy per work unit (vendor power ratings: CPU node 
 \begin{itemize}
 \item At $L=\Lmax$ one GPU node gives \textbf{\FacIntel$\times$} the throughput of the CPU node (ALF GPU Intel-optimised;
   \FacBase$\times$ with ALF GPU) at \Eratio$\times$ lower energy per work unit.
-\item The advantage grows with $N$, since the $N^3$ parts run on the GPU; production lattices ($L\ge36$) are larger.
+\item The speedup increases with $N$ up to $L=\Lmax$, since the $N^3$ parts run on the GPU.
 \item Best GPU configuration (Intel-optimised): four MPI processes per tile; eight per tile is always slower.
 \end{itemize}
 \end{document}
