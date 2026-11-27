@@ -24,15 +24,20 @@ thoroughly tested. The Intel-optimised GPU code (commit \texttt{d1060305}) adds 
 kernels and asynchronous block updates. It is not yet thoroughly tested, but it already gives an idea of the performance
 gains we expect in the future.
 
-\paragraph{Test case.}
-Hubbard model on an $L\times L$ square lattice, $L=16,24,32,36$ (matrix dimension $N=L^2$ up to 1296), inverse
-temperature $\beta=4$, $\Delta\tau=0.1$, $U=5.25$, symmetric Trotter decomposition with checkerboard hopping, submatrix
-updates ($N_\text{delay}=64$), stabilisation every 10 time slices, equal-time measurements. Each run uses one full node
-and fills it: on the CPU side 112 cores as MPI ranks $\times$ OpenMP threads (1 to 8 threads per rank, no rank across a
-NUMA domain), on the GPU side the four Intel Data Center GPU Max 1550 (8 tiles) with 1, 2, 4 or 8 independent Markov
-chains (walkers) per tile. For every configuration 10 sweeps are timed individually after one warm-up sweep; the
-throughput is the number of walkers times sweeps per node-hour, with the standard error of the 10 sweep times as
-uncertainty. Table~\ref{tab:node} lists the best configuration of each side.
+\paragraph{Test case and computational effort.}
+The benchmark uses the lattice model of the planned project at four system sizes. The central objects are dense complex
+matrices of dimension $N=L^2=256$, 576, 1024 and 1296 ($L=16$, 24, 32, 36), one for each of the 40 imaginary-time slices.
+A Monte Carlo sweep visits every slice: it multiplies the propagator matrices into the equal-time Green function, updates
+it after each accepted local move (submatrix updates in blocks of 64), recomputes it from a QR-stabilised product every
+10 slices and measures observables. Nearly all of this is dense linear algebra (matrix products, QR and LU decompositions),
+so the cost of a sweep grows as $N^3$. Independent Markov chains (walkers) run as separate MPI ranks and exchange data only
+when measurements are averaged.
+
+Each run uses one full node and fills it: on the CPU side the 112 cores as MPI ranks $\times$ OpenMP threads (1 to 8
+threads per rank, no rank across a NUMA domain), on the GPU side the four Intel Data Center GPU Max 1550 (8 tiles) with 1,
+2, 4 or 8 walkers per tile. For every configuration 10 sweeps are timed individually after one warm-up sweep; the throughput
+is the number of walkers times sweeps per node-hour, with the standard error of the 10 sweep times as uncertainty.
+Table~\ref{tab:node} lists the best configuration of each node type.
 
 \begin{table}[H]\centering\small
 \caption{Node throughput of the best configuration per node type and lattice size (sweeps per node-hour, all walkers of
