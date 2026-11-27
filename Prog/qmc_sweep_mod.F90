@@ -59,7 +59,7 @@ Module qmc_sweep_mod
   Use Hop_mod, only: Hop_mod_Symm
 #ifdef ALF_GPU
   Use gpu_stab_mod, only: gpu_stab_on, gpu_stab_wrapur, gpu_stab_wrapul, gpu_stab_exchange, gpu_stab_recompute, &
-       &                  gpu_stab_reset_l, gpu_stab_reset_r, gpu_stab_reset_st
+       &                  gpu_stab_reset_l, gpu_stab_reset_r, gpu_stab_reset_st, gpu_stab_export_r
   Use gpu_update_mod, only: gpu_g_host
   Use gpu_obs_mod, only: gpu_obs_active
   Use gpu_tau_mod, only: gpu_tau_on, gpu_tau_pass
@@ -258,6 +258,11 @@ Module qmc_sweep_mod
                NVAR = 1
                IF (NTAU1 .GT. LTROT/2) NVAR = 2
                Call gpu_stab_recompute(walker, NVAR)
+               ! projector: the host Tau_p below reads udvr and GR (udvst came over at the exchange)
+               IF( get_Ltau() == 1 .and. Projector .and. walker%Stab_nt(NST)<=THTROT+1 .and. THTROT+1<walker%Stab_nt(NST+1) ) then
+                  Call gpu_stab_export_r(walker%udvr)
+                  Call gpu_g_host(walker%GR)
+               endif
             else
 #endif
             !Write(6,*) 'Wrapul : ', NT1, NTAU1
@@ -311,6 +316,8 @@ Module qmc_sweep_mod
             Call gpu_stab_reset_st(NST, nf_eff)
          ENDDO
          Call Reset_udv(walker%udvst(NST,:), 'l')
+         ! projector: the host Tau_p after the sweep reads GR (udvr was reset on the host above)
+         IF ( get_LTAU() == 1 .and. Projector .and. walker%Stab_nt(1) > THTROT+1 ) Call gpu_g_host(walker%GR)
       else
 #endif
       CALL WRAPUL(NT, NT1, walker%udvl)
