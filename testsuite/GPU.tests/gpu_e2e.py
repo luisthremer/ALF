@@ -39,6 +39,7 @@ import argparse, filecmp, os, re, shutil, subprocess, sys
 TOL = 1.0e-11          # round-off of the device kernels: |x - y| / max(1, |y|) over all numbers of an output file
 TOL_OBS = 1.0e-13      # device against host observables of the same chain: summation order only
 FAULT_SEEN = 1.0e-8    # a negative control must change the observables by more than this
+PREC_RATIO = 2.0       # "prec" cases: Precision Green mean of the device path at most this multiple of the CPU path's (KNOWN_ISSUES G10)
 TOL_PH = 1.0e-13       # tracked against LU phase of the CGR (same binary): the phases differ at rounding level (1e-15), observables by 1e-13
 PH_ABORT = 1.0e-8      # check mode limit
 NUM = re.compile(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[EeDd][-+]?\d+)?")
@@ -47,7 +48,9 @@ ACTIVE_TEXT = "ACTIVE (mirror; wraps, updates and stabilisation on the device pa
 
 # label, edits of the parameter file, env of the active run, expectation ("ok", "okh", "hostobs", "inactive:<text>", "fault" or "abort");
 # "okh" = "ok" for models whose observables and tau pass stay on the host (no step-1e line checks);
-# "hostobs" = "okh" plus the checks of a Calc_Fl run (update path ACTIVE, observables HOST, tau pass OFF for reconstruction)
+# "hostobs" = "okh" plus the checks of a Calc_Fl run (update path ACTIVE, observables HOST, tau pass OFF for reconstruction);
+# "prec" = "okh" lines, confout byte-identical and Precision Green mean active / disabled <= PREC_RATIO; the other files are compared
+# and printed but do not decide (at this size the 100 x Precision Green rule is below the round-off of the run, KNOWN_ISSUES G7)
 KONDO = {"ham_name": '"Kondo"', "Model": '"Kondo"', "Lattice_type": '"Bilayer_square"', "ham_Uf": "1.d0"}
 TV = {"ham_name": '"tV"', "Model": '"tV"', "N_SUN": "1", "ham_V": "-1.d0", "ham_T2": "0.d0", "ham_Tperp": "0.d0", "Beta": "2.d0", "Ltau": "0"}
 SP = {"ham_name": '"Spin_Peierls"', "Model": '"Spin_Peierls"', "L1": "6", "L2": "6", "Beta": "2.d0", "ham_U": "1.5d0", "ham_Lambda": "0.1d0",
@@ -93,6 +96,9 @@ CASES = [
     ("sp-standard", SP, {"ALF_GPU_SELFTEST": "2"}, "okh"),
     ("sp-delayed-N4", dict(SP, Sequential_scheme='"delayed"', N_delay="4"), {}, "okh"),
     ("sp-submatrix-N4", dict(SP, Sequential_scheme='"submatrix"', N_delay="4"), {}, "okh"),
+    # G10: Spin_Peierls 12x12, standard: the rank-2 accept of the type-4 J vertices in Upgrade2's grouping (device / CPU ~1.1; the
+    # Woodbury form G(:,P) W R gave ~30, the same chain)
+    ("sp12-precision", dict(SP, L1="12", L2="12", NSweep="4"), {}, "prec"),
     # P2.6 Calc_Fl: Plain_Vanilla reconstructs flavour 1 from flavour 2 (weight, G, GT0/G0T); repulsive U at half filling and attractive
     # U off half filling (the two Calc_Fl triggers of the model). Device updates and stabilisation, host Obser and TAU_M ("hostobs").
     ("pv-half-standard", {"ham_name": PV}, {}, "hostobs"),
@@ -249,7 +255,7 @@ def main():
                 bad_case.append("info of the active run has no ACTIVE line")
             if "ALF_GPU_SELFTEST" in env and "GPU self-test PASSED" not in out:
                 bad_case.append("stdout of the active run has no 'GPU self-test PASSED'")
-            if expect in ("ok", "okh") and "GPU update path: ACTIVE" not in info:
+            if expect in ("ok", "okh", "prec") and "GPU update path: ACTIVE" not in info:
                 bad_case.append("info of the active run has no 'GPU update path: ACTIVE' line")
             if expect == "ok":
                 tau_on = edits.get("Ltau", "1") != "0"
@@ -285,6 +291,16 @@ def main():
             if not seen:
                 bad_case.append("fault not visible in the observables")
             print("%-16s active vs disabled: max abs / scaled diff (%s) %s" % (label, scal, status))
+        elif expect == "prec":
+            ratio = gp_act[0] / gp_dis[0] if gp_act and gp_dis and gp_dis[0] > 0 else float("inf")
+            if ratio > PREC_RATIO:
+                bad_case.append("Precision Green mean active / disabled %.3g > %.1f" % (ratio, PREC_RATIO))
+            if not ("confout_0" in diffs and diffs["confout_0"][0] == 0.0):
+                bad_case.append("confout_0 not byte-identical")
+            mx = max([v[1] for f, v in diffs.items() if v is not None and not f.startswith("confout")] + [0.0])
+            print("%-16s active vs disabled: Precision Green mean active %.2g / disabled %.2g = %.3g (limit %.1f), max scaled diff of the "
+                  "files %.3g (not decisive) %s" % (label, gp_act[0] if gp_act else -1, gp_dis[0] if gp_dis else -1, ratio, PREC_RATIO, mx,
+                                                     "FAILED" if bad_case else "OK"))
         else:
             status = "OK" if not bad and not bad_case else "FAILED"
             conf = "confout byte-identical" if "confout_0" in diffs and diffs["confout_0"][0] == 0.0 else "confout differs"
