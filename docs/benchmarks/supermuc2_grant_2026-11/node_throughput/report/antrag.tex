@@ -18,11 +18,11 @@
 missing entries are marked in Table~\ref{tab:node}. State: \DataState.}}\end{center}}
 
 \paragraph{Code and versions.}
-All measurements use ALF (Algorithms for Lattice Fermions) with our GPU port, in exactly the versions that produced the
-production data of the space-time point defect project. The CPU and the standard GPU code are the same source
-(commit \texttt{410c7b04}, built with Intel oneAPI 2025.3, Intel MPI 2021.15, oneMKL 2025.3); the Intel-optimised GPU code
-(commit \texttt{d1060305}) adds device-side QR decompositions, fused update kernels and asynchronous block updates and was
-used for the largest production lattices.
+All measurements use ALF (Algorithms for Lattice Fermions) with our GPU port. The CPU and the standard GPU code are the
+same source (commit \texttt{410c7b04}, built with Intel oneAPI 2025.3, Intel MPI 2021.15, oneMKL 2025.3); this version is
+thoroughly tested. The Intel-optimised GPU code (commit \texttt{d1060305}) adds device-side QR decompositions, fused update
+kernels and asynchronous block updates. It is not yet thoroughly tested, but it already gives an idea of the performance
+gains we expect in the future.
 
 \paragraph{Test case.}
 Hubbard model on an $L\times L$ square lattice, $L=16,24,32,36$ (matrix dimension $N=L^2$ up to 1296), inverse
