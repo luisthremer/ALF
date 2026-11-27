@@ -137,6 +137,9 @@ Module gpu_stab_mod
 #endif
 #endif
   Public :: gpu_stab_tau_dev, dev_prec, k_ident, k_copy_c, k_ct, k_diagabs, k_divrows, say     ! used by gpu_tau_mod
+#if defined(STAB3)
+  Public :: k_rowscale_d                                                                       ! STAB3 CGR2_2 (gpu_tau_mod)
+#endif
 
   Logical, Save :: gpu_stab_on = .false.      ! the device stabilisation replaces WRAPUR/WRAPUL/CGR in the sweeps
   Logical, Save :: gpu_stab_tau_dev = .false.  ! the device tau pass reads udvst on the device: no D->H export of udvst (Ltau = 1)
