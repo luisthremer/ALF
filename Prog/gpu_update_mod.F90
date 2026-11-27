@@ -40,14 +40,16 @@
 !> Per site and flavour (nf):
 !>   1. wrap: Op_Wrapup/Op_Wrapdo (N_Type 1) of operator n, one fused kernel launch for N = 1 operators (rows and columns
 !>      of the one site together, rows before columns for the corner element as in ALF), else the 204 two-kernel routine.
-!>      N_Type 2 applies nothing for a diagonal operator (gpu_supported guarantees diagonal operators).
-!>   2. ratio (host, the code of Upgrade2 verbatim for N_non_zero <= 1): needs G(P(1),P(1),nf): one complex element D->H
-!>      per flavour (the only per-site device->host transfer).  Op_V%alpha and exp(Z1*E) are host data.
+!>      Non-diagonal / type-4 operators (P2.6.1): dense-block kernels of gpu_wrap_mod (nd_wrap), N_Type 1 and, after the update
+!>      (WRAPGRUP) / before it (WRAPGRDO), N_Type 2 as in Wrapgr_mod; N_Type 2 does nothing for a diagonal operator.
+!>   2. ratio (host, the code of Upgrade2): needs G(P(a),P(b),nf), a, b <= r = N_non_zero: one complex element D->H per
+!>      flavour for r = 1, N = 1, else the r x r block (one gather kernel, one D->H).  Op_V%alpha and exp(Z1*E) are host data.
 !>   3. decision (host): ranf_wrap() drawn at the same point as Upgrade2 (after the T0 test of WRAPGR).
 !>   4. accept: per flavour 2 launches (copy the column G(:,P) and the row y = (-G(P,:), 1-G(P,P) at P) into scratch, then
 !>      G += Zg * x y^T, the ZGERU of Upgrade2 for op_dim 1), then the field value on the host and one scalar H->D copy
 !>      of nsigma_d(n,t) (the wrap kernels read the field on the device, so it must not go stale).
-!>   Rank-k updates (N_non_zero > 1) are not implemented: gpu_supported refuses such models (the run stays on the CPU).
+!>   Rank r > 1 or N > 1 (P2.6.1, port of gpu-port ticket 401-A): G <- G - G(:,P) W R, R = E_P^T - G(P,:), with the r x r
+!>   matrix W = X Tri^T of Upgrade2's x_v / y_v recursion restricted to the rows P (host, rk_wmat), one H->D of W, two kernels.
 !>
 !> G is device-authoritative while the sweep runs: WRAPGRUP/DO copy the host GR to G_d only when the device copy is not current
 !> (g_in) and leave the host GR stale (g_out).  The stabilisation (gpu_stab_mod, step 1d) keeps G on the device; the sweep
@@ -66,7 +68,8 @@ Module gpu_update_mod
   Use Control, only: Control_upgrade, Control_upgrade_eff
   Use Random_Wrap, only: ranf_wrap
   Use gpu_state_mod, only: g_d, g_dev_ok, g_host_ok, gpu_active, gpu_env_is, info_line, nsigma_d, scr_vec, &
-       & upd_cnt, v_exp, v_meta, v_type
+       & upd_cnt, v_exp, v_meta, v_type, v_nmax
+  Use MyMats, only: Det
   Use gpu_wrap_mod, only: gpu_mmthr, gpu_mmthl_m1, gpu_mmthl, gpu_mmthr_m1, gpu_Vop_wrap
   Use gpu_lowrank_mod, only: gpu_lr_accept, gpu_lr_blk_enter, gpu_lr_blk_leave, gpu_lr_blockmode, gpu_lr_commit, &
        & gpu_lr_defer, gpu_lr_fast, gpu_lr_flush, gpu_lr_flush_all, gpu_lr_gpp, gpu_lr_mode, gpu_lr_site_ok, &
@@ -81,6 +84,9 @@ Module gpu_update_mod
   Logical, Save :: fault_upd = .false., fault_nsig = .false.     ! negative controls ALF_GPU_FAULT=upd|nsig (debug runs only)
   Type (Fields), Save :: nsigma_new
   Logical, Save :: nsigma_new_made = .false.
+  ! P2.6.1: device scratch of the rank-r update (block of G, W, sites, C = G(:,P), T = W R), allocated at the first use
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: rk_g(:), rk_w(:), rk_c(:), rk_t(:)
+  Integer, Allocatable, Save :: rk_p(:)
 
 Contains
 
@@ -222,9 +228,147 @@ Contains
     enddo
   end subroutine k_upd_geru
 
+!> P2.6.1: buf(a + (b-1)*r) = G(P(a), P(b)), a, b = 1..r
+  Subroutine k_rk_gpp(G, ld, P, r, buf)
+    Implicit none
+    Integer, intent(in) :: ld, r
+    Integer, intent(in) :: P(V_NMAX)
+    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,Ndim)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: buf(V_NMAX*V_NMAX)
+    Integer :: a, b
+    !$omp target teams distribute parallel do collapse(2)
+    do b = 1, r
+       do a = 1, r
+          buf(a + (b-1)*r) = G(P(a), P(b))
+       enddo
+    enddo
+  end subroutine k_rk_gpp
+
+!> P2.6.1: C(i,a) = G(i,P(a)) and T(a,i) = sum_b W(a,b) R(b,i), R(b,i) = delta(i,P(b)) - G(P(b),i), i = 1..nd (before G changes)
+  Subroutine k_rk_prep(G, ld, nd, P, r, W, C, T)
+    Implicit none
+    Integer, intent(in) :: ld, nd, r
+    Integer, intent(in) :: P(V_NMAX)
+    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,nd), W(V_NMAX*V_NMAX)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: C(nd*V_NMAX), T(V_NMAX*nd)
+    Integer :: i, a, b
+    Complex (Kind=Kind(0.d0)) :: acc, rb
+    !$omp target teams distribute parallel do private(a, b, acc, rb)
+    do i = 1, nd
+       do a = 1, r
+          C(i + (a-1)*nd) = G(i, P(a))
+       enddo
+       do a = 1, r
+          acc = (0.d0, 0.d0)
+          do b = 1, r
+             rb = - G(P(b), i)
+             if (i == P(b)) rb = 1.d0 - G(P(b), i)
+             acc = acc + W(a + (b-1)*r) * rb
+          enddo
+          T(a + (i-1)*r) = acc
+       enddo
+    enddo
+  end subroutine k_rk_prep
+
+!> P2.6.1: G(i,j) <- G(i,j) - sum_a C(i,a) T(a,j)
+  Subroutine k_rk_upd(G, ld, nd, r, C, T)
+    Implicit none
+    Integer, intent(in) :: ld, nd, r
+    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,nd)
+    Complex (Kind=Kind(0.d0)), intent(in) :: C(nd*V_NMAX), T(V_NMAX*nd)
+    Integer :: i, j, a
+    Complex (Kind=Kind(0.d0)) :: acc
+    !$omp target teams distribute parallel do collapse(2) private(a, acc)
+    do j = 1, nd
+       do i = 1, nd
+          acc = C(i) * T(1 + (j-1)*r)
+          do a = 2, r
+             acc = acc + C(i + (a-1)*nd) * T(a + (j-1)*r)
+          enddo
+          G(i,j) = G(i,j) - acc
+       enddo
+    enddo
+  end subroutine k_rk_upd
+
 !====================================================================
 !  Host-side orchestration
 !====================================================================
+!> P2.6.1: device scratch of the rank-r update, allocated once (no transfer)
+  Subroutine rk_alloc()
+    Implicit none
+    if (allocated(rk_g)) return
+    allocate(rk_g(V_NMAX*V_NMAX), rk_w(V_NMAX*V_NMAX), rk_c(Ndim*V_NMAX), rk_t(V_NMAX*Ndim), rk_p(V_NMAX))
+    rk_g = (0.d0,0.d0); rk_w = (0.d0,0.d0); rk_c = (0.d0,0.d0); rk_t = (0.d0,0.d0); rk_p = 1
+    !$omp target enter data map(to: rk_g, rk_w, rk_c, rk_t, rk_p)
+  end subroutine rk_alloc
+
+!> P2.6.1: G(P(a),P(b)) of flavour nf, a, b = 1..r, to the host (gb, column-major r x r): one kernel, one D->H of r*r elements
+  Subroutine rk_block(nf, n_op, r, gb)
+    Implicit none
+    Integer, intent(in) :: nf, n_op, r
+    Complex (Kind=Kind(0.d0)), intent(out) :: gb(r,r)
+    call rk_alloc()
+    rk_p(1:r) = Op_V(n_op,nf)%P(1:r)
+    !$omp target update to(rk_p(1:r))
+    call k_rk_gpp(G_d(1,1,nf), Ndim, rk_p, r, rk_g)
+    !$omp target update from(rk_g(1:r*r))
+    gb = reshape(rk_g(1:r*r), (/r, r/))
+    upd_cnt(5) = upd_cnt(5) + 1
+  end subroutine rk_block
+
+!> P2.6.1: the r x r matrix W of the accept G <- G - G(:,P) W R (R(k,j) = delta(j,P(k)) - G(P(k),j)): Upgrade2's recursion for
+!> x_v, y_v with y_v = V Tri (V(:,k) = v(:,k) = R(k,:)^T) restricted to the rows P (x_v vanishes outside P); W = X Tri^T,
+!> X = x_v(P,:).  Inputs: gb(a,b) = G(P(a),P(b)), Delta(1:r).
+  Subroutine rk_wmat(r, gb, Delta, W)
+    Implicit none
+    Integer, intent(in) :: r
+    Complex (Kind=Kind(0.d0)), intent(in) :: gb(r,r), Delta(r)
+    Complex (Kind=Kind(0.d0)), intent(out) :: W(r,r)
+    Complex (Kind=Kind(0.d0)) :: X(r,r), Tri(r,r), Vp(r,r), syu(r), sxv(r), Z
+    Integer :: n, m, k
+    ! Vp(a,k) = v(P(a),k) = delta(a,k) - G(P(k),P(a))
+    do k = 1, r
+       do n = 1, r
+          Vp(n,k) = - gb(k,n)
+       enddo
+       Vp(k,k) = 1.d0 - gb(k,k)
+    enddo
+    X = (0.d0,0.d0); Tri = (0.d0,0.d0)
+    X(1,1) = Delta(1)/(1.d0 + Vp(1,1)*Delta(1))
+    Tri(1,1) = 1.d0
+    do n = 2, r
+       X(n,n) = Delta(n)
+       Tri(n,n) = 1.d0
+       Z = 1.d0 + Delta(n)*Vp(n,n)
+       do m = 1, n-1
+          ! syu(m) = - y_v(P(n),m) u(P(n),n),  y_v(P(n),m) = sum_k Vp(n,k) Tri(k,m);  sxv(m) = - sum_k x_v(P(k),m) v(P(k),n)
+          syu(m) = - sum(Vp(n,1:n-1)*Tri(1:n-1,m)) * Delta(n)
+          sxv(m) = - sum(X(1:n-1,m)*Vp(1:n-1,n))
+       enddo
+       do m = 1, n-1
+          X(:,n) = X(:,n) + X(:,m)*syu(m)
+          Tri(:,n) = Tri(:,n) + Tri(:,m)*sxv(m)
+       enddo
+       do m = 1, n-1
+          Z = Z - syu(m)*sxv(m)
+       enddo
+       Z = 1.d0/Z                         ! as Upgrade2: reciprocal, then scale
+       X(:,n) = X(:,n) * Z
+    enddo
+    W = matmul(X, transpose(Tri))
+  end subroutine rk_wmat
+
+!> P2.6.1: Op_Wrapup (dir = +1, after the update) / Op_Wrapdo (dir = -1, before it) with N_Type 2 of operator n: nothing for a
+!> diagonal operator; otherwise G must be flushed (delayed / submatrix state) first.
+  Subroutine site_wrap2(nf, n, t, dir)
+    Implicit none
+    Integer, intent(in) :: nf, n, t, dir
+    if (V_meta(6,n,nf) == 1) return
+    if (gpu_lr_mode() /= 0) call gpu_lr_flush(nf, 2)
+    call gpu_Vop_wrap(G_d(1,1,nf), Ndim, n, nf, t, dir, 2)
+    upd_cnt(3) = upd_cnt(3) + 2
+  end subroutine site_wrap2
+
   Subroutine site_wrap(nf, n, t, dir)
     Implicit none
     Integer, intent(in) :: nf, n, t, dir
@@ -256,16 +400,17 @@ Contains
     Logical, intent(inout) :: toggle
 
     Complex (Kind=Kind(0.d0)) :: Ratio(N_FL), Ratiotot, Z1, Prev_Ratiotot, Delta(N_FL), gpp(N_FL)
-    Complex (Kind=Kind(0.d0)) :: Z, D_Mat, myexp, g_loc, Mat11, vii, xv, Zg
+    Complex (Kind=Kind(0.d0)) :: Z, D_Mat, myexp, g_loc, Mat11, vii, xv, Zg, s1, s2
+    Complex (Kind=Kind(0.d0)) :: gb(V_NMAX,V_NMAX,N_FL), Dl(V_NMAX,N_FL), Mat(V_NMAX,V_NMAX), W(V_NMAX*V_NMAX)
     Real (Kind=Kind(0.d0)) :: Weight
-    Integer :: nf, nf_eff, op_dim_nf, p1
-    Logical :: lr, lrf
+    Integer :: nf, nf_eff, op_dim_nf, p1, m, k
+    Logical :: lr, lrf, gen(N_FL)
 
     toggle = .false.
     lr = ( gpu_lr_mode() /= 0 )
     if (lr) lr = gpu_lr_site_ok(N_op)
     lrf = lr .and. gpu_lr_fast()
-    if (.not. lr) call gpu_lr_flush_all(2)       ! standard rank-1 update of this site: G_d must be current
+    if (.not. lr) call gpu_lr_flush_all(2)       ! standard update of this site: G_d must be current
     if (.not. nsigma_new_made) then
        Call nsigma_new%make(1,1)
        nsigma_new_made = .true.
@@ -283,7 +428,33 @@ Contains
        if (op_v(n_op,nf)%get_g_t_alloc()) g_loc = Op_V(n_op,nf)%g_t(nt)
        Z1 = g_loc * ( nsigma_new%Phi(1,1) -  nsigma%Phi(n_op,nt) )
        op_dim_nf = Op_V(n_op,nf)%N_non_zero
-       if (op_dim_nf == 0) then
+       ! P2.6.1: general vertex (rank > 1 or N > 1): the r x r block, Upgrade2's Mat and determinant branches
+       gen(nf) = (op_dim_nf > 1 .or. (op_dim_nf == 1 .and. Op_V(n_op,nf)%N > 1))
+       if (gen(nf)) then
+          call rk_block(nf, n_op, op_dim_nf, gb(1:op_dim_nf,1:op_dim_nf,nf))
+          do m = 1, op_dim_nf
+             myexp = exp( Z1* Op_V(n_op,nf)%E(m) )
+             Z = myexp - 1.d0
+             Dl(m,nf) = Z
+             do k = 1, op_dim_nf
+                Mat(k,m) = - Z * gb(k,m,nf)
+             enddo
+             Mat(m,m) = myexp + Mat(m,m)
+          enddo
+          if (op_dim_nf == 1) then
+             D_mat = Mat(1,1)
+          elseif (op_dim_nf == 2) then
+             s1 = Mat(1,1)*Mat(2,2)
+             s2 = Mat(2,1)*Mat(1,2)
+             If (Abs(s1) > Abs(s2)) then
+                D_mat = s1*(1.D0 - s2/s1)
+             else
+                D_mat = s2*(s1/s2 - 1.D0)
+             Endif
+          else
+             D_mat = Det(Mat(1:op_dim_nf,1:op_dim_nf), op_dim_nf)
+          endif
+       elseif (op_dim_nf == 0) then
           D_mat = 1.0d0
        else
           p1 = Op_V(n_op,nf)%P(1)
@@ -320,7 +491,16 @@ Contains
        Phase = Phase * Ratiotot/sqrt(Ratiotot*conjg(Ratiotot))
        Do nf_eff = 1,N_FL_eff
           nf=Calc_Fl_map(nf_eff)
-          if (Op_V(n_op,nf)%N_non_zero > 0) then
+          if (gen(nf)) then
+             op_dim_nf = Op_V(n_op,nf)%N_non_zero
+             call rk_wmat(op_dim_nf, gb(1:op_dim_nf,1:op_dim_nf,nf), Dl(1:op_dim_nf,nf), W)
+             rk_w(1:op_dim_nf**2) = W(1:op_dim_nf**2)
+             rk_p(1:op_dim_nf) = Op_V(n_op,nf)%P(1:op_dim_nf)
+             !$omp target update to(rk_w(1:op_dim_nf**2), rk_p(1:op_dim_nf))
+             call k_rk_prep(G_d(1,1,nf), Ndim, Ndim, rk_p, op_dim_nf, rk_w, rk_c, rk_t)
+             call k_rk_upd(G_d(1,1,nf), Ndim, Ndim, op_dim_nf, rk_c, rk_t)
+             upd_cnt(4) = upd_cnt(4) + 2
+          elseif (Op_V(n_op,nf)%N_non_zero > 0) then
              p1 = Op_V(n_op,nf)%P(1)
              ! u = Delta, v(P) = 1 - G(P,P): x_v = u/(1 + v u), ZGERU alpha = -x_v(P)
              vii = 1.d0 - gpp(nf_eff)
@@ -415,7 +595,13 @@ Contains
        elseif (fast_lr) then
           call gpu_lr_defer(n, ntau1, Acc, .false.)
        endif
-       ! Op_Wrapup with N_Type 2: nothing for diagonal operators
+       ! Op_Wrapup with N_Type 2 (P2.6.1: non-diagonal operators; nothing for diagonal ones)
+       if (.not. (bm .or. fast_lr)) then
+          Do nf_eff = 1, N_FL_eff
+             nf=Calc_Fl_map(nf_eff)
+             call site_wrap2(nf, n, ntau1, 1)
+          enddo
+       endif
     Enddo
     call gpu_lr_flush_all(2)                    ! delayed / submatrix: G_d must be current at the end of the slice
     call g_out(GR)
@@ -442,7 +628,13 @@ Contains
     bm = gpu_lr_blockmode()
     call g_in(GR)
     Do n =  Nt_sequential_end, Nt_sequential_start, -1
-       ! Op_Wrapdo with N_Type 2: nothing for diagonal operators
+       ! Op_Wrapdo with N_Type 2 (P2.6.1: non-diagonal operators; nothing for diagonal ones)
+       if (.not. (bm .or. fast_lr)) then
+          Do nf_eff = 1, N_FL_eff
+             nf=Calc_Fl_map(nf_eff)
+             call site_wrap2(nf, n, ntau, -1)
+          enddo
+       endif
        if (bm) then
           call gpu_lr_blk_enter(n, Nt_sequential_start, -1, ntau, .false.)
        elseif (fast_lr) then
