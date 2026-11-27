@@ -70,6 +70,7 @@
 
        Public Fields
        Public Fields_init
+       Public Chain_seed
 
        Private
        Real (Kind=Kind(0.d0))  :: Phi_st(-2:2,2),  Gama_st(-2:2,2)
@@ -232,6 +233,34 @@
         endif
 
       end function Fields_get_i
+!--------------------------------------------------------------------
+!> @brief
+!> Seed of chain `chain` (0 .. n_chains-1) from the file File_seeds.
+!> @details
+!> Chain c reads line n_chains - c, the line an MPI run with n_chains ranks
+!> and one walker per rank gives to rank c (Set_Random_number_Generator).
+!> Every process reads the file itself.
+!--------------------------------------------------------------------
+     Integer function Chain_seed(File_seeds, chain, n_chains) result(seed)
+       Character (LEN=*), Intent(IN) :: File_seeds
+       Integer,           Intent(IN) :: chain, n_chains
+       Integer :: i, ierr, iu
+
+       OPEN(NEWUNIT=iu,FILE=File_seeds,STATUS='OLD',ACTION='READ',IOSTAT=IERR)
+       IF (IERR /= 0) THEN
+          WRITE(error_unit,*) 'Chain_seed: unable to open <seeds>',IERR
+          CALL Terminate_on_error(ERROR_FILE_NOT_FOUND,__FILE__,__LINE__)
+       END IF
+       DO i = 1, n_chains - chain
+          READ (iu,*,IOSTAT=IERR) seed
+          IF (IERR /= 0) THEN
+             WRITE(error_unit,*) 'Chain_seed: <seeds> needs ', n_chains, ' lines (one per chain)'
+             CALL Terminate_on_error(ERROR_FILE_NOT_FOUND,__FILE__,__LINE__)
+          END IF
+       ENDDO
+       CLOSE(iu)
+     end function Chain_seed
+
 !-------------------------------------------------------------------
       Subroutine Fields_make(this,N_OP,N_tau)
         Implicit none
@@ -334,13 +363,15 @@
 !> Type Complex
 !> Initial field \endverbatim
 !--------------------------------------------------------------------
-      Subroutine Fields_in(this,Group_Comm,Initial_field)
+      Subroutine Fields_in(this,Group_Comm,Initial_field,chain,n_chains)
 
         Implicit none
 
         Class (Fields)        , INTENT(INOUT) :: this
         Integer               , INTENT(IN   ) :: Group_Comm
         Complex (Kind=Kind(0.d0)), Dimension(:,:), Optional   :: Initial_field
+        ! Several walkers per process: chain index (file number confin_<chain>) and number of chains (Chain_seed)
+        Integer               , INTENT(IN   ), Optional :: chain, n_chains
 
         ! LOCAL
         Integer                 :: IERR, SEED_IN
@@ -350,6 +381,7 @@
         Integer, DIMENSION(:), ALLOCATABLE :: SEED_VEC
         Logical ::   LCONF, LCONF_H5
         Character (LEN=64) :: FILE_TG, FILE_seeds, FILE_info, File1, FILE_TG_H5, File1_h5
+        Integer :: ich
 
 #ifdef MPI
         INTEGER        :: STATUS(MPI_STATUS_SIZE), irank_g, isize_g, igroup, ISIZE, IRANK
@@ -358,22 +390,26 @@
         call MPI_Comm_rank(Group_Comm, irank_g, ierr)
         call MPI_Comm_size(Group_Comm, isize_g, ierr)
         igroup           = irank/isize_g
+        ich = irank_g
+#else
+        ich = 0
 #endif
+        if (present(chain)) ich = chain
 
 
 #if defined(MPI)
 #if defined(TEMPERING)
             write(FILE1,'(A,I0,A)')      "Temp_",igroup,"/confin_0"
-            write(FILE_TG,'(A,I0,A,I0)') "Temp_",igroup,"/confin_",irank_g
+            write(FILE_TG,'(A,I0,A,I0)') "Temp_",igroup,"/confin_",ich
             write(FILE_info,'(A,I0,A)')  "Temp_",igroup,"/info"
 #else
             File1 = "confin_0"
-            write(FILE_TG,'(A,I0)') "confin_",irank_g
+            write(FILE_TG,'(A,I0)') "confin_",ich
             FILE_info="info"
 #endif
 #else
             File1   = "confin_0"
-            FILE_TG = "confin_0"
+            write(FILE_TG,'(A,I0)') "confin_",ich
             FILE_info="info"
 #endif
             FILE_seeds="seeds"
@@ -406,6 +442,9 @@
                CALL this%read_conf(FILE_TG)
             ELSE
 #endif
+               if (present(chain)) then
+                  SEED_IN = Chain_seed(FILE_seeds, chain, n_chains)
+               else
 #if defined MPI
                IF (IRANK == 0) THEN
 #endif
@@ -429,6 +468,7 @@
                READ (5,*) SEED_IN
                CLOSE(5)
 #endif
+               endif
                ALLOCATE (SEED_VEC(1))
                SEED_VEC(1) = SEED_IN
                CALL RANSET(SEED_VEC)
@@ -471,15 +511,17 @@
 !>
 !--------------------------------------------------------------------
 
-       SUBROUTINE Fields_out(this,Group_Comm)
+       SUBROUTINE Fields_out(this,Group_Comm,chain)
 
          IMPLICIT NONE
 
          Class (Fields), INTENT(INOUT) :: this
          Integer,        INTENT(IN   ) :: Group_Comm
+         Integer,        INTENT(IN   ), Optional :: chain   ! several walkers per process: confout_<chain>
 
          ! LOCAL
          CHARACTER (LEN=64) :: FILE_TG
+         Integer :: ich
 
 #if defined(MPI)
          INTEGER        :: irank_g, isize_g, igroup, ISIZE, IRANK, IERR
@@ -488,14 +530,20 @@
          call MPI_Comm_rank(Group_Comm, irank_g, ierr)
          call MPI_Comm_size(Group_Comm, isize_g, ierr)
          igroup           = irank/isize_g
+         ich = irank_g
+#else
+         ich = 0
+#endif
+         if (present(chain)) ich = chain
+#if defined(MPI)
          !Write(6,*) "Group, rank :", igroup, irank_g
 #if defined(TEMPERING)
-         write(FILE_TG,'(A,I0,A,I0)') "Temp_",igroup,"/confout_",irank_g
+         write(FILE_TG,'(A,I0,A,I0)') "Temp_",igroup,"/confout_",ich
 #else
-         write(FILE_TG,'(A,I0)') "confout_",irank_g
+         write(FILE_TG,'(A,I0)') "confout_",ich
 #endif
 #else
-         FILE_TG = "confout_0"
+         write(FILE_TG,'(A,I0)') "confout_",ich
 #endif
 
 #if defined HDF5
