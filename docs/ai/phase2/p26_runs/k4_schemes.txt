@@ -1,0 +1,11 @@
+kondo  std vs dly4   max scaled diff 6.55e-13  confout identical True
+kondo  std vs dly16  max scaled diff 6.80e-13  confout identical True
+kondo  std vs sub4   max scaled diff 6.70e-13  confout identical True
+tV     std vs dly4   max scaled diff 6.79e-14  confout identical True
+tV     std vs dly16  max scaled diff 8.53e-14  confout identical True
+tV     std vs sub4   max scaled diff 0.00e+00  confout identical True
+sp     std vs dly4   max scaled diff 6.27e-11  confout identical True
+sp     std vs dly16  max scaled diff 4.21e-11  confout identical True
+sp     std vs sub4   max scaled diff 3.48e-11  confout identical True
+hub    std vs dly4   max scaled diff 3.62e-12  confout identical True
+hub    std vs sub4   max scaled diff 2.74e-12  confout identical True
