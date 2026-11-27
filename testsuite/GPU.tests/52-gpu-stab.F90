@@ -6,6 +6,8 @@
 !                     left and right chains (WRAPUL/WRAPUR + decompose) and CGR NVAR = 1, 2 at every stabilisation point
 !                     against the upstream host routines, and the precision reduction against COMPARE.  With
 !                     ALF_GPU_FAULT_STAB=perm|phase|nan it must fail (negative controls).
+!   selftest-proj [Nwrap]  the same with Projector = .T. (Theta = 1, Ltrot = 40): the projector self-test (decompose of the
+!                     Ndim x N_part states from WF_L / WF_R, CGRP on the device against the host CGRP).
 !   phase             determinant phase of the LU factors (no model): large N where the raw product underflows
 !                     (n = 3200, diagonal moduli exp(-0.6) / exp(+0.6); n = 40, moduli 1e-20 / 1e+20), the normalised phase
 !                     of k_det_phase against the analytic one, the selection of gpu_lu_phase_select bitwise against
@@ -54,10 +56,10 @@ Program Test_gpu_stab
   Call get_command_argument(2, arg)
 
   Select case (trim(mode))
-  Case ('selftest')
+  Case ('selftest', 'selftest-proj')
      nwrap_arg = 5
      If (len_trim(arg) > 0) Read(arg,*,iostat=ios) nwrap_arg
-     Call setup_model_for_run(nwrap_arg, N_op)
+     Call setup_model_for_run(nwrap_arg, N_op, trim(mode) == 'selftest-proj')
      Call Walker_layout(walker, Ltrot, nwrap_arg)
      Call Walker_alloc(walker)
      Call Setup_gpu(walker, 'info')           ! sets up the stabilisation and runs its self-test (ALF_GPU_SELFTEST=3); a failure ends the run
@@ -78,7 +80,7 @@ Program Test_gpu_stab
   Case ('refdet3200')
      Call refdet_3200()
   Case ('untracked')
-     Call setup_model_for_run(5, N_op)
+     Call setup_model_for_run(5, N_op, .false.)
      Call Walker_layout(walker, Ltrot, 5)
      Call Walker_alloc(walker)
      Call Setup_gpu(walker, 'info')
@@ -92,7 +94,7 @@ Program Test_gpu_stab
      Call Walker_dealloc(walker)
      Call Clear_Ham_state()
   Case default
-     Write(error_unit,*) 'usage: 52-gpu-stab selftest [Nwrap] | phase | refdet | refdet3200 | untracked'
+     Write(error_unit,*) 'usage: 52-gpu-stab selftest [Nwrap] | selftest-proj [Nwrap] | phase | refdet | refdet3200 | untracked'
      Call Terminate_on_error(ERROR_GENERIC, __FILE__, __LINE__)
   End Select
 
@@ -108,8 +110,9 @@ Program Test_gpu_stab
 contains
 
   !> Hubbard model, parameters and seeds written here, model and fields set up as main does.
-  Subroutine setup_model_for_run(nwrap, N_op)
+  Subroutine setup_model_for_run(nwrap, N_op, proj)
     Integer, intent(in) :: nwrap
+    Logical, intent(in) :: proj
     Integer, intent(out) :: N_op
     Integer :: u, i
     Open(newunit=u, file='parameters', status='replace', action='write')
@@ -126,7 +129,12 @@ contains
     Write(u,'(A)') 'N_FL = 1'
     Write(u,'(A)') 'Dtau = 0.1d0'
     Write(u,'(A)') 'Beta = 2.d0'
-    Write(u,'(A)') 'Projector = .F.'
+    If (proj) then
+       Write(u,'(A)') 'Projector = .T.'
+       Write(u,'(A)') 'Theta = 1.d0'
+    Else
+       Write(u,'(A)') 'Projector = .F.'
+    Endif
     Write(u,'(A)') '/'
     Write(u,'(A)') '&VAR_Hubbard'
     Write(u,'(A)') 'Mz = .T.'
