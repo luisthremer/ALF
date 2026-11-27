@@ -2,7 +2,7 @@
 # Build the report PDF from the current state of the runs ("Hey give preliminary results").
 # usage: ./prelim.sh            -> real data: analyse.py on SuperMUC over all finished runs, figures, tables, PDF
 #        ./prelim.sh fake       -> plots/results_fake.csv instead
-# Output: report/report_<prelim|fake>.pdf, results.csv (real mode). Runs still in progress are simply not included yet
+# Output: report/report_<prelim|fake>.pdf (internal), report/antrag_<prelim|fake>.pdf (proposal version), results.csv (real mode). Runs still in progress are simply not included yet
 # (a run directory appears in runs/ only when the run has finished). Needs ssh supermuc2, python with matplotlib +
 # scienceplots (PY, default: python3), pdflatex.
 set -e
@@ -25,9 +25,15 @@ fi
 rm -rf report/fig; mkdir -p report/fig
 $PY plots/plot_all.py $CSV report/fig $FAKEFLAG
 $PY plots/make_tables.py $CSV > report/tables.tex
+$PY plots/make_antrag.py $CSV > report/antrag_data.tex
 printf '\\newcommand{\\DataState}{%s, %s}\n\\newcommand{\\DataNote}{%s}\n' "$MODE" "$(date '+%Y-%m-%d %H:%M')" "$NOTE" > report/datastate.tex
 cd report
 pdflatex -interaction=nonstopmode -halt-on-error report.tex > build.log 2>&1 || { tail -30 build.log; exit 1; }
 pdflatex -interaction=nonstopmode -halt-on-error report.tex > build.log 2>&1
 cp report.pdf report_$MODE.pdf
+# proposal version (standalone, proposal language)
+pdflatex -interaction=nonstopmode -halt-on-error antrag.tex > build_antrag.log 2>&1 || { tail -30 build_antrag.log; exit 1; }
+pdflatex -interaction=nonstopmode -halt-on-error antrag.tex > build_antrag.log 2>&1
+cp antrag.pdf antrag_$MODE.pdf
 echo "$H/report/report_$MODE.pdf"
+echo "$H/report/antrag_$MODE.pdf"
