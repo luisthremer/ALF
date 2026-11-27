@@ -748,3 +748,45 @@ int alfhk_nd(int rows, void* M, int ld, int len, int nf, int t, int n1, int n2, 
   else      { LAUNCH(k_nd_cols_h, nb(tot, 128), 128, (cd*)M, (long)ld, len, nf, t, n1, n2, mode, sf, c); }
   return fin(); }
 }  // extern "C"
+
+// ---- P2.6.1 rank-r standard update: k_rk_gpp / k_rk_prep / k_rk_upd of gpu_update_mod ----------------------------------
+// buf(a + (b-1) r) = G(P(a), P(b)), a, b = 1..r
+__global__ void k_rk_gpp_h(const cd* G, long ld, const int* P, int r, cd* buf) {
+  int t = blockIdx.x * blockDim.x + threadIdx.x; if (t >= r * r) return;
+  int a = t % r, b = t / r;
+  buf[t] = G[(P[a] - 1) + (long)(P[b] - 1) * ld];
+}
+// C(i,a) = G(i,P(a)), T(a,i) = sum_b W(a,b) R(b,i), R(b,i) = delta(i,P(b)) - G(P(b),i); thread = row i (1..nd)
+__global__ void k_rk_prep_h(const cd* G, long ld, int nd, const int* P, int r, const cd* W, cd* C, cd* T) {
+  int i = blockIdx.x * blockDim.x + threadIdx.x + 1; if (i > nd) return;
+  long I = i - 1;
+  for (int a = 0; a < r; a++) C[I + (long)a * nd] = G[I + (long)(P[a] - 1) * ld];
+  for (int a = 0; a < r; a++) {
+    cd acc(0.0, 0.0);
+    for (int b = 0; b < r; b++) {
+      cd g = G[(P[b] - 1) + I * ld];
+      cd rb = (i == P[b]) ? cd(1.0 - g.r, -g.i) : -g;
+      acc = acc + W[a + b * r] * rb;
+    }
+    T[a + I * r] = acc;
+  }
+}
+// G(i,j) <- G(i,j) - sum_a C(i,a) T(a,j); thread = (i fastest, j)
+__global__ void k_rk_upd_h(cd* G, long ld, int nd, int r, const cd* C, const cd* T) {
+  long t = (long)blockIdx.x * blockDim.x + threadIdx.x; if (t >= (long)nd * nd) return;
+  long i = t % nd, j = t / nd;
+  cd acc = C[i] * T[j * r];
+  for (int a = 1; a < r; a++) acc = acc + C[i + (long)a * nd] * T[a + j * r];
+  G[i + j * ld] = G[i + j * ld] - acc;
+}
+extern "C" {
+int alfhk_rk_gpp(void* G, int ld, void* P, int r, void* buf) {
+  if (r <= 0) return 0;
+  LAUNCH(k_rk_gpp_h, nb((long)r * r, 64), 64, (const cd*)G, (long)ld, (const int*)P, r, (cd*)buf); return fin(); }
+// prep and update in one call (the OpenMP path runs them back to back)
+int alfhk_rk_accept(void* G, int ld, int nd, void* P, int r, void* W, void* C, void* T) {
+  if (nd <= 0 || r <= 0) return 0;
+  LAUNCH(k_rk_prep_h, nb(nd, 128), 128, (const cd*)G, (long)ld, nd, (const int*)P, r, (const cd*)W, (cd*)C, (cd*)T);
+  LAUNCH(k_rk_upd_h, nb((long)nd * nd, 256), 256, (cd*)G, (long)ld, nd, r, (const cd*)C, (const cd*)T);
+  return fin(); }
+}  // extern "C"

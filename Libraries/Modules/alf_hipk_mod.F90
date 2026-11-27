@@ -48,7 +48,7 @@ module alf_hipk_mod
   public :: hk_scatter_rows, hk_vslice_r, hk_blk_gather, hk_blk_scale, hk_sub_flush_gather
   public :: hk_corr, hk_scalars
   public :: hk_cb_left, hk_cb_right
-  public :: hk_dly_gpp, hk_dly_wrap, hk_nd
+  public :: hk_dly_gpp, hk_dly_wrap, hk_nd, hk_rk_gpp, hk_rk_accept
 
   ! HIP replacements on (default) or off (ALF_HIP_KERNELS=0: the OpenMP kernels run, for A/B checks); -1 = not read yet
   integer, save :: hk_state = -1
@@ -233,6 +233,16 @@ module alf_hipk_mod
       import :: c_ptr, c_int
       integer(c_int), value :: rows, ld, len, nf, t, n1, n2, mode, sf, tw, ldm, nop, ldn, ldg
       type(c_ptr), value :: M, Vmeta, Vtype, Vg, VE, ph4, nsig, VP, VM, VU, Vx
+    end function
+    integer(c_int) function alfhk_rk_gpp(G, ld, P, r, buf) bind(C, name='alfhk_rk_gpp')
+      import :: c_ptr, c_int
+      integer(c_int), value :: ld, r
+      type(c_ptr), value :: G, P, buf
+    end function
+    integer(c_int) function alfhk_rk_accept(G, ld, nd, P, r, W, C, T) bind(C, name='alfhk_rk_accept')
+      import :: c_ptr, c_int
+      integer(c_int), value :: ld, nd, r
+      type(c_ptr), value :: G, P, W, C, T
     end function
   end interface
 
@@ -684,6 +694,30 @@ contains
     !$omp end target data
     call chk(rc, 'nd')
   end subroutine hk_nd
+
+  !> k_rk_gpp of gpu_update_mod: buf(a + (b-1) r) = G(P(a),P(b))
+  subroutine hk_rk_gpp(G, ld, P, r, buf)
+    integer, intent(in) :: ld, r
+    complex(kind=kind(0.d0)), target :: G(*), buf(*)
+    integer, target :: P(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(G, P, buf)
+    rc = alfhk_rk_gpp(c_loc(G(1)), int(ld,c_int), c_loc(P(1)), int(r,c_int), c_loc(buf(1)))
+    !$omp end target data
+    call chk(rc, 'rk_gpp')
+  end subroutine hk_rk_gpp
+
+  !> k_rk_prep followed by k_rk_upd of gpu_update_mod (rank-r accept G <- G - G(:,P) W R)
+  subroutine hk_rk_accept(G, ld, nd, P, r, W, C, T)
+    integer, intent(in) :: ld, nd, r
+    complex(kind=kind(0.d0)), target :: G(*), W(*), C(*), T(*)
+    integer, target :: P(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(G, P, W, C, T)
+    rc = alfhk_rk_accept(c_loc(G(1)), int(ld,c_int), int(nd,c_int), c_loc(P(1)), int(r,c_int), c_loc(W(1)), c_loc(C(1)), c_loc(T(1)))
+    !$omp end target data
+    call chk(rc, 'rk_accept')
+  end subroutine hk_rk_accept
 
 end module alf_hipk_mod
 #endif

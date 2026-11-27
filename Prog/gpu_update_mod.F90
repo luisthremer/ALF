@@ -70,6 +70,9 @@ Module gpu_update_mod
   Use gpu_state_mod, only: g_d, g_dev_ok, g_host_ok, gpu_active, gpu_env_is, info_line, nsigma_d, scr_vec, &
        & upd_cnt, v_exp, v_meta, v_type, v_nmax
   Use MyMats, only: Det
+#if defined(ALF_LA_HIP)
+  Use alf_hipk_mod, only: hk_enabled, hk_rk_gpp, hk_rk_accept
+#endif
   Use gpu_wrap_mod, only: gpu_mmthr, gpu_mmthl_m1, gpu_mmthl, gpu_mmthr_m1, gpu_Vop_wrap
   Use gpu_lowrank_mod, only: gpu_lr_accept, gpu_lr_blk_enter, gpu_lr_blk_leave, gpu_lr_blockmode, gpu_lr_commit, &
        & gpu_lr_defer, gpu_lr_fast, gpu_lr_flush, gpu_lr_flush_all, gpu_lr_gpp, gpu_lr_mode, gpu_lr_site_ok, &
@@ -236,6 +239,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,Ndim)
     Complex (Kind=Kind(0.d0)), intent(inout) :: buf(V_NMAX*V_NMAX)
     Integer :: a, b
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_rk_gpp(G, ld, P, r, buf)
+       return
+    endif
+#endif
     !$omp target teams distribute parallel do collapse(2)
     do b = 1, r
        do a = 1, r
@@ -517,8 +526,16 @@ Contains
              rk_w(1:op_dim_nf**2) = W(1:op_dim_nf**2)
              rk_p(1:op_dim_nf) = Op_V(n_op,nf)%P(1:op_dim_nf)
              !$omp target update to(rk_w(1:op_dim_nf**2), rk_p(1:op_dim_nf))
+#if defined(ALF_LA_HIP)
+             if (hk_enabled()) then
+                call hk_rk_accept(G_d(1,1,nf), Ndim, Ndim, rk_p, op_dim_nf, rk_w, rk_c, rk_t)
+             else
+#endif
              call k_rk_prep(G_d(1,1,nf), Ndim, Ndim, rk_p, op_dim_nf, rk_w, rk_c, rk_t)
              call k_rk_upd(G_d(1,1,nf), Ndim, Ndim, op_dim_nf, rk_c, rk_t)
+#if defined(ALF_LA_HIP)
+             endif
+#endif
              upd_cnt(4) = upd_cnt(4) + 2
           elseif (Op_V(n_op,nf)%N_non_zero > 0) then
              p1 = Op_V(n_op,nf)%P(1)
