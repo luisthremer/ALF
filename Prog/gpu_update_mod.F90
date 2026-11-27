@@ -53,12 +53,16 @@
 !>   Upgrade2's grouping, not the Woodbury form G(:,P) W R with W = X Tri^T: that form loses ~30x in Precision Green for the
 !>   type-4 J vertices of Spin_Peierls 12x12 (KNOWN_ISSUES G10; the CPU delayed/submatrix updates use it and show the same).
 !>
+!> Global tau moves (P2.6): gpu_random_update mirrors Wrapgr_Random_update (model proposal on the host, standard device wraps
+!> and updates, INTERMEDIATE / FINAL modes of Upgrade2, device copy of G for a rejected multi-flip move); gpu_placegr mirrors
+!> Wrapgr_PlaceGR, also for the H5 placement around a partial sequential range.
+!>
 !> G is device-authoritative while the sweep runs: WRAPGRUP/DO copy the host GR to G_d only when the device copy is not current
 !> (g_in) and leave the host GR stale (g_out).  The stabilisation (gpu_stab_mod, step 1d) keeps G on the device; the sweep
 !> (qmc_sweep_mod) fetches it (gpu_g_host) before each host reader of GR, and host code that writes GR calls gpu_g_host_wrote.
 !>
 !> Environment (debug runs): ALF_GPU_NOUPDATE=1 keeps the host WRAPGRUP/DO in a GPU build; ALF_GPU_FAULT=upd|nsig injects a
-!> fault into the device update (negative controls).
+!> fault into the device update, ALF_GPU_FAULT=gtau skips the G restore of a rejected multi-flip global tau move (negative controls).
 !--------------------------------------------------------------------
 #ifdef ALF_GPU
 Module gpu_update_mod
@@ -69,6 +73,7 @@ Module gpu_update_mod
   Use Hamiltonian_main, only: calc_fl_map, ham, n_fl, n_fl_eff, n_sun, ndim, nsigma, op_v, reconstruction_needed
   Use Control, only: Control_upgrade, Control_upgrade_eff
   Use Random_Wrap, only: ranf_wrap
+  Use Natural_Constants, only: Eps_small
   Use gpu_state_mod, only: g_d, g_dev_ok, g_host_ok, gpu_active, gpu_env_is, info_line, nsigma_d, scr_vec, &
        & upd_cnt, v_exp, v_meta, v_type, v_nmax
   Use MyMats, only: Det
@@ -87,6 +92,7 @@ Module gpu_update_mod
 
   Logical, Save :: checked = .false., enabled = .false.
   Logical, Save :: fault_upd = .false., fault_nsig = .false.     ! negative controls ALF_GPU_FAULT=upd|nsig (debug runs only)
+  Logical, Save :: fault_gtau = .false.     ! negative control ALF_GPU_FAULT=gtau: a rejected multi-flip move keeps the trial G
   Type (Fields), Save :: nsigma_new
   Logical, Save :: nsigma_new_made = .false.
   ! P2.6.1: device scratch of the rank-r update (block of G, W, sites, C = G(:,P), T = W R), allocated at the first use
@@ -95,6 +101,8 @@ Module gpu_update_mod
   ! P2.6 global: .true. while G is moved by gpu_placegr or a global tau move runs: the wraps and the update take the standard
   ! device path (delayed / submatrix state flushed first, as the CPU calls Lowrank_flush before the global tau moves)
   Logical, Save :: glob_std = .false.
+  ! P2.6 global: device copy GR_st of Wrapgr_Random_update (moves with Flip_length > 1), allocated at the first such move
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: G_st_d(:,:,:)
 
 Contains
 
@@ -112,6 +120,7 @@ Contains
              call info_line('GPU update path: ACTIVE (device wraps and local updates, host decision; G stays on the device)')
              fault_upd  = gpu_env_is('ALF_GPU_FAULT', 'upd')
              fault_nsig = gpu_env_is('ALF_GPU_FAULT', 'nsig')
+             fault_gtau = gpu_env_is('ALF_GPU_FAULT', 'gtau')
           endif
        endif
        checked = .true.
@@ -199,6 +208,21 @@ Contains
        endif
     enddo
   end subroutine k_site_wrap
+
+!> B = A (device to device)
+  Subroutine k_gcopy(A, B, ld, nd)
+    Implicit none
+    Integer, intent(in) :: ld, nd
+    Complex (Kind=Kind(0.d0)), intent(in) :: A(ld,nd)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: B(ld,nd)
+    Integer :: i, j
+    !$omp target teams distribute parallel do collapse(2)
+    do j = 1, nd
+       do i = 1, ld
+          B(i,j) = A(i,j)
+       enddo
+    enddo
+  end subroutine k_gcopy
 
 !> x = G(:,p), y = -G(p,:) with y(p) = 1 - G(p,p)  (u, v, x_v, y_v of Upgrade2 for op_dim 1)
   Subroutine k_upd_prep(G, ld, nd, p, x, y)
@@ -453,15 +477,18 @@ Contains
   end subroutine gpu_placegr
 
 !--------------------------------------------------------------------
-!> Upgrade2 (mode FINAL, Prev_Ratiotot = 1) for the device-resident G: same ratio code, the decision draw at the same
-!> point, the update on the device.  Op_V%N_non_zero <= 1 for every operator (gpu_supported).
-  Subroutine site_update(N_op, NT, PHASE, Hs_new, S0_ratio, T0_proposal_ratio, toggle)
+!> Upgrade2 for the device-resident G: same ratio code, the decision draw at the same point, the update on the device.
+!> Mode FINAL with Prev_Ratiotot = 1 unless prev / inter are given (global tau moves: inter = .true. is mode INTERMEDIATE,
+!> prev the running Prev_Ratiotot).
+  Subroutine site_update(N_op, NT, PHASE, Hs_new, S0_ratio, T0_proposal_ratio, toggle, prev, inter)
     Implicit none
     Integer, intent(in) :: N_op, NT
     Complex (Kind=Kind(0.d0)), intent(inout) :: PHASE
     Complex (Kind=Kind(0.d0)), intent(in) :: Hs_new
     Real (Kind=Kind(0.d0)), intent(in) :: S0_ratio, T0_proposal_ratio
     Logical, intent(inout) :: toggle
+    Complex (Kind=Kind(0.d0)), intent(inout), optional :: prev
+    Logical, intent(in), optional :: inter
 
     Complex (Kind=Kind(0.d0)) :: Ratio(N_FL), Ratiotot, Z1, Prev_Ratiotot, Delta(N_FL), gpp(N_FL)
     Complex (Kind=Kind(0.d0)) :: Z, D_Mat, myexp, g_loc, Mat11, vii, xv, Zg, s1, s2
@@ -469,19 +496,23 @@ Contains
     Complex (Kind=Kind(0.d0)) :: Xm(V_NMAX,V_NMAX), Tm(V_NMAX,V_NMAX)
     Real (Kind=Kind(0.d0)) :: Weight
     Integer :: nf, nf_eff, op_dim_nf, p1, m, k, r2
-    Logical :: lr, lrf, lrg, gen(N_FL)
+    Logical :: lr, lrf, lrg, gen(N_FL), im
 
     toggle = .false.
-    lr = ( gpu_lr_mode() /= 0 )
+    im = .false.
+    if (present(inter)) im = inter
+    if (im .and. .not. present(prev)) call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+    lr = ( gpu_lr_mode() /= 0 .and. .not. glob_std )
     if (lr) lr = gpu_lr_site_ok(N_op)
     lrf = lr .and. gpu_lr_fast()
-    lrg = (.not. lr) .and. gpu_lr_gen_ok(N_op)    ! P2.6.1: delayed general vertex (G = G0 - X Y^T kept)
+    lrg = (.not. lr) .and. (.not. glob_std) .and. gpu_lr_gen_ok(N_op)    ! P2.6.1: delayed general vertex (G = G0 - X Y^T kept)
     if (.not. (lr .or. lrg)) call gpu_lr_flush_all(2)   ! standard update of this site: G_d must be current
     if (.not. nsigma_new_made) then
        Call nsigma_new%make(1,1)
        nsigma_new_made = .true.
     endif
     Prev_Ratiotot = cmplx(1.d0,0.d0,kind(0.d0))
+    if (present(prev)) Prev_Ratiotot = prev
     Ratio = cmplx(1.d0,0.d0,kind(0.d0)); Delta = cmplx(0.d0,0.d0,kind(0.d0)); gpp = Delta
 
     ! Compute the ratio (Upgrade2)
@@ -554,14 +585,19 @@ Contains
     Ratiotot = Product(Ratio)
     nf = 1
     Ratiotot = (Ratiotot**dble(N_SUN)) * nsigma_new%Gama(1,1)/nsigma%Gama(n_op,nt)
-    Ratiotot = Ratiotot * Prev_Ratiotot
-    Weight = S0_ratio * T0_proposal_ratio * abs(  real(Phase * Ratiotot, kind=Kind(0.d0))/real(Phase,kind=Kind(0.d0)) )
+    if (im) then
+       Weight = 1.5D0
+       prev = Prev_Ratiotot*Ratiotot
+    else
+       Ratiotot = Ratiotot * Prev_Ratiotot
+       Weight = S0_ratio * T0_proposal_ratio * abs(  real(Phase * Ratiotot, kind=Kind(0.d0))/real(Phase,kind=Kind(0.d0)) )
+    endif
 
     upd_cnt(1) = upd_cnt(1) + 1
     if ( Weight > ranf_wrap() )  Then
        toggle = .true.
        upd_cnt(2) = upd_cnt(2) + 1
-       Phase = Phase * Ratiotot/sqrt(Ratiotot*conjg(Ratiotot))
+       if (.not. im) Phase = Phase * Ratiotot/sqrt(Ratiotot*conjg(Ratiotot))
        Do nf_eff = 1,N_FL_eff
           nf=Calc_Fl_map(nf_eff)
           if (gen(nf)) then
@@ -621,13 +657,124 @@ Contains
        endif
     endif
 
-    Call Control_upgrade(toggle)
-    Call Control_upgrade_eff(toggle)
+    if (.not. im) then
+       Call Control_upgrade(toggle)
+       Call Control_upgrade_eff(toggle)
+    endif
   End Subroutine site_update
 
 !--------------------------------------------------------------------
+!> Wrapgr_Random_update on the device-resident G: the model proposes on the host (Global_move_tau, fields current there),
+!> per flip gpu_placegr, Op_Wrapup N_Type 1, site_update (INTERMEDIATE for all flips but the last, FINAL for the last),
+!> Op_Wrapup N_Type 2; a rejected move with Flip_length > 1 restores G from the device copy G_st_d and the fields (host and
+!> nsigma_d).  Same random numbers in the same order as the CPU.  On return G is at m.
+  Subroutine gpu_random_update(m, nt, PHASE, N_Global_tau)
+    Implicit none
+    Integer, intent(inout) :: m
+    Integer, intent(in) :: nt, N_Global_tau
+    Complex (Kind=Kind(0.d0)), intent(inout) :: PHASE
+
+    Integer :: n, Flip_length, nf, nf_eff, ng_c, Flip_count
+    Real (Kind=Kind(0.d0)) :: T0_Proposal_ratio, S0_ratio
+    Complex (Kind=Kind(0.d0)) :: Prev_Ratiotot
+    Logical :: Acc
+    Integer, allocatable :: Flip_list(:)
+    Complex (Kind=Kind(0.d0)), allocatable :: Flip_value(:), Flip_value_st(:)
+    Real (Kind=Kind(0.d0)), parameter :: Zero = Eps_small
+
+    Allocate ( Flip_list(Size(Op_V,1)), Flip_value(Size(Op_V,1)), Flip_value_st(Size(Op_V,1)) )
+    call gpu_lr_flush_all(2)
+    glob_std = .true.
+    Acc = .false.
+    Do ng_c = 1,N_Global_tau
+       Call ham%Global_move_tau(T0_Proposal_ratio, S0_ratio, Flip_list, Flip_length, Flip_value, nt)
+       If ( T0_Proposal_ratio > Zero ) Then
+          Call sort_flips(Flip_length, Flip_list, Flip_value)
+          Do Flip_count = 1, Flip_length-1
+             Flip_value_st(Flip_count) = nsigma%f( Flip_list(Flip_count), nt )
+          Enddo
+          Prev_Ratiotot = cmplx(1.d0,0.d0,kind(0.d0))
+          Do Flip_count = 1,Flip_length
+             n = Flip_list(Flip_count)
+             call gpu_placegr(m, n-1, nt)
+             If ( Flip_count == 1 .and. Flip_length > 1 ) call g_backup(.true.)
+             Do nf_eff = 1, N_FL_eff
+                nf = Calc_Fl_map(nf_eff)
+                call site_wrap(nf, n, nt, 1)
+             enddo
+             call site_update(n, nt, PHASE, Flip_value(Flip_count), S0_ratio, T0_Proposal_ratio, Acc, &
+                  & Prev_Ratiotot, Flip_count < Flip_length)
+             Do nf_eff = 1, N_FL_eff
+                nf = Calc_Fl_map(nf_eff)
+                call site_wrap2(nf, n, nt, 1)
+             enddo
+             m = n
+          enddo
+          If ( .not. Acc .and. Flip_length > 1 ) then
+             if (.not. fault_gtau) call g_backup(.false.)
+             m = Flip_list(1) - 1
+             Do Flip_count = 1, Flip_length-1
+                n = Flip_list(Flip_count)
+                nsigma%f(n, nt) = Flip_value_st(Flip_count)
+                nsigma_d(n, nt) = nsigma%f(n, nt)
+                !$omp target update to(nsigma_d(n,nt))
+                upd_cnt(6) = upd_cnt(6) + 1
+             Enddo
+          Endif
+       endif
+    Enddo
+    glob_std = .false.
+    Deallocate ( Flip_list, Flip_value, Flip_value_st )
+  end Subroutine gpu_random_update
+
+!> save = .true.: G_st_d = G_d; else G_d = G_st_d (flavours of Calc_Fl_map, device to device)
+  Subroutine g_backup(save)
+    Implicit none
+    Logical, intent(in) :: save
+    Integer :: nf, nf_eff
+    if (.not. allocated(G_st_d)) then
+       allocate(G_st_d(Ndim,Ndim,N_FL))
+       !$omp target enter data map(alloc: G_st_d)
+    endif
+    Do nf_eff = 1, N_FL_eff
+       nf = Calc_Fl_map(nf_eff)
+       if (save) then
+          call k_gcopy(G_d(1,1,nf), G_st_d(1,1,nf), Ndim, Ndim)
+       else
+          call k_gcopy(G_st_d(1,1,nf), G_d(1,1,nf), Ndim, Ndim)
+       endif
+    enddo
+  end Subroutine g_backup
+
+!> Wrapgr_sort_value (Wrapgr_mod uses this module): bubble sort of Flip_list, Flip_value follows
+  Subroutine sort_flips(Flip_length, Flip_list, Flip_value)
+    Implicit none
+    Integer, intent(in) :: Flip_length
+    Integer, intent(inout) :: Flip_list(:)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: Flip_value(:)
+    Integer :: swaps, nc, temp
+    Complex (Kind=Kind(0.d0)) :: X
+    if ( Flip_length == 1 ) return
+    do
+       swaps = 0
+       do nc = 1, (Flip_length - 1)
+          if ( Flip_list(nc) > Flip_list(nc+1) ) then
+             temp            = Flip_list(nc)
+             Flip_list(nc)   = Flip_list(nc+1)
+             Flip_list(nc+1) = temp
+             X                = Flip_value(nc)
+             Flip_value(nc)   = Flip_value(nc+1)
+             Flip_value(nc+1) = X
+             swaps = swaps + 1
+          end if
+       end do
+       if ( swaps == 0 ) exit
+    end do
+  end Subroutine sort_flips
+
+!--------------------------------------------------------------------
 !> WRAPGRUP of Wrapgr_mod on the device: G(tau) -> G(tau+1) with the sequential updates of slice tau+1.
-!> No global moves (refused by gpu_supported).
+!> Global tau moves (N_Global_tau > 0) after the sequential range, as WRAPGRUP; Global_moves and MALA are refused by gpu_supported.
   Subroutine gpu_wrapgrup(GR, NTAU, PHASE, Propose_S0, Nt_sequential_start, Nt_sequential_end, N_Global_tau)
     Implicit none
     Complex (Kind=Kind(0.d0)), intent(inout) :: GR(:,:,:)
@@ -641,7 +788,6 @@ Contains
     Real (Kind=Kind(0.d0)) :: T0_proposal, T0_Proposal_ratio, S0_ratio
     Logical :: Acc, toggle1, fast_lr, bm
 
-    if (N_Global_tau > 0) call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
     upd_cnt(10) = upd_cnt(10) + 1
     fast_lr = gpu_lr_fast()
     bm = gpu_lr_blockmode()
@@ -700,6 +846,7 @@ Contains
     call gpu_lr_flush_all(2)                    ! delayed / submatrix: G_d must be current at the end of the slice
     m = 0
     if (Nt_sequential_end >= Nt_sequential_start) m = Nt_sequential_end
+    if (N_Global_tau > 0) call gpu_random_update(m, ntau1, PHASE, N_Global_tau)
     ! G leaves at m = Size(Op_V,1) (KNOWN_ISSUES.md, H5)
     call gpu_placegr(m, Size(Op_V,1), ntau1)
     call g_out(GR)
@@ -720,12 +867,12 @@ Contains
     Real (Kind=Kind(0.d0)) :: T0_proposal, T0_Proposal_ratio, S0_ratio
     Logical :: Acc, toggle1, fast_lr, bm
 
-    if (N_Global_tau > 0) call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
     upd_cnt(10) = upd_cnt(10) + 1
     fast_lr = gpu_lr_fast()
     bm = gpu_lr_blockmode()
     call g_in(GR)
     m = Size(Op_V,1)
+    if (N_Global_tau > 0) call gpu_random_update(m, ntau, PHASE, N_Global_tau)
     m1 = 0
     if (Nt_sequential_end >= Nt_sequential_start) m1 = Nt_sequential_end
     call gpu_placegr(m, m1, ntau)
