@@ -247,7 +247,7 @@ Module gpu_lowrank_mod
 #endif
   ! P2.6.1 general vertices (delayed): sites, block and W of one flavour, device + host
   Integer, Save :: gp_d(V_NMAX) = 0
-  Complex (Kind=Kind(0.d0)), Save :: gb_d(V_NMAX*V_NMAX), gw_d(V_NMAX*V_NMAX)
+  Complex (Kind=Kind(0.d0)), Save :: gb_d(V_NMAX*V_NMAX), gw_d(V_NMAX*V_NMAX), gt_d(V_NMAX*V_NMAX)
   Logical, Save :: gen_mapped = .false.
 
 Contains
@@ -342,7 +342,7 @@ Contains
        endif
        deallocate( jc, S_h, slot_h, M_h, W_h, grow_h, prop_p, prop_k, gbuf, res2, S_d, M_d, X_d, Y_d, slot_d, M_pk )
        if (gen_mapped) then
-          !$omp target exit data map(delete: gp_d, gb_d, gw_d)
+          !$omp target exit data map(delete: gp_d, gb_d, gw_d, gt_d)
           gen_mapped = .false.
        endif
     endif
@@ -411,7 +411,7 @@ Contains
   Subroutine gen_map()
     Implicit none
     if (gen_mapped) return
-    !$omp target enter data map(to: gp_d, gb_d, gw_d)
+    !$omp target enter data map(to: gp_d, gb_d, gw_d, gt_d)
     gen_mapped = .true.
   end subroutine gen_map
 
@@ -450,17 +450,19 @@ Contains
     enddo
   end subroutine k_gen_block
 
-!> P2.6.1: accept of a general vertex of rank r with the host matrix W (r x r, column-major in w): r new columns of X and Y
-  Subroutine gpu_lr_gen_accept(nf, n, r, w)
+!> P2.6.1: accept of a general vertex of rank r with the host factors xm, tm (r x r, column-major: X and Tri of rk_xtri,
+!> Upgrade2's grouping, G11): r new columns of X and Y
+  Subroutine gpu_lr_gen_accept(nf, n, r, xm, tm)
     Implicit none
     Integer, intent(in) :: nf, n, r
-    Complex (Kind=Kind(0.d0)), intent(in) :: w(r*r)
+    Complex (Kind=Kind(0.d0)), intent(in) :: xm(r*r), tm(r*r)
     call gen_map()
     if (jc(nf) + r > nd) call gpu_lr_flush(nf, 1)
     gp_d(1:r) = Op_V(n,nf)%P(1:r)
-    gw_d(1:r*r) = w(1:r*r)
-    !$omp target update to(gp_d(1:r), gw_d(1:r*r))
-    call k_gen_accept(G_d(1,1,nf), X_d(1,1,nf), Y_d(1,1,nf), Ndim, nd, jc(nf), r, gp_d, gw_d)
+    gw_d(1:r*r) = xm(1:r*r)
+    gt_d(1:r*r) = tm(1:r*r)
+    !$omp target update to(gp_d(1:r), gw_d(1:r*r), gt_d(1:r*r))
+    call k_gen_accept(G_d(1,1,nf), X_d(1,1,nf), Y_d(1,1,nf), Ndim, nd, jc(nf), r, gp_d, gw_d, gt_d)
     jc(nf) = jc(nf) + r
     n_acc = n_acc + 1
     upd_cnt(4) = upd_cnt(4) + 1
@@ -468,16 +470,17 @@ Contains
   end subroutine gpu_lr_gen_accept
 
 !> c(b) = G(i,P(b)), rr(a) = G(P(a),i) of G = G0 - X Y^T (before the new columns); X(i,j+a) = sum_b c(b) W(b,a),
-!> Y(i,j+a) = delta(i,P(a)) - rr(a).  Thread = row i.
-  Subroutine k_gen_accept(G, X, Y, ld, ndl, jcnt, r, P, W)
+!> V(i,b) = delta(i,P(b)) - rr(b);  X(i,j+a) = sum_b c(b) Xm(b,a),  Y(i,j+a) = sum_b V(i,b) Tri(b,a)
+!> (Upgrade2's grouping G' = G - (G(:,P) Xm) (V Tri)^T, not the Woodbury product c W V^T: G11).  Thread = row i.
+  Subroutine k_gen_accept(G, X, Y, ld, ndl, jcnt, r, P, Xm, Tri)
     Implicit none
     Integer, intent(in) :: ld, ndl, jcnt, r
     Integer, intent(in) :: P(V_NMAX)
-    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,ld), W(V_NMAX*V_NMAX)
+    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,ld), Xm(V_NMAX*V_NMAX), Tri(V_NMAX*V_NMAX)
     Complex (Kind=Kind(0.d0)), intent(inout) :: X(ld,ndl), Y(ld,ndl)
     Integer :: i, a, b, k
-    Complex (Kind=Kind(0.d0)) :: c(V_NMAX), rr(V_NMAX), z
-    !$omp target teams distribute parallel do private(a, b, k, c, rr, z)
+    Complex (Kind=Kind(0.d0)) :: c(V_NMAX), rr(V_NMAX), z, zy
+    !$omp target teams distribute parallel do private(a, b, k, c, rr, z, zy)
     do i = 1, ld
        do b = 1, r
           c(b)  = G(i, P(b))
@@ -487,14 +490,19 @@ Contains
              rr(b) = rr(b) - X(P(b),k) * Y(i,k)
           enddo
        enddo
+       do b = 1, r
+          rr(b) = - rr(b)
+          if (i == P(b)) rr(b) = rr(b) + 1.d0
+       enddo
        do a = 1, r
-          z = c(1) * W(1 + (a-1)*r)
+          z = c(1) * Xm(1 + (a-1)*r)
+          zy = rr(1) * Tri(1 + (a-1)*r)
           do b = 2, r
-             z = z + c(b) * W(b + (a-1)*r)
+             z = z + c(b) * Xm(b + (a-1)*r)
+             zy = zy + rr(b) * Tri(b + (a-1)*r)
           enddo
           X(i, jcnt+a) = z
-          Y(i, jcnt+a) = - rr(a)
-          if (i == P(a)) Y(i, jcnt+a) = Y(i, jcnt+a) + 1.d0
+          Y(i, jcnt+a) = zy
        enddo
     enddo
   end subroutine k_gen_accept
