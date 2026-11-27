@@ -489,7 +489,7 @@ Contains
     ! fault values: an unknown or unparsable value is an error in every run
     If (gpu_env_get('ALF_GPU_FAULT', v)) then
        Select case (trim(v))
-       Case ('hop', 'hopc', 'vexp', 'nan', 'order', 'upd', 'nsig', 'obs')
+       Case ('hop', 'hopc', 'vexp', 'nan', 'order', 'upd', 'nsig', 'obs', 'gtau')
        Case default
           Call env_fail('GPU fault value invalid: ALF_GPU_FAULT='//trim(v))
        End Select
