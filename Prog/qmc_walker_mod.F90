@@ -55,6 +55,14 @@ Module qmc_walker_mod
   !> The UDV components are ALLOCATABLE, as the routines that receive them
   !> (WRAPUL, WRAPUR, Global_Updates, Langevin_HMC, Tau_m, Tau_p, ...)
   !> declare their dummy arguments ALLOCATABLE.
+  !>
+  !> Several walkers in one process (N_walkers > 1, task T12): the field
+  !> configuration (module variable nsigma) and the random number generator
+  !> state are per chain but live outside the walker. Walker_activate moves
+  !> them from the walker into nsigma and the generator, Walker_deactivate
+  !> moves them back (move_alloc, no copy). Walkers run one after another;
+  !> all other module state is scratch, statistics or model data.
+  !> With N_walkers = 1 both routines do nothing.
   !--------------------------------------------------------------------
 
   Use iso_fortran_env, only: error_unit
@@ -65,7 +73,8 @@ Module qmc_walker_mod
   Use wrapul_mod, only: WRAPUL
   Use cgr1_mod, only: CGR, CGR_work_alloc, CGR_work_dealloc
   Use Control, only: Control_PrecisionG, Control_PrecisionP
-  Use QMC_runtime_var, only: get_Ltau
+  Use QMC_runtime_var, only: get_Ltau, get_N_walkers
+  Use lowrank_update_mod, only: Lowrank_assert_flushed
   Use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
   Use Tau_m_mod, only: Tau_m_work_alloc, Tau_m_work_dealloc
   Use Tau_p_mod, only: Tau_p_work_alloc, Tau_p_work_dealloc
@@ -86,10 +95,18 @@ Module qmc_walker_mod
      Integer                                                  :: NSTM
      Integer,                   Dimension(:),     Allocatable :: Stab_nt
      Class (UDV_State),         Dimension(:,:),   Allocatable :: udvst
+     ! Chain index (seed line, confin_/confout_ number) and, while the walker
+     ! is not active, its fields and random number generator state
+     Integer                                                  :: chain
+     Complex (Kind=Kind(0.d0)), Dimension(:,:),   Allocatable :: f
+     Integer,                   Dimension(:),     Allocatable :: t, flip_protocol, rng
   end Type qmc_walker_t
 
+  ! Walkers allocated so far: the kernel work arrays exist once per process
+  Integer :: n_walkers_alloc = 0
+
   public :: Walker_layout, Walker_alloc, Walker_dealloc, Walker_init_stack, Walker_init_GR, &
-       &    Recompute_GR_phase, Reset_udv
+       &    Recompute_GR_phase, Reset_udv, Walker_activate, Walker_deactivate
 
   contains
 
@@ -136,9 +153,12 @@ Module qmc_walker_mod
       allocate(walker%Phase_array(N_FL))
       Allocate ( walker%Test(Ndim,Ndim), walker%GR(NDIM,NDIM,N_FL), walker%GR_Tilde(NDIM,NDIM,N_FL)  )
       ! Work arrays of the numerical kernels: module arrays, allocated once per run
-      Call CGR_work_alloc(Ndim)
-      If (get_Ltau() == 1 .and. .not. Projector) Call Tau_m_work_alloc
-      If (get_Ltau() == 1 .and.       Projector) Call Tau_p_work_alloc
+      If (n_walkers_alloc == 0) then
+         Call CGR_work_alloc(Ndim)
+         If (get_Ltau() == 1 .and. .not. Projector) Call Tau_m_work_alloc
+         If (get_Ltau() == 1 .and.       Projector) Call Tau_p_work_alloc
+      endif
+      n_walkers_alloc = n_walkers_alloc + 1
       ALLOCATE(walker%udvl(N_FL_eff), walker%udvr(N_FL_eff), walker%udvst(walker%NSTM, N_FL_eff))
       do nf_eff = 1, N_FL_eff
          nf=Calc_Fl_map(nf_eff)
@@ -175,10 +195,52 @@ Module qmc_walker_mod
       DEALLOCATE(walker%udvl, walker%udvr, walker%udvst)
       DEALLOCATE(walker%GR, walker%TEST, walker%Stab_nt,walker%GR_Tilde)
       deallocate(walker%Phase_array)
-      Call CGR_work_dealloc
-      If (get_Ltau() == 1 .and. .not. Projector) Call Tau_m_work_dealloc
-      If (get_Ltau() == 1 .and.       Projector) Call Tau_p_work_dealloc
+      n_walkers_alloc = n_walkers_alloc - 1
+      If (n_walkers_alloc == 0) then
+         Call CGR_work_dealloc
+         If (get_Ltau() == 1 .and. .not. Projector) Call Tau_m_work_dealloc
+         If (get_Ltau() == 1 .and.       Projector) Call Tau_p_work_dealloc
+      endif
     end Subroutine Walker_dealloc
+
+    !--------------------------------------------------------------------
+    !> @brief
+    !> Makes the walker the active chain: its fields go into nsigma and its
+    !> random number generator state into the generator. Does nothing with
+    !> N_walkers = 1 (the single walker is always active).
+    !--------------------------------------------------------------------
+    Subroutine Walker_activate(walker)
+      Type (qmc_walker_t), intent(inout) :: walker
+
+      If (get_N_walkers() == 1) return
+      Call move_alloc(walker%f, nsigma%f)
+      Call move_alloc(walker%t, nsigma%t)
+      Call move_alloc(walker%flip_protocol, nsigma%flip_protocol)
+      ! RANDOM_SEED directly, not Ranset: Ranset reseeds when the first state word is 0
+      Call random_seed(put=walker%rng)
+    end Subroutine Walker_activate
+
+    !--------------------------------------------------------------------
+    !> @brief
+    !> Stores the active chain's fields and random number generator state in
+    !> the walker. No low-rank update may be pending (they are flushed at the
+    !> end of every time slice). Does nothing with N_walkers = 1.
+    !--------------------------------------------------------------------
+    Subroutine Walker_deactivate(walker)
+      Type (qmc_walker_t), intent(inout) :: walker
+      Integer :: k
+
+      If (get_N_walkers() == 1) return
+      Call Lowrank_assert_flushed("Walker_deactivate")
+      Call move_alloc(nsigma%f, walker%f)
+      Call move_alloc(nsigma%t, walker%t)
+      Call move_alloc(nsigma%flip_protocol, walker%flip_protocol)
+      If (.not. allocated(walker%rng)) then
+         Call random_seed(size=k)
+         allocate(walker%rng(k))
+      endif
+      Call random_seed(get=walker%rng)
+    end Subroutine Walker_deactivate
 
     !--------------------------------------------------------------------
     !> @brief

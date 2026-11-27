@@ -6,14 +6,19 @@ Program Test_walker
 #ifdef MPI
   Use mpi
 #endif
-  Use Hamiltonian_main, only: Set_model_for_testing, Setup_flavor_map, Clear_Ham_state, N_FL_eff
+  Use Hamiltonian_main, only: Set_model_for_testing, Setup_flavor_map, Clear_Ham_state, N_FL_eff, nsigma
+  Use QMC_runtime_var, only: set_N_walkers
   Use Operator_mod, only: Operator
-  Use qmc_walker_mod, only: qmc_walker_t, Walker_layout, Walker_alloc, Walker_dealloc
+  Use qmc_walker_mod, only: qmc_walker_t, Walker_layout, Walker_alloc, Walker_dealloc, &
+       &                    Walker_activate, Walker_deactivate
   Use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
   Use iso_fortran_env, only: error_unit
   Implicit none
 
-  Type (qmc_walker_t) :: walker
+  Type (qmc_walker_t) :: walker, w1, w2
+  Integer, allocatable :: seed1(:), seed2(:)
+  Real (Kind=Kind(0.d0)) :: x, x_ref(2)
+  Integer :: k
   Type (Operator), dimension(:,:), allocatable :: Op_T, Op_V
   Integer :: n_fail, nf_eff, n
 #ifdef MPI
@@ -51,6 +56,40 @@ Program Test_walker
   Call Walker_dealloc(walker)
   Call check(.not. allocated(walker%GR) .and. .not. allocated(walker%udvst) .and. &
        &     .not. allocated(walker%Stab_nt) .and. .not. allocated(walker%Phase_array), "deallocated")
+
+  ! Swap of fields and random number state between two walkers (N_walkers > 1)
+  Call set_N_walkers(2)
+  Call random_seed(size=k)
+  allocate(seed1(k), seed2(k))
+  seed1 = [(12345 + 7*n, n = 1, k)]
+  seed2 = [(54321 + 3*n, n = 1, k)]
+  Call random_seed(put=seed1)
+  Call random_number(x_ref(1))
+  Call random_number(x_ref(2))          ! reference: stream 1 without interruption
+
+  Call nsigma%make(2, 3)
+  nsigma%f = cmplx(1.d0, 0.d0, kind(0.d0)); nsigma%t = 1
+  Call random_seed(put=seed1)
+  Call random_number(x)                  ! walker 1 draws its first number
+  Call Walker_deactivate(w1)
+  Call check(.not. allocated(nsigma%f) .and. allocated(w1%f), "deactivate moves fields")
+
+  Call nsigma%make(2, 3)
+  nsigma%f = cmplx(-1.d0, 0.d0, kind(0.d0)); nsigma%t = 2
+  Call random_seed(put=seed2)
+  Call random_number(x)                  ! walker 2 uses another stream
+  Call Walker_deactivate(w2)
+
+  Call Walker_activate(w1)
+  Call check(all(nsigma%f == cmplx(1.d0, 0.d0, kind(0.d0))) .and. all(nsigma%t == 1), "fields of walker 1 back")
+  Call random_number(x)
+  Call check(x == x_ref(2), "random stream of walker 1 continues bitwise")
+  Call Walker_deactivate(w1)
+  Call Walker_activate(w2)
+  Call check(all(nsigma%f == cmplx(-1.d0, 0.d0, kind(0.d0))) .and. all(nsigma%t == 2), "fields of walker 2 back")
+  Call nsigma%clear()
+  Call set_N_walkers(1)
+
   Call Clear_Ham_state()
 
   If (n_fail > 0) then

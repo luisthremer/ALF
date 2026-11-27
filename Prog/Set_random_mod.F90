@@ -32,8 +32,10 @@
 
 module set_random
    use runtime_error_mod, only: Terminate_on_error, ERROR_FILE_NOT_FOUND
+   use Fields_mod, only: Chain_seed
    implicit none
    contains
+
 
 !--------------------------------------------------------------------
 !> @author 
@@ -45,7 +47,7 @@ module set_random
 !
 !--------------------------------------------------------------------
 
-     Subroutine Set_Random_number_Generator(File_seeds,Seed_in)
+     Subroutine Set_Random_number_Generator(File_seeds,Seed_in,chain,n_chains)
 
        
 #ifdef MPI
@@ -59,6 +61,7 @@ module set_random
 
         Character (LEN=64), Intent(IN) :: File_seeds
         Integer,  Intent(out) :: SEED_IN
+        Integer,  Intent(in), Optional :: chain, n_chains   ! several walkers per process: see Chain_seed
         Integer :: IERR
         Integer, allocatable :: SEED_VEC(:)
         
@@ -69,6 +72,11 @@ module set_random
         CALL MPI_COMM_RANK(MPI_COMM_WORLD,IRANK,IERR)
 #endif
         
+       If (present(chain)) then
+          SEED_IN = Chain_seed(File_seeds, chain, n_chains)
+          CALL RANSET([SEED_IN])
+          return
+       endif
 #if defined(MPI)       
        IF (IRANK == 0) THEN
           OPEN(UNIT=5,FILE=File_seeds,STATUS='OLD',ACTION='READ',IOSTAT=IERR)
