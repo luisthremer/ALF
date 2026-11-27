@@ -45,7 +45,7 @@ Toolchain: Intel oneAPI 2025.3, Intel MPI 2021.15, oneMKL 2025.3.
 \item One full node per run, best configuration per node type: CPU node = 112 cores (2 $\times$ Xeon 8480L),
   GPU node = 4 $\times$ Intel Max 1550 (8 tiles).
 \item 10 sweeps timed individually per run (5 for the CPU at $L=40$); errors $<1\,\%$ (standard error).
-\item $L=16$--36: all configurations; $L=40$: only the fastest configuration of each code.
+\item $L=16$--36: all configurations; $L=40$: only the fastest configurations.
 \end{itemize}
 
 \begin{table}[H]
@@ -69,6 +69,6 @@ CPU node. Right: estimated energy per work unit (vendor power ratings: CPU node 
 \item At $L=\Lmax$ one GPU node gives \textbf{\FacIntel$\times$} the throughput of the CPU node (ALF GPU Intel-optimised;
   \FacBase$\times$ with ALF GPU) at \Eratio$\times$ lower energy per work unit.
 \item Speedup of the GPU node (Intel-optimised) over the CPU node: \FacList.
-\item Best GPU configuration (Intel-optimised): four MPI processes per tile; eight per tile is always slower.
+\item Best GPU configuration (Intel-optimised): four MPI processes per tile up to $L=36$, two per tile at $L=40$ (four per tile halve the throughput there); eight per tile is always slower.
 \end{itemize}}
 \end{document}

@@ -1,10 +1,10 @@
-\newcommand{\Lmax}{36}
-\newcommand{\FacIntel}{8.6}
-\newcommand{\FacBase}{4.2}
-\newcommand{\Eratio}{1.9}
-\newcommand{\FacList}{2.7$\times$ ($L=16$), 5.8$\times$ ($L=24$), 11.8$\times$ ($L=32$), 8.6$\times$ ($L=36$)}
+\newcommand{\Lmax}{40}
+\newcommand{\FacIntel}{6.8}
+\newcommand{\FacBase}{5.4}
+\newcommand{\Eratio}{1.5}
+\newcommand{\FacList}{2.7$\times$ ($L=16$), 5.8$\times$ ($L=24$), 11.8$\times$ ($L=32$), 8.6$\times$ ($L=36$), 6.8$\times$ ($L=40$)}
 \newcommand{\StarNote}{}
-\newcommand{\Complete}{no}
+\newcommand{\Complete}{yes}
 \newcommand{\AntragTable}{%
 \begin{tabular}{rlllrrr}
 $L$ & node & code & configuration & work units / node-h & speedup & kJ / unit\\
@@ -24,4 +24,8 @@ $L$ & node & code & configuration & work units / node-h & speedup & kJ / unit\\
 36 & CPU & ALF CPU & 112 proc.\ $\times$ 1 thr. & 1\,728 & 1.0 & 1.458\\
 36 & GPU & ALF GPU & 2 proc./tile, 7 thr. & 7\,311 & 4.2 & 1.526\\
 36 & GPU & ALF GPU Intel-opt. & 4 proc./tile, 1 thr. & 14\,795 & 8.6 & 0.754\\
+\hline
+40 & CPU & ALF CPU & 112 proc.\ $\times$ 1 thr. & 933 & 1.0 & 2.701\\
+40 & GPU & ALF GPU & 2 proc./tile, 7 thr. & 5\,048 & 5.4 & 2.211\\
+40 & GPU & ALF GPU Intel-opt. & 2 proc./tile, 7 thr. & 6\,363 & 6.8 & 1.754\\
 \end{tabular}}
