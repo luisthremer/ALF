@@ -124,7 +124,7 @@ Program Main
              &                     get_n_global, get_n_global_tau, get_n_global_tau_mala, get_nbin, &
              &                     get_nsweep, get_nwrap, get_sequential, get_sequential_mala, &
              &                     get_tempering_calc_det, read_and_broadcast_qmc_var_and_ham_name, &
-             &                     set_mpi_per_parameter_set, apply_CPU_MAX_policy
+             &                     set_mpi_per_parameter_set, apply_CPU_MAX_policy, get_N_walkers
         Use Hamiltonian_main, only: ham, Clear_Ham_state, Set_Group_Comm, Ltrot, nsigma, Group_Comm
         Use files_mod, only: str_to_upper
         Use Natural_Constants, only: Eps_small
