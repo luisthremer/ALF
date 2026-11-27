@@ -5,6 +5,7 @@ usage: make_antrag.py RESULTS.csv > antrag_data.tex
 Defines \\Lmax (largest L with CPU and both GPU results), \\FacIntel, \\FacBase, \\Eratio (at \\Lmax),
 \\Complete (yes/no) and the table \\AntragTable (best layout per side and L, commit column, energy per sweep).
 """
+import os
 import sys
 
 sys.path.insert(0, __file__.rsplit("/", 1)[0])
@@ -15,7 +16,7 @@ COMMIT = {"cpu": "410c7b04", "gpu": "410c7b04", "gpub": "d1060305"}
 LAYOUT = {"cpu": lambda r: f"{r['ranks']} MPI proc.\\ $\\times$ {r['threads']} thread{'s' if r['threads'] > 1 else ''}",
           "gpu": lambda r: f"{r['w']} MPI proc./GPU tile, {r['threads']} thread{'s' if r['threads'] > 1 else ''}",
           "gpub": lambda r: f"{r['w']} MPI proc./GPU tile, {r['threads']} thread{'s' if r['threads'] > 1 else ''}"}
-PLANNED = {16, 24, 32, 36}
+PLANNED = set(int(x) for x in os.environ.get("PLANNED_L", "16,24,32,36").split(","))
 
 
 def num(x, nd=0):
@@ -31,9 +32,12 @@ NLAY = {"cpu": _n, "gpu": _n, "gpub": _n}   # configurations per side and L in t
 REQ = {k: set(v.split(",")) for k, v in (x.split("=") for x in os.environ.get("REQ_TAGS", "").split(";") if x)}   # e.g. cpu=t1,t2
 
 
+NLAY_L = {int(k): int(v) for k, v in (x.split("=") for x in os.environ.get("NLAY_L", "").split(";") if x)}   # e.g. 40=1
+
+
 def done(s_, L):
     tags = {r["tag"] for r in rows if r["side"] == s_ and r["L"] == L}
-    return len(tags) >= NLAY[s_] and REQ.get(s_, set()) <= tags
+    return len(tags) >= NLAY_L.get(L, NLAY[s_]) and REQ.get(s_, set()) <= tags
 full = [L for L in Ls if all((s, L) in b and done(s, L) for s in SIDES)]
 out = []
 if full:

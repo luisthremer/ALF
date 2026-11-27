@@ -11,7 +11,7 @@ PY=${PY:-python3}
 A=/hppfs/work/pn73xu/di38zuw/ANTRAG_2026-11-27
 # SET=betaL: the beta = L series (runs_betaL/, report_betaL/, results_betaL.csv); default: the beta = 4 series
 if [ "$SET" = betaL ]; then RUNS=runs_betaL; RDIR=report_betaL; CSVR=results_betaL.csv; NPLAN=25; export NLAY=2 REQ_TAGS=cpu=t1,t2 BETA_LABEL='\beta = L' REPORTDIR=report_betaL
-else RUNS=runs; RDIR=report; CSVR=results.csv; NPLAN=60; export NLAY=5 REQ_TAGS= BETA_LABEL='\beta = 4' REPORTDIR=report; fi
+else RUNS=runs; RDIR=report; CSVR=results.csv; NPLAN=63; export NLAY=5 NLAY_L='40=1' PLANNED_L=16,24,32,36,40 REQ_TAGS= BETA_LABEL='\beta = 4' REPORTDIR=report; fi
 if [ "$1" = fake ]; then
   MODE=fake; CSV=plots/results_fake.csv; $PY plots/make_fake_data.py > $CSV
   NOTE='\textbf{FAKE DATA.} All numbers and figures in this version are invented, only to check layout and plots.'

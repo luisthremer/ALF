@@ -16,9 +16,9 @@
 One full Phase 2 node per simulation: either its two CPUs alone (112 cores, build \texttt{build\_cpu-pp}, ALF 410c7b04)
 or its four Intel Data Center GPU Max 1550 (8 tiles) with ALF 410c7b04 (\texttt{build\_pp}) and with the Intel-optimised
 production binary (branch intel-batched, d1060305, run-time switches of the production run RUN\_L36\_batched).
-Hubbard model, square lattice, $L\in\{16,24,32,36\}$, $\beta=4$, $\Delta\tau=0.1$, $h_0=0$, $U=5.25$, $M_z=$ F,
+Hubbard model, square lattice, $L\in\{16,24,32,36,40\}$, $\beta=4$, $\Delta\tau=0.1$, $h_0=0$, $U=5.25$, $M_z=$ F,
 Symm and Checkerboard on, Ltau $=0$, submatrix updates with $N_\text{delay}=64$, Nwrap $=10$.
-Each run does 11 sweeps (NSweep $=1$, NBin $=11$); the first is dropped, the other 10 are timed one by one.
+Each run does 11 sweeps (NSweep $=1$, NBin $=11$); the first is dropped, the other 10 are timed one by one. At $L=40$ only the fastest configuration of each code at $L\le36$ is run (CPU \texttt{t1}, ALF GPU \texttt{w2t7}, Intel-optimised \texttt{w4t1}); the CPU run there has NBin $=6$ (5 timed sweeps).
 All walkers of a run form one parameter set; one bin is the average of one sweep over all walkers.
 
 \section{Node and layouts (x axes of the figures)}

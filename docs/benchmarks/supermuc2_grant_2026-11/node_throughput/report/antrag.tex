@@ -37,12 +37,13 @@ Toolchain: Intel oneAPI 2025.3, Intel MPI 2021.15, oneMKL 2025.3.
 
 \subsection*{Benchmark}
 \begin{itemize}
-\item Dense complex matrices of dimension $N=L^2$ (256 to 1296), 40 per configuration; cost per sweep $\propto N^3$
+\item Dense complex matrices of dimension $N=L^2$ (256 to 1600), 40 per configuration; cost per sweep $\propto N^3$
   (matrix products, QR and LU decompositions).
 \item Work unit: one sweep of one independent simulation (one simulation per MPI process).
 \item One full node per run, best configuration per node type: CPU node = 112 cores (2 $\times$ Xeon 8480L),
   GPU node = 4 $\times$ Intel Max 1550 (8 tiles).
-\item 10 sweeps timed individually per run; errors $<1\,\%$ (standard error).
+\item 10 sweeps timed individually per run (5 for the CPU at $L=40$); errors $<1\,\%$ (standard error).
+\item $L=16$--36: all configurations; $L=40$: only the fastest configuration of each code.
 \end{itemize}
 
 \begin{table}[H]
