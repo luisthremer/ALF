@@ -28,7 +28,12 @@ Ls = sorted({r["L"] for r in rows})
 import os
 _n = int(os.environ.get("NLAY", "5"))
 NLAY = {"cpu": _n, "gpu": _n, "gpub": _n}   # configurations per side and L in the test
-done = lambda s_, L: len({r["tag"] for r in rows if r["side"] == s_ and r["L"] == L}) >= NLAY[s_]
+REQ = {k: set(v.split(",")) for k, v in (x.split("=") for x in os.environ.get("REQ_TAGS", "").split(";") if x)}   # e.g. cpu=t1,t2
+
+
+def done(s_, L):
+    tags = {r["tag"] for r in rows if r["side"] == s_ and r["L"] == L}
+    return len(tags) >= NLAY[s_] and REQ.get(s_, set()) <= tags
 full = [L for L in Ls if all((s, L) in b and done(s, L) for s in SIDES)]
 out = []
 if full:
