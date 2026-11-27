@@ -43,7 +43,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | G6 | GPU line: negative control `ALF_GPU_FAULT=upd` acts only on the standard (rank-1) update, not on delayed/submatrix | C | open (test gap; found by the P2.4 step 2 `gpu-intel` gate) |
 | MK | Makefile: Prog objects not rebuilt after Libraries/Modules changes | B | fixed in `cm/feat/b-batch-2` (commit "build: …"; test 50) |
 | WF | Trial wave function normalisation, large N_part (suspected) | B | open, not reproduced |
-| P1 | Op_V_is_symmetric slow (start-up, Symm = .T.) | B | open; fast version on gpu-port |
+| P1 | Op_V_is_symmetric slow (start-up, Symm = .T.) | B | fixed in a9fdbd64 (CPU line) |
 | R1 | GPU=amd: rocSOLVER's blocked `zgeqrf` (ROCm core-7.14) returns NaN with info = 0 when a 64-column block has tau = 0 (identity-like input, n >= ~200); the own HIP QR covers only m <= 2304 | B | fixed by feature `gpu-amd` (step 2: NaN test after every hipSOLVER `zgeqrf`, recomputed with the unblocked `rocsolver_zgeqr2`; test `55-linalg-hip` identity n = 200, 2400); rocSOLVER report pending |
 | R2 | GPU=amd (gfortran 14 amdgcn offload): CM's OpenMP target kernels give wrong results in full runs, depending on layout and timing (OpenMP permutation kernels of gpu_stab_mod at 6x6; device `la_zgetrf` in the CGR of the LU check mode: wrong tau observables (Precision tau 2e-3, silent), NaN G, libgomp mapping fatal, GCN queue error); correct in isolation | A (GPU=amd only; CUDA and GPU=host not affected) | open, investigating, root cause unknown. Mitigation in feature `gpu-amd`: HIP replacements mandatory on GPU=amd (`ALF_HIP_KERNELS=0` debug only), CGR-phase LU of the debug modes on host LAPACK, broad default-path verification |
 | G7 | GPU line: the device stabilisation (column-norm pre-pivoted QR, all device paths and GPU=host) moves Mz SpinXY/SpinT equal-time correlations at L >= 24 by ~1e-8 relative against the CPU path (ZGEQP3); CPU with -DQR_PREPIVOT 4.3e-9, GPU=host 6.6e-9, CUDA/AMD/gpu-port of the same order; not a backend bug. The e2e tolerance (100 x Precision Green mean) is too tight there: it needs size scaling for Mz | C | open (property of the algorithm; tolerance rule to be scaled in step 3) |
@@ -212,6 +212,10 @@ Fix: weight with `Ham_U_vec(no_I)` (host and device).
 - **P1.** `Op_V_is_symmetric` (start-up check for Symm = .T.) multiplies dense Ndim x Ndim matrices for every operator,
   O(n_op Ndim^3): ~100 s at L = 24 on a CPU, much longer at L >= 40. A fast version exists on the GPU line (`gpu-port`)
   and as fork branch `ai/feat/op-v-symm-fast` (82157fe2).
+  **Fixed in a9fdbd64** (`cm/feat/opv-symm-fast`, CG-ALF T3): all-diagonal operator sets return at once, otherwise each
+  factor is multiplied in on its own columns, O(n_op Ndim N^2). Check alone, old -> new (melmac, GNU, 1 thread, loaded
+  node): Hubbard L = 24/32: 142 s / 1341 s -> < 0.1 ms; tV L = 24/32/48: 247 s / 2330 s / ~17 h (extrapolated) ->
+  0.02 / 0.08 / 0.44 s. Same result as the old check on 100 testsuite scenarios and in unit test 53.
 
 ### Checked and fine
 Parameter edges with clear errors (Dtau < 0, Beta <= 0, N_SUN = 0, N_FL = 3, unknown lattice, odd L with checkerboard),
