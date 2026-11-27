@@ -131,6 +131,11 @@ Global_MALA_moves         = .F.   ! Allows for global MALA updates
 N_Global_MALA_sweeps      = 1     ! Number of global MALA sweeps
 Delta_t_MALA_global       = 0.1d0 ! Time step for global MALA updates
 Max_Force_MALA_global     = 1.d0  ! Maximum force for global MALA updates
+
+N_walkers                 = 1     ! Independent Markov chains per process. Chain c reads
+                                  ! its seed from line C-c of seeds (C chains in all) and
+                                  ! writes confout_c; a bin averages over the chains.
+                                  ! Not with Langevin, HMC, MALA or tempering (yet)
 /
 
 &VAR_errors                !! Variables for analysis programs

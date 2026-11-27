@@ -61,6 +61,9 @@ Module QMC_runtime_var
         Character (len=64) :: Sequential_scheme
         Integer            :: N_delay
 
+        !  Number of independent Markov chains (walkers) per process (qmc_walker_mod)
+        Integer            :: N_walkers
+
         Logical :: settings_locked = .false.
 
 
@@ -89,7 +92,7 @@ Module QMC_runtime_var
               &               Global_MALA_moves, Sequential_MALA, N_Global_MALA_sweeps, N_Global_tau_MALA, Global_tau_MALA_moves, &
               &               MAX_Force_MALA_global, Max_Force_MALA_global_tau, Max_Force_MALA_sequential, &
               &               Delta_t_MALA_sequential, Delta_t_MALA_global_tau, Delta_t_MALA_global, &
-              &               Sequential_scheme, N_delay
+              &               Sequential_scheme, N_delay, N_walkers
        
         NAMELIST /VAR_HAM_NAME/ ham_name
 
@@ -148,6 +151,7 @@ Module QMC_runtime_var
     public :: get_Sequential_MALA,    set_Sequential_MALA
     public :: get_Sequential_scheme,  set_Sequential_scheme
     public :: get_N_delay,            set_N_delay
+    public :: get_N_walkers,          set_N_walkers
     public :: get_N_Global_MALA_sweeps,      set_N_Global_MALA_sweeps
     public :: get_N_Global_tau_MALA,  set_N_Global_tau_MALA
     public :: get_Global_tau_MALA_moves, set_Global_tau_MALA_moves
@@ -190,6 +194,7 @@ Module QMC_runtime_var
             Max_Force_MALA_global_tau = 1.d0; Global_MALA_moves = .false.; N_Global_MALA_sweeps = 1
             Delta_t_MALA_global = 0.1d0; Max_Force_MALA_global = 1.d0
             Sequential_scheme = "standard"; N_delay = 0
+            N_walkers = 1
 
         end subroutine set_QMC_runtime_default_var
 
@@ -359,6 +364,23 @@ Module QMC_runtime_var
             if ( .not. Sequential .and. .not. HMC .and. .not. Langevin .and. .not. Global_moves .and. .not. Global_MALA_moves) then
                 write(output_unit,*) "Warning: no updates will occur as Sequential, HMC, Langevin, Global_MALA_moves, and"
                 write(output_unit,*) "Global_moves are all .False. in the parameter file."
+            endif
+
+            ! Walkers swap only fields and RNG state (qmc_walker_mod); the cached forces of
+            ! Langevin/HMC/MALA and the tempering exchange are not per walker yet.
+            if ( N_walkers < 1 ) then
+                write(error_unit,*) "Error: N_walkers must be >= 1, got ", N_walkers
+                CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+            endif
+            if ( N_walkers > 1 ) then
+                if ( Langevin .or. HMC .or. Global_MALA_moves .or. Sequential_MALA .or. Global_tau_MALA_moves ) then
+                    write(error_unit,*) "Error: N_walkers > 1 is not supported (yet) with Langevin, HMC or MALA updates."
+                    CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+                endif
+#if defined(TEMPERING)
+                write(error_unit,*) "Error: N_walkers > 1 is not supported (yet) in tempering builds."
+                CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+#endif
             endif
 
 
@@ -851,6 +873,16 @@ Module QMC_runtime_var
             N_delay = val
         end subroutine set_N_delay
 
+        integer function get_N_walkers() result(val)
+            val = N_walkers
+        end function get_N_walkers
+
+        subroutine set_N_walkers(val)
+            integer, intent(in) :: val
+            call ensure_settings_unlocked("set_N_walkers")
+            N_walkers = val
+        end subroutine set_N_walkers
+
         subroutine set_Sequential_MALA(val)
             logical, intent(in) :: val
             call ensure_settings_unlocked("set_Sequential_MALA")
@@ -993,6 +1025,7 @@ Module QMC_runtime_var
             CALL MPI_BCAST(Sequential_MALA            ,1 ,MPI_LOGICAL  ,0,MPI_COMM_i,ierr)
             CALL MPI_BCAST(Sequential_scheme          ,64,MPI_CHARACTER,0,MPI_COMM_i,ierr)
             CALL MPI_BCAST(N_delay                    ,1 ,MPI_Integer  ,0,MPI_COMM_i,ierr)
+            CALL MPI_BCAST(N_walkers                  ,1 ,MPI_Integer  ,0,MPI_COMM_i,ierr)
             CALL MPI_BCAST(N_Global_MALA_sweeps              ,1 ,MPI_Integer  ,0,MPI_COMM_i,ierr)
             CALL MPI_BCAST(N_Global_tau_MALA          ,1 ,MPI_Integer  ,0,MPI_COMM_i,ierr)
             CALL MPI_BCAST(Global_tau_MALA_moves      ,1 ,MPI_LOGICAL  ,0,MPI_COMM_i,ierr)
