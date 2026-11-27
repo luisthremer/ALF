@@ -9,8 +9,9 @@ For each scenario of testsuite/test_branch_parameters.json named below (2 bins),
   M2  (with --mpi-exe) 2 MPI ranks, N_walkers = 2                      -> confout_c == W confout_c
   R   restart: 1 bin, confout -> confin, 1 more bin, with N_walkers = 4 and per chain -> same confout_c
 confout_c holds the field configuration and the random number generator state, so "byte-identical" means
-the chain is the same. Acceptance lines in info are compared too; observable bins (W against M) only
-within roundoff (sums over walkers and over ranks are added in a different order), reported, not gated.
+the chain is the same. Acceptance in info (W against M) is gated at 1e-13 relative: MPI averages the
+per-rank ratios, the walkers form one ratio of sums. Observable bins (W against M) agree only within
+roundoff (different summation order); the largest relative difference is reported, not gated.
 Control: W confout_1 must differ from S_0 (the comparison sees which chain is which).
 
 usage: walker_gate.py <repo> <noMPI ALF.out> <workdir> [--mpi-exe ALF.out --mpiexec "mpirun --oversubscribe"]
@@ -30,7 +31,15 @@ def with_walkers(text, n):
 
 
 def acceptance(path):
-    return [l for l in open(path, errors="replace") if re.search(r"(?i)accept", l)]
+    vals = []
+    for l in open(path, errors="replace"):
+        if re.search(r"(?i)accept", l):
+            vals += [float(t) for t in re.findall(r"[-+]?\d+\.\d*(?:[EeDd][-+]?\d+)?", l.replace("D", "E"))]
+    return vals
+
+
+def close(a, b, tol=1e-13):
+    return len(a) == len(b) and all(abs(x - y) <= tol * max(abs(x), abs(y), 1e-300) for x, y in zip(a, b))
 
 
 def numbers(path):
@@ -122,7 +131,8 @@ def main():
             for c in range(C):
                 same(os.path.join(W, "confout_%d" % c), os.path.join(M, "confout_%d" % c), "M c%d" % c)
                 same(os.path.join(W, "confout_%d" % c), os.path.join(M2, "confout_%d" % c), "M2 c%d" % c)
-            if acceptance(os.path.join(W, "info")) != acceptance(os.path.join(M, "info")):
+            # MPI averages the ratios of the ranks, the walkers give one ratio of sums: equal up to roundoff
+            if not close(acceptance(os.path.join(W, "info")), acceptance(os.path.join(M, "info"))):
                 fails.append("acceptance W/M")
             extra = "obs max rel W/M %.1e" % max_rel(W, M)
         print("%-4s %-22s %s %s" % ("OK" if not fails else "FAIL", name, " ".join(fails), extra))
