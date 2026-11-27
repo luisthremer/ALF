@@ -35,8 +35,8 @@
 !> GPU port (P2.4 step 1d): stabilisation on the device-resident UDV states.  Compiled only with -DALF_GPU.
 !>
 !> @details
-!> What runs on the device (finite temperature, default and STABLOG stabilisation; STAB1/2/3 and the projector code are
-!> refused by gpu_supported):
+!> What runs on the device (finite temperature, default, STAB3 and STABLOG stabilisation; STAB1/2 and the projector code are
+!> refused by gpu_supported; STAB3 = the default with the D+/D- split of cgr1_mod in CGR, k_tpup_stab3 / k_*scale_d):
 !>   * gpu_stab_wrapur / gpu_stab_wrapul: the slice products of WRAPUR / WRAPUL on the U matrices of the device states
 !>     (gpu_wrap_mod), then the UDV decomposition (decompose_UDV_state) and the scale test (testscale);
 !>   * the decomposition: default = column-norm pre-pivot + unpivoted QR (la_zqrpp; the CPU analogue is a build with
@@ -137,6 +137,9 @@ Module gpu_stab_mod
 #endif
 #endif
   Public :: gpu_stab_tau_dev, dev_prec, k_ident, k_copy_c, k_ct, k_diagabs, k_divrows, say     ! used by gpu_tau_mod
+#if defined(STAB3)
+  Public :: k_rowscale_d                                                                       ! STAB3 CGR2_2 (gpu_tau_mod)
+#endif
 
   Logical, Save :: gpu_stab_on = .false.      ! the device stabilisation replaces WRAPUR/WRAPUL/CGR in the sweeps
   Logical, Save :: gpu_stab_tau_dev = .false.  ! the device tau pass reads udvst on the device: no D->H export of udvst (Ltau = 1)
@@ -241,6 +244,8 @@ Contains
          & ', Nstm = ', s_nstm
 #if defined(STABLOG)
     line = trim(line)//', STABLOG: log-norm pivoting in decompose, host ZGEQP3 in CGR'
+#elif defined(STAB3)
+    line = trim(line)//', STAB3: column-norm pre-pivoted QR in decompose and CGR, D+/D- split in CGR'
 #else
     line = trim(line)//', default: column-norm pre-pivoted QR in decompose and CGR'
 #endif
@@ -833,6 +838,8 @@ Contains
     call la_zgemm('N', 'N', n, n, n, z1, udw_V(1,1,2,nfe), n, udw_V(1,1,1,nfe), n, z0, sB, n)
 #if defined(STABLOG)
     call k_tpup_log(n, sB, sA, udw_L(1,2,nfe), udw_L(1,1,nfe))
+#elif defined(STAB3)
+    call k_tpup_stab3(n, sB, sA, udw_D(1,2,nfe), udw_D(1,1,nfe))
 #else
     call k_tpup(n, sB, sA, udw_D(1,2,nfe), udw_D(1,1,nfe))
 #endif
@@ -969,6 +976,8 @@ Contains
        call k_ct(n, udw_U(1,1,2,nfe), n, sA, n)             ! RHS = U_R^dagger
 #if defined(STABLOG)
        call k_rowscale_log(n, sA, n, udw_L(1,2,nfe))
+#elif defined(STAB3)
+       call k_rowscale_d(n, sA, n, udw_D(1,2,nfe))
 #endif
        call la_zunmqr('L', 'C', n, n, n, T, n, st_tau, sA, n, st_work, s_lw, info)
        call k_rowdiv(n, sA, n, st_Dl)
@@ -976,12 +985,16 @@ Contains
        call k_iperm_rows(n, sA, n, st_ipvt, sC, n)           ! ZLAPMR backward  (sC is free: T is sB)
 #if defined(STABLOG)
        call k_rowscale_log(n, sC, n, udw_L(1,1,nfe))
+#elif defined(STAB3)
+       call k_rowscale_d(n, sC, n, udw_D(1,1,nfe))
 #endif
        call la_zgemm('N', 'N', n, n, n, z1, udw_U(1,1,1,nfe), n, sC, n, z0, st_Gn, n)
     else
        call k_copy_c(n*n, udw_U(1,1,1,nfe), sA)              ! RHS = U_L
 #if defined(STABLOG)
        call k_colscale_log(n, sA, n, udw_L(1,1,nfe))
+#elif defined(STAB3)
+       call k_colscale_d(n, sA, n, udw_D(1,1,nfe))
 #endif
        call la_zunmqr('R', 'N', n, n, n, T, n, st_tau, sA, n, st_work, s_lw, info)
        call k_colinv(n, sA, n, st_Dl)
@@ -989,6 +1002,8 @@ Contains
        call k_iperm_cols(n, sA, n, st_ipvt, sB, n)           ! ZLAPMT backward  (sB is free: T is sC)
 #if defined(STABLOG)
        call k_colscale_log(n, sB, n, udw_L(1,2,nfe))
+#elif defined(STAB3)
+       call k_colscale_d(n, sB, n, udw_D(1,2,nfe))
 #endif
        call la_zgemm('N', 'C', n, n, n, z1, sB, n, udw_U(1,1,2,nfe), n, z0, st_Gn, n)
     endif
@@ -1553,6 +1568,73 @@ Contains
        enddo
     enddo
   end subroutine k_tpup
+
+#if defined(STAB3)
+  ! STAB3 CGR: the four cases of cgr1_mod (scales > 1 enter as 1/D, so no product of two large scales is formed)
+  Subroutine k_tpup_stab3(n, T, R, Dr, Dl)
+    Implicit none
+    Integer, intent(in) :: n
+    Complex (Kind=Kind(0.d0)), intent(inout) :: T(n,n)
+    Complex (Kind=Kind(0.d0)), intent(in) :: R(n,n), Dr(n), Dl(n)
+    Integer :: i, j
+    Complex (Kind=Kind(0.d0)) :: dup, dlj
+    !$omp target teams distribute parallel do collapse(2) private(dup, dlj)
+    do j = 1, n
+       do i = 1, n
+          if (real(Dr(i)) <= 1.d0) then
+             dup = Dr(i)
+          else
+             dup = 1.d0/Dr(i)
+          endif
+          if (real(Dl(j)) <= 1.d0) then
+             dlj = Dl(j)
+             if (real(Dr(i)) <= 1.d0) then
+                T(i,j) = R(i,j) + Dr(i)*Dl(j)*T(i,j)
+             else
+                T(i,j) = dup*R(i,j) + dlj*T(i,j)
+             endif
+          else
+             dlj = 1.d0/Dl(j)
+             if (real(Dr(i)) <= 1.d0) then
+                T(i,j) = dlj*R(i,j) + dup*T(i,j)
+             else
+                T(i,j) = R(i,j)/Dr(i)/Dl(j) + T(i,j)
+             endif
+          endif
+       enddo
+    enddo
+  end subroutine k_tpup_stab3
+
+  ! STAB3 rows: A(i,:) *= 1/D(i) if Re D(i) > 1
+  Subroutine k_rowscale_d(n, A, lda, D)
+    Implicit none
+    Integer, intent(in) :: n, lda
+    Complex (Kind=Kind(0.d0)), intent(inout) :: A(lda,n)
+    Complex (Kind=Kind(0.d0)), intent(in) :: D(n)
+    Integer :: i, j
+    !$omp target teams distribute parallel do collapse(2)
+    do j = 1, n
+       do i = 1, n
+          if (real(D(i)) > 1.d0) A(i,j) = (1.d0/D(i)) * A(i,j)
+       enddo
+    enddo
+  end subroutine k_rowscale_d
+
+  ! STAB3 columns: A(:,j) *= 1/D(j) if Re D(j) > 1
+  Subroutine k_colscale_d(n, A, lda, D)
+    Implicit none
+    Integer, intent(in) :: n, lda
+    Complex (Kind=Kind(0.d0)), intent(inout) :: A(lda,n)
+    Complex (Kind=Kind(0.d0)), intent(in) :: D(n)
+    Integer :: i, j
+    !$omp target teams distribute parallel do collapse(2)
+    do j = 1, n
+       do i = 1, n
+          if (real(D(j)) > 1.d0) A(i,j) = (1.d0/D(j)) * A(i,j)
+       enddo
+    enddo
+  end subroutine k_colscale_d
+#endif
 #else
   ! STABLOG CGR: the four cases of cgr1_mod (exponent signs chosen so that no exp overflows)
   Subroutine k_tpup_log(n, T, R, Lr, Ll)

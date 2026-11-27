@@ -45,8 +45,8 @@
 !>    device reductions (Control_Precision_tau_vals).
 !>  * observables of every slice: gpu_obs_tau_measure on the device matrices.
 !>
-!> CGR2_2 on the device (dev_cgr22), the algorithm of cgr2_2_mod (default and STABLOG; STAB1/2/3 are refused), 2N x 2N, N = Ndim:
-!>   MYU2 = U2^dagger, V1INV = V1^-1 (ZGETRF + ZGETRI as INV), D1m, D2m = D, or the STABLOG splitting, the branch D1(1) > D2(1)
+!> CGR2_2 on the device (dev_cgr22), the algorithm of cgr2_2_mod (default, STAB3 and STABLOG; STAB1/2 are refused), 2N x 2N, N = Ndim:
+!>   MYU2 = U2^dagger, V1INV = V1^-1 (ZGETRF + ZGETRI as INV), D1m, D2m = D, or the STAB3 / STABLOG splitting, the branch D1(1) > D2(1)
 !>   (L1(1) > L2(1) in STABLOG: two scalars D->H), HLPB2 from the four N x N blocks, HLPB1 = HLPB2^dagger, QR: default = column-norm
 !>   pre-pivot + unpivoted ZGEQRF (la_zqrpp, as the device decomposition of gpu_stab_mod), STABLOG = host ZGEQP3 with D->H / H->D of
 !>   the matrix; D separated as |R_ii|; solve_extended_System = rows of [[UCT,0],[0,VINV]] permuted by IPVT, ZTRSM('L','U','C'), row
@@ -84,6 +84,9 @@ Module gpu_tau_mod
   Use gpu_wrap_mod, only: gpu_mmthr, gpu_mmthl_m1, gpu_Vslice_R, gpu_Vslice_L
   Use gpu_stab_mod, only: gpu_stab_on, gpu_stab_tau_dev, gpu_stab_wrapur, gpu_stab_reset_r, dev_prec, k_ident, k_copy_c, k_ct, &
        &                  k_diagabs, k_divrows, say
+#if defined(STAB3)
+  Use gpu_stab_mod, only: k_rowscale_d
+#endif
   Use gpu_obs_mod, only: gpu_obs_tau_active, gpu_obs_tau_measure
   Implicit none
 
@@ -182,6 +185,8 @@ Contains
          & n, ', Nstm = ', walker%NSTM, ', flavours ', t_nfe
 #if defined(STABLOG)
     line = trim(line)//', CGR2_2 QR: host ZGEQP3 (STABLOG)'
+#elif defined(STAB3)
+    line = trim(line)//', CGR2_2 QR: pre-pivoted, D+/D- split (STAB3)'
 #else
     line = trim(line)//', CGR2_2 QR: pre-pivoted (default)'
 #endif
@@ -395,6 +400,13 @@ Contains
     call k_rowscale_r(n, t_V1i, n, t_Rs(1,1))
     call k_rowscale_r(n, t_U2h, n, t_Rs(1,2))
     call k_build_H2(n, br, t_V1i, t_U2h, t_Dm1, udv_U(1,1,nst,nfe), t_Dm2, udw_V(1,1,2,nfe), t_H2)
+#elif defined(STAB3)
+    ! scales <= 1 stay in D1m / D2m, larger ones move (as 1/D) to the rows of V1INV / MYU2 (STAB3 branch of CGR2_2)
+    call k_dm_d(n, udv_D(1,nst,nfe), t_Dm1)
+    call k_dm_d(n, udw_D(1,2,nfe), t_Dm2)
+    call k_rowscale_d(n, t_V1i, n, udv_D(1,nst,nfe))
+    call k_rowscale_d(n, t_U2h, n, udw_D(1,2,nfe))
+    call k_build_H2(n, br, t_V1i, t_U2h, t_Dm1, udv_U(1,1,nst,nfe), t_Dm2, udw_V(1,1,2,nfe), t_H2)
 #else
     call k_build_H2(n, br, t_V1i, t_U2h, udv_D(1,nst,nfe), udv_U(1,1,nst,nfe), udw_D(1,2,nfe), udw_V(1,1,2,nfe), t_H2)
 #endif
@@ -494,6 +506,25 @@ Contains
        enddo
     enddo
   end subroutine k_rowscale_r
+#endif
+
+#if defined(STAB3)
+  ! STAB3: Dm = D if Re D <= 1, else 1
+  Subroutine k_dm_d(n, D, Dm)
+    Implicit none
+    Integer, intent(in) :: n
+    Complex (Kind=Kind(0.d0)), intent(in) :: D(n)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: Dm(n)
+    Integer :: i
+    !$omp target teams distribute parallel do
+    do i = 1, n
+       if (real(D(i)) <= 1.d0) then
+          Dm(i) = D(i)
+       else
+          Dm(i) = cmplx(1.d0, 0.d0, kind(0.d0))
+       endif
+    enddo
+  end subroutine k_dm_d
 #endif
 
   ! HLPB2 (2N x 2N) from the blocks, branch 1 (D1(1) > D2(1)): [[V1INV, D1m*U1^dagger], [-D2m*V2, MYU2]]; branch 2:
