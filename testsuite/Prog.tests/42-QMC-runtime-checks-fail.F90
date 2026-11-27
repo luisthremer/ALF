@@ -8,7 +8,8 @@ Program Test_QMC_runtime_checks_fail
        &                     set_default_values_measuring_interval, check_projector_Ltau, &
        &                     check_Nt_sequential_range, check_Langevin_HMC_variables, set_Amplitude, &
        &                     set_Langevin, set_HMC, set_Delta_t_Langevin_HMC, set_Max_Force, &
-       &                     set_Leapfrog_steps, set_N_HMC_sweeps
+       &                     set_Leapfrog_steps, set_N_HMC_sweeps, set_N_walkers, &
+       &                     check_update_schemes_compatibility
 #ifdef MPI
   Use mpi
 #endif
@@ -67,6 +68,9 @@ Program Test_QMC_runtime_checks_fail
   Case ("hmc_leapfrog")
      Call set_Leapfrog_steps(0)
      Call check_Langevin_HMC_variables()
+  Case ("walkers_gpu")   ! GPU builds: several walkers per process are refused (T12 part B)
+     Call set_HMC(.false.);  Call set_N_walkers(2)
+     Call check_update_schemes_compatibility()
   Case ("hmc_sweeps")
      Call set_N_HMC_sweeps(0)
      Call check_Langevin_HMC_variables()

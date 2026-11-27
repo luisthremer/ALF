@@ -381,6 +381,11 @@ Module QMC_runtime_var
                 write(error_unit,*) "Error: N_walkers > 1 is not supported (yet) in tempering builds."
                 CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
 #endif
+#if defined(ALF_GPU)
+                ! shortcut: the device state (gpu_*_mod) is per process, not per walker; T12 part B makes it per walker
+                write(error_unit,*) "Error: N_walkers > 1 is not supported (yet) in GPU builds (ALF_GPU): the device state is not per walker."
+                CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+#endif
             endif
 
 
