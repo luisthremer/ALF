@@ -24,7 +24,7 @@ Program Test_gpu_state
   Use QMC_runtime_var, only: set_QMC_runtime_default_var, set_ham_name, set_Nwrap, set_Ltau, get_Nwrap, &
        &                     set_Langevin, set_HMC, set_Global_moves, set_Global_tau_moves, set_N_Global_tau, &
        &                     set_Propose_S0, set_Sequential_MALA, set_Global_MALA_moves, set_Global_tau_MALA_moves, &
-       &                     set_N_Global_tau_MALA, set_default_global_tau_sampling, set_NSweep
+       &                     set_N_Global_tau_MALA, set_default_global_tau_sampling, set_NSweep, set_NBin
   Use qmc_setup_mod, only: Setup_model, Setup_fields, Setup_update_schemes, Setup_gpu, Finalize_gpu
   Use qmc_walker_mod, only: qmc_walker_t, Walker_layout, Walker_alloc, Walker_dealloc
   Use UDV_State_mod, only: UDV_State
@@ -154,6 +154,7 @@ contains
     Call set_ham_name('Hubbard')
     Call set_Nwrap(5)
     Call set_NSweep(1)          ! the start-up check (KNOWN_ISSUES H3) needs at least one sweep
+    Call set_NBin(1)            ! the start-up check of P2.8 needs at least one bin
     Call set_Ltau(1)
     Call Setup_model(N_op)
     Call Setup_fields(N_op)
