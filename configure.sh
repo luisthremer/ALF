@@ -364,6 +364,28 @@ case $MACHINE in
     F90USEFULFLAGS="$GNUUSEFULFLAGS"
     ALF_FC="$GNUCOMPILER"
     LIB_BLAS_LAPACK="-llapack -lblas -fopenmp"
+    # macOS: make the BLAS/LAPACK choice explicit (other platforms are untouched).
+    # ALF_MAC_BLAS = accelerate (default, Apple vecLib, uses AMX) | openblas | reference
+    if [ "$(uname -s)" = "Darwin" ]; then
+      case "${ALF_MAC_BLAS:-accelerate}" in
+        accelerate)
+          LIB_BLAS_LAPACK="-framework Accelerate -fopenmp"
+        ;;
+        openblas)
+          BREW_PREFIX="$(brew --prefix openblas 2>/dev/null || echo /opt/homebrew/opt/openblas)"
+          LIB_BLAS_LAPACK="-L${BREW_PREFIX}/lib -Wl,-rpath,${BREW_PREFIX}/lib -lopenblas -fopenmp"
+        ;;
+        reference)
+          BREW_PREFIX="$(brew --prefix lapack 2>/dev/null || echo /opt/homebrew/opt/lapack)"
+          LIB_BLAS_LAPACK="-L${BREW_PREFIX}/lib -Wl,-rpath,${BREW_PREFIX}/lib -llapack -lblas -fopenmp"
+        ;;
+        *)
+          printf "${RED}Unknown ALF_MAC_BLAS='%s' (use accelerate, openblas or reference)${NC}\n" "${ALF_MAC_BLAS}" 1>&2
+          return 1
+        ;;
+      esac
+      printf "macOS: BLAS/LAPACK = %s\n" "${ALF_MAC_BLAS:-accelerate}"
+    fi
     if [ "${HDF5_ENABLED}" = "1" ]; then
       set_hdf5_flags gcc gfortran g++ || return 1
     fi
