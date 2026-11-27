@@ -130,7 +130,9 @@ STAB3 on the device: decompose, wraps, scale test and det tracking are the defau
 CGR: `k_tpup_stab3` (the four cases of `cgr1_mod`), RHS rows / columns scaled by 1/D where D > 1 (`k_rowscale_d`, `k_colscale_d`); CGR2_2:
 D1m/D2m split and rows of V1^-1 / U2^dagger scaled (`k_dm_d`, `k_rowscale_d`). The QR of CGR and CGR2_2 is host ZGEQP3, as for STABLOG
 (16 N^2 B each way per CGR): with the device pre-pivoted QR (`la_zqrpp`) the split matrix, whose columns are not graded, gave a Precision Green
-twice as noisy as the default path (table).
+twice as noisy as the default path (table). What remains: at L = 16 the STAB3 device Precision Green is 3x the CPU (default device path
+1.5x), at L = 8 the same as the default path; the device decompose (pre-pivoted, shared with the default path) is the suspected source, not
+proven. The CGR itself is exact against the host STAB3 CGR on the same states (self-test 3e-15).
 
 Evidence (melmac, gfortran, GPU=host, `OMP_NUM_THREADS=1`, Hubbard from `Scripts_and_Parameters_files/Start`, 6 sweeps x 2 bins, GPU path vs
 `ALF_GPU_DISABLE=1` of the same binary, same seeds; scripts `~/work/ALF_P2/p26stab/` on melmac):
@@ -141,9 +143,11 @@ Evidence (melmac, gfortran, GPU=host, `OMP_NUM_THREADS=1`, Hubbard from `Scripts
 | ctest, STAB3 GPU=host build | 144/144 (gpu-stab-selftest: device vs host CGR max rel diff G 3.1e-15, phase 0; tracked vs LU phase 0; gpu-state-e2e incl. tau pass, faults, phase modes) |
 | ctest, STAB1 / STAB2 GPU=host builds | 105/144: the 39 GPU self-tests need an active GPU path; same failing list on the base build (pre-existing, no CI job builds these) |
 | STAB1, STAB2: Start run, GPU path vs `ALF_GPU_DISABLE=1` | refusal in `info`; all 33 output files byte-identical |
-| Precision Green mean GPU/CPU, Mz Hubbard L = 8, 8 seeds, geometric mean of the ratio | default 1.76; STAB3 with host ZGEQP3 **1.80**; STAB3 with the device pre-pivoted QR 3.74 (not used) |
-| Precision Green mean, Mz L = 16, one seed (GPU / CPU) | default 8.4e-11 / 6.2e-11; STAB3 host ZGEQP3 1.7e-10 / 6.5e-11; STAB3 pre-pivoted 8.7e-10 / 6.5e-11 |
+| Precision Green mean GPU/CPU, Mz Hubbard, geometric mean of the ratio over seeds | L = 8 (8 seeds): default 1.76, STAB3 **1.80** (with the device pre-pivoted QR in CGR: 3.74, not used); L = 16 (4 seeds): default 1.45, STAB3 **2.99** |
+| Precision Green mean, Mz L = 16, Start seed (GPU / CPU) | default 8.4e-11 / 6.2e-11; STAB3 1.7e-10 / 6.5e-11; STAB3 with the pre-pivoted QR in CGR 8.7e-10 / 6.5e-11 |
+| **CUDA, Helma H100** (nvhpc 25.7, STAB3 GPU=nvidia build of cb921d86, preempt job 1468768, ~0.5 GPU-h in all) | ctest 147/147; GPU vs `ALF_GPU_DISABLE=1`: confout identical and observables within the rule at Mz L = 8 (2.7e-10, tol 2.3e-9), with submatrix, SU(2) L = 8, Mz L = 16 (1.7e-9, tol 4.2e-9); Precision Green GPU/CPU at L = 8 over 8 seeds 1.39 |
 | STAB3 GPU vs CPU, `confout` | byte-identical in every case (4x4 e2e set, L = 8 Mz / SU(2) / submatrix, L = 16, L = 8 Beta = 20 U = 8) |
+| STAB3 GPU vs CPU, observables (rule of `gpu_e2e.py`: max(1e-11, 100 x Precision Green mean of the CPU run)) | within the rule: 4x4 e2e set, SU(2) L = 8 (5e-13), Mz L = 16 (1.9e-10, tol 6.5e-9), Beta = 20 U = 8 (3.1e-4, tol 4.3e-4); **just above it** on the Start seed at Mz L = 8, also with submatrix: SpinXY_eq 7.5e-9 against 6.5e-9 (default build, same seed: 3.9e-9), because the GPU run's Precision Green there is 3.3x the CPU one |
 
 ## 3. Run evidence in the gpu-port docs (not repeated on the new line)
 
