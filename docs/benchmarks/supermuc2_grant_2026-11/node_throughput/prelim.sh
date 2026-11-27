@@ -32,7 +32,8 @@ cd report
 pdflatex -interaction=nonstopmode -halt-on-error report.tex > build.log 2>&1 || { tail -30 build.log; exit 1; }
 pdflatex -interaction=nonstopmode -halt-on-error report.tex > build.log 2>&1
 cp report.pdf report_$MODE.pdf
-# proposal version (standalone, proposal language)
+# proposal version (standalone, proposal language); figure first (figures/node_performance.pdf)
+(cd figures && cp ../antrag_best.dat ../antrag_fac.dat . && pdflatex -interaction=nonstopmode -halt-on-error node_performance.tex > build.log 2>&1 && pdflatex -interaction=nonstopmode -halt-on-error node_performance.tex > build.log 2>&1) || { tail -30 figures/build.log; exit 1; }
 pdflatex -interaction=nonstopmode -halt-on-error antrag.tex > build_antrag.log 2>&1 || { tail -30 build_antrag.log; exit 1; }
 pdflatex -interaction=nonstopmode -halt-on-error antrag.tex > build_antrag.log 2>&1
 cp antrag.pdf antrag_$MODE.pdf

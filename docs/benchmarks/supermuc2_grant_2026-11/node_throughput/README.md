@@ -44,3 +44,7 @@ L=32 t6, t8 = 566828-566829 (566820 keeps L=32 t1, t2, t4; it may hit its time l
 
 Update 11:36: `peek.sh` shows runs in progress (bins so far, sweep times): `srun --jobid=<id> --overlap -N1 -n1 bash jobs/nt/peek.sh`.
 L=32 t4 submitted separately (job 566820 would hit its time limit before t4).
+
+Update 11:55: proposal version published (preliminary) to git@git.physik.uni-wuerzburg.de:fassaad/juelich.git, folder
+`SuperMUC_Phase2_Conversion_2026/` (commit ee2ab33): main.tex = report/antrag.tex, antrag_data.tex, datastate.tex,
+figures/node_performance.{tex,pdf,dat}. Re-copy and push after the last CPU runs.
