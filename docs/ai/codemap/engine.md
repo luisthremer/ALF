@@ -131,9 +131,12 @@ State: private work arrays `TPUP, RHS (N,N), DUP, TAU (N), IPVT, VISITED (N)` (4
 CGR2_2 STAB1/2, `Compute_Fermion_Det` (Global_mod:929).
 
 ### QDRP_decompose_mod.F90 — `Module QDRP_mod` (40)
-- `QDRP_decompose(Ndim,N_part,Mat,D,IPVT,TAU,WORK,LWORK)` (61): `la_zgeqp3` pivoted QR; D = |R_ii|, R rows scaled;
+- `QDRP_decompose(Ndim,N_part,Mat,D,IPVT,TAU,WORK,LWORK)` (225): `la_zgeqp3` pivoted QR; D = |R_ii|, R rows scaled;
   allocates WORK (caller deallocates).
-- `Pivot_phase(Phase,IPVT,N_size)` (104): sign of permutation.
+- `Pivot_phase(Phase,IPVT,N_size)` (268): sign of permutation.
+- `QDRP_prepivot(...,variant,nb)` (77): test-only pre-pivoted QR (variants 1 static norm sort, 2 two-pass, 3 blocked
+  re-ranking), same contract as `QDRP_decompose`; used by the CGR / CGR2_2 QRs only with `-DQR_PREPIVOT[=v]`
+  (`QR_PP_VARIANT`, `QR_PP_NB` from `-DQR_PPNB`). See docs/ai/phase2/CPU_QR_PREPIVOT.md.
 
 ### udv_state_mod.F90 — `Type UDV_State` (86–111)
 Fields: `U(ndim,n_part)`, `V(n_part,n_part)` (finite T only; absent in projector), `D(n_part)` or, with STABLOG,
