@@ -1473,29 +1473,31 @@ Contains
   Subroutine gpu_put_udv(walker)
     Implicit none
     Type (qmc_walker_t), intent(in) :: walker
-    Integer :: nfe, n
+    Integer :: nfe, n, nc
     Call need_active('gpu_put_udv')
     Call check_udv_layout(walker)
     do nfe = 1, g_NFLeff
+       ! nc columns of U: Ndim, or N_part in the projector code (no V there; D/L unused by CGRP)
+       nc = size(walker%udvl(nfe)%U, 2)
        do n = 1, g_NSTM
-          udv_U(:,:,n,nfe) = walker%udvst(n,nfe)%U
-          udv_V(:,:,n,nfe) = walker%udvst(n,nfe)%V
+          udv_U(:,1:nc,n,nfe) = walker%udvst(n,nfe)%U
+          if (allocated(walker%udvst(n,nfe)%V)) udv_V(:,:,n,nfe) = walker%udvst(n,nfe)%V
 #if defined(STABLOG)
-          udv_L(:,n,nfe) = walker%udvst(n,nfe)%L
+          udv_L(1:nc,n,nfe) = walker%udvst(n,nfe)%L
 #else
-          udv_D(:,n,nfe) = walker%udvst(n,nfe)%D
+          udv_D(1:nc,n,nfe) = walker%udvst(n,nfe)%D
 #endif
        enddo
-       udw_U(:,:,1,nfe) = walker%udvl(nfe)%U
-       udw_V(:,:,1,nfe) = walker%udvl(nfe)%V
-       udw_U(:,:,2,nfe) = walker%udvr(nfe)%U
-       udw_V(:,:,2,nfe) = walker%udvr(nfe)%V
+       udw_U(:,1:nc,1,nfe) = walker%udvl(nfe)%U
+       udw_U(:,1:nc,2,nfe) = walker%udvr(nfe)%U
+       if (allocated(walker%udvl(nfe)%V)) udw_V(:,:,1,nfe) = walker%udvl(nfe)%V
+       if (allocated(walker%udvr(nfe)%V)) udw_V(:,:,2,nfe) = walker%udvr(nfe)%V
 #if defined(STABLOG)
-       udw_L(:,1,nfe) = walker%udvl(nfe)%L
-       udw_L(:,2,nfe) = walker%udvr(nfe)%L
+       udw_L(1:nc,1,nfe) = walker%udvl(nfe)%L
+       udw_L(1:nc,2,nfe) = walker%udvr(nfe)%L
 #else
-       udw_D(:,1,nfe) = walker%udvl(nfe)%D
-       udw_D(:,2,nfe) = walker%udvr(nfe)%D
+       udw_D(1:nc,1,nfe) = walker%udvl(nfe)%D
+       udw_D(1:nc,2,nfe) = walker%udvr(nfe)%D
 #endif
     enddo
     ! Host -> device: the stabilisation kernels of later steps work on the device copy of the stacks.
