@@ -158,6 +158,7 @@ def create_read_write_par(filename, parameters, ham_name):
 
       Subroutine read_parameters()
          use iso_fortran_env, only: error_unit
+         use runtime_error_mod, only: Check_finite_parameter
 #ifdef MPI
          Use mpi
 #endif
@@ -203,6 +204,8 @@ def create_read_write_par(filename, parameters, ham_name):
             END IF
             ##READ_VAR##
             close(unit_para)
+            ! Stop on NaN or Inf in a real parameter (KNOWN_ISSUES.md, P2.8 input fuzzing)
+            ##CHECK_FINITE##
 
 #ifdef MPI
          Endif
@@ -302,6 +305,13 @@ def create_read_write_par(filename, parameters, ham_name):
                     INDENT*' ', nlist_name)
                 f.write(s)
 
+        elif '##CHECK_FINITE##' in line:
+            for nlist_name, nlist in parameters.items():
+                for par_name, par in nlist.items():
+                    if _dtype_name(par['value']) == 'real(dp)':
+                        name = par_name.split('(')[0]
+                        f.write('{}   CALL Check_finite_parameter([{}], "{}", "{}")\n'.format(
+                            INDENT*' ', name, nlist_name, name))
         elif '##MPI_BCAST##' in line:
             fstring = '{}CALL MPI_BCAST({},{:>3},{},0,Group_Comm,ierr)\n'
             for nlist_name, nlist in parameters.items():
