@@ -57,8 +57,9 @@ Module qmc_walker_mod
   !> declare their dummy arguments ALLOCATABLE.
   !>
   !> Several walkers in one process (N_walkers > 1, task T12): the field
-  !> configuration (module variable nsigma) and the random number generator
-  !> state are per chain but live outside the walker. Walker_activate moves
+  !> configuration (nsigma%f) and the random number generator state are per
+  !> chain but live outside the walker (nsigma%t and %flip_protocol come from
+  !> Op_V and are the same for all chains). Walker_activate moves
   !> them from the walker into nsigma and the generator, Walker_deactivate
   !> moves them back (move_alloc, no copy). Walkers run one after another;
   !> all other module state is scratch, statistics or model data.
@@ -96,10 +97,10 @@ Module qmc_walker_mod
      Integer,                   Dimension(:),     Allocatable :: Stab_nt
      Class (UDV_State),         Dimension(:,:),   Allocatable :: udvst
      ! Chain index (seed line, confin_/confout_ number) and, while the walker
-     ! is not active, its fields and random number generator state
+     ! is not active, its fields nsigma%f and random number generator state
      Integer                                                  :: chain
      Complex (Kind=Kind(0.d0)), Dimension(:,:),   Allocatable :: f
-     Integer,                   Dimension(:),     Allocatable :: t, flip_protocol, rng
+     Integer,                   Dimension(:),     Allocatable :: rng
   end Type qmc_walker_t
 
   ! Walkers allocated so far: the kernel work arrays exist once per process
@@ -205,7 +206,7 @@ Module qmc_walker_mod
 
     !--------------------------------------------------------------------
     !> @brief
-    !> Makes the walker the active chain: its fields go into nsigma and its
+    !> Makes the walker the active chain: its fields go into nsigma%f and its
     !> random number generator state into the generator. Does nothing with
     !> N_walkers = 1 (the single walker is always active).
     !--------------------------------------------------------------------
@@ -214,8 +215,6 @@ Module qmc_walker_mod
 
       If (get_N_walkers() == 1) return
       Call move_alloc(walker%f, nsigma%f)
-      Call move_alloc(walker%t, nsigma%t)
-      Call move_alloc(walker%flip_protocol, nsigma%flip_protocol)
       ! RANDOM_SEED directly, not Ranset: Ranset reseeds when the first state word is 0
       Call random_seed(put=walker%rng)
     end Subroutine Walker_activate
@@ -233,8 +232,6 @@ Module qmc_walker_mod
       If (get_N_walkers() == 1) return
       Call Lowrank_assert_flushed("Walker_deactivate")
       Call move_alloc(nsigma%f, walker%f)
-      Call move_alloc(nsigma%t, walker%t)
-      Call move_alloc(nsigma%flip_protocol, walker%flip_protocol)
       If (.not. allocated(walker%rng)) then
          Call random_seed(size=k)
          allocate(walker%rng(k))

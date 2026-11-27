@@ -216,6 +216,8 @@ Module qmc_setup_mod
          If (N_w == 1) then
             Call Setup_fields(N_op)
          else
+            ! types and flip protocols are the same for every chain; Setup_fields makes them anew
+            If (iw > 1) deallocate(nsigma%t, nsigma%flip_protocol)
             Call Setup_fields(N_op, walkers(iw)%chain, comm_size(Group_Comm)*N_w)
          endif
          Call Walker_deactivate(walkers(iw))

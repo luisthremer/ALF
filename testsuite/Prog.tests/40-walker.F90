@@ -72,21 +72,21 @@ Program Test_walker
   Call random_seed(put=seed1)
   Call random_number(x)                  ! walker 1 draws its first number
   Call Walker_deactivate(w1)
-  Call check(.not. allocated(nsigma%f) .and. allocated(w1%f), "deactivate moves fields")
+  Call check(.not. allocated(nsigma%f) .and. allocated(w1%f) .and. allocated(nsigma%t), "deactivate moves fields")
 
-  Call nsigma%make(2, 3)
-  nsigma%f = cmplx(-1.d0, 0.d0, kind(0.d0)); nsigma%t = 2
+  allocate(nsigma%f(2, 3))
+  nsigma%f = cmplx(-1.d0, 0.d0, kind(0.d0))
   Call random_seed(put=seed2)
   Call random_number(x)                  ! walker 2 uses another stream
   Call Walker_deactivate(w2)
 
   Call Walker_activate(w1)
-  Call check(all(nsigma%f == cmplx(1.d0, 0.d0, kind(0.d0))) .and. all(nsigma%t == 1), "fields of walker 1 back")
+  Call check(all(nsigma%f == cmplx(1.d0, 0.d0, kind(0.d0))), "fields of walker 1 back")
   Call random_number(x)
   Call check(x == x_ref(2), "random stream of walker 1 continues bitwise")
   Call Walker_deactivate(w1)
   Call Walker_activate(w2)
-  Call check(all(nsigma%f == cmplx(-1.d0, 0.d0, kind(0.d0))) .and. all(nsigma%t == 2), "fields of walker 2 back")
+  Call check(all(nsigma%f == cmplx(-1.d0, 0.d0, kind(0.d0))), "fields of walker 2 back")
   Call nsigma%clear()
   Call set_N_walkers(1)
 
