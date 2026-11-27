@@ -116,26 +116,40 @@ def fig_layout(rows, out, fake):
     save(fig, out, "layout_scan", fake)
 
 
+def lcolors(Ls):
+    """One colour per L (dark = small L, light = large L), the same in every figure."""
+    cmap = plt.get_cmap("viridis")
+    return {L: cmap(0.85 * i / max(len(Ls) - 1, 1)) for i, L in enumerate(Ls)}
+
+
+def l_legend(fig, Ls, col):
+    h = [plt.Line2D([], [], color=col[L], marker="o", ms=3) for L in Ls]
+    fig.legend(h, [f"$L={L}$" for L in Ls], loc="upper center", ncol=len(Ls), fontsize=6, frameon=False)
+
+
 def fig_walker(rows, out, fake):
-    Ls = sorted({r["L"] for r in rows})
-    fig, axs = plt.subplots(1, 2, figsize=(5.0, 2.4))
-    for L, ls in zip(Ls, ["-", "--", "-.", ":"]):
-        for s, (lab, col, mk) in SIDES.items():
-            sel = [r for r in rows if r["side"] == s and r["L"] == L and not (s != "cpu" and r["tag"] == "w4t1")]
+    """Time per sweep of one walker; one panel per side, colour = L."""
+    Ls = sorted({r["L"] for r in rows}); col = lcolors(Ls)
+    sides = [s for s in SIDES if any(r["side"] == s for r in rows)]
+    fig, axs = plt.subplots(1, len(sides), figsize=(2.1 * len(sides), 2.4), sharey=True)
+    axs = axs if len(sides) > 1 else [axs]
+    for ax, s in zip(axs, sides):
+        for L in Ls:
+            sel = [r for r in rows if r["side"] == s and r["L"] == L and r["tag"] != "w4t1"]
             if not sel:
                 continue
+            sel.sort(key=lambda r: r["threads"] if s == "cpu" else int(r["w"]))
             x = [r["threads"] if s == "cpu" else int(r["w"]) for r in sel]
-            o = sorted(range(len(x)), key=x.__getitem__)
-            ax = axs[0] if s == "cpu" else axs[1]
-            ax.errorbar([x[i] for i in o], [sel[i]["t_sweep_s"] for i in o], yerr=[sel[i]["t_sweep_err_s"] for i in o],
-                        color=col, ls=ls, marker=mk, ms=3, capsize=1.5, label=f"{lab.split(',')[-1].strip()}, $L={L}$")
-    axs[0].set_xlabel("OpenMP threads per rank"); axs[1].set_xlabel("walkers per tile")
-    for ax in axs:
-        ax.set_yscale("log"); ax.set_ylabel("time per sweep of one walker (s)")
-    axs[1].set_xscale("log", base=2)
-    axs[1].legend(fontsize=4.5, ncol=2)
-    axs[0].legend(fontsize=4.5)
-    fig.tight_layout()
+            ax.errorbar(x, [r["t_sweep_s"] for r in sel], yerr=[r["t_sweep_err_s"] for r in sel],
+                        color=col[L], marker=SIDES[s][2], ms=3, capsize=1.5)
+        ax.set_title(SIDES[s][0], fontsize=7); ax.set_yscale("log")
+        if s == "cpu":
+            ax.set_xlabel("threads per rank"); ax.set_xticks([1, 2, 4, 6, 8])
+        else:
+            ax.set_xlabel("walkers per tile"); ax.set_xscale("log", base=2); ax.set_xticks([1, 2, 4, 8]); ax.set_xticklabels(["1", "2", "4", "8"])
+    axs[0].set_ylabel("time per sweep of one walker (s)")
+    l_legend(fig, Ls, col)
+    fig.tight_layout(rect=(0, 0, 1, 0.88))
     save(fig, out, "walker_time", fake)
 
 
@@ -157,26 +171,30 @@ def fig_energy(rows, out, fake):
 
 
 def fig_gpu(rows, out, fake):
+    """GPU utilisation (top) and power of the 4 cards (bottom); one column per GPU binary, colour = L."""
     sel = [r for r in rows if r["side"] != "cpu" and r["gpu_util_pct"] and r["tag"] != "w4t1"]
     if not sel:
         return
-    fig, axs = plt.subplots(1, 2, figsize=(5.0, 2.3))
-    grp = defaultdict(list)
-    for r in sel:
-        grp[(r["side"], r["L"])].append(r)
-    for (s, L), rs in sorted(grp.items()):
-        rs.sort(key=lambda r: int(r["w"]))
-        x = [int(r["w"]) for r in rs]
-        ls = {16: "-", 24: "--", 32: "-.", 36: ":"}.get(L, "-")
-        axs[0].plot(x, [float(r["gpu_util_pct"]) for r in rs], color=SIDES[s][1], ls=ls, marker=SIDES[s][2], ms=3,
-                    label=f"{SIDES[s][0].split(',')[-1].strip()}, $L={L}$")
-        axs[1].plot(x, [float(r["gpu_power_w"]) for r in rs], color=SIDES[s][1], ls=ls, marker=SIDES[s][2], ms=3)
-    for ax in axs:
-        ax.set_xscale("log", base=2); ax.set_xlabel("walkers per tile")
-    axs[0].set_ylabel("mean GPU utilisation (%)"); axs[1].set_ylabel("GPU power, 4 cards (W)")
-    axs[1].axhline(4 * 600, color="grey", lw=0.6, ls=":"); axs[1].text(1, 4 * 600, "4 x 600 W TDP", fontsize=5, va="bottom")
-    axs[0].legend(fontsize=4.5, ncol=2)
-    fig.tight_layout()
+    Ls = sorted({r["L"] for r in sel}); col = lcolors(sorted({r["L"] for r in rows}))
+    sides = [s for s in ("gpu", "gpub") if any(r["side"] == s for r in sel)]
+    fig, axs = plt.subplots(2, len(sides), figsize=(2.4 * len(sides), 3.6), sharex=True, sharey="row", squeeze=False)
+    for j, s in enumerate(sides):
+        for L in Ls:
+            rs = sorted([r for r in sel if r["side"] == s and r["L"] == L], key=lambda r: int(r["w"]))
+            if not rs:
+                continue
+            x = [int(r["w"]) for r in rs]
+            axs[0][j].plot(x, [float(r["gpu_util_pct"]) for r in rs], color=col[L], marker="o", ms=3)
+            axs[1][j].plot(x, [float(r["gpu_power_w"]) for r in rs], color=col[L], marker="o", ms=3)
+        axs[0][j].set_title(SIDES[s][0], fontsize=7)
+        axs[0][j].set_ylim(0, 100)
+        axs[1][j].set_ylim(0, 4 * 600 * 1.05); axs[1][j].axhline(4 * 600, color="grey", lw=0.6, ls=":")
+        axs[1][j].text(1, 4 * 600, "4 x 600 W TDP", fontsize=5, va="bottom")
+        axs[1][j].set_xlabel("walkers per tile"); axs[1][j].set_xscale("log", base=2)
+        axs[1][j].set_xticks([1, 2, 4, 8]); axs[1][j].set_xticklabels(["1", "2", "4", "8"])
+    axs[0][0].set_ylabel("GPU utilisation (%)"); axs[1][0].set_ylabel("GPU power, 4 cards (W)")
+    l_legend(fig, Ls, col)
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
     save(fig, out, "gpu_usage", fake)
 
 

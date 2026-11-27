@@ -28,27 +28,27 @@ attached to NUMA domain 0, GPUs 2, 3 to NUMA domain 1, so each tile has 14 nearb
 \begin{table}[H]\centering\small
 \caption{CPU layouts. Tag \texttt{t}$T$ = $T$ OpenMP threads per MPI rank (one walker per rank), ranks split evenly over
 the two sockets, each rank pinned to $T$ consecutive physical cores of one socket.}
-\begin{tabular}{@{}lrrrr@{}}\toprule
-tag & threads per rank & ranks (walkers) & ranks per socket & cores used\\\midrule
-\texttt{t1} & 1 & 112 & 56 & 112\\
-\texttt{t2} & 2 & 56 & 28 & 112\\
-\texttt{t4} & 4 & 28 & 14 & 112\\
-\texttt{t6} & 6 & 18 & 9 & 108\\
-\texttt{t8} & 8 & 14 & 7 & 112\\\bottomrule
+\begin{tabular}{@{}llrrrr@{}}\toprule
+tag & commit & threads per rank & ranks (walkers) & ranks per socket & cores used\\\midrule
+\texttt{t1} & \texttt{410c7b04} & 1 & 112 & 56 & 112\\
+\texttt{t2} & \texttt{410c7b04} & 2 & 56 & 28 & 112\\
+\texttt{t4} & \texttt{410c7b04} & 4 & 28 & 14 & 112\\
+\texttt{t6} & \texttt{410c7b04} & 6 & 18 & 9 & 108\\
+\texttt{t8} & \texttt{410c7b04} & 8 & 14 & 7 & 112\\\bottomrule
 \end{tabular}\end{table}
 
 \begin{table}[H]\centering\small
 \caption{GPU layouts (both GPU binaries). Tag \texttt{w}$W$\texttt{t}$T$ = $W$ walkers (MPI ranks) per tile on all 8 tiles,
 $T$ OpenMP host threads per rank. Each rank is bound to the 14 cores next to its tile; compute engines per tile set with
 \texttt{ZEX\_NUMBER\_OF\_CCS}. \texttt{w4t3} is the production layout; \texttt{w4t1} checks whether host threads matter.}
-\begin{tabular}{@{}lrrrr@{}}\toprule
-tag & walkers per tile & ranks (walkers) & threads per rank & compute engines per tile\\\midrule
-\texttt{w1t14} & 1 & 8 & 14 & 1\\
-\texttt{w2t7} & 2 & 16 & 7 & 2\\
-\texttt{w4t3} & 4 & 32 & 3 & 4\\
-\texttt{w8t1} & 8 & 64 & 1 & 4\\
-\texttt{w4t1} & 4 & 32 & 1 & 4\\\bottomrule
-\end{tabular}\end{table}
+\resizebox{\textwidth}{!}{\begin{tabular}{@{}llrrrr@{}}\toprule
+tag & commits & walkers per tile & ranks (walkers) & threads per rank & compute engines per tile\\\midrule
+\texttt{w1t14} & \texttt{410c7b04}, \texttt{d1060305} & 1 & 8 & 14 & 1\\
+\texttt{w2t7} & \texttt{410c7b04}, \texttt{d1060305} & 2 & 16 & 7 & 2\\
+\texttt{w4t3} & \texttt{410c7b04}, \texttt{d1060305} & 4 & 32 & 3 & 4\\
+\texttt{w8t1} & \texttt{410c7b04}, \texttt{d1060305} & 8 & 64 & 1 & 4\\
+\texttt{w4t1} & \texttt{410c7b04}, \texttt{d1060305} & 4 & 32 & 1 & 4\\\bottomrule
+\end{tabular}}\end{table}
 
 \section{Timing and throughput}
 Rank 0 writes one bin per sweep to \texttt{data.h5}, one HDF5 write per observable. The modification time of the file is
@@ -80,15 +80,15 @@ GPU node $4\times600$\,W $+700$\,W $=3100$\,W; $E=P_\text{node}\cdot3600/\text{t
 \caption{Throughput of every layout (tags as in Tables 1 and 2), one panel per $L$.}
 \end{figure}
 \begin{figure}[H]\centering
-\includegraphics[width=0.85\textwidth]{walker_time}
-\caption{Time per sweep of one walker: left against CPU threads per rank, right against GPU walkers per tile.}
+\includegraphics[width=\textwidth]{walker_time}
+\caption{Time per sweep of one walker; one panel per side (CPU: against threads per rank, GPU: against walkers per tile), colour = $L$.}
 \end{figure}
 \begin{figure}[H]\centering
 \includegraphics[width=0.6\textwidth]{energy_per_sweep}
 \caption{Estimated energy per sweep of the best layout per side.}
 \end{figure}
 \begin{figure}[H]\centering
-\includegraphics[width=0.85\textwidth]{gpu_usage}
-\caption{Mean GPU utilisation and power of the four cards (xpu-smi, 1\,s samples) against walkers per tile.}
+\includegraphics[width=0.7\textwidth]{gpu_usage}
+\caption{Mean GPU utilisation (top) and power of the four cards (bottom), xpu-smi 1\,s samples, against walkers per tile; one column per GPU binary, colour = $L$.}
 \end{figure}
 \end{document}
