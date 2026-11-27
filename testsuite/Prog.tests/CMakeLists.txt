@@ -326,6 +326,7 @@ target_include_directories(42-QMC-runtime-checks-fail PRIVATE "${CMAKE_CURRENT_S
 target_link_libraries(42-QMC-runtime-checks-fail
   "${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/QMC_runtime_var_mod.o" ${LIB_LIST})
 foreach(case_msg "nsweep|NSweep must be >= 1" "lobs|LOBS_ST > LOBS_EN" "projector|does not support Ltau = 1"
+    "lobs_window|has no time slice in 1..10" "nbin|NBin = 0 \\(must be >= 1"
     "ntseq_start|Nt_sequential_start" "ntseq_end|Nt_sequential_end" "ltau|Ltau = 2 \\(must be 0 or 1\\)"
     "amplitude|Amplitude = 0 freezes" "langevin_dt|Langevin=.True. requires Delta_t_Langevin_HMC"
     "langevin_force|Langevin=.True. requires Max_Force" "hmc_dt|HMC=.True. requires Delta_t_Langevin_HMC"

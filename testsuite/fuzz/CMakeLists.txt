@@ -37,4 +37,7 @@ if(Python3_FOUND AND NOT "${FLAG_LIST}" MATCHES "-D(MPI|TEMPERING|PARALLEL_PARAM
   fuzz_test(54-fuzz-baseline-hdf5 TRUE h5_ok_restart h5_empty h5_no_configuration)
   # NaN/Inf in a real model parameter (generated readers, parse_ham_mod.py)
   fuzz_test(55-fuzz-model-params FALSE par_U_nan par_T_nan par_PhiX_nan par_U2_nan par_chem_nan ok_base)
+  # NaN/Inf in a real parameter of &VAR_QMC
+  fuzz_test(56-fuzz-qmc-params FALSE par_CPU_MAX_nan par_Amplitude_inf_cont par_dtLangevin_nan par_MaxForce_inf
+            ok_base)
 endif()
