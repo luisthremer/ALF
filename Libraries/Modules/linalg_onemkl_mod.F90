@@ -62,11 +62,12 @@ module linalg_onemkl_mod
   use iso_fortran_env, only: error_unit
   implicit none
   private
-  public :: om_zgemm, om_zgemm_cr, om_ztrsm, om_zgeqrf, om_zunmqr, om_zgetrf, om_zgetri, om_zqrpp, om_finalize
+  public :: om_zgemm, om_zgemm_cr, om_ztrsm, om_zgeqrf, om_zunmqr, om_zgetrf, om_zgetri, om_zqrpp, om_finalize, om_get_queue
 
   integer, save :: ndev = -1            ! number of offload devices, queried once
   logical, save :: inited = .false.     ! interop queue handed to the shim
   integer(omp_interop_kind), save :: iop = omp_interop_none
+  type(c_ptr), save :: qsave = c_null_ptr  ! the sycl::queue* handed to the shim (also used by gpu_lowrank's block path)
   complex(kind=kind(0.d0)), allocatable, target, save :: dws(:)    ! device scratchpad of the shim calls
   integer(c_int64_t), allocatable, target, save :: dpiv(:)         ! device int64 pivots (oneMKL USM API)
   complex(kind=kind(0.d0)), allocatable, target, save :: dscr(:)   ! column permutation scratch of om_zqrpp
@@ -211,6 +212,7 @@ contains
     if (rc == 0 .and. fr == omp_ifr_sycl) qh = omp_get_interop_ptr(iop, omp_ipr_targetsync, rc)
     if (.not. c_associated(qh)) call om_fail('no sycl::queue from OpenMP interop', __LINE__)
     if (alfsh_init(qh) /= 0) call om_fail('shim initialisation failed', __LINE__)
+    qsave = qh
     nm = c_null_char
     is_l0 = 0
     if (alfsh_device_info(nm, 128_c_int, is_l0) /= 0) call om_fail('cannot query the SYCL device', __LINE__)
@@ -231,6 +233,13 @@ contains
     if (rc /= 2) call om_fail('OpenMP default device and SYCL queue device differ', __LINE__)
     inited = .true.
   end subroutine om_init
+
+  !> The sycl::queue* of the OpenMP runtime (default device) that every shim call uses; initialises the backend if needed.
+  !> Used by the asynchronous block path of gpu_lowrank_mod (libalfsb, linalg_sycl_blk.cpp), which must use the same in-order queue.
+  type(c_ptr) function om_get_queue()
+    call om_init()
+    om_get_queue = qsave
+  end function om_get_queue
 
   !> End of run: frees the device scratch and the interop object (nothing if the backend was never used)
   subroutine om_finalize()
@@ -255,6 +264,7 @@ contains
     call alfsh_finalize()
     !$omp interop destroy(iop)
     iop = omp_interop_none
+    qsave = c_null_ptr
     inited = .false.
   end subroutine om_finalize
 

@@ -70,6 +70,12 @@ Module gpu_obs_mod
   Use alf_hipk_mod, only: hk_enabled, hk_corr, hk_scalars
 #endif
   Use gpu_state_mod, only: gpu_active, G_d, g_dev_ok, td_symm_active, info_line, gpu_env_is
+#if defined(ALF_LA_ONEMKL)
+  Use iso_c_binding, only: c_ptr, c_int, c_double, c_loc
+  Use iso_fortran_env, only: error_unit
+  Use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
+  Use linalg_onemkl_mod, only: om_get_queue
+#endif
   Use gpu_stab_mod, only: gpu_stab_on
   Use gpu_wrap_mod, only: gpu_symm_build
   Implicit none
@@ -87,6 +93,18 @@ Module gpu_obs_mod
   Logical, Save :: o_tau = .false., o_tdev = .false.     ! tau-resolved observables present / device arrays allocated
   Logical, Save :: symm_built = .false.
   Character (len=200), Save :: o_reason = 'gpu_obs_setup not called'
+#if defined(ALF_LA_ONEMKL)
+  Logical, Save :: o_corr_sycl = .false.   ! ALFSH_OBSCORR=1: corr as a SYCL kernel (libalfsb alfsb_corr) on the OpenMP interop queue
+  Logical, Parameter :: OBSCORR_DEFAULT = .true.    ! when ALFSH_OBSCORR is not set (an explicit 0|1 always wins); on since gpu-intel-speed (Q4b)
+  Interface
+    Integer (c_int) Function alfsb_corr(q, kind, k, n, norb, nfl, ns, sq3, wr, wi, ld, g, jc, inv, acc, acc0) Bind(C, name='alfsb_corr')
+      Import :: c_ptr, c_int, c_double
+      Type (c_ptr), Value :: q, g, jc, inv, acc, acc0
+      Integer (c_int), Value :: kind, k, n, norb, nfl, ld
+      Real (c_double), Value :: ns, sq3, wr, wi
+    End Function
+  End Interface
+#endif
   Integer, Save :: o_N = 0, o_Norb = 0, o_NFL = 0, o_NSUN = 0, o_Ndim = 0, o_nk = 0, o_nobs = 0, o_dec = 1, o_Nt = 0
   Integer, Save :: o_kind(5) = 0           ! per Obs_eq: 1 Green, 2 SpinSUN, 3 Den, 4 SpinMz (fills Obs_eq(k:k+2))
   Integer, Allocatable, Save :: o_inv(:,:), o_jc(:,:), hk_i(:), hk_j(:), hk_f(:)
@@ -125,12 +143,23 @@ Contains
     Complex (Kind=Kind(0.d0)) :: Z
     Integer, Allocatable :: cnt(:,:)
     Character (len=16) :: s
+#if defined(ALF_LA_ONEMKL)
+    Integer :: st_env
+#endif
 
     call gpu_obs_finalize()
     o_set = .true.; o_ok = .false.; o_active = .false.; o_tau = .false.
     call get_environment_variable('ALF_GPU_NOOBS', s)
     o_off = (trim(s) == '1')
     o_fault = gpu_env_is('ALF_GPU_FAULT', 'obs')
+#if defined(ALF_LA_ONEMKL)
+    ! ALFSH_OBSCORR=1: the correlation sums as one SYCL work-group per output element (alfsb_corr, the SYCL port of the HIP
+    ! k_corr); the summation order over I differs from the OpenMP kernels (rounding level)
+    s = ''
+    call get_environment_variable('ALFSH_OBSCORR', s, status=st_env)
+    o_corr_sycl = OBSCORR_DEFAULT
+    if (st_env == 0) o_corr_sycl = (trim(s) == '1')
+#endif
     o_symm = Symm_
     o_h0 = (abs(h0) >= Eps_small)
     o_reason = 'N_FL is not 1 or 2'
@@ -261,6 +290,13 @@ Contains
        o_active = .true.
        write(line,'(A,I0,A,I0,A,L1,A,L1,A,L1,A)') 'GPU observables (step 1e): DEVICE (N_FL ', o_NFL, ', N_SUN ', o_NSUN, &
             & ', Symm ', o_symm, ', local h0 ', o_h0, ', tau-resolved ', o_tau, ')'
+#if defined(ALF_LA_ONEMKL)
+       if (o_corr_sycl) then
+          line = trim(line)//', ALFSH_OBSCORR=1 (SYCL correlation kernel)'
+       else
+          line = trim(line)//', ALFSH_OBSCORR=0'
+       endif
+#endif
     endif
     call info_line(trim(line))
   End Subroutine gpu_obs_report
@@ -456,6 +492,29 @@ Contains
     enddo
   End Subroutine k_local
 
+#if defined(ALF_LA_ONEMKL)
+  !> corr on the SYCL queue of the OpenMP offload runtime (libalfsb alfsb_corr; ported from fork/intel-batched ee682f09):
+  !> device addresses by use_device_addr, the same arguments as hk_corr of alf_hipk_mod
+  Subroutine sb_corr(kind_k, k, n, norb, nfl, ns, sq3, wr, wi, ld, g, jc, inv, acc_, acc0_)
+    Implicit none
+    Integer, intent(in) :: kind_k, k, n, norb, nfl, ld
+    Real (Kind=Kind(0.d0)), intent(in) :: ns, sq3, wr, wi
+    Complex (Kind=Kind(0.d0)), Target :: g(*), acc_(*), acc0_(*)
+    Integer, Target :: jc(*), inv(*)
+    Integer (c_int) :: rc
+    Type (c_ptr) :: qh
+    qh = om_get_queue()
+    !$omp target data use_device_addr(g, jc, inv, acc_, acc0_)
+    rc = alfsb_corr(qh, int(kind_k,c_int), int(k,c_int), int(n,c_int), int(norb,c_int), int(nfl,c_int), ns, sq3, wr, wi, &
+         int(ld,c_int), c_loc(g(1)), c_loc(jc(1)), c_loc(inv(1)), c_loc(acc_(1)), c_loc(acc0_(1)))
+    !$omp end target data
+    if (rc /= 0) then
+       write(error_unit,*) 'gpu_obs: alfsb_corr (ALFSH_OBSCORR=1) failed, rc = ', rc
+       call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+    endif
+  End Subroutine sb_corr
+#endif
+
   !> equal-time correlators of kind kind_k into acc(:,:,:,:,k..)
   Subroutine k_corr(k, kind_k, N, Norb, NFL, ns, sq3, wr, wi, nd, Gm)
     Implicit none
@@ -468,6 +527,12 @@ Contains
 #if defined(ALF_LA_HIP)
     if (hk_enabled()) then
        call hk_corr(kind_k, k, N, Norb, NFL, ns, sq3, wr, wi, nd, Gm, o_jc, o_inv, acc, acc0)
+       return
+    endif
+#endif
+#if defined(ALF_LA_ONEMKL)
+    if (o_corr_sycl) then
+       call sb_corr(kind_k, k, N, Norb, NFL, ns, sq3, wr, wi, nd, Gm, o_jc, o_inv, acc, acc0)
        return
     endif
 #endif
