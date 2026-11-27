@@ -45,7 +45,12 @@ NUM = re.compile(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[EeDd][-+]?\d+)?")
 NUM_WS = re.compile(r"\s*" + NUM.pattern)      # a number with its leading blanks (a minus sign takes the place of a blank)
 ACTIVE_TEXT = "ACTIVE (mirror; wraps, updates and stabilisation on the device path)"
 
-# label, edits of the parameter file, env of the active run, expectation ("ok", "inactive:<text>", "fault" or "abort")
+# label, edits of the parameter file, env of the active run, expectation ("ok", "okh", "inactive:<text>", "fault" or "abort");
+# "okh" = "ok" for models whose observables and tau pass stay on the host (no step-1e line checks)
+KONDO = {"ham_name": '"Kondo"', "Model": '"Kondo"', "Lattice_type": '"Bilayer_square"', "ham_Uf": "1.d0"}
+TV = {"ham_name": '"tV"', "Model": '"tV"', "N_SUN": "1", "ham_V": "-1.d0", "ham_T2": "0.d0", "ham_Tperp": "0.d0", "Beta": "2.d0", "Ltau": "0"}
+SP = {"ham_name": '"Spin_Peierls"', "Model": '"Spin_Peierls"', "L1": "6", "L2": "6", "Beta": "2.d0", "ham_U": "1.5d0", "ham_Lambda": "0.1d0",
+      "ham_omega0": "0.5d0", "N_SUN": "2", "N_FL": "1"}
 CASES = [
     ("mz-standard", {}, {"ALF_GPU_SELFTEST": "1"}, "ok"),
     ("mz-delayed-N4", {"Sequential_scheme": '"delayed"', "N_delay": "4"}, {}, "ok"),
@@ -75,6 +80,17 @@ CASES = [
     ("fault-stab-perm", {}, {"ALF_GPU_DEBUG": "1", "ALF_GPU_FAULT_STAB": "perm"}, "abort"),
     # a flipped sign of the tracked det(U) phase must be stopped by the check mode (compares with the LU phase)
     ("fault-stab-det", {}, {"ALF_GPU_DEBUG": "1", "ALF_GPU_CGR_LU": "2", "ALF_GPU_FAULT_STAB": "det"}, "abort"),
+    # P2.6.1: non-diagonal (Kondo, tV), rank-2 and type-4 (Spin_Peierls) vertices on the device path, standard / delayed (rank-r
+    # delayed path) / submatrix; the self-tests ALF_GPU_SELFTEST=2 (device wrap kernels against Operator_mod) on two of them
+    ("kondo-standard", KONDO, {"ALF_GPU_SELFTEST": "2"}, "okh"),
+    ("kondo-delayed-N4", dict(KONDO, Sequential_scheme='"delayed"', N_delay="4"), {}, "okh"),
+    ("kondo-submatrix-N4", dict(KONDO, Sequential_scheme='"submatrix"', N_delay="4"), {}, "okh"),
+    ("tV-standard", TV, {}, "okh"),
+    ("tV-delayed-N4", dict(TV, Sequential_scheme='"delayed"', N_delay="4"), {}, "okh"),
+    ("tV-submatrix-N4", dict(TV, Sequential_scheme='"submatrix"', N_delay="4"), {}, "okh"),
+    ("sp-standard", SP, {"ALF_GPU_SELFTEST": "2"}, "okh"),
+    ("sp-delayed-N4", dict(SP, Sequential_scheme='"delayed"', N_delay="4"), {}, "okh"),
+    ("sp-submatrix-N4", dict(SP, Sequential_scheme='"submatrix"', N_delay="4"), {}, "okh"),
     # ALF_GPU_FAULT=nsig (stale device copy of the field) cannot be seen on the host backend: host and "device" array are the
     # same memory there, so it is not a case here (to be added for the vendor backends, step 2).
 ]
@@ -100,11 +116,12 @@ def prepare(d, start, edits):
         if n != 1:
             sys.exit("cannot set %s in parameters" % key)
     for key, val in edits.items():
-        if key in ("Mz", "Nwrap", "Ltau", "L1", "L2", "Lattice_type", "Symm", "Checkerboard", "ham_h0", "ham_U2", "LOBS_ST", "LOBS_EN"):       # existing keys: replace the value
-            t, n = re.subn(r"(?m)^(%s\s*=\s*)[^\s!]+" % key, r"\g<1>%s" % val, t, count=1)
-        else:   # new key of &VAR_QMC, inserted before Ltau
+        # existing key: replace the value in every namelist that has it (only the model's namelists are read); new key of &VAR_QMC:
+        # inserted before Ltau
+        t, n = re.subn(r"(?mi)^(%s\s*=\s*)[^\s!]+" % re.escape(key), r"\g<1>%s" % val, t)   # namelist names: any case
+        if n == 0:
             t, n = re.subn(r"(?m)^(Ltau\s*=)", "%s = %s\n\\g<1>" % (key, val), t, count=1)
-        if n != 1:
+        if n < 1:
             sys.exit("cannot set %s in parameters" % key)
     open(p, "w").write(t)
 
@@ -219,7 +236,7 @@ def main():
                 bad_case.append("info of the active run has no ACTIVE line")
             if "ALF_GPU_SELFTEST" in env and "GPU self-test PASSED" not in out:
                 bad_case.append("stdout of the active run has no 'GPU self-test PASSED'")
-            if expect == "ok" and "GPU update path: ACTIVE" not in info:
+            if expect in ("ok", "okh") and "GPU update path: ACTIVE" not in info:
                 bad_case.append("info of the active run has no 'GPU update path: ACTIVE' line")
             if expect == "ok":
                 tau_on = edits.get("Ltau", "1") != "0"
