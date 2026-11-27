@@ -440,6 +440,7 @@ Program Main
         Do iw = 1, size(walkers)
            Call Walker_dealloc(walkers(iw))
         Enddo
+        deallocate(walkers)
         If (get_N_Global_tau() > 0 .or. get_N_Global_tau_MALA() > 0 .or. get_Sequential_MALA()) then
            Call Wrapgr_dealloc
         endif
