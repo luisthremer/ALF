@@ -1,0 +1,16 @@
+serial	kondo-std	works	works	ACTIVE	OK		max scaled diff 2.54e-12 (tol 1.2e-11), 31 files	0.4s/0.3s	
+serial	kondo-dly4	works	works	ACTIVE	OK		max scaled diff 2.54e-12 (tol 1.2e-11), 31 files	0.4s/0.3s	
+serial	kondo-dly16	works	works	ACTIVE	OK		max scaled diff 2.54e-12 (tol 1.2e-11), 31 files	0.5s/0.4s	
+serial	kondo-sub4	works	works	ACTIVE	OK		max scaled diff 2.54e-12 (tol 1.3e-11), 31 files	0.4s/0.3s	
+serial	tV-std	works	works	ACTIVE	OK		max scaled diff 1.93e-13 (tol 1.0e-11), 17 files	0.2s/0.1s	
+serial	tV-dly4	works	works	ACTIVE	OK		max scaled diff 1.27e-13 (tol 1.0e-11), 17 files	0.3s/0.1s	
+serial	tV-dly16	works	works	ACTIVE	OK		max scaled diff 9.84e-14 (tol 1.0e-11), 17 files	0.2s/0.1s	
+serial	tV-sub4	works	works	ACTIVE	OK		max scaled diff 9.92e-14 (tol 1.0e-11), 17 files	0.2s/0.1s	
+serial	sp-std	works	works	ACTIVE	OK		max scaled diff 8.89e-11 (tol 2.5e-10), 21 files	0.7s/0.4s	
+serial	sp-dly4	works	works	ACTIVE	OK		max scaled diff 5.61e-11 (tol 3.6e-10), 21 files	0.7s/0.4s	
+serial	sp-dly16	works	works	ACTIVE	OK		max scaled diff 4.77e-11 (tol 4.6e-10), 21 files	1.0s/0.4s	
+serial	sp-sub4	works	works	ACTIVE	OK		max scaled diff 6.41e-11 (tol 6.0e-10), 21 files	0.7s/0.5s	
+serial	tV-std-tau	works	works	ACTIVE	OK		max scaled diff 1.93e-13 (tol 1.0e-11), 23 files	0.2s/0.1s	
+serial	hub-mz-4x4	works	works	ACTIVE	OK		max scaled diff 2.09e-09 (tol 5.8e-09), 31 files	0.3s/0.2s	
+serial	hub-dly4	works	works	ACTIVE	OK		max scaled diff 2.09e-09 (tol 5.8e-09), 31 files	0.4s/0.2s	
+serial	hub-sub4	works	works	ACTIVE	OK		max scaled diff 2.09e-09 (tol 5.8e-09), 31 files	0.3s/0.2s	
