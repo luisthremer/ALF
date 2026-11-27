@@ -61,10 +61,11 @@ CPU node. Right: estimated energy per work unit (vendor power ratings: CPU node 
 \end{figure}
 
 \subsection*{Result}
+\ifthenelse{\equal{\Lmax}{--}}{Results follow when the runs for at least one system size are complete.}{%
 \begin{itemize}
 \item At $L=\Lmax$ one GPU node gives \textbf{\FacIntel$\times$} the throughput of the CPU node (ALF GPU Intel-optimised;
   \FacBase$\times$ with ALF GPU) at \Eratio$\times$ lower energy per work unit.
 \item Speedup of the GPU node (Intel-optimised) over the CPU node: \FacList.
 \item Best GPU configuration (Intel-optimised): four MPI processes per tile; eight per tile is always slower.
-\end{itemize}
+\end{itemize}}
 \end{document}

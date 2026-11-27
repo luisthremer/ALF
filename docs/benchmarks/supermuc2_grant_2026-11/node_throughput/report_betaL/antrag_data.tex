@@ -1,0 +1,27 @@
+\newcommand{\Lmax}{--}
+\newcommand{\FacIntel}{--}
+\newcommand{\FacBase}{--}
+\newcommand{\Eratio}{--}
+\newcommand{\FacList}{}
+\newcommand{\StarNote}{$^*$\,best of the configurations finished so far; no speedup given.}
+\newcommand{\Complete}{no}
+\newcommand{\AntragTable}{%
+\begin{tabular}{rlllrrr}
+$L$ & node & code & configuration & work units / node-h & speedup & kJ / unit\\
+\hline
+16 & CPU & ALF CPU & \multicolumn{4}{l}{\emph{running}}\\
+16 & GPU & ALF GPU & 4 proc./tile, 3 thr. & 25\,602 & -- & 0.436\\
+16 & GPU & ALF GPU Intel-opt. & \multicolumn{4}{l}{\emph{running}}\\
+\hline
+24 & CPU & ALF CPU & \multicolumn{4}{l}{\emph{running}}\\
+24 & GPU & ALF GPU & 4 proc./tile, 3 thr. & 4\,679 & -- & 2.385\\
+24 & GPU & ALF GPU Intel-opt. & \multicolumn{4}{l}{\emph{running}}\\
+\hline
+32 & CPU & ALF CPU & \multicolumn{4}{l}{\emph{running}}\\
+32 & GPU & ALF GPU & 2 proc./tile, 7 thr. & 1\,431 & -- & 7.799\\
+32 & GPU & ALF GPU Intel-opt. & 4 proc./tile, 1 thr. & 3\,652 & -- & 3.056\\
+\hline
+36 & CPU & ALF CPU & \multicolumn{4}{l}{\emph{running}}\\
+36 & GPU & ALF GPU & 2 proc./tile, 7 thr. & 814 & -- & 13.710\\
+36 & GPU & ALF GPU Intel-opt. & \multicolumn{4}{l}{\emph{running}}\\
+\end{tabular}}
