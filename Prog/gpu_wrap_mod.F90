@@ -1256,11 +1256,12 @@ Contains
 
 !> P2.6.1: table operators n1..n2 of flavour nf on the rows (side 1, Op_mmultR) or columns (side 2, Op_mmultL, field sign sg) of M,
 !> per element in operator order (asc or desc), skip flag honoured: the fused kernels restricted to a run of the operator order.
-  Subroutine k_vrun(M, ld, nother, nd, nf, t, cj, sg, desc, n1, n2, side)
+!> mc = number of columns of M (nother for side 1, nd for side 2)
+  Subroutine k_vrun(M, ld, mc, nother, nd, nf, t, cj, sg, desc, n1, n2, side)
     Implicit none
-    Integer, intent(in) :: ld, nother, nd, nf, t, sg, n1, n2, side
+    Integer, intent(in) :: ld, mc, nother, nd, nf, t, sg, n1, n2, side
     Logical, intent(in) :: cj, desc
-    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,merge(nother, nd, side == 1))
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,mc)
     Integer :: j, r, pa, pb, q, p, n, i, sp
     Complex (Kind=Kind(0.d0)) :: x, z
     !$omp target teams distribute parallel do collapse(2) private(pa, pb, q, p, n, i, sp, x, z)
@@ -1311,7 +1312,7 @@ Contains
        k = k1 + q
        if (desc) k = k2 - q
        if (v_seg(1,k) == 0) then
-          call k_vrun(M, ld, nother, Ndim, nf, t, (cop == 'c' .or. cop == 'C'), sg, desc, v_seg(2,k), v_seg(3,k), side)
+          call k_vrun(M, ld, merge(nother, Ndim, side == 1), nother, Ndim, nf, t, (cop == 'c' .or. cop == 'C'), sg, desc, v_seg(2,k), v_seg(3,k), side)
        elseif (side == 1) then
           call k_nd_rows(M, ld, nother, nf, t, v_seg(2,k), v_seg(3,k), mexp_mode(cop), 1, 0)
        else
