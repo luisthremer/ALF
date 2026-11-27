@@ -31,7 +31,7 @@
 \item \textbf{ALF CPU}: ALF (Algorithms for Lattice Fermions), MPI + OpenMP version for CPUs.
 \item \textbf{ALF GPU}: our GPU port of ALF (OpenMP offload, oneMKL); thoroughly tested.
 \item \textbf{ALF GPU Intel-optimised}: additional optimisations for Intel GPUs (device-side QR decompositions, fused
-  kernels, asynchronous updates). Its results are not bit-identical to the CPU code, so the stochastic process has to be
+  kernels, asynchronous updates). Its results cannot be bit-identical to the CPU code (floating-point operations run in a different order on the GPU), so the stochastic process has to be
   validated with long runs; for this LRZ granted a special allocation of 25\,000 GPU-h to project pn93la in November 2026.
   The speedups measured here show that this testing effort pays off.
 \end{itemize}
