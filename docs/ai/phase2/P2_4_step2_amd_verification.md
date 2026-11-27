@@ -116,6 +116,52 @@ Speed, same setup as the previous section (MI210 alone, `Symm = F`, s per sweep 
 At L = 32 the dense product is not used (Ndim > 800), so the last two columns run the same path: their spread (3.1 .. 5.1 s) is
 run-to-run noise. The per-factor default (CPU-level precision, G2) is now faster than gpu-port at both sizes.
 
+## P2.6 models on GPU=amd (feature `gpu-amd-p26`, 2026-11-27)
+
+`p26-models` (non-diagonal, rank > 1 and type-4 operators: Kondo, tV, Spin_Peierls) was refused on ALF_LA_HIP builds. Found and
+fixed on the way: R3 (HIP slice kernel read the old `V_meta` layout, every model; feature `gpu-amd-r3`, merged first) and R2
+symptom 3 (libgomp zero-length map in `k_dly_gpp` / `k_dly_wrap`, delayed path of the P2.6 models). rocprofv3 on the MI210
+(kernel time, OpenMP P2.6 kernels as merged): `k_nd_rows` + `k_nd_cols` 66-82 % (Kondo 12.0 of 18.0 s, tV 17.0 of 21.0 s,
+Spin_Peierls 24.2 of 30.7 s), then `k_rk_gpp` / `k_rk_prep` / `k_rk_upd` (standard) and `k_gen_block` / `k_gen_accept`
+(delayed); each OpenMP launch costs 120-230 us, a HIP launch ~4 us. HIP versions (same arithmetic) of `k_dly_gpp`,
+`k_dly_wrap`, `k_nd_rows`, `k_nd_cols`, `k_rk_gpp` and the rank-r accept (`k_rk_prep` + `k_rk_upd`); then the refusal is removed.
+
+Gate, GPU=amd vs `ALF_GPU_DISABLE=1` of the same binary, same seeds (`p25_run.py`, rule of `gpu_e2e.py`; `confout` identical):
+- `cases_p26.py`, 16 cases (Kondo, tV, Spin_Peierls x standard / delayed 4, 16 / submatrix 4, tV tau, Hubbard 4x4 Mz
+  standard / delayed / submatrix): 16/16 OK on the final tree (rebased on `Code-modularity-GPU` 13dcd1e3; preprocessed
+  `alf_hipk_mod`, `gpu_lowrank_mod`, `gpu_wrap_mod`, `gpu_update_mod`, `gpu_state_mod` identical to the base for GPU=none, host,
+  `-DALF_LA_CUDA`, `-DALF_LA_ONEMKL`). Max scaled diff: Kondo 2.5e-12, tV 1.2e-13, Spin_Peierls 2.1e-10
+  (tol >= 2.6e-10), Hubbard 2.7e-10 (tol 6.1e-9). Also 16/16 on the intermediate trees (OpenMP P2.6 kernels with the two fixes;
+  plus HIP nd).
+- `cases_h100.py` big cases (Kondo 8x8 bilayer, tV 12x12, Spin_Peierls 12x12; standard / delayed 16, 32 / submatrix 16;
+  NSweep 10, NBin 2), final tree before the rebase, `confout` identical everywhere, rc 0:
+  - tV standard 1.0e-11, delayed 32 1.4e-11, submatrix 16 7.4e-13: OK. tV delayed 16: Pot_scal 1.67e-11 against tol 1.66e-11,
+    while the CPU-only null (same binary, submatrix 16 vs delayed 16) gives 1.88e-11: tolerance-edge round-off (G9, class C).
+  - Kondo, all four schemes: Dimer_tau 1.48e-11 against the floor 1e-11 (G9, as H100 1.26e-11).
+  - Spin_Peierls, all four schemes: FAIL, observables up to 1.3e-7 (Part_scal, Dimer_eq, Pot_scal, SpinZ_eq), Precision Green
+    mean 2.1e-10 vs 8.2e-12 on the CPU. Not AMD and not this feature: the build with the merged OpenMP P2.6 kernels shows the
+    same, and so does GPU=host on melmac (no offload; Precision Green 2.6e-10 vs 9.0e-12, Part_scal 1.8e-7): known G10
+    (KNOWN_ISSUES, class B, P2.6 follow-up).
+
+Time of the whole run, MI210 alone, `cases_p26.py` inputs (s; columns: OpenMP P2.6 kernels with the two fixes, + HIP nd,
++ HIP rank-r = final; CPU = `ALF_GPU_DISABLE=1`):
+
+| Case | OpenMP | + HIP nd | final | CPU |
+|---|---|---|---|---|
+| Kondo 4x4 bilayer, standard | 27.6 | 14.4 | 11.0 | 0.6 |
+| Kondo, delayed 16 | 39.1 | 12.0 | 12.6 | 0.6 |
+| Kondo, submatrix 4 | 28.8 | 15.0 | 11.7 | 0.7 |
+| tV 4x4, standard | 30.9 | 11.2 | 6.7 | 0.3 |
+| Spin_Peierls 6x6, standard | 43.5 | 16.3 | 11.4 | 0.8 |
+| Spin_Peierls, delayed 16 | 66.7 | 15.4 | 14.9 | 1.1 |
+
+2.5-4.5x faster than the OpenMP kernels. These small cases stay launch-bound and far behind the CPU, as on every vendor (H100
+4.4 s vs 1.7 s); the crossover size per model is P2.6.2.
+
+Follow-up idea (not in this feature): the remaining OpenMP launches of ~100-200 us each on GPU=amd: `k_site_wrap`,
+`k_upd_prep` / `k_upd_geru` (standard update of diagonal operators), `k_gen_block` / `k_gen_accept` / `k_dly_accept`
+(delayed P2.6), `k_vrun`, `k_wrap_g0`, and the small `target update` copies around the update (`rk_p`, `rk_w`, `rk_g`).
+
 ## Not done in this feature
 
 The root cause of R2 (GCC 15 offload is not available on amd).

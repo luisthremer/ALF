@@ -48,6 +48,7 @@ module alf_hipk_mod
   public :: hk_scatter_rows, hk_vslice_r, hk_blk_gather, hk_blk_scale, hk_sub_flush_gather
   public :: hk_corr, hk_scalars
   public :: hk_cb_left, hk_cb_right
+  public :: hk_dly_gpp, hk_dly_wrap, hk_nd, hk_rk_gpp, hk_rk_accept
 
   ! HIP replacements on (default) or off (ALF_HIP_KERNELS=0: the OpenMP kernels run, for A/B checks); -1 = not read yet
   integer, save :: hk_state = -1
@@ -216,6 +217,32 @@ module alf_hipk_mod
       import :: c_ptr, c_int
       integer(c_int), value :: ld, nrow, e1, e2, k, tl
       type(c_ptr), value :: M, meta, P, R, C
+    end function
+    integer(c_int) function alfhk_dly_gpp(G, X, Y, ld, jcnt, p, res) bind(C, name='alfhk_dly_gpp')
+      import :: c_ptr, c_int
+      integer(c_int), value :: ld, jcnt, p
+      type(c_ptr), value :: G, X, Y, res
+    end function
+    integer(c_int) function alfhk_dly_wrap(G, X, Y, ld, nd, jcnt, n, t, dir, r, eo, nt, nsig, ldn, vexp) bind(C, name='alfhk_dly_wrap')
+      import :: c_ptr, c_int
+      integer(c_int), value :: ld, nd, jcnt, n, t, dir, r, eo, nt, ldn
+      type(c_ptr), value :: G, X, Y, nsig, vexp
+    end function
+    integer(c_int) function alfhk_nd(rows, M, ld, len, nf, t, n1, n2, mode, sf, tw, ldm, nop, ldn, ldg, Vmeta, Vtype, Vg, VE, &
+         & ph4, nsig, VP, VM, VU, Vx) bind(C, name='alfhk_nd')
+      import :: c_ptr, c_int
+      integer(c_int), value :: rows, ld, len, nf, t, n1, n2, mode, sf, tw, ldm, nop, ldn, ldg
+      type(c_ptr), value :: M, Vmeta, Vtype, Vg, VE, ph4, nsig, VP, VM, VU, Vx
+    end function
+    integer(c_int) function alfhk_rk_gpp(G, ld, P, r, buf) bind(C, name='alfhk_rk_gpp')
+      import :: c_ptr, c_int
+      integer(c_int), value :: ld, r
+      type(c_ptr), value :: G, P, buf
+    end function
+    integer(c_int) function alfhk_rk_accept(G, ld, nd, P, r, W, C, T) bind(C, name='alfhk_rk_accept')
+      import :: c_ptr, c_int
+      integer(c_int), value :: ld, nd, r
+      type(c_ptr), value :: G, P, W, C, T
     end function
   end interface
 
@@ -625,6 +652,72 @@ contains
     !$omp end target data
     call chk(rc, 'cb_right')
   end subroutine hk_cb_right
+
+  !> k_dly_gpp of gpu_lowrank_mod: res(1:2) = Re, Im of G(p,p) - sum_k X(p,k) Y(p,k); assumed-size dummies, so jcnt = 0 maps nothing
+  subroutine hk_dly_gpp(G, X, Y, ld, jcnt, p, res)
+    integer, intent(in) :: ld, jcnt, p
+    complex(kind=kind(0.d0)), target :: G(*), X(*), Y(*)
+    real(kind=kind(0.d0)), target :: res(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(G, X, Y, res)
+    rc = alfhk_dly_gpp(c_loc(G(1)), c_loc(X(1)), c_loc(Y(1)), int(ld,c_int), int(jcnt,c_int), int(p,c_int), c_loc(res(1)))
+    !$omp end target data
+    call chk(rc, 'dly_gpp')
+  end subroutine hk_dly_gpp
+
+  !> k_dly_wrap of gpu_lowrank_mod (row/column r of G0 and row r of X, Y scaled by the Op_V factors); ldn = leading extent of nsig
+  subroutine hk_dly_wrap(G, X, Y, ld, nd, jcnt, n, t, dir, r, eo, nt, nsig, ldn, vexp)
+    integer, intent(in) :: ld, nd, jcnt, n, t, dir, r, eo, nt, ldn
+    complex(kind=kind(0.d0)), target :: G(*), X(*), Y(*), nsig(*), vexp(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(G, X, Y, nsig, vexp)
+    rc = alfhk_dly_wrap(c_loc(G(1)), c_loc(X(1)), c_loc(Y(1)), int(ld,c_int), int(nd,c_int), int(jcnt,c_int), int(n,c_int), &
+         & int(t,c_int), int(dir,c_int), int(r,c_int), int(eo,c_int), int(nt,c_int), c_loc(nsig(1)), int(ldn,c_int), c_loc(vexp(1)))
+    !$omp end target data
+    call chk(rc, 'dly_wrap')
+  end subroutine hk_dly_wrap
+
+  !> k_nd_rows (rows = .true., len = ncol) / k_nd_cols (len = nrow) of gpu_wrap_mod: non-diagonal / type-4 operators n1..n2.
+  !> ldm, nop, ldn, ldg: extents of V_meta (1st, 2nd), nsigma_d (1st), V_g (1st); ph4 = V_phi4(-2:2)
+  subroutine hk_nd(rows, M, ld, len, nf, t, n1, n2, mode, sf, tw, ldm, nop, ldn, ldg, Vmeta, Vtype, Vg, VE, ph4, nsig, VP, VM, VU, Vx)
+    logical, intent(in) :: rows
+    integer, intent(in) :: ld, len, nf, t, n1, n2, mode, sf, tw, ldm, nop, ldn, ldg
+    complex(kind=kind(0.d0)), target :: M(*), Vg(*), nsig(*), VM(*), VU(*), Vx(*)
+    integer, target :: Vmeta(*), Vtype(*), VP(*)
+    real(kind=kind(0.d0)), target :: VE(*), ph4(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(M, Vmeta, Vtype, Vg, VE, ph4, nsig, VP, VM, VU, Vx)
+    rc = alfhk_nd(int(merge(1,0,rows),c_int), c_loc(M(1)), int(ld,c_int), int(len,c_int), int(nf,c_int), int(t,c_int), &
+         & int(n1,c_int), int(n2,c_int), int(mode,c_int), int(sf,c_int), int(tw,c_int), int(ldm,c_int), int(nop,c_int), &
+         & int(ldn,c_int), int(ldg,c_int), c_loc(Vmeta(1)), c_loc(Vtype(1)), c_loc(Vg(1)), c_loc(VE(1)), c_loc(ph4(1)), &
+         & c_loc(nsig(1)), c_loc(VP(1)), c_loc(VM(1)), c_loc(VU(1)), c_loc(Vx(1)))
+    !$omp end target data
+    call chk(rc, 'nd')
+  end subroutine hk_nd
+
+  !> k_rk_gpp of gpu_update_mod: buf(a + (b-1) r) = G(P(a),P(b))
+  subroutine hk_rk_gpp(G, ld, P, r, buf)
+    integer, intent(in) :: ld, r
+    complex(kind=kind(0.d0)), target :: G(*), buf(*)
+    integer, target :: P(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(G, P, buf)
+    rc = alfhk_rk_gpp(c_loc(G(1)), int(ld,c_int), c_loc(P(1)), int(r,c_int), c_loc(buf(1)))
+    !$omp end target data
+    call chk(rc, 'rk_gpp')
+  end subroutine hk_rk_gpp
+
+  !> k_rk_prep followed by k_rk_upd of gpu_update_mod (rank-r accept G <- G - G(:,P) W R)
+  subroutine hk_rk_accept(G, ld, nd, P, r, W, C, T)
+    integer, intent(in) :: ld, nd, r
+    complex(kind=kind(0.d0)), target :: G(*), W(*), C(*), T(*)
+    integer, target :: P(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(G, P, W, C, T)
+    rc = alfhk_rk_accept(c_loc(G(1)), int(ld,c_int), int(nd,c_int), c_loc(P(1)), int(r,c_int), c_loc(W(1)), c_loc(C(1)), c_loc(T(1)))
+    !$omp end target data
+    call chk(rc, 'rk_accept')
+  end subroutine hk_rk_accept
 
 end module alf_hipk_mod
 #endif

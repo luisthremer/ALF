@@ -629,13 +629,6 @@ Contains
     ! still refused: field type 3, type 4 on a diagonal operator, operator N > V_NMAX, time-dependent g_t (below)
     do nf = 1, N_FL
        do n = 1, size(Op_V,1)
-#if defined(ALF_LA_HIP)
-          if (.not. Op_V(n,nf)%diag .or. Op_V(n,nf)%N_non_zero > 1 .or. Op_V(n,nf)%type == 4) then
-             write(reason,'(A,A,A,I0,A,I0,A)') 'Hamiltonian ', trim(get_ham_name()), &
-                  & ': Op_V(', n, ',', nf, ') is non-diagonal, of rank > 1 or of type 4: not yet verified on GPU=amd (R2)'
-             return
-          endif
-#endif
           if (Op_V(n,nf)%type /= 1 .and. Op_V(n,nf)%type /= 2 .and. Op_V(n,nf)%type /= 4) then
              write(reason,'(A,A,A,I0,A,I0,A,I0,A)') 'Hamiltonian ', trim(get_ham_name()), &
                   & ': Op_V(', n, ',', nf, ') has field type ', Op_V(n,nf)%type, ' (only 1, 2 and 4 supported)'
