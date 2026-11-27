@@ -94,7 +94,7 @@ Module gpu_stab_mod
 
   Use iso_fortran_env, only: output_unit, error_unit, int64
   Use runtime_error_mod, only: Terminate_on_error, ERROR_GENERIC
-  Use Hamiltonian_main, only: Ndim, N_FL, N_FL_eff, N_SUN, Calc_Fl_map, Nsigma, Op_V
+  Use Hamiltonian_main, only: Ndim, N_FL, N_FL_eff, N_SUN, Calc_Fl_map, Nsigma, Op_V, Projector, WF_L, WF_R
   Use Operator_mod, only: Op_phase
   Use QDRP_mod, only: Pivot_phase
   Use Control, only: Control_PrecisionG_vals, Control_PrecisionP, Control_Check_Phase, Control_Is_Finite
@@ -127,7 +127,7 @@ Module gpu_stab_mod
   Private
   Public :: gpu_stab_on, gpu_stab_setup, gpu_stab_finalize
   Public :: gpu_stab_wrapur, gpu_stab_wrapul, gpu_stab_exchange, gpu_stab_store_l, gpu_stab_cgr, gpu_stab_recompute
-  Public :: gpu_stab_reset_l, gpu_stab_reset_r, gpu_stab_reset_st, gpu_stab_put_udv, gpu_stab_untrack
+  Public :: gpu_stab_reset_l, gpu_stab_reset_r, gpu_stab_reset_st, gpu_stab_put_udv, gpu_stab_untrack, gpu_stab_export_r
   Public :: gpu_lu_phase_select, k_det_phase, gpu_stab_hook, gpu_stab_selftest
   Public :: k_det_qr, k_det_phase_u, k_set_one      ! det tracking (tests)
 #if defined(ALF_LA_HIP)
@@ -143,6 +143,12 @@ Module gpu_stab_mod
 
   Integer, Save :: s_N = 0, s_nfe = 0, s_nstm = 0, s_lw = 0
   Integer, Allocatable, Save :: s_nt(:)                     ! Stab_nt(0:NSTM)
+  ! projector code: U of every slot is Ndim x N_part (first s_nc(nfe) columns of the Ndim x Ndim slot), no V, no tracked det
+  Logical, Save :: s_proj = .false.
+  Integer, Allocatable, Save :: s_nc(:)                     ! columns of U per flavour: Ndim, or N_part (projector)
+  Integer, Save :: s_npm = 0                                ! max N_part (projector)
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: p_wf(:,:,:,:)   ! (Ndim,s_npm,2,nfe): 1 WF_L%P, 2 WF_R%P (device)
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: p_S(:,:), p_R(:,:)  ! CGRP: S (np x np, LU factors), R (np x Ndim) (device)
   Complex (Kind=Kind(0.d0)), Parameter :: z1 = (1.d0, 0.d0), z0 = (0.d0, 0.d0)
 
   ! ---- own device buffers (allocated once in gpu_stab_setup) ----
@@ -208,6 +214,9 @@ Contains
     s_N = Ndim; s_nfe = N_FL_eff; s_nstm = walker%NSTM
     allocate(s_nt(0:s_nstm)); s_nt = walker%Stab_nt
     n = s_N
+    allocate(s_nc(s_nfe)); s_nc = n
+    s_proj = Projector
+    if (s_proj) call proj_setup()
     allocate(sA(n,n), sB(n,n), sC(n,n), st_Gn(n,n), st_Gt(n,n), st_tau(n), st_Dl(n), st_c(8), st_r(16), st_nrm(n), st_Lt(n), st_pw(n))
     allocate(st_ipvt(n), st_perm(n), st_ipiv(n))
     allocate(udw_det(2,s_nfe), udv_det(s_nstm,s_nfe), w_det_ok(2,s_nfe), st_det_ok(s_nstm,s_nfe))
@@ -266,10 +275,14 @@ Contains
     endif
     !$omp target exit data map(delete: sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_ipvt, st_perm, st_ipiv, udw_det, udv_det)
     deallocate(sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_ipvt, st_perm, st_ipiv, st_work, s_nt)
-    deallocate(udw_det, udv_det, w_det_ok, st_det_ok)
+    deallocate(udw_det, udv_det, w_det_ok, st_det_ok, s_nc)
 #if defined(STABLOG)
     deallocate(st_rw)
 #endif
+    if (s_proj) then
+       !$omp target exit data map(delete: p_wf, p_S, p_R)
+       deallocate(p_wf, p_S, p_R)
+    endif
     gpu_stab_on = .false.
   end subroutine gpu_stab_finalize
 
@@ -367,6 +380,9 @@ Contains
   Subroutine reset_w(slot, nfe)
     Implicit none
     Integer, intent(in) :: slot, nfe
+    if (s_proj) then                                      ! projector: U = WF_L%P (slot 1) or WF_R%P (slot 2)
+       call k_copy_c(s_N*s_nc(nfe), p_wf(1,1,slot,nfe), udw_U(1,1,slot,nfe)); return
+    endif
     call k_ident(s_N, udw_U(1,1,slot,nfe), s_N)
     call k_ident(s_N, udw_V(1,1,slot,nfe), s_N)
     call k_set_one(1, udw_det(slot,nfe)); w_det_ok(slot,nfe) = .true.     ! det(1) = 1
@@ -395,6 +411,9 @@ Contains
   Subroutine gpu_stab_reset_st(nst, nfe)
     Implicit none
     Integer, intent(in) :: nst, nfe
+    if (s_proj) then                                      ! projector: left state at Ltrot = WF_L%P
+       call k_copy_c(s_N*s_nc(nfe), p_wf(1,1,1,nfe), udv_U(1,1,nst,nfe)); return
+    endif
     call k_ident(s_N, udv_U(1,1,nst,nfe), s_N)
     call k_ident(s_N, udv_V(1,1,nst,nfe), s_N)
     call k_set_one(1, udv_det(nst,nfe)); st_det_ok(nst,nfe) = .true.      ! det(1) = 1
@@ -462,7 +481,12 @@ Contains
     else
        call copy_st_to_w(nst, nfe, 2)
        call copy_w_to_st(1, nfe, nst)
-       if (get_Ltau() == 1 .and. .not. gpu_stab_tau_dev) then
+       if (get_Ltau() == 1 .and. s_proj) then
+          ! projector: Tau_p (host) reads U of udvst (N_part columns; no V, D unused by CGRP)
+          !$omp target update from(udv_U(:,1:s_nc(nfe),nst,nfe))
+          ust%U = udv_U(:,1:s_nc(nfe),nst,nfe)
+          ust%side = 'l'
+       else if (get_Ltau() == 1 .and. .not. gpu_stab_tau_dev) then
           ! D->H of the stored left propagation: the host TAU_M reads walker%udvst (unavoidable until the device tau pass, step 1e)
           !$omp target update from(udv_U(:,:,nst,nfe), udv_V(:,:,nst,nfe))
           ust%U = udv_U(:,:,nst,nfe)
@@ -489,7 +513,7 @@ Contains
     Integer :: nfe, nf
     do nfe = 1, s_nfe
        nf = Calc_Fl_map(nfe)
-       call gpu_wrapur_slices(udw_U(1,1,2,nfe), s_N, s_N, nf, ntau, ntau1)
+       call gpu_wrapur_slices(udw_U(1,1,2,nfe), s_N, s_nc(nfe), nf, ntau, ntau1)
        call decompose_slot('R', 2, nfe)
     enddo
   end subroutine gpu_stab_wrapur
@@ -501,7 +525,7 @@ Contains
     Integer :: nfe, nf
     do nfe = 1, s_nfe
        nf = Calc_Fl_map(nfe)
-       call gpu_wrapul_slices(udw_U(1,1,1,nfe), s_N, s_N, nf, ntau, ntau1)
+       call gpu_wrapul_slices(udw_U(1,1,1,nfe), s_N, s_nc(nfe), nf, ntau, ntau1)
        call decompose_slot('L', 1, nfe)
     enddo
   end subroutine gpu_stab_wrapul
@@ -1155,6 +1179,7 @@ Contains
     Type (qmc_walker_t), intent(in) :: walker
     Integer :: nfe, slot, nst
     call gpu_put_udv(walker)
+    if (s_proj) return                                    ! projector: CGRP takes its phase from the LU of S, no det tracking
     do nfe = 1, s_nfe
        do slot = 1, 2
           call upload_det(udw_U(1,1,slot,nfe), udw_det(slot,nfe))
@@ -2120,6 +2145,48 @@ Contains
     cgr_mode = mode_save; ph_ncmp = ncmp_save; ph_maxdiff = maxdiff_save
     call say('GPU stab self-test PASSED')
   end subroutine gpu_stab_selftest
+
+!====================================================================
+!  Projector code (Projector = .T.): every U is Ndim x N_part (the first s_nc(nfe) columns of its slot), no V, no tracked det;
+!  CGRP in place of CGR.  Finite-temperature runs never reach these routines (s_proj = .false.).
+!====================================================================
+!> @brief Projector setup: N_part per flavour (s_nc), WF_L%P and WF_R%P uploaded once (p_wf), CGRP buffers.
+  Subroutine proj_setup()
+    Implicit none
+    Integer :: nfe, nf, np
+    s_npm = 0
+    do nfe = 1, s_nfe
+       nf = Calc_Fl_map(nfe)
+       s_nc(nfe) = size(WF_R(nf)%P, 2)
+       if (size(WF_L(nf)%P, 2) /= s_nc(nfe) .or. size(WF_L(nf)%P, 1) /= s_N .or. size(WF_R(nf)%P, 1) /= s_N) then
+          write(error_unit,*) 'GPU stabilisation (projector): WF_L and WF_R of flavour ', nf, ' differ in shape'
+          call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+       endif
+       s_npm = max(s_npm, s_nc(nfe))
+    enddo
+    allocate(p_wf(s_N, s_npm, 2, s_nfe), p_S(s_npm, s_npm), p_R(s_npm, s_N))
+    p_wf = z0
+    do nfe = 1, s_nfe
+       nf = Calc_Fl_map(nfe); np = s_nc(nfe)
+       p_wf(:,1:np,1,nfe) = WF_L(nf)%P
+       p_wf(:,1:np,2,nfe) = WF_R(nf)%P
+    enddo
+    ! H->D once: the trial wave functions (resets of the sweeps)
+    !$omp target enter data map(to: p_wf) map(alloc: p_S, p_R)
+  end subroutine proj_setup
+
+!> @brief Projector, Ltau = 1: D->H of the device udvr (slot 2) into the host walker%udvr, which the host Tau_p reads.
+!> @param[inout] udvr host objects walker%udvr (U, N_part columns, side)
+  Subroutine gpu_stab_export_r(udvr)
+    Implicit none
+    Class (UDV_State), Dimension(:), intent(inout) :: udvr
+    Integer :: nfe
+    do nfe = 1, s_nfe
+       !$omp target update from(udw_U(:,1:s_nc(nfe),2,nfe))
+       udvr(nfe)%U = udw_U(:,1:s_nc(nfe),2,nfe)
+       udvr(nfe)%side = 'r'
+    enddo
+  end subroutine gpu_stab_export_r
 
 End Module gpu_stab_mod
 #endif
