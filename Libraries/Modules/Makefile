@@ -31,6 +31,7 @@ SRCS = Mat_subroutines_mod.F90 \
 ifeq ($(strip $(ALF_GPU)),intel)
 SRCS += linalg_onemkl_mod.F90
 SHIMOBJ = linalg_sycl_shim.o
+BLKLIB = libalfsb.so
 endif
 
 # CUDA backend of linalg_mod (GPU=nvidia only)
@@ -52,7 +53,7 @@ endif
 DEPSFILE := .deps.mk
 DEPSGEN := ../../Prog/gen_deps.py
 
-lib: $(LIB) libfakeintel.so
+lib: $(LIB) libfakeintel.so $(BLKLIB)
 
 # OBJS and MODS are auto-generated into $(DEPSFILE) by gen_deps.py
 -include $(DEPSFILE)
@@ -100,6 +101,11 @@ libfakeintel.so: fakeintel.c
 linalg_sycl_shim.o: linalg_sycl_shim.cpp
 	icpx -fsycl -O2 -std=c++17 $(ALF_SYCL_FLAGS) -I$(MKLROOT)/include -c $<
 
+# SYCL kernels of the asynchronous block path (gpu_lowrank_mod): a shared library, because the device code of user SYCL kernels is
+# registered with the SYCL runtime only when the sycl driver links it (an ifx-linked object gives "No kernel named ... was found")
+libalfsb.so: linalg_sycl_blk.cpp
+	icpx -fsycl -fPIC -shared -O2 -std=c++17 $(ALF_SYCL_FLAGS) -I$(MKLROOT)/include $< -o $@ -qmkl -lmkl_sycl_blas
+
 entanglement_mod.o: entanglement_mod.F90
 	$(ALF_FC) -c $(shell echo $(ALF_FLAGS_MODULES) | sed 's| -pedantic||') $<
 
@@ -107,7 +113,7 @@ $(DEPSFILE): $(SRCS) $(DEPSGEN)
 	python3 $(DEPSGEN) $(SRCS) > $(DEPSFILE)
 
 clean: $(DEPSFILE)
-	rm -f $(OBJS) $(MODS) $(LIB) $(DEPSFILE) libfakeintel.so linalg_sycl_shim.o alf_la_hip_shim.o alf_hip_kernels.o alf_hip_qr.o
+	rm -f $(OBJS) $(MODS) $(LIB) $(DEPSFILE) libfakeintel.so linalg_sycl_shim.o alf_la_hip_shim.o alf_hip_kernels.o alf_hip_qr.o libalfsb.so
 
 #unused modules: histograms histograms_v2 log_mesh natural_constants
 #unused, except for in Prog/FFA_Orginals/: precdef
