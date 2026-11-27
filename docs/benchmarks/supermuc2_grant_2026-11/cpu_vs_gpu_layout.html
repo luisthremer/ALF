@@ -46,7 +46,7 @@ svg .lbl{fill:var(--muted)}
   <span class="eyebrow">SuperMUC-NG Phase 2 · grant proposal · draft 2026-11-27</span>
   <h1>ALF node throughput: GPU node vs CPU node</h1>
   <p>Test layout for comparing how many Monte Carlo sweeps one full Phase 2 node delivers on its four Max 1550 GPUs and on its 112 CPU cores. <strong>Nothing has been submitted.</strong> This page is for review before the runs start.</p>
-  <div class="status"><span class="tag gpu">GPU build: build_pp</span><span class="tag cpu">CPU build: build_cpu-pp</span><span class="tag" style="color:var(--muted)">ALF 410c7b04 · /hppfs/work/pn73xu/di38zuw/ANTRAG_2026-11-27</span></div>
+  <div class="status"><span class="tag gpu">GPU: build_pp (410c7b04)</span><span class="tag gpu">GPU: Intel-optimised bin_batched_d1060305</span><span class="tag cpu">CPU: build_cpu-pp (410c7b04)</span><span class="tag" style="color:var(--muted)">/hppfs/work/pn73xu/di38zuw/ANTRAG_2026-11-27</span></div>
 </header>
 
 <section>
@@ -135,7 +135,18 @@ svg .lbl{fill:var(--muted)}
     <p class="muted">4 walkers/tile with 3 threads is the production layout. The 1-thread check shows whether host threads matter on the GPU; no full OpenMP scan there, since almost all work runs on the tile.</p>
   </div>
   </div>
-  <p>Total: 5 CPU + 5 GPU layouts × 3 sizes = <strong>30 runs</strong>. They are packed into one job per size and device, so 6 jobs, each running its layouts one after another on the same node.</p>
+  <div class="card">
+    <h3 class="gpu">Intel-optimised GPU binary (GPU layouts only)</h3>
+    <p>The same 5 GPU layouts and 3 sizes are run a second time with the Intel-optimised binary. The CPU side is not repeated: the CPU code is identical.</p>
+    <div class="tbl"><table>
+      <tr><th>Item</th><th>Value</th></tr>
+      <tr><td>Source</td><td>branch intel-batched, commit d1060305, tag <code>prod/2026-11-15-smuc-L36-intel-batched</code> (contains 410c7b04)</td></tr>
+      <tr><td>Binary</td><td><code>ANTRAG_2026-11-27/bin_batched_d1060305/pp/ALF.out</code>, an unchanged copy of the production binary of RUN_L36_batched (md5 4bd705b0… checked, with its three shared libraries)</td></tr>
+      <tr><td>Run-time switches (as RUN_L36_batched)</td><td><code>LIBOMPTARGET_LEVEL_ZERO_STAGING_BUFFER_SIZE=1048576 ALFSH_ASYNCBLK=1 ALFSH_DEVQR=2 ALFSH_DEVUNMQR=1 ALFSH_QRNB=16 ALFSH_OBSCORR=1 ALFSH_BLKFUSE=5 ALFSH_BLKPF=1</code>, <code>LD_LIBRARY_PATH</code> = binary directory</td></tr>
+    </table></div>
+    <p class="muted">Production ran this binary with Ltau = 0. Whether every switch also covers the time-displaced measurements (Ltau = 1) is not checked yet; the first short run shows it. If a switch does not apply, the run falls back to the default path for that part, and the report says so.</p>
+  </div>
+  <p>Total: 5 CPU + 5 GPU (410c7b04) + 5 GPU (Intel-optimised) layouts × 3 sizes = <strong>45 runs</strong>, packed into one job per size and binary: <strong>9 jobs</strong>, each running its layouts one after another on the same node.</p>
 </section>
 
 <section>
@@ -164,7 +175,7 @@ svg .lbl{fill:var(--muted)}
 <section>
   <h2>Plots for the proposal</h2>
   <ol>
-    <li><strong>Main figure.</strong> Node throughput (sweeps per node-hour, log scale) against L: best CPU layout and best GPU layout, with error bars, and the GPU/CPU factor written at each L.</li>
+    <li><strong>Main figure.</strong> Node throughput (sweeps per node-hour, log scale) against L: best CPU layout, best GPU layout with 410c7b04 and with the Intel-optimised binary, with error bars, and the GPU/CPU factor written at each L.</li>
     <li><strong>Layout scan.</strong> Throughput per layout, one panel per L: CPU bars by threads per rank, GPU bars by walkers per tile. Shows that each side was tuned before comparing.</li>
     <li><strong>Time per sweep of one walker</strong> against layout. Shows the trade-off: more walkers per tile means more throughput but slower single chains.</li>
     <li><strong>Energy per sweep</strong> against L, GPU node vs CPU-only node (estimated).</li>
@@ -178,8 +189,9 @@ svg .lbl{fill:var(--muted)}
   <div class="tbl"><table>
     <tr><th>Part</th><th>Jobs</th><th>Node-hours</th></tr>
     <tr><td>CPU, L = 16 / 24 / 32</td><td class="n">3</td><td class="n">≈ 0.3 / 0.8 / 2</td></tr>
-    <tr><td>GPU, L = 16 / 24 / 32</td><td class="n">3</td><td class="n">≈ 0.3 each</td></tr>
-    <tr><td><strong>Total</strong></td><td class="n">6</td><td class="n"><strong>≈ 4–5 node-h ≈ 16–20 GPU-h</strong> (whole node charged, 4 GPU-h per node-hour)</td></tr>
+    <tr><td>GPU 410c7b04, L = 16 / 24 / 32</td><td class="n">3</td><td class="n">≈ 0.3 each</td></tr>
+    <tr><td>GPU Intel-optimised, L = 16 / 24 / 32</td><td class="n">3</td><td class="n">≈ 0.3 each</td></tr>
+    <tr><td><strong>Total</strong></td><td class="n">9</td><td class="n"><strong>≈ 5–6 node-h ≈ 20–24 GPU-h</strong> (whole node charged, 4 GPU-h per node-hour)</td></tr>
   </table></div>
   <p class="muted">Partition: test (≤ 4 nodes, 1 h) for the GPU jobs and the CPU jobs at L = 16, 24; general for the CPU job at L = 32 (over 1 h). Charged to pn93la.</p>
 </section>
