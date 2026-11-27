@@ -34,3 +34,7 @@ on the local host), because the test partition allows only 5 running jobs per us
 
 `./prelim.sh` builds `report/report_prelim.pdf` from all runs finished so far (`./prelim.sh fake`: fake data).
 `report/report.tex` explains the layouts (x axes) in Tables 1-2; results tables come from `plots/make_tables.py`.
+
+Update 11:00: the CPU runs are short (L=16, 1 thread: 2.8 s/sweep), so no CPU job needs `general`. Waiting jobs
+566811-566814 (test/general) and 566818-566819 (preempt, estimated start next day) were cancelled and replaced by two
+single-node test jobs, 566820 (cpu L=32) and 566821 (cpu L=36), which fit into gaps more easily.
