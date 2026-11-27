@@ -18,7 +18,7 @@ or its four Intel Data Center GPU Max 1550 (8 tiles) with ALF 410c7b04 (\texttt{
 production binary (branch intel-batched, d1060305, run-time switches of the production run RUN\_L36\_batched).
 Hubbard model, square lattice, $L\in\{16,24,32,36\}$, $\beta=L$ (160 to 360 time slices), $\Delta\tau=0.1$, $h_0=0$, $U=5.25$, $M_z=$ F,
 Symm and Checkerboard on, Ltau $=0$, submatrix updates with $N_\text{delay}=64$, Nwrap $=10$.
-Each run does NBin sweeps (NSweep $=1$): NBin $=6$ (5 timed), for the CPU at $L=32,36$ NBin $=3$ or 4 (2 or 3 timed); the first sweep is dropped. Only the configurations that were best at $\beta=4$ are run: CPU \texttt{t1}, \texttt{t2} (and \texttt{t4} at $L=36$ as backup), ALF GPU \texttt{w2t7}, \texttt{w4t3}, Intel-optimised \texttt{w4t1}, \texttt{w4t3}.
+Each run does NBin sweeps (NSweep $=1$): NBin $=6$ (5 timed), for the CPU at $L=32,36$ NBin $=3$ or 4 (2 or 3 timed); the first sweep is dropped. Only the configurations that were best at $\beta=4$ are run: CPU \texttt{t1}, \texttt{t2} (and \texttt{t4} at $L=36$ as backup; \texttt{t1} at $L=36$ was killed by signal 9 after 14 min without a finished sweep, most likely out of memory: about 4\,GB of stored decompositions per process, $\approx 435$\,GB for 112 processes, so \texttt{t2} is the best possible CPU configuration at $L=36$), ALF GPU \texttt{w2t7}, \texttt{w4t3}, Intel-optimised \texttt{w4t1}, \texttt{w4t3}.
 All walkers of a run form one parameter set; one bin is the average of one sweep over all walkers.
 
 \section{Node and layouts (x axes of the figures)}

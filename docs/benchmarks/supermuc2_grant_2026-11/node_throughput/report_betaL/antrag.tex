@@ -45,6 +45,7 @@ Toolchain: Intel oneAPI 2025.3, Intel MPI 2021.15, oneMKL 2025.3.
 \item One full node per run, best configuration per node type: CPU node = 112 cores (2 $\times$ Xeon 8480L),
   GPU node = 4 $\times$ Intel Max 1550 (8 tiles).
 \item 2 to 5 sweeps timed individually per run; sweep-to-sweep variation $<1\,\%$.
+\item CPU node at $L=36$: 112 MPI processes $\times$ 1 thread exceed the node memory (run killed), so 56 $\times$ 2 is the best possible configuration there.
 \end{itemize}
 
 \begin{table}[H]
