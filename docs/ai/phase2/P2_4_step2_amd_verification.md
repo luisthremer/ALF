@@ -162,6 +162,15 @@ Follow-up idea (not in this feature): the remaining OpenMP launches of ~100-200 
 `k_upd_prep` / `k_upd_geru` (standard update of diagonal operators), `k_gen_block` / `k_gen_accept` / `k_dly_accept`
 (delayed P2.6), `k_vrun`, `k_wrap_g0`, and the small `target update` copies around the update (`rk_p`, `rk_w`, `rk_g`).
 
+## Calc_Fl (Plain_Vanilla) on GPU=amd (feature `gpu-amd-calcfl`, 2026-11-27)
+
+`p26-calcfl` adds no device kernels (weight reconstruction on the host, device updates and stabilisation of the diagonal Hubbard
+operators, observables and tau pass on the host), so the refusal is removed without HIP code. `p26_runs/cases_calcfl.py` (the
+`pv-*` cases of `gpu_e2e.py` plus 8x8 and the Hubbard regression), MI210, GPU vs `ALF_GPU_DISABLE=1`, same seeds, `confout`
+identical: 10/10 OK. U > 0 half filling standard / delayed 4 / submatrix 4: 2.7e-10 (tol >= 3.6e-9), 8x8 delayed 16 3.2e-10
+(tol 2.5e-9); U < 0 off half filling: <= 1.1e-14 (tol 1e-11), 8x8 submatrix 16 2.9e-14; Hubbard 2.7e-10. Every Calc_Fl run:
+`GPU update path: ACTIVE`, `GPU observables (step 1e): HOST`, `GPU tau pass (step 1e): OFF, reason: Projector or reconstruction`.
+
 ## Not done in this feature
 
 The root cause of R2 (GCC 15 offload is not available on amd).
