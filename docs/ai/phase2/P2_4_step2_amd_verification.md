@@ -93,6 +93,29 @@ product (the G2 default) costs 4.9x on amdgcn: every checkerboard group is one l
 production at Ndim <= 800, `ALF_GPU_HOPD=1` (Precision Green 1.2x the CPU value on this input, section above) or a HIP kernel for the
 group product (next step) is the choice.
 
+## HIP kernel for the checkerboard group product (feature `gpu-amd-hop`, 2026-11-27)
+
+`k_cb_left_g` / `k_cb_right_g` of `gpu_wrap_mod` run as HIP kernels on GPU=amd (same arithmetic as `el_left_d` / `el_right_d`,
+one HIP launch per group instead of one libgomp target region). Checks on the MI210:
+- `51-gpu-wrap` self-test (device hopping products against the host `Hop_mod`, 1e-14): PASSED for checkerboard, dense and
+  `ALF_GPU_HOPD=1`; faults `hop` and `nan` seen.
+- Reduced gate, GPU vs `ALF_GPU_DISABLE=1` (Mz/SU(2), L = 8, 12, 16, 24, Ltau 0/1, delayed/submatrix, default HOPD = 0; rule of
+  decision (A)): 28 of 32 PASS; the 4 others are Mz 24x24, SpinXY/SpinT_eq 1.8e-8, the accepted pre-pivoted-QR effect
+  (KNOWN_ISSUES G7, class C), with the same values as before the change.
+- Precision Green (the G2 gate): the GPU Precision Green mean is **bit-identical** before and after the change in all 25 cases
+  run in both gates; the HIP kernel reproduces the OpenMP kernel exactly. GPU/CPU ratio of the Precision Green mean over the 32
+  cases: median 1.25, max 1.83 (SU(2) 24x24, a case that had no earlier run).
+
+Speed, same setup as the previous section (MI210 alone, `Symm = F`, s per sweep in steady state; `amd:~/p2_amd/spd/results_hop.txt`):
+
+| L (N) | gpu-port 078d806b | CM default `HOPD=0`, before -> after | CM `HOPD=1` |
+|---|---|---|---|
+| 24 (576) | 1.78 | 5.36 -> **1.30** (4.1x; 1.4x faster than gpu-port) | 0.98 |
+| 32 (1024) | 17.7 | 14.2 -> **5.1** (2.8x; 3.4x faster than gpu-port) | 3.1 |
+
+At L = 32 the dense product is not used (Ndim > 800), so the last two columns run the same path: their spread (3.1 .. 5.1 s) is
+run-to-run noise. The per-factor default (CPU-level precision, G2) is now faster than gpu-port at both sizes.
+
 ## Not done in this feature
 
-The root cause of R2 (GCC 15 offload is not available on amd); a HIP kernel for the per-factor checkerboard product.
+The root cause of R2 (GCC 15 offload is not available on amd).
