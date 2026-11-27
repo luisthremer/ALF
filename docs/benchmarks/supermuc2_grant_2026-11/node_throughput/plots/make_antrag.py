@@ -40,6 +40,8 @@ if full:
             f"\\newcommand{{\\FacBase}}{{{fb:.1f}}}", f"\\newcommand{{\\Eratio}}{{{er:.1f}}}"]
 else:
     out += ["\\newcommand{\\Lmax}{--}", "\\newcommand{\\FacIntel}{--}", "\\newcommand{\\FacBase}{--}", "\\newcommand{\\Eratio}{--}"]
+facs = [(L, b[("gpub", L)]["throughput_node_h"] / b[("cpu", L)]["throughput_node_h"]) for L in Ls if L in full]
+out.append("\\newcommand{\\FacList}{" + ", ".join(f"{f:.1f}$\\times$ ($L={L}$)" for L, f in facs) + "}")
 complete = set(full) >= PLANNED
 partial = any(not done(s_, L) for s_ in SIDES for L in Ls)
 out.append("\\newcommand{\\StarNote}{" + ("$^*$\\,best of the configurations finished so far; no speedup given." if partial else "") + "}")

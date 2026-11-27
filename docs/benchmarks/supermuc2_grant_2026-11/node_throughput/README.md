@@ -56,3 +56,4 @@ three 4-node test jobs (`multi2.sh`, one run per node) + CPU t1 at L=32/36 on ge
 Reports: `SET=betaL ./prelim.sh` -> `report_betaL/report_prelim.pdf` (internal) and `report_betaL/antrag_prelim.pdf`
 (proposal version); the beta = 4 reports in `report/` are unchanged.
 Update 12:00: full report also in the juelich repo, SuperMUC_Phase2_Conversion_2026/full_report/ (commit d2abe10).
+Update 12:05: beta = 4 series complete (60 runs: 4 L x 3 codes x 5 configurations, each run once; the REPEAT=2 of submit_all.sh did not reach the jobs because of --export=NONE). Final reports: report/report_final.pdf, report/antrag_final.pdf.

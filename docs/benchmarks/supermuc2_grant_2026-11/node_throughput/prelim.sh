@@ -11,7 +11,7 @@ PY=${PY:-python3}
 A=/hppfs/work/pn73xu/di38zuw/ANTRAG_2026-11-27
 # SET=betaL: the beta = L series (runs_betaL/, report_betaL/, results_betaL.csv); default: the beta = 4 series
 if [ "$SET" = betaL ]; then RUNS=runs_betaL; RDIR=report_betaL; CSVR=results_betaL.csv; NPLAN=25; export NLAY=2 BETA_LABEL='\beta = L' REPORTDIR=report_betaL
-else RUNS=runs; RDIR=report; CSVR=results.csv; NPLAN=100; export NLAY=5 BETA_LABEL='\beta = 4' REPORTDIR=report; fi
+else RUNS=runs; RDIR=report; CSVR=results.csv; NPLAN=60; export NLAY=5 BETA_LABEL='\beta = 4' REPORTDIR=report; fi
 if [ "$1" = fake ]; then
   MODE=fake; CSV=plots/results_fake.csv; $PY plots/make_fake_data.py > $CSV
   NOTE='\textbf{FAKE DATA.} All numbers and figures in this version are invented, only to check layout and plots.'
@@ -23,6 +23,7 @@ else
   NRUN=$(($(wc -l < $CSV) - 1))
   QUEUE=$(timeout 60 ssh supermuc2 'squeue -u $USER -h -o "%j %T"' 2>/dev/null | grep -cE '^(nt|nb)_' || true)
   NOTE="\\textbf{Preliminary.} $NRUN finished runs (of $NPLAN planned), $QUEUE jobs still queued or running at $(date '+%Y-%m-%d %H:%M')."
+  [ "$NRUN" -ge "$NPLAN" ] && { MODE=final; NOTE="\\textbf{Final.} All $NRUN runs finished ($(date '+%Y-%m-%d %H:%M'))."; }
   FAKEFLAG=
 fi
 rm -rf $RDIR/fig; mkdir -p $RDIR/fig

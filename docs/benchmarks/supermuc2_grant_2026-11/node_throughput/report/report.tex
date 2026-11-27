@@ -63,7 +63,7 @@ Walkers synchronise at every bin, so $t_\text{sweep}$ is the time of the slowest
 \text{throughput}=\frac{3600\,N_w}{\bar t_\text{sweep}}\ \text{sweeps per node-hour},\qquad
 \sigma=\text{throughput}\cdot\frac{\sigma_{\bar t}}{\bar t},
 \]
-with $\sigma_{\bar t}$ the standard error of the 10 sweep times. GPU layouts run twice; repeats are averaged.
+with $\sigma_{\bar t}$ the standard error of the 10 sweep times. Each configuration was run once.
 
 Energy per sweep (estimate from vendor TDP, to be checked): CPU-only node $2\times350$\,W $=700$\,W,
 GPU node $4\times600$\,W $+700$\,W $=3100$\,W; $E=P_\text{node}\cdot3600/\text{throughput}$.

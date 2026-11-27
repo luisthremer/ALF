@@ -14,9 +14,9 @@ $L$ & side & commit & best layout & sweeps per node-hour & factor vs CPU\\\midru
 32 & GPU & \texttt{410c7b04} & \texttt{w2t7} & $11\,676 \pm 34$ & 4.72\\
 32 & GPU Intel-opt. & \texttt{d1060305} & \texttt{w4t1} & $29\,159 \pm 19$ & 11.78\\
 \addlinespace
-36 & CPU & \texttt{410c7b04} & \texttt{t2} & $1\,625 \pm 1$ & 1.00\\
-36 & GPU & \texttt{410c7b04} & \texttt{w2t7} & $7\,311 \pm 7$ & 4.50\\
-36 & GPU Intel-opt. & \texttt{d1060305} & \texttt{w4t1} & $14\,795 \pm 11$ & 9.11\\
+36 & CPU & \texttt{410c7b04} & \texttt{t1} & $1\,728 \pm 1$ & 1.00\\
+36 & GPU & \texttt{410c7b04} & \texttt{w2t7} & $7\,311 \pm 7$ & 4.23\\
+36 & GPU Intel-opt. & \texttt{d1060305} & \texttt{w4t1} & $14\,795 \pm 11$ & 8.56\\
 \bottomrule\end{tabular}\end{table}
 \begin{table}[h]\centering\small
 \caption{All layouts at $L=16$ ($\beta=4$). Time per sweep of one walker (mean of the timed sweeps, $\pm$ standard error; averaged over repeats) and node throughput.}
@@ -64,6 +64,7 @@ GPU Intel-opt. & \texttt{d1060305} & \texttt{w8t1} & 8 walker/tile, 1 thr. & $4.
 side & commit & tag & layout & time per sweep (s) & sweeps per node-hour\\\midrule
 CPU & \texttt{410c7b04} & \texttt{t1} & 112 ranks $\times$ 1 thr. & $162.937 \pm 0.028$ & $2\,475 \pm 0$\\
 CPU & \texttt{410c7b04} & \texttt{t2} & 56 ranks $\times$ 2 thr. & $95.704 \pm 0.021$ & $2\,106 \pm 0$\\
+CPU & \texttt{410c7b04} & \texttt{t4} & 28 ranks $\times$ 4 thr. & $69.022 \pm 0.019$ & $1\,460 \pm 0$\\
 CPU & \texttt{410c7b04} & \texttt{t6} & 18 ranks $\times$ 6 thr. & $54.431 \pm 0.026$ & $1\,190 \pm 1$\\
 CPU & \texttt{410c7b04} & \texttt{t8} & 14 ranks $\times$ 8 thr. & $50.380 \pm 0.012$ & $1\,000 \pm 0$\\
 GPU & \texttt{410c7b04} & \texttt{w1t14} & 1 walker/tile, 14 thr. & $3.082 \pm 0.004$ & $9\,346 \pm 11$\\
@@ -81,6 +82,7 @@ GPU Intel-opt. & \texttt{d1060305} & \texttt{w8t1} & 8 walker/tile, 1 thr. & $10
 \caption{All layouts at $L=36$ ($\beta=4$). Time per sweep of one walker (mean of the timed sweeps, $\pm$ standard error; averaged over repeats) and node throughput.}
 \begin{tabular}{@{}llllrr@{}}\toprule
 side & commit & tag & layout & time per sweep (s) & sweeps per node-hour\\\midrule
+CPU & \texttt{410c7b04} & \texttt{t1} & 112 ranks $\times$ 1 thr. & $233.296 \pm 0.081$ & $1\,728 \pm 1$\\
 CPU & \texttt{410c7b04} & \texttt{t2} & 56 ranks $\times$ 2 thr. & $124.077 \pm 0.058$ & $1\,625 \pm 1$\\
 CPU & \texttt{410c7b04} & \texttt{t4} & 28 ranks $\times$ 4 thr. & $77.811 \pm 0.034$ & $1\,295 \pm 1$\\
 CPU & \texttt{410c7b04} & \texttt{t6} & 18 ranks $\times$ 6 thr. & $63.220 \pm 0.058$ & $1\,025 \pm 1$\\
