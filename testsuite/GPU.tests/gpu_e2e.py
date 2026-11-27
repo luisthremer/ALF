@@ -45,7 +45,8 @@ NUM = re.compile(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[EeDd][-+]?\d+)?")
 NUM_WS = re.compile(r"\s*" + NUM.pattern)      # a number with its leading blanks (a minus sign takes the place of a blank)
 ACTIVE_TEXT = "ACTIVE (mirror; wraps, updates and stabilisation on the device path)"
 
-# label, edits of the parameter file, env of the active run, expectation ("ok", "inactive:<text>", "fault" or "abort")
+# label, edits of the parameter file, env of the active run, expectation ("ok", "hostobs" (device path, host observables), "inactive:<text>", "fault" or "abort")
+PV = '"Hubbard_Plain_Vanilla"'
 CASES = [
     ("mz-standard", {}, {"ALF_GPU_SELFTEST": "1"}, "ok"),
     ("mz-delayed-N4", {"Sequential_scheme": '"delayed"', "N_delay": "4"}, {}, "ok"),
@@ -75,6 +76,17 @@ CASES = [
     ("fault-stab-perm", {}, {"ALF_GPU_DEBUG": "1", "ALF_GPU_FAULT_STAB": "perm"}, "abort"),
     # a flipped sign of the tracked det(U) phase must be stopped by the check mode (compares with the LU phase)
     ("fault-stab-det", {}, {"ALF_GPU_DEBUG": "1", "ALF_GPU_CGR_LU": "2", "ALF_GPU_FAULT_STAB": "det"}, "abort"),
+    # P2.6 Calc_Fl: Plain_Vanilla reconstructs flavour 1 from flavour 2 (weight, G, GT0/G0T); repulsive U at half filling and attractive
+    # U off half filling (the two Calc_Fl triggers of the model). Device updates and stabilisation, host Obser and TAU_M ("hostobs").
+    ("pv-half-standard", {"ham_name": PV}, {}, "hostobs"),
+    ("pv-half-delayed-N4", {"ham_name": PV, "Sequential_scheme": '"delayed"', "N_delay": "4"}, {}, "hostobs"),
+    ("pv-half-submatrix-N4", {"ham_name": PV, "Sequential_scheme": '"submatrix"', "N_delay": "4"}, {}, "hostobs"),
+    ("pv-negU-standard", {"ham_name": PV, "PV:ham_U": "-4.d0", "PV:ham_chem": "0.5d0"}, {}, "hostobs"),
+    ("pv-negU-delayed-N4", {"ham_name": PV, "PV:ham_U": "-4.d0", "PV:ham_chem": "0.5d0", "Sequential_scheme": '"delayed"',
+                            "N_delay": "4"}, {}, "hostobs"),
+    ("pv-negU-submatrix-N4", {"ham_name": PV, "PV:ham_U": "-4.d0", "PV:ham_chem": "0.5d0", "Sequential_scheme": '"submatrix"',
+                              "N_delay": "4"}, {}, "hostobs"),
+    ("pv-projector", {"ham_name": PV, "PV:Projector": ".T."}, {}, "inactive:projector"),
     # ALF_GPU_FAULT=nsig (stale device copy of the field) cannot be seen on the host backend: host and "device" array are the
     # same memory there, so it is not a case here (to be added for the vendor backends, step 2).
 ]
@@ -100,7 +112,12 @@ def prepare(d, start, edits):
         if n != 1:
             sys.exit("cannot set %s in parameters" % key)
     for key, val in edits.items():
-        if key in ("Mz", "Nwrap", "Ltau", "L1", "L2", "Lattice_type", "Symm", "Checkerboard", "ham_h0", "ham_U2", "LOBS_ST", "LOBS_EN"):       # existing keys: replace the value
+        if key.startswith("PV:"):   # a key of &VAR_Hubbard_Plain_Vanilla (ham_U, ham_chem exist in other namelists too)
+            t, n = re.subn(r"(?ms)(^&VAR_Hubbard_Plain_Vanilla\b.*?^%s\s*=\s*)[^\s!]+" % key[3:], r"\g<1>%s" % val, t, count=1)
+            if n != 1:
+                sys.exit("cannot set %s in parameters" % key)
+            continue
+        if key in ("ham_name", "Mz", "Nwrap", "Ltau", "L1", "L2", "Lattice_type", "Symm", "Checkerboard", "ham_h0", "ham_U2", "LOBS_ST", "LOBS_EN"):       # existing keys: replace the value
             t, n = re.subn(r"(?m)^(%s\s*=\s*)[^\s!]+" % key, r"\g<1>%s" % val, t, count=1)
         else:   # new key of &VAR_QMC, inserted before Ltau
             t, n = re.subn(r"(?m)^(Ltau\s*=)", "%s = %s\n\\g<1>" % (key, val), t, count=1)
@@ -235,6 +252,11 @@ def main():
                 m = re.search(r"on-demand G copies H->D (\d+) and D->H (\d+)", info)
                 if not m or m.group(2) != "0":
                     bad_case.append("D->H count of on-demand G copies is not 0: %s" % (m.group(0) if m else "line missing"))
+            if expect == "hostobs":
+                for want in ("GPU update path: ACTIVE", "GPU observables (step 1e): HOST",
+                             "GPU tau pass (step 1e): OFF, reason: Projector or reconstruction"):
+                    if want not in info:
+                        bad_case.append("info of the active run has no '%s' line" % want)
         if not os.path.exists(os.path.join(dirs["active"], "confout_0")) and not os.path.exists(os.path.join(dirs["active"], "data.h5")):
             bad_case.append("no confout_0 / data.h5 in the active run")
         gp_act, gp_dis = green_precision(dirs["active"]), green_precision(dirs["disabled"])
