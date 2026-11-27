@@ -5,21 +5,21 @@
 \newcommand{\Complete}{no}
 \newcommand{\AntragTable}{%
 \begin{tabular}{rlllrrr}
-$L$ & node & commit & configuration & work units / node-h & speedup & kJ / unit\\
+$L$ & node & code & configuration & work units / node-h & speedup & kJ / unit\\
 \hline
-16 & CPU & \texttt{410c7b04} & 112 proc.\ $\times$ 1 thr. & 144\,581 & 1.0 & 0.017\\
-16 & GPU & \texttt{410c7b04} & 4 proc./tile, 1 thr. & 171\,088 & 1.2 & 0.065\\
-16 & GPU, Intel-opt. & \texttt{d1060305} & 4 proc./tile, 1 thr. & 389\,496 & 2.7 & 0.029\\
+16 & CPU & ALF CPU & 112 proc.\ $\times$ 1 thr. & 144\,581 & 1.0 & 0.017\\
+16 & GPU & ALF GPU & 4 proc./tile, 1 thr. & 171\,088 & 1.2 & 0.065\\
+16 & GPU & ALF GPU Intel-opt. & 4 proc./tile, 1 thr. & 389\,496 & 2.7 & 0.029\\
 \hline
-24 & CPU & \texttt{410c7b04} & 112 proc.\ $\times$ 1 thr. & 18\,266 & 1.0 & 0.138\\
-24 & GPU & \texttt{410c7b04} & 4 proc./tile, 3 thr. & 28\,664 & 1.6 & 0.389\\
-24 & GPU, Intel-opt. & \texttt{d1060305} & 4 proc./tile, 1 thr. & 106\,700 & 5.8 & 0.105\\
+24 & CPU & ALF CPU & 112 proc.\ $\times$ 1 thr. & 18\,266 & 1.0 & 0.138\\
+24 & GPU & ALF GPU & 4 proc./tile, 3 thr. & 28\,664 & 1.6 & 0.389\\
+24 & GPU & ALF GPU Intel-opt. & 4 proc./tile, 1 thr. & 106\,700 & 5.8 & 0.105\\
 \hline
-32 & CPU & \texttt{410c7b04} & \multicolumn{4}{l}{\emph{running}}\\
-32 & GPU & \texttt{410c7b04} & 2 proc./tile, 7 thr. & 11\,676 & -- & 0.956\\
-32 & GPU, Intel-opt. & \texttt{d1060305} & 4 proc./tile, 1 thr. & 29\,159 & -- & 0.383\\
+32 & CPU & ALF CPU & \multicolumn{4}{l}{\emph{running}}\\
+32 & GPU & ALF GPU & 2 proc./tile, 7 thr. & 11\,676 & -- & 0.956\\
+32 & GPU & ALF GPU Intel-opt. & 4 proc./tile, 1 thr. & 29\,159 & -- & 0.383\\
 \hline
-36 & CPU & \texttt{410c7b04} & \multicolumn{4}{l}{\emph{running}}\\
-36 & GPU & \texttt{410c7b04} & 2 proc./tile, 7 thr. & 7\,311 & -- & 1.526\\
-36 & GPU, Intel-opt. & \texttt{d1060305} & 4 proc./tile, 1 thr. & 14\,795 & -- & 0.754\\
+36 & CPU & ALF CPU & \multicolumn{4}{l}{\emph{running}}\\
+36 & GPU & ALF GPU & 2 proc./tile, 7 thr. & 7\,311 & -- & 1.526\\
+36 & GPU & ALF GPU Intel-opt. & 4 proc./tile, 1 thr. & 14\,795 & -- & 0.754\\
 \end{tabular}}

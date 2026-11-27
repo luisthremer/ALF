@@ -3,3 +3,5 @@ report/*.log
 report/*.out
 report/report.pdf
 report/antrag.pdf
+report/antrag_best.dat
+report/antrag_fac.dat

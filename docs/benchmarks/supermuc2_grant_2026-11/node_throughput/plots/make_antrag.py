@@ -39,19 +39,20 @@ else:
 complete = set(full) >= PLANNED
 out.append(f"\\newcommand{{\\Complete}}{{{'yes' if complete else 'no'}}}")
 
-SHORT = {"cpu": "CPU", "gpu": "GPU", "gpub": "GPU, Intel-opt."}
+SHORT = {"cpu": "CPU", "gpu": "GPU", "gpub": "GPU"}
+CODE = {"cpu": "ALF CPU", "gpu": "ALF GPU", "gpub": "ALF GPU Intel-opt."}
 CONF = {"cpu": lambda r: f"{r['ranks']} proc.\\ $\\times$ {r['threads']} thr.",
         "gpu": lambda r: f"{r['w']} proc./tile, {r['threads']} thr.",
         "gpub": lambda r: f"{r['w']} proc./tile, {r['threads']} thr."}
 t = ["\\begin{tabular}{rlllrrr}",
-     "$L$ & node & commit & configuration & work units / node-h & speedup & kJ / unit\\\\", "\\hline"]
+     "$L$ & node & code & configuration & work units / node-h & speedup & kJ / unit\\\\", "\\hline"]
 for i, L in enumerate(Ls):
     if i:
         t.append("\\hline")
     c = b.get(("cpu", L))
     for s_ in SIDES:
         r = b.get((s_, L))
-        head = f"{L} & {SHORT[s_]} & \\texttt{{{COMMIT[s_]}}}"
+        head = f"{L} & {SHORT[s_]} & {CODE[s_]}"
         if not r:
             t.append(f"{head} & \\multicolumn{{4}}{{l}}{{\\emph{{running}}}}\\\\")
             continue
@@ -61,4 +62,20 @@ for i, L in enumerate(Ls):
         t.append(f"{head} & {CONF[s_](r)} & {num(thr)} & {fac} & {e:.3f}\\\\")
 t.append("\\end{tabular}")
 out.append("\\newcommand{\\AntragTable}{%\n" + "\n".join(t) + "}")
+# data file for the pgfplots figures (best layout per side; nan = not finished)
+with open(__file__.rsplit("/", 2)[0] + "/report/antrag_best.dat", "w") as f:
+    f.write("L thr_cpu thr_gpu thr_gpub e_cpu e_gpu e_gpub fac_gpub\n")
+    for L in Ls:
+        v = []
+        for s_ in SIDES:
+            r = b.get((s_, L)); v.append(r["throughput_node_h"] if r else float("nan"))
+        e = [POWER[s_] * 3600 / x / 1000 if x == x else float("nan") for s_, x in zip(SIDES, v)]
+        fac = v[2] / v[0] if v[0] == v[0] and v[2] == v[2] else float("nan")
+        f.write(f"{L} " + " ".join(f"{x:.6g}" for x in v + e + [fac]) + "\n")
+with open(__file__.rsplit("/", 2)[0] + "/report/antrag_fac.dat", "w") as f:   # speedup labels, only where both exist
+    f.write("L thr_gpub fac\n")
+    for L in Ls:
+        c, g = b.get(("cpu", L)), b.get(("gpub", L))
+        if c and g:
+            f.write(f"{L} {g['throughput_node_h']:.6g} {g['throughput_node_h'] / c['throughput_node_h']:.4g}\n")
 print("\n".join(out))
