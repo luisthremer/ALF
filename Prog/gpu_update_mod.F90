@@ -92,6 +92,9 @@ Module gpu_update_mod
   ! P2.6.1: device scratch of the rank-r update (block of G, W, sites, C = G(:,P), T = W R), allocated at the first use
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: rk_g(:), rk_w(:), rk_c(:), rk_t(:)
   Integer, Allocatable, Save :: rk_p(:)
+  ! P2.6 global: .true. while G is moved by gpu_placegr or a global tau move runs: the wraps and the update take the standard
+  ! device path (delayed / submatrix state flushed first, as the CPU calls Lowrank_flush before the global tau moves)
+  Logical, Save :: glob_std = .false.
 
 Contains
 
@@ -379,7 +382,7 @@ Contains
     Implicit none
     Integer, intent(in) :: nf, n, t, dir
     if (V_meta(6,n,nf) == 1) return
-    if (gpu_lr_gen_ok(n)) then
+    if (gpu_lr_gen_ok(n) .and. .not. glob_std) then
        call gpu_lr_gen_wrap(nf, n, t, dir, 2)    ! delayed general vertex: pending X, Y follow the wrap
        return
     endif
@@ -391,7 +394,7 @@ Contains
   Subroutine site_wrap(nf, n, t, dir)
     Implicit none
     Integer, intent(in) :: nf, n, t, dir
-    if (gpu_lr_mode() /= 0) then
+    if (gpu_lr_mode() /= 0 .and. .not. glob_std) then
        if (V_meta(1,n,nf) == 1) then
           call gpu_lr_wrap(nf, n, t, dir)       ! pending delayed / submatrix state follows the wrap
           return
@@ -410,6 +413,44 @@ Contains
        upd_cnt(3) = upd_cnt(3) + 2
     endif
   end subroutine site_wrap
+
+!--------------------------------------------------------------------
+!> Wrapgr_PlaceGR on the device: G(tau, m) -> G(tau, m1), the same wrap order (upward: N_Type 1 of all flavours, then
+!> N_Type 2; downward: N_Type 2, then N_Type 1).  The delayed / submatrix state is flushed first; standard wraps only.
+  Subroutine gpu_placegr(m, m1, nt)
+    Implicit none
+    Integer, intent(in) :: m, m1, nt
+    Integer :: n, nf, nf_eff
+    Logical :: std0
+    if (m == m1) return
+    if (.not. glob_std) call gpu_lr_flush_all(2)
+    std0 = glob_std
+    glob_std = .true.
+    if (m1 > m) then
+       do n = m+1, m1
+          do nf_eff = 1, N_FL_eff
+             nf = Calc_Fl_map(nf_eff)
+             call site_wrap(nf, n, nt, 1)
+          enddo
+          do nf_eff = 1, N_FL_eff
+             nf = Calc_Fl_map(nf_eff)
+             call site_wrap2(nf, n, nt, 1)
+          enddo
+       enddo
+    else
+       do n = m, m1+1, -1
+          do nf_eff = 1, N_FL_eff
+             nf = Calc_Fl_map(nf_eff)
+             call site_wrap2(nf, n, nt, -1)
+          enddo
+          do nf_eff = 1, N_FL_eff
+             nf = Calc_Fl_map(nf_eff)
+             call site_wrap(nf, n, nt, -1)
+          enddo
+       enddo
+    endif
+    glob_std = std0
+  end subroutine gpu_placegr
 
 !--------------------------------------------------------------------
 !> Upgrade2 (mode FINAL, Prev_Ratiotot = 1) for the device-resident G: same ratio code, the decision draw at the same
@@ -596,7 +637,7 @@ Contains
     Logical, intent(in) :: Propose_S0
     Integer, intent(in) :: Nt_sequential_start, Nt_sequential_end, N_Global_tau
 
-    Integer :: nf, nf_eff, NTAU1, n
+    Integer :: nf, nf_eff, NTAU1, n, m
     Complex (Kind=Kind(0.d0)) :: HS_New
     Real (Kind=Kind(0.d0)) :: T0_proposal, T0_Proposal_ratio, S0_ratio
     Logical :: Acc, toggle1, fast_lr, bm
@@ -613,6 +654,8 @@ Contains
        call gpu_mmthr   (G_d(1,1,nf), Ndim, Ndim, nf, ntau1)
        call gpu_mmthl_m1(G_d(1,1,nf), Ndim, Ndim, nf, ntau1)
     Enddo
+    ! G is at m = 0; the sequential range starts at m = Nt_sequential_start - 1 (KNOWN_ISSUES.md, H5)
+    if (Nt_sequential_end >= Nt_sequential_start) call gpu_placegr(0, Nt_sequential_start-1, ntau1)
     Do n = Nt_sequential_start,Nt_sequential_end
        if (bm) then
           call gpu_lr_blk_enter(n, Nt_sequential_end, 1, ntau1, .true.)   ! submatrix block mode: host block, wrap on the host copy
@@ -656,6 +699,10 @@ Contains
        endif
     Enddo
     call gpu_lr_flush_all(2)                    ! delayed / submatrix: G_d must be current at the end of the slice
+    m = 0
+    if (Nt_sequential_end >= Nt_sequential_start) m = Nt_sequential_end
+    ! G leaves at m = Size(Op_V,1) (KNOWN_ISSUES.md, H5)
+    call gpu_placegr(m, Size(Op_V,1), ntau1)
     call g_out(GR)
   end Subroutine gpu_wrapgrup
 
@@ -669,7 +716,7 @@ Contains
     Logical, intent(in) :: Propose_S0
     Integer, intent(in) :: Nt_sequential_start, Nt_sequential_end, N_Global_tau
 
-    Integer :: nf, nf_eff, n
+    Integer :: nf, nf_eff, n, m, m1
     Complex (Kind=Kind(0.d0)) :: HS_New
     Real (Kind=Kind(0.d0)) :: T0_proposal, T0_Proposal_ratio, S0_ratio
     Logical :: Acc, toggle1, fast_lr, bm
@@ -679,6 +726,10 @@ Contains
     fast_lr = gpu_lr_fast()
     bm = gpu_lr_blockmode()
     call g_in(GR)
+    m = Size(Op_V,1)
+    m1 = 0
+    if (Nt_sequential_end >= Nt_sequential_start) m1 = Nt_sequential_end
+    call gpu_placegr(m, m1, ntau)
     Do n =  Nt_sequential_end, Nt_sequential_start, -1
        ! Op_Wrapdo with N_Type 2 (P2.6.1: non-diagonal operators; nothing for diagonal ones)
        if (.not. (bm .or. fast_lr)) then
@@ -723,6 +774,8 @@ Contains
        endif
     Enddo
     call gpu_lr_flush_all(2)                    ! delayed / submatrix: flush before the hopping wrap
+    ! G is at m = Nt_sequential_start - 1; the hopping propagation needs m = 0 (KNOWN_ISSUES.md, H5)
+    if (Nt_sequential_end >= Nt_sequential_start) call gpu_placegr(Nt_sequential_start-1, 0, ntau)
     Do nf_eff = 1,N_FL_eff
        nf=Calc_Fl_map(nf_eff)
        call gpu_mmthl   (G_d(1,1,nf), Ndim, Ndim, nf, ntau)
