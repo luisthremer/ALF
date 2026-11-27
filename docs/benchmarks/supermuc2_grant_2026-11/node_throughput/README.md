@@ -55,3 +55,4 @@ L=36; ALF GPU w2t7, w4t3; Intel-opt. w4t1, w4t3), NBIN 6, CPU L=32/36 NBIN 3-4. 
 three 4-node test jobs (`multi2.sh`, one run per node) + CPU t1 at L=32/36 on general. Runs: `runs_betaL/`.
 Reports: `SET=betaL ./prelim.sh` -> `report_betaL/report_prelim.pdf` (internal) and `report_betaL/antrag_prelim.pdf`
 (proposal version); the beta = 4 reports in `report/` are unchanged.
+Update 12:00: full report also in the juelich repo, SuperMUC_Phase2_Conversion_2026/full_report/ (commit d2abe10).
