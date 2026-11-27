@@ -24,6 +24,7 @@ else
 fi
 rm -rf report/fig; mkdir -p report/fig
 $PY plots/plot_all.py $CSV report/fig $FAKEFLAG
+rm -rf report/fig_antrag; $PY plots/plot_all.py $CSV report/fig_antrag $FAKEFLAG --antrag > /dev/null
 $PY plots/make_tables.py $CSV > report/tables.tex
 $PY plots/make_antrag.py $CSV > report/antrag_data.tex
 printf '\\newcommand{\\DataState}{%s, %s}\n\\newcommand{\\DataNote}{%s}\n' "$MODE" "$(date '+%Y-%m-%d %H:%M')" "$NOTE" > report/datastate.tex

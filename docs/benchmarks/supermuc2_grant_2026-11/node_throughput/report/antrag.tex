@@ -3,7 +3,7 @@
 \usepackage[margin=2.2cm]{geometry}
 \usepackage{times,booktabs,graphicx,amsmath,xcolor,float,caption,ifthen}
 \usepackage[T1]{fontenc}
-\graphicspath{{fig/}}
+\graphicspath{{fig_antrag/}}
 \captionsetup{font=small}
 \input{datastate}
 \input{antrag_data}
@@ -30,18 +30,19 @@ matrices of dimension $N=L^2=256$, 576, 1024 and 1296 ($L=16$, 24, 32, 36), one 
 A Monte Carlo sweep visits every slice: it multiplies the propagator matrices into the equal-time Green function, updates
 it after each accepted local move (submatrix updates in blocks of 64), recomputes it from a QR-stabilised product every
 10 slices and measures observables. Nearly all of this is dense linear algebra (matrix products, QR and LU decompositions),
-so the cost of a sweep grows as $N^3$. Independent Markov chains (walkers) run as separate MPI ranks and exchange data only
-when measurements are averaged.
+so the cost of a sweep grows as $N^3$. The production runs consist of many independent simulations (Markov chains), one per MPI
+process, which exchange data only when measurements are averaged. The unit of work is one sweep of one simulation.
 
 Each run uses one full node and fills it: on the CPU side the 112 cores as MPI ranks $\times$ OpenMP threads (1 to 8
 threads per rank, no rank across a NUMA domain), on the GPU side the four Intel Data Center GPU Max 1550 (8 tiles) with 1,
-2, 4 or 8 walkers per tile. For every configuration 10 sweeps are timed individually after one warm-up sweep; the throughput
-is the number of walkers times sweeps per node-hour, with the standard error of the 10 sweep times as uncertainty.
+2, 4 or 8 MPI processes per tile. For every configuration 10 sweeps are timed individually after one warm-up sweep; the throughput
+is the number of work units (sweeps of all simulations on the node) per node-hour, with the standard error of the 10 sweep times as uncertainty.
 Table~\ref{tab:node} lists the best configuration of each node type.
 
 \begin{table}[H]\centering\small
-\caption{Node throughput of the best configuration per node type and lattice size (sweeps per node-hour, all walkers of
-the node), factor relative to the CPU node, and estimated energy per sweep. Energy from the vendor power ratings:
+\caption{Throughput of one full node in its best configuration per node type and system size: work units per node-hour,
+where one work unit is one sweep of one independent simulation (summed over all simulations on the node); factor relative
+to the CPU node; estimated energy per work unit. Energy from the vendor power ratings:
 CPU node $2\times350$\,W, GPU node $4\times600$\,W $+\,2\times350$\,W; memory, network and cooling are not included.}
 \label{tab:node}
 \resizebox{\textwidth}{!}{\AntragTable}
@@ -51,17 +52,17 @@ CPU node $2\times350$\,W, GPU node $4\times600$\,W $+\,2\times350$\,W; memory, n
 \includegraphics[width=0.48\textwidth]{throughput_vs_L}\hfill
 \includegraphics[width=0.48\textwidth]{energy_per_sweep}
 \caption{Left: node throughput of the best configuration against lattice size; the number is the factor GPU node
-(Intel-optimised) / CPU node. Right: estimated energy per sweep.}
+(Intel-optimised) / CPU node. Right: estimated energy per work unit.}
 \label{fig:node}
 \end{figure}
 
 \paragraph{Result.}
-At $L=\Lmax$, the largest lattice size with all results, one GPU node delivers \FacIntel\ times the Monte Carlo throughput of
+At $L=\Lmax$, the largest lattice size with all results, one GPU node delivers \FacIntel\ times the throughput of
 the same node's CPUs with the Intel-optimised code (\FacBase\ times with the standard GPU code), at about \Eratio\ times
-lower estimated energy per sweep. The advantage grows with the matrix dimension, because the cost of the
+lower estimated energy per work unit. The advantage grows with the matrix dimension, because the cost of the
 stabilisation (QR decompositions) and of the Green-function updates grows as $N^3$ and these parts run on the GPU.
-With the Intel-optimised code the best configuration at $L\ge24$ is four walkers per tile, close to the layout used in
-production (four walkers per tile, three host threads); eight walkers per tile is slower in all cases.
+With the Intel-optimised code the best configuration at $L\ge24$ is four MPI processes per GPU tile, close to the layout used in
+production (four processes per tile, three host threads); eight processes per tile is slower in all cases.
 The production lattices reach $L=36$ and beyond; since the GPU advantage grows with $N$, we expect the factor there to be
 at least as large as at the largest lattice measured here.
 \end{document}

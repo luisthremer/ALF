@@ -12,9 +12,9 @@ from plot_all import POWER, SIDES, best, load  # noqa: E402
 
 NAME = {"cpu": "CPU node (2 $\\times$ Xeon 8480L)", "gpu": "GPU node, standard GPU code", "gpub": "GPU node, Intel-optimised code"}
 COMMIT = {"cpu": "410c7b04", "gpu": "410c7b04", "gpub": "d1060305"}
-LAYOUT = {"cpu": lambda r: f"{r['ranks']} ranks $\\times$ {r['threads']} thr.",
-          "gpu": lambda r: f"{r['w']} walkers/tile, {r['threads']} thr.",
-          "gpub": lambda r: f"{r['w']} walkers/tile, {r['threads']} thr."}
+LAYOUT = {"cpu": lambda r: f"{r['ranks']} MPI proc.\\ $\\times$ {r['threads']} thread{'s' if r['threads'] > 1 else ''}",
+          "gpu": lambda r: f"{r['w']} MPI proc./GPU tile, {r['threads']} thread{'s' if r['threads'] > 1 else ''}",
+          "gpub": lambda r: f"{r['w']} MPI proc./GPU tile, {r['threads']} thread{'s' if r['threads'] > 1 else ''}"}
 PLANNED = {16, 24, 32, 36}
 
 
@@ -40,7 +40,7 @@ complete = set(full) >= PLANNED
 out.append(f"\\newcommand{{\\Complete}}{{{'yes' if complete else 'no'}}}")
 
 t = ["\\begin{tabular}{@{}rllrrr@{}}\\toprule",
-     "$L$ & node, code (commit) & best layout & sweeps per node-hour & factor vs CPU & energy per sweep (kJ)\\\\\\midrule"]
+     "$L$ & node, code (commit) & best configuration & work units per node-hour & factor vs CPU & energy per unit (kJ)\\\\\\midrule"]
 for i, L in enumerate(Ls):
     if i:
         t.append("\\addlinespace")
