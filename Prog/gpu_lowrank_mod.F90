@@ -34,7 +34,7 @@
 !> GPU version of the delayed and submatrix local updates (merged into the production GPU path; it began as the test branch
 !> gpu-port-delayed-submatrix).
 !> The algebra is that of Prog/lowrank_update_mod.F90 (docs/algorithm-notes.md sections 3, 4, 12) restricted to what the
-!> GPU path supports (gpu_supported): rank-1 vertices (N_non_zero <= 1), diagonal operators.  Selected by the parameters
+!> GPU path supports (gpu_supported) on the fast paths: rank-1 vertices (N_non_zero <= 1), diagonal operators.  Selected by the parameters
 !> Sequential_scheme = "delayed" | "submatrix" and N_delay, the same keys as on the CPU.
 !>
 !> Delayed (per flavour nf), G = G0 - X Y^T with X, Y (Ndim x N_delay) device-resident, G0 = G_d:
@@ -50,6 +50,11 @@
 !>   accept   : host only: M <- M + (Delta/d) a b^T (padding S with p if needed); NO device work at all
 !>   wrap     : G0 as before (one kernel); host M(m,:) *= za, M(:,m) *= zb for a wrapped site in S
 !>   flush    : Qt = E_S - G0(S,:)^T (gather), Y = Qt M^T (ZGEMM), G0 <- G0 - G0(:,S) Y^T (ZGEMM), as the delayed flush
+!> Delayed, general vertices (P2.6.1: non-diagonal / type-4 operators, rank r = N_non_zero <= N_delay; gpu_lr_gen_*):
+!>   wrap     : G0 by the dense-block kernels (Op_Wrapup/Op_Wrapdo N_Type 1 and 2), X(P,:) <- WL X(P,:), Y(P,:) <- WR^T Y(P,:)
+!>   proposal : block G(P,P) = G0(P,P) - X(P,:) Y(P,:)^T (one kernel, r*r D->H); ratio and W (r x r) on the host (gpu_update_mod)
+!>   accept   : C = G(:,P), R = E_P^T - G(P,:): X(:,j+a) = (C W)(:,a), Y(:,j+a) = R(a,:)^T, a = 1..r: one kernel (flush first if
+!>              j + r > N_delay).  Submatrix keeps flushing before such vertices (the CPU flushes non-diagonal blocks at once, K_ND = 1).
 !> Neither scheme changes the random-number order: the same ratio code, the same draws.  The CPU schemes are the reference:
 !> with the same compiler and seeds the trajectory is the CPU one until round-off first changes a decision, and the observables
 !> are compared with the same-compiler CPU run (docs/gpu/DELAYED_SUBMATRIX.md: per-bin agreement to ~1e-13, identical
@@ -69,7 +74,8 @@ Module gpu_lowrank_mod
 #if defined(ALF_LA_HIP)
   Use alf_hipk_mod, only: hk_enabled, hk_blk_gather, hk_blk_scale, hk_sub_flush_gather
 #endif
-  Use gpu_state_mod, only: g_d, info_line, nsigma_d, scr_c, upd_cnt, v_exp, v_meta, v_type
+  Use gpu_state_mod, only: g_d, info_line, nsigma_d, scr_c, upd_cnt, v_exp, v_meta, v_type, v_nmax, v_nd
+  Use gpu_wrap_mod, only: gpu_Vop_wrap, k_nd_rows
 
   Implicit none
 
@@ -78,6 +84,7 @@ Module gpu_lowrank_mod
   Public :: gpu_lr_wrap, gpu_lr_gpp, gpu_lr_accept
   Public :: gpu_lr_blockmode, gpu_lr_blk_enter, gpu_lr_blk_leave
   Public :: gpu_lr_fast, gpu_lr_step_up, gpu_lr_step_down, gpu_lr_defer, gpu_lr_commit, gpu_lr_sync
+  Public :: gpu_lr_gen_ok, gpu_lr_gen_wrap, gpu_lr_gen_block, gpu_lr_gen_accept
 
   Integer, parameter :: LR_STD = 0, LR_DELAYED = 1, LR_SUBMATRIX = 2
   Complex (Kind=Kind(0.d0)), parameter :: czero_c = (0.d0,0.d0)
@@ -117,6 +124,10 @@ Module gpu_lowrank_mod
   Integer, Allocatable, Save :: bidx(:,:), bs_h(:,:), bsd(:,:), bS_d(:,:)
   Complex (Kind=Kind(0.d0)), Allocatable, Save :: W_h(:,:), grow_h(:,:)   ! cached proposal data (nd, N_FL) host, per flavour
   Integer, Allocatable, Save :: prop_p(:), prop_k(:)          ! site and pending count of the cached proposal, per flavour
+  ! P2.6.1 general vertices (delayed): sites, block and W of one flavour, device + host
+  Integer, Save :: gp_d(V_NMAX) = 0
+  Complex (Kind=Kind(0.d0)), Save :: gb_d(V_NMAX*V_NMAX), gw_d(V_NMAX*V_NMAX)
+  Logical, Save :: gen_mapped = .false.
 
 Contains
 
@@ -200,6 +211,10 @@ Contains
           deallocate( Gb, bidx, bs_h, zab_h, bsd, bS_d, gbd, cbuf )
        endif
        deallocate( jc, S_h, slot_h, M_h, W_h, grow_h, prop_p, prop_k, gbuf, res2, S_d, M_d, X_d, Y_d, slot_d, M_pk )
+       if (gen_mapped) then
+          !$omp target exit data map(delete: gp_d, gb_d, gw_d)
+          gen_mapped = .false.
+       endif
     endif
     inited = .false.; mode = LR_STD
   end subroutine gpu_lr_finalize
@@ -217,6 +232,142 @@ Contains
        endif
     enddo
   end function gpu_lr_site_ok
+
+!> P2.6.1: .true. iff vertex n uses the delayed general-vertex path: delayed scheme, and in every computed flavour a non-table
+!> operator (non-diagonal or type 4) whose rank fits into N_delay
+  Logical function gpu_lr_gen_ok(n)
+    Implicit none
+    Integer, intent(in) :: n
+    Integer :: nf_eff, nf
+    gpu_lr_gen_ok = .false.
+    if (.not. inited) call gpu_lr_init()
+    if (mode /= LR_DELAYED) return
+    do nf_eff = 1, N_FL_eff
+       nf = Calc_Fl_map(nf_eff)
+       if (v_nd(n,nf) == 0 .or. V_meta(5,n,nf) > nd) return
+    enddo
+    gpu_lr_gen_ok = .true.
+  end function gpu_lr_gen_ok
+
+!> P2.6.1: Op_Wrapup (dir = +1) / Op_Wrapdo (dir = -1), N_Type ntype, of a general vertex on G = G0 - X Y^T of flavour nf:
+!> G0 by gpu_Vop_wrap; X(P,:) by the row matrix WL, Y(P,:) by WR^T (WR = the column matrix), the modes of nd_wrap (gpu_wrap_mod).
+  Subroutine gpu_lr_gen_wrap(nf, n, t, dir, ntype)
+    Implicit none
+    Integer, intent(in) :: nf, n, t, dir, ntype
+    Integer :: mr, sr, mc, sc
+    call gpu_Vop_wrap(G_d(1,1,nf), Ndim, n, nf, t, dir, ntype)
+    upd_cnt(3) = upd_cnt(3) + 2
+    if (jc(nf) == 0) return
+    if (ntype == 2 .and. V_meta(6,n,nf) == 1) return
+    if (ntype == 1) then
+       if (dir > 0) then
+          mr = 5; sr = 1; mc = 4; sc = -1
+       else
+          mr = 4; sr = -1; mc = 5; sc = 1
+       endif
+    else
+       if (dir > 0) then
+          mr = 6; mc = 7
+       else
+          mr = 7; mc = 6
+       endif
+       sr = 1; sc = 1
+    endif
+    call k_nd_rows(X_d(1,1,nf), Ndim, jc(nf), nf, t, n, n, mr, sr, 0)
+    call k_nd_rows(Y_d(1,1,nf), Ndim, jc(nf), nf, t, n, n, mc, sc, 1)
+    upd_cnt(3) = upd_cnt(3) + 2
+  end subroutine gpu_lr_gen_wrap
+
+  Subroutine gen_map()
+    Implicit none
+    if (gen_mapped) return
+    !$omp target enter data map(to: gp_d, gb_d, gw_d)
+    gen_mapped = .true.
+  end subroutine gen_map
+
+!> P2.6.1: gb(a,b) = G(P(a),P(b)) of G = G0 - X Y^T, a, b = 1..r: one kernel, one D->H of r*r elements
+  Subroutine gpu_lr_gen_block(nf, n, r, gb)
+    Implicit none
+    Integer, intent(in) :: nf, n, r
+    Complex (Kind=Kind(0.d0)), intent(out) :: gb(r,r)
+    call gen_map()
+    gp_d(1:r) = Op_V(n,nf)%P(1:r)
+    !$omp target update to(gp_d(1:r))
+    call k_gen_block(G_d(1,1,nf), X_d(1,1,nf), Y_d(1,1,nf), Ndim, nd, jc(nf), r, gp_d, gb_d)
+    !$omp target update from(gb_d(1:r*r))
+    gb = reshape(gb_d(1:r*r), (/r, r/))
+    upd_cnt(5) = upd_cnt(5) + 1
+    n_prop = n_prop + 1
+  end subroutine gpu_lr_gen_block
+
+  Subroutine k_gen_block(G, X, Y, ld, ndl, jcnt, r, P, buf)
+    Implicit none
+    Integer, intent(in) :: ld, ndl, jcnt, r
+    Integer, intent(in) :: P(V_NMAX)
+    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,ld), X(ld,ndl), Y(ld,ndl)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: buf(V_NMAX*V_NMAX)
+    Integer :: a, b, k
+    Complex (Kind=Kind(0.d0)) :: z
+    !$omp target teams distribute parallel do collapse(2) private(k, z)
+    do b = 1, r
+       do a = 1, r
+          z = G(P(a), P(b))
+          do k = 1, jcnt
+             z = z - X(P(a),k) * Y(P(b),k)
+          enddo
+          buf(a + (b-1)*r) = z
+       enddo
+    enddo
+  end subroutine k_gen_block
+
+!> P2.6.1: accept of a general vertex of rank r with the host matrix W (r x r, column-major in w): r new columns of X and Y
+  Subroutine gpu_lr_gen_accept(nf, n, r, w)
+    Implicit none
+    Integer, intent(in) :: nf, n, r
+    Complex (Kind=Kind(0.d0)), intent(in) :: w(r*r)
+    call gen_map()
+    if (jc(nf) + r > nd) call gpu_lr_flush(nf, 1)
+    gp_d(1:r) = Op_V(n,nf)%P(1:r)
+    gw_d(1:r*r) = w(1:r*r)
+    !$omp target update to(gp_d(1:r), gw_d(1:r*r))
+    call k_gen_accept(G_d(1,1,nf), X_d(1,1,nf), Y_d(1,1,nf), Ndim, nd, jc(nf), r, gp_d, gw_d)
+    jc(nf) = jc(nf) + r
+    n_acc = n_acc + 1
+    upd_cnt(4) = upd_cnt(4) + 1
+    if (jc(nf) >= nd) call gpu_lr_flush(nf, 1)
+  end subroutine gpu_lr_gen_accept
+
+!> c(b) = G(i,P(b)), rr(a) = G(P(a),i) of G = G0 - X Y^T (before the new columns); X(i,j+a) = sum_b c(b) W(b,a),
+!> Y(i,j+a) = delta(i,P(a)) - rr(a).  Thread = row i.
+  Subroutine k_gen_accept(G, X, Y, ld, ndl, jcnt, r, P, W)
+    Implicit none
+    Integer, intent(in) :: ld, ndl, jcnt, r
+    Integer, intent(in) :: P(V_NMAX)
+    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,ld), W(V_NMAX*V_NMAX)
+    Complex (Kind=Kind(0.d0)), intent(inout) :: X(ld,ndl), Y(ld,ndl)
+    Integer :: i, a, b, k
+    Complex (Kind=Kind(0.d0)) :: c(V_NMAX), rr(V_NMAX), z
+    !$omp target teams distribute parallel do private(a, b, k, c, rr, z)
+    do i = 1, ld
+       do b = 1, r
+          c(b)  = G(i, P(b))
+          rr(b) = G(P(b), i)
+          do k = 1, jcnt
+             c(b)  = c(b)  - X(i,k) * Y(P(b),k)
+             rr(b) = rr(b) - X(P(b),k) * Y(i,k)
+          enddo
+       enddo
+       do a = 1, r
+          z = c(1) * W(1 + (a-1)*r)
+          do b = 2, r
+             z = z + c(b) * W(b + (a-1)*r)
+          enddo
+          X(i, jcnt+a) = z
+          Y(i, jcnt+a) = - rr(a)
+          if (i == P(a)) Y(i, jcnt+a) = Y(i, jcnt+a) + 1.d0
+       enddo
+    enddo
+  end subroutine k_gen_accept
 
   Integer function gpu_lr_pending()
     Implicit none

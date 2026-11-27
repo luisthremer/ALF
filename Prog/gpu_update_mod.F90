@@ -73,7 +73,7 @@ Module gpu_update_mod
   Use gpu_wrap_mod, only: gpu_mmthr, gpu_mmthl_m1, gpu_mmthl, gpu_mmthr_m1, gpu_Vop_wrap
   Use gpu_lowrank_mod, only: gpu_lr_accept, gpu_lr_blk_enter, gpu_lr_blk_leave, gpu_lr_blockmode, gpu_lr_commit, &
        & gpu_lr_defer, gpu_lr_fast, gpu_lr_flush, gpu_lr_flush_all, gpu_lr_gpp, gpu_lr_mode, gpu_lr_site_ok, &
-       & gpu_lr_step_down, gpu_lr_step_up, gpu_lr_wrap
+       & gpu_lr_step_down, gpu_lr_step_up, gpu_lr_wrap, gpu_lr_gen_ok, gpu_lr_gen_wrap, gpu_lr_gen_block, gpu_lr_gen_accept
 
   Implicit none
 
@@ -364,6 +364,10 @@ Contains
     Implicit none
     Integer, intent(in) :: nf, n, t, dir
     if (V_meta(6,n,nf) == 1) return
+    if (gpu_lr_gen_ok(n)) then
+       call gpu_lr_gen_wrap(nf, n, t, dir, 2)    ! delayed general vertex: pending X, Y follow the wrap
+       return
+    endif
     if (gpu_lr_mode() /= 0) call gpu_lr_flush(nf, 2)
     call gpu_Vop_wrap(G_d(1,1,nf), Ndim, n, nf, t, dir, 2)
     upd_cnt(3) = upd_cnt(3) + 2
@@ -375,6 +379,10 @@ Contains
     if (gpu_lr_mode() /= 0) then
        if (V_meta(1,n,nf) == 1) then
           call gpu_lr_wrap(nf, n, t, dir)       ! pending delayed / submatrix state follows the wrap
+          return
+       endif
+       if (gpu_lr_gen_ok(n)) then
+          call gpu_lr_gen_wrap(nf, n, t, dir, 1)   ! P2.6.1: delayed general vertex
           return
        endif
        call gpu_lr_flush(nf, 2)                 ! N > 1 vertex: the general wrap needs a flushed G
@@ -404,13 +412,14 @@ Contains
     Complex (Kind=Kind(0.d0)) :: gb(V_NMAX,V_NMAX,N_FL), Dl(V_NMAX,N_FL), Mat(V_NMAX,V_NMAX), W(V_NMAX*V_NMAX)
     Real (Kind=Kind(0.d0)) :: Weight
     Integer :: nf, nf_eff, op_dim_nf, p1, m, k
-    Logical :: lr, lrf, gen(N_FL)
+    Logical :: lr, lrf, lrg, gen(N_FL)
 
     toggle = .false.
     lr = ( gpu_lr_mode() /= 0 )
     if (lr) lr = gpu_lr_site_ok(N_op)
     lrf = lr .and. gpu_lr_fast()
-    if (.not. lr) call gpu_lr_flush_all(2)       ! standard update of this site: G_d must be current
+    lrg = (.not. lr) .and. gpu_lr_gen_ok(N_op)    ! P2.6.1: delayed general vertex (G = G0 - X Y^T kept)
+    if (.not. (lr .or. lrg)) call gpu_lr_flush_all(2)   ! standard update of this site: G_d must be current
     if (.not. nsigma_new_made) then
        Call nsigma_new%make(1,1)
        nsigma_new_made = .true.
@@ -431,7 +440,11 @@ Contains
        ! P2.6.1: general vertex (rank > 1 or N > 1): the r x r block, Upgrade2's Mat and determinant branches
        gen(nf) = (op_dim_nf > 1 .or. (op_dim_nf == 1 .and. Op_V(n_op,nf)%N > 1))
        if (gen(nf)) then
-          call rk_block(nf, n_op, op_dim_nf, gb(1:op_dim_nf,1:op_dim_nf,nf))
+          if (lrg) then
+             call gpu_lr_gen_block(nf, n_op, op_dim_nf, gb(1:op_dim_nf,1:op_dim_nf,nf))
+          else
+             call rk_block(nf, n_op, op_dim_nf, gb(1:op_dim_nf,1:op_dim_nf,nf))
+          endif
           do m = 1, op_dim_nf
              myexp = exp( Z1* Op_V(n_op,nf)%E(m) )
              Z = myexp - 1.d0
@@ -494,6 +507,10 @@ Contains
           if (gen(nf)) then
              op_dim_nf = Op_V(n_op,nf)%N_non_zero
              call rk_wmat(op_dim_nf, gb(1:op_dim_nf,1:op_dim_nf,nf), Dl(1:op_dim_nf,nf), W)
+             if (lrg) then
+                call gpu_lr_gen_accept(nf, n_op, op_dim_nf, W(1:op_dim_nf**2))
+                cycle
+             endif
              rk_w(1:op_dim_nf**2) = W(1:op_dim_nf**2)
              rk_p(1:op_dim_nf) = Op_V(n_op,nf)%P(1:op_dim_nf)
              !$omp target update to(rk_w(1:op_dim_nf**2), rk_p(1:op_dim_nf))
