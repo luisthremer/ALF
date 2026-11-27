@@ -39,6 +39,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | G2 | GPU line: wrapped G (device wraps and updates, step 1c) less accurate than on the CPU: Precision Green mean 1.4 - 2.5x the CPU value, same chain | B | fixed by feature `gpu-hopd-optin` (cause: dense hopping product `Hd`; now opt-in, `ALF_GPU_HOPD=1`) |
 | G3 | GPU line: the device precision check (`Control_PrecisionG_vals`, step 1d) kept the fixed abort threshold 10 and ignored `ALF_UNSTABLE_THRESHOLD` (CPU-line feature `unstable-threshold`, merged in parallel with 1e) | B | fixed by feature `gpu-hopd-optin` (uses `G_thresh` like `Control_PrecisionG`) |
 | G4 | `stp/production-mpi-intel-*` tags (Intel production on gpu-port): raw-product LU determinant phase at every CGR | C | open, tags only (production L <= 44); not on the CM line |
+| G5 | GPU=nvidia (nvfortran 25.7): a complex(8) host scalar read in a serial `!$omp target` region loses its imaginary part; hits `k_cgr_phase` (`ph0`) in the LU phase mode | B | fixed in feature `gpu-nvidia` (`map(to: ph0)` in `k_cgr_phase`; gpu-port and the production branches are not affected) |
 | G6 | GPU line: negative control `ALF_GPU_FAULT=upd` acts only on the standard (rank-1) update, not on delayed/submatrix | C | open (test gap; found by the P2.4 step 2 `gpu-intel` gate) |
 | MK | Makefile: Prog objects not rebuilt after Libraries/Modules changes | B | fixed in `cm/feat/b-batch-2` (commit "build: …"; test 50) |
 | WF | Trial wave function normalisation, large N_part (suspected) | B | open, not reproduced |
@@ -303,3 +304,30 @@ AddressSanitizer/UBSan on Code-modularity for all models (no report), FPE traps 
   production runs); the default is the per-factor checkerboard path, which gives the CPU numbers. Still to do: measure the
   cost on a real GPU in step 2 (one ZGEMM against one kernel launch per checkerboard group) before deciding whether an opt-in `Hd` is still worth having.
   Debug patch and scripts: side-session notes of the G2 session (`g2-diag.patch`, `run.sh`, `sweep.sh`).
+
+## G5. GPU=nvidia: complex scalar loses its imaginary part in a serial target region (nvfortran 25.7)
+
+- **Applies to:** `Code-modularity-GPU` built with `GPU=nvidia` (nvfortran 25.7, `-mp=gpu -gpu=cc90,cuda12.9`, Helma H100),
+  P2.4 step 2 (`gpu-nvidia`). GPU=none and GPU=host are not affected (no offload).
+- **Symptom:** `gpu-state-e2e` on the H100, SU(2) cases (`su2-standard`, `su2-delayed-N4`, `su2-nwrap25`): the run in LU phase
+  mode (`ALF_GPU_DEBUG=1 ALF_GPU_CGR_LU=1`) has `Precision Phase, Max` 1.4e-6 (tracked mode: 1.5e-13) and observables 1e-7 .. 1.6e-6
+  away from the tracked run and from the CPU path (`ALF_GPU_DISABLE=1`), with the same configurations. The check mode
+  (`ALF_GPU_CGR_LU=2`) reports LU and tracked phase equal to 1.4e-15, so the LU phase itself is right.
+- **Cause (compiler):** in a serial `!$omp target` region (no `teams`/`parallel do`), an implicitly firstprivate `complex(8)` scalar
+  arrives on the device with imaginary part 0. Measured with a 40-line program at -O2, -O3, -O3 -fast, -Mfprelaxed (same result):
+  `z = (0.6, 0.8)` read inside `!$omp target` gives `(0.6, 0)` (implicit firstprivate of a dummy, of a local copy, and explicit
+  `firstprivate`); `map(to: z)`, a `target teams distribute parallel do` loop and passing `real(z)`, `aimag(z)` as two reals give
+  `(0.6, 0.8)`. At -O0 the dummy case stops with CUDA_ERROR_ILLEGAL_ADDRESS. In ALF, `k_cgr_phase` (`Prog/gpu_stab_mod.F90`)
+  reads the host phase `ph0` in such a region; it is used only when the phase does not come from the tracked det(U) on the device
+  (`dev /= 1`: LU mode, i.e. `ALF_GPU_CGR_LU=1`, or the default after a `git revert` of the S1 commit). The SU(2) phases are nearly
+  real, hence the small error; a model with a genuinely complex phase would get a wrong phase. A scan of all serial target regions
+  of `gpu_*_mod` and `linalg_cuda_mod` found no other complex scalar read from the host (the others are assigned inside the region).
+- **Default path:** not affected (tracked mode reads `cs(7)` on the device; e2e active vs CPU path within 1e-14 for SU(2)).
+- **Class:** B (manager, 2026-11-26): only the LU check mode and the S1-revert path are hit, and no production run uses the CM CUDA
+  code. gpu-port and its production branches/tags (`gpu-delayed-submatrix-defect-production-*`, `stp/production-mpi-intel-*`,
+  `gpu-port-unified`) start `k_cgr_phase` from `cs(3)` on the device and have no such read (scan of all serial target regions).
+- **Fix:** first commit of feature `gpu-nvidia`: `!$omp target map(to: ph0)` in `k_cgr_phase` (no-op on GPU=host). Regression test:
+  the LU-mode lanes of `gpu-state-e2e` run on the H100 (verified: SU(2) tracked vs LU 8.6e-15 after the fix, job 1465022;
+  `docs/ai/phase2/nvidia/RESULTS.md`). When editing device code: pass complex host scalars into a serial target
+  region with `map(to:)` or as two reals.
+
