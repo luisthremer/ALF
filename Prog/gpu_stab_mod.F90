@@ -35,8 +35,9 @@
 !> GPU port (P2.4 step 1d): stabilisation on the device-resident UDV states.  Compiled only with -DALF_GPU.
 !>
 !> @details
-!> What runs on the device (finite temperature, default, STAB3 and STABLOG stabilisation; STAB1/2 and the projector code are
-!> refused by gpu_supported; STAB3 = the default with the D+/D- split of cgr1_mod in CGR, k_tpup_stab3 / k_*scale_d):
+!> What runs on the device (finite temperature and projector, default, STAB3 and STABLOG stabilisation; STAB1/2 are refused by
+!> gpu_supported; STAB3 = the default with the D+/D- split of cgr1_mod in CGR, k_tpup_stab3 / k_*scale_d; the projector part is
+!> at the end of the module: Ndim x N_part states, dev_decompose_p, dev_cgrp):
 !>   * gpu_stab_wrapur / gpu_stab_wrapul: the slice products of WRAPUR / WRAPUL on the U matrices of the device states
 !>     (gpu_wrap_mod), then the UDV decomposition (decompose_UDV_state) and the scale test (testscale);
 !>   * the decomposition: default = column-norm pre-pivot + unpivoted QR (la_zqrpp; the CPU analogue is a build with
