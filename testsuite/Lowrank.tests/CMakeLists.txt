@@ -92,6 +92,14 @@ if(Python3_FOUND)
                      --start ${CMAKE_CURRENT_SOURCE_DIR}/../../Scripts_and_Parameters_files/Start
                      --work ${CMAKE_CURRENT_BINARY_DIR}/global_tau_range_runs)
     set_tests_properties(52-global-tau-range PROPERTIES PASS_REGULAR_EXPRESSION "PASS: global tau range" TIMEOUT 600)
+    # Rank-r accept of delayed / submatrix in Upgrade2's grouping (KNOWN_ISSUES.md, G11): Spin_Peierls 12x12,
+    # Precision Green mean of delayed and submatrix at most 2x that of standard (Woodbury form: ~25x).
+    add_test(NAME 62-rank-r-precision
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/rank_r_precision.py ${GLOBAL_TAU_RANGE_MPI}
+                     --exe ${CMAKE_CURRENT_SOURCE_DIR}/../../Prog/ALF.out
+                     --start ${CMAKE_CURRENT_SOURCE_DIR}/../../Scripts_and_Parameters_files/Start
+                     --work ${CMAKE_CURRENT_BINARY_DIR}/rank_r_precision_runs)
+    set_tests_properties(62-rank-r-precision PROPERTIES PASS_REGULAR_EXPRESSION "PASS: rank-r precision" TIMEOUT 900)
   endif()
   # CGR determinant phase: tracked det(U) against the LU, ALF_CGR_LU = 0/1/2 and fault det (cgr_phase_e2e.py).
   # STAB1/STAB2 keep their own LU in CGR: there mode 2 must compare nothing.

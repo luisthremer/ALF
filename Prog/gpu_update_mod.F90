@@ -528,10 +528,11 @@ Contains
              r2 = op_dim_nf**2
              call rk_xtri(op_dim_nf, gb(1:op_dim_nf,1:op_dim_nf,nf), Dl(1:op_dim_nf,nf), Xm(1:op_dim_nf,1:op_dim_nf), &
                   & Tm(1:op_dim_nf,1:op_dim_nf))
-             ! W = X Tri^T: the delayed general path and the HIP accept (GPU=amd, not yet in Upgrade2's grouping) take W
+             ! W = X Tri^T: the HIP accept (GPU=amd, not yet in Upgrade2's grouping) take W
              W(1:r2) = reshape(matmul(Xm(1:op_dim_nf,1:op_dim_nf), transpose(Tm(1:op_dim_nf,1:op_dim_nf))), (/r2/))
              if (lrg) then
-                call gpu_lr_gen_accept(nf, n_op, op_dim_nf, W(1:r2))
+                call gpu_lr_gen_accept(nf, n_op, op_dim_nf, reshape(Xm(1:op_dim_nf,1:op_dim_nf), (/r2/)), &
+                     & reshape(Tm(1:op_dim_nf,1:op_dim_nf), (/r2/)))
                 cycle
              endif
              rk_p(1:op_dim_nf) = Op_V(n_op,nf)%P(1:op_dim_nf)

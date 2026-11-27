@@ -51,7 +51,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | G8 | GPU line: the stabilisation self-test `ALF_GPU_SELFTEST=3` reports a CGR phase difference of order 1 (1.8 - 2.0) between device and host for N_SUN = 2 models (Hubbard SU(2) `Mz = .F.`, Kondo, Spin_Peierls) and stops; G agrees to 1e-14, and the production runs agree (phase precision 1e-11, sign columns equal). Found in P2.6.1; reproduced on the unchanged base 5c0af0a4 (Hubbard SU(2)) | C | open (debug self-test only; probably the self-test compares a phase of different convention for N_SUN > 1, not investigated) |
 | G9 | GPU line, H100 (GPU=nvidia): Kondo 8x8 bilayer (Ndim 128), every scheme: Dimer_tau of the GPU path differs from the CPU path by 1.26e-11, above the floor 1e-11 of the e2e rule (confout identical, Precision Green mean 7e-14); GPU=host and the 4x4 cases are within it. Round-off of the device tau pass, same family as G7. GPU=amd (MI210, feature `gpu-amd-p26`): the same Kondo 8x8 cases 1.48e-11; tV 12x12 delayed 16: Pot_scal 1.67e-11 against tol 1.66e-11, while the CPU-only null (same binary, submatrix 16 vs delayed 16, `confout` identical) gives 1.88e-11 (round-off at the tolerance edge) | C | open (tolerance rule for tau files to be scaled with size, together with G7) |
 | G10 | GPU line common code (P2.6.1, `p26-models`): Spin_Peierls 12x12 (type-4 J vertices), standard update: Precision Green of the device path ~30x the CPU value (GPU=host 2.6e-10 vs 9.0e-12, MI210 likewise), same chain, observables drift up to 1.8e-7. Cause: the device rank-r accept used the Woodbury form G - G(:,P) W R (W = X Tri^T) instead of Upgrade2's grouping (G(:,P) X)(Tri^T R). The H100 evidence (big-sp-std OK) came from nvfortran without -ffast-math; the same tree fails on GPU=host | B | fixed by feature `p26-g10` for the common OpenMP kernels (GPU=host, CUDA, oneMKL; device / CPU 1.10, observables 1.8e-9; test `gpu-state-e2e` case `sp12-precision`); GPU=amd: the HIP accept `alfhk_rk_accept` still takes W, open until it follows |
-| G11 | CPU delayed / submatrix updates (`lowrank_update_mod`, Woodbury form with K = Delta Mat^-1): Spin_Peierls 12x12, Precision Green 2.5-2.8e-10 against 9.0e-12 of the standard update (same model, same seeds); the device delayed path uses the same form and gives the same. Same mechanism as G10 | B | open (fix: Upgrade2's grouping in `Lowrank_accept` and in the device `k_gen_accept`; CPU line) |
+| G11 | CPU delayed / submatrix updates (`lowrank_update_mod`, Woodbury form with K = Delta Mat^-1): Spin_Peierls 12x12, Precision Green 2.5-2.8e-10 against 9.0e-12 of the standard update (same model, same seeds); the device delayed path uses the same form and gives the same. Same mechanism as G10 | B | fixed on the CPU line (f708694b, `cm/feat/g11`) and on the device (`cm/feat/gpu-g11`: `k_gen_accept` takes X and Tri, GPU=host / CUDA / oneMKL; GPU=amd delayed uses the same OpenMP kernel) |
 | CI1 | CI: `41-check-phase-fail` failed once on `bookworm-pgi-24-09 · MPI` (run 45968198665, P2.6.1 canvas): the expected "phase| /= 1: (NaN" line was not in the output before MPI_ABORT (output not flushed); the rerun of the same commit passed, the code path (control_mod) is unchanged | C | open (flaky: flush stdout before the abort, or match the error line instead) |
 | Z1 | NaN/Inf in a real model parameter: NaN results (rc 0) or segfault | B | fixed in `cm/feat/p28-fuzz` |
 | Z2 | NaN/Inf in a real `&VAR_QMC` parameter (Amplitude = Inf freezes the chain) | B | fixed in `cm/feat/p28-fuzz` |
@@ -63,6 +63,7 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | Z8 | "Switch to LOG" message for absurd but finite inputs (U = 1e5, field 1e3) | C | open |
 | Z9 | Size limits: Ndim^2 in default integers, O(N^2) lattice tables | C | open (part of L3) |
 | Z10 | Namelist errors stop with the bare gfortran message ("End of file") | C | open |
+| MAC1 | macOS: Homebrew reference LAPACK/BLAS 3.12 aborts Kondo 12x12 (G difference 107, Accelerate and OpenBLAS fine) | C | open, cause not investigated; see `docs/ai/phase2/MAC_ACCELERATE.md` |
 
 ## Determinant phase underflow for N >~ 3000 (L >~ 54) in CGR / DET_C
 
@@ -122,6 +123,24 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
   raw LU product can under- or overflow for large `N_part` as above. Here the magnitude matters, so
   `DET_C_PHASE` is not a fix; a log-determinant would be. Projector runs with large N_part only.
   Status: suspected from the code, not reproduced (P2.8).
+
+## G11. Delayed / submatrix rank-r accept loses precision (Woodbury form)
+
+- **Applies to:** `lowrank_update_mod` (`Sequential_scheme = "delayed"` and `"submatrix"`) before `cm/feat/g11`; the
+  device delayed general path (`k_gen_accept`, GPU line) had the same form until `cm/feat/gpu-g11`.
+- **Symptom:** Spin_Peierls 12x12 (Beta = 2, U = 1.5, Lambda = 0.1, omega0 = 0.5, N_delay = 4, 4 sweeps, Ltau = 0):
+  Precision Green mean standard 4.2e-11, delayed 1.05e-9 (24.8x), submatrix 1.2e-9 (28.6x). (GPU line, other settings:
+  9.0e-12 against 2.5-2.8e-10.) Hubbard and the other rank-1 models are not affected.
+- **Cause:** as G10 on the GPU line. The non-diagonal rank-2 vertices (type-4 J terms) were applied as
+  `G - (G(:,P) Delta Mat^-1) V^T` (K = Delta Mat^-1 by LU); Upgrade2 applies `G - (G(:,P) X) (V Tri)^T` with the r x r
+  factors X, Tri of its Sherman-Morrison recursion (X Tri^T = Delta Mat^-1 in exact arithmetic). In the submatrix
+  scheme the loss also comes from the M representation itself: with Upgrade2's grouping inside M it stays at 24.5x.
+- **Fix (`cm/feat/g11`):** `Accept_xtri` (same recursion as Upgrade2 and the device `rk_xtri`) gives X, Tri from the
+  cached G_PP (`prop_Gpp`, stored by Lowrank_propose). Delayed rank r >= 2: new columns `X = G(:,P) X`, `Y = V Tri`.
+  Submatrix: a non-diagonal rank r >= 2 vertex flushes first and is applied to G directly (`Accept_direct`, as
+  Upgrade2, the same as the GPU submatrix path); diagonal rank r >= 2 vertices use `(a X)(Tri^T b^T)` in M. Rank 1 is
+  unchanged (bit for bit), so is the default scheme (standard). After: delayed 1.08x, submatrix 1.00x; CPU time of
+  the test unchanged (2.1 s each). Regression test `62-rank-r-precision` (Lowrank.tests, ratio <= 2).
 
 ## Input fuzzing and size probes 2026-11-27 (P2.8.3, P2.8.1)
 
