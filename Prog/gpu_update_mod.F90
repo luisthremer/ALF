@@ -48,8 +48,10 @@
 !>   4. accept: per flavour 2 launches (copy the column G(:,P) and the row y = (-G(P,:), 1-G(P,P) at P) into scratch, then
 !>      G += Zg * x y^T, the ZGERU of Upgrade2 for op_dim 1), then the field value on the host and one scalar H->D copy
 !>      of nsigma_d(n,t) (the wrap kernels read the field on the device, so it must not go stale).
-!>   Rank r > 1 or N > 1 (P2.6.1, port of gpu-port ticket 401-A): G <- G - G(:,P) W R, R = E_P^T - G(P,:), with the r x r
-!>   matrix W = X Tri^T of Upgrade2's x_v / y_v recursion restricted to the rows P (host, rk_wmat), one H->D of W, two kernels.
+!>   Rank r > 1 or N > 1 (P2.6.1, port of gpu-port ticket 401-A): G <- G - (G(:,P) X) (Tri^T R), R = E_P^T - G(P,:), with
+!>   the r x r factors X = x_v(P,:) and Tri (y_v = R^T Tri) of Upgrade2's recursion (host, rk_xtri), one H->D, two kernels.
+!>   Upgrade2's grouping, not the Woodbury form G(:,P) W R with W = X Tri^T: that form loses ~30x in Precision Green for the
+!>   type-4 J vertices of Spin_Peierls 12x12 (KNOWN_ISSUES G10; the CPU delayed/submatrix updates use it and show the same).
 !>
 !> G is device-authoritative while the sweep runs: WRAPGRUP/DO copy the host GR to G_d only when the device copy is not current
 !> (g_in) and leave the host GR stale (g_out).  The stabilisation (gpu_stab_mod, step 1d) keeps G on the device; the sweep
@@ -253,26 +255,31 @@ Contains
     enddo
   end subroutine k_rk_gpp
 
-!> P2.6.1: C(i,a) = G(i,P(a)) and T(a,i) = sum_b W(a,b) R(b,i), R(b,i) = delta(i,P(b)) - G(P(b),i), i = 1..nd (before G changes)
-  Subroutine k_rk_prep(G, ld, nd, P, r, W, C, T)
+!> P2.6.1: C(i,a) = sum_c G(i,P(c)) X(c,a) (Upgrade2's xp_v) and T(a,i) = sum_b Tri(b,a) R(b,i) (y_v(i,a)), R(b,i) =
+!> delta(i,P(b)) - G(P(b),i), i = 1..nd (before G changes).  XT(1:r*r) = X, XT(r*r+1:2*r*r) = Tri, column-major r x r.
+  Subroutine k_rk_prep(G, ld, nd, P, r, XT, C, T)
     Implicit none
     Integer, intent(in) :: ld, nd, r
     Integer, intent(in) :: P(V_NMAX)
-    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,nd), W(V_NMAX*V_NMAX)
+    Complex (Kind=Kind(0.d0)), intent(in) :: G(ld,nd), XT(2*V_NMAX*V_NMAX)
     Complex (Kind=Kind(0.d0)), intent(inout) :: C(nd*V_NMAX), T(V_NMAX*nd)
     Integer :: i, a, b
     Complex (Kind=Kind(0.d0)) :: acc, rb
     !$omp target teams distribute parallel do private(a, b, acc, rb)
     do i = 1, nd
        do a = 1, r
-          C(i + (a-1)*nd) = G(i, P(a))
+          acc = G(i, P(1)) * XT(1 + (a-1)*r)
+          do b = 2, r
+             acc = acc + G(i, P(b)) * XT(b + (a-1)*r)
+          enddo
+          C(i + (a-1)*nd) = acc
        enddo
        do a = 1, r
           acc = (0.d0, 0.d0)
           do b = 1, r
              rb = - G(P(b), i)
              if (i == P(b)) rb = 1.d0 - G(P(b), i)
-             acc = acc + W(a + (b-1)*r) * rb
+             acc = acc + XT(r*r + b + (a-1)*r) * rb
           enddo
           T(a + (i-1)*r) = acc
        enddo
@@ -306,7 +313,7 @@ Contains
   Subroutine rk_alloc()
     Implicit none
     if (allocated(rk_g)) return
-    allocate(rk_g(V_NMAX*V_NMAX), rk_w(V_NMAX*V_NMAX), rk_c(Ndim*V_NMAX), rk_t(V_NMAX*Ndim), rk_p(V_NMAX))
+    allocate(rk_g(V_NMAX*V_NMAX), rk_w(2*V_NMAX*V_NMAX), rk_c(Ndim*V_NMAX), rk_t(V_NMAX*Ndim), rk_p(V_NMAX))
     rk_g = (0.d0,0.d0); rk_w = (0.d0,0.d0); rk_c = (0.d0,0.d0); rk_t = (0.d0,0.d0); rk_p = 1
     !$omp target enter data map(to: rk_g, rk_w, rk_c, rk_t, rk_p)
   end subroutine rk_alloc
@@ -325,15 +332,15 @@ Contains
     upd_cnt(5) = upd_cnt(5) + 1
   end subroutine rk_block
 
-!> P2.6.1: the r x r matrix W of the accept G <- G - G(:,P) W R (R(k,j) = delta(j,P(k)) - G(P(k),j)): Upgrade2's recursion for
-!> x_v, y_v with y_v = V Tri (V(:,k) = v(:,k) = R(k,:)^T) restricted to the rows P (x_v vanishes outside P); W = X Tri^T,
-!> X = x_v(P,:).  Inputs: gb(a,b) = G(P(a),P(b)), Delta(1:r).
-  Subroutine rk_wmat(r, gb, Delta, W)
+!> P2.6.1: the r x r factors of the accept G <- G - (G(:,P) X) (Tri^T R) (R(k,j) = delta(j,P(k)) - G(P(k),j)): Upgrade2's
+!> recursion for x_v, y_v with y_v = V Tri (V(:,k) = v(:,k) = R(k,:)^T) restricted to the rows P (x_v vanishes outside P),
+!> X = x_v(P,:).  The delayed general path uses W = X Tri^T.  Inputs: gb(a,b) = G(P(a),P(b)), Delta(1:r).
+  Subroutine rk_xtri(r, gb, Delta, X, Tri)
     Implicit none
     Integer, intent(in) :: r
     Complex (Kind=Kind(0.d0)), intent(in) :: gb(r,r), Delta(r)
-    Complex (Kind=Kind(0.d0)), intent(out) :: W(r,r)
-    Complex (Kind=Kind(0.d0)) :: X(r,r), Tri(r,r), Vp(r,r), syu(r), sxv(r), Z
+    Complex (Kind=Kind(0.d0)), intent(out) :: X(r,r), Tri(r,r)
+    Complex (Kind=Kind(0.d0)) :: Vp(r,r), syu(r), sxv(r), Z
     Integer :: n, m, k
     ! Vp(a,k) = v(P(a),k) = delta(a,k) - G(P(k),P(a))
     do k = 1, r
@@ -364,8 +371,7 @@ Contains
        Z = 1.d0/Z                         ! as Upgrade2: reciprocal, then scale
        X(:,n) = X(:,n) * Z
     enddo
-    W = matmul(X, transpose(Tri))
-  end subroutine rk_wmat
+  end subroutine rk_xtri
 
 !> P2.6.1: Op_Wrapup (dir = +1, after the update) / Op_Wrapdo (dir = -1, before it) with N_Type 2 of operator n: nothing for a
 !> diagonal operator; otherwise G must be flushed (delayed / submatrix state) first.
@@ -419,8 +425,9 @@ Contains
     Complex (Kind=Kind(0.d0)) :: Ratio(N_FL), Ratiotot, Z1, Prev_Ratiotot, Delta(N_FL), gpp(N_FL)
     Complex (Kind=Kind(0.d0)) :: Z, D_Mat, myexp, g_loc, Mat11, vii, xv, Zg, s1, s2
     Complex (Kind=Kind(0.d0)) :: gb(V_NMAX,V_NMAX,N_FL), Dl(V_NMAX,N_FL), Mat(V_NMAX,V_NMAX), W(V_NMAX*V_NMAX)
+    Complex (Kind=Kind(0.d0)) :: Xm(V_NMAX,V_NMAX), Tm(V_NMAX,V_NMAX)
     Real (Kind=Kind(0.d0)) :: Weight
-    Integer :: nf, nf_eff, op_dim_nf, p1, m, k
+    Integer :: nf, nf_eff, op_dim_nf, p1, m, k, r2
     Logical :: lr, lrf, lrg, gen(N_FL)
 
     toggle = .false.
@@ -518,19 +525,26 @@ Contains
           nf=Calc_Fl_map(nf_eff)
           if (gen(nf)) then
              op_dim_nf = Op_V(n_op,nf)%N_non_zero
-             call rk_wmat(op_dim_nf, gb(1:op_dim_nf,1:op_dim_nf,nf), Dl(1:op_dim_nf,nf), W)
+             r2 = op_dim_nf**2
+             call rk_xtri(op_dim_nf, gb(1:op_dim_nf,1:op_dim_nf,nf), Dl(1:op_dim_nf,nf), Xm(1:op_dim_nf,1:op_dim_nf), &
+                  & Tm(1:op_dim_nf,1:op_dim_nf))
+             ! W = X Tri^T: the delayed general path and the HIP accept (GPU=amd, not yet in Upgrade2's grouping) take W
+             W(1:r2) = reshape(matmul(Xm(1:op_dim_nf,1:op_dim_nf), transpose(Tm(1:op_dim_nf,1:op_dim_nf))), (/r2/))
              if (lrg) then
-                call gpu_lr_gen_accept(nf, n_op, op_dim_nf, W(1:op_dim_nf**2))
+                call gpu_lr_gen_accept(nf, n_op, op_dim_nf, W(1:r2))
                 cycle
              endif
-             rk_w(1:op_dim_nf**2) = W(1:op_dim_nf**2)
              rk_p(1:op_dim_nf) = Op_V(n_op,nf)%P(1:op_dim_nf)
-             !$omp target update to(rk_w(1:op_dim_nf**2), rk_p(1:op_dim_nf))
 #if defined(ALF_LA_HIP)
              if (hk_enabled()) then
+                rk_w(1:r2) = W(1:r2)
+                !$omp target update to(rk_w(1:r2), rk_p(1:op_dim_nf))
                 call hk_rk_accept(G_d(1,1,nf), Ndim, Ndim, rk_p, op_dim_nf, rk_w, rk_c, rk_t)
              else
 #endif
+             rk_w(1:r2) = reshape(Xm(1:op_dim_nf,1:op_dim_nf), (/r2/))
+             rk_w(r2+1:2*r2) = reshape(Tm(1:op_dim_nf,1:op_dim_nf), (/r2/))
+             !$omp target update to(rk_w(1:2*r2), rk_p(1:op_dim_nf))
              call k_rk_prep(G_d(1,1,nf), Ndim, Ndim, rk_p, op_dim_nf, rk_w, rk_c, rk_t)
              call k_rk_upd(G_d(1,1,nf), Ndim, Ndim, op_dim_nf, rk_c, rk_t)
 #if defined(ALF_LA_HIP)
