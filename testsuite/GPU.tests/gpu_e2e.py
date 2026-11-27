@@ -57,6 +57,8 @@ SP = {"ham_name": '"Spin_Peierls"', "Model": '"Spin_Peierls"', "L1": "6", "L2": 
       "ham_omega0": "0.5d0", "N_SUN": "2", "N_FL": "1"}
 PV = '"Hubbard_Plain_Vanilla"'
 PROJ = {"Projector": ".T.", "Theta": "2.d0", "Beta": "2.d0"}
+GT_RANGE = {"Global_tau_moves": ".T.", "N_Global_tau": "3", "Nt_sequential_start": "3", "Nt_sequential_end": "12"}
+Z2 = {"ham_name": '"Z2_Matter"', "Model": '"Z2_Matter"', "Beta": "2.d0", "Ltau": "0"}
 CASES = [
     ("mz-standard", {}, {"ALF_GPU_SELFTEST": "1"}, "ok"),
     ("mz-delayed-N4", {"Sequential_scheme": '"delayed"', "N_delay": "4"}, {}, "ok"),
@@ -126,6 +128,22 @@ CASES = [
     ("proj-fault-perm", PROJ, {"ALF_GPU_DEBUG": "1", "ALF_GPU_FAULT_STAB": "perm"}, "abort"),   # wrong CGRP row permutation
     # (a flipped CGRP phase cancels in the weight of these models, N_FL = 2 or N_SUN = 2: the negative controls of the projector
     # decompose / CGRP are in the stab self-test, ctest gpu-stab-fault-proj-*)
+    # P2.6 global: global tau moves on the device path. Hubbard: one random vertex per move (FINAL mode), full sequential range and a
+    # partial one (H5 placement of G around it), standard / delayed / submatrix; Z2_Matter: moves of 4 or 5 vertices (INTERMEDIATE
+    # mode, device copy of G for a rejected move), the fault ALF_GPU_FAULT=gtau (no G restore after a rejected move) must be seen.
+    # Propose_S0 acts on type-1 vertices only: Hubbard (S0 = 1: half of the proposals skip the update, also inside delayed /
+    # submatrix blocks) and Z2_Matter (S0 of the matter field).
+    ("mz-gtau-N3", {"Global_tau_moves": ".T.", "N_Global_tau": "3", "Nt_sequential_start": "1", "Nt_sequential_end": "16"}, {}, "ok"),
+    ("mz-gtau-range", dict(GT_RANGE), {}, "ok"),
+    ("mz-gtau-range-delayed-N4", dict(GT_RANGE, Sequential_scheme='"delayed"', N_delay="4"), {}, "ok"),
+    ("mz-gtau-range-submatrix-N4", dict(GT_RANGE, Sequential_scheme='"submatrix"', N_delay="4"), {}, "ok"),
+    ("z2-gtau", dict(Z2, Global_tau_moves=".T.", N_Global_tau="4"), {}, "okh"),
+    ("z2-gtau-delayed-N4", dict(Z2, Global_tau_moves=".T.", N_Global_tau="4", Sequential_scheme='"delayed"', N_delay="4"), {}, "okh"),
+    ("fault-gtau", dict(Z2, Global_tau_moves=".T.", N_Global_tau="4"), {"ALF_GPU_DEBUG": "1", "ALF_GPU_FAULT": "gtau"}, "fault"),
+    ("mz-propose-s0", {"Propose_S0": ".T."}, {}, "ok"),
+    ("mz-propose-s0-delayed-N4", {"Propose_S0": ".T.", "Sequential_scheme": '"delayed"', "N_delay": "4"}, {}, "ok"),
+    ("mz-propose-s0-submatrix-N4", {"Propose_S0": ".T.", "Sequential_scheme": '"submatrix"', "N_delay": "4"}, {}, "ok"),
+    ("z2-propose-s0", dict(Z2, Propose_S0=".T."), {}, "okh"),
     # ALF_GPU_FAULT=nsig (stale device copy of the field) cannot be seen on the host backend: host and "device" array are the
     # same memory there, so it is not a case here (to be added for the vendor backends, step 2).
 ]

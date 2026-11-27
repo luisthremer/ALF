@@ -302,10 +302,16 @@ contains
     endif
     Call refuse('Langevin', 'Langevin/HMC')
     Call refuse('HMC', 'Langevin/HMC')
-    Call refuse('Global_moves', 'global moves')
-    Call refuse('Global_tau_moves', 'global moves')
-    Call refuse('N_Global_tau', 'global moves')
-    Call refuse('Propose_S0', 'Propose_S0')
+    Call refuse('Global_moves', 'Global_moves')
+#if defined(ALF_LA_HIP) || defined(ALF_LA_ONEMKL)
+    Call refuse('Global_tau_moves', 'not yet checked on GPU=amd and GPU=intel')
+    Call refuse('N_Global_tau', 'not yet checked on GPU=amd and GPU=intel')
+    Call refuse('Propose_S0', 'not yet checked on GPU=amd and GPU=intel')
+#else
+    Call accept('Global_tau_moves', build_reason)
+    Call accept('N_Global_tau', build_reason)
+    Call accept('Propose_S0', build_reason)
+#endif
     Call refuse('Sequential_MALA', 'MALA')
     Call refuse('Global_MALA_moves', 'MALA')
     Call refuse('Global_tau_MALA_moves', 'MALA')
@@ -348,6 +354,21 @@ contains
     Write(*,'(A,A,A,A)') ' refusal ', option, ': ', trim(reason)
     Call switch(option, .false.)
   end Subroutine refuse
+
+  !> P2.6: the option runs on the device path, gpu_supported must say yes (or give the build-wide reason)
+  Subroutine accept(option, build_reason)
+    Character (len=*), intent(in) :: option, build_reason
+    Character (len=256) :: reason
+    Logical :: ok
+    Call switch(option, .true.)
+    ok = gpu_supported(reason)
+    If (len_trim(build_reason) == 0) then
+       Call check(ok, 'accepted: '//option//': '//trim(reason))
+    else
+       Call check(.not. ok .and. index(reason, trim(build_reason)) > 0, option//' (build-wide): '//trim(reason))
+    endif
+    Call switch(option, .false.)
+  end Subroutine accept
 
   Subroutine switch(option, on)
     Character (len=*), intent(in) :: option
