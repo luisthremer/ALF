@@ -490,3 +490,135 @@ int alfhk_scalars(int nk, void* hi, void* hj, void* hf, void* hc, int N, int Nor
   return hipMemcpy(hres, dres, 6 * sizeof(double), hipMemcpyDeviceToHost) == hipSuccess ? 0 : 4;
 }
 }  // extern "C"
+
+// ---- checkerboard group product of gpu_wrap_mod (k_cb_left_g / k_cb_right_g with el_left_d / el_right_d) ----------------
+// Same arithmetic as the OpenMP element bodies (real elements: a*Re, a*Im sums in the order l = 1..nd; complex elements: the
+// complex products and sums in the same order), same thread decomposition. One HIP launch per group instead of one libgomp
+// target region (~150 us); the elements of a group have disjoint site lists, so the threads write disjoint entries.
+// meta(4,e): 1 real(1)/complex, 2 nd, 3 offset into P, 4 offset into R/C; all Fortran 1-based, e 1-based.
+__device__ inline void el_left(cd* M, long ld, int j1, int j2, int e, int k, const int* meta, const int* P, const double* R, const cd* C) {
+  const int* mt = meta + 4L * (e - 1);
+  int nd = mt[1], po = mt[2]; long mo = mt[3] + (long)(k - 1) * nd * nd;
+  cd w[8];
+  if (mt[0] == 1) {
+    if (nd == 1) {
+      int r = P[po] - 1; double a = R[mo];
+      for (int j = j1; j <= j2; j++) { cd x = M[r + (long)(j - 1) * ld]; M[r + (long)(j - 1) * ld] = cd(a * x.r, a * x.i); }
+    } else if (nd == 2) {
+      int r1 = P[po] - 1, r2 = P[po + 1] - 1;
+      double a11 = R[mo], a21 = R[mo + 1], a12 = R[mo + 2], a22 = R[mo + 3];
+      for (int j = j1; j <= j2; j++) {
+        cd w1 = M[r1 + (long)(j - 1) * ld], w2 = M[r2 + (long)(j - 1) * ld];
+        M[r1 + (long)(j - 1) * ld] = cd(a11 * w1.r + a12 * w2.r, a11 * w1.i + a12 * w2.i);
+        M[r2 + (long)(j - 1) * ld] = cd(a21 * w1.r + a22 * w2.r, a21 * w1.i + a22 * w2.i);
+      }
+    } else {
+      for (int j = j1; j <= j2; j++) {
+        for (int l = 0; l < nd; l++) w[l] = M[(P[po + l] - 1) + (long)(j - 1) * ld];
+        for (int i = 0; i < nd; i++) {
+          double a = R[mo + i]; double zr = a * w[0].r, zi = a * w[0].i;
+          for (int l = 1; l < nd; l++) { a = R[mo + i + (long)l * nd]; zr = zr + a * w[l].r; zi = zi + a * w[l].i; }
+          M[(P[po + i] - 1) + (long)(j - 1) * ld] = cd(zr, zi);
+        }
+      }
+    }
+  } else {
+    if (nd == 1) {
+      int r = P[po] - 1; cd c11 = C[mo];
+      for (int j = j1; j <= j2; j++) M[r + (long)(j - 1) * ld] = c11 * M[r + (long)(j - 1) * ld];
+    } else if (nd == 2) {
+      int r1 = P[po] - 1, r2 = P[po + 1] - 1;
+      cd c11 = C[mo], c21 = C[mo + 1], c12 = C[mo + 2], c22 = C[mo + 3];
+      for (int j = j1; j <= j2; j++) {
+        cd w1 = M[r1 + (long)(j - 1) * ld], w2 = M[r2 + (long)(j - 1) * ld];
+        M[r1 + (long)(j - 1) * ld] = c11 * w1 + c12 * w2;
+        M[r2 + (long)(j - 1) * ld] = c21 * w1 + c22 * w2;
+      }
+    } else {
+      for (int j = j1; j <= j2; j++) {
+        for (int l = 0; l < nd; l++) w[l] = M[(P[po + l] - 1) + (long)(j - 1) * ld];
+        for (int i = 0; i < nd; i++) {
+          cd z = C[mo + i] * w[0];
+          for (int l = 1; l < nd; l++) z = z + C[mo + i + (long)l * nd] * w[l];
+          M[(P[po + i] - 1) + (long)(j - 1) * ld] = z;
+        }
+      }
+    }
+  }
+}
+__device__ inline void el_right(cd* M, long ld, int i1, int i2, int istep, int e, int k, const int* meta, const int* P, const double* R, const cd* C) {
+  const int* mt = meta + 4L * (e - 1);
+  int nd = mt[1], po = mt[2]; long mo = mt[3] + (long)(k - 1) * nd * nd;
+  cd w[8];
+  if (mt[0] == 1) {
+    if (nd == 1) {
+      long c = P[po] - 1; double a = R[mo];
+      for (int i = i1; i <= i2; i += istep) { cd x = M[(i - 1) + c * ld]; M[(i - 1) + c * ld] = cd(a * x.r, a * x.i); }
+    } else if (nd == 2) {
+      long c1 = P[po] - 1, c2 = P[po + 1] - 1;
+      double a11 = R[mo], a21 = R[mo + 1], a12 = R[mo + 2], a22 = R[mo + 3];
+      for (int i = i1; i <= i2; i += istep) {
+        cd w1 = M[(i - 1) + c1 * ld], w2 = M[(i - 1) + c2 * ld];
+        M[(i - 1) + c1 * ld] = cd(a11 * w1.r + a21 * w2.r, a11 * w1.i + a21 * w2.i);
+        M[(i - 1) + c2 * ld] = cd(a12 * w1.r + a22 * w2.r, a12 * w1.i + a22 * w2.i);
+      }
+    } else {
+      for (int i = i1; i <= i2; i += istep) {
+        for (int l = 0; l < nd; l++) w[l] = M[(i - 1) + (long)(P[po + l] - 1) * ld];
+        for (int j = 0; j < nd; j++) {
+          double a = R[mo + (long)j * nd]; double zr = a * w[0].r, zi = a * w[0].i;
+          for (int l = 1; l < nd; l++) { a = R[mo + l + (long)j * nd]; zr = zr + a * w[l].r; zi = zi + a * w[l].i; }
+          M[(i - 1) + (long)(P[po + j] - 1) * ld] = cd(zr, zi);
+        }
+      }
+    }
+  } else {
+    if (nd == 1) {
+      long c = P[po] - 1; cd c11 = C[mo];
+      for (int i = i1; i <= i2; i += istep) M[(i - 1) + c * ld] = M[(i - 1) + c * ld] * c11;
+    } else if (nd == 2) {
+      long c1 = P[po] - 1, c2 = P[po + 1] - 1;
+      cd c11 = C[mo], c21 = C[mo + 1], c12 = C[mo + 2], c22 = C[mo + 3];
+      for (int i = i1; i <= i2; i += istep) {
+        cd w1 = M[(i - 1) + c1 * ld], w2 = M[(i - 1) + c2 * ld];
+        M[(i - 1) + c1 * ld] = w1 * c11 + w2 * c21;
+        M[(i - 1) + c2 * ld] = w1 * c12 + w2 * c22;
+      }
+    } else {
+      for (int i = i1; i <= i2; i += istep) {
+        for (int l = 0; l < nd; l++) w[l] = M[(i - 1) + (long)(P[po + l] - 1) * ld];
+        for (int j = 0; j < nd; j++) {
+          cd z = w[0] * C[mo + (long)j * nd];
+          for (int l = 1; l < nd; l++) z = z + w[l] * C[mo + l + (long)j * nd];
+          M[(i - 1) + (long)(P[po + j] - 1) * ld] = z;
+        }
+      }
+    }
+  }
+}
+// left: threads over (column tile jt, element e); right: threads over (element e, row tile it), rows it, it+ntile, ...
+__global__ void k_cb_left(cd* M, long ld, int ncol, int e1, int nel, int k, int tl, int ntile, const int* meta, const int* P, const double* R, const cd* C) {
+  long t = (long)blockIdx.x * blockDim.x + threadIdx.x; if (t >= (long)ntile * nel) return;
+  int jt = (int)(t / nel) + 1, e = e1 + (int)(t % nel);
+  int j1 = (jt - 1) * tl + 1, j2 = min(ncol, jt * tl);
+  el_left(M, ld, j1, j2, e, k, meta, P, R, C);
+}
+__global__ void k_cb_right(cd* M, long ld, int nrow, int e1, int nel, int k, int ntile, const int* meta, const int* P, const double* R, const cd* C) {
+  long t = (long)blockIdx.x * blockDim.x + threadIdx.x; if (t >= (long)ntile * nel) return;
+  int e = e1 + (int)(t / ntile), it = (int)(t % ntile) + 1;
+  el_right(M, ld, it, nrow, ntile, e, k, meta, P, R, C);
+}
+extern "C" {
+int alfhk_cb_left(void* M, int ld, int ncol, int e1, int e2, int k, int tl, void* meta, void* P, void* R, void* C) {
+  int nel = e2 - e1 + 1; if (nel <= 0 || ncol <= 0) return 0;
+  int ntile = (ncol + tl - 1) / tl; long tot = (long)ntile * nel;
+  LAUNCH(k_cb_left, nb(tot, 128), 128, (cd*)M, (long)ld, ncol, e1, nel, k, tl, ntile, (const int*)meta, (const int*)P, (const double*)R, (const cd*)C);
+  return fin();
+}
+int alfhk_cb_right(void* M, int ld, int nrow, int e1, int e2, int k, int tl, void* meta, void* P, void* R, void* C) {
+  int nel = e2 - e1 + 1; if (nel <= 0 || nrow <= 0) return 0;
+  int ntile = (nrow + tl - 1) / tl; long tot = (long)ntile * nel;
+  LAUNCH(k_cb_right, nb(tot, 128), 128, (cd*)M, (long)ld, nrow, e1, nel, k, ntile, (const int*)meta, (const int*)P, (const double*)R, (const cd*)C);
+  return fin();
+}
+}  // extern "C"

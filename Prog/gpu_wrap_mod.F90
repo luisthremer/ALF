@@ -78,7 +78,7 @@ Module gpu_wrap_mod
        & hop_mod_symm
   Use linalg_mod, only: la_zgemm, la_zgemm_cr
 #if defined(ALF_LA_HIP)
-  Use alf_hipk_mod, only: hk_enabled, hk_copyz, hk_scatter_rows, hk_vslice_r
+  Use alf_hipk_mod, only: hk_enabled, hk_copyz, hk_scatter_rows, hk_vslice_r, hk_cb_left, hk_cb_right
 #endif
   Use gpu_state_mod, only: finite_c, g_d, gpu_env_get, gpu_env_int, gpu_env_is, hop_ac, hop_at, hop_aux, hop_big, &
        & hop_cval, hop_gptr, hop_gstart, hop_meta, hop_p, hop_rval, hop_start, info_line, is_finite, nsigma_d, &
@@ -746,6 +746,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,ncol)
     Integer :: jt, ntile, e, e1, e2, j1, j2
     e1 = hop_gptr(g); e2 = hop_gptr(g+1) - 1
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_cb_left(M, ld, ncol, e1, e2, k, tl, hop_meta, hop_P, hop_Rval, hop_Cval)
+       return
+    endif
+#endif
     ntile = (ncol + tl - 1) / tl
     !$omp target teams distribute parallel do collapse(2) private(j1, j2)
     do jt = 1, ntile
@@ -763,6 +769,12 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,Ndim)
     Integer :: it, ntile, e, e1, e2
     e1 = hop_gptr(g); e2 = hop_gptr(g+1) - 1
+#if defined(ALF_LA_HIP)
+    if (hk_enabled()) then
+       call hk_cb_right(M, ld, nrow, e1, e2, k, tl, hop_meta, hop_P, hop_Rval, hop_Cval)
+       return
+    endif
+#endif
     ntile = (nrow + tl - 1) / tl
     ! thread (e, it) handles the rows it, it+ntile, it+2*ntile, ...: neighbouring threads touch neighbouring rows
     !$omp target teams distribute parallel do collapse(2)
