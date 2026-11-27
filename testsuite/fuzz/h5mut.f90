@@ -31,8 +31,8 @@ program h5mut
      call h5ldelete_f(fid, "seed", err)
   case ("short_seed")
      call h5ldelete_f(fid, "seed", err)
-     d1 = 2
-     call h5ltmake_dataset_int_f(fid, "seed", 1, d1, [12345, 678], err)
+     d1 = 1   ! one value: shorter than the seed of gfortran (8+) and Intel (2)
+     call h5ltmake_dataset_int_f(fid, "seed", 1, d1, [12345], err)
   case ("conf_zero", "conf_nan")
      allocate(x(n))
      x = 0.d0
