@@ -48,6 +48,7 @@ module alf_hipk_mod
   public :: hk_scatter_rows, hk_vslice_r, hk_blk_gather, hk_blk_scale, hk_sub_flush_gather
   public :: hk_corr, hk_scalars
   public :: hk_cb_left, hk_cb_right
+  public :: hk_dly_gpp, hk_dly_wrap
 
   ! HIP replacements on (default) or off (ALF_HIP_KERNELS=0: the OpenMP kernels run, for A/B checks); -1 = not read yet
   integer, save :: hk_state = -1
@@ -216,6 +217,16 @@ module alf_hipk_mod
       import :: c_ptr, c_int
       integer(c_int), value :: ld, nrow, e1, e2, k, tl
       type(c_ptr), value :: M, meta, P, R, C
+    end function
+    integer(c_int) function alfhk_dly_gpp(G, X, Y, ld, jcnt, p, res) bind(C, name='alfhk_dly_gpp')
+      import :: c_ptr, c_int
+      integer(c_int), value :: ld, jcnt, p
+      type(c_ptr), value :: G, X, Y, res
+    end function
+    integer(c_int) function alfhk_dly_wrap(G, X, Y, ld, nd, jcnt, n, t, dir, r, eo, nt, nsig, ldn, vexp) bind(C, name='alfhk_dly_wrap')
+      import :: c_ptr, c_int
+      integer(c_int), value :: ld, nd, jcnt, n, t, dir, r, eo, nt, ldn
+      type(c_ptr), value :: G, X, Y, nsig, vexp
     end function
   end interface
 
@@ -625,6 +636,30 @@ contains
     !$omp end target data
     call chk(rc, 'cb_right')
   end subroutine hk_cb_right
+
+  !> k_dly_gpp of gpu_lowrank_mod: res(1:2) = Re, Im of G(p,p) - sum_k X(p,k) Y(p,k); assumed-size dummies, so jcnt = 0 maps nothing
+  subroutine hk_dly_gpp(G, X, Y, ld, jcnt, p, res)
+    integer, intent(in) :: ld, jcnt, p
+    complex(kind=kind(0.d0)), target :: G(*), X(*), Y(*)
+    real(kind=kind(0.d0)), target :: res(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(G, X, Y, res)
+    rc = alfhk_dly_gpp(c_loc(G(1)), c_loc(X(1)), c_loc(Y(1)), int(ld,c_int), int(jcnt,c_int), int(p,c_int), c_loc(res(1)))
+    !$omp end target data
+    call chk(rc, 'dly_gpp')
+  end subroutine hk_dly_gpp
+
+  !> k_dly_wrap of gpu_lowrank_mod (row/column r of G0 and row r of X, Y scaled by the Op_V factors); ldn = leading extent of nsig
+  subroutine hk_dly_wrap(G, X, Y, ld, nd, jcnt, n, t, dir, r, eo, nt, nsig, ldn, vexp)
+    integer, intent(in) :: ld, nd, jcnt, n, t, dir, r, eo, nt, ldn
+    complex(kind=kind(0.d0)), target :: G(*), X(*), Y(*), nsig(*), vexp(*)
+    integer(c_int) :: rc
+    !$omp target data use_device_addr(G, X, Y, nsig, vexp)
+    rc = alfhk_dly_wrap(c_loc(G(1)), c_loc(X(1)), c_loc(Y(1)), int(ld,c_int), int(nd,c_int), int(jcnt,c_int), int(n,c_int), &
+         & int(t,c_int), int(dir,c_int), int(r,c_int), int(eo,c_int), int(nt,c_int), c_loc(nsig(1)), int(ldn,c_int), c_loc(vexp(1)))
+    !$omp end target data
+    call chk(rc, 'dly_wrap')
+  end subroutine hk_dly_wrap
 
 end module alf_hipk_mod
 #endif

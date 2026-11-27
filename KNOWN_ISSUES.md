@@ -380,6 +380,10 @@ AddressSanitizer/UBSan on Code-modularity for all models (no report), FPE traps 
   `ALF_GPU_DEBUG=1`, warned in the info file); the CGR-phase LU of the debug modes runs on host LAPACK on GPU=amd; default-path
   verification GPU=amd vs `ALF_GPU_DISABLE=1` over sizes, schemes and builds (see the feature's report). GPU=amd is
   "experimental: R2 open" until the cause is known.
+- **P2.6 models (feature `gpu-amd-p26`, 2026-11-27):** a further symptom (3): the libgomp fatal "Trying to map into device
+  [a..a) ... already mapped" in the delayed update of Kondo and Spin_Peierls: `k_dly_gpp` / `k_dly_wrap` of `gpu_lowrank_mod`
+  declare `X(ld,jcnt)`, `Y(ld,jcnt)` and map them implicitly; with `jcnt = 0` (first update of a block) the zero-length map
+  collides with the mapping already present. Mitigation: HIP versions of both kernels with assumed-size dummies (no map).
 - **Next:** reproducer below the full code; GCC 15 offload; upstream report.
 
 ## R3. GPU=amd: HIP slice kernel read the old V_meta layout (2026-11-27; fixed by feature `gpu-amd-p26`)

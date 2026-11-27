@@ -622,3 +622,36 @@ int alfhk_cb_right(void* M, int ld, int nrow, int e1, int e2, int k, int tl, voi
   return fin();
 }
 }  // extern "C"
+
+// ---- delayed-update kernels of gpu_lowrank_mod (k_dly_gpp, k_dly_wrap), P2.6 on GPU=amd --------------------------------------
+// The OpenMP versions declare X(ld,jcnt), Y(ld,jcnt); with jcnt = 0 (first update of a slice) the implicit map of two
+// zero-length arrays stops gfortran-14's libgomp ("Trying to map into device [a..a) ... already mapped"). Same arithmetic here.
+// res(1:2) = Re, Im of G(p,p) - sum_k X(p,k) Y(p,k)  (serial, k in order)
+__global__ void k_dly_gpp_h(const cd* G, const cd* X, const cd* Y, long ld, int jcnt, int p, double* res) {
+  long q = p - 1;
+  cd s = G[q + q * ld];
+  for (int k = 0; k < jcnt; k++) s = s - X[q + (long)k * ld] * Y[q + (long)k * ld];
+  res[0] = s.r; res[1] = s.i;
+}
+// G0 row and column r scaled by za / zb (G(r,r) by zb*(za*G)), X(r,1:jcnt) *= za, Y(r,1:jcnt) *= zb; one thread per j = 1..max(nd,jcnt)
+__global__ void k_dly_wrap_h(cd* G, cd* X, cd* Y, long ld, int nd, int jcnt, int n, int t, int dir, int r, int eo, int nt,
+                             const cd* nsig, long ldn, const cd* Vexp) {
+  int nloop = nd > jcnt ? nd : jcnt;
+  int j = blockIdx.x * blockDim.x + threadIdx.x + 1; if (j > nloop) return;
+  int sp = (int)rint(nsig[(n - 1) + (long)(t - 1) * ldn].r);
+  cd za = Vexp[eo + (dir * sp + nt)], zb = Vexp[eo + (-dir * sp + nt)];
+  long R = r - 1, J = j - 1;
+  if (j <= nd) {
+    if (j == r) G[R + R * ld] = zb * (za * G[R + R * ld]);
+    else { G[R + J * ld] = za * G[R + J * ld]; G[J + R * ld] = zb * G[J + R * ld]; }
+  }
+  if (j <= jcnt) { X[R + J * ld] = za * X[R + J * ld]; Y[R + J * ld] = zb * Y[R + J * ld]; }
+}
+extern "C" {
+int alfhk_dly_gpp(void* G, void* X, void* Y, int ld, int jcnt, int p, void* res) {
+  LAUNCH(k_dly_gpp_h, 1, 1, (const cd*)G, (const cd*)X, (const cd*)Y, (long)ld, jcnt, p, (double*)res); return fin(); }
+int alfhk_dly_wrap(void* G, void* X, void* Y, int ld, int nd, int jcnt, int n, int t, int dir, int r, int eo, int nt, void* nsig, int ldn, void* Vexp) {
+  int nloop = nd > jcnt ? nd : jcnt; if (nloop <= 0) return 0;
+  LAUNCH(k_dly_wrap_h, nb(nloop, 128), 128, (cd*)G, (cd*)X, (cd*)Y, (long)ld, nd, jcnt, n, t, dir, r, eo, nt, (const cd*)nsig, (long)ldn, (const cd*)Vexp);
+  return fin(); }
+}  // extern "C"

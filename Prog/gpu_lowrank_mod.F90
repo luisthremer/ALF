@@ -72,7 +72,7 @@ Module gpu_lowrank_mod
   Use lowrank_update_mod, only: Lowrank_current_N_delay
   Use linalg_mod, only: la_zgemm
 #if defined(ALF_LA_HIP)
-  Use alf_hipk_mod, only: hk_enabled, hk_blk_gather, hk_blk_scale, hk_sub_flush_gather
+  Use alf_hipk_mod, only: hk_enabled, hk_blk_gather, hk_blk_scale, hk_sub_flush_gather, hk_dly_gpp, hk_dly_wrap
 #endif
   Use gpu_state_mod, only: g_d, info_line, nsigma_d, scr_c, upd_cnt, v_exp, v_meta, v_type, v_nmax, v_nd
   Use gpu_wrap_mod, only: gpu_Vop_wrap, k_nd_rows
@@ -515,6 +515,13 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,nd_), X(ld,jcnt), Y(ld,jcnt)
     Integer :: j, sp, nloop
     Complex (Kind=Kind(0.d0)) :: za, zb
+#if defined(ALF_LA_HIP)
+    ! GPU=amd: no implicit map of X(ld,jcnt), Y(ld,jcnt) (jcnt = 0 stops gfortran-14's libgomp; KNOWN_ISSUES R2)
+    if (hk_enabled()) then
+       call hk_dly_wrap(G, X, Y, ld, nd_, jcnt, n, t, dir, r, eo, nt, nsigma_d, size(nsigma_d,1), V_exp)
+       return
+    endif
+#endif
     nloop = max(nd_, jcnt)
     !$omp target teams distribute parallel do private(sp, za, zb)
     do j = 1, nloop
@@ -544,6 +551,13 @@ Contains
     Real (Kind=Kind(0.d0)), intent(inout) :: res(2)
     Integer :: k
     Complex (Kind=Kind(0.d0)) :: s
+#if defined(ALF_LA_HIP)
+    ! GPU=amd: no implicit map of X(ld,jcnt), Y(ld,jcnt) (jcnt = 0 stops gfortran-14's libgomp; KNOWN_ISSUES R2)
+    if (hk_enabled()) then
+       call hk_dly_gpp(G, X, Y, ld, jcnt, p, res)
+       return
+    endif
+#endif
     !$omp target private(s)
     s = G(p,p)
     do k = 1, jcnt
