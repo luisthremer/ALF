@@ -48,3 +48,7 @@ Short form in `STATUS.md` ("Waiting for you"). Answer in the chat with the numbe
   stay until merged/closed); Trash emptied, local alf-ops clone moved to the Trash; cluster logins asked for when P2.4
   step 2 needs them.
 - Earlier: D1 dispatch in `linalg_mod`, D2 `GPU=host`, D3 Hubbard only (2026-11-26).
+- **Q18, Q19, W-smuc-grant-bench:** "All questions that need me are answered with yes." (chat, 2026-11-27 ~19:30). Q18: probe branch
+  `cm/dev/p26-g10-probe` (ff3812d1) deleted, kept as tag `archive/cm/p26-g10-probe/dev`. Q19: macOS Accelerate (AMX, FP64) backend
+  + 1-page Metal note, branch `cm/feat/mac-accelerate`, new session. Grant: smuc-grant-bench updates
+  `fassaad/juelich` SuperMUC_Phase2_Conversion_2026 with the final beta = 4 and beta = L reports.
