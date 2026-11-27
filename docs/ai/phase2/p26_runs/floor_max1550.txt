@@ -1,0 +1,21 @@
+# CPU floor of the P2.6 cases (melmac, ifx GPU=none of the Code-modularity-GPU tip of 2026-11-27; GPU=host and -DQR_PREPIVOT below: 13dcd1e3, floor.py: MKL_CBWR=AUTO vs COMPATIBLE, same seeds, rule of p25_run.py)
+big-kondo-dly16 rc=0/0 floor max scaled diff 6.95e-12 (tol 1.0e-11) top: Dimer_tau 6.95e-12, Den_tau 2.45e-12, Ener_scal 1.97e-12
+big-kondo-std rc=0/0 floor max scaled diff 6.95e-12 (tol 1.0e-11) top: Dimer_tau 6.95e-12, Part_scal 3.78e-12, Ener_scal 3.40e-12
+big-kondo-sub16 rc=0/0 floor max scaled diff 6.95e-12 (tol 1.0e-11) top: Dimer_tau 6.95e-12, Ener_scal 2.97e-12, Part_scal 2.84e-12
+big-sp-std rc=0/0 floor max scaled diff 4.41e-10 (tol 3.6e-10) top: Part_scal 4.41e-10, Dimer_eq 1.90e-10, SpinZ_eq 8.07e-11
+big-sp-sub16 rc=0/0 floor max scaled diff 5.98e-10 (tol 7.2e-10) top: Part_scal 5.98e-10, Pot_scal 1.07e-10, Dimer_eq 8.80e-11
+big-tV-dly16 rc=0/0 floor max scaled diff 2.90e-11 (tol 1.8e-11) top: Ener_scal 2.90e-11, Pot_scal 2.22e-11, Kin_scal 1.67e-11
+big-tV-std rc=0/0 floor max scaled diff 1.68e-11 (tol 1.7e-11) top: Ener_scal 1.68e-11, Pot_scal 1.31e-11, Kin_scal 1.02e-11
+big-tV-sub16 rc=0/0 floor max scaled diff 2.96e-11 (tol 1.7e-11) top: Ener_scal 2.96e-11, Pot_scal 2.17e-11, Kin_scal 1.54e-11
+kondo-std rc=0/0 floor max scaled diff 3.44e-12 (tol 1.0e-11) top: Den_tau 3.44e-12, Dimer_tau 1.59e-12, Part_scal 3.25e-13
+sp-dly4 rc=0/0 floor max scaled diff 1.31e-10 (tol 1.3e-10) top: Dimer_eq 1.31e-10, SpinZ_eq 1.07e-11, Pot_scal 7.86e-12
+sp-std rc=0/0 floor max scaled diff 4.32e-11 (tol 1.0e-10) top: Dimer_eq 4.32e-11, Part_scal 2.04e-11, SpinZ_eq 9.68e-12
+tV-std rc=0/0 floor max scaled diff 1.39e-13 (tol 1.0e-11) top: Pot_scal 1.39e-13, Ener_scal 1.06e-13, Part_scal 5.19e-14
+
+# Kondo bisection, big-kondo-std (melmac, ifx; intel/xb.py: lane a vs lane b, same seeds)
+# GPU=host (GPU path, pre-pivoted QR, host MKL) vs ALF_GPU_DISABLE=1:
+big-kondo-std rc=0/0 max scaled diff 3.28e-10 (tol 1.0e-11) top: Dimer_tau 3.28e-10, Greenf_tau 2.36e-11, Den_tau 1.92e-11, SpinZ_tau 1.85e-11
+big-kondo-sub16 rc=0/0 max scaled diff 3.28e-10 (tol 1.0e-11) top: Dimer_tau 3.28e-10, Greenf_tau 2.36e-11, Den_tau 1.92e-11, SpinZ_tau 1.85e-11
+kondo-std rc=0/0 max scaled diff 6.99e-12 (tol 1.0e-11) top: Dimer_tau 6.99e-12, Greenf_tau 3.42e-12, Den_tau 3.08e-12, Part_scal 1.22e-12
+# GPU=none -DQR_PREPIVOT vs GPU=none default (CPU only, no GPU code):
+big-kondo-std rc=0/0 max scaled diff 5.99e-10 (tol 1.0e-11) top: Dimer_tau 5.99e-10, Den_tau 3.58e-11, SpinZ_tau 3.44e-11, Greenf_tau 3.21e-11
