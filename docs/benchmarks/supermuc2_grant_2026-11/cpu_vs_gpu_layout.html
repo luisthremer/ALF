@@ -51,7 +51,7 @@ svg .lbl{fill:var(--muted)}
 
 <section>
   <h2>Question the test answers</h2>
-  <p>On one full node, what is the best throughput (sweeps per node-hour) with the GPUs, what is the best with the CPUs alone, and what is the ratio, for three lattice sizes at fixed β? Energy per sweep is then estimated from the hardware power ratings, comparing a GPU node with a notional CPU-only node (same two CPUs, no GPUs).</p>
+  <p>On one full node, what is the best throughput (sweeps per node-hour) with the GPUs, what is the best with the CPUs alone, and what is the ratio, for four lattice sizes at fixed β? Energy per sweep is then estimated from the hardware power ratings, comparing a GPU node with a notional CPU-only node (same two CPUs, no GPUs).</p>
 </section>
 
 <section>
@@ -92,13 +92,14 @@ svg .lbl{fill:var(--muted)}
   <div class="tbl"><table>
     <tr><th>Parameter</th><th>Value</th><th>Source</th></tr>
     <tr><td>Model, lattice</td><td>Hubbard, square, L1 = L2 = L</td><td>owner</td></tr>
-    <tr><td>L</td><td><strong>16, 24, 32</strong> (Ndim 256, 576, 1024)</td><td>owner: three sizes; values are Claude's proposal</td></tr>
+    <tr><td>L</td><td><strong>16, 24, 32, 36</strong> (Ndim 256, 576, 1024, 1296)</td><td>owner</td></tr>
     <tr><td>β, Δτ</td><td>β = 4 fixed, Δτ = 0.1 (Ltrot = 40)</td><td>owner</td></tr>
-    <tr><td>Ltau</td><td>1 (time-displaced measurements on; on the GPU they run on the device)</td><td>owner</td></tr>
+    <tr><td>Ltau</td><td><strong>0</strong> (equal-time measurements only, as in production; the Ltau = 1 GPU path is not settled yet)</td><td>owner</td></tr>
     <tr><td>ham_h0</td><td>0</td><td>owner</td></tr>
     <tr><td>Symm, Checkerboard</td><td>.T., .T.</td><td>owner</td></tr>
+    <tr><td>Mz</td><td>.F.</td><td>owner</td></tr>
     <tr><td>ham_U</td><td>5.25, one parameter set per run</td><td>proposal (middle of the production U range)</td></tr>
-    <tr><td>N_SUN, N_FL, Mz</td><td>2, 2, .F.</td><td>proposal: as in the production parameter set (jakob_params)</td></tr>
+    <tr><td>N_SUN, N_FL</td><td>2, 2</td><td>proposal: as in the production parameter set (jakob_params)</td></tr>
     <tr><td>Rest</td><td>N_Phi = L²/2, Bulk, ham_T = 1, T2/U2/Tperp as production, Nwrap 10, submatrix, N_delay 64</td><td>jakob_params</td></tr>
     <tr><td>Run length</td><td>NSweep = 1, NBin = 11, CPU_MAX = 0: 11 sweeps, the first one dropped (start-up, JIT), 10 timed</td><td>owner: 10 timed sweeps with error bar</td></tr>
   </table></div>
@@ -144,9 +145,9 @@ svg .lbl{fill:var(--muted)}
       <tr><td>Binary</td><td><code>ANTRAG_2026-11-27/bin_batched_d1060305/pp/ALF.out</code>, an unchanged copy of the production binary of RUN_L36_batched (md5 4bd705b0… checked, with its three shared libraries)</td></tr>
       <tr><td>Run-time switches (as RUN_L36_batched)</td><td><code>LIBOMPTARGET_LEVEL_ZERO_STAGING_BUFFER_SIZE=1048576 ALFSH_ASYNCBLK=1 ALFSH_DEVQR=2 ALFSH_DEVUNMQR=1 ALFSH_QRNB=16 ALFSH_OBSCORR=1 ALFSH_BLKFUSE=5 ALFSH_BLKPF=1</code>, <code>LD_LIBRARY_PATH</code> = binary directory</td></tr>
     </table></div>
-    <p class="muted">Production ran this binary with Ltau = 0. Whether every switch also covers the time-displaced measurements (Ltau = 1) is not checked yet; the first short run shows it. If a switch does not apply, the run falls back to the default path for that part, and the report says so.</p>
+    <p class="muted">Production ran this binary with Ltau = 0, the same as this test, so all switches apply.</p>
   </div>
-  <p>Total: 5 CPU + 5 GPU (410c7b04) + 5 GPU (Intel-optimised) layouts × 3 sizes = <strong>45 runs</strong>, packed into one job per size and binary: <strong>9 jobs</strong>, each running its layouts one after another on the same node.</p>
+  <p>Total: 5 CPU + 5 GPU (410c7b04) + 5 GPU (Intel-optimised) layouts × 4 sizes = <strong>60 runs</strong>, packed into one job per size and binary: <strong>12 jobs</strong>, each running its layouts one after another on the same node.</p>
 </section>
 
 <section>
@@ -156,7 +157,7 @@ svg .lbl{fill:var(--muted)}
     <li>With NSweep = 1, rank 0 writes one bin per sweep to <code>data.h5</code>. A watcher logs the file's modification time with nanosecond resolution; the gap between two writes is the time of one sweep of all walkers (the slowest walker sets it, since the walkers synchronise at the bin).</li>
     <li>Sweeps 2–11 give 10 times t<sub>i</sub>. Reported: t̄ ± σ/√10 per run.</li>
     <li>Node throughput = N<sub>walkers</sub> × 3600 / t̄ sweeps per node-hour, with the same relative error. Best layout per device and size, then GPU/CPU ratio with propagated error.</li>
-    <li>The per-sweep time includes writing one bin of observables (equal-time and time-displaced). In production a bin holds 10 sweeps, so this test slightly favours the side whose sweeps are slower; the size of this effect is estimated from the time between the end of the last sweep and the file write.</li>
+    <li>The per-sweep time includes writing one bin of equal-time observables. In production a bin holds 10 sweeps, so this test slightly favours the side whose sweeps are slower; the size of this effect is estimated from the time between the end of the last sweep and the file write.</li>
   </ol>
   <p>Also logged on the GPU runs, at 1 s intervals: utilisation, power and memory per tile (<code>xpu-smi dump</code>, metrics 0, 1, 18). This costs nothing and gives the GPU-usage plot.</p>
 </section>
@@ -185,24 +186,23 @@ svg .lbl{fill:var(--muted)}
 
 <section>
   <h2>Cost</h2>
-  <p>Rough estimate, based on the earlier CPU measurement (L = 32, β = 32, 14 ranks × 8 threads: 380 s per sweep) scaled to β = 4 with Ltau = 1. The single-thread CPU runs at L = 32 dominate (about 1 h).</p>
+  <p>Rough estimate, based on the earlier CPU measurement (L = 32, β = 32, 14 ranks × 8 threads: 380 s per sweep) scaled to β = 4 and to L³. The single-thread CPU runs at L = 32 and 36 dominate (about 35 and 50 min).</p>
   <div class="tbl"><table>
     <tr><th>Part</th><th>Jobs</th><th>Node-hours</th></tr>
-    <tr><td>CPU, L = 16 / 24 / 32</td><td class="n">3</td><td class="n">≈ 0.3 / 0.8 / 2</td></tr>
-    <tr><td>GPU 410c7b04, L = 16 / 24 / 32</td><td class="n">3</td><td class="n">≈ 0.3 each</td></tr>
-    <tr><td>GPU Intel-optimised, L = 16 / 24 / 32</td><td class="n">3</td><td class="n">≈ 0.3 each</td></tr>
-    <tr><td><strong>Total</strong></td><td class="n">9</td><td class="n"><strong>≈ 5–6 node-h ≈ 20–24 GPU-h</strong> (whole node charged, 4 GPU-h per node-hour)</td></tr>
+    <tr><td>CPU, L = 16 / 24 / 32 / 36</td><td class="n">4</td><td class="n">≈ 0.2 / 0.5 / 1.3 / 1.9</td></tr>
+    <tr><td>GPU 410c7b04, L = 16 / 24 / 32 / 36</td><td class="n">4</td><td class="n">≈ 0.3 each</td></tr>
+    <tr><td>GPU Intel-optimised, L = 16 / 24 / 32 / 36</td><td class="n">4</td><td class="n">≈ 0.3 each</td></tr>
+    <tr><td><strong>Total</strong></td><td class="n">12</td><td class="n"><strong>≈ 6–7 node-h ≈ 25–28 GPU-h</strong> (whole node charged, 4 GPU-h per node-hour)</td></tr>
   </table></div>
-  <p class="muted">Partition: test (≤ 4 nodes, 1 h) for the GPU jobs and the CPU jobs at L = 16, 24; general for the CPU job at L = 32 (over 1 h). Charged to pn93la.</p>
+  <p class="muted">Partition: test (≤ 4 nodes, 1 h) for all GPU jobs and the CPU jobs at L = 16, 24; general for the CPU jobs at L = 32, 36 (over 1 h). Charged to pn93la.</p>
 </section>
 
 <section>
-  <h2>Open points for the owner</h2>
+  <h2>Defaults Claude will use unless the owner says otherwise</h2>
   <div class="note"><ul>
-    <li>L = 16, 24, 32 as the three sizes?</li>
-    <li>U = 5.25 and N_FL = 2 (as in production) acceptable, or N_FL = 1 with h0 = 0?</li>
-    <li>Add 7 and 14 threads per rank on the CPU (they fill a socket exactly)?</li>
-    <li>Energy: are TDP sums enough, or should the CPU power counters (RAPL) be read as well?</li>
+    <li>U = 5.25 and N_FL = 2, as in production.</li>
+    <li>CPU thread counts 1, 2, 4, 6, 8 only (no 7 or 14).</li>
+    <li>Energy from TDP sums only; tile power from xpu-smi as a cross-check.</li>
   </ul></div>
 </section>
 </main>
