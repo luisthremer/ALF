@@ -124,6 +124,8 @@ Module gpu_stab_mod
   Real    (Kind=Kind(0.d0)), Allocatable, Save :: st_r(:)                      ! device scalars: scale test, precision numbers
   Real    (Kind=Kind(0.d0)), Allocatable, Save :: st_nrm(:), st_Lt(:)          ! column norms / log norms; L work vector
   Real    (Kind=Kind(0.d0)), Allocatable, Save :: st_pw(:)                     ! per-column partial sums of k_prec (ticket 212)
+  Complex (Kind=Kind(0.d0)), Allocatable, Save :: st_q1(:), st_q2(:)          ! rd/gpu-speed: per-i factors of the phase products
+  Real    (Kind=Kind(0.d0)), Allocatable, Save :: st_a1(:), st_a2(:)          ! rd/gpu-speed: their moduli (st_a2 < 0: skip)
   Integer (c_int), Allocatable, Save :: st_ipvt(:), st_perm(:), st_ipiv(:)      ! pivot (ZGEQP3 semantics), sort permutation, LU pivots
   Logical, Save :: warn_once = .true.
   Logical, Save :: ns_on = .true.    ! Newton-Schulz step on Q in decompose (ALF_GPU_NS=0 switches it off; see DISCREPANCIES.md, cuSOLVER Q orthogonality)
@@ -167,11 +169,11 @@ Contains
     s_N = Ndim; s_nfe = N_FL_eff; s_nstm = NSTM
     allocate(s_nt(0:NSTM)); s_nt = Stab_nt
     n = s_N
-    allocate(sA(n,n), sB(n,n), sC(n,n), st_Gn(n,n), st_Gt(n,n), st_tau(n), st_Dl(n), st_c(8), st_r(16), st_nrm(n), st_Lt(n), st_pw(n))
+    allocate(sA(n,n), sB(n,n), sC(n,n), st_Gn(n,n), st_Gt(n,n), st_tau(n), st_Dl(n), st_c(8), st_r(16), st_nrm(n), st_Lt(n), st_pw(n), st_q1(n), st_q2(n), st_a1(n), st_a2(n))
     allocate(st_ipvt(n), st_perm(n), st_ipiv(n))
     st_ipvt = 1; st_perm = 1; st_ipiv = 1
     ! device allocation once, no transfer; the first use of each buffer is a device write
-    !$omp target enter data map(alloc: sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_ipvt, st_perm, st_ipiv)
+    !$omp target enter data map(alloc: sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_q1, st_q2, st_a1, st_a2, st_ipvt, st_perm, st_ipiv)
     allocate(st_dw(2,s_nfe), st_dv(s_nstm,s_nfe), dw_ok(2,s_nfe), dv_ok(s_nstm,s_nfe))
     st_dw = z1; st_dv = z1; dw_ok = .false.; dv_ok = .false.
     !$omp target enter data map(alloc: st_dw, st_dv)
@@ -221,8 +223,8 @@ Contains
     endif
     !$omp target exit data map(delete: st_dw, st_dv)
     deallocate(st_dw, st_dv, dw_ok, dv_ok)
-    !$omp target exit data map(delete: sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_ipvt, st_perm, st_ipiv)
-    deallocate(sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_ipvt, st_perm, st_ipiv, s_nt)
+    !$omp target exit data map(delete: sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_q1, st_q2, st_a1, st_a2, st_ipvt, st_perm, st_ipiv)
+    deallocate(sA, sB, sC, st_Gn, st_Gt, st_tau, st_Dl, st_c, st_r, st_nrm, st_Lt, st_pw, st_q1, st_q2, st_a1, st_a2, st_ipvt, st_perm, st_ipiv, s_nt)
     call la_finalize()
     gpu_stab_on = .false.
   end subroutine gpu_stab_finalize
@@ -1038,15 +1040,26 @@ Contains
 #if defined(ALF_LA_HIP)
     call hk_phase(n, ld, U, sgn, cj, cs)
 #else
+    ! rd/gpu-speed: the per-i factors are independent of the running products, so they are formed in parallel into
+    ! contiguous arrays (same expressions); the serial loop then only multiplies, in the same order (bitwise identical)
+    !$omp target teams distribute parallel do private(z, a2)
+    do i = 1, n
+       st_q1(i) = U(i,i)
+       ! det(H_i) = 1 - 2 tau_i Re(tau_i)/|tau_i|^2 (see det tracking in the module header); 1 for tau_i = 0
+       z = tau(i)
+       a2 = real(z)*real(z) + aimag(z)*aimag(z)
+       st_a2(i) = -1.d0
+       if (a2 > 0.d0) then
+          st_q2(i) = (1.d0 - 2.d0*z*(real(z)/a2))
+          st_a2(i) = 1.d0
+       endif
+    enddo
     !$omp target
     ph = cmplx(1.d0, 0.d0, kind(0.d0))
     dq = cmplx(1.d0, 0.d0, kind(0.d0))
     do i = 1, n
-       ph = ph*U(i,i)
-       ! det(H_i) = 1 - 2 tau_i Re(tau_i)/|tau_i|^2 (see det tracking in the module header); 1 for tau_i = 0
-       z = tau(i)
-       a2 = real(z)*real(z) + aimag(z)*aimag(z)
-       if (a2 > 0.d0) dq = dq * (1.d0 - 2.d0*z*(real(z)/a2))
+       ph = ph*st_q1(i)
+       if (st_a2(i) > 0.d0) dq = dq * st_q2(i)
     enddo
     if (sgn < 0) ph = -ph
     if (cj) ph = conjg(ph)
@@ -1433,22 +1446,31 @@ Contains
 #if defined(ALF_LA_HIP)
     call hk_cgr_phase(n, ld, T, tau, cs, nvar, sgn, bad)
 #else
+    ! rd/gpu-speed: per-i factors in parallel (same expressions), serial loop over contiguous arrays in the same order
+    !$omp target teams distribute parallel do private(z, x)
+    do i = 1, n
+       z = tau(i)
+       if (nvar == 1) then
+          st_q1(i) = T(i,i)
+       else
+          st_q1(i) = conjg(T(i,i))
+          z = conjg(z)
+       endif
+       st_a1(i) = abs(T(i,i))
+       st_a2(i) = -1.d0
+       if (z /= cmplx(0.d0, 0.d0, kind(0.d0))) then
+          x = abs(z)
+          z = 1.d0 - 2.d0 * (z/x) * (real(z)/x)
+          st_q2(i) = z
+          st_a2(i) = abs(z)
+       endif
+    enddo
     !$omp target
     ph = cs(3)
     if (sgn < 0) ph = -ph
     do i = 1, n
-       z = tau(i)
-       if (nvar == 1) then
-          ph = ph * T(i,i)/abs(T(i,i))
-       else
-          ph = ph * conjg(T(i,i))/abs(T(i,i))
-          z = conjg(z)
-       endif
-       if (z /= cmplx(0.d0, 0.d0, kind(0.d0))) then
-          x = abs(z)
-          z = 1.d0 - 2.d0 * (z/x) * (real(z)/x)
-          ph = ph * z/abs(z)
-       endif
+       ph = ph * st_q1(i)/st_a1(i)
+       if (st_a2(i) >= 0.d0) ph = ph * st_q2(i)/st_a2(i)
     enddo
     if (bad == 1) ph = -ph
     cs(3) = ph
@@ -1540,10 +1562,12 @@ Contains
     xm = 0.d0; xs = 0.d0; na = 0; nb = 0
     ! ticket 212: the sum has a fixed order: one thread per column sums serially into st_pw(j), then one thread adds the
     ! n column sums in order (max and the integer counts are order independent and stay reductions)
-    !$omp target teams distribute parallel do reduction(max:xm) reduction(+:na, nb) private(i, d, fa, fb, cs)
-    do j = 1, n
+    ! rd/gpu-speed: one thread per ROW (coalesced loads; was one per column), fixed order kept: row sums serially into
+    ! st_pw(i), then the n row sums in order. Diagnostic only (Precision Green); last bits differ from the column order.
+    !$omp target teams distribute parallel do reduction(max:xm) reduction(+:na, nb) private(j, d, fa, fb, cs)
+    do i = 1, n
        cs = 0.d0
-       do i = 1, n
+       do j = 1, n
           fa = isnan_bits(real(A(i,j))) .or. isnan_bits(aimag(A(i,j)))
           fb = isnan_bits(real(B(i,j))) .or. isnan_bits(aimag(B(i,j)))
           if (fa) na = na + 1
@@ -1554,7 +1578,7 @@ Contains
              xm = max(xm, d)
           endif
        enddo
-       st_pw(j) = cs
+       st_pw(i) = cs
     enddo
     !$omp target
     xs = 0.d0
