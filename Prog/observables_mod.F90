@@ -511,6 +511,8 @@
 
               CALL h5fopen_f (filename, H5F_ACC_RDWR_F, file_id, hdferr)
 
+              if (hdferr /= 0) Call Data_file_error(filename)
+
               !Writes the lattice to HDF5 file if it doesn't already exist
               call write_latt(file_id, Obs%Latt, Obs%Latt_Unit)
 
@@ -692,6 +694,8 @@
 
                CALL h5fopen_f (filename, H5F_ACC_RDWR_F, file_id, hdferr)
 
+               if (hdferr /= 0) Call Data_file_error(filename)
+
                !Writes the lattice to HDF5 file if it doesn't already exist
                call write_latt(file_id, Obs%Latt, Obs%Latt_Unit)
 
@@ -822,6 +826,8 @@
 
               CALL h5fopen_f (filename, H5F_ACC_RDWR_F, file_id, hdferr)
 
+              if (hdferr /= 0) Call Data_file_error(filename)
+
               !Check if observable already exists in hdf5 file
               CALL h5lexists_f(file_id, groupname, link_exists, hdferr)
 
@@ -861,5 +867,15 @@
            endif
 
          End Subroutine Print_bin_Vec
+
+#if defined HDF5
+         !> Stops the run when the observable file cannot be opened: the bin would be lost with return code 0
+         Subroutine Data_file_error(filename)
+           Character (len=*), intent(in) :: filename
+           write(error_unit,'(A,A,A)') "Print_bin: ", trim(filename), &
+                & " cannot be opened as an HDF5 file (corrupted or truncated?); the bin is not saved."
+           CALL Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+         End Subroutine Data_file_error
+#endif
 
        end Module Observables

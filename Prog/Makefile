@@ -57,7 +57,7 @@ qmc_setup_mod.o: git.h
 git.h: $(wildcard ../.git/HEAD ../.git/index) $(SRCS)
 	./Git_config.sh
 
-.parse_parameters: Hamiltonians.list $(HAM_LIST_D)
+.parse_parameters: Hamiltonians.list $(HAM_LIST_D) parse_ham.py parse_ham_mod.py
 	@echo "Parsing Hamiltonian parameters"
 	./parse_ham.py --create_read_write_par
 	@touch $@

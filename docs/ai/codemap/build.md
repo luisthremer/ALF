@@ -129,6 +129,10 @@ OMP_NUM_THREADS=1 ctest --test-dir testsuite/tests --output-on-failure
 - `Analysis.tests/1-maxent-kernel-overflow` (links `Analysis/maxent_wrapper_mod.o`).
 - `MALA.tests/`: `mala-measurement-cache` (Fortran, links all Prog objects except main.o via `Prog/.deps.mk`),
   `mala-measurements`, `mala-restart` (`integration.py` runs ALF.out on a 4-site Hubbard chain). Label MALA.
+- `fuzz/` (P2.8 input fuzzing, KNOWN_ISSUES.md Z1-Z10): `fuzz_inputs.py ALF_DIR ALF_EXE WORK [--hdf5] [--only a,b]`
+  changes one input of the Start case (parameters, seeds, confin_0, confin_0.h5, data.h5) per case and classifies
+  the run (clean stop / runtime stop / crash / hang / NaN / frozen / runs); `h5mut.f90` corrupts HDF5 files (built
+  with ALF's h5fc). CTest `54-fuzz-*` to `61-fuzz-*`, serial builds only (text cases without HDF5, HDF5 cases with it).
 - `test_vs_ed/`: `test_specs.yaml` (5 specs: hubbard_finT_chain, hubbard_T0_chain, 3× MALA variants);
   each runs 5 Δτ values, fits E(Δτ)=y0+aΔτ², passes if |y0−E_ED| ≤ `max_delta` (0.001) and ≤ `max_sigma` (3)σ.
   `prep_test.py` → dirs + CI matrix, `simulate.py`, `analysis.py`.
