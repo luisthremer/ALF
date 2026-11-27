@@ -1,0 +1,15 @@
+max1550-np2	tp-mz-std	works	works	ACTIVE	OK		max scaled diff 1.58e-10 (tol 3.2e-09), 64 files	44.5s/3.9s	
+max1550-np2	tp-mz-dly4	works	works	ACTIVE	OK		max scaled diff 1.56e-10 (tol 3.1e-09), 64 files	7.6s/3.9s	
+max1550-np2	tp-mz-sub4	works	works	ACTIVE	OK		max scaled diff 1.63e-10 (tol 3.2e-09), 64 files	7.4s/3.8s	
+max1550-np2	tp-su2-sub4	works	works	ACTIVE	OK		max scaled diff 9.17e-14 (tol 1.0e-11), 48 files	5.9s/3.8s	
+max1550-np2	tp-mz-ltau0	works	works	ACTIVE	OK		max scaled diff 1.58e-10 (tol 3.2e-09), 44 files	6.6s/3.8s	
+max1550-np2	tp-mz-nex3	works	works	ACTIVE	OK		max scaled diff 2.57e-10 (tol 2.2e-09), 64 files	7.3s/3.9s	
+max1550-np2	tp-mz-nodet	stops	stops	ACTIVE	OK		exit codes active 3, disabled 3; Unstable matrix | Terminating program | Abort(3) on node 1 (rank 1 in comm 0): application called MPI_Abort(MPI_COMM_WORLD, 3) - process 1	4.3s/2.8s	S0-only weight is wrong for Hubbard U replicas: the CPU path stops too (unstable); both paths must stop alike
+max1550-np2	tp-sp-sub4	works	works	ACTIVE	OK		max scaled diff 4.88e-10 (tol 1.1e-09), 44 files	11.5s/5.5s	P2.6 model (Spin_Peierls 6x6)
+max1550-np2	tp-mz-8x8-sub16	works	works	ACTIVE	OK		max scaled diff 1.09e-10 (tol 3.3e-09), 64 files	10.4s/7.9s	bigger (device runs)
+max1550-np2	tp-neg-temper	FAIL	FAIL	ACTIVE	OK		exit codes active 3, disabled 0; Unstable matrix | Terminating program | Abort(3) on node 0 (rank 0 in comm 0): application called MPI_Abort(MPI_COMM_WORLD, 3) - process 0	3.9s/3.9s	negative control: stale nsigma_d after the exchange
+max1550-np4	tp-mz-std	works	works	ACTIVE	OK		max scaled diff 8.25e-10 (tol 6.7e-09), 128 files	8.2s/4.0s	
+max1550-np4	tp-mz-sub4	works	works	ACTIVE	OK		max scaled diff 8.25e-10 (tol 7.1e-09), 128 files	7.2s/4.1s	
+max1550-np4	tp-mz-nex3	works	works	ACTIVE	OK		max scaled diff 5.76e-10 (tol 4.5e-09), 128 files	8.3s/4.0s	
+max1550-np4	tp-mz-8x8-sub16	works	works	ACTIVE	OK		max scaled diff 2.10e-10 (tol 5.1e-09), 128 files	10.4s/8.2s	bigger (device runs)
+max1550-np4	tp-neg-temper	FAIL	FAIL	ACTIVE	OK		exit codes active 3, disabled 0; 24.3685117389912       is exceeding the threshold of    10.0000000000000       for G difference! | Terminating program | Abort(3) on node 0 (rank 0 in comm 0): application called MPI_Abort(MPI_COMM_WORLD, 3) - process 0	4.1s/4.1s	negative control: stale nsigma_d after the exchange

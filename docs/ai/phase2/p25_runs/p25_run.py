@@ -76,7 +76,7 @@ def run(exe, d, env_extra, mpi, timeout):
     for k in [k for k in env if k.startswith("ALF_GPU_") or k.startswith("ALF_LA_TEST_")]:
         del env[k]
     env.update(env_extra)
-    cmd = (["mpirun", "--oversubscribe", "-np", str(mpi)] if mpi else []) + [exe]
+    cmd = (os.environ.get("P25_MPIRUN", "mpirun --oversubscribe").split() + ["-np", str(mpi)] if mpi else []) + [exe]   # P25_MPIRUN: e.g. "mpiexec" (Intel MPI)
     t0 = time.time()
     with open(os.path.join(d, "stdout"), "w") as out:
         try:
