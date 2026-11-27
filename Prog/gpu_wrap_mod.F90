@@ -1170,9 +1170,9 @@ Contains
     nd_work = w
   end function nd_work
 
-!> P2.6.1: per-operator factors of a type-4 operator for nd_work: s = sf * nint(Re f) (table index, types 1, 2), and for type 4
-!> zk(k) = exp(((sf g) Phi) E_k) (modes 1-3, Op_exp argument of Op_mmultL/R) or exp(sf ((Phi g) E_k)) (modes 4, 5, Op_Wrapup/do)
-!> with Phi = Fields_Phi of type 4 = Phi_st(nint(Re f),2) sqrt(1 + Im f).
+!> P2.6.1: per-operator factors of a type-3/4 operator for nd_work: s = sf * nint(Re f) (table index, types 1, 2 only), and for
+!> types 3, 4 zk(k) = exp(((sf g) Phi) E_k) (modes 1-3, Op_exp argument of Op_mmultL/R) or exp(sf ((Phi g) E_k)) (modes 4, 5,
+!> Op_Wrapup/do) with Phi = Fields_Phi: type 3 Re f, type 4 Phi_st(nint(Re f),2) sqrt(1 + Im f).
 !> Arrays passed explicitly (device routine): E = V_E(poff+1:), ph4 = V_phi4.
   Subroutine nd_factors(N1, nt, g, E, ph4, f, mode, sf, s, zk)
     Implicit none
@@ -1184,9 +1184,14 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(out) :: zk(*)
     Integer :: k
     Complex (Kind=Kind(0.d0)) :: phi, x
-    s = sf*nint(real(f))
+    s = 0
+    if (nt <= 2) s = sf*nint(real(f))
     if (nt <= 2 .or. mode >= 6) return
-    phi = cmplx(ph4(nint(real(f))), 0.d0, kind(0.d0)) * sqrt(cmplx(1.d0 + aimag(f), 0.d0, kind(0.d0)))
+    if (nt == 3) then
+       phi = cmplx(real(f), 0.d0, kind(0.d0))                ! type 3 (continuous): Fields_Phi = Re f
+    else
+       phi = cmplx(ph4(nint(real(f))), 0.d0, kind(0.d0)) * sqrt(cmplx(1.d0 + aimag(f), 0.d0, kind(0.d0)))
+    endif
     do k = 1, N1
        if (mode <= 3) then
           zk(k) = exp(((real(sf,kind(0.d0))*g)*phi)*E(k))

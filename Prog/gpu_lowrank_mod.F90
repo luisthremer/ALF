@@ -349,7 +349,8 @@ Contains
     inited = .false.; mode = LR_STD
   end subroutine gpu_lr_finalize
 
-!> .true. iff vertex n can use the low-rank path: every computed flavour has a single-site operator
+!> .true. iff vertex n can use the low-rank path: every computed flavour has a single-site table operator (type 1, 2; the
+!> rank-1 kernels read V_exp)
   Logical function gpu_lr_site_ok(n)
     Implicit none
     Integer, intent(in) :: n
@@ -357,7 +358,7 @@ Contains
     gpu_lr_site_ok = .true.
     do nf_eff = 1, N_FL_eff
        nf = Calc_Fl_map(nf_eff)
-       if (V_meta(1,n,nf) /= 1) then
+       if (V_meta(1,n,nf) /= 1 .or. v_nd(n,nf) /= 0) then
           gpu_lr_site_ok = .false.; return
        endif
     enddo
@@ -901,7 +902,7 @@ Contains
 !  synchronisation per site), no host->device transfer per accept.  Work that does not need a decision is deferred and
 !  passed as scalar arguments of the next launch: the field write nsigma_d(n,t), the slot_d entry of a newly pending site,
 !  and (WRAPGRDO) the wrap of the site just updated.
-!  Conditions (fast_check): N_FL_eff <= 2, every vertex a single-site operator in every computed flavour, and the site
+!  Conditions (fast_check): N_FL_eff <= 2, every vertex a single-site table operator in every computed flavour, and the site
 !  P(1) of different vertices distinct (so a deferred wrap never touches the next gather site).
 !====================================================================
   Subroutine fast_check()
@@ -915,7 +916,7 @@ Contains
     do n = 1, size(Op_V,1)
        do fl = 1, N_FL_eff
           nf = Calc_Fl_map(fl)
-          if (V_meta(1,n,nf) /= 1) then
+          if (V_meta(1,n,nf) /= 1 .or. v_nd(n,nf) /= 0) then
              fast = .false.
           else
              if (seen(Op_V(n,nf)%P(1),nf)) fast = .false.

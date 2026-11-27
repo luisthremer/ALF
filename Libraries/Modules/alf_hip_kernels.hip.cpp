@@ -684,13 +684,17 @@ __device__ cd nd_work_h(const int* mt, int mode, int s, int a, int b, const cd* 
   else if (mode == 5) w = (nt <= 2) ? c.Vx[eo + a + (s + nt) * N1 - 1] * w : zk[a - 1] * w;
   return w;
 }
-// nd_factors of gpu_wrap_mod; E = V_E(poff+1:)
+// nd_factors of gpu_wrap_mod (types 3, 4 formed here); E = V_E(poff+1:)
 __device__ void nd_factors_h(int N1, int nt, cd g, const double* E, const double* ph4, cd f, int mode, int sf, int* s, cd* zk) {
-  *s = sf * nintd(f.r);
+  *s = (nt <= 2) ? sf * nintd(f.r) : 0;
   if (nt <= 2 || mode >= 6) return;
-  double xr = 1.0 + f.i;
-  cd sq = xr >= 0 ? cd(sqrt(xr), 0.0) : cd(0.0, sqrt(-xr));
-  cd phi = cd(ph4[nintd(f.r) + 2], 0.0) * sq;
+  cd phi;
+  if (nt == 3) phi = cd(f.r, 0.0);                       // type 3 (continuous): Fields_Phi = Re f
+  else {
+    double xr = 1.0 + f.i;
+    cd sq = xr >= 0 ? cd(sqrt(xr), 0.0) : cd(0.0, sqrt(-xr));
+    phi = cd(ph4[nintd(f.r) + 2], 0.0) * sq;
+  }
   for (int k = 0; k < N1; k++) {
     if (mode <= 3) zk[k] = expz(((double)sf * g * phi) * E[k]);
     else { cd x = (phi * g) * E[k]; if (sf < 0) x = -x; zk[k] = expz(x); }

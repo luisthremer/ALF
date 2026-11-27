@@ -70,7 +70,7 @@ Module gpu_update_mod
   Use Control, only: Control_upgrade, Control_upgrade_eff
   Use Random_Wrap, only: ranf_wrap
   Use gpu_state_mod, only: g_d, g_dev_ok, g_host_ok, gpu_active, gpu_env_is, info_line, nsigma_d, scr_vec, &
-       & upd_cnt, v_exp, v_meta, v_type, v_nmax
+       & upd_cnt, v_exp, v_meta, v_type, v_nmax, v_nd
   Use MyMats, only: Det
 #if defined(ALF_LA_HIP)
   Use alf_hipk_mod, only: hk_enabled, hk_rk_gpp, hk_rk_accept
@@ -392,7 +392,7 @@ Contains
     Implicit none
     Integer, intent(in) :: nf, n, t, dir
     if (gpu_lr_mode() /= 0) then
-       if (V_meta(1,n,nf) == 1) then
+       if (V_meta(1,n,nf) == 1 .and. v_nd(n,nf) == 0) then
           call gpu_lr_wrap(nf, n, t, dir)       ! pending delayed / submatrix state follows the wrap
           return
        endif
@@ -402,7 +402,7 @@ Contains
        endif
        call gpu_lr_flush(nf, 2)                 ! N > 1 vertex: the general wrap needs a flushed G
     endif
-    if (V_meta(1,n,nf) == 1) then
+    if (V_meta(1,n,nf) == 1 .and. v_nd(n,nf) == 0) then      ! single-site table operator (type 1, 2)
        call k_site_wrap(G_d(1,1,nf), Ndim, Ndim, n, t, dir, Op_V(n,nf)%P(1), V_meta(3,n,nf), V_type(n))
        upd_cnt(3) = upd_cnt(3) + 1
     else

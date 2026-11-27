@@ -75,9 +75,10 @@
 !>    Op_Wrapup/Op_Wrapdo do NOT check g and always apply the table (wrap kernels must ignore the flag).
 !>  Fields: nsigma_d(N_op,Ltrot) = nsigma%f, nsigma_t(N_op) = nsigma%t.
 !>  P2.6.1 (port of gpu-port ticket 401-A): non-diagonal and rank > 1 operators (N <= V_NMAX = 8) and field type 4:
-!>    V_meta(5,n,nf) = N_non_zero, V_meta(6,n,nf) = 1 iff Op%diag, V_meta(7,n,nf) = uoff (-1 if diagonal), V_meta(8,n,nf) = moff
+!>    V_meta(5,n,nf) = N_non_zero, V_meta(6,n,nf) = 1 iff Op%diag, V_meta(7,n,nf) = uoff (-1 if diagonal of type 1, 2), V_meta(8,n,nf) = moff
 !>    (-1 if diagonal or type > 2).  V_U(uoff + i + (j-1)*N) = Op%U(i,j).  V_M(moff + (s+t)*N*N + i + (j-1)*N) = M_exp(i,j,s) of
 !>    Op_set, recomputed with the public Op_exp exactly as Op_set does (types 1, 2; s = 0 identity, unused).
+!>    Types 3, 4 (no tables): a diagonal type-3 operator gets U = identity in V_U (same kernels as non-diagonal ones).
 !>    Type 4 (no tables, continuous field): V_E(poff+i) = Op%E(i), V_g(n,nf) = Op%g, V_phi4(s) = Phi of a type-2 field s; the
 !>    kernels form exp(Phi g E) on the device (Phi = V_phi4(nint(Re f)) * sqrt(1 + Im f), Fields_Phi).
 !>    Segments (host only, build_vseg): per flavour the operators 1..N_op in order, v_seg(1:3,k) = (kind, n1, n2) for
@@ -629,14 +630,22 @@ Contains
        Call omp_set_default_device(Mod(env_rank, nd))
     endif
     ! P2.6.1: non-diagonal operators, N_non_zero > 1 and field type 4 run on the device (dense-block wraps, rank-r update);
-    ! still refused: field type 3, type 4 on a diagonal operator, operator N > V_NMAX, time-dependent g_t (below)
+    ! P2.6 (p26-langevin): field type 3 (continuous), diagonal or not, on the same path (exp formed on the device).
+    ! still refused: type 4 on a diagonal operator, operator N > V_NMAX, time-dependent g_t (below)
     do nf = 1, N_FL
        do n = 1, size(Op_V,1)
-          if (Op_V(n,nf)%type /= 1 .and. Op_V(n,nf)%type /= 2 .and. Op_V(n,nf)%type /= 4) then
+          if (Op_V(n,nf)%type < 1 .or. Op_V(n,nf)%type > 4) then
              write(reason,'(A,A,A,I0,A,I0,A,I0,A)') 'Hamiltonian ', trim(get_ham_name()), &
-                  & ': Op_V(', n, ',', nf, ') has field type ', Op_V(n,nf)%type, ' (only 1, 2 and 4 supported)'
+                  & ': Op_V(', n, ',', nf, ') has field type ', Op_V(n,nf)%type, ' (only 1 to 4 supported)'
              return
           endif
+#if defined(ALF_LA_ONEMKL)
+          if (Op_V(n,nf)%type == 3) then
+             write(reason,'(A,A,A,I0,A,I0,A)') 'Hamiltonian ', trim(get_ham_name()), &
+                  & ': Op_V(', n, ',', nf, ') has field type 3: not yet verified on GPU=intel'
+             return
+          endif
+#endif
           if (Op_V(n,nf)%type == 4 .and. Op_V(n,nf)%diag) then
              write(reason,'(A,A,A,I0,A,I0,A)') 'Hamiltonian ', trim(get_ham_name()), &
                   & ': Op_V(', n, ',', nf, ') is a diagonal operator of field type 4 (device path: type 4 only non-diagonal)'
@@ -1214,7 +1223,7 @@ Contains
           V_g(n,nf) = Op_V(n,nf)%g
           np = np + Op_V(n,nf)%N
           if (nt <= 2) ne = ne + Op_V(n,nf)%N*(2*nt+1)      ! types > 2 have no table (E_exp not allocated by Op_set)
-          if (.not. Op_V(n,nf)%diag) then
+          if (.not. Op_V(n,nf)%diag .or. nt > 2) then         ! diagonal type 3: identity U for the on-the-fly kernels
              V_meta(7,n,nf) = nu
              nu = nu + Op_V(n,nf)%N**2
              if (nt <= 2) then
@@ -1251,7 +1260,15 @@ Contains
              V_exp(ne0+nt*nsum+1:ne0+(nt+1)*nsum) = cmplx(1.d0,0.d0,kind(0.d0))   ! sp = 0: unused
              deallocate(E)
           endif
-          if (Op_V(n,nf)%diag) cycle
+          if (Op_V(n,nf)%diag) then
+             uo = V_meta(7,n,nf)
+             if (uo >= 0) then                                   ! diagonal type 3: U = identity
+                do k = 1, nsum
+                   V_U(uo + k + (k-1)*nsum) = cmplx(1.d0,0.d0,kind(0.d0))
+                enddo
+             endif
+             cycle
+          endif
           uo = V_meta(7,n,nf)
           V_U(uo+1:uo+nsum*nsum) = reshape(Op_V(n,nf)%U(1:nsum,1:nsum), (/nsum*nsum/))
           if (nt > 2) cycle
