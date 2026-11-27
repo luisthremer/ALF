@@ -38,3 +38,6 @@ on the local host), because the test partition allows only 5 running jobs per us
 Update 11:00: the CPU runs are short (L=16, 1 thread: 2.8 s/sweep), so no CPU job needs `general`. Waiting jobs
 566811-566814 (test/general) and 566818-566819 (preempt, estimated start next day) were cancelled and replaced by two
 single-node test jobs, 566820 (cpu L=32) and 566821 (cpu L=36), which fit into gaps more easily.
+Update 11:05: CPU cost per sweep grows ~L^6 at fixed beta (L=16 -> 24, 1 thread: 2.8 s -> 22 s), so the L=36 job (566821)
+was cancelled and the remaining CPU runs split into one single-node job per layout: L=36 t1..t8 = 566823-566827,
+L=32 t6, t8 = 566828-566829 (566820 keeps L=32 t1, t2, t4; it may hit its time limit in t6, which is then simply missing there).
