@@ -14,9 +14,9 @@
 #SBATCH --cpus-per-task=64
 # usage: sbatch build_intel.sh <variant: mpi|nompi|cpu-mpi|cpu-nompi|gpu-txt|cpu-txt|gpu-ser|cpu-ser> [ctest]
 V=${1:-mpi}
-SRC=$SCRATCH/grant_bench_2026-11/src_410c7b04
-BLD=$SCRATCH/grant_bench_2026-11/build_$V
-source $SCRATCH/grant_bench_2026-11/jobs/env_intel_pvc.sh
+SRC=${SRC:-/hppfs/work/pn73xu/di38zuw/ANTRAG_2026-11-27/src_410c7b04}
+BLD=${BLD:-/hppfs/work/pn73xu/di38zuw/ANTRAG_2026-11-27/build_$V}
+source /hppfs/work/pn73xu/di38zuw/ANTRAG_2026-11-27/jobs/env_intel_pvc.sh
 module -t list 2>&1; echo MKLROOT=$MKLROOT
 rm -rf $BLD; mkdir -p $BLD; cp -r $SRC/. $BLD/; cd $BLD
 case $V in
@@ -28,6 +28,7 @@ case $V in
   cpu-txt)   ARGS="IntelLLVM MPI NO-INTERACTIVE" ;;
   aot)       ARGS="IntelLLVM MPI GPU=intel HDF5 NO-INTERACTIVE" ;;   # like mpi, but ahead-of-time compiled for PVC (spir64_gen)
   pp)        ARGS="IntelLLVM PP GPU=intel HDF5 NO-INTERACTIVE" ;;      # PARALLEL_PARAMS production binary (merged -mpi-pp)
+  cpu-pp)    ARGS="IntelLLVM PP HDF5 NO-INTERACTIVE" ;;   # CPU PARALLEL_PARAMS with HDF5 (as in prod_2026-11/jobs/build_intel.sh)
   gpu-pptxt) ARGS="IntelLLVM PP GPU=intel NO-INTERACTIVE" ;;
   cpu-pptxt) ARGS="IntelLLVM PP NO-INTERACTIVE" ;;
   pp-aot)    ARGS="IntelLLVM PP GPU=intel HDF5 NO-INTERACTIVE" ;;

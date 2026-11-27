@@ -68,3 +68,18 @@ maximum.
 paths are compiled in; configure line, modules and `ALF_*` flags are the same apart from these paths (diff of the two
 build logs with the paths replaced). `info_git` in the source tree is a tracked file of the repository and says
 `localtau`; it does not describe this build (the `GIT_SHA` file does).
+
+## 5. Builds in ANTRAG_2026-11-27 (owner request, 2026-11-27)
+
+Branch `antrag/2026-11-27` on `fork` = commit 410c7b04 without changes (the fast `Op_V_is_symmetric` is already in the
+shared `Prog/Operator_mod.F90`, used by CPU and GPU builds). Source: `git archive 410c7b04` in
+`/hppfs/work/pn73xu/di38zuw/ANTRAG_2026-11-27/src_410c7b04` (`GIT_SHA` file). Build script: `jobs/build_intel.sh`
+(paths now point to this directory; `cpu-pp` variant added as in `prod_2026-11/jobs/build_intel.sh`). Jobs charged to pn93la.
+
+| Build | Job | Configure | Binary | md5 |
+|---|---|---|---|---|
+| GPU, MPI (PP), Phase 2 | 566782 | `IntelLLVM PP GPU=intel HDF5 NO-INTERACTIVE` | `build_pp/Prog/ALF.out` (10,855,376 B) | `d1469afdc28d16bffbaa8d0c3237a805` |
+| CPU, MPI (PP), Phase 2 host (Sapphire Rapids, `-xHost`) | 566783 | `IntelLLVM PP HDF5 NO-INTERACTIVE` | `build_cpu-pp/Prog/ALF.out` (7,877,624 B) | `c7cfe97118dbd572907a07b227e152ab` |
+
+Both: `make` rc 0, `-DMPI -DTEMPERING -DPARALLEL_PARAMS -DHDF5`, same toolchain as production. The CPU binary has the same
+size as the production CPU binary `prod_2026-11/bin/ALF-pp-cpu-410c7b04.out`. No benchmark started; waiting for the owner.
