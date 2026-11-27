@@ -1,0 +1,15 @@
+kondo-std	FAIL	MISMATCH kondo-dly4	FAIL	MISMATCH tV-std	FAIL	MISMATCH tV-dly4	FAIL	MISMATCH sp-std	FAIL	MISMATCH sp-dly4	FAIL	MISMATCH 
+  ntype2 tV-std selftest2 rc=1  GPU self-test FAILED: Op_V per operator
+  ntype2 sp-std selftest2 rc=1  GPU self-test FAILED: Op_V per operator
+kondo-std	works	OK kondo-dly4	works	OK tV-std	works	OK tV-dly4	works	OK sp-std	FAIL	MISMATCH sp-dly4	FAIL	MISMATCH 
+  ewrongidx tV-std selftest2 rc=0 
+  ewrongidx sp-std selftest2 rc=1  GPU self-test FAILED: Op_V per operator
+kondo-std	FAIL	MISMATCH kondo-dly4	FAIL	MISMATCH tV-std	FAIL	MISMATCH tV-dly4	FAIL	MISMATCH sp-std	FAIL	MISMATCH sp-dly4	FAIL	MISMATCH 
+  wtransp tV-std selftest2 rc=3 
+  wtransp sp-std selftest2 rc=3 
+kondo-std	works	OK kondo-dly4	works	OK tV-std	works	OK tV-dly4	works	OK sp-std	FAIL	MISMATCH sp-dly4	FAIL	MISMATCH 
+  nosqrt tV-std selftest2 rc=0 
+  nosqrt sp-std selftest2 rc=1  GPU self-test FAILED: Op_V per operator
+kondo-std	works	OK kondo-dly4	FAIL	MISMATCH tV-std	works	OK tV-dly4	FAIL	MISMATCH sp-std	works	OK sp-dly4	FAIL	MISMATCH 
+  genwrapY tV-std selftest2 rc=0 
+  genwrapY sp-std selftest2 rc=0 

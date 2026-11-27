@@ -44,17 +44,17 @@ Backends of gpu-port: NVIDIA = nvfortran OpenMP offload + cuBLAS/cuSOLVER; Intel
 |---|---|---|---|---|---|
 | **Models** | | | | | |
 | Hubbard, `N_FL` 1 or 2, field types 1, 2, rank-1 diagonal vertices | works | works | works | **works**: Mz (N_FL 2) and SU(2) (N_FL 1), 4x4 and 6x6 (20 sweeps), N_leg ladder, bilayer square | `[serial/hub-mz-4x4]`, `hub-su2-4x4`, `hub-mz-6x6-20sw`, `hub-su2-6x6-20sw`, `hub-ladder`, `hub-bilayer-square`; ctest `gpu-state-e2e` |
-| Kondo | host-assisted only if structure tests pass; not run | same | same | **refused**: `Hamiltonian Kondo: Op_V(17,1) is not diagonal` | `[serial/mod-kondo]` |
-| tV | same | same | same | **refused**: `Hamiltonian tV: Op_V(1,1) is not diagonal` | `[serial/mod-tV]` |
-| Spin_Peierls | same | same | same | **refused**: `Hamiltonian Spin_Peierls: Op_V(37,1) is not diagonal` | `[serial/mod-spin-peierls]` |
+| Kondo | host-assisted only if structure tests pass; not run | same | same | **works** (P2.6.1): standard, delayed N_delay 4 / 16 (rank-2 delayed device path), submatrix 4; max scaled diff 2.5e-12; GPU=amd: refused (R2, not yet verified) | P2.6.1 `p26_runs/` (GPU path ACTIVE vs ALF_GPU_DISABLE=1, same seeds: confout identical, observables within the e2e rule); ctest `gpu-state-e2e` cases `kondo-*`, `tV-*`, `sp-*` |
+| tV | same | same | same | **works** (P2.6.1): standard, delayed 4 / 16, submatrix 4, and Ltau = 1 (tau pass with operator segments); max scaled diff 1.9e-13; GPU=amd: refused | P2.6.1 `p26_runs/` (GPU path ACTIVE vs ALF_GPU_DISABLE=1, same seeds: confout identical, observables within the e2e rule); ctest `gpu-state-e2e` cases `kondo-*`, `tV-*`, `sp-*` |
+| Spin_Peierls | same | same | same | **works** (P2.6.1, field type 4 on the device): standard, delayed 4 / 16, submatrix 4; max scaled diff 8.9e-11 (tol 2.5e-10); GPU=amd: refused | P2.6.1 `p26_runs/` (GPU path ACTIVE vs ALF_GPU_DISABLE=1, same seeds: confout identical, observables within the e2e rule); ctest `gpu-state-e2e` cases `kondo-*`, `tV-*`, `sp-*` |
 | Z2_Matter | same | same | same | **refused**: `Hamiltonian Z2_Matter: Op_V(1,1) is not diagonal` | `[serial/mod-Z2-matter]` |
 | LRC | same | same | same | **refused**: `Hamiltonian LRC: Op_V(1,1) has field type 3 (only 1 and 2 supported)` | `[serial/mod-LRC]` |
 | Plain_Vanilla | same | same | same | **refused**: `Calc_Fl with weight reconstruction (ham%weight_reconstruction) is not supported on the GPU path`; with `Projector = T`: `projector code is not supported` | `[serial/mod-plain-vanilla]`, `mod-plain-vanilla-proj` |
 | LR_Jz_Test | not run | same | same | n/a (not built on this line) | `Prog/Hamiltonians/` |
-| Non-diagonal `Op_V` | refused | refused | refused | **refused** (quotes above: Kondo, tV, Spin_Peierls, Z2_Matter) | `[serial/mod-kondo]`; ctest `gpu-state-refusals` covers only the option-level refusals |
+| Non-diagonal `Op_V` | refused | refused | refused | **works** (P2.6.1; N <= 8): dense-block wraps (N_Type 1 and 2), operator segments in the slice kernels; device kernels against Operator_mod 0 .. 5e-17 (`ALF_GPU_SELFTEST=2`); GPU=amd: refused (`not yet verified on GPU=amd (R2)`) | `p26_runs/`; ctest `gpu-state-e2e` |
 | HS field type 3 (continuous) | refused | refused | refused | **refused**: `Hamiltonian Hubbard: Op_V(1,1) has field type 3 (only 1 and 2 supported)` (Hubbard `Continuous = T`, sequential updates) | `[serial/mv-continuous-seq]` |
-| HS field type 4 | refused | refused | refused | untested (no stock model on this line reached the check: LRC has type 3) | `gpu_state_mod.F90` `gpu_supported` |
-| Rank > 1 vertices (`N_non_zero` > 1) | refused | refused | refused | untested by a run (every stock model with such vertices is already stopped by the non-diagonal / field-type checks first); refusal is in code | `gpu_supported`; ticket 407 |
+| HS field type 4 | refused | refused | refused | **works** for non-diagonal operators (Spin_Peierls; exp(Phi g E) formed on the device); diagonal type-4 operators refused (no stock model) | `p26_runs/` sp-* |
+| Rank > 1 vertices (`N_non_zero` > 1) | refused | refused | refused | **works** (P2.6.1): r x r block D->H, Upgrade2's ratio on the host, accept G <- G - G(:,P) W R on the device; delayed: r new columns of X, Y per accept | `p26_runs/` (Kondo, tV, Spin_Peierls: r = 2) |
 | Field type differs between flavours | refused | refused | refused | untested (no stock model produces it) | code only |
 | Time-dependent coupling of `Op_V` (`g_t`) | refused | refused | refused | untested (no model with `g_t` on this line) | code only |
 | `Calc_Fl` / weight reconstruction | refused | refused | refused | **refused** (Plain_Vanilla, quote above) | `[serial/mod-plain-vanilla]` |
@@ -70,7 +70,7 @@ Backends of gpu-port: NVIDIA = nvfortran OpenMP offload + cuBLAS/cuSOLVER; Intel
 | Sequential local updates, rank 1 | works | works | works | **works** | `[serial/hub-mz-4x4]`; `gpu-state-e2e` |
 | Delayed updates | works | works | works | **works** (`N_delay` 4, 16) | `[serial/sch-delayed-N4]`, `sch-delayed-N16-su2` |
 | Submatrix updates | works | works | works | **works** (`N_delay` 4) | `[serial/sch-submatrix-N4]` |
-| Delayed/submatrix for non-Hubbard models, rank > 1, non-diagonal vertices | refused | refused | refused | **refused** as a consequence of the model refusals (delayed scheme itself not run on these models) | `[serial/mod-*]` use the default scheme |
+| Delayed/submatrix for non-Hubbard models, rank > 1, non-diagonal vertices | refused | refused | refused | **works** (P2.6.1): delayed keeps G = G0 - X Y^T across general vertices (rank-r columns, X/Y follow the dense wraps); submatrix flushes before them as the CPU does (K_ND = 1); schemes agree bin for bin within 6.3e-11 (gate K4 1e-9), confout identical | `p26_runs/`, K4 check |
 | `Sequential_scheme = "auto"` | n/a | n/a | n/a | **refused**: `Sequential_scheme = "auto" is not supported on the GPU path` | `[serial/sch-auto]` |
 | Timed `N_delay = -1` with delayed/submatrix | untested | untested | untested | **refused**: `timed automatic N_delay (N_delay = -1) is not supported on the GPU path` | `[serial/sch-timed-N-1]` |
 | `Lowrank_cross_slice` | refused | refused | refused | n/a: the input reader stops (unknown namelist variable, exit 2) | `[serial/sch-lowrank-cross-slice]` |

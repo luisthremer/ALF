@@ -1,0 +1,18 @@
+HUBDIFF hub-mz-4x4 Kin_scal
+hub old vs new checked: hub-mz-4x4
+HUBDIFF hub-dly4 Ener_scal
+hub old vs new checked: hub-dly4
+hub old vs new checked: hub-sub4
+kondo  std vs dly4   max scaled diff 5.53e-13  confout identical True
+kondo  std vs dly16  max scaled diff 5.68e-13  confout identical True
+kondo  std vs sub4   max scaled diff 8.75e-13  confout identical True
+tV     std vs dly4   max scaled diff 5.40e-14  confout identical True
+tV     std vs dly16  max scaled diff 7.72e-14  confout identical True
+tV     std vs sub4   max scaled diff 0.00e+00  confout identical True
+sp     std vs dly4   max scaled diff 1.49e-11  confout identical True
+sp     std vs dly16  max scaled diff 3.34e-11  confout identical True
+sp     std vs sub4   max scaled diff 3.31e-11  confout identical True
+hub    std vs dly4   max scaled diff 7.27e-13  confout identical True
+hub    std vs sub4   max scaled diff 1.89e-12  confout identical True
+Loading openmpi/5.0.8-nvhpc25.7-cuda
+GPU target: [0;32mnvidia[0m (nvfortran, OpenMP offload cc90,cuda12.9, cuBLAS/cuSOLVER)
