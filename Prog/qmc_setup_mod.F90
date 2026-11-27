@@ -69,7 +69,7 @@ Module qmc_setup_mod
 #if defined(TEMPERING)
   Use QMC_runtime_var, only: get_N_exchange_steps, get_N_Tempering_frequency
 #endif
-  Use runtime_error_mod, only: Terminate_on_error, ERROR_HAMILTONIAN
+  Use runtime_error_mod, only: Terminate_on_error, ERROR_HAMILTONIAN, ERROR_GENERIC
   Use Fields_mod, only: Fields_init
   Use Hop_mod, only: Hop_mod_init
   Use Wrapgr_mod, only: Wrapgr_alloc
@@ -499,12 +499,25 @@ Module qmc_setup_mod
         IF (.not. file_exists) THEN
           ! Create HDF5 file
           CALL h5fcreate_f(file_dat, H5F_ACC_TRUNC_F, file_id, ierr)
+          if (ierr /= 0) call data_file_error("cannot be created")
           call h5ltset_attribute_string_f(file_id, '/', 'program_name', 'ALF', ierr)
+          call h5fclose_f(file_id, ierr)
+        else
+          ! An existing file that HDF5 cannot open (truncated, corrupted) would lose every bin of this run
+          ! with return code 0 (KNOWN_ISSUES.md, P2.8 input fuzzing)
+          CALL h5fopen_f(file_dat, H5F_ACC_RDWR_F, file_id, ierr)
+          if (ierr /= 0) call data_file_error("exists but cannot be opened as an HDF5 file (corrupted or truncated?)")
           call h5fclose_f(file_id, ierr)
         endif
         call ham%write_parameters_hdf5(file_dat)
 
       endif
+    contains
+      subroutine data_file_error(what)
+        Character (len=*), intent(in) :: what
+        write(error_unit,'(A,A,A,A)') "Init_hdf5_file: ", trim(file_dat), " ", what
+        Call Terminate_on_error(ERROR_GENERIC,__FILE__,__LINE__)
+      end subroutine data_file_error
     end Subroutine Init_hdf5_file
 #endif
 

@@ -47,4 +47,8 @@ if(Python3_FOUND AND NOT "${FLAG_LIST}" MATCHES "-D(MPI|TEMPERING|PARALLEL_PARAM
   # confin_0.h5: unreadable file, missing datasets, datasets of another shape
   fuzz_test(59-fuzz-h5-restart TRUE h5_empty h5_truncated h5_garbage h5_from_L6 h5_from_L2 h5_no_configuration
             h5_no_seed h5_short_seed h5_config_int h5_ok_restart)
+  # text confin_0 with more values than fields (another lattice size or Beta)
+  fuzz_test(60-fuzz-confin-size FALSE confin_from_L6 confin_extra_lines confin_from_L2 ok_base)
+  # data.h5 that HDF5 cannot open
+  fuzz_test(61-fuzz-data-h5 TRUE datah5_truncated datah5_garbage h5_ok_restart)
 endif()
