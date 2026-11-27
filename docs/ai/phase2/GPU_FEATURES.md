@@ -93,7 +93,7 @@ Backends of gpu-port: NVIDIA = nvfortran OpenMP offload + cuBLAS/cuSOLVER; Intel
 | Defect local observables | works | works | works | n/a (defect = P2.6) | — |
 | Entanglement (Renyi) | CPU only | CPU only | CPU only | CPU only (not run) | — |
 | **Projector, MPI, I/O** | | | | | |
-| Projector (`Projector = .T.`) | refused | refused | refused | **refused**: `projector code is not supported on the GPU path` | `[serial/proj-hubbard]` |
+| Projector (`Projector = .T.`) | refused | refused | refused | **works** (feature p26-projector): device decompose of the Ndim x N_part states and CGRP, host `Tau_p` for Ltau = 1 (udvr and G exported once per sweep); Mz and SU(2), Ltau 0 and 1, standard / delayed / submatrix, Nwrap > Thtrot+1, Theta 2 and 5. Refused on GPU=amd (R2) and GPU=intel (until checked): `projector code is not supported on the GPU path of this backend` | e2e `proj-*` cases (`gpu_e2e.py`); ctest `gpu-stab-selftest-proj`, `gpu-stab-fault-proj-*` |
 | MPI independent walkers | works | works | untested | **works** with `mpirun -np 2` (MPI build, GPU=host): Mz, SU(2), delayed, submatrix ACTIVE and equal to the CPU path; Kondo refused as serial | `[MPI-np2/hub-mz-4x4]`, `hub-su2-4x4`, `sch-delayed-N4`, `sch-submatrix-N4`, `mod-kondo`, `mv-global` |
 | `PARALLEL_PARAMS` (PP) | works | works | works | **works**: two groups of one rank (Temp_0: U = 4, Temp_1: U = 3.5), Mz and SU(2) delayed ACTIVE, every `Temp_k` file equal to the CPU path | `[PP-np2/grp-mz-4x4]`, `grp-su2-4x4-delayed` |
 | Tempering with state exchange | refused | refused | refused | **refused**: `tempering is not supported on the GPU path` (output byte-identical to the CPU path) | `[TEMPERING-np2/temper-mz-4x4]`, `temper-su2-4x4-delayed` |

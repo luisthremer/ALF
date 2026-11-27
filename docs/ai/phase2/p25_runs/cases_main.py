@@ -42,10 +42,10 @@ CASES = [
  c("mv-mala-global", "refused:MALA", {"Continuous": ".T.", "Global_MALA_moves": ".T.", "Sequential": ".F.", "Mz": ".F."}),
  c("mv-mala-global-tau", "refused:MALA", {"Continuous": ".T.", "Global_tau_MALA_moves": ".T.", "Mz": ".F."}),
  c("mv-continuous-seq", "refused:field type", {"Continuous": ".T.", "Mz": ".F."}, note="HS field type 3 with sequential updates"),
- c("proj-hubbard", "refused:projector", {"Projector": ".T.", "Theta": "2.d0", "Beta": "2.d0"}),
+ c("proj-hubbard", "works", {"Projector": ".T.", "Theta": "2.d0", "Beta": "2.d0"}),
  # --- stock models (all other than Hubbard)
  c("mod-plain-vanilla", "refused:Calc_Fl", {"ham_name": '"Hubbard_Plain_Vanilla"', "Model": '"Hubbard_Plain_Vanilla"', "Beta": "1.d0", "Dtau": "0.05d0", "Projector": ".F."}),
- c("mod-plain-vanilla-proj", "refused:projector", {"ham_name": '"Hubbard_Plain_Vanilla"', "Model": '"Hubbard_Plain_Vanilla"', "Beta": "1.d0", "Dtau": "0.05d0", "Projector": ".T.", "Ltau": "0"}),
+ c("mod-plain-vanilla-proj", "works", {"ham_name": '"Hubbard_Plain_Vanilla"', "Model": '"Hubbard_Plain_Vanilla"', "Beta": "1.d0", "Dtau": "0.05d0", "Projector": ".T.", "Ltau": "0"}),
  c("mod-kondo", "refused", {"ham_name": '"Kondo"', "Model": '"Kondo"', "Lattice_type": '"Bilayer_square"', "ham_Uf": "1.d0"}),
  c("mod-tV", "refused", {"ham_name": '"tV"', "Model": '"tV"', "N_SUN": "1", "ham_V": "-1.d0", "ham_T2": "0.d0", "ham_Tperp": "0.d0", "Beta": "2.d0", "Ltau": "0"}),
  c("mod-Z2-matter", "refused", {"ham_name": '"Z2_Matter"', "Model": '"Z2_Matter"', "Beta": "2.d0", "Dtau": "0.05d0", "ham_T": "0.d0", "ham_h": "0.d0", "ham_TZ2": "1.d0", "ham_K": "0.d0", "ham_J": "0.d0", "ham_g": "1.d0", "ham_U": "0.d0", "Ltau": "0", "Nwrap": "10"}),
