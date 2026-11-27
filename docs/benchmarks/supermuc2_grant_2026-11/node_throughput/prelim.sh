@@ -10,7 +10,7 @@ H=$(cd "$(dirname "$0")" && pwd); cd "$H"
 PY=${PY:-python3}
 A=/hppfs/work/pn73xu/di38zuw/ANTRAG_2026-11-27
 # SET=betaL: the beta = L series (runs_betaL/, report_betaL/, results_betaL.csv); default: the beta = 4 series
-if [ "$SET" = betaL ]; then RUNS=runs_betaL; RDIR=report_betaL; CSVR=results_betaL.csv; NPLAN=24; export NLAY=2 BETA_LABEL='\beta = L' REPORTDIR=report_betaL
+if [ "$SET" = betaL ]; then RUNS=runs_betaL; RDIR=report_betaL; CSVR=results_betaL.csv; NPLAN=25; export NLAY=2 BETA_LABEL='\beta = L' REPORTDIR=report_betaL
 else RUNS=runs; RDIR=report; CSVR=results.csv; NPLAN=100; export NLAY=5 BETA_LABEL='\beta = 4' REPORTDIR=report; fi
 if [ "$1" = fake ]; then
   MODE=fake; CSV=plots/results_fake.csv; $PY plots/make_fake_data.py > $CSV
