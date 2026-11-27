@@ -38,6 +38,8 @@ fixed in a batch after each phase merge; **C** cosmetic or theoretical — fixed
 | G1 | GPU line: `ALF_GPU_SELFTEST` leaves test data in the device copy of G marked valid | B | fixed by feature `gpu-wrap-update` (step 1c; harmless in 1b, where the sweep did not use the mirror) |
 | G2 | GPU line: wrapped G (device wraps and updates, step 1c) less accurate than on the CPU: Precision Green mean 1.4 - 2.5x the CPU value, same chain | B | fixed by feature `gpu-hopd-optin` (cause: dense hopping product `Hd`; now opt-in, `ALF_GPU_HOPD=1`) |
 | G3 | GPU line: the device precision check (`Control_PrecisionG_vals`, step 1d) kept the fixed abort threshold 10 and ignored `ALF_UNSTABLE_THRESHOLD` (CPU-line feature `unstable-threshold`, merged in parallel with 1e) | B | fixed by feature `gpu-hopd-optin` (uses `G_thresh` like `Control_PrecisionG`) |
+| G4 | `stp/production-mpi-intel-*` tags (Intel production on gpu-port): raw-product LU determinant phase at every CGR | C | open, tags only (production L <= 44); not on the CM line |
+| G6 | GPU line: negative control `ALF_GPU_FAULT=upd` acts only on the standard (rank-1) update, not on delayed/submatrix | C | open (test gap; found by the P2.4 step 2 `gpu-intel` gate) |
 | MK | Makefile: Prog objects not rebuilt after Libraries/Modules changes | B | fixed in `cm/feat/b-batch-2` (commit "build: …"; test 50) |
 | WF | Trial wave function normalisation, large N_part (suspected) | B | open, not reproduced |
 | P1 | Op_V_is_symmetric slow (start-up, Symm = .T.) | B | open; fast version on gpu-port |
@@ -235,6 +237,30 @@ AddressSanitizer/UBSan on Code-modularity for all models (no report), FPE traps 
   after every device CGR. The Helma check at L = 56 .. 96 belongs to the device backends (step 2).
 - **To do:** merge the fix into every GPU branch before it is ported (P2.4); a GPU branch that has
   not merged it must not be used for N >~ 2950.
+
+## G4. Intel production tags: raw-product LU phase at every CGR (2026-11-26, found in P2.4 step 2 `gpu-intel` step 0)
+
+- **Applies to:** the archive tags `stp/production-mpi-intel-large-prompt` (4a25ac48), `stp/production-mpi-intel-unstable-guard`
+  (200f32c0) and `stp/production-mpi-intel-large-prompt-team-combined` (288b2a43) of the fork (Intel Max 1550 production).
+- **Symptom (expected, not run):** the same as "GPU: NaN determinant phase for N >~ 3000" above: for N >~ 2950 the phase becomes NaN,
+  almost all proposals are rejected, return code 0.
+- **Cause:** these tags have neither the det(U) tracking (oneMKL default on gpu-port since 72a3900f) nor the fix 0b3ffba4: `k_det_phase`
+  takes the raw product of the LU diagonal in every CGR (`gpu_stab_mod.F90` :811, :1210 on the tags).
+- **Why class C:** production on these tags ran at L <= 44 (N <= 1936), below the threshold (not checked beyond the L = 44 reproducer).
+  The CM line is not affected (step 1d `LU_PHASE_SAFE` rule, step 1f tracked det(U); the Intel backend of step 2 uses both).
+- **Status:** open on the tags only; do not use them for L >~ 54. No fix planned (archive tags).
+
+## G6. GPU line: `ALF_GPU_FAULT=upd` does not reach the delayed/submatrix update (2026-11-27)
+
+- **Applies to:** the fault injection of `gpu_update_mod` (common GPU code, all backends).
+- **Symptom:** with `Sequential_scheme = "delayed"` or `"submatrix"` the negative control `ALF_GPU_DEBUG=1 ALF_GPU_FAULT=upd` is armed
+  (info: "GPU fault armed") but changes nothing: the GPU run equals the CPU path to 2e-12 (Max 1550, Hubbard Mz 8x8, gate job 566631).
+  With the standard scheme the same fault stops the run (rc 3) as intended.
+- **Cause:** the fault scales `Zg` only in the rank-1 branch of the accepted update (`gpu_update_mod.F90` :332); the low-rank branch
+  (`gpu_lr_accept`) gets the unscaled `xv`.
+- **Why class C:** results are not affected; only a negative control has a gap. A test that relies on `upd` with a low-rank scheme
+  would pass vacuously. Workaround: `ALF_GPU_FAULT=obs` or the standard scheme as the control.
+- **Status:** open; to be fixed in the common code when `gpu_update_mod` / `gpu_lowrank_mod` are touched next.
 
 ## G2. GPU line: Precision Green of the device path (2026-11-26; fixed by feature `gpu-hopd-optin`)
 

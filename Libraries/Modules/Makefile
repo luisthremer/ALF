@@ -27,6 +27,12 @@ SRCS = Mat_subroutines_mod.F90 \
 	random_wrap_mod.F90 \
 	runtime_error_mod.F90
 
+# GPU=intel (configure.sh): oneMKL device backend of linalg_mod
+ifeq ($(strip $(ALF_GPU)),intel)
+SRCS += linalg_onemkl_mod.F90
+SHIMOBJ = linalg_sycl_shim.o
+endif
+
 # Dependency helper variables
 DEPSFILE := .deps.mk
 DEPSGEN := ../../Prog/gen_deps.py
@@ -36,8 +42,8 @@ lib: $(LIB) libfakeintel.so
 # OBJS and MODS are auto-generated into $(DEPSFILE) by gen_deps.py
 -include $(DEPSFILE)
 
-$(LIB): $(DEPSFILE) $(OBJS)
-	ar -r $(LIB) $(OBJS)
+$(LIB): $(DEPSFILE) $(OBJS) $(SHIMOBJ)
+	ar -r $(LIB) $(OBJS) $(SHIMOBJ)
 
 lattices_x86-64.so: runtime_error_mod.F90 lattices_interface_mod.F90 matrix_mod.F90 lattices_v3_mod.F90
 	(make clean)
@@ -69,6 +75,9 @@ libfakeintel.so: fakeintel.c
 		echo "No C compiler found, libfakeintel.so not created." 1>&2; \
 	fi
 
+linalg_sycl_shim.o: linalg_sycl_shim.cpp
+	icpx -fsycl -O2 -std=c++17 $(ALF_SYCL_FLAGS) -I$(MKLROOT)/include -c $<
+
 entanglement_mod.o: entanglement_mod.F90
 	$(ALF_FC) -c $(shell echo $(ALF_FLAGS_MODULES) | sed 's| -pedantic||') $<
 
@@ -76,7 +85,7 @@ $(DEPSFILE): $(SRCS) $(DEPSGEN)
 	python3 $(DEPSGEN) $(SRCS) > $(DEPSFILE)
 
 clean: $(DEPSFILE)
-	rm -f $(OBJS) $(MODS) $(LIB) $(DEPSFILE) libfakeintel.so
+	rm -f $(OBJS) $(MODS) $(LIB) $(DEPSFILE) libfakeintel.so linalg_sycl_shim.o
 
 #unused modules: histograms histograms_v2 log_mesh natural_constants
 #unused, except for in Prog/FFA_Orginals/: precdef

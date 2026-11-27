@@ -52,6 +52,9 @@
 module linalg_mod
   use iso_c_binding, only: c_loc, c_f_pointer
   use iso_fortran_env, only: int64
+#if defined(ALF_LA_ONEMKL)
+  use linalg_onemkl_mod, only: om_zgemm, om_zgemm_cr, om_ztrsm, om_zgeqrf, om_zunmqr, om_zgetrf, om_zgetri, om_zqrpp
+#endif
   implicit none
   private
   public :: la_dznrm2, la_zqrpp, la_zgemm, la_zgemm_cr, la_zhemm, la_ztrsm, la_ztrmm, la_zgemv, la_zgeru, la_zscal, la_zcopy, &
@@ -102,6 +105,9 @@ contains
        info = -1
        return
     endif
+#if defined(ALF_LA_ONEMKL)
+    if (om_zqrpp(m, n, a, lda, ipvt, tau, info)) return
+#endif
     do j = 1, n
        do i = 1, m
           if (la_not_finite(dble(a(i,j))) .or. la_not_finite(aimag(a(i,j)))) then
@@ -155,6 +161,9 @@ contains
     complex(kind=kind(0.d0)), intent(in) :: a(lda,*), b(ldb,*)
     complex(kind=kind(0.d0)), intent(inout) :: c(ldc,*)
     external :: zgemm
+#if defined(ALF_LA_ONEMKL)
+    if (om_zgemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc)) return
+#endif
     call zgemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc)
   end subroutine la_zgemm
 
@@ -169,6 +178,9 @@ contains
     real(kind=kind(0.d0)), parameter :: one = 1.d0, zero = 0.d0
     external :: dgemm
     if (m <= 0 .or. n <= 0) return
+#if defined(ALF_LA_ONEMKL)
+    if (om_zgemm_cr(m, n, k, a, lda, b, ldb, c, ldc)) return
+#endif
     ! real views of the complex arrays (contiguous pointers: no copy-in/out when passed on)
     call c_f_pointer(c_loc(a(1,1)), ar, [2*lda, k])
     call c_f_pointer(c_loc(c(1,1)), cr, [2*ldc, n])
@@ -194,6 +206,9 @@ contains
     complex(kind=kind(0.d0)), intent(in) :: a(lda,*)
     complex(kind=kind(0.d0)), intent(inout) :: b(ldb,*)
     external :: ztrsm
+#if defined(ALF_LA_ONEMKL)
+    if (om_ztrsm(side, uplo, transa, diag, m, n, alpha, a, lda, b, ldb)) return
+#endif
     call ztrsm(side, uplo, transa, diag, m, n, alpha, a, lda, b, ldb)
   end subroutine la_ztrsm
 
@@ -263,6 +278,9 @@ contains
     complex(kind=kind(0.d0)), intent(inout) :: a(lda,*)
     integer, intent(out) :: ipiv(*), info
     external :: zgetrf
+#if defined(ALF_LA_ONEMKL)
+    if (om_zgetrf(m, n, a, lda, ipiv, info)) return
+#endif
     call zgetrf(m, n, a, lda, ipiv, info)
   end subroutine la_zgetrf
 
@@ -286,6 +304,9 @@ contains
     complex(kind=kind(0.d0)), intent(inout) :: work(*)
     integer, intent(out) :: info
     external :: zgetri
+#if defined(ALF_LA_ONEMKL)
+    if (om_zgetri(n, a, lda, ipiv, lwork, info)) return
+#endif
     call zgetri(n, a, lda, ipiv, work, lwork, info)
   end subroutine la_zgetri
 
@@ -296,6 +317,9 @@ contains
     complex(kind=kind(0.d0)), intent(inout) :: tau(*), work(*)
     integer, intent(out) :: info
     external :: zgeqrf
+#if defined(ALF_LA_ONEMKL)
+    if (om_zgeqrf(m, n, a, lda, tau, lwork, info)) return
+#endif
     call zgeqrf(m, n, a, lda, tau, work, lwork, info)
   end subroutine la_zgeqrf
 
@@ -330,6 +354,9 @@ contains
     complex(kind=kind(0.d0)), intent(inout) :: c(ldc,*), work(*)
     integer, intent(out) :: info
     external :: zunmqr
+#if defined(ALF_LA_ONEMKL)
+    if (om_zunmqr(side, trans, m, n, k, a, lda, tau, c, ldc, lwork, info)) return
+#endif
     call zunmqr(side, trans, m, n, k, a, lda, tau, c, ldc, work, lwork, info)
   end subroutine la_zunmqr
 

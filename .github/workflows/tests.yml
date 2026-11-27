@@ -235,6 +235,29 @@ jobs:
           ctest --test-dir testsuite/tests --output-on-failure
 
   # ======================
+  # GPU=intel compile check (ifx + icpx + oneMKL, spir64 JIT; no device, nothing is run; P2.4 step 2)
+  # ======================
+  gpu_intel_compile:
+    name: GPU=intel compile (oneAPI 2025.3) · ${{ matrix.stab }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        stab: [default, LOG]
+    container:
+      image: intel/oneapi-hpckit:2025.3.0-0-devel-ubuntu24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build
+        shell: bash
+        env:
+          STAB: ${{ matrix.stab }}
+        run: |
+          if [ "$STAB" = LOG ]; then stab=LOG; else stab=""; fi
+          . ./configure.sh IntelLLVM noMPI $stab GPU=intel NO-INTERACTIVE
+          make -j2 lib program
+          test -x Prog/ALF.out
+
+  # ======================
   # Valgrind
   # ======================
   valgrind_gnu_trixie:
