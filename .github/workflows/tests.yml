@@ -234,6 +234,28 @@ jobs:
           cmake --build testsuite/tests -j2
           ctest --test-dir testsuite/tests --output-on-failure
 
+  # GPU path with tempering (TEMPERING without PARALLEL_PARAMS, replica exchange; P2.6): 2 replicas on 2 ranks, GPU path vs
+  # ALF_GPU_DISABLE=1 with the same seeds (docs/ai/phase2/p26_runs/tempering), plus the negative control (stale fields: must fail)
+  gpu_host_tempering:
+    name: GPU=host (GNU Tempering, 2 replicas)
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/alf-qmc/alf-container/alf-requirements/trixie
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and run
+        shell: bash
+        env:
+          OMP_NUM_THREADS: '1'
+          P25_MPIRUN: mpirun --allow-run-as-root --oversubscribe
+        run: |
+          . ./configure.sh GNU Tempering GPU=host
+          make -j2 lib program
+          python3 docs/ai/phase2/p25_runs/p25_run.py --build ci-np2 --exe "$PWD/Prog/ALF.out" \
+            --start Scripts_and_Parameters_files/Start --work /tmp/tp --mpi 2 --groups 2 \
+            --only tp-mz-std,tp-mz-sub4,tp-neg-temper docs/ai/phase2/p26_runs/tempering/cases_tempering.py | tee /tmp/tp.tsv
+          [ "$(wc -l < /tmp/tp.tsv)" -eq 3 ] && ! grep -q MISMATCH /tmp/tp.tsv
+
   # ======================
   # GPU=intel compile check (ifx + icpx + oneMKL, spir64 JIT; no device, nothing is run; P2.4 step 2)
   # ======================
