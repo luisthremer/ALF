@@ -82,14 +82,15 @@ Module gpu_wrap_mod
 #endif
   Use gpu_state_mod, only: finite_c, g_d, gpu_env_get, gpu_env_int, gpu_env_is, hop_ac, hop_at, hop_aux, hop_big, &
        & hop_cval, hop_gptr, hop_gstart, hop_meta, hop_p, hop_rval, hop_start, info_line, is_finite, nsigma_d, &
-       & rand_mat, rnd, scr_c, selftest_fail, td_any, td_grp, td_n, v_exp, v_meta, v_p, v_type, vr_ent, vr_ptr
+       & rand_mat, rnd, scr_c, selftest_fail, td_any, td_grp, td_n, v_exp, v_meta, v_p, v_type, vr_ent, vr_ptr, &
+       & v_u, v_m, v_e, v_g, v_phi4, v_sstart, v_seg, v_hasnd, v_nmax, v_nd
 
   Implicit none
 
   Private
   Public :: gpu_mmthr, gpu_mmthr_m1, gpu_mmthlc, gpu_mmthl, gpu_mmthl_m1, gpu_symm, gpu_symm_build, gpu_symm_td
   Public :: gpu_mmthr_d, gpu_mmthl_m1_d, gpu_mmthl_d, gpu_mmthr_m1_d, gpu_hopd_on
-  Public :: gpu_Vop_R, gpu_Vop_L, gpu_Vop_wrap, gpu_Vslice_R, gpu_Vslice_L, gpu_Vwrap_all
+  Public :: gpu_Vop_R, gpu_Vop_L, gpu_Vop_wrap, gpu_Vslice_R, gpu_Vslice_L, gpu_Vwrap_all, k_nd_rows
   Public :: gpu_wrapur_slices, gpu_wrapul_slices, gpu_wrapgr_up, gpu_wrapgr_do
   Public :: gpu_wrap_hook, gpu_wrap_selftest
   Public :: gpu_dense_left_mode, gpu_tl, gpu_tr, gpu_vb, gpu_n_launch, gpu_n_lib
@@ -971,6 +972,11 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
     Logical :: cj
     if (V_meta(4,n,nf) == 1 .or. ncol <= 0) return        ! Op_mmultR returns early for |g| < Eps_machine
+    if (v_nd(n,nf) == 1) then                              ! P2.6.1: ZSLGEMM('L', cop, exp(g Phi O))
+       call k_nd_rows(M, ld, ncol, nf, t, n, n, mexp_mode(cop), 1, 0)
+       gpu_n_launch = gpu_n_launch + 1
+       return
+    endif
     cj = (cop == 'c' .or. cop == 'C')
     call k_vop_R(M, ld, ncol, n, nf, t, cj, V_meta(1,n,nf), V_meta(2,n,nf), V_meta(3,n,nf), V_type(n))
     gpu_n_launch = gpu_n_launch + 1
@@ -1003,6 +1009,11 @@ Contains
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
     Logical :: cj
     if (V_meta(4,n,nf) == 1 .or. nrow <= 0) return        ! Op_mmultL returns early for |g| < Eps_machine
+    if (v_nd(n,nf) == 1) then                              ! P2.6.1: ZSLGEMM('r', cop, exp(sign g Phi O))
+       call k_nd_cols(M, ld, nrow, nf, t, n, n, mexp_mode(cop), sign)
+       gpu_n_launch = gpu_n_launch + 1
+       return
+    endif
     cj = (cop == 'c' .or. cop == 'C')
     call k_vop_L(M, ld, nrow, n, nf, t, cj, sign, V_meta(1,n,nf), V_meta(2,n,nf), V_meta(3,n,nf), V_type(n))
     gpu_n_launch = gpu_n_launch + 1
@@ -1033,6 +1044,10 @@ Contains
     Implicit none
     Integer, intent(in) :: ld, n, nf, t, dir, ntype
     Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,*)
+    if (v_nd(n,nf) == 1) then
+       call nd_wrap(G, ld, n, nf, t, dir, ntype)            ! P2.6.1: non-diagonal or type-4 operator
+       return
+    endif
     if (ntype /= 1) return
     call k_vop_wrap_rows(G, ld, Ndim, n, t, dir, V_meta(1,n,nf), V_meta(2,n,nf), V_meta(3,n,nf), V_type(n))
     call k_vop_wrap_cols(G, ld, Ndim, n, t, dir, V_meta(1,n,nf), V_meta(2,n,nf), V_meta(3,n,nf), V_type(n))
@@ -1074,6 +1089,251 @@ Contains
   end subroutine k_vop_wrap_cols
 
 !--------------------------------------------------------------------
+!> P2.6.1 (port of gpu-port ticket 401-A): Op_Wrapup (dir = +1) / Op_Wrapdo (dir = -1) of a non-table operator (non-diagonal, or
+!> type 4) on G (ld x Ndim), N_Type 1 or 2, in Operator_mod's ZSLGEMM order.  Wrapup N1: columns <- G(:,P) U D(-) ('r','n'), then
+!> rows <- D(+) U^H G(P,:) ('l','T');  N2: rows <- U G(P,:), columns <- G(:,P) U^H.  Wrapdo N1: rows <- U D(-) G(P,:), columns <-
+!> G(:,P) D(+) U^H;  N2: columns <- G(:,P) U, rows <- U^H G(P,:).  N_Type 2 does nothing for a diagonal operator.  No skip check.
+  Subroutine nd_wrap(G, ld, n, nf, t, dir, ntype)
+    Implicit none
+    Integer, intent(in) :: ld, n, nf, t, dir, ntype
+    Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,*)
+    if (ntype == 2 .and. V_meta(6,n,nf) == 1) return
+    if (dir > 0 .and. ntype == 1) then
+       call k_nd_cols(G, ld, Ndim, nf, t, n, n, 4, -1)
+       call k_nd_rows(G, ld, Ndim, nf, t, n, n, 5, 1, 0)
+    elseif (dir > 0) then
+       call k_nd_rows(G, ld, Ndim, nf, t, n, n, 6, 1, 0)
+       call k_nd_cols(G, ld, Ndim, nf, t, n, n, 7, 1)
+    elseif (ntype == 1) then
+       call k_nd_rows(G, ld, Ndim, nf, t, n, n, 4, -1, 0)
+       call k_nd_cols(G, ld, Ndim, nf, t, n, n, 5, 1)
+    else
+       call k_nd_cols(G, ld, Ndim, nf, t, n, n, 6, 1)
+       call k_nd_rows(G, ld, Ndim, nf, t, n, n, 7, 1, 0)
+    endif
+    gpu_n_launch = gpu_n_launch + 2
+  end subroutine nd_wrap
+
+  Integer function mexp_mode(cop)
+    Implicit none
+    Character (len=1), intent(in) :: cop
+    mexp_mode = 1
+    if (cop == 'T' .or. cop == 't') mexp_mode = 2
+    if (cop == 'C' .or. cop == 'c') mexp_mode = 3
+  end function mexp_mode
+
+!> P2.6.1: element (a,b) of the N x N matrix WORK that ZSLGEMM applies for operator (n,nf) with field f, as the inline code of
+!> k_nd_rows / k_nd_cols.  mode 1: exp(sf g Phi O) (= M_exp(sf*s) for types 1, 2; Op_exp on the fly for type 4), 2: its transpose,
+!> 3: its conjugate transpose (Op_mmultL/R with cop n, T, c);  4: U(a,b) d(b), 5: d(a) conjg(U(b,a)) with d = E_exp(:, sf*s)
+!> (types 1, 2) or exp(sf Phi g E) (type 4) (Op_Wrapup/Op_Wrapdo N_Type 1);  6: U, 7: U^H (N_Type 2).
+!> zk(1:N) must hold exp(gp E) for modes 1-3 / d for modes 4, 5 of a type-4 operator (k_nd_factors).
+!> Arrays are passed explicitly (device routine, as el_left_d): Vm = V_M, Vu = V_U, Vx = V_exp; mt = (N, eoff, uoff, moff, type).
+  Complex (Kind=Kind(0.d0)) function nd_work(mt, mode, s, a, b, zk, Vm, Vu, Vx)
+    Implicit none
+    !$omp declare target
+    Integer, intent(in) :: mt(5), mode, s, a, b
+    Complex (Kind=Kind(0.d0)), intent(in) :: zk(*), Vm(*), Vu(*), Vx(*)
+    Integer :: N1, eo, uo, mo, nt, ia, ib, k
+    Complex (Kind=Kind(0.d0)) :: w
+    N1 = mt(1); eo = mt(2); uo = mt(3); mo = mt(4); nt = mt(5)
+    ia = a; ib = b
+    if (mode == 2 .or. mode == 3 .or. mode == 5 .or. mode == 7) then
+       ia = b; ib = a
+    endif
+    if (mode <= 3) then
+       if (nt <= 2) then
+          w = Vm(mo + (s+nt)*N1*N1 + ia + (ib-1)*N1)
+       else
+          ! Op_exp: Mat(I,J) = sum_n (exp(g E_n) conjg(U(J,n))) U(I,n)  (equal to its Kahan sum for N <= 2)
+          w = (zk(1)*conjg(Vu(uo + ib))) * Vu(uo + ia)
+          do k = 2, N1
+             w = w + (zk(k)*conjg(Vu(uo + ib + (k-1)*N1))) * Vu(uo + ia + (k-1)*N1)
+          enddo
+       endif
+    else
+       w = Vu(uo + ia + (ib-1)*N1)
+    endif
+    if (mode == 3 .or. mode == 5 .or. mode == 7) w = conjg(w)
+    if (mode == 4) then
+       if (nt <= 2) then
+          w = w * Vx(eo + b + (s+nt)*N1)
+       else
+          w = w * zk(b)
+       endif
+    elseif (mode == 5) then
+       if (nt <= 2) then
+          w = Vx(eo + a + (s+nt)*N1) * w
+       else
+          w = zk(a) * w
+       endif
+    endif
+    nd_work = w
+  end function nd_work
+
+!> P2.6.1: per-operator factors of a type-4 operator for nd_work: s = sf * nint(Re f) (table index, types 1, 2), and for type 4
+!> zk(k) = exp(((sf g) Phi) E_k) (modes 1-3, Op_exp argument of Op_mmultL/R) or exp(sf ((Phi g) E_k)) (modes 4, 5, Op_Wrapup/do)
+!> with Phi = Fields_Phi of type 4 = Phi_st(nint(Re f),2) sqrt(1 + Im f).
+!> Arrays passed explicitly (device routine): E = V_E(poff+1:), ph4 = V_phi4.
+  Subroutine nd_factors(N1, nt, g, E, ph4, f, mode, sf, s, zk)
+    Implicit none
+    !$omp declare target
+    Integer, intent(in) :: N1, nt, mode, sf
+    Complex (Kind=Kind(0.d0)), intent(in) :: g, f
+    Real (Kind=Kind(0.d0)), intent(in) :: E(*), ph4(-2:2)
+    Integer, intent(out) :: s
+    Complex (Kind=Kind(0.d0)), intent(out) :: zk(*)
+    Integer :: k
+    Complex (Kind=Kind(0.d0)) :: phi, x
+    s = sf*nint(real(f))
+    if (nt <= 2 .or. mode >= 6) return
+    phi = cmplx(ph4(nint(real(f))), 0.d0, kind(0.d0)) * sqrt(cmplx(1.d0 + aimag(f), 0.d0, kind(0.d0)))
+    do k = 1, N1
+       if (mode <= 3) then
+          zk(k) = exp(((real(sf,kind(0.d0))*g)*phi)*E(k))
+       else
+          x = (phi*g)*E(k)
+          if (sf < 0) x = -x
+          zk(k) = exp(x)
+       endif
+    enddo
+  end subroutine nd_factors
+
+!> P2.6.1: rows P of M (ld x ncol) <- WORK M(P,:) for every operator na..nb of flavour nf (pairwise disjoint P within the range,
+!> so one launch gives the sequential result), WORK = nd_work(mode) with field sign sf.  The L/R skip flag is honoured for the
+!> modes 1-3 (Op_mmultR returns early for tiny g), ignored for the wrap modes.  Sums in ZSLGEMM's order.  Thread = (operator, column).
+!> tw = 1 applies WORK^T instead (rows of Y in G = G0 - X Y^T after a column operation G <- G WORK, gpu_lowrank_mod).
+  Subroutine k_nd_rows(M, ld, ncol, nf, t, na, nb, mode, sf, tw)
+    Implicit none
+    Integer, intent(in) :: ld, ncol, nf, t, na, nb, mode, sf, tw
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,ncol)
+    Integer :: j, n, i, l, N1, po, s, mt(5)
+    Complex (Kind=Kind(0.d0)) :: z(V_NMAX), zk(V_NMAX), acc
+    !$omp target teams distribute parallel do collapse(2) private(i, l, N1, po, s, mt, z, zk, acc)
+    do j = 1, ncol
+       do n = na, nb
+          if (.not. (mode <= 3 .and. V_meta(4,n,nf) == 1)) then
+             N1 = V_meta(1,n,nf); po = V_meta(2,n,nf)
+             mt(1) = N1; mt(2) = V_meta(3,n,nf); mt(3) = V_meta(7,n,nf); mt(4) = V_meta(8,n,nf); mt(5) = V_type(n)
+             call nd_factors(N1, mt(5), V_g(n,nf), V_E(po+1), V_phi4, nsigma_d(n,t), mode, sf, s, zk)
+             do l = 1, N1
+                z(l) = M(V_P(po+l), j)
+             enddo
+             do i = 1, N1
+                if (tw == 0) then
+                   acc = nd_work(mt, mode, s, i, 1, zk, V_M, V_U, V_exp) * z(1)
+                   do l = 2, N1
+                      acc = acc + nd_work(mt, mode, s, i, l, zk, V_M, V_U, V_exp) * z(l)
+                   enddo
+                else
+                   acc = nd_work(mt, mode, s, 1, i, zk, V_M, V_U, V_exp) * z(1)
+                   do l = 2, N1
+                      acc = acc + nd_work(mt, mode, s, l, i, zk, V_M, V_U, V_exp) * z(l)
+                   enddo
+                endif
+                M(V_P(po+i), j) = acc
+             enddo
+          endif
+       enddo
+    enddo
+  end subroutine k_nd_rows
+
+!> P2.6.1: columns P of M (rows 1..nrow) <- M(:,P) WORK, as k_nd_rows.  Thread = (operator, row).
+  Subroutine k_nd_cols(M, ld, nrow, nf, t, na, nb, mode, sf)
+    Implicit none
+    Integer, intent(in) :: ld, nrow, nf, t, na, nb, mode, sf
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,Ndim)
+    Integer :: j, n, i, l, N1, po, s, mt(5)
+    Complex (Kind=Kind(0.d0)) :: z(V_NMAX), zk(V_NMAX), acc
+    !$omp target teams distribute parallel do collapse(2) private(i, l, N1, po, s, mt, z, zk, acc)
+    do j = 1, nrow
+       do n = na, nb
+          if (.not. (mode <= 3 .and. V_meta(4,n,nf) == 1)) then
+             N1 = V_meta(1,n,nf); po = V_meta(2,n,nf)
+             mt(1) = N1; mt(2) = V_meta(3,n,nf); mt(3) = V_meta(7,n,nf); mt(4) = V_meta(8,n,nf); mt(5) = V_type(n)
+             call nd_factors(N1, mt(5), V_g(n,nf), V_E(po+1), V_phi4, nsigma_d(n,t), mode, sf, s, zk)
+             do l = 1, N1
+                z(l) = M(j, V_P(po+l))
+             enddo
+             do i = 1, N1
+                acc = z(1) * nd_work(mt, mode, s, 1, i, zk, V_M, V_U, V_exp)
+                do l = 2, N1
+                   acc = acc + z(l) * nd_work(mt, mode, s, l, i, zk, V_M, V_U, V_exp)
+                enddo
+                M(j, V_P(po+i)) = acc
+             enddo
+          endif
+       enddo
+    enddo
+  end subroutine k_nd_cols
+
+!> P2.6.1: table operators n1..n2 of flavour nf on the rows (side 1, Op_mmultR) or columns (side 2, Op_mmultL, field sign sg) of M,
+!> per element in operator order (asc or desc), skip flag honoured: the fused kernels restricted to a run of the operator order.
+  Subroutine k_vrun(M, ld, nother, nd, nf, t, cj, sg, desc, n1, n2, side)
+    Implicit none
+    Integer, intent(in) :: ld, nother, nd, nf, t, sg, n1, n2, side
+    Logical, intent(in) :: cj, desc
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,merge(nother, nd, side == 1))
+    Integer :: j, r, pa, pb, q, p, n, i, sp
+    Complex (Kind=Kind(0.d0)) :: x, z
+    !$omp target teams distribute parallel do collapse(2) private(pa, pb, q, p, n, i, sp, x, z)
+    do j = 1, nother
+       do r = 1, nd
+          pa = vr_ptr(r,nf); pb = vr_ptr(r+1,nf) - 1
+          if (pb >= pa) then
+             if (side == 1) then
+                x = M(r,j)
+             else
+                x = M(j,r)
+             endif
+             do q = 0, pb - pa
+                if (desc) then
+                   p = pb - q
+                else
+                   p = pa + q
+                endif
+                n = vr_ent(1,p); i = vr_ent(2,p)
+                if (n >= n1 .and. n <= n2 .and. V_meta(4,n,nf) /= 1) then
+                   sp = sg*nint(real(nsigma_d(n,t)))
+                   z = V_exp(V_meta(3,n,nf) + i + (sp+V_type(n))*V_meta(1,n,nf))
+                   if (cj) z = conjg(z)
+                   x = z * x
+                endif
+             enddo
+             if (side == 1) then
+                M(r,j) = x
+             else
+                M(j,r) = x
+             endif
+          endif
+       enddo
+    enddo
+  end subroutine k_vrun
+
+!> P2.6.1: a slice of a flavour with non-table operators (Op_mmultR side 1 / Op_mmultL side 2 for n ascending, or descending if
+!> desc): the segments of build_vseg in operator order, table runs by k_vrun, non-table groups by one dense-block launch each.
+  Subroutine nd_slice(M, ld, nother, nf, t, cop, sg, desc, side)
+    Implicit none
+    Integer, intent(in) :: ld, nother, nf, t, sg, side
+    Character (len=1), intent(in) :: cop
+    Logical, intent(in) :: desc
+    Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
+    Integer :: q, k, k1, k2
+    k1 = v_sstart(nf); k2 = v_sstart(nf+1) - 1
+    do q = 0, k2 - k1
+       k = k1 + q
+       if (desc) k = k2 - q
+       if (v_seg(1,k) == 0) then
+          call k_vrun(M, ld, nother, Ndim, nf, t, (cop == 'c' .or. cop == 'C'), sg, desc, v_seg(2,k), v_seg(3,k), side)
+       elseif (side == 1) then
+          call k_nd_rows(M, ld, nother, nf, t, v_seg(2,k), v_seg(3,k), mexp_mode(cop), 1, 0)
+       else
+          call k_nd_cols(M, ld, nother, nf, t, v_seg(2,k), v_seg(3,k), mexp_mode(cop), sg)
+       endif
+       gpu_n_launch = gpu_n_launch + 1
+    enddo
+  end subroutine nd_slice
+
+!--------------------------------------------------------------------
 !> Whole slice, rows: for every operator n (ascending, or descending if desc) Op_mmultR(M, Op_V(n,nf), nsigma(n,t),
 !> cop, t), in one kernel.  Per row r the factors of the operators containing r are applied to each element in that
 !> order (skipped operators excluded): the same product sequence as the loop of calls.
@@ -1084,6 +1344,10 @@ Contains
     Logical, intent(in) :: desc
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
     if (ncol <= 0) return
+    if (v_hasnd(nf)) then
+       call nd_slice(M, ld, ncol, nf, t, cop, 1, desc, 1)      ! P2.6.1: operator segments
+       return
+    endif
     call k_vslice_R(M, ld, ncol, Ndim, nf, t, (cop == 'c' .or. cop == 'C'), desc, gpu_vb)
     gpu_n_launch = gpu_n_launch + 1
   end subroutine gpu_Vslice_R
@@ -1169,6 +1433,10 @@ Contains
     Logical, intent(in) :: desc
     Complex (Kind=Kind(0.d0)), intent(inout) :: M(ld,*)
     if (nrow <= 0) return
+    if (v_hasnd(nf)) then
+       call nd_slice(M, ld, nrow, nf, t, cop, sign, desc, 2)   ! P2.6.1: operator segments
+       return
+    endif
     call k_vslice_L(M, ld, nrow, Ndim, nf, t, (cop == 'c' .or. cop == 'C'), sign, desc, gpu_vb)
     gpu_n_launch = gpu_n_launch + 1
   end subroutine gpu_Vslice_L
@@ -1244,6 +1512,16 @@ Contains
     Implicit none
     Integer, intent(in) :: ld, nf, t, dir
     Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,*)
+    Integer :: q, n
+    if (v_hasnd(nf)) then
+       ! P2.6.1: the loop of Op_Wrapup / Op_Wrapdo (N_Type 1) operator by operator
+       do q = 1, size(V_meta,2)
+          n = q
+          if (dir < 0) n = size(V_meta,2) + 1 - q
+          call gpu_Vop_wrap(G, ld, n, nf, t, dir, 1)
+       enddo
+       return
+    endif
     call k_vwrap_all(G, ld, Ndim, nf, t, dir)
     gpu_n_launch = gpu_n_launch + 1
   end subroutine gpu_Vwrap_all
@@ -1335,8 +1613,16 @@ Contains
     Implicit none
     Integer, intent(in) :: ld, nf, ntau
     Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,*)
+    Integer :: n
     call gpu_mmthr(G, ld, Ndim, nf, ntau + 1)
     call gpu_mmthl_m1(G, ld, Ndim, nf, ntau + 1)
+    if (v_hasnd(nf)) then            ! P2.6.1: Op_Wrapup N_Type 1, then 2, operator by operator
+       do n = 1, size(V_meta,2)
+          call gpu_Vop_wrap(G, ld, n, nf, ntau + 1, 1, 1)
+          call gpu_Vop_wrap(G, ld, n, nf, ntau + 1, 1, 2)
+       enddo
+       return
+    endif
     call gpu_Vwrap_all(G, ld, nf, ntau + 1, 1)
   end subroutine gpu_wrapgr_up
 
@@ -1345,7 +1631,15 @@ Contains
     Implicit none
     Integer, intent(in) :: ld, nf, ntau
     Complex (Kind=Kind(0.d0)), intent(inout) :: G(ld,*)
-    call gpu_Vwrap_all(G, ld, nf, ntau, -1)
+    Integer :: n
+    if (v_hasnd(nf)) then            ! P2.6.1: Op_Wrapdo N_Type 2, then 1, operator by operator
+       do n = size(V_meta,2), 1, -1
+          call gpu_Vop_wrap(G, ld, n, nf, ntau, -1, 2)
+          call gpu_Vop_wrap(G, ld, n, nf, ntau, -1, 1)
+       enddo
+    else
+       call gpu_Vwrap_all(G, ld, nf, ntau, -1)
+    endif
     call gpu_mmthl(G, ld, Ndim, nf, ntau)
     call gpu_mmthr_m1(G, ld, Ndim, nf, ntau)
   end subroutine gpu_wrapgr_do
@@ -1766,11 +2060,12 @@ Contains
        do n = 1, size(Op_V,1)
           if (mod(n-1, nstride) /= 0 .and. n /= size(Op_V,1)) cycle
           if (nf == 1) nops = nops + 1
-          nt = V_type(n)
+          nt = min(V_type(n), 2)               ! type 4: real part +-1, +-2 (Phi_st of type 2), imaginary part below
           old = nsigma_d(n,t0)
           do sp = -nt, nt
              if (sp == 0) cycle
              zsp = cmplx(real(sp,kind(0.d0)), 0.d0, kind(0.d0))
+             if (V_type(n) == 4) zsp = cmplx(real(sp,kind(0.d0)), 0.3d0*real(sp,kind(0.d0)), kind(0.d0))
              nsigma_d(n,t0) = zsp
              !$omp target update to(nsigma_d(n:n,t0:t0))   ! self-test: set the field value of this case on the device
              ncases = ncases + 1
@@ -2036,6 +2331,7 @@ Contains
 
     dmax = 0.d0; nsyn = 0
     if (size(Op_V,1) < ns .or. Ndim < 4) return
+    if (any(v_hasnd)) return          ! P2.6.1: synthetic diagonal operators only; non-table flavours use the segment kernels
     poff = sum(n1s)
     eoff = 0
     do n = 1, ns
@@ -2425,6 +2721,7 @@ Contains
     call Hop_mod_mmthl_m1(G, nf, ntau+1)
     do n = 1, size(Op_V,1)
        call Op_Wrapup(G, Op_V(n,nf), nsigma%f(n,ntau+1), Ndim, 1, ntau+1)
+       call Op_Wrapup(G, Op_V(n,nf), nsigma%f(n,ntau+1), Ndim, 2, ntau+1)   ! no-op for diagonal operators
     enddo
   end subroutine cpu_wrapgr_up
 
