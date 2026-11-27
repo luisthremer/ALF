@@ -132,7 +132,9 @@ CASES = [
 
 
 # G7: Spin_Peierls 12x12 Part_scal round-off on CI runners, 2.2e-10 (run 46033748753); size-scaled rule in P2.4 step 3
-TOL_FLOOR = {"sp-standard": 5.0e-10}      # per-case absolute floor of the tolerance (max(rule, floor)); no other case has one
+# per-case absolute floor of the tolerance (max(rule, floor)); the sp-delayed/submatrix floors since G11: the CPU run's Precision Green
+# mean fell 25x, the rule with it (1.7e-10 in the LOG build), while the device-vs-CPU difference stays at the G7 level (1.76e-10)
+TOL_FLOOR = {"sp-standard": 5.0e-10, "sp-delayed-N4": 5.0e-10, "sp-submatrix-N4": 5.0e-10}
 NOOBS_CASES = ("mz-standard", "su2-standard", "mz-h0", "mz-bilayer-honeycomb", "mz-lobs-all", "su2-symm-F")
 # step 1f: Mz-Hubbard (N_FL = 2, real), SU(2) Hubbard (N_FL = 1, complex phases of det U), both with Ltau = 1; large Nwrap; delayed
 PHASE_CASES = ("mz-standard", "su2-standard", "su2-nwrap25", "su2-delayed-N4")
