@@ -41,3 +41,6 @@ single-node test jobs, 566820 (cpu L=32) and 566821 (cpu L=36), which fit into g
 Update 11:05: CPU cost per sweep grows ~L^6 at fixed beta (L=16 -> 24, 1 thread: 2.8 s -> 22 s), so the L=36 job (566821)
 was cancelled and the remaining CPU runs split into one single-node job per layout: L=36 t1..t8 = 566823-566827,
 L=32 t6, t8 = 566828-566829 (566820 keeps L=32 t1, t2, t4; it may hit its time limit in t6, which is then simply missing there).
+
+Update 11:36: `peek.sh` shows runs in progress (bins so far, sweep times): `srun --jobid=<id> --overlap -N1 -n1 bash jobs/nt/peek.sh`.
+L=32 t4 submitted separately (job 566820 would hit its time limit before t4).
