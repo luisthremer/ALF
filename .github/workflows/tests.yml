@@ -210,6 +210,7 @@ jobs:
     name: GPU=host (GNU serial) · ${{ matrix.stab }} · ${{ matrix.build }}
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         build: [optimized, debug]
         stab: [default, LOG]
