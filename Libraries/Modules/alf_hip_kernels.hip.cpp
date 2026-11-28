@@ -756,17 +756,22 @@ __global__ void k_rk_gpp_h(const cd* G, long ld, const int* P, int r, cd* buf) {
   int a = t % r, b = t / r;
   buf[t] = G[(P[a] - 1) + (long)(P[b] - 1) * ld];
 }
-// C(i,a) = G(i,P(a)), T(a,i) = sum_b W(a,b) R(b,i), R(b,i) = delta(i,P(b)) - G(P(b),i); thread = row i (1..nd)
-__global__ void k_rk_prep_h(const cd* G, long ld, int nd, const int* P, int r, const cd* W, cd* C, cd* T) {
+// Upgrade2's grouping (G10): C(i,a) = sum_c G(i,P(c)) X(c,a), T(a,i) = sum_b Tri(b,a) R(b,i), R(b,i) = delta(i,P(b)) - G(P(b),i);
+// XT(1:r*r) = X, XT(r*r+1:2*r*r) = Tri, column-major r x r; thread = row i (1..nd).  Same summation order as k_rk_prep.
+__global__ void k_rk_prep_h(const cd* G, long ld, int nd, const int* P, int r, const cd* XT, cd* C, cd* T) {
   int i = blockIdx.x * blockDim.x + threadIdx.x + 1; if (i > nd) return;
   long I = i - 1;
-  for (int a = 0; a < r; a++) C[I + (long)a * nd] = G[I + (long)(P[a] - 1) * ld];
+  for (int a = 0; a < r; a++) {
+    cd acc = G[I + (long)(P[0] - 1) * ld] * XT[a * r];
+    for (int b = 1; b < r; b++) acc = acc + G[I + (long)(P[b] - 1) * ld] * XT[b + a * r];
+    C[I + (long)a * nd] = acc;
+  }
   for (int a = 0; a < r; a++) {
     cd acc(0.0, 0.0);
     for (int b = 0; b < r; b++) {
       cd g = G[(P[b] - 1) + I * ld];
       cd rb = (i == P[b]) ? cd(1.0 - g.r, -g.i) : -g;
-      acc = acc + W[a + b * r] * rb;
+      acc = acc + XT[r * r + b + a * r] * rb;
     }
     T[a + I * r] = acc;
   }
@@ -784,9 +789,9 @@ int alfhk_rk_gpp(void* G, int ld, void* P, int r, void* buf) {
   if (r <= 0) return 0;
   LAUNCH(k_rk_gpp_h, nb((long)r * r, 64), 64, (const cd*)G, (long)ld, (const int*)P, r, (cd*)buf); return fin(); }
 // prep and update in one call (the OpenMP path runs them back to back)
-int alfhk_rk_accept(void* G, int ld, int nd, void* P, int r, void* W, void* C, void* T) {
+int alfhk_rk_accept(void* G, int ld, int nd, void* P, int r, void* XT, void* C, void* T) {
   if (nd <= 0 || r <= 0) return 0;
-  LAUNCH(k_rk_prep_h, nb(nd, 128), 128, (const cd*)G, (long)ld, nd, (const int*)P, r, (const cd*)W, (cd*)C, (cd*)T);
+  LAUNCH(k_rk_prep_h, nb(nd, 128), 128, (const cd*)G, (long)ld, nd, (const int*)P, r, (const cd*)XT, (cd*)C, (cd*)T);
   LAUNCH(k_rk_upd_h, nb((long)nd * nd, 256), 256, (cd*)G, (long)ld, nd, r, (const cd*)C, (const cd*)T);
   return fin(); }
 }  // extern "C"

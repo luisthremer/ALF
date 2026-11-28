@@ -424,7 +424,7 @@ Contains
 
     Complex (Kind=Kind(0.d0)) :: Ratio(N_FL), Ratiotot, Z1, Prev_Ratiotot, Delta(N_FL), gpp(N_FL)
     Complex (Kind=Kind(0.d0)) :: Z, D_Mat, myexp, g_loc, Mat11, vii, xv, Zg, s1, s2
-    Complex (Kind=Kind(0.d0)) :: gb(V_NMAX,V_NMAX,N_FL), Dl(V_NMAX,N_FL), Mat(V_NMAX,V_NMAX), W(V_NMAX*V_NMAX)
+    Complex (Kind=Kind(0.d0)) :: gb(V_NMAX,V_NMAX,N_FL), Dl(V_NMAX,N_FL), Mat(V_NMAX,V_NMAX)
     Complex (Kind=Kind(0.d0)) :: Xm(V_NMAX,V_NMAX), Tm(V_NMAX,V_NMAX)
     Real (Kind=Kind(0.d0)) :: Weight
     Integer :: nf, nf_eff, op_dim_nf, p1, m, k, r2
@@ -528,24 +528,20 @@ Contains
              r2 = op_dim_nf**2
              call rk_xtri(op_dim_nf, gb(1:op_dim_nf,1:op_dim_nf,nf), Dl(1:op_dim_nf,nf), Xm(1:op_dim_nf,1:op_dim_nf), &
                   & Tm(1:op_dim_nf,1:op_dim_nf))
-             ! W = X Tri^T: the HIP accept (GPU=amd, not yet in Upgrade2's grouping) take W
-             W(1:r2) = reshape(matmul(Xm(1:op_dim_nf,1:op_dim_nf), transpose(Tm(1:op_dim_nf,1:op_dim_nf))), (/r2/))
              if (lrg) then
                 call gpu_lr_gen_accept(nf, n_op, op_dim_nf, reshape(Xm(1:op_dim_nf,1:op_dim_nf), (/r2/)), &
                      & reshape(Tm(1:op_dim_nf,1:op_dim_nf), (/r2/)))
                 cycle
              endif
              rk_p(1:op_dim_nf) = Op_V(n_op,nf)%P(1:op_dim_nf)
-#if defined(ALF_LA_HIP)
-             if (hk_enabled()) then
-                rk_w(1:r2) = W(1:r2)
-                !$omp target update to(rk_w(1:r2), rk_p(1:op_dim_nf))
-                call hk_rk_accept(G_d(1,1,nf), Ndim, Ndim, rk_p, op_dim_nf, rk_w, rk_c, rk_t)
-             else
-#endif
              rk_w(1:r2) = reshape(Xm(1:op_dim_nf,1:op_dim_nf), (/r2/))
              rk_w(r2+1:2*r2) = reshape(Tm(1:op_dim_nf,1:op_dim_nf), (/r2/))
              !$omp target update to(rk_w(1:2*r2), rk_p(1:op_dim_nf))
+#if defined(ALF_LA_HIP)
+             if (hk_enabled()) then
+                call hk_rk_accept(G_d(1,1,nf), Ndim, Ndim, rk_p, op_dim_nf, rk_w, rk_c, rk_t)
+             else
+#endif
              call k_rk_prep(G_d(1,1,nf), Ndim, Ndim, rk_p, op_dim_nf, rk_w, rk_c, rk_t)
              call k_rk_upd(G_d(1,1,nf), Ndim, Ndim, op_dim_nf, rk_c, rk_t)
 #if defined(ALF_LA_HIP)

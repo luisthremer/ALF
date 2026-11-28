@@ -707,7 +707,7 @@ contains
     call chk(rc, 'rk_gpp')
   end subroutine hk_rk_gpp
 
-  !> k_rk_prep followed by k_rk_upd of gpu_update_mod (rank-r accept G <- G - G(:,P) W R)
+  !> k_rk_prep followed by k_rk_upd of gpu_update_mod (rank-r accept G <- G - (G(:,P) X) (Tri^T R), XT = (X, Tri), 2 r^2)
   subroutine hk_rk_accept(G, ld, nd, P, r, W, C, T)
     integer, intent(in) :: ld, nd, r
     complex(kind=kind(0.d0)), target :: G(*), W(*), C(*), T(*)

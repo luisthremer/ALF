@@ -518,6 +518,8 @@ AddressSanitizer/UBSan on Code-modularity for all models (no report), FPE traps 
   forms C = G(:,P) X and T = Tri^T R, `k_rk_upd` unchanged. Spin_Peierls 12x12 standard: 9.9e-12 vs 9.0e-12 (1.10), observables
   1.8e-9; submatrix 16 (flushes before these vertices, so it uses the standard accept): 1.1e-11; delayed 16, 32 unchanged bit for bit
   (device delayed general path keeps W, like the CPU delayed path: G11). Regression: `gpu_e2e.py` case `sp12-precision` (ratio <= 2;
-  before the fix 29.7). GPU=amd: the HIP `alfhk_rk_accept` (merged with `gpu-amd-p26`, f45fdcc0) computes T = W R; the HIP branch keeps receiving W
-  (unchanged on GPU=amd, so G10 stays there until the kernel takes X and Tri; not run on the MI210 here).
+  before the fix 29.7). GPU=amd: the HIP `alfhk_rk_accept` (`gpu-amd-p26`, f45fdcc0) took W and so kept G10; feature `gpu-amd-g10`: it takes X and Tri
+  (`k_rk_prep_h` forms C = G(:,P) X, T = Tri^T R like `k_rk_prep`). MI210 (build ~/p2_amd/g10, `cases_h100.py`, same seeds): big-sp-std Precision Green GPU/CPU 25.96 -> 0.99, big-sp-sub16 26.10 -> 1.03,
+  observables vs CPU 1.2e-7 -> 2.5e-9 (still above the 100 x PG-mean rule of 8.2e-10: G7 class, the host line has 1.8e-9); sp-std 1.23 -> 0.73,
+  Hubbard bitwise unchanged (ratio 1.06). Remaining MISMATCH rows (big-kondo Dimer_tau 1.5e-11, big-tV-dly16 2e-11, big-sp dly 5e-9) are G9/G7 round-off.
 
