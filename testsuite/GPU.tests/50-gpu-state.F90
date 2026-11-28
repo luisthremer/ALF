@@ -280,14 +280,14 @@ contains
 
   !> One unsupported option after the other (the set-up leaves the settings unlocked): gpu_supported must say no, with
   !> the reason of that option; with the option off again it must say yes.  Builds that refuse everything (tempering
-  !> without PP, STAB1/2; STAB3 on GPU=amd) refuse with their own reason.
+  !> without PP on GPU=amd, STAB1/2; STAB3 on GPU=amd) refuse with their own reason.
   Subroutine test_refusals()
     Character (len=256) :: reason
     Character (len=64) :: build_reason
     Logical :: ok
     Type (Operator), dimension(:,:), allocatable :: Op_T, Op_V
     build_reason = ''
-#if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
+#if defined(TEMPERING) && !defined(PARALLEL_PARAMS) && defined(ALF_LA_HIP)
     build_reason = 'tempering'
 #elif defined(STAB1) || defined(STAB2)
     build_reason = 'STAB1/STAB2'
@@ -334,7 +334,7 @@ contains
     Character (len=64) :: build_reason
     Logical :: ok
     build_reason = expected
-#if defined(TEMPERING) && !defined(PARALLEL_PARAMS)
+#if defined(TEMPERING) && !defined(PARALLEL_PARAMS) && defined(ALF_LA_HIP)
     build_reason = 'tempering'
 #elif defined(STAB1) || defined(STAB2)
     build_reason = 'STAB1/STAB2'
