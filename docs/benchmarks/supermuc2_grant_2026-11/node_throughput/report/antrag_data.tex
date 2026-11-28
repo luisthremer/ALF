@@ -1,8 +1,8 @@
 \newcommand{\Lmax}{40}
-\newcommand{\FacIntel}{6.8}
-\newcommand{\FacBase}{5.4}
-\newcommand{\Eratio}{1.5}
-\newcommand{\FacList}{2.7$\times$ ($L=16$), 5.8$\times$ ($L=24$), 11.8$\times$ ($L=32$), 8.6$\times$ ($L=36$), 6.8$\times$ ($L=40$)}
+\newcommand{\FacIntel}{9.5}
+\newcommand{\FacBase}{8.1}
+\newcommand{\Eratio}{2.2}
+\newcommand{\FacList}{2.7$\times$ ($L=16$), 5.8$\times$ ($L=24$), 11.9$\times$ ($L=32$), 9.0$\times$ ($L=36$), 9.5$\times$ ($L=40$)}
 \newcommand{\StarNote}{}
 \newcommand{\Complete}{yes}
 \newcommand{\AntragTable}{%
@@ -10,38 +10,38 @@
 $L$ & node & code & configuration & work units / node-h & speedup & kJ / unit\\
 \hline
 16 & CPU & ALF CPU & 112 proc.\ $\times$ 1 thr. & 144\,581 & 1.0 & 0.017\\
-16 & GPU & ALF GPU & 4 proc./tile, 1 thr. & 171\,088 & 1.2 & 0.065\\
-16 & GPU & ALF GPU Intel-opt. & 4 proc./tile, 1 thr. & 389\,496 & 2.7 & 0.029\\
+16 & GPU & ALF GPU & 4 proc./tile, 2 thr. & 189\,332 & 1.3 & 0.059\\
+16 & GPU & ALF GPU Intel-opt. & 4 proc./tile, 1 thr. & 391\,560 & 2.7 & 0.029\\
 \hline
 24 & CPU & ALF CPU & 112 proc.\ $\times$ 1 thr. & 18\,266 & 1.0 & 0.138\\
-24 & GPU & ALF GPU & 4 proc./tile, 3 thr. & 28\,664 & 1.6 & 0.389\\
-24 & GPU & ALF GPU Intel-opt. & 4 proc./tile, 1 thr. & 106\,700 & 5.8 & 0.105\\
+24 & GPU & ALF GPU & 4 proc./tile, 2 thr. & 53\,545 & 2.9 & 0.208\\
+24 & GPU & ALF GPU Intel-opt. & 4 proc./tile, 3 thr. & 105\,468 & 5.8 & 0.106\\
 \hline
 32 & CPU & ALF CPU & 112 proc.\ $\times$ 1 thr. & 2\,475 & 1.0 & 1.018\\
-32 & GPU & ALF GPU & 2 proc./tile, 7 thr. & 11\,676 & 4.7 & 0.956\\
-32 & GPU & ALF GPU Intel-opt. & 4 proc./tile, 1 thr. & 29\,159 & 11.8 & 0.383\\
+32 & GPU & ALF GPU & 4 proc./tile, 3 thr. & 19\,411 & 7.8 & 0.575\\
+32 & GPU & ALF GPU Intel-opt. & 4 proc./tile, 3 thr. & 29\,338 & 11.9 & 0.380\\
 \hline
 36 & CPU & ALF CPU & 112 proc.\ $\times$ 1 thr. & 1\,728 & 1.0 & 1.458\\
-36 & GPU & ALF GPU & 2 proc./tile, 7 thr. & 7\,311 & 4.2 & 1.526\\
-36 & GPU & ALF GPU Intel-opt. & 4 proc./tile, 1 thr. & 14\,795 & 8.6 & 0.754\\
+36 & GPU & ALF GPU & 4 proc./tile, 3 thr. & 11\,372 & 6.6 & 0.981\\
+36 & GPU & ALF GPU Intel-opt. & 4 proc./tile, 3 thr. & 15\,636 & 9.0 & 0.714\\
 \hline
 40 & CPU & ALF CPU & 112 proc.\ $\times$ 1 thr. & 933 & 1.0 & 2.701\\
-40 & GPU & ALF GPU & 2 proc./tile, 7 thr. & 5\,048 & 5.4 & 2.211\\
-40 & GPU & ALF GPU Intel-opt. & 2 proc./tile, 7 thr. & 6\,363 & 6.8 & 1.754\\
+40 & GPU & ALF GPU & 7 proc./tile, 2 thr. & 7\,524 & 8.1 & 1.483\\
+40 & GPU & ALF GPU Intel-opt. & 7 proc./tile, 2 thr. & 8\,899 & 9.5 & 1.254\\
 \hline
 44 & CPU & ALF CPU & \multicolumn{4}{l}{\emph{not measured}}\\
-44 & GPU & ALF GPU & 2 proc./tile, 7 thr. & 3\,412 & -- & 3.271\\
-44 & GPU & ALF GPU Intel-opt. & 2 proc./tile, 7 thr. & 4\,013 & -- & 2.781\\
+44 & GPU & ALF GPU & 7 proc./tile, 2 thr. & 5\,459 & -- & 2.044\\
+44 & GPU & ALF GPU Intel-opt. & 7 proc./tile, 2 thr. & 5\,304 & -- & 2.104\\
 \hline
 48 & CPU & ALF CPU & \multicolumn{4}{l}{\emph{not measured}}\\
-48 & GPU & ALF GPU & 2 proc./tile, 7 thr. & 2\,348 & -- & 4.754\\
-48 & GPU & ALF GPU Intel-opt. & 1 proc./tile, 14 thr. & 2\,727 & -- & 4.093\\
+48 & GPU & ALF GPU & 7 proc./tile, 2 thr. & 3\,578 & -- & 3.119\\
+48 & GPU & ALF GPU Intel-opt. & 7 proc./tile, 2 thr. & 3\,588 & -- & 3.110\\
 \hline
 52 & CPU & ALF CPU & \multicolumn{4}{l}{\emph{not measured}}\\
-52 & GPU & ALF GPU & 2 proc./tile, 7 thr. & 1\,585 & -- & 7.040\\
-52 & GPU & ALF GPU Intel-opt. & 1 proc./tile, 14 thr. & 1\,803 & -- & 6.190\\
+52 & GPU & ALF GPU & 8 proc./tile, 1 thr. & 2\,288 & -- & 4.877\\
+52 & GPU & ALF GPU Intel-opt. & 7 proc./tile, 2 thr. & 2\,345 & -- & 4.758\\
 \hline
 56 & CPU & ALF CPU & \multicolumn{4}{l}{\emph{not measured}}\\
-56 & GPU & ALF GPU & 2 proc./tile, 7 thr. & 1\,134 & -- & 9.839\\
-56 & GPU & ALF GPU Intel-opt. & 1 proc./tile, 14 thr. & 1\,279 & -- & 8.728\\
+56 & GPU & ALF GPU & 7 proc./tile, 2 thr. & 1\,684 & -- & 6.627\\
+56 & GPU & ALF GPU Intel-opt. & 7 proc./tile, 2 thr. & 1\,667 & -- & 6.694\\
 \end{tabular}}

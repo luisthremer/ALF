@@ -1,0 +1,32 @@
+\newcommand{\TunedTable}{%
+\begin{tabular}{rllll}
+$L$ & code & layout $\beta=4$ & settings $\beta=4$ & layout $\beta=L$\\
+\hline
+16 & ALF GPU Intel-opt. & 4 proc./tile $\times$ 1 thr. & default & 4 proc./tile $\times$ 1 thr.\\
+16 & ALF GPU & 4 proc./tile $\times$ 2 thr. & default & 4 proc./tile $\times$ 2 thr.\\
+\hline
+24 & ALF GPU Intel-opt. & 4 proc./tile $\times$ 3 thr. & default & 4 proc./tile $\times$ 3 thr.\\
+24 & ALF GPU & 4 proc./tile $\times$ 2 thr. & default & 4 proc./tile $\times$ 2 thr.\\
+\hline
+32 & ALF GPU Intel-opt. & 4 proc./tile $\times$ 3 thr. & default & 4 proc./tile $\times$ 3 thr.\\
+32 & ALF GPU & 4 proc./tile $\times$ 3 thr. & default & 4 proc./tile $\times$ 3 thr.\\
+\hline
+36 & ALF GPU Intel-opt. & 4 proc./tile $\times$ 3 thr. & default & 4 proc./tile $\times$ 3 thr.\\
+36 & ALF GPU & 4 proc./tile $\times$ 3 thr. & default & 4 proc./tile $\times$ 3 thr.\\
+\hline
+40 & ALF GPU Intel-opt. & 7 proc./tile $\times$ 2 thr. & default & 7 proc./tile $\times$ 2 thr.\\
+40 & ALF GPU & 7 proc./tile $\times$ 2 thr. & $N\_\text{delay}=$256 & 7 proc./tile $\times$ 2 thr.\\
+\hline
+44 & ALF GPU Intel-opt. & 7 proc./tile $\times$ 2 thr. & default & 4 proc./tile $\times$ 3 thr.\\
+44 & ALF GPU & 7 proc./tile $\times$ 2 thr. & $N\_\text{delay}=$256 & 4 proc./tile $\times$ 3 thr.\\
+\hline
+48 & ALF GPU Intel-opt. & 7 proc./tile $\times$ 2 thr. & default & 2 proc./tile $\times$ 7 thr.\\
+48 & ALF GPU & 7 proc./tile $\times$ 2 thr. & $N\_\text{delay}=$256 & 2 proc./tile $\times$ 7 thr.\\
+\hline
+52 & ALF GPU Intel-opt. & 7 proc./tile $\times$ 2 thr. & $N\_\text{delay}=$256 & 2 proc./tile $\times$ 7 thr.\\
+52 & ALF GPU & 8 proc./tile $\times$ 1 thr. & $N\_\text{delay}=$256 & 2 proc./tile $\times$ 7 thr.\\
+\hline
+56 & ALF GPU Intel-opt. & 7 proc./tile $\times$ 2 thr. & $N\_\text{delay}=$256 & 1 proc./tile $\times$ 14 thr.\\
+56 & ALF GPU & 7 proc./tile $\times$ 2 thr. & $N\_\text{delay}=$512 & 1 proc./tile $\times$ 14 thr.\\
+\hline
+\end{tabular}}

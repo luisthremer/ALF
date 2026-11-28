@@ -45,8 +45,7 @@ Toolchain: Intel oneAPI 2025.3, Intel MPI 2021.15, oneMKL 2025.3.
 \item One full node per run, best configuration per node type: CPU node = 112 cores (2 $\times$ Xeon 8480L),
   GPU node = 4 $\times$ Intel Max 1550 (8 tiles).
 \item 10 sweeps timed individually per run (5 for the CPU at $L=40$); errors $<1\,\%$ (standard error).
-\item $L=16$--36: all configurations; $L=40$--56: only the fastest configurations. CPU node measured up to $L=40$ only; $L=44$--56 GPU node only (both GPU codes with the fix for the determinant phase, which underflows from $L\approx54$ without it).
-\item \textbf{Not tuned:} the GPU runs use the production settings of $L=36$ and shared core pinning for the processes of a tile; first tests with disjoint cores per process are up to 2$\times$ faster at $L=40$, so the GPU numbers are lower bounds (re-measurement in progress).
+\item GPU node: for every $L$ seven layouts (processes per tile $\times$ threads) and then $N_\text{delay}$ and code switches were scanned automatically; the fastest configuration is used. CPU node: threads per process 1--8 up to $L=36$ ($\beta=4$), 1--2 at $\beta=L$; measured up to $L=40$ only, larger $L$ on the GPU node only (both GPU codes with the fix for the determinant phase, which underflows from $L\approx54$).
 \end{itemize}
 
 \begin{table}[H]
@@ -70,6 +69,6 @@ CPU node. Right: estimated energy per work unit (vendor power ratings: CPU node 
 \item At $L=\Lmax$ one GPU node gives \textbf{\FacIntel$\times$} the throughput of the CPU node (ALF GPU Intel-optimised;
   \FacBase$\times$ with ALF GPU) at \Eratio$\times$ lower energy per work unit.
 \item Speedup of the GPU node (Intel-optimised) over the CPU node: \FacList.
-\item Best GPU configuration (Intel-optimised): four MPI processes per tile up to $L=36$, two per tile at $L=40$ (four per tile halve the throughput there); eight per tile is always slower.
+\item The GPU configuration was tuned for every $L$ (layout and $N_\text{delay}$): 4 processes per tile for $L\le36$, 7--8 for $L\ge40$ at $\beta=4$; larger $\beta$ needs more device memory and fewer processes.
 \end{itemize}}
 \end{document}

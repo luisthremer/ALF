@@ -45,8 +45,7 @@ Toolchain: Intel oneAPI 2025.3, Intel MPI 2021.15, oneMKL 2025.3.
 \item One full node per run, best configuration per node type: CPU node = 112 cores (2 $\times$ Xeon 8480L),
   GPU node = 4 $\times$ Intel Max 1550 (8 tiles).
 \item 2 to 5 sweeps timed individually per run; sweep-to-sweep variation $<1\,\%$.
-\item CPU node at $L=36$: 112 MPI processes $\times$ 1 thread exceed the node memory (run killed), so 56 $\times$ 2 is the best possible configuration there. CPU node measured up to $L=36$ only; $L=44$--56: GPU node only, both GPU codes with the fix for the determinant phase. At $L=56$ the device memory limits the configuration: 2 processes per tile (16 per node) fail for both codes (device out of memory), so 1 process per tile (8 per node) is used there.
-\item \textbf{Not tuned:} the GPU runs use the production settings of $L=36$ and shared core pinning for the processes of a tile; first tests with disjoint cores per process are up to 2$\times$ faster at $L=40$, so the GPU numbers are lower bounds (re-measurement in progress).
+\item CPU node at $L=36$: 112 MPI processes $\times$ 1 thread exceed the node memory (run killed), so 56 $\times$ 2 is the best possible configuration there.
 \end{itemize}
 
 \begin{table}[H]

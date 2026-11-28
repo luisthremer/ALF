@@ -41,7 +41,7 @@ for i, L in enumerate(Ls):
             out.append(f"{L} & {NAME[s_]} & \\texttt{{{COMMIT[s_]}}} & -- & running & --\\\\")
             continue
         fac = f"{r['throughput_node_h'] / c['throughput_node_h']:.2f}" if c else "--"
-        out.append(f"{L} & {NAME[s_]} & \\texttt{{{COMMIT[s_]}}} & \\texttt{{{r['tag']}}} & {pm(r['throughput_node_h'], r['throughput_err'])} & {fac}\\\\")
+        out.append(f"{L} & {NAME[s_]} & \\texttt{{{COMMIT[s_]}}} & \\texttt{{{r['tag'].replace('_', chr(92) + '_')}}} & {pm(r['throughput_node_h'], r['throughput_err'])} & {fac}\\\\")
 out.append("\\bottomrule\\end{tabular}\\end{table}")
 for L in Ls:
     sel = sorted([r for r in rows if r["L"] == L], key=lambda r: (list(SIDES).index(r["side"]), r["tag"]))
@@ -51,7 +51,7 @@ for L in Ls:
     out.append("\\begin{tabular}{@{}llllrr@{}}\\toprule")
     out.append("side & commit & tag & layout & time per sweep (s) & sweeps per node-hour\\\\\\midrule")
     for r in sel:
-        out.append(f"{NAME[r['side']]} & \\texttt{{{COMMIT[r['side']]}}} & \\texttt{{{r['tag']}}} & {layout(r)} & {pm(r['t_sweep_s'], r['t_sweep_err_s'], 3)} & "
+        out.append(f"{NAME[r['side']]} & \\texttt{{{COMMIT[r['side']]}}} & \\texttt{{{r['tag'].replace('_', chr(92) + '_')}}} & {layout(r)} & {pm(r['t_sweep_s'], r['t_sweep_err_s'], 3)} & "
                    f"{pm(r['throughput_node_h'], r['throughput_err'])}\\\\")
     out.append("\\bottomrule\\end{tabular}\\end{table}")
 print("\n".join(out))

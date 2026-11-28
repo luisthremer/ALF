@@ -5,7 +5,7 @@
 \usepackage{lmodern}
 \graphicspath{{fig/}}
 \input{datastate}   % defines \DataState and \DataNote (written by prelim.sh)
-\title{ALF node throughput at $\beta=L$: GPU node vs CPU node\\\large SuperMUC-NG Phase 2, test of 2026-11-27}
+\title{ALF node throughput at $\beta=L$: GPU node vs CPU node\\\large SuperMUC-NG Phase 2, test of 2026-11-27 and 28}
 \author{}
 \date{\DataState}
 \begin{document}
@@ -16,9 +16,11 @@
 One full Phase 2 node per simulation: either its two CPUs alone (112 cores, build \texttt{build\_cpu-pp}, ALF 410c7b04)
 or its four Intel Data Center GPU Max 1550 (8 tiles) with ALF 410c7b04 (\texttt{build\_pp}) and with the Intel-optimised
 production binary (branch intel-batched, d1060305, run-time switches of the production run RUN\_L36\_batched).
-Hubbard model, square lattice, $L\in\{16,24,32,36\}$, $\beta=L$ (160 to 360 time slices), $\Delta\tau=0.1$, $h_0=0$, $U=5.25$, $M_z=$ F,
+Hubbard model, square lattice, $L\in\{16,24,32,36,44,48,52,56\}$ (and 40), $\beta=L$ (160 to 560 time slices), $\Delta\tau=0.1$, $h_0=0$, $U=5.25$, $M_z=$ F,
 Symm and Checkerboard on, Ltau $=0$, submatrix updates with $N_\text{delay}=64$, Nwrap $=10$.
-Each run does NBin sweeps (NSweep $=1$): NBin $=6$ (5 timed), for the CPU at $L=32,36$ NBin $=3$ or 4 (2 or 3 timed); the first sweep is dropped. Only the configurations that were best at $\beta=4$ are run: CPU \texttt{t1}, \texttt{t2} (and \texttt{t4} at $L=36$ as backup; \texttt{t1} at $L=36$ was killed by signal 9 after 14 min without a finished sweep, most likely out of memory: about 4\,GB of stored decompositions per process, $\approx 435$\,GB for 112 processes, so \texttt{t2} is the best possible CPU configuration at $L=36$). \textbf{Pinning:} the GPU runs of this report bind all processes of a tile to the same 14 cores; with OpenMP places = cores the first threads of these processes then share cores. Disjoint core slices per process (test runs, $\beta=4$, Intel-optimised): $L=40$, 4$\times$1: 38\,s $\to$ 16.9\,s per sweep, 2$\times$7: 9.05\,s $\to$ 7.69\,s; no change at $L=24$. The GPU numbers here are therefore lower bounds; the layouts are being re-measured. \textbf{$L=44$--56 (GPU node only):} both GPU codes with the determinant-phase fix (\texttt{intel-batched-detfix} 65800b82, \texttt{antrag/2026-11-27-detfix} 90a51fcb), layouts \texttt{w2t7} and \texttt{w1t14}, NBin $=4$ (3 timed sweeps), $L=56$: NBin $=3$ (2 timed). At $L=56$ the layout \texttt{w2t7} aborts for both codes (omptarget: device memory exhausted), so only \texttt{w1t14} gives a result there, ALF GPU \texttt{w2t7}, \texttt{w4t3}, Intel-optimised \texttt{w4t1}, \texttt{w4t3}.
+Each run does NBin sweeps (NSweep $=1$); the first is dropped, the others are timed one by one: NBin $=11$ (10 timed sweeps) for the final runs of every GPU configuration at $\beta=4$, 4 to 6 (3 to 5 timed) for the scan runs of the tuning, 3 to 4 (2 to 3 timed) at $\beta=L$. The CPU node was measured up to $L=40$ (\texttt{t1}, 5 timed sweeps) at $\beta=4$ and up to $L=36$ at $\beta=L$; above that only the GPU node was run.
+Both GPU codes include the fix for the NaN determinant phase (commit 0b3ffba4; the raw LU product underflows from $L\approx54$): Intel-optimised \texttt{intel-batched-detfix} 65800b82 (= d1060305 + fix), ALF GPU \texttt{antrag/2026-11-27-detfix} 90a51fcb (= 410c7b04 + fix). Check at $L=56$: acceptance 0.328 for both codes (0.27 and NaN observables without the fix); $L=24$ reproduces the earlier output (acceptance 0.332416942866162).
+All walkers of a run form one parameter set; one bin is the average of one sweep over all walkers.
 All walkers of a run form one parameter set; one bin is the average of one sweep over all walkers.
 
 \section{Node and layouts (x axes of the figures)}
@@ -39,16 +41,29 @@ tag & commit & threads per rank & ranks (walkers) & ranks per socket & cores use
 
 \begin{table}[H]\centering\small
 \caption{GPU layouts (both GPU binaries). Tag \texttt{w}$W$\texttt{t}$T$ = $W$ walkers (MPI ranks) per tile on all 8 tiles,
-$T$ OpenMP host threads per rank. Each rank is bound to the 14 cores next to its tile; compute engines per tile set with
-\texttt{ZEX\_NUMBER\_OF\_CCS}. \texttt{w4t3} is the production layout; \texttt{w4t1} checks whether host threads matter.}
-\resizebox{\textwidth}{!}{\begin{tabular}{@{}llrrrr@{}}\toprule
-tag & commits & walkers per tile & ranks (walkers) & threads per rank & compute engines per tile\\\midrule
-\texttt{w1t14} & \texttt{410c7b04}, \texttt{d1060305} & 1 & 8 & 14 & 1\\
-\texttt{w2t7} & \texttt{410c7b04}, \texttt{d1060305} & 2 & 16 & 7 & 2\\
-\texttt{w4t3} & \texttt{410c7b04}, \texttt{d1060305} & 4 & 32 & 3 & 4\\
-\texttt{w8t1} & \texttt{410c7b04}, \texttt{d1060305} & 8 & 64 & 1 & 4\\
-\texttt{w4t1} & \texttt{410c7b04}, \texttt{d1060305} & 4 & 32 & 1 & 4\\\bottomrule
-\end{tabular}}\end{table}
+$T$ OpenMP host threads per rank. The $W$ ranks of a tile get disjoint core slices of $\lfloor14/W\rfloor$ cores (plus hyperthreads); compute engines per tile
+$\min(W,4)$ (\texttt{ZEX\_NUMBER\_OF\_CCS}). \texttt{w4t3} is the production layout.}
+\begin{tabular}{@{}lrrrr@{}}\toprule
+tag & walkers per tile & ranks (walkers) & threads per rank & cores per rank\\\midrule
+\texttt{w2t7} & 2 & 16 & 7 & 7\\
+\texttt{w4t1}, \texttt{w4t2}, \texttt{w4t3} & 4 & 32 & 1, 2, 3 & 3\\
+\texttt{w6t2} & 6 & 48 & 2 & 2\\
+\texttt{w7t2} & 7 & 56 & 2 & 2\\
+\texttt{w8t1} & 8 & 64 & 1 & 1\\\bottomrule
+\end{tabular}\end{table}
+
+\section{Tuning of the GPU node}
+\textbf{Pinning.} In the first series (\texttt{w}$W$\texttt{t}$T$ layouts with $W\ge2$) all $W$ processes of a tile were pinned to the same 14 cores; with OpenMP places = cores the first threads of these processes then share cores. Measured effect (Intel-optimised, $\beta=4$): $L=40$, 4$\times$1: 38\,s $\to$ 16.9\,s per sweep; ALF GPU, $L=32$, $\beta=L$, 4$\times$3: 88.3\,s $\to$ 46.7\,s (the production run of 11 November had 51.9\,s). All GPU results of this report use disjoint core slices: the $W$ processes of a tile get $\lfloor14/W\rfloor$ cores each (plus their hyperthreads).
+
+\textbf{Search} (\texttt{tune.py}, one full node per run). For every code and every $L$: (A) layouts 2$\times$7, 4$\times$1, 4$\times$2, 4$\times$3, 6$\times$2, 7$\times$2, 8$\times$1 (processes per tile $\times$ threads); (B) from the best layout one parameter group at a time: $N_\text{delay}\in\{128,256,512,1024\}$ (default 64), and for the Intel-optimised code \texttt{ASYNCBLK}$=0$, \texttt{BLKFUSE}$\in\{3,8\}$, \texttt{QRNB}$\in\{8,32,64\}$; (C) the groups that gained at least 3\,\% combined, plus a repeat of the baseline; (F) the two best configurations rerun with 10 timed sweeps, the faster one is the result. $\beta=L$ uses the settings found at $\beta=4$; if a layout runs out of device memory (more walkers need more memory at 10$L$ time slices) the next layout is tried (down to 1 process per tile). Tested before the search and without effect beyond the noise of 1 to 3\,\%: \texttt{ALF\_GPU\_TL}, \texttt{TR}, \texttt{VB}, \texttt{BLKPF}.
+
+\textbf{Result.} Up to $L\approx 40$ only the layout matters ($N_\text{delay}=64$ stays best, larger values lose up to 40\,\% at $L=24$); from $L\approx 44$ $N_\text{delay}=256$ gains 3 to 14\,\%, at $L=56$ 256 or 512 are best. Larger systems need more walkers per tile at $\beta=4$ (7 to 8) than small ones (4).
+
+\begin{table}[H]\centering\small
+\caption{Tuned settings per code and $L$ (best of the search; $N_\text{delay}=64$ and the production switches where not stated).}
+\input{tuned}
+\TunedTable
+\end{table}
 
 \section{Timing and throughput}
 Rank 0 writes one bin per sweep to \texttt{data.h5}, one HDF5 write per observable. The modification time of the file is

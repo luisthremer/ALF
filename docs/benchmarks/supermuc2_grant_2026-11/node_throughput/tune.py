@@ -34,7 +34,9 @@ GROUPS = {   # group -> [(variant, env settings)], first group value is the defa
 INTEL_ONLY = {"asy", "bf", "qr"}
 GAIN = 0.03
 BASE_ENV = "PINMODE=excl"
-MAXPAIRS = 6    # (side, L) pairs searched at the same time
+MAXPAIRS = 6    # (side, L) pairs searched at the same time (--inalloc: all, the srun steps wait for free nodes)
+INALLOC = False  # --inalloc: run inside one big allocation (srun steps instead of one sbatch job per stage)
+CACHE = {}       # (side, L, tag) -> analyse row of a finished run in this rundir: not run again
 
 log_lock = threading.Lock()
 sem = threading.Semaphore(MAXPAIRS)
@@ -58,19 +60,40 @@ def walltime(L, beta):
 
 
 def run_items(items, name, L, beta, rundir, dry):
-    """items: [(side, layout, nbin, variant, env)]; submits one job, waits, returns rows of analyse.py for this job"""
+    """items: [(side, layout, nbin, variant, env)]; runs them (one full node each), returns the analyse.py rows of these runs"""
     args = [f"{s}:{L}:{lay}:{nb}:{var}:{BASE_ENV}{',' + env if env else ''}" for s, lay, nb, var, env in items]
     if dry:
         log("DRY", name, len(items), "nodes:", " ".join(args))
         return []
-    cmd = ["sbatch", "--parsable", "--export=BETA,RUNDIR,EXE_GPU,BINB", "-N", str(len(items)), "-J", name, "-p", "general",
-           "-t", walltime(L, beta), f"{J}/multi2.sh"] + args
+    tagof = lambda it: f"w{it[1].split('_')[0]}t{it[1].split('_')[1]}_{it[3]}"
+    side = items[0][0]
+    cached = [CACHE[(side, L, tagof(it))] for it in items if (side, L, tagof(it)) in CACHE]
+    todo = [it for it in items if (side, L, tagof(it)) not in CACHE]
+    if cached:
+        log(name, len(cached), "runs already done, reused")
+    if not todo:
+        return cached
+    if INALLOC:
+        procs = []
+        for s_, lay, nb, var, env in todo:
+            e = dict(os.environ, EXTRA=" ".join((BASE_ENV + ("," + env if env else "")).split(",")), VARIANT=var, BETA=beta, RUNDIR=rundir,
+                     NBIN=str(nb), LAYOUTS_OVERRIDE=lay.replace("_", ":", 1), NT_LOCAL="1", RUN_TIMEOUT="9000",
+                     EXE_GPU=f"{A}/build_pp_alfgpu_detfix/Prog/ALF.out", BINB=f"{A}/bin_batched_65800b82/pp")
+            cmd = ["srun", "-N1", "-n1", "-c", "224", "--cpu-bind=none", "--mem=0", "--exclusive", "bash", f"{J}/run_layouts.sh", s_, str(L)]
+            procs.append(subprocess.Popen(cmd, env=e, stdout=open(f"{A}/auto/log_{rundir}_{s_}_L{L}_{lay}_{var}.log", "w"), stderr=subprocess.STDOUT))
+        log("started", name, len(todo), "runs")
+        for p in procs:
+            p.wait()
+        tags = {tagof(it) for it in todo}
+        return cached + [r for r in analyse(rundir) if r["side"] == side and int(r["L"]) == L and r["tag"] in tags]
+    cmd = ["sbatch", "--parsable", "--export=BETA,RUNDIR,EXE_GPU,BINB", "-N", str(len(todo)), "-J", name, "-p", "general",
+           "-t", walltime(L, beta), f"{J}/multi2.sh"] + [a for a, it in zip(args, items) if it in todo]
     env = dict(os.environ, BETA=beta, RUNDIR=rundir, EXE_GPU=f"{A}/build_pp_alfgpu_detfix/Prog/ALF.out", BINB=f"{A}/bin_batched_65800b82/pp")
     jid = subprocess.run(cmd, env=env, cwd=J, capture_output=True, text=True, check=True).stdout.strip().split(";")[0]
-    log("submitted", jid, name, len(items), "runs")
+    log("submitted", jid, name, len(todo), "runs")
     while subprocess.run(["squeue", "-j", jid, "-h", "-o", "%T"], capture_output=True, text=True).stdout.strip():
         time.sleep(60)
-    return [r for r in analyse(rundir) if r["job"] == jid]
+    return cached + [r for r in analyse(rundir) if r["job"] == jid]
 
 
 def analyse(rundir):
@@ -146,7 +169,11 @@ def final_pair(side, L, beta, rundir, tuned, results, dry):
         if not t:
             log("no tuned setting for", side, L); return
         nb = nbin(L, beta)
-        for lay in [t["layout"]] + t.get("fallback_layouts", []):
+        chain = []
+        for lay in [t["layout"]] + t.get("fallback_layouts", []) + ["2_7", "1_14"]:   # more walkers need more device memory: end with 2 and 1 per tile
+            if lay not in chain:
+                chain.append(lay)
+        for lay in chain:
             rows = run_items([(side, lay, nb, "F", t["env"])], f"au_Fb_{side}_{L}", L, beta, rundir, dry)
             if dry or (rows and thr(rows[0]) > 0):
                 results[f"{side}_{L}"] = dict(t, layout=lay, throughput=thr(rows[0]) if rows else 0, beta=beta)
@@ -161,12 +188,22 @@ def main():
     ap.add_argument("--sides", default="gpub,gpu")
     ap.add_argument("--beta", default="4")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--inalloc", action="store_true", help="inside one big allocation (see tune_job.sh)")
     a = ap.parse_args()
     if not a.dry_run:
         os.makedirs(f"{A}/auto", exist_ok=True)
     jf = f"{A}/auto/tuned.json"
     tuned = json.load(open(jf)) if os.path.exists(jf) else {}
     rundir = "runs_auto" if a.beta == "4" else f"runs_auto_beta{a.beta}"
+    global INALLOC, sem
+    INALLOC = a.inalloc
+    if INALLOC:
+        sem = threading.Semaphore(64)
+    if not a.dry_run:
+        for r in analyse(rundir):
+            if r["rc"] == "0" and r["throughput_node_h"]:
+                CACHE[(r["side"], int(r["L"]), r["tag"])] = r
+        log("cache:", len(CACHE), "finished runs in", rundir)
     results, threads = {}, []
     for side in a.sides.split(","):
         for L in [int(x) for x in a.Ls.split(",")]:
@@ -179,7 +216,9 @@ def main():
         if a.mode == "search":
             tuned.update(results); json.dump(tuned, open(jf, "w"), indent=1)
         else:
-            json.dump(results, open(f"{A}/auto/final_beta{a.beta}.json", "w"), indent=1)
+            ff = f"{A}/auto/final_beta{a.beta}.json"
+            old = json.load(open(ff)) if os.path.exists(ff) else {}
+            old.update(results); json.dump(old, open(ff, "w"), indent=1)
     log("done", len(results), "settings")
 
 

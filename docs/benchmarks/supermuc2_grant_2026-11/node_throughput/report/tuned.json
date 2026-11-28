@@ -1,0 +1,236 @@
+{
+ "gpub_24": {
+  "layout": "4_3",
+  "env": "",
+  "variant": "A",
+  "throughput": 105468.5,
+  "fallback_layouts": [
+   "4_1",
+   "4_2",
+   "2_7"
+  ],
+  "base_env": "PINMODE=excl",
+  "beta": "4"
+ },
+ "gpub_32": {
+  "layout": "4_3",
+  "env": "",
+  "variant": "A",
+  "throughput": 29338.2,
+  "fallback_layouts": [
+   "4_2",
+   "4_1",
+   "2_7"
+  ],
+  "base_env": "PINMODE=excl",
+  "beta": "4"
+ },
+ "gpub_36": {
+  "layout": "4_3",
+  "env": "",
+  "variant": "A",
+  "throughput": 15636.4,
+  "fallback_layouts": [
+   "4_2",
+   "4_1",
+   "2_7"
+  ],
+  "base_env": "PINMODE=excl",
+  "beta": "4"
+ },
+ "gpub_16": {
+  "layout": "4_1",
+  "env": "",
+  "variant": "A",
+  "throughput": 391559.5,
+  "fallback_layouts": [
+   "4_2",
+   "4_3",
+   "2_7"
+  ],
+  "base_env": "PINMODE=excl",
+  "beta": "4"
+ },
+ "gpub_40": {
+  "layout": "7_2",
+  "env": "",
+  "variant": "A",
+  "throughput": 8899.4,
+  "fallback_layouts": [
+   "6_2",
+   "8_1",
+   "4_3"
+  ],
+  "base_env": "PINMODE=excl",
+  "beta": "4"
+ },
+ "gpu_16": {
+  "layout": "4_2",
+  "env": "",
+  "variant": "A",
+  "throughput": 189332.3,
+  "fallback_layouts": [
+   "4_3",
+   "4_1",
+   "2_7"
+  ],
+  "base_env": "PINMODE=excl",
+  "beta": "4"
+ },
+ "gpub_44": {
+  "layout": "7_2",
+  "env": "",
+  "variant": "A",
+  "throughput": 5304.2,
+  "fallback_layouts": [
+   "8_1",
+   "6_2",
+   "4_3"
+  ],
+  "base_env": "PINMODE=excl",
+  "beta": "4"
+ },
+ "gpu_24": {
+  "layout": "4_2",
+  "env": "",
+  "variant": "A",
+  "throughput": 53545.0,
+  "fallback_layouts": [
+   "4_3",
+   "4_1",
+   "2_7"
+  ],
+  "base_env": "PINMODE=excl",
+  "beta": "4"
+ },
+ "gpu_32": {
+  "layout": "4_3",
+  "env": "",
+  "variant": "A",
+  "throughput": 19410.7,
+  "fallback_layouts": [
+   "4_2",
+   "7_2",
+   "4_1"
+  ],
+  "base_env": "PINMODE=excl",
+  "beta": "4"
+ },
+ "gpub_48": {
+  "layout": "7_2",
+  "env": "",
+  "variant": "A",
+  "throughput": 3588.2,
+  "fallback_layouts": [
+   "8_1",
+   "6_2",
+   "4_3"
+  ],
+  "base_env": "PINMODE=excl",
+  "beta": "4"
+ },
+ "gpub_52": {
+  "layout": "7_2",
+  "env": "NDELAY=256",
+  "variant": "nd256",
+  "throughput": 2345.3,
+  "fallback_layouts": [
+   "8_1",
+   "6_2",
+   "4_3"
+  ],
+  "base_env": "PINMODE=excl",
+  "beta": "4"
+ },
+ "gpu_40": {
+  "layout": "7_2",
+  "env": "NDELAY=256",
+  "variant": "nd256",
+  "throughput": 7524.4,
+  "fallback_layouts": [
+   "8_1",
+   "4_3",
+   "6_2"
+  ],
+  "base_env": "PINMODE=excl",
+  "beta": "4"
+ },
+ "gpub_56": {
+  "layout": "7_2",
+  "env": "NDELAY=256",
+  "variant": "nd256",
+  "throughput": 1667.2,
+  "fallback_layouts": [
+   "8_1",
+   "6_2",
+   "4_3"
+  ],
+  "base_env": "PINMODE=excl",
+  "beta": "4"
+ },
+ "gpu_36": {
+  "layout": "4_3",
+  "env": "",
+  "variant": "A",
+  "throughput": 11372.4,
+  "fallback_layouts": [
+   "4_2",
+   "7_2",
+   "8_1"
+  ],
+  "base_env": "PINMODE=excl",
+  "beta": "4"
+ },
+ "gpu_44": {
+  "layout": "7_2",
+  "env": "NDELAY=256",
+  "variant": "nd256",
+  "throughput": 5458.9,
+  "fallback_layouts": [
+   "8_1",
+   "6_2",
+   "4_3"
+  ],
+  "base_env": "PINMODE=excl",
+  "beta": "4"
+ },
+ "gpu_48": {
+  "layout": "7_2",
+  "env": "NDELAY=256",
+  "variant": "nd256",
+  "throughput": 3577.9,
+  "fallback_layouts": [
+   "6_2",
+   "8_1",
+   "4_3"
+  ],
+  "base_env": "PINMODE=excl",
+  "beta": "4"
+ },
+ "gpu_52": {
+  "layout": "8_1",
+  "env": "NDELAY=256",
+  "variant": "nd256",
+  "throughput": 2288.3,
+  "fallback_layouts": [
+   "7_2",
+   "6_2",
+   "4_3"
+  ],
+  "base_env": "PINMODE=excl",
+  "beta": "4"
+ },
+ "gpu_56": {
+  "layout": "7_2",
+  "env": "NDELAY=512",
+  "variant": "nd512",
+  "throughput": 1684.1,
+  "fallback_layouts": [
+   "8_1",
+   "6_2",
+   "4_3"
+  ],
+  "base_env": "PINMODE=excl",
+  "beta": "4"
+ }
+}
