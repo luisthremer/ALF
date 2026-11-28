@@ -149,6 +149,30 @@ Evidence (melmac, gfortran, GPU=host, `OMP_NUM_THREADS=1`, Hubbard from `Scripts
 | STAB3 GPU vs CPU, `confout` | byte-identical in every case (4x4 e2e set, L = 8 Mz / SU(2) / submatrix, L = 16, L = 8 Beta = 20 U = 8) |
 | STAB3 GPU vs CPU, observables (rule of `gpu_e2e.py`: max(1e-11, 100 x Precision Green mean of the CPU run)) | within the rule: 4x4 e2e set, SU(2) L = 8 (5e-13), Mz L = 16 (1.9e-10, tol 6.5e-9), Beta = 20 U = 8 (3.1e-4, tol 4.3e-4); **just above it** on the Start seed at Mz L = 8, also with submatrix: SpinXY_eq 7.5e-9 against 6.5e-9 (default build, same seed: 3.9e-9), because the GPU run's Precision Green there is 3.3x the CPU one |
 
+## P2.6 global: global tau moves and Propose_S0 (2026-11-28)
+
+Feature `p26-global` rebased on `Code-modularity-GPU` d8ec98eb (projector, G11, STAB3 included). Code commits: `gpu_update` device PlaceGR / H5, global tau moves (INTERMEDIATE mode, G backup `G_st_d`), `gpu_state` refusals + tests.
+
+**melmac (GPU=host / GPU=none, GNU)**
+- GPU=none: 16/16 models byte-identical to d8ec98eb.
+- GPU=host: identical except LRC and Hubbard_Global_moves (info line only: refusal text) and Z2_Matter (now on the GPU path; confout identical, observables within 7e-15).
+- ctest GPU=host: 159/159.
+- 51 GPU vs `ALF_GPU_DISABLE=1` comparisons (`extra.py`: L 4/8, N_Global_tau 1/4, full/partial range, 3 schemes, Ltau 0/1, CGR_LU=2, Z2, Spin_Peierls and Hubbard S0): all OK, confout identical; PG ratio GPU/CPU <= 2.2; fault-upd seen.
+
+**Helma H100 (GPU=nvidia, job 1476030, 12 min)**: ctest `gpu-|52-global` 56/56. GPU vs disabled, same seeds, confout identical in all cases:
+
+| case | max scaled diff (tol) | PG ratio | CPU time act / dis [s] |
+|---|---|---|---|
+| mz L8 gt4 partial | 3.3e-11 (7e-8) | 1.32 | 8.6 / 1.2 |
+| mz L8 gt4 full Ltau=1 | 6.2e-12 (3.7e-10) | 1.34 | 5.8 / 2.0 |
+| mz L8 gt4 partial submatrix | 3.3e-11 (7e-8) | 1.33 | 5.6 / 1.4 |
+| mz L16 gt8 partial | 1.9e-10 (1.4e-7) | 2.23 | 38.5 / 56.4 |
+| mz L16 gt8 partial submatrix | 1.8e-10 (1.4e-7) | 2.23 | 24.2 / 55.8 |
+| Z2 L8 gt | 1.8e-14 (1e-11) | 1.01 | 16.6 / 1.2 |
+| Spin_Peierls L12 Propose_S0 | 9.6e-11 (2.9e-9) | 1.61 | 20.2 / 7.3 |
+
+Open nit: `G_st_d` (Ndim^2 N_FL, 16 B) is allocated lazily and never freed. Global tau + projector on the device is not covered by a dedicated case.
+
 ## 3. Run evidence in the gpu-port docs (not repeated on the new line)
 
 | Backend | Where | What | Scope |
