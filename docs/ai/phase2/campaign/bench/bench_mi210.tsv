@@ -1,0 +1,10 @@
+machine	path	model	L	scheme	state	t_2sweeps_s	t_6sweeps_s	s_per_sweep
+mi210	gpu	hub-mz	8	std	ACTIVE	12.75	30.59	4.460
+mi210	gpu	hub-mz	8	dly16	ACTIVE	8.14	16.82	2.170
+mi210	gpu	hub-mz	8	sub16	ACTIVE	3.98	5.18	0.301
+mi210	gpu	hub-mz	16	std	ACTIVE	51.56	147.40	23.958
+mi210	gpu	hub-mz	16	dly16	ACTIVE	22.70	58.34	8.910
+mi210	gpu	hub-mz	16	sub16	ACTIVE	5.53	8.04	0.626
+mi210	gpu	hub-mz	24	std	ACTIVE	225.08	676.30	112.805
+mi210	gpu	hub-mz	24	dly16	ACTIVE	50.03	133.82	20.947
+mi210	gpu	hub-mz	24	sub16	ACTIVE	10.01	14.82	1.203

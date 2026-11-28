@@ -1,0 +1,10 @@
+machine	path	model	L	scheme	state	t_2sweeps_s	t_6sweeps_s	s_per_sweep
+mi210-refused	gpu	kondo	8	std	ACTIVE	11.75	25.69	3.485
+mi210-refused	gpu	kondo	8	dly16	ACTIVE	12.46	28.71	4.062
+mi210-refused	gpu	kondo	8	sub16	ACTIVE	11.87	26.48	3.652
+mi210-refused	gpu	tV	8	std	ACTIVE	7.05	12.56	1.380
+mi210-refused	gpu	tV	8	dly16	ACTIVE	11.31	31.52	5.053
+mi210-refused	gpu	tV	8	sub16	ACTIVE	6.94	14.42	1.870
+mi210-refused	gpu	sp	8	std	ACTIVE	9.96	17.09	1.782
+mi210-refused	gpu	sp	8	dly16	ACTIVE	11.16	24.74	3.396
+mi210-refused	gpu	sp	8	sub16	ACTIVE	8.84	19.42	2.644

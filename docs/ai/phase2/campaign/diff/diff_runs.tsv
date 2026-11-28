@@ -1,0 +1,49 @@
+case	comparison	verdict	detail
+hub-mz	MPI np=1 rank 0 (seed line 1) vs serial run of that seed	IDENTICAL	29 files
+hub-mz	MPI np=2 rank 0 (seed line 2) vs serial run of that seed	ROUNDOFF	max scaled diff 1.26e+00, 29 files, confout identical
+hub-mz	MPI np=2 rank 1 (seed line 1) vs serial run of that seed	IDENTICAL	confout_1 = serial chain of seed line 1
+hub-mz	MPI np=3 rank 0 (seed line 3) vs serial run of that seed	ROUNDOFF	max scaled diff 1.67e+00, 29 files, confout identical
+hub-mz	MPI np=3 rank 1 (seed line 2) vs serial run of that seed	IDENTICAL	confout_1 = serial chain of seed line 2
+hub-mz	MPI np=3 rank 2 (seed line 1) vs serial run of that seed	IDENTICAL	confout_2 = serial chain of seed line 1
+hub-mz	restart (4+4 bins) vs single run (8 bins)	IDENTICAL	29 files
+hub-mz	ifx 2025.3 vs gfortran 14.2	DIFFERENT	confout_0 differs
+hub-su2	MPI np=1 rank 0 (seed line 1) vs serial run of that seed	IDENTICAL	21 files
+hub-su2	MPI np=2 rank 0 (seed line 2) vs serial run of that seed	ROUNDOFF	max scaled diff 1.60e+00, 21 files, confout identical
+hub-su2	MPI np=2 rank 1 (seed line 1) vs serial run of that seed	IDENTICAL	confout_1 = serial chain of seed line 1
+hub-su2	MPI np=3 rank 0 (seed line 3) vs serial run of that seed	ROUNDOFF	max scaled diff 1.70e+00, 21 files, confout identical
+hub-su2	MPI np=3 rank 1 (seed line 2) vs serial run of that seed	IDENTICAL	confout_1 = serial chain of seed line 2
+hub-su2	MPI np=3 rank 2 (seed line 1) vs serial run of that seed	IDENTICAL	confout_2 = serial chain of seed line 1
+hub-su2	restart (4+4 bins) vs single run (8 bins)	IDENTICAL	21 files
+hub-su2	ifx 2025.3 vs gfortran 14.2	DIFFERENT	confout_0 differs
+hub-dly4	MPI np=1 rank 0 (seed line 1) vs serial run of that seed	IDENTICAL	29 files
+hub-dly4	MPI np=2 rank 0 (seed line 2) vs serial run of that seed	ROUNDOFF	max scaled diff 1.26e+00, 29 files, confout identical
+hub-dly4	MPI np=2 rank 1 (seed line 1) vs serial run of that seed	IDENTICAL	confout_1 = serial chain of seed line 1
+hub-dly4	MPI np=3 rank 0 (seed line 3) vs serial run of that seed	ROUNDOFF	max scaled diff 1.67e+00, 29 files, confout identical
+hub-dly4	MPI np=3 rank 1 (seed line 2) vs serial run of that seed	IDENTICAL	confout_1 = serial chain of seed line 2
+hub-dly4	MPI np=3 rank 2 (seed line 1) vs serial run of that seed	IDENTICAL	confout_2 = serial chain of seed line 1
+hub-dly4	restart (4+4 bins) vs single run (8 bins)	IDENTICAL	29 files
+hub-dly4	ifx 2025.3 vs gfortran 14.2	DIFFERENT	confout_0 differs
+kondo	MPI np=1 rank 0 (seed line 1) vs serial run of that seed	IDENTICAL	29 files
+kondo	MPI np=2 rank 0 (seed line 2) vs serial run of that seed	ROUNDOFF	max scaled diff 2.46e+00, 29 files, confout identical
+kondo	MPI np=2 rank 1 (seed line 1) vs serial run of that seed	IDENTICAL	confout_1 = serial chain of seed line 1
+kondo	MPI np=3 rank 0 (seed line 3) vs serial run of that seed	ROUNDOFF	max scaled diff 2.81e+00, 29 files, confout identical
+kondo	MPI np=3 rank 1 (seed line 2) vs serial run of that seed	IDENTICAL	confout_1 = serial chain of seed line 2
+kondo	MPI np=3 rank 2 (seed line 1) vs serial run of that seed	IDENTICAL	confout_2 = serial chain of seed line 1
+kondo	restart (4+4 bins) vs single run (8 bins)	IDENTICAL	29 files
+kondo	ifx 2025.3 vs gfortran 14.2	DIFFERENT	confout_0 differs
+tV	MPI np=1 rank 0 (seed line 1) vs serial run of that seed	IDENTICAL	15 files
+tV	MPI np=2 rank 0 (seed line 2) vs serial run of that seed	ROUNDOFF	max scaled diff 1.27e+00, 15 files, confout identical
+tV	MPI np=2 rank 1 (seed line 1) vs serial run of that seed	IDENTICAL	confout_1 = serial chain of seed line 1
+tV	MPI np=3 rank 0 (seed line 3) vs serial run of that seed	ROUNDOFF	max scaled diff 1.79e+00, 15 files, confout identical
+tV	MPI np=3 rank 1 (seed line 2) vs serial run of that seed	IDENTICAL	confout_1 = serial chain of seed line 2
+tV	MPI np=3 rank 2 (seed line 1) vs serial run of that seed	IDENTICAL	confout_2 = serial chain of seed line 1
+tV	restart (4+4 bins) vs single run (8 bins)	IDENTICAL	15 files
+tV	ifx 2025.3 vs gfortran 14.2	DIFFERENT	confout_0 differs
+sp	MPI np=1 rank 0 (seed line 1) vs serial run of that seed	IDENTICAL	19 files
+sp	MPI np=2 rank 0 (seed line 2) vs serial run of that seed	ROUNDOFF	max scaled diff 1.76e+00, 19 files, confout identical
+sp	MPI np=2 rank 1 (seed line 1) vs serial run of that seed	IDENTICAL	confout_1 = serial chain of seed line 1
+sp	MPI np=3 rank 0 (seed line 3) vs serial run of that seed	ROUNDOFF	max scaled diff 2.65e+00, 19 files, confout identical
+sp	MPI np=3 rank 1 (seed line 2) vs serial run of that seed	IDENTICAL	confout_1 = serial chain of seed line 2
+sp	MPI np=3 rank 2 (seed line 1) vs serial run of that seed	IDENTICAL	confout_2 = serial chain of seed line 1
+sp	restart (4+4 bins) vs single run (8 bins)	IDENTICAL	19 files
+sp	ifx 2025.3 vs gfortran 14.2	DIFFERENT	confout_0 differs

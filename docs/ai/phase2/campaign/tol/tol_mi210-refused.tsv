@@ -1,0 +1,25 @@
+machine	model	scheme	L	class	gpu_cpu_diff	null_nwrap	null_scheme	state;confout;PG means (mean of 'Precision Green')
+mi210-refused	kondo	std	8	eq	4.839e-12	1.599e-12	-	ACTIVE;confout_id;PG gpu 4.27e-14 cpu 3.57e-14
+mi210-refused	kondo	std	8	scal	9.161e-12	3.221e-12	-	ACTIVE;confout_id;PG gpu 4.27e-14 cpu 3.57e-14
+mi210-refused	kondo	std	8	tau	1.982e-11	2.770e-12	-	ACTIVE;confout_id;PG gpu 4.27e-14 cpu 3.57e-14
+mi210-refused	kondo	dly16	8	eq	5.856e-12	1.599e-12	1.330e-12	ACTIVE;confout_id;PG gpu 4.19e-14 cpu 3.35e-14
+mi210-refused	kondo	dly16	8	scal	1.115e-11	3.221e-12	2.598e-12	ACTIVE;confout_id;PG gpu 4.19e-14 cpu 3.35e-14
+mi210-refused	kondo	dly16	8	tau	1.982e-11	2.770e-12	0.000e+00	ACTIVE;confout_id;PG gpu 4.19e-14 cpu 3.35e-14
+mi210-refused	kondo	sub16	8	eq	4.855e-12	1.599e-12	8.167e-14	ACTIVE;confout_id;PG gpu 4.23e-14 cpu 3.47e-14
+mi210-refused	kondo	sub16	8	scal	9.164e-12	3.221e-12	6.305e-14	ACTIVE;confout_id;PG gpu 4.23e-14 cpu 3.47e-14
+mi210-refused	kondo	sub16	8	tau	1.982e-11	2.770e-12	0.000e+00	ACTIVE;confout_id;PG gpu 4.23e-14 cpu 3.47e-14
+mi210-refused	tV	std	8	eq	1.113e-13	2.843e-13	-	ACTIVE;confout_id;PG gpu 3.21e-14 cpu 3.28e-14
+mi210-refused	tV	std	8	scal	1.206e-13	3.621e-13	-	ACTIVE;confout_id;PG gpu 3.21e-14 cpu 3.28e-14
+mi210-refused	tV	dly16	8	eq	9.769e-13	2.843e-13	2.303e-13	ACTIVE;confout_id;PG gpu 3.48e-14 cpu 3.28e-14
+mi210-refused	tV	dly16	8	scal	1.511e-12	3.621e-13	4.150e-13	ACTIVE;confout_id;PG gpu 3.48e-14 cpu 3.28e-14
+mi210-refused	tV	sub16	8	eq	2.161e-13	2.843e-13	1.048e-13	ACTIVE;confout_id;PG gpu 3.21e-14 cpu 3.24e-14
+mi210-refused	tV	sub16	8	scal	2.999e-13	3.621e-13	1.794e-13	ACTIVE;confout_id;PG gpu 3.21e-14 cpu 3.24e-14
+mi210-refused	sp	std	8	eq	1.869e-11	2.794e-11	-	ACTIVE;confout_id;PG gpu 6.66e-12 cpu 4.38e-12
+mi210-refused	sp	std	8	scal	4.676e-12	6.592e-11	-	ACTIVE;confout_id;PG gpu 6.66e-12 cpu 4.38e-12
+mi210-refused	sp	std	8	tau	7.286e-11	1.686e-11	-	ACTIVE;confout_id;PG gpu 6.66e-12 cpu 4.38e-12
+mi210-refused	sp	dly16	8	eq	2.049e-11	2.794e-11	3.881e-11	ACTIVE;confout_id;PG gpu 5.43e-12 cpu 2.96e-12
+mi210-refused	sp	dly16	8	scal	1.067e-11	6.592e-11	8.337e-11	ACTIVE;confout_id;PG gpu 5.43e-12 cpu 2.96e-12
+mi210-refused	sp	dly16	8	tau	7.286e-11	1.686e-11	0.000e+00	ACTIVE;confout_id;PG gpu 5.43e-12 cpu 2.96e-12
+mi210-refused	sp	sub16	8	eq	5.480e-11	2.794e-11	1.930e-11	ACTIVE;confout_id;PG gpu 6.04e-12 cpu 5.03e-12
+mi210-refused	sp	sub16	8	scal	2.625e-10	6.592e-11	2.042e-10	ACTIVE;confout_id;PG gpu 6.04e-12 cpu 5.03e-12
+mi210-refused	sp	sub16	8	tau	7.286e-11	1.686e-11	0.000e+00	ACTIVE;confout_id;PG gpu 6.04e-12 cpu 5.03e-12

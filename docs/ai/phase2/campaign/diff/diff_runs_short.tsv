@@ -1,0 +1,7 @@
+case	comparison	verdict	detail
+hub-mz	ifx vs gfortran, NSweep 1 NBin 2	DIFFERENT	confout_0 differs
+hub-su2	ifx vs gfortran, NSweep 1 NBin 2	DIFFERENT	confout_0 differs
+hub-dly4	ifx vs gfortran, NSweep 1 NBin 2	DIFFERENT	confout_0 differs
+kondo	ifx vs gfortran, NSweep 1 NBin 2	DIFFERENT	confout_0 differs
+tV	ifx vs gfortran, NSweep 1 NBin 2	DIFFERENT	confout_0 differs
+sp	ifx vs gfortran, NSweep 1 NBin 2	DIFFERENT	confout_0 differs
