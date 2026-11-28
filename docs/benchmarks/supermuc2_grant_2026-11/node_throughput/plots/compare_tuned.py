@@ -43,14 +43,17 @@ for col, (title, oldf, newf) in enumerate([(r"$\beta = 4$", old4, new4), (r"$\be
         n = [(L, new[(side, L)]) for L in Ls if (side, L) in new]
         if n:
             a0.plot(*zip(*n), m + "-", color=c, label=f"{name}, tuned")
-            r = [(L, v / float(old[L]["thr_" + side])) for L, v in n]
-            a1.plot(*zip(*r), m + "-", color=c, label=name)
+    rr = [(L, new[("gpub", L)] / new[("gpu", L)]) for L in Ls if ("gpub", L) in new and ("gpu", L) in new]
+    if rr:
+        a1.plot(*zip(*rr), "^-", color="C1", label="tuned")
+    ro = [(L, float(old[L]["thr_gpub"]) / float(old[L]["thr_gpu"])) for L in Ls]
+    a1.plot(*zip(*ro), "^--", color="C1", mfc="none", alpha=.7, label="before tuning")
     a0.set_yscale("log"); a0.set_title(title); a0.grid(alpha=.3)
     a1.axhline(1, color="gray", lw=.8); a1.set_xlabel(r"system size $L$ ($N=L^2$)"); a1.grid(alpha=.3)
     if col == 0:
-        a0.set_ylabel("work units per node-hour"); a1.set_ylabel("tuned / before")
-        a0.legend(fontsize=7)
+        a0.set_ylabel("work units per node-hour"); a1.set_ylabel("Intel-opt. / ALF GPU")
+        a0.legend(fontsize=7); a1.legend(fontsize=7)
     if not any((s, L) in new for s in ("gpu", "gpub") for L in Ls):
         a0.text(.5, .1, "no tuned runs yet", transform=a0.transAxes, ha="center", color="red")
-    a1.set_ylim(bottom=0.8)
+    a1.set_ylim(0.8, None)
 fig.tight_layout(); fig.savefig(out, dpi=140)

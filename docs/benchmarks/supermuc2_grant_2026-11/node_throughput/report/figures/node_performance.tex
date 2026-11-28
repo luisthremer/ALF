@@ -12,14 +12,17 @@
 \ref{leg}\\[2pt]
 \begin{tikzpicture}
 \begin{axis}[width=8cm, height=5.6cm, ymode=log, xtick={16,24,32,40,48,56}, xlabel={system size $L$ ($N=L^2$)}, unbounded coords=jump, mark size=2pt, thick, ylabel={work units per node-hour}, enlarge y limits=0.12,
-  legend columns=3, legend to name=leg, legend entries={{CPU node, ALF CPU},{GPU node, ALF GPU},{GPU node, ALF GPU Intel-optimised}}, legend style={/tikz/every even column/.append style={column sep=10pt}}]
-\addlegendimage{color=RoyalBlue, mark=*}\addlegendimage{color=ForestGreen, mark=square*}\addlegendimage{color=BurntOrange, mark=triangle*}
+  legend columns=3, legend to name=leg, legend entries={{CPU node, ALF CPU},{GPU node, ALF GPU},{GPU node, ALF GPU Intel-optimised},{CPU fit $\propto L^{-6}$}}, legend style={/tikz/every even column/.append style={column sep=10pt}}]
+\addlegendimage{color=RoyalBlue, mark=*}\addlegendimage{color=ForestGreen, mark=square*}\addlegendimage{color=BurntOrange, mark=triangle*}\addlegendimage{color=RoyalBlue, dashed, mark=none}
 \addplot[color=RoyalBlue, mark=*, forget plot] table[x=L, y=thr_cpu]{antrag_best.dat};
 \addplot[color=ForestGreen, mark=square*, forget plot] table[x=L, y=thr_gpu]{antrag_best.dat};
 \addplot[color=BurntOrange, mark=triangle*, forget plot] table[x=L, y=thr_gpub]{antrag_best.dat};
+\addplot[color=RoyalBlue, dashed, mark=none, forget plot] table[x=L, y=thr_cpufit]{antrag_best.dat};
 \addplot[only marks, mark=none, nodes near coords={\pgfmathprintnumber[fixed,precision=1]{\pgfplotspointmeta}$\times$},
   nodes near coords align={above}, every node near coord/.style={font=\scriptsize, color=BurntOrange},
   point meta=explicit, forget plot] table[x=L, y=thr_gpub, meta=fac]{antrag_fac.dat};
+\addplot[only marks, mark=none, nodes near coords={(\pgfmathprintnumber[fixed,precision=0]{\pgfplotspointmeta}$\times$)},
+  nodes near coords align={above}, every node near coord/.style={font=\scriptsize, color=BurntOrange}, point meta=explicit, forget plot] table[x=L, y=thr_gpub, meta=fac]{antrag_facx.dat};
 \end{axis}
 \end{tikzpicture}\hspace{6mm}
 \begin{tikzpicture}

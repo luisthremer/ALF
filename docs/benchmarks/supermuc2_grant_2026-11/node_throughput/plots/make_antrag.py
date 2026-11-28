@@ -82,20 +82,37 @@ for i, L in enumerate(Ls):
         t.append(f"{head} & {CONF[s_](r)}{star} & {num(thr)} & {fac} & {e:.3f}\\\\")
 t.append("\\end{tabular}")
 out.append("\\newcommand{\\AntragTable}{%\n" + "\n".join(t) + "}")
+# power-law fit of the CPU node, throughput = A L^-p (p = CPU_EXP: 6 at beta = 4, 7 at beta = L, cost per sweep ~ N^3 Nt), amplitude by least squares in log space
+import math
+CP = float(os.environ.get("CPU_EXP", "6"))
+cpuL = [L for L in Ls if ("cpu", L) in b]
+AFIT = math.exp(sum(math.log(b[("cpu", L)]["throughput_node_h"]) + CP * math.log(L) for L in cpuL) / len(cpuL)) if cpuL else float("nan")
+fit = lambda L: AFIT * L ** -CP
 # data file for the pgfplots figures (best layout per side; nan = not finished)
 with open(__file__.rsplit("/", 2)[0] + "/" + os.environ.get("REPORTDIR", "report") + "/antrag_best.dat", "w") as f:
-    f.write("L thr_cpu thr_gpu thr_gpub e_cpu e_gpu e_gpub fac_gpub\n")
+    f.write("L thr_cpu thr_gpu thr_gpub e_cpu e_gpu e_gpub fac_gpub thr_cpufit\n")
     for L in Ls:
         v = []
         for s_ in SIDES:
             r = b.get((s_, L)); v.append(r["throughput_node_h"] if r else float("nan"))
         e = [POWER[s_] * 3600 / x / 1000 if x == x else float("nan") for s_, x in zip(SIDES, v)]
         fac = v[2] / v[0] if v[0] == v[0] and v[2] == v[2] else float("nan")
-        f.write(f"{L} " + " ".join(f"{x:.6g}" for x in v + e + [fac]) + "\n")
+        f.write(f"{L} " + " ".join(f"{x:.6g}" for x in v + e + [fac, fit(L)]) + "\n")
 with open(__file__.rsplit("/", 2)[0] + "/" + os.environ.get("REPORTDIR", "report") + "/antrag_fac.dat", "w") as f:   # speedup labels, only where both exist
     f.write("L thr_gpub fac\n")
     for L in Ls:
         c, g = b.get(("cpu", L)), b.get(("gpub", L))
         if c and g and done("cpu", L) and done("gpub", L):
             f.write(f"{L} {g['throughput_node_h']:.6g} {g['throughput_node_h'] / c['throughput_node_h']:.4g}\n")
+# extrapolated speedups (no CPU measurement): GPU / fitted CPU
+with open(__file__.rsplit("/", 2)[0] + "/" + os.environ.get("REPORTDIR", "report") + "/antrag_facx.dat", "w") as f:
+    f.write("L thr_gpub fac\n")
+    ex = [(L, b[("gpub", L)]["throughput_node_h"] / fit(L), b[("gpu", L)]["throughput_node_h"] / fit(L)) for L in Ls if ("cpu", L) not in b and ("gpub", L) in b and ("gpu", L) in b]
+    for L, fi, fb in ex:
+        f.write(f"{L} {b[('gpub', L)]['throughput_node_h']:.6g} {fi:.4g}\n")
+if ex:
+    out.append(f"\\newcommand{{\\FacExtrL}}{{{ex[-1][0]}}}\\newcommand{{\\FacExtr}}{{{ex[-1][1]:.0f}}}\\newcommand{{\\FacExtrBase}}{{{ex[-1][2]:.0f}}}\\newcommand{{\\CpuExp}}{{{int(CP)}}}")
+    out.append("\\newcommand{\\FacExtrList}{" + ", ".join(f"{fi:.0f}$\\times$ ($L={L}$)" for L, fi, fb in ex) + "}")
+else:
+    out.append("\\newcommand{\\FacExtrL}{--}\\newcommand{\\FacExtr}{--}\\newcommand{\\FacExtrBase}{--}\\newcommand{\\CpuExp}{6}\\newcommand{\\FacExtrList}{--}")
 print("\n".join(out))

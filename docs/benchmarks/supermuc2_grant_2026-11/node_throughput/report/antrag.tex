@@ -59,8 +59,8 @@ Energy per work unit estimated from vendor ratings (CPU node 700\,W, GPU node 31
 
 \begin{figure}[H]\centering
 \includegraphics[width=\textwidth]{figures/node_performance}
-\caption{Left: node throughput of the best configuration (CPU node up to $L=40$); numbers = speedup of the GPU node (ALF GPU Intel-optimised) over the
-CPU node. Right: estimated energy per work unit (vendor power ratings: CPU node 700\,W, GPU node 3100\,W).}
+\caption{Left: node throughput of the best configuration (CPU node measured up to $L=40$); dashed: fit of the CPU node $\propto L^{-6}$ (cost per sweep $\propto N^3$) extended to $L=56$; numbers = speedup of the GPU node (ALF GPU Intel-optimised) over the
+CPU node, in brackets extrapolated with the fit. Right: estimated energy per work unit (vendor power ratings: CPU node 700\,W, GPU node 3100\,W).}
 \end{figure}
 
 \subsection*{Result}
@@ -68,7 +68,7 @@ CPU node. Right: estimated energy per work unit (vendor power ratings: CPU node 
 \begin{itemize}
 \item At $L=\Lmax$ one GPU node gives \textbf{\FacIntel$\times$} the throughput of the CPU node (ALF GPU Intel-optimised;
   \FacBase$\times$ with ALF GPU) at \Eratio$\times$ lower energy per work unit.
-\item Speedup of the GPU node (Intel-optimised) over the CPU node: \FacList.
+\item Speedup of the GPU node (Intel-optimised) over the CPU node: \FacList. Extrapolated with the CPU fit ($\propto L^{-\CpuExp}$, not measured): \FacExtrList.
 \item The GPU configuration was tuned for every $L$ (layout and $N_\text{delay}$): 4 processes per tile for $L\le36$, 7--8 for $L\ge40$ at $\beta=4$; larger $\beta$ needs more device memory and fewer processes.
 \end{itemize}}
 \end{document}

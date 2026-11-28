@@ -106,4 +106,16 @@ GPU node $4\times600$\,W $+700$\,W $=3100$\,W; $E=P_\text{node}\cdot3600/\text{t
 \includegraphics[width=0.7\textwidth]{gpu_usage}
 \caption{Mean GPU utilisation (top) and power of the four cards (bottom), xpu-smi 1\,s samples, against walkers per tile; one column per GPU binary, colour = $L$.}
 \end{figure}
+
+\section{Extrapolation of the CPU node to larger $L$}
+The CPU node was measured up to $L=36$. The cost of one sweep scales as $N^3\,N_t$ with $N=L^2$ (matrix products, QR and LU decompositions of dimension $N$) and $N_t$ time slices with $N_t=10L$ (so $L^7$ for $\beta=L$ instead of $L^6$), so the throughput of the CPU node was fitted with $A\,L^{-7}$ (amplitude by least squares in log space) and extended to $L=56$. The free fit exponent of the measured points is given in the legend. Speedups in brackets are GPU throughput divided by the fitted CPU throughput, \emph{not measured}.
+\begin{figure}[H]\centering
+\includegraphics[width=0.75\textwidth]{cpu_fit}
+\caption{CPU node: measurements and fit $\propto L^{-7}$ extended to $L=56$; GPU node curves (tuned); speedup of the Intel-optimised code over the CPU node (in brackets: extrapolated).}
+\end{figure}
+\begin{table}[H]\centering\small
+\caption{Throughput (work units per node-hour) and speedup over the CPU node; for $L>36$ the CPU value is the fit.}
+\input{fig/cpu_fit_table}
+\FitTable
+\end{table}
 \end{document}
